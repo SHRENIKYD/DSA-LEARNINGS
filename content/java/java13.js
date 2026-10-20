@@ -243,6 +243,59 @@ class NaivePluginLoading {
 }` },
       mcq: { q: 'Why must <code>com.host.api.*</code> stay parent-first even in a child-first loader?', options: ['So the host and plugin share ONE Class object for the API types; otherwise casting a plugin object to the host interface fails', 'Because the JVM forbids child-first for any package', 'To make class loading faster', 'Because API classes are always loaded by bootstrap'], answer: 0, explain: 'Class identity = name + defining loader. If the plugin defines its own copy of the Plugin interface, the host cannot cast the plugin object to ITS Plugin interface.' },
       hints: [`<p>Hint 1: Override ${C('loadClass(String, boolean)')}, not only ${C('findClass')}. ${C('findClass')} alone keeps parent-first order.</p>`, `<p>Hint 2: Always check ${C('findLoadedClass(name)')} first, and wrap the logic in ${C('synchronized (getClassLoadingLock(name))')} so two threads cannot define the same class twice (that throws ${C('LinkageError: duplicate class definition')}).</p>`, `<p>Hint 3: Recipe — cached? return it. Parent-first prefix? ask parent. Else try ${C('findClass')} (your map), and if that throws ${C('ClassNotFoundException')}, fall back to the parent. Finally ${C('resolveClass')} if asked.</p>`],
+      tests: { sig: 'string -> string', fn: 'chk', harness: { java: `
+class PluginThing { }
+class Marker { }
+class Check {
+  static byte[] bytes(String res) throws Exception {
+    try (InputStream in = Check.class.getResourceAsStream("/" + res + ".class")) { return in.readAllBytes(); }
+  }
+  static String chk(String kind) throws Exception {
+    Map<String, byte[]> jar = new HashMap<>();
+    jar.put("PluginThing", bytes("PluginThing"));
+    jar.put("javax.xyz.Fake", new byte[]{ 1, 2, 3 });
+    jar.put("com.host.api.Plugin", new byte[]{ 1, 2, 3 });
+    PluginClassLoader loader = new PluginClassLoader(jar, Check.class.getClassLoader());
+    switch (kind) {
+      case "plugin": return loader.loadClass("PluginThing").getClassLoader().getName();
+      case "differsFromHost": return String.valueOf(loader.loadClass("PluginThing") != PluginThing.class);
+      case "jdk": return loader.loadClass("java.lang.String").getClassLoader() == null ? "bootstrap" : "other";
+      case "fallback": return String.valueOf(loader.loadClass("Check") == Check.class);
+      case "same": return String.valueOf(loader.loadClass("PluginThing") == loader.loadClass("PluginThing"));
+      case "javax": case "hostApi": {
+        try { loader.loadClass(kind.equals("javax") ? "javax.xyz.Fake" : "com.host.api.Plugin"); return "loaded"; }
+        catch (ClassNotFoundException e) { return "ClassNotFoundException"; }
+      }
+      case "missing": try { loader.loadClass("does.not.Exist"); return "loaded"; } catch (ClassNotFoundException e) { return "ClassNotFoundException"; }
+      default: {
+        int T = 16;
+        Class<?>[] got = new Class<?>[T];
+        Throwable[] err = new Throwable[T];
+        CountDownLatch gate = new CountDownLatch(1);
+        Thread[] ts = new Thread[T];
+        for (int i = 0; i < T; i++) {
+          final int id = i;
+          ts[i] = new Thread(() -> { try { gate.await(); got[id] = loader.loadClass("PluginThing"); } catch (Throwable e) { err[id] = e; } });
+          ts[i].start();
+        }
+        gate.countDown();
+        boolean ok = true;
+        for (int i = 0; i < T; i++) { ts[i].join(); if (err[i] != null || got[i] != got[0]) ok = false; }
+        return String.valueOf(ok);
+      }
+    }
+  }
+}` }, cases: [
+          [['plugin'], 'plugin'],
+          [['differsFromHost'], 'true'],
+          [['jdk'], 'bootstrap'],
+          [['fallback'], 'true'],
+          [['same'], 'true'],
+          [['javax'], 'ClassNotFoundException'],
+          [['hostApi'], 'ClassNotFoundException'],
+          [['missing'], 'ClassNotFoundException'],
+          [['threads'], 'true']
+        ] },
       solution: {
         approach: `<p>Invert the order only for non-shared packages. Keep the per-name lock and the cache check from the JDK implementation, then decide parent-first or child-first by prefix. Register the loader as parallel-capable so the per-name locks are used instead of locking the whole loader.</p>`,
         code: `
@@ -500,6 +553,34 @@ class SlowMiniJvm {
 }` },
       mcq: { q: 'For <code>isub</code>, the stack holds [a, b] with b on top. What must the interpreter push?', options: ['a − b (pop b first, then a)', 'b − a', 'a + b', 'It depends on the JIT'], answer: 0, explain: 'Operands are pushed left to right, so the right operand is on top. Pop b, pop a, push a − b. Getting this order wrong is the classic interpreter bug.' },
       hints: [`<p>Hint 1: An interpreter is just ${C('while (true) { fetch instruction at pc; decode; execute; pc++ }')}. Jumps set pc and skip the increment.</p>`, `<p>Hint 2: <b>Decode once</b>: pre-parse every line into an int opcode and int operands (arrays), so the hot loop does no string work — this is exactly what real JVMs do (bytecode is already binary).</p>`, `<p>Hint 3: Use an ${C('int[]')} as the operand stack with a ${C('sp')} index (no boxing). Check underflow (sp == 0 before pop), overflow (sp == 64), and count steps to stop infinite loops.</p>`],
+      tests: { sig: 'string[] int[] -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(String[] program, int[] args) {
+    try { return String.valueOf(MiniJvm.run(program, args)); } catch (RuntimeException e) { return "ERR"; }
+  }
+}` }, cases: [
+          [[['iconst 0', 'istore 1', 'iconst 1', 'istore 2', 'iload 2', 'iload 0', 'if_icmpgt 13', 'iload 1', 'iload 2', 'iadd', 'istore 1', 'iinc 2 1', 'goto 4', 'iload 1', 'ireturn'], [4]], '10'],
+          [[['iconst 0', 'istore 1', 'iconst 1', 'istore 2', 'iload 2', 'iload 0', 'if_icmpgt 13', 'iload 1', 'iload 2', 'iadd', 'istore 1', 'iinc 2 1', 'goto 4', 'iload 1', 'ireturn'], [0]], '0'],
+          [[['iconst 0', 'istore 1', 'iconst 1', 'istore 2', 'iload 2', 'iload 0', 'if_icmpgt 13', 'iload 1', 'iload 2', 'iadd', 'istore 1', 'iinc 2 1', 'goto 4', 'iload 1', 'ireturn'], [1]], '1'],
+          [[['iconst 0', 'istore 1', 'iconst 1', 'istore 2', 'iload 2', 'iload 0', 'if_icmpgt 13', 'iload 1', 'iload 2', 'iadd', 'istore 1', 'iinc 2 1', 'goto 4', 'iload 1', 'ireturn'], [100000]], '705082704'],
+          [[['iconst 7', 'ireturn'], []], '7'],
+          [[['iconst 5', 'iconst 3', 'isub', 'ireturn'], []], '2'],
+          [[['iconst 6', 'iconst 7', 'imul', 'ireturn'], []], '42'],
+          [[['iconst 65536', 'iconst 65536', 'imul', 'ireturn'], []], '0'],
+          [[['iconst -4', 'ireturn'], []], '-4'],
+          [[['iload 0', 'iload 1', 'iadd', 'iload 7', 'iadd', 'ireturn'], [30, 12]], '42'],
+          [[['iinc 0 -5', 'iload 0', 'ireturn'], [3]], '-2'],
+          [[['iconst 3', 'iconst 2', 'if_icmpgt 5', 'iconst 0', 'ireturn', 'iconst 1', 'ireturn'], []], '1'],
+          [[['iconst 2', 'iconst 3', 'if_icmpgt 5', 'iconst 0', 'ireturn', 'iconst 1', 'ireturn'], []], '0'],
+          [[['iconst 3', 'iconst 3', 'if_icmpgt 5', 'iconst 0', 'ireturn', 'iconst 1', 'ireturn'], []], '0'],
+          [[['iadd', 'ireturn'], []], 'ERR'],
+          [[['ireturn'], []], 'ERR'],
+          [[['foo 1', 'ireturn'], []], 'ERR'],
+          [[['iconst 1'], []], 'ERR'],
+          [[['goto 0'], []], 'ERR'],
+          [[['iload 8', 'ireturn'], []], 'ERR'],
+          [[['goto 5'], []], 'ERR']
+        ] },
       solution: {
         approach: `<p>Pre-decode into parallel arrays (opcode, arg1, arg2), then run a tight switch loop on primitives — the same "decode once, dispatch fast" idea the HotSpot template interpreter uses. Jumps assign pc directly. The order of pops for non-commutative operations mirrors the JVM spec.</p>`,
         code: `
@@ -763,6 +844,18 @@ class InlineCacheBrute {
 }` },
       mcq: { q: 'Why does a megamorphic site never deoptimize in this model?', options: ['It uses a real virtual/interface dispatch (vtable/itable), which handles any receiver without speculation', 'Because the JVM stops loading new classes', 'Because megamorphic code is interpreted', 'Because C1 takes over'], answer: 0, explain: 'There is no type guard to fail: the call is dispatched dynamically. You lose inlining, but you never hit an uncommon trap at that site.' },
       hints: [`<p>Hint 1: The JVM keeps a <b>running</b> profile; you can too. Maintain one ${C('Set')} of seen types as you go — no re-scanning.</p>`, `<p>Hint 2: Separate "what has been seen" (profile) from "what the compiled code assumes" (compiled set). Deopt happens only when compiled code exists, is not megamorphic, and the receiver is outside the compiled set.</p>`, `<p>Hint 3: Recipe — for each call i: add type to seen. If i+1 == c: compiled = copy(seen). Else if compiled != null and compiled.size() ≤ 2 and type not in compiled: deopts++, compiled = copy(seen). Classify by compiled.size() at the end (or seen.size() if never compiled).</p>`],
+      tests: { sig: 'string[] int -> string', fn: 'simulate', cases: [
+          [[['C', 'C', 'C', 'S', 'C', 'T', 'S'], 3], '2 MEGAMORPHIC'],
+          [[['C', 'C', 'C', 'C'], 2], '0 MONOMORPHIC'],
+          [[['A', 'B', 'A', 'B'], 2], '0 BIMORPHIC'],
+          [[['A', 'B', 'C'], 3], '0 MEGAMORPHIC'],
+          [[['A'], 1], '0 MONOMORPHIC'],
+          [[['A', 'A', 'B', 'B', 'C', 'C'], 2], '2 MEGAMORPHIC'],
+          [[['A', 'B', 'A', 'C'], 1], '2 MEGAMORPHIC'],
+          [[['A', 'B', 'C', 'A'], 4], '0 MEGAMORPHIC'],
+          [[{ $rep: 'X', n: 100000 }, 100000], '0 MONOMORPHIC'],
+          [[{ $concat: [['A'], { $rep: 'B', n: 99999 }] }, 1], '1 BIMORPHIC']
+        ] },
       solution: {
         approach: `<p>One pass with a running profile set (like the JVM's receiver-type profile) and a separate snapshot representing the compiled code's assumptions. Each step is O(1) average; snapshots are copied only on compile/deopt, and the snapshot never exceeds 3 elements before becoming megamorphic.</p>`,
         code: `
@@ -971,6 +1064,35 @@ class RecursiveReach {
 }` },
       mcq: { q: 'Where does the explicit ArrayDeque stack store its data?', options: ['On the heap — limited by -Xmx, not -Xss', 'On the thread stack', 'In Metaspace', 'In the code cache'], answer: 0, explain: 'The deque is an ordinary object with a backing array on the heap. Heap is usually GBs, the thread stack ~1 MB, so moving the "to-do list" to the heap removes the depth limit.' },
       hints: [`<p>Hint 1: Recursion stores "what to do next" on the <b>call stack</b>. You can store the same thing in a data structure on the <b>heap</b>.</p>`, `<p>Hint 2: Use ${C('ArrayDeque<Integer>')} (or an ${C('int[]')} with a top index to avoid boxing) as an explicit stack. Mark a node seen when you <b>push</b> it, so each node is pushed at most once.</p>`, `<p>Hint 3: Recipe — push start, mark seen. While stack not empty: pop u, count++, for each neighbour v not seen: mark, push. The explicit stack size is at most N; call depth stays 1.</p>`],
+      tests: { sig: 'string int int -> int', fn: 'chk', harness: { java: `
+class Check {
+  static int chk(String kind, int n, int start) {
+    int[][] adj;
+    switch (kind) {
+      case "ex": adj = new int[][]{ {1, 2}, {3}, {3}, {}, {0} }; break;
+      case "chain": adj = new int[n][]; for (int i = 0; i < n; i++) adj[i] = i + 1 < n ? new int[]{ i + 1 } : new int[0]; break;
+      case "reverse": adj = new int[n][]; for (int i = 0; i < n; i++) adj[i] = i > 0 ? new int[]{ i - 1 } : new int[0]; break;
+      case "ring": adj = new int[n][]; for (int i = 0; i < n; i++) adj[i] = new int[]{ (i + 1) % n }; break;
+      case "star": adj = new int[n][]; adj[0] = new int[n - 1]; for (int i = 1; i < n; i++) { adj[0][i - 1] = i; adj[i] = new int[]{ 0 }; } break;
+      case "two": adj = new int[n][]; for (int i = 0; i < n; i++) adj[i] = (i + 1 < n && i + 1 != n / 2) ? new int[]{ i + 1 } : new int[0]; break;
+      default: adj = new int[][]{ {0} };
+    }
+    return IterativeReach.count(adj, start);
+  }
+}` }, cases: [
+          [['ex', 0, 0], 4],
+          [['ex', 0, 4], 5],
+          [['ex', 0, 3], 1],
+          [['self', 1, 0], 1],
+          [['chain', 1, 0], 1],
+          [['chain', 1000000, 0], 1000000],
+          [['chain', 1000000, 500000], 500000],
+          [['reverse', 1000000, 999999], 1000000],
+          [['ring', 1000000, 123], 1000000],
+          [['star', 1000000, 0], 1000000],
+          [['two', 1000000, 0], 500000],
+          [['two', 1000000, 500000], 500000]
+        ] },
       solution: {
         approach: `<p>Replace the implicit call stack with an explicit array-based stack on the heap. Marking at push time guarantees O(N) pushes. Using a primitive ${C('int[]')} avoids boxing 10<sup>6</sup> Integers (which would allocate ~16 MB of garbage).</p>`,
         code: `
@@ -1245,6 +1367,29 @@ class GarbageBrute {
 }` },
       mcq: { q: 'Object X is referenced only by object Y, and Y is garbage. Is X garbage?', options: ['Yes — incoming references from garbage do not count; only paths from roots matter', 'No — it has a reference so it is live', 'Only if X is in the old generation', 'Only after finalize() runs'], answer: 0, explain: 'Liveness is reachability from roots. A reference from a dead object does not make anything live.' },
       hints: [`<p>Hint 1: Garbage = complement of "reachable from roots". Compute reachable <b>once</b> with a single BFS/DFS seeded with <b>all</b> roots.</p>`, `<p>Hint 2: Use a ${C('boolean[] marked')} (that is literally the GC's mark bitmap) and an explicit ${C('int[]')} worklist so a 10<sup>6</sup>-long chain does not overflow the stack.</p>`, `<p>Hint 3: Recipe — mark every root, push it. Pop u, for each v in refs[u] not marked: mark, push. Finally scan 0..n−1 and collect unmarked indices (already sorted).</p>`],
+      tests: { sig: 'int int[][] int[] int -> int[]', fn: 'chk', harness: { java: `
+class Check {
+  static int[] chk(int n, int[][] refs, int[] roots, int gen) {
+    if (gen == 0) return MarkPhase.garbage(n, refs, roots).stream().mapToInt(Integer::intValue).toArray();
+    int[][] r = new int[n][];
+    int[] rs;
+    if (gen == 1) { for (int i = 0; i < n; i++) r[i] = i + 1 < n ? new int[]{ i + 1 } : new int[0]; rs = new int[]{ n / 2 }; }
+    else { for (int i = 0; i < n; i++) r[i] = new int[]{ i ^ 1 }; rs = new int[]{ 0 }; }
+    List<Integer> g = MarkPhase.garbage(n, r, rs);
+    return new int[]{ g.size(), g.get(0), g.get(g.size() - 1) };
+  }
+}` }, cases: [
+          [[6, [[1], [2], [0], [4], [3], [5]], [0], 0], [3, 4, 5]],
+          [[3, [[1], [2], [0]], [0], 0], []],
+          [[3, [[1], [2], [0]], [], 0], [0, 1, 2]],
+          [[1, [[]], [], 0], [0]],
+          [[1, [[]], [0], 0], []],
+          [[1, [[0]], [], 0], [0]],
+          [[4, [[1, 1], [2, 2], [], [0]], [0, 0], 0], [3]],
+          [[5, [[], [], [], [], []], [4, 1], 0], [0, 2, 3]],
+          [[1000000, [], [], 1], [500000, 0, 499999]],
+          [[1000000, [], [], 2], [999998, 2, 999999]]
+        ] },
       solution: {
         approach: `<p>Exactly the mark phase of a tracing collector: one multi-source traversal over the object graph using a mark bitmap and an explicit worklist (grey set). The sweep phase is a linear scan of the bitmap. Cycles are handled naturally because marked objects are never pushed again.</p>`,
         code: `
@@ -1448,6 +1593,26 @@ class CsetBrute {
 }` },
       mcq: { q: 'Why does G1 skip regions that are, say, 95% live?', options: ['Copying them costs a lot of pause time but frees almost nothing', 'They contain humongous objects', 'They are pinned by JNI', 'They belong to the young generation'], answer: 0, explain: 'Evacuation cost ∝ live bytes; benefit ∝ garbage bytes. A 95% live region is the worst ratio, so G1MixedGCLiveThresholdPercent (85) filters them out.' },
       hints: [`<p>Hint 1: "Garbage-first" = sort candidates by reclaimable bytes (R − live) descending. Less live data also means cheaper copying — the same order is best on both axes.</p>`, `<p>Hint 2: Filter first (${C('live * 100 <= 85 * R')}, integer math avoids floating-point surprises), then sort indices with a comparator on (garbage desc, index asc).</p>`, `<p>Hint 3: Walk the sorted list keeping ${C('pause = youngMs')}; if ${C('pause + c*live[i] <= targetMs')} add it, else <b>stop</b>. Return the chosen list and the final pause.</p>`],
+      tests: { sig: 'int int[] double double double -> double[]', fn: 'chk', cmp: 'float', harness: { java: `
+class Check {
+  static double[] chk(int R, int[] live, double c, double young, double target) {
+    G1CsetPicker.Choice ch = G1CsetPicker.pick(R, live, c, young, target);
+    double[] out = new double[ch.regions().size() + 1];
+    for (int i = 0; i < ch.regions().size(); i++) out[i] = ch.regions().get(i);
+    out[out.length - 1] = ch.pauseMs();
+    return out;
+  }
+}` }, cases: [
+          [[16, [15, 2, 8, 0, 5, 14], 2, 10, 40], [3, 1, 4, 2, 40]],
+          [[10, [8, 5, 1], 1, 0, 6], [2, 1, 6]],
+          [[10, [1, 6, 2], 1, 0, 7], [0, 2, 3]],
+          [[10, [9, 10, 9], 1, 5, 100], [5]],
+          [[20, [17], 1, 0, 100], [0, 17]],
+          [[16, [4, 4], 0.5, 1, 5], [0, 1, 5]],
+          [[10, [0, 0, 0], 1, 0, 1], [0, 1, 2, 0]],
+          [[512, { $rep: 0, n: 100000 }, 1, 10, 100], { $concat: [{ $range: [0, 100000] }, [10]] }],
+          [[512, { $rep: 100, n: 100000 }, 1, 0, 1000], { $concat: [{ $range: [0, 10] }, [1000]] }]
+        ] },
       solution: {
         approach: `<p>Filter out expensive regions, sort by garbage descending (stable by index), and greedily add while the predicted pause fits — exactly G1's per-region cost prediction loop, simplified to one cost coefficient. Because garbage = R − live, sorting by garbage is also sorting by copy cost ascending, so each step adds the cheapest remaining region.</p>`,
         code: `
@@ -1656,6 +1821,28 @@ class NaiveGcStats {
 }` },
       mcq: { q: 'Why report p99 pause instead of the average?', options: ['Latency SLOs are about the tail; one 2 s pause per minute can hide inside a 15 ms average', 'Averages are harder to compute', 'p99 is always smaller', 'The JVM only logs p99'], answer: 0, explain: 'Users feel the slow requests. A few long pauses barely move the mean but dominate p99/p99.9 latency.' },
       hints: [`<p>Hint 1: Parse without regexes: uptime is between the first ${C('[')} and ${C('s]')}; the pause is the last token minus ${C('ms')}; the heap transition is the token containing ${C('->')}.</p>`, `<p>Hint 2: Keep a list of pauses for percentiles; sort once at the end. Nearest-rank p99 = sorted[ceil(0.99 × n) − 1].</p>`, `<p>Hint 3: For allocation, remember the previous pause's "after" value; for each new pause add (before − prevAfter) to a running total, then divide by (lastUptime − firstUptime). Guard against n = 0.</p>`],
+      tests: { sig: 'string[] -> double[]', fn: 'chk', cmp: 'float', harness: { java: `
+class Check {
+  static double[] chk(String[] lines) {
+    List<String> in = new ArrayList<>();
+    if (lines.length == 1 && lines[0].startsWith("gen")) {
+      int n = Integer.parseInt(lines[0].substring(5));
+      boolean ramp = lines[0].charAt(3) == 'R';
+      for (int i = 1; i <= n; i++) in.add("[" + i + ".000s][info][gc] GC(" + i + ") Pause Young (Normal) (G1 Evacuation Pause) 100M->10M(1024M) " + (ramp ? i : 1) + ".000ms");
+    } else in = Arrays.asList(lines);
+    GcLogAnalyzer.Stats s = GcLogAnalyzer.analyze(in);
+    return new double[]{ s.totalMs(), s.maxMs(), s.p99Ms(), s.throughputPct(), s.allocMBps() };
+  }
+}` }, cases: [
+          [[['[1.000s][info][gc] GC(0) Pause Young (Normal) (G1 Evacuation Pause) 300M->50M(1024M) 10.000ms', '[2.000s][info][gc] GC(1) Concurrent Mark Cycle 5.000ms', '[3.000s][info][gc] GC(2) Pause Young (Normal) (G1 Evacuation Pause) 450M->60M(1024M) 20.000ms']], [30, 20, 20, 98.5, 200]],
+          [[['[5.000s][info][gc] GC(0) Pause Young (Normal) (G1 Evacuation Pause) 300M->50M(1024M) 10.000ms']], [10, 10, 10, 100, 0]],
+          [[['[2.000s][info][gc] GC(1) Concurrent Mark Cycle 5.000ms']], [0, 0, 0, 100, 0]],
+          [[[]], [0, 0, 0, 100, 0]],
+          [[['[1.000s][info][gc] GC(0) Pause Young (Normal) (G1 Evacuation Pause) 500M->500M(1024M) 0.500ms', '[2.000s][info][gc] GC(1) Pause Young (Normal) (G1 Evacuation Pause) 400M->100M(1024M) 1.250ms']], [1.75, 1.25, 1.25, 99.825, 0]],
+          [[['[10.000s][info][gc] GC(0) Pause Full (System.gc()) 1000M->100M(2048M) 150.500ms', '[20.000s][info][gc] GC(1) Pause Young (Normal) (G1 Evacuation Pause) 600M->110M(2048M) 5.500ms']], [156, 150.5, 150.5, 98.44, 50]],
+          [[['genR:100']], [5050, 100, 99, 94.8989898989899, 90]],
+          [[['genF:1000000']], [1000000, 1, 1, 99.8999998999999, 90]]
+        ] },
       solution: {
         approach: `<p>Single pass: filter "Pause" lines, extract uptime, before/after/pause by plain string operations, accumulate totals and the previous "after" for allocation; sort pauses once for the percentile. Throughput uses the observed wall-clock window.</p>`,
         code: `
@@ -1918,6 +2105,34 @@ class ScanEvictCache {
 }` },
       mcq: { q: 'Why does an LRU cache stop the leak even though it still uses a static map?', options: ['Its size is bounded: evicted entries lose their last strong reference and become collectable', 'Static maps are weak by default', 'LinkedHashMap entries are stored off-heap', 'The GC treats caches specially'], answer: 0, explain: 'Leaks are about unbounded reachable growth. A bound + eviction removes references, so evicted values become unreachable and the GC can reclaim them.' },
       hints: [`<p>Hint 1: You need O(1) lookup (hash map) <b>and</b> O(1) "which entry is oldest?" (a linked list ordered by recency). ${C('LinkedHashMap')} is exactly both.</p>`, `<p>Hint 2: Construct it with ${C('accessOrder = true')} so ${C('get')} moves an entry to the end, and override ${C('removeEldestEntry')} to return ${C('size() > capacity')}.</p>`, `<p>Hint 3: Edge cases — updating an existing key must not evict; capacity 1 works; for concurrency wrap with a lock or use Caffeine (W-TinyLFU, lock-free reads) in production.</p>`],
+      tests: { sig: 'int string[] -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static String[] chk(int cap, String[] ops) {
+    PriceCache c;
+    try { c = new PriceCache(cap); } catch (IllegalArgumentException e) { return new String[]{ "IAE" }; }
+    List<String> out = new ArrayList<>();
+    for (String op : ops) {
+      String[] p = op.split(":");
+      switch (p[0]) {
+        case "put": c.put(p[1], Long.parseLong(p[2])); break;
+        case "get": out.add(String.valueOf(c.get(p[1]))); break;
+        case "size": out.add(String.valueOf(c.size())); break;
+        case "fill": for (int i = 0; i < Integer.parseInt(p[1]); i++) c.put(String.valueOf(i), i); break;
+      }
+    }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+          [[2, ['put:a:1', 'put:b:2', 'get:a', 'put:c:3', 'get:b', 'get:c', 'size']], ['1', 'null', '3', '2']],
+          [[0, []], ['IAE']],
+          [[1, ['put:a:1', 'put:b:2', 'get:a', 'get:b', 'size']], ['null', '2', '1']],
+          [[3, ['put:a:1', 'put:a:5', 'put:a:9', 'size', 'get:a']], ['1', '9']],
+          [[2, ['get:zzz', 'size']], ['null', '0']],
+          [[3, ['put:a:1', 'put:b:2', 'put:c:3', 'get:a', 'put:d:4', 'get:b', 'get:a', 'get:c', 'get:d']], ['1', 'null', '1', '3', '4']],
+          [[2, ['put:a:-5', 'get:a']], ['-5']],
+          [[1000, ['fill:200000', 'size', 'get:199999', 'get:199000', 'get:198999']], ['1000', '199999', '199000', 'null']],
+          [[100000, ['fill:300000', 'size', 'get:299999', 'get:200000', 'get:199999']], ['100000', '299999', '200000', 'null']]
+        ] },
       solution: {
         approach: `<p>Use ${C('LinkedHashMap')} in access order: it keeps a doubly-linked list through the hash entries, so moving an accessed entry to the tail and removing the head are O(1). ${C('removeEldestEntry')} is called after every insertion and evicts the head when the size exceeds capacity. Evicted values become unreachable → the GC can reclaim them → memory is bounded.</p>`,
         code: `
@@ -2066,16 +2281,17 @@ class JfrDemo {
     }
     static void busyWork() { long x = 0; for (int i = 0; i < 1_000_000; i++) x += i; if (x == 42) System.out.println(x); }
 }`, { lang: 'bash', title: 'Day-to-day commands', code: `jcmd -l                                         # list JVMs
-jcmd <pid> VM.version ; jcmd <pid> VM.flags      # what is running, with which flags
-jcmd <pid> Thread.print -l > dump1.txt           # thread dump (with j.u.c lock info)
-jcmd <pid> Thread.dump_to_file -format=json vt.json   # includes VIRTUAL threads (JDK 21+)
-jcmd <pid> GC.class_histogram | head -20         # top classes by bytes
-jcmd <pid> GC.heap_dump /tmp/heap.hprof          # full heap dump (pause + large file!)
-jcmd <pid> GC.heap_info                          # regions/generations summary
-jstat -gcutil <pid> 1000                         # S0 S1 E O M CCS YGC YGCT FGC FGCT GCT every second
-asprof -d 30 -e cpu   -f cpu.html   <pid>        # CPU flame graph (async-profiler)
-asprof -d 30 -e alloc -f alloc.html <pid>        # allocation flame graph
-asprof -d 30 -e wall -t -f wall.html <pid>       # wall-clock per thread: finds blocking/waiting` }],
+PID=$(pgrep -f MyApp)                             # find the target JVM first
+jcmd "$PID" VM.version ; jcmd "$PID" VM.flags     # what is running, with which flags
+jcmd "$PID" Thread.print -l > dump1.txt           # thread dump (with j.u.c lock info)
+jcmd "$PID" Thread.dump_to_file -format=json vt.json   # includes VIRTUAL threads (JDK 21+)
+jcmd "$PID" GC.class_histogram | head -20         # top classes by bytes
+jcmd "$PID" GC.heap_dump /tmp/heap.hprof          # full heap dump (pause + large file!)
+jcmd "$PID" GC.heap_info                          # regions/generations summary
+jstat -gcutil "$PID" 1000                         # S0 S1 E O M CCS YGC YGCT FGC FGCT GCT every second
+asprof -d 30 -e cpu   -f cpu.html   "$PID"        # CPU flame graph (async-profiler)
+asprof -d 30 -e alloc -f alloc.html "$PID"        # allocation flame graph
+asprof -d 30 -e wall -t -f wall.html "$PID"       # wall-clock per thread: finds blocking/waiting` }],
     codeTitle: ['Detect deadlocks from inside the JVM', 'Custom JFR events', 'Command cheat-sheet'],
     viz: [{
       title: 'Deadlock detection: follow "waiting for → held by" until it loops',
@@ -2184,6 +2400,31 @@ class DeadlockBrute {
 }` },
       mcq: { q: 'Each thread waits for at most ONE lock and each lock has ONE owner. What graph shape does that give?', options: ['A functional graph: every node has out-degree ≤ 1, so each component has at most one cycle', 'A tree', 'A DAG — cycles are impossible', 'A complete graph'], answer: 0, explain: 'Thread → owner-of-wanted-lock is a function. Following it from any node either ends or enters exactly one cycle — the deadlock — which makes linear-time detection easy.' },
       hints: [`<p>Hint 1: Collapse the two maps into one function: ${C('next(t) = ownerOf.get(waitingFor.get(t))')}. Now it is cycle detection in a functional graph.</p>`, `<p>Hint 2: Use three colours: 0 = unvisited, 1 = on the current walk, 2 = finished. Walking into a colour-1 node means you found a cycle; into colour-2 means "already explained, stop" — this makes the total work O(n).</p>`, `<p>Hint 3: Iterate starts in sorted order. When a cycle is found, extract it from the current path (from the first occurrence of the repeated node), rotate so the smallest name is first, and keep it if it beats the best so far.</p>`],
+      tests: { sig: 'string[] string[] -> list<string>', fn: 'chk', harness: { java: `
+class Check {
+  static List<String> chk(String[] w, String[] o) {
+    Map<String, String> waiting = new HashMap<>(), owner = new HashMap<>();
+    if (w.length == 1 && w[0].startsWith("ring:")) {
+      int n = Integer.parseInt(w[0].substring(5));
+      for (int i = 0; i < n; i++) { owner.put("L" + i, "T" + i); waiting.put("T" + i, "L" + ((i + 1) % n)); }
+      List<String> c = DeadlockDetector.find(waiting, owner);
+      return List.of(String.valueOf(c.size()), c.get(0), c.get(1), c.get(2));
+    }
+    for (String s : w) { String[] p = s.split(":"); waiting.put(p[0], p[1]); }
+    for (String s : o) { String[] p = s.split(":"); owner.put(p[0], p[1]); }
+    return DeadlockDetector.find(waiting, owner);
+  }
+}` }, cases: [
+          [[['T1:A', 'T2:B', 'T3:C', 'T4:A'], ['A:T2', 'B:T3', 'C:T1']], ['T1', 'T2', 'T3']],
+          [[['T1:A', 'T2:B'], ['A:T2']], []],
+          [[['T1:A', 'T2:B', 'T5:C', 'T6:D'], ['A:T2', 'B:T1', 'C:T6', 'D:T5']], ['T1', 'T2']],
+          [[['T3:A', 'T1:B', 'T2:C'], ['A:T1', 'B:T2', 'C:T3']], ['T1', 'T2', 'T3']],
+          [[['T1:A'], ['A:T1']], ['T1']],
+          [[[], []], []],
+          [[['T1:A'], []], []],
+          [[['T2:A', 'T3:B', 'T1:C', 'T4:D'], ['A:T3', 'B:T2', 'C:T4', 'D:T1']], ['T1', 'T4']],
+          [[['ring:100000'], []], ['100000', 'T0', 'T1', 'T2']]
+        ] },
       solution: {
         approach: `<p>Treat "thread → owner of the lock it wants" as a functional graph and do colour-marking walks. Every node is visited a constant number of times overall, so the algorithm is linear. This is essentially what HotSpot's deadlock detection in ${C('findDeadlockedThreads')} and the "Found one Java-level deadlock" section of jstack compute.</p>`,
         code: `
@@ -2244,6 +2485,36 @@ class LoaderChainNaive {
 }` },
     mcq: { q: 'What does <code>ClassLoader.getPlatformClassLoader().getParent()</code> return?', options: ['null (the bootstrap loader has no Java object)', 'the app loader', 'itself', 'throws SecurityException'], answer: 0, explain: 'The bootstrap loader is implemented natively and represented as null in Java APIs.' },
     hints: [`<p>Hint 1: ${C('getClassLoader()')} returns ${C('null')} for bootstrap-defined classes — handle null before calling anything on it.</p>`, `<p>Hint 2: Walk with ${C('while (l != null) { … l = l.getParent(); }')} and append ${C('"bootstrap"')} after the loop: every chain ends there.</p>`, `<p>Hint 3: ${C('getName()')} can return null for unnamed custom loaders; fall back to ${C('l.getClass().getName()')}.</p>`],
+    tests: { sig: 'string -> string[]', fn: 'chk', harness: { java: `
+class NamedLoader extends ClassLoader {
+  NamedLoader(String name, ClassLoader parent) { super(name, parent); }
+  Class<?> define(String n, byte[] b) { return defineClass(n, b, 0, b.length); }
+}
+class UnnamedLoader extends ClassLoader {
+  UnnamedLoader(ClassLoader parent) { super(parent); }
+  Class<?> define(String n, byte[] b) { return defineClass(n, b, 0, b.length); }
+}
+class LoaderMarker { }
+class Check {
+  static String[] chk(String cls) throws Exception {
+    Class<?> c;
+    byte[] bytes;
+    try (InputStream in = Check.class.getResourceAsStream("/LoaderMarker.class")) { bytes = in.readAllBytes(); }
+    if (cls.equals("named")) c = new NamedLoader("myloader", Check.class.getClassLoader()).define("LoaderMarker", bytes);
+    else if (cls.equals("unnamed")) c = new UnnamedLoader(Check.class.getClassLoader()).define("LoaderMarker", bytes);
+    else c = Class.forName(cls);
+    return LoaderChain.chain(c).toArray(new String[0]);
+  }
+}` }, cases: [
+        [['java.lang.String'], ['bootstrap']],
+        [['java.sql.Connection'], ['platform', 'bootstrap']],
+        [['LoaderChain'], ['app', 'platform', 'bootstrap']],
+        [['[I'], ['bootstrap']],
+        [['java.util.ArrayList'], ['bootstrap']],
+        [['javax.xml.crypto.XMLStructure'], ['platform', 'bootstrap']],
+        [['named'], ['myloader', 'app', 'platform', 'bootstrap']],
+        [['unnamed'], ['UnnamedLoader', 'app', 'platform', 'bootstrap']]
+      ] },
     solution: {
       approach: `<p>Start at the defining loader and follow parents until null; add "bootstrap" at the end. Null-safety comes from never dereferencing the bootstrap's null.</p>`,
       code: `
@@ -2283,12 +2554,19 @@ for (int i = 0; i < 100; i++) count = count++;   // iload_1; iinc 1,1; istore_1 
 System.out.println(count);                       // 0` },
     mcq: { q: 'Which bytecode sequence does <code>count = count++</code> produce (count in slot 1)?', options: ['iload_1, iinc 1 1, istore_1', 'iinc 1 1, iload_1, istore_1', 'iload_1, iconst_1, iadd, istore_1', 'iinc 1 1 only'], answer: 0, explain: 'Post-increment loads the old value first, then increments the local, then the assignment stores the old value back.' },
     hints: [`<p>Hint 1: Draw the operand stack: what value is on it when ${C('istore')} runs? It was loaded <b>before</b> the increment happened.</p>`, `<p>Hint 2: ${C('iinc')} changes the local variable slot directly; it does not touch the value already sitting on the stack.</p>`, `<p>Hint 3: The fix is to drop the assignment: ${C('count++;')} or ${C('count += 1;')}. Check with ${C('javap -c')} that the loop body becomes a single ${C('iinc')}.</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: '100' }
+      ] },
     solution: {
       approach: `<p>Remove the self-assignment. A standalone ${C('count++')} compiles to just ${C('iinc 1, 1')} — no load/store dance, nothing to overwrite.</p>`,
       code: `
-int count = 0;
-for (int i = 0; i < 100; i++) count++;           // iinc 1, 1
-System.out.println(count);                       // 100`,
+class CountFix {
+    public static void main(String[] args) {
+        int count = 0;
+        for (int i = 0; i < 100; i++) count++;           // iinc 1, 1
+        System.out.println(count);                       // 100
+    }
+}`,
       complexity: `<p>O(n) iterations, O(1) memory. (The JIT would collapse this loop to a constant anyway.)</p>`,
       followUps: ['What does <code>int x = 5; x = x++ + ++x;</code> print, and why?', 'Does the same trap exist with Integer (boxed) variables?']
     }
@@ -2313,6 +2591,26 @@ class OomRetry {
 }` },
     mcq: { q: '"Java heap space" OOM appears but heap dumps show the heap is mostly ONE huge array. Most likely cause?', options: ['A single giant allocation (e.g. reading a whole file/result set into memory)', 'Metaspace leak', 'Too many threads', 'JIT code cache full'], answer: 0, explain: 'A single allocation larger than the free heap throws immediately. Stream or paginate instead of materialising everything.' },
     hints: [`<p>Hint 1: Lower-case the message once and test ${C('contains')} for each known phrase; order matters little because the phrases are distinct.</p>`, `<p>Hint 2: Return a small ${C('record Advice(String area, String firstAction)')} so callers can route alerts (heap → app team, threads → platform team).</p>`, `<p>Hint 3: Remember the areas: heap, heap-via-GC-overhead, metaspace, compressed class space (part of metaspace), native/direct, OS threads, array-size limit.</p>`],
+    tests: { sig: 'string string -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(String msg, String keyword) {
+    OomTriage.Advice a = OomTriage.classify(msg);
+    return a.area() + "|" + (a.firstAction() != null && !a.firstAction().isBlank() && a.firstAction().toLowerCase().contains(keyword));
+  }
+}` }, cases: [
+        [['java.lang.OutOfMemoryError: Metaspace', 'maxmetaspacesize'], 'metaspace|true'],
+        [['java.lang.OutOfMemoryError: unable to create native thread: possibly out of memory or too many threads', 'ulimit'], 'os-threads|true'],
+        [['java.lang.OutOfMemoryError: Java heap space', ''], 'heap|true'],
+        [['java.lang.OutOfMemoryError: GC overhead limit exceeded', ''], 'heap|true'],
+        [['java.lang.OutOfMemoryError: Compressed class space', ''], 'metaspace|true'],
+        [['java.lang.OutOfMemoryError: Direct buffer memory', ''], 'native|true'],
+        [['java.lang.OutOfMemoryError: Requested array size exceeds VM limit', ''], 'heap|true'],
+        [['JAVA HEAP SPACE', ''], 'heap|true'],
+        [['metaspace', 'maxmetaspacesize'], 'metaspace|true'],
+        [['something else entirely', ''], 'unknown|true'],
+        [['', ''], 'unknown|true'],
+        [[null, ''], 'unknown|true']
+      ] },
     solution: {
       approach: `<p>A table-driven lookup from message fragment to (area, action). Using a ${C('LinkedHashMap')} keeps matching order deterministic and the advice easy to extend.</p>`,
       code: `
@@ -2366,6 +2664,31 @@ class LeakyLineCounter {
 }` },
     mcq: { q: 'Why doesn\'t the garbage collector prevent "Too many open files"?', options: ['GC is driven by heap pressure; leaked descriptors are tiny on the heap, so GC may not run before the OS limit is hit', 'GC never collects readers', 'File handles live in Metaspace', 'Because FileReader is final'], answer: 0, explain: 'The Java object is small; the scarce resource is the OS descriptor. Release it deterministically with try-with-resources.' },
     hints: [`<p>Hint 1: Any object that implements ${C('AutoCloseable')} belongs in a ${C('try (…) { }')} header — it is closed on normal exit and on exceptions.</p>`, `<p>Hint 2: ${C('Files.lines(path)')} returns a ${C('Stream')} that holds an open file — it must be closed too, so also put it in try-with-resources.</p>`, `<p>Hint 3: Specify the charset (${C('StandardCharsets.UTF_8')}) and stream the lines with ${C('count()')} so memory stays O(1) even for multi-GB files.</p>`],
+    tests: { sig: 'string int -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(String content, int repeat) throws Exception {
+    Path tmp = Files.createTempFile("lc", ".txt");
+    try {
+      if (content.equals("@bad")) Files.write(tmp, new byte[]{ (byte) 0xff, (byte) 0xfe, 10, 97 });
+      else Files.write(tmp, content.getBytes(StandardCharsets.UTF_8));
+      String last = "";
+      for (int i = 0; i < repeat; i++) {
+        try { last = String.valueOf(LineCounter.countLines(tmp)); } catch (java.io.UncheckedIOException e) { last = "UncheckedIOException"; }
+      }
+      return last;
+    } finally { Files.deleteIfExists(tmp); }
+  }
+}` }, cases: [
+        [['a\nb\nc', 1], '3'],
+        [['', 1], '0'],
+        [['a', 1], '1'],
+        [['a\n', 1], '1'],
+        [['\n\n', 1], '2'],
+        [['a\r\nb', 1], '2'],
+        [['@bad', 3000], 'UncheckedIOException'],
+        [['x\ny', 5000], '2'],
+        [[{ $rep: 'line\n', n: 200000 }, 1], '200000']
+      ] },
     solution: {
       approach: `<p>Use try-with-resources around the stream of lines. Close happens in a compiler-generated finally block; suppressed exceptions from close are attached to the primary exception rather than hiding it.</p>`,
       code: `
@@ -2422,6 +2745,29 @@ class RcVsTracingBrute {
 }` },
     mcq: { q: 'Which languages/runtimes rely mainly on reference counting and therefore need extra cycle handling?', options: ['CPython (plus a cycle detector) and Swift ARC (weak/unowned refs)', 'HotSpot JVM', 'V8 JavaScript', '.NET CLR'], answer: 0, explain: 'CPython combines refcounting with a generational cycle collector; Swift uses ARC and asks developers to break cycles with weak/unowned. JVM, V8 and CLR use tracing GCs.' },
     hints: [`<p>Hint 1: Build adjacency lists once. Refcount: initial count = number of incoming edges + number of times it is a root.</p>`, `<p>Hint 2: Refcount freeing is a cascade — a queue of count-0 objects; freeing one decrements its targets and may enqueue them (like Kahn's topological sort).</p>`, `<p>Hint 3: Tracing is one BFS from all roots; freed = not visited. Objects in cycles are never enqueued by refcounting, which is exactly the difference.</p>`],
+    tests: { sig: 'int int[][] int[] int -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(int n, int[][] edges, int[] roots, int gen) {
+    if (gen == 0) return String.valueOf(RcVsTracing.compare(n, edges, roots));
+    int[][] e = new int[n - 1][];
+    for (int i = 0; i + 1 < n; i++) e[i] = new int[]{ i, i + 1 };
+    int[] rs = gen == 2 ? new int[]{ n - 1 } : new int[0];
+    List<List<Integer>> r = RcVsTracing.compare(n, e, rs);
+    return r.get(0).size() + " " + r.get(1).size();
+  }
+}` }, cases: [
+        [[5, [[0, 1], [2, 3], [3, 2], [4, 4]], [0], 0], '[[], [2, 3, 4]]'],
+        [[3, [[0, 1], [1, 2]], [], 0], '[[0, 1, 2], [0, 1, 2]]'],
+        [[1, [], [], 0], '[[0], [0]]'],
+        [[1, [], [0], 0], '[[], []]'],
+        [[4, [[0, 1], [0, 2], [1, 3], [2, 3]], [], 0], '[[0, 1, 2, 3], [0, 1, 2, 3]]'],
+        [[2, [[0, 1], [0, 1]], [], 0], '[[0, 1], [0, 1]]'],
+        [[3, [[0, 1], [1, 2], [2, 1]], [0], 0], '[[], []]'],
+        [[3, [[0, 1], [1, 2], [2, 1]], [], 0], '[[0], [0, 1, 2]]'],
+        [[2, [], [0, 0], 0], '[[1], [1]]'],
+        [[100000, [], [], 1], '100000 100000'],
+        [[100000, [], [], 2], '99999 99999']
+      ] },
     solution: {
       approach: `<p>Refcount = Kahn-style cascade with a queue; tracing = multi-source BFS. Both O(n + E). Comparing the two outputs shows exactly the unreachable cycles.</p>`,
       code: `
@@ -2480,6 +2826,71 @@ class StrongEventBus<E> {
 }` },
     mcq: { q: '<code>bus.subscribe(e -> label.setText(e))</code> with a WeakEventBus — what can go wrong?', options: ['Nothing else holds the lambda strongly, so it can be collected right away and silently stop receiving events', 'It leaks the label', 'It throws ClassCastException', 'Lambdas cannot be weakly referenced'], answer: 0, explain: 'With weak registries the subscriber must keep a strong reference to its listener (e.g. a field) for as long as it wants events. Explicit unsubscribe handles are often clearer.' },
     hints: [`<p>Hint 1: Store ${C('WeakReference<Consumer<E>>')} instead of the consumer itself. ${C('get()')} returns null after the referent is collected.</p>`, `<p>Hint 2: During ${C('publish')}, iterate with an ${C('Iterator')} and call ${C('remove()')} for cleared references — cleanup happens lazily, no background thread needed.</p>`, `<p>Hint 3: Synchronize ${C('subscribe')} and ${C('publish')} (or snapshot the list) so concurrent publishers don't corrupt it; consider a ${C('ReferenceQueue')} for eager purging.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static void addNamed(WeakEventBus<String> bus, Map<String, Consumer<String>> strong, List<WeakReference<Consumer<String>>> probes, List<String> log, String n) {
+    Consumer<String> l = e -> log.add(n + " got " + e);
+    strong.put(n, l); probes.add(new WeakReference<>(l)); bus.subscribe(l);
+  }
+  static void addMany(WeakEventBus<String> bus, List<Consumer<String>> many, List<WeakReference<Consumer<String>>> probes, int k) {
+    for (int i = 0; i < k; i++) {
+      final int idx = i;
+      Consumer<String> l = e -> { if (idx < 0) System.out.println(e); };
+      many.add(l); probes.add(new WeakReference<>(l)); bus.subscribe(l);
+    }
+  }
+  static void addThreaded(WeakEventBus<String> bus, List<Consumer<String>> keep, int T, int N) throws Exception {
+    Thread[] ts = new Thread[T];
+    for (int t = 0; t < T; t++) {
+      final int id = t;
+      ts[t] = new Thread(() -> { for (int i = 0; i < N; i++) { final int idx = i + id; Consumer<String> l = e -> { if (idx < 0) System.out.println(e); }; keep.add(l); bus.subscribe(l); } });
+      ts[t].start();
+    }
+    for (Thread t : ts) t.join();
+  }
+  static boolean stillReferenced(WeakReference<Consumer<String>> r, Map<String, Consumer<String>> strong, List<Consumer<String>> many) {
+    Consumer<String> l = r.get();
+    if (l == null) return false;
+    return strong.containsValue(l) || many.contains(l);
+  }
+  static boolean allCollected(List<WeakReference<Consumer<String>>> probes, Map<String, Consumer<String>> strong, List<Consumer<String>> many) {
+    for (WeakReference<Consumer<String>> r : probes) {
+      if (r.get() != null && !stillReferenced(r, strong, many)) return false;
+    }
+    return true;
+  }
+  static String[] chk(String[] ops) throws Exception {
+    WeakEventBus<String> bus = new WeakEventBus<>();
+    Map<String, Consumer<String>> strong = new HashMap<>();
+    List<WeakReference<Consumer<String>>> probes = new ArrayList<>();
+    List<Consumer<String>> many = new ArrayList<>();
+    List<String> log = Collections.synchronizedList(new ArrayList<>()), out = new ArrayList<>();
+    for (String op : ops) {
+      String[] p = op.split(":");
+      switch (p[0]) {
+        case "sub": addNamed(bus, strong, probes, log, p[1]); break;
+        case "drop": strong.remove(p[1]); break;
+        case "subMany": addMany(bus, many, probes, Integer.parseInt(p[1])); break;
+        case "dropMany": { int k = Integer.parseInt(p[1]); for (int i = 0; i < k; i++) many.set(i, null); break; }
+        case "par": addThreaded(bus, many, Integer.parseInt(p[1]), Integer.parseInt(p[2])); break;
+        case "gc": for (int i = 0; i < 200 && !allCollected(probes, strong, many); i++) System.gc(); break;
+        case "pub": out.add(String.valueOf(bus.publish(p[1]))); break;
+        case "size": out.add(String.valueOf(bus.size())); break;
+        case "log": out.add(log.toString()); break;
+      }
+    }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+        [[['sub:A', 'sub:B', 'drop:B', 'gc', 'pub:tick', 'size']], ['1', '1']],
+        [[['sub:A', 'sub:B', 'pub:x', 'size']], ['2', '2']],
+        [[['sub:A', 'drop:A', 'gc', 'pub:x', 'size']], ['0', '0']],
+        [[['pub:x', 'size']], ['0', '0']],
+        [[['sub:A', 'sub:B', 'sub:C', 'drop:A', 'drop:C', 'gc', 'pub:1', 'pub:2', 'size']], ['1', '1', '1']],
+        [[['sub:A', 'pub:tick', 'log']], ['1', '[A got tick]']],
+        [[['subMany:10000', 'dropMany:5000', 'gc', 'pub:z', 'size']], ['5000', '5000']],
+        [[['par:8:1000', 'pub:z', 'size']], ['8000', '8000']]
+      ] },
     solution: {
       approach: `<p>Weakly reference listeners and purge lazily on publish. Subscribers must keep their listener in a field; when the subscriber becomes unreachable, so does its listener, and the bus no longer pins it. For explicit lifecycles, also return an unsubscribe handle.</p>`,
       code: `
@@ -2541,6 +2952,79 @@ class LeakyContext {
 }` },
     mcq: { q: 'ThreadLocalMap keys are WeakReferences to the ThreadLocal. Why does the VALUE still leak?', options: ['Values are strongly referenced by the thread\'s map; they are only expunged lazily, and a static ThreadLocal never becomes unreachable anyway', 'Values are stored in Metaspace', 'Weak references never clear', 'The GC skips thread objects'], answer: 0, explain: 'The entry holds the value strongly. Stale entries are cleaned only opportunistically, and static ThreadLocals (the common case) keep their key alive forever.' },
     hints: [`<p>Hint 1: The rule for pooled threads: every ${C('set')} needs a matching ${C('remove')} in a ${C('finally')} block.</p>`, `<p>Hint 2: For nesting, save ${C('USER.get()')} before setting, and in ${C('finally')} restore it (or ${C('remove()')} if it was null).</p>`, `<p>Hint 3: Java 21+ alternative: ${C('ScopedValue.where(USER, "alice").call(...)')} — bindings end automatically with the scope and work naturally with virtual threads (final in JDK 25).</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static String[] chk(String[] ops) throws Exception {
+    ExecutorService pool = Executors.newSingleThreadExecutor();
+    List<String> out = new ArrayList<>();
+    try {
+      for (String op : ops) {
+        String[] p = op.split(":");
+        switch (p[0]) {
+          case "run": out.add(pool.submit(() -> RequestContext.runAs(p[1], RequestContext::currentUser)).get()); break;
+          case "runNull": out.add(String.valueOf(pool.submit(() -> RequestContext.runAs(null, RequestContext::currentUser)).get())); break;
+          case "cur": out.add(String.valueOf(pool.submit(RequestContext::currentUser).get())); break;
+          case "nest":
+            out.add(pool.submit(() -> RequestContext.runAs(p[1], () -> {
+              String inner = RequestContext.runAs(p[2], RequestContext::currentUser);
+              return "inner=" + inner + " outer=" + RequestContext.currentUser();
+            })).get());
+            break;
+          case "throw":
+            try { pool.submit(() -> RequestContext.<String>runAs(p[1], () -> { throw new IllegalStateException("boom"); })).get(); out.add("no exception"); }
+            catch (ExecutionException e) { out.add("threw " + p[1]); }
+            break;
+          case "nestThrow":
+            out.add(pool.submit(() -> RequestContext.runAs(p[1], () -> {
+              try { RequestContext.<String>runAs(p[2], () -> { throw new IllegalStateException("boom"); }); } catch (IllegalStateException e) { }
+              return RequestContext.currentUser();
+            })).get());
+            break;
+          case "loop": {
+            int n = Integer.parseInt(p[1]);
+            String res = pool.submit(() -> {
+              for (int i = 0; i < n; i++) {
+                String u = "u" + i;
+                if (!u.equals(RequestContext.runAs(u, RequestContext::currentUser))) return "wrong user";
+                if (RequestContext.currentUser() != null) return "leaked";
+              }
+              return "ok";
+            }).get();
+            out.add(res);
+            break;
+          }
+          case "pool": {
+            int T = Integer.parseInt(p[1]), N = Integer.parseInt(p[2]);
+            ExecutorService many = Executors.newFixedThreadPool(T);
+            List<Future<String>> fs = new ArrayList<>();
+            for (int i = 0; i < N; i++) {
+              final String u = "user" + i;
+              fs.add(many.submit(() -> {
+                if (RequestContext.currentUser() != null) return "leaked";
+                return u.equals(RequestContext.runAs(u, RequestContext::currentUser)) ? "ok" : "wrong";
+              }));
+            }
+            String res = "ok";
+            for (Future<String> f : fs) { String r = f.get(); if (!r.equals("ok")) res = r; }
+            many.shutdown();
+            out.add(res);
+            break;
+          }
+        }
+      }
+    } finally { pool.shutdown(); }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+        [[['run:alice', 'cur']], ['alice', 'null']],
+        [[['nest:a:b', 'cur']], ['inner=b outer=a', 'null']],
+        [[['throw:alice', 'cur']], ['threw alice', 'null']],
+        [[['nestThrow:a:b', 'cur']], ['a', 'null']],
+        [[['nest:a:a', 'cur']], ['inner=a outer=a', 'null']],
+        [[['runNull', 'cur']], ['null', 'null']],
+        [[['loop:1000']], ['ok']],
+        [[['pool:8:10000']], ['ok']]
+      ] },
     solution: {
       approach: `<p>Scope the ThreadLocal value with try/finally and restore the previous value, so the thread returns to the pool exactly as it came. This both removes the leak and the cross-request data exposure.</p>`,
       code: `
@@ -2591,6 +3075,17 @@ class BoxedCounter {
 }` },
     mcq: { q: 'Why might escape analysis NOT remove the boxing here?', options: ['The boxed Integers are stored into the HashMap, so they escape the loop', 'EA only works for Strings', 'EA is disabled by default', 'Integer is final'], answer: 0, explain: 'Objects stored in a heap data structure escape. Scalar replacement only works for objects that never leave the compiled scope.' },
     hints: [`<p>Hint 1: When keys are small dense integers, a plain ${C('int[]')} indexed by the key <i>is</i> a perfect hash map — no hashing, no boxing.</p>`, `<p>Hint 2: Allocate the 1000-slot array once per call (or reuse a thread-confined one); the loop then performs zero allocations.</p>`, `<p>Hint 3: Scan the array once for the max; iterating indices ascending gives the "smaller code wins ties" rule for free with a strict ${C('>')} comparison.</p>`],
+    tests: { sig: 'int[] -> int', fn: 'mostFrequent', cases: [
+        [[[200, 500, 200, 404, 500, 200]], 200],
+        [[[5, 3, 5, 3]], 3],
+        [[[0]], 0],
+        [[[999, 999, 999]], 999],
+        [[[999, 0]], 0],
+        [[[1, 2, 3, 3, 2, 1, 2]], 2],
+        [[[404, 200, 200, 404]], 200],
+        [[{ $concat: [{ $rep: 404, n: 5000000 }, { $rep: 200, n: 5000000 }] }], 200],
+        [[{ $concat: [{ $rep: 3, n: 5000000 }, { $rep: 7, n: 5000001 }] }], 7]
+      ] },
     solution: {
       approach: `<p>Replace the boxed map by a primitive counting array. Allocation drops from O(N) objects to one 4 KB array; the loop is a sequential array increment that the JIT can unroll. For sparse or unbounded keys, use a primitive-specialised map (fastutil, Eclipse Collections, Agrona) instead.</p>`,
       code: `
@@ -2631,6 +3126,22 @@ class NaiveSizing {
 }` },
     mcq: { q: 'Why size from the post-GC floor and not from the peak of "heap used"?', options: ['Heap used includes garbage waiting to be collected; the post-GC floor approximates the live set', 'Peaks are always smaller', 'GC logs do not show peaks', 'The JVM forbids it'], answer: 0, explain: 'Before GC, heap is full of dead objects. Only occupancy right after a full/mixed GC approximates the data the app really keeps.' },
     hints: [`<p>Hint 1: Use the <b>maximum</b> post-GC sample as the live set — sizing is about the worst realistic hour, not the average.</p>`, `<p>Hint 2: Rounding up to a multiple of m: ${C('((x + m - 1) / m) * m')} with longs; compute thread stacks as threads × KB / 1024.</p>`, `<p>Hint 3: Put the formula in one function returning a record (heap, container, percent) so it can be unit-tested and reviewed; print the breakdown for humans.</p>`],
+    tests: { sig: 'long[] long int int long long -> long[]', fn: 'chk', harness: { java: `
+class Check {
+  static long[] chk(long[] s, long meta, int threads, int stackKb, long direct, long code) {
+    HeapSizer.Plan p = HeapSizer.plan(s, meta, threads, stackKb, direct, code);
+    return new long[]{ p.heapMb(), p.containerMb(), p.maxRamPercentage() };
+  }
+}` }, cases: [
+        [[[900, 1100, 1240, 1180], 200, 300, 1024, 256, 120], [4352, 5888, 73]],
+        [[[100], 100, 50, 1024, 10, 10], [512, 768, 66]],
+        [[[1024, 1], 64, 10, 1024, 1, 1], [3584, 4096, 87]],
+        [[[1001], 100, 100, 2048, 50, 50], [3584, 4352, 82]],
+        [[[1], 1, 1, 1024, 1, 1], [256, 512, 50]],
+        [[[1000000, 5], 4096, 2000, 1024, 8192, 512], [3500032, 3865088, 90]],
+        [[[4096, 4096], 512, 8000, 1024, 2048, 240], [14336, 26624, 53]],
+        [[{ $concat: [{ $rep: 7, n: 100000 }, [1240]] }, 200, 300, 1024, 256, 120], [4352, 5888, 73]]
+      ] },
     solution: {
       approach: `<p>Derive the live set from the worst post-GC sample, apply the 3–4× rule for heap, then add every native area explicitly. Express the result as both absolute sizes and ${C('MaxRAMPercentage')} so it scales if the container limit changes.</p>`,
       code: `
@@ -2674,6 +3185,20 @@ class FullOldScan {
 }` },
     mcq: { q: 'Why does the card table use 512-byte cards instead of tracking exact addresses?', options: ['One byte per card keeps the table tiny and the barrier a single store; scanning a whole card is cheap', 'Objects are always 512 bytes', 'The OS page size is 512 bytes', 'It is required by the JVM spec'], answer: 0, explain: 'The barrier is just card[addr >> 9] = dirty: a shift and a byte store. Precision is traded for barrier speed and a table of oldSize/512 bytes.' },
     hints: [`<p>Hint 1: Card index = ${C('(addr - oldStart) >>> 9')} because 512 = 2<sup>9</sup> — the real HotSpot barrier is exactly this shift plus a byte store.</p>`, `<p>Hint 2: Use a ${C('BitSet')} or a byte array of size oldSize/512 to deduplicate; ${C('BitSet.stream()')} yields sorted indices.</p>`, `<p>Hint 3: Bytes to scan = dirty count × 512 (the last card may be partial; clamp with ${C('Math.min')} if you want exactness).</p>`],
+    tests: { sig: 'long long long[] -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(long start, long size, long[] stores) { return String.valueOf(CardTable.scan(start, size, stores)); }
+}` }, cases: [
+        [[4096, 8192, [4100, 4600, 4700, 9000]], 'Result[dirtyCards=[0, 1, 9], bytesToScan=1536, fullScanBytes=8192]'],
+        [[0, 1000, [999]], 'Result[dirtyCards=[1], bytesToScan=488, fullScanBytes=1000]'],
+        [[4096, 8192, []], 'Result[dirtyCards=[], bytesToScan=0, fullScanBytes=8192]'],
+        [[0, 4096, [100, 100, 101, 500]], 'Result[dirtyCards=[0], bytesToScan=512, fullScanBytes=4096]'],
+        [[1024, 4096, [1535, 1536]], 'Result[dirtyCards=[0, 1], bytesToScan=1024, fullScanBytes=4096]'],
+        [['1099511627776', 4096, ['1099511627776', '1099511631871']], 'Result[dirtyCards=[0, 7], bytesToScan=1024, fullScanBytes=4096]'],
+        [[0, 512, [0, 511]], 'Result[dirtyCards=[0], bytesToScan=512, fullScanBytes=512]'],
+        [[0, '1099511627776', [0, '1099511627775']], 'Result[dirtyCards=[0, 2147483647], bytesToScan=1024, fullScanBytes=1099511627776]'],
+        [[0, '1099511627776', { $rep: 5, n: 100000 }], 'Result[dirtyCards=[0], bytesToScan=512, fullScanBytes=1099511627776]']
+      ] },
     solution: {
       approach: `<p>Mark one bit per card on every recorded store, then enumerate set bits. This mirrors HotSpot: a post-write barrier dirties ${C('card_table[addr >> 9]')}, and the young GC treats objects in dirty cards as extra roots, then cleans the cards.</p>`,
       code: `
@@ -2683,7 +3208,7 @@ class CardTable {
     record Result(List<Integer> dirtyCards, long bytesToScan, long fullScanBytes) {}
 
     static Result scan(long oldStart, long oldSize, long[] stores) {
-        BitSet dirty = new BitSet((int) ((oldSize + 511) >>> CARD_SHIFT));
+        BitSet dirty = new BitSet();                      // grows on demand: (int) of the card count overflows near 2^40
         for (long addr : stores) dirty.set((int) ((addr - oldStart) >>> CARD_SHIFT));   // the write barrier
         List<Integer> cards = dirty.stream().boxed().toList();
         long bytes = 0;
@@ -2718,6 +3243,25 @@ class AlwaysZgc {
 }` },
     mcq: { q: 'A latency-sensitive API has a 2-CPU container and a 6 GB heap with a 100 ms pause budget. Best first choice?', options: ['G1 with MaxGCPauseMillis around 50', 'Serial', 'Parallel', 'Epsilon'], answer: 0, explain: 'G1 fits moderate heaps and a 100 ms budget; ZGC is possible but not needed, and its concurrent threads compete with only 2 cores.' },
     hints: [`<p>Hint 1: Encode the rules as an ordered chain of ${C('if')} statements — the first matching rule wins, just like a decision tree you would explain in an interview.</p>`, `<p>Hint 2: Clamp the G1 pause target with ${C('Math.max(50, Math.min(200, budget / 2))')}: half the budget leaves room for non-GC latency.</p>`, `<p>Hint 3: Build the flag string with a ${C('StringJoiner(" ")')} and always append ${C('-Xms')}/${C('-Xmx')} and a ${C('-Xlog:gc*')} option, so the recommendation is measurable.</p>`],
+    tests: { sig: 'int int int bool -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(int heapGb, int pauseMs, int cpus, boolean batch) { return GcAdvisor.recommend(new GcAdvisor.Workload(heapGb, pauseMs, cpus, batch)); }
+}` }, cases: [
+        [[8, 400, 4, false], '-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Xms8g -Xmx8g -Xlog:gc*:file=gc.log:time,uptime,level,tags'],
+        [[24, 5, 16, false], '-XX:+UseZGC -Xms24g -Xmx24g -Xlog:gc*:file=gc.log:time,uptime,level,tags'],
+        [[40, 1000, 32, true], '-XX:+UseParallelGC -Xms40g -Xmx40g -Xlog:gc*:file=gc.log:time,uptime,level,tags'],
+        [[0, 500, 1, false], '-XX:+UseSerialGC -Xms1g -Xmx1g -Xlog:gc*:file=gc.log:time,uptime,level,tags'],
+        [[8, 500, 1, false], '-XX:+UseSerialGC -Xms8g -Xmx8g -Xlog:gc*:file=gc.log:time,uptime,level,tags'],
+        [[8, 500, 1, true], '-XX:+UseSerialGC -Xms8g -Xmx8g -Xlog:gc*:file=gc.log:time,uptime,level,tags'],
+        [[8, 40, 4, false], '-XX:+UseG1GC -XX:MaxGCPauseMillis=50 -Xms8g -Xmx8g -Xlog:gc*:file=gc.log:time,uptime,level,tags'],
+        [[8, 120, 4, false], '-XX:+UseG1GC -XX:MaxGCPauseMillis=60 -Xms8g -Xmx8g -Xlog:gc*:file=gc.log:time,uptime,level,tags'],
+        [[8, 10000, 4, false], '-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Xms8g -Xmx8g -Xlog:gc*:file=gc.log:time,uptime,level,tags'],
+        [[8, 20, 4, false], '-XX:+UseG1GC -XX:MaxGCPauseMillis=50 -Xms8g -Xmx8g -Xlog:gc*:file=gc.log:time,uptime,level,tags'],
+        [[8, 19, 4, false], '-XX:+UseZGC -Xms8g -Xmx8g -Xlog:gc*:file=gc.log:time,uptime,level,tags'],
+        [[64, 1000, 4, false], '-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Xms64g -Xmx64g -Xlog:gc*:file=gc.log:time,uptime,level,tags'],
+        [[65, 1000, 4, false], '-XX:+UseZGC -Xms65g -Xmx65g -Xlog:gc*:file=gc.log:time,uptime,level,tags'],
+        [[4096, 1, 512, true], '-XX:+UseParallelGC -Xms4096g -Xmx4096g -Xlog:gc*:file=gc.log:time,uptime,level,tags']
+      ] },
     solution: {
       approach: `<p>A small rule engine mirroring how engineers choose: machine constraints first, then the optimisation goal (throughput vs latency), then heap size. The output includes logging because every choice must be verified with data.</p>`,
       code: `
@@ -2782,6 +3326,32 @@ class NaiveCompact {
 }` },
     mcq: { q: 'Why does LISP2 need a separate pass to compute forwarding addresses before moving anything?', options: ['References may point forward to objects not yet visited; their new address must be known before pointers are updated and objects overwritten', 'To sort objects by size', 'Because the JVM requires three passes', 'To free dead objects first'], answer: 0, explain: 'Pass 1 computes all new addresses; pass 2 rewrites every reference using them; pass 3 slides the bytes. Moving earlier would overwrite objects whose data or forwarding info is still needed.' },
     hints: [`<p>Hint 1: Pass 1 — a running ${C('top')} over objects in address order: live object i gets ${C('forward[i] = top')}; ${C('top += size[i]')}. This is the forwarding table (HotSpot stores it in the object header).</p>`, `<p>Hint 2: Pass 2 — for every live object, map each referenced index ${C('j')} to ${C('forward[j]')}. Because pass 1 is complete, forward references are already known.</p>`, `<p>Hint 3: Pass 3 (moving bytes) is a left-to-right slide: since new address ≤ old address, copying in increasing order never overwrites an unmoved live object. You only need to return the results here.</p>`],
+    tests: { sig: 'int[] int[] int[][] -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static String[] chk(int[] size, int[] live, int[][] refs) {
+    boolean[] lv = new boolean[live.length];
+    for (int i = 0; i < live.length; i++) lv[i] = live[i] == 1;
+    Lisp2Compactor.Compacted c;
+    try { c = Lisp2Compactor.compact(size, lv, refs); } catch (IllegalStateException e) { return new String[]{ "ISE" }; }
+    if (size.length > 20) {
+      int n = size.length, dead = 0;
+      for (long a : c.newAddress()) if (a < 0) dead++;
+      return new String[]{ String.valueOf(c.newAddress()[0]), String.valueOf(c.newAddress()[n - 1]), String.valueOf(c.top()), String.valueOf(dead), String.valueOf(c.newRefs().length) };
+    }
+    return new String[]{ Arrays.toString(c.newAddress()), String.valueOf(c.top()), Arrays.deepToString(c.newRefs()) };
+  }
+}` }, cases: [
+        [[[16, 32, 24, 16, 8], [1, 0, 1, 0, 1], [[2], [], [4, 0], [], []]], ['[0, -1, 16, -1, 40]', '48', '[[16], [], [40, 0], [], []]']],
+        [[[16, 32], [1, 1], [[1], [0]]], ['[0, 16]', '48', '[[16], [0]]']],
+        [[[8, 8, 8], [0, 0, 0], [[], [], []]], ['[-1, -1, -1]', '0', '[[], [], []]']],
+        [[[8], [1], [[0]]], ['[0]', '8', '[[0]]']],
+        [[[8, 8, 8], [1, 1, 1], [[2, 2], [], [1]]], ['[0, 8, 16]', '24', '[[16, 16], [], [8]]']],
+        [[[2147483647, 2147483647, 2147483647], [1, 1, 1], [[], [], []]], ['[0, 2147483647, 4294967294]', '6442450941', '[[], [], []]']],
+        [[[8, 8], [1, 0], [[1], []]], ['ISE']],
+        [[[8, 8, 8], [0, 1, 1], [[], [2], []]], ['[-1, 0, 8]', '16', '[[], [8], []]']],
+        [[{ $rep: 8, n: 1000000 }, { $rep: 1, n: 1000000 }, { $rep: [], n: 1000000 }], ['0', '7999992', '8000000', '0', '1000000']],
+        [[{ $rep: 8, n: 1000000 }, { $concat: [{ $rep: 1, n: 500000 }, { $rep: 0, n: 500000 }] }, { $rep: [], n: 1000000 }], ['0', '-1', '4000000', '500000', '1000000']]
+      ] },
     solution: {
       approach: `<p>Classic LISP2 sliding compaction: (1) compute forwarding addresses with a prefix sum over live sizes, (2) update all references through the forwarding table, (3) slide objects (implied). Linear time, no extra heap. Parallel GCs split the heap into regions and compute per-region prefix sums so threads can work independently.</p>`,
       code: `
@@ -2858,6 +3428,18 @@ class GenSimBrute {
 }` },
     mcq: { q: 'Premature promotions are high. Which change most directly reduces them?', options: ['Bigger survivor spaces / young gen so medium-lived objects can age in place', 'Lowering MaxTenuringThreshold to 1', 'Calling System.gc() more often', 'Switching to Epsilon GC'], answer: 0, explain: 'Premature promotion happens when survivors overflow. More survivor/young space lets objects die young; lowering the threshold promotes even more.' },
     hints: [`<p>Hint 1: Model only what a real minor GC touches: an Eden list and a FROM list. Each object is just ${C('{lifeLeft, age}')} — an ${C('int[2]')} or a tiny record.</p>`, `<p>Hint 2: At GC time build TO from scratch: iterate Eden then FROM; dead (lifeLeft == 0) → skip; else decrement life, increment age, then promote / copy / premature-promote in that order of checks.</p>`, `<p>Hint 3: After the GC: Eden cleared, ${C('from = to')}. Count a GC only when an allocation finds Eden full — no GC at the very end.</p>`],
+    tests: { sig: 'int int int int[] -> int[]', fn: 'simulate', cases: [
+        [[2, 1, 3, [2, 2, 0, 5, 0, 0]], [2, 2, 2]],
+        [[4, 2, 2, [0, 1, 0, 3, 0, 0, 5, 1, 0, 2, 0, 0, 1, 4, 0, 0, 0, 2, 0, 0]], [4, 3, 0]],
+        [[1, 1, 1, [5, 5, 5]], [2, 2, 0]],
+        [[3, 2, 15, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]], [3, 3, 3]],
+        [[2, 5, 2, [3, 3, 3, 3, 3, 3, 3, 3, 3]], [4, 6, 0]],
+        [[5, 1, 3, [0, 0, 0, 0, 0, 0]], [1, 0, 0]],
+        [[1, 1, 3, [2, 2, 2, 2, 2, 2, 2, 2]], [7, 6, 6]],
+        [[1000, 10, 3, { $rep: 0, n: 1000000 }], [999, 0, 0]],
+        [[10, 1000000, 15, { $rep: 1, n: 100000 }], [9999, 0, 0]],
+        [[10, 1, 15, { $rep: 1, n: 100000 }], [9999, 89991, 89991]]
+      ] },
     solution: {
       approach: `<p>Direct simulation of a copying young collector: work per GC is proportional to Eden + survivor occupancy (bounded by edenCap + survCap), never to the allocation history. Objects promoted to Old are only counted, as minor GCs never revisit them.</p>`,
       code: `
@@ -2918,6 +3500,49 @@ class FirstLastDiff {
 }` },
     mcq: { q: 'A class grows steadily, but only during business hours, and drops every night. Is it a leak?', options: ['Probably not — it tracks load; compare post-GC floors at the same time of day across days', 'Yes, any growth is a leak', 'Yes, because byte[] is involved', 'Cannot be known without a heap dump'], answer: 0, explain: 'Load-proportional growth that is released later is normal. A leak keeps growing across comparable load periods; compare like with like (same hour, same load).' },
     hints: [`<p>Hint 1: Collect the union of class names across all snapshots; treat missing entries as 0 with ${C('getOrDefault(cls, 0L)')}.</p>`, `<p>Hint 2: For each class count strict increases over consecutive pairs and compute ${C('last - first')}; required increases = ${C('(int) Math.ceil(0.8 * (k - 1))')}.</p>`, `<p>Hint 3: Sort candidates with ${C('Comparator.comparingLong(growth).reversed().thenComparing(name)')} and take the top N. Snapshots should be taken after a GC (the histogram's :live option forces one) so garbage doesn't add noise.</p>`],
+    tests: { sig: 'string[] long int -> list<string>', fn: 'chk', harness: { java: `
+class Check {
+  static List<Map<String, Long>> parse(String[] rows) {
+    List<Map<String, Long>> snaps = new ArrayList<>();
+    for (String r : rows) {
+      Map<String, Long> m = new HashMap<>();
+      if (!r.isEmpty()) for (String kv : r.split(",")) { int eq = kv.lastIndexOf('='); m.put(kv.substring(0, eq), Long.parseLong(kv.substring(eq + 1))); }
+      snaps.add(m);
+    }
+    return snaps;
+  }
+  static List<String> chk(String[] rows, long minGrowth, int topN) {
+    if (rows.length == 1 && rows[0].startsWith("gen:")) {
+      String[] p = rows[0].split(":");
+      int K = Integer.parseInt(p[1]), C = Integer.parseInt(p[2]);
+      List<Map<String, Long>> snaps = new ArrayList<>();
+      for (int k = 0; k < K; k++) {
+        Map<String, Long> m = new HashMap<>();
+        m.put("leak.A", 100L + k);
+        m.put("noisy.B", (k % 2 == 0) ? 500L : 900L);
+        for (int c = 0; c < C; c++) m.put("flat.C" + c, 1000L + c);
+        snaps.add(m);
+      }
+      return LeakSuspects.suspects(snaps, minGrowth, topN);
+    }
+    return LeakSuspects.suspects(parse(rows), minGrowth, topN);
+  }
+}` }, cases: [
+        [[['byte[]=500,com.shop.Session=100,java.util.HashMap$Node=50', 'byte[]=900,com.shop.Session=200,com.shop.CacheEntry=400,java.util.HashMap$Node=80', 'byte[]=300,com.shop.Session=300,com.shop.CacheEntry=400,java.util.HashMap$Node=110', 'byte[]=950,com.shop.Session=400,com.shop.CacheEntry=400,java.util.HashMap$Node=140'], 50, 5], ['com.shop.Session:+300', 'java.util.HashMap$Node:+90']],
+        [[['a=1,b=1', 'a=5,b=1'], 1, 5], ['a:+4']],
+        [[['a=1'], 0, 5], []],
+        [[['a=1', 'a=5', 'a=9'], 100, 5], []],
+        [[['a=1', 'a=2', 'a=3', 'b=0', 'c=0'], 1, 2], []],
+        [[['a=1,b=1,c=1', 'a=2,b=2,c=2'], 1, 2], ['a:+1', 'b:+1']],
+        [[['a=1,b=1,c=1', 'a=2,b=2,c=2'], 1, 0], []],
+        [[['', 'x=7'], 1, 5], ['x:+7']],
+        [[['x=7', ''], 1, 5], []],
+        [[['a=1,b=0', 'a=2,b=0', 'a=3,b=5', 'a=4,b=5', 'a=5,b=5', 'a=6,b=5'], 1, 5], ['a:+5']],
+        [[['a=1', 'a=2', 'a=3', 'a=4', 'a=3', 'a=9'], 1, 5], ['a:+8']],
+        [[['a=1', 'a=2', 'a=3', 'a=4', 'a=3', 'a=1'], 0, 5], []],
+        [[['gen:200:2000'], 100, 3], ['leak.A:+199']],
+        [[['gen:200:2000'], 1000, 3], []]
+      ] },
     solution: {
       approach: `<p>Score each class on two independent signals — trend consistency (fraction of increasing steps) and magnitude (net growth) — and require both. This filters noise (inconsistent) and warm-up (consistent only once). It mirrors what APM leak detectors do on post-GC heap metrics.</p>`,
       code: `

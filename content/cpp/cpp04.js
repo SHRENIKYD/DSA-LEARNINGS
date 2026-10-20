@@ -266,6 +266,18 @@ int main() {
         `<p>Hint 2: return <code>bool</code> so callers know whether the operation happened; mark <code>balance()</code> as <code>const</code>.</p>`,
         `<p>Hint 3: edge cases — amount 0, negative amount, withdrawing exactly the whole balance (allowed), opening balance negative (clamp to 0 or reject in the constructor). Recipe: validate → mutate → return true.</p>`
       ],
+      tests: { cls: "BankAccount", sigs: {BankAccount:'string long',deposit:'long -> bool',withdraw:'long -> bool',balance:'-> long'}, cases: [
+        { ops: ["BankAccount","deposit","withdraw","withdraw","balance"], args: [["Asha",1000],[500],[2000],[300],[]], out: [null,true,false,true,1200] },
+        { ops: ["BankAccount","balance"], args: [["Asha",0],[]], out: [null,0] },
+        { ops: ["BankAccount","withdraw","balance"], args: [["Asha",0],[1],[]], out: [null,false,0] },
+        { ops: ["BankAccount","deposit","balance"], args: [["Asha",0],[0],[]], out: [null,false,0] },
+        { ops: ["BankAccount","withdraw","balance"], args: [["Asha",50],[0],[]], out: [null,false,50] },
+        { ops: ["BankAccount","withdraw","withdraw","balance"], args: [["Asha",50],[50],[1],[]], out: [null,true,false,0] },
+        { ops: ["BankAccount","deposit","withdraw","balance"], args: [["Asha",50],[-5],[-5],[]], out: [null,false,false,50] },
+        { ops: ["BankAccount","deposit","deposit","withdraw","withdraw","balance"], args: [["Asha",1000000000000],[1000000000000],[1000000000000],[3000000000000],[1],[]], out: [null,true,true,true,false,0] },
+        { ops: ["BankAccount","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","deposit","withdraw","balance"], args: [["Asha",0],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[1000000000000],[]], out: [null,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,0] },
+        { ops: ["BankAccount","withdraw","withdraw","deposit","withdraw","balance"], args: [["Asha",10],[11],[10],[7],[7],[]], out: [null,false,true,true,true,0] }
+      ] },
       solution: {
         approach: `<p>Make <code>balanceCents</code> private, set it once in the constructor, and route every change through <code>deposit</code>/<code>withdraw</code>, which validate before mutating. Because no other code can touch the field, the invariant holds after every public call.</p>`,
         code: R`#include <iostream>
@@ -604,6 +616,9 @@ int main() {
         `<p>Hint 2: <code>s</code> is constructed the first time control reaches it, and that initialisation is skipped on later calls. <code>l</code> is fresh every call.</p>`,
         `<p>Hint 3: at the end, automatic objects in main die at <code>}</code> first (<code>-a</code>), then static-storage objects in reverse order of construction: s (built later) before g. Recipe: write the timeline left to right, push on construct, pop on scope exit.</p>`
       ],
+      tests: { io: true, cases: [
+        { stdin: "", stdout: "+g +a +s +l -l +l -l +b -b | -a -s -g" }
+      ] },
       solution: {
         approach: `<p>Walk the program as the machine does. Before main: <code>+g</code>. main: <code>+a</code>. First <code>f()</code>: static s initialised (<code>+s</code>), local l (<code>+l</code>), l dies at f's <code>}</code> (<code>-l</code>). Second <code>f()</code>: s skipped, <code>+l -l</code>. Block: <code>+b -b</code>. Print <code>| </code>. main ends: <code>-a</code>. Then statics in reverse construction order: <code>-s -g</code>.</p>`,
         code: R`#include <iostream>
@@ -882,6 +897,16 @@ int main() { Calibration c{2}; SensorWeak s(42, c, 3); cout << s.read(5) << '\n'
         `<p>Hint 2: use <code>: id_(id), cal_(c), filter_(w)</code> — and write them in the same order as the declarations.</p>`,
         `<p>Hint 3: the reference parameter must itself be a reference (<code>Calibration&amp; c</code>), otherwise <code>cal_</code> would bind to a parameter copy that dies when the constructor returns — a dangling reference. Recipe: list each member once, in declaration order, leave the body empty.</p>`
       ],
+      tests: { cls: "SensorBox", sigs: {SensorBox:'int int int',id:'-> int',read:'int -> int',setScale:'int -> void'},
+        harness: { cpp: "class SensorBox { Calibration cal_; Sensor s_; public: SensorBox(int id, int scale, int w) : cal_{scale}, s_(id, cal_, w) {} int id() const { return s_.id(); } int read(int raw) const { return s_.read(raw); } void setScale(int sc) { cal_.scale = sc; } };" }, cases: [
+        { ops: ["SensorBox","id","read"], args: [[42,2,3],[],[5]], out: [null,42,30] },
+        { ops: ["SensorBox","read","setScale","read","id"], args: [[42,2,3],[5],[10],[5],[]], out: [null,30,null,150,42] },
+        { ops: ["SensorBox","read","id"], args: [[0,1,1],[0],[]], out: [null,0,0] },
+        { ops: ["SensorBox","read","id"], args: [[7,1,1],[-4],[]], out: [null,-4,7] },
+        { ops: ["SensorBox","read","setScale","read"], args: [[1,0,9],[100],[-3],[100]], out: [null,0,null,-2700] },
+        { ops: ["SensorBox","read"], args: [[-5,1000,1000],[2000]], out: [null,2000000000] },
+        { ops: ["SensorBox","setScale","setScale","read"], args: [[3,1,2],[4],[5],[3]], out: [null,null,null,30] }
+      ] },
       solution: {
         approach: `<p>Move all three into the member initializer list, in declaration order. Members are then constructed exactly once with their final values; <code>id_</code> stays const and <code>cal_</code> stays a non-null reference to the shared calibration object.</p>`,
         code: R`#include <iostream>
@@ -1143,6 +1168,19 @@ int main() {
         `<p>Hint 2: keep members: <code>columns</code> (default "*"), <code>table</code>, <code>vector&lt;string&gt; conditions</code>, <code>int lim = -1</code>.</p>`,
         `<p>Hint 3: <code>build()</code> is <code>const</code> and assembles the string: SELECT cols FROM table, then " WHERE " + join(conditions, " AND ") if non-empty, then " LIMIT n" if lim ≥ 0. Edge cases: no where, limit 0 is valid.</p>`
       ],
+      tests: { sig: 'string string string[] int -> string', fn: 'qb',
+        harness: { cpp: "string qb(string table, string cols, vector<string> wheres, int lim) { QueryBuilder q; if (!cols.empty() && &q.select(cols) != &q) return \"chain broke\"; if (&q.from(table) != &q) return \"chain broke\";\n  for (auto& w : wheres) if (&q.where(w) != &q) return \"chain broke\"; if (lim >= 0 && &q.limit(lim) != &q) return \"chain broke\"; string a = q.build(), b = q.build(); return a == b ? a : \"build changed the builder\"; }" }, cases: [
+        [["users","",["age > 18","active = 1"],10], "SELECT * FROM users WHERE age > 18 AND active = 1 LIMIT 10"],
+        [["orders","",["total > 100"],-1], "SELECT * FROM orders WHERE total > 100"],
+        [["orders","id, total",["total > 100"],-1], "SELECT id, total FROM orders WHERE total > 100"],
+        [["t","",[],-1], "SELECT * FROM t"],
+        [["t","a",[],0], "SELECT a FROM t LIMIT 0"],
+        [["t","",[],5], "SELECT * FROM t LIMIT 5"],
+        [["t","x, y, z",["a = 1","b = 2","c = 3","d = 4"],100], "SELECT x, y, z FROM t WHERE a = 1 AND b = 2 AND c = 3 AND d = 4 LIMIT 100"],
+        [["accounts","*",[],2147483647], "SELECT * FROM accounts LIMIT 2147483647"],
+        [["logs","ts",["level = 'ERROR'"],1], "SELECT ts FROM logs WHERE level = 'ERROR' LIMIT 1"],
+        [["big","",["c0 > 0","c1 > 1","c2 > 2","c3 > 3","c4 > 4","c5 > 5","c6 > 6","c7 > 7","c8 > 8","c9 > 9","c10 > 10","c11 > 11","c12 > 12","c13 > 13","c14 > 14","c15 > 15","c16 > 16","c17 > 17","c18 > 18","c19 > 19"],-1], "SELECT * FROM big WHERE c0 > 0 AND c1 > 1 AND c2 > 2 AND c3 > 3 AND c4 > 4 AND c5 > 5 AND c6 > 6 AND c7 > 7 AND c8 > 8 AND c9 > 9 AND c10 > 10 AND c11 > 11 AND c12 > 12 AND c13 > 13 AND c14 > 14 AND c15 > 15 AND c16 > 16 AND c17 > 17 AND c18 > 18 AND c19 > 19"]
+      ] },
       solution: {
         approach: `<p>Every mutator updates a member and ends with <code>return *this;</code> with return type <code>QueryBuilder&amp;</code>. <code>build()</code> is a const member function that only reads members. Conditions are kept in a vector and joined at build time so <code>where</code> stays O(length of condition).</p>`,
         code: R`#include <iostream>
@@ -1170,15 +1208,16 @@ public:
     }
 };
 
+// SELECT * FROM users WHERE age > 18 AND active = 1 LIMIT 10
+// SELECT id, total FROM orders WHERE total > 100
+
 int main() {
     cout << QueryBuilder().from("users").where("age > 18").where("active = 1").limit(10).build() << '\n';
     QueryBuilder q;
     q.select("id, total").from("orders");
     q.where("total > 100");                  // separate statements still hit the same object
     cout << q.build() << '\n';
-}
-// SELECT * FROM users WHERE age > 18 AND active = 1 LIMIT 10
-// SELECT id, total FROM orders WHERE total > 100`,
+}`,
         dry: { head: ['call', 'returns', 'state after'], rows: [
           ['from("users")', 'ref to same builder', 'table=users'],
           ['where("age &gt; 18")', 'ref to same builder', 'conditions=[age &gt; 18]'],
@@ -1389,7 +1428,7 @@ int main() {
     problems: [{
       title: 'Unique IDs and a Live-Object Counter',
       level: 'Medium', tags: ['static members', 'constructors', 'destructors'], companies: ['Amazon', 'Bloomberg', 'Oracle'],
-      statement: `<p>Write class <code>Order</code>. Each new order gets a unique, strictly increasing ID starting at 1001. Provide static functions <code>Order::alive()</code> (orders currently existing) and <code>Order::created()</code> (total ever created). Copying an order must create a NEW order with a NEW ID (a duplicate order), and must count as a creation. IDs are never reused.</p>`,
+      statement: `<p>Write class <code>Order</code>. Each new order gets a unique, strictly increasing ID starting at 1001. Provide static functions <code>Order::alive()</code> (orders currently existing) and <code>Order::created()</code> (total ever created). Copying an order must create a NEW order with a NEW ID (a duplicate order), and must count as a creation. Assigning one existing order to another changes its contents but never its ID. IDs are never reused.</p>`,
       constraints: `Single-threaded for the base version; up to 10<sup>6</sup> orders; use C++17 inline statics.`,
       example: `<p>Create a, b (ids 1001, 1002). In a block, copy c = a (id ${H.c('g', '1003')}). After the block: alive = ${H.c('b', '2')}, created = ${H.c('b', '3')}. Create d → id ${H.c('g', '1004')} (1003 is not reused).</p>`,
       brute: {
@@ -1416,6 +1455,16 @@ int main() {
         `<p>Hint 2: every constructor (default/parameterized AND copy) does <code>id(nextId++)</code> and <code>++aliveCount</code>; the destructor does <code>--aliveCount</code>. <code>created()</code> = <code>nextId − 1001</code>.</p>`,
         `<p>Hint 3: copy assignment (<code>a = b</code>) does NOT create an object: keep your own id, copy only the payload. Edge cases: temporaries count while they live; for threads switch the counters to <code>std::atomic&lt;int&gt;</code>.</p>`
       ],
+      tests: { sig: 'int int -> int[]', fn: 'ord',
+        harness: { cpp: "vector<int> ord(int extra, int absolute) { vector<int> r; int alive0 = Order::alive(), made0 = Order::created();\n  { Order a(\"book\"), b(\"pen\"); int ida = a.getId();\n    { Order c = a; r.push_back(c.getId() - ida); r.push_back(Order::alive() - alive0); r.push_back(Order::created() - made0); }\n    r.push_back(Order::alive() - alive0); r.push_back(Order::created() - made0);\n    Order d(\"lamp\"); r.push_back(d.getId() - ida); r.push_back(b.getId() - ida);\n    Order e(\"x\"); e = a; r.push_back(e.getId() == a.getId() ? 1 : 0); r.push_back(e.getId() - ida);\n    for (int i = 0; i < extra; ++i) { Order t(\"t\"); } r.push_back(Order::created() - made0); r.push_back(Order::alive() - alive0);\n    if (absolute) { r.push_back(ida); } }\n  r.push_back(Order::alive() - alive0); return r; }" }, cases: [
+        [[0,1], [2,3,3,2,3,3,1,0,4,5,4,1001,0]],
+        [[0,0], [2,3,3,2,3,3,1,0,4,5,4,0]],
+        [[1,0], [2,3,3,2,3,3,1,0,4,6,4,0]],
+        [[5,0], [2,3,3,2,3,3,1,0,4,10,4,0]],
+        [[100,0], [2,3,3,2,3,3,1,0,4,105,4,0]],
+        [[0,0], [2,3,3,2,3,3,1,0,4,5,4,0]],
+        [[3,0], [2,3,3,2,3,3,1,0,4,8,4,0]]
+      ] },
       solution: {
         approach: `<p>Static members give O(1) shared state. Each constructor stamps the next ID and increments <code>aliveCount</code>; the destructor decrements it. A user-written copy constructor copies the payload but takes a fresh ID; copy assignment keeps the left-hand object's ID.</p>`,
         code: R`#include <iostream>
@@ -1748,6 +1797,9 @@ int main() {
         `<p>Hint 2: the initializer list <code>p3("y"), p2("x")</code> only supplies the <i>arguments</i>; the <i>order</i> comes from the declarations <code>p2</code>, <code>p3</code>.</p>`,
         `<p>Hint 3: destruction mirrors construction exactly: ~Derived body, then p3, p2 (reverse), then ~Base body, then Base's member p1. Write the construction list, then reverse it.</p>`
       ],
+      tests: { io: true, cases: [
+        { stdin: "", stdout: "P(b) Base P(x) P(y) Derived | ~Derived ~P(y) ~P(x) ~Base ~P(b)" }
+      ] },
       solution: {
         approach: `<p>Construction: Base level (P(b), then "Base"), then Derived's members in declaration order (P(x), P(y)), then "Derived". Print "| ". Destruction is the reverse sequence: "~Derived", ~P(y), ~P(x), "~Base", ~P(b).</p>`,
         code: R`#include <iostream>
@@ -2014,6 +2066,21 @@ int main() { MoneyPublic m{1205}; m.cents = -1; print(m); }   // prints garbage 
         `<p>Hint 2: printing: handle the sign first, then work with the absolute value: dollars = abs / 100, cents = abs % 100, pad cents to 2 digits with <code>setw(2) &lt;&lt; setfill('0')</code>.</p>`,
         `<p>Hint 3: the constructor <code>Money(d, c)</code> with negative dollars should produce <code>d*100 − c</code> (so -3,10 → -310). Return <code>os</code> from operator&lt;&lt; so <code>cout &lt;&lt; a &lt;&lt; b</code> chains.</p>`
       ],
+      tests: { sig: 'long long long long -> string', fn: 'money',
+        harness: { cpp: "string money(long long d1, long long c1, long long d2, long long c2) { Money a(d1, c1), b(d2, c2); ostringstream os; os << (a + b) << \" \" << a << \" \" << b << \" \" << (a == b ? \"eq\" : \"ne\") << \" \" << (a + b == Money(d2, c2) + Money(d1, c1) ? \"comm\" : \"ncomm\"); return os.str(); }" }, cases: [
+        [[12,5,0,95], "$13.00 $12.05 $0.95 ne comm"],
+        [[-3,10,0,0], "-$3.10 -$3.10 $0.00 ne comm"],
+        [[0,0,0,0], "$0.00 $0.00 $0.00 eq comm"],
+        [[0,5,0,5], "$0.10 $0.05 $0.05 eq comm"],
+        [[1,0,1,0], "$2.00 $1.00 $1.00 eq comm"],
+        [[-1,0,1,0], "$0.00 -$1.00 $1.00 ne comm"],
+        [[-3,10,3,10], "$0.00 -$3.10 $3.10 ne comm"],
+        [[-3,10,1,5], "-$2.05 -$3.10 $1.05 ne comm"],
+        [[0,99,0,1], "$1.00 $0.99 $0.01 ne comm"],
+        [[999999999999,99,0,1], "$1000000000000.00 $999999999999.99 $0.01 ne comm"],
+        [[-5,50,-4,50], "-$10.00 -$5.50 -$4.50 ne comm"],
+        [[0,9,0,90], "$0.99 $0.09 $0.90 ne comm"]
+      ] },
       solution: {
         approach: `<p>Keep <code>cents</code> private. Define three hidden friends inside the class. The printer handles the sign separately so negative values print correctly, and restores the stream's fill character afterwards.</p>`,
         code: R`#include <iostream>
@@ -2078,6 +2145,17 @@ int main() { RectRaw r{3, 4}; r.w = -5; cout << area(r) << '\n'; }   // -20: inv
       `<p>Hint 2: use <code>long long</code> for area to avoid overflow (10<sup>6</sup> × 10<sup>6</sup> = 10<sup>12</sup>).</p>`,
       `<p>Hint 3: <code>scale</code> should return false for k ≤ 0 and leave the object unchanged. Mark read-only functions <code>const</code>.</p>`
     ],
+    tests: { cls: "Rectangle", sigs: {Rectangle:'long long',area:'-> long',perimeter:'-> long',isSquare:'-> bool',scale:'long -> bool'}, cases: [
+      { ops: ["Rectangle","area","perimeter","isSquare","scale","area","perimeter","isSquare"], args: [[3,4],[],[],[],[2],[],[],[]], out: [null,12,14,false,true,48,28,false] },
+      { ops: ["Rectangle","area","perimeter","isSquare"], args: [[-5,2],[],[],[]], out: [null,2,6,false] },
+      { ops: ["Rectangle","area","perimeter","isSquare","scale","area","perimeter","isSquare"], args: [[0,0],[],[],[],[3],[],[],[]], out: [null,1,4,true,true,9,12,true] },
+      { ops: ["Rectangle","area","perimeter","isSquare","scale","area","perimeter","isSquare","scale","area","perimeter","isSquare","scale","area","perimeter","isSquare"], args: [[1,1],[],[],[],[0],[],[],[],[-1],[],[],[],[1000000],[],[],[]], out: [null,1,4,true,false,1,4,true,false,1,4,true,true,1000000000000,4000000,true] },
+      { ops: ["Rectangle","area","perimeter","isSquare"], args: [[1000000,1000000],[],[],[]], out: [null,1000000000000,4000000,true] },
+      { ops: ["Rectangle","area","perimeter","isSquare","scale","area","perimeter","isSquare","scale","area","perimeter","isSquare"], args: [[7,7],[],[],[],[1],[],[],[],[2],[],[],[]], out: [null,49,28,true,true,49,28,true,true,196,56,true] },
+      { ops: ["Rectangle","area","perimeter","isSquare","scale","area","perimeter","isSquare"], args: [[-1,-9],[],[],[],[5],[],[],[]], out: [null,1,4,true,true,25,20,true] },
+      { ops: ["Rectangle","area","perimeter","isSquare","scale","area","perimeter","isSquare"], args: [[2,3],[],[],[],[0],[],[],[]], out: [null,6,10,false,false,6,10,false] },
+      { ops: ["Rectangle","area","perimeter","isSquare","scale","area","perimeter","isSquare"], args: [[1000000,1],[],[],[],[1000000],[],[],[]], out: [null,1000000,2000002,false,true,1000000000000000000,2000002000000,false] }
+    ] },
     solution: {
       approach: `<p>Private data, a validating constructor (clamping with <code>max(1, x)</code>), const accessors, and a validating mutator. All checks live inside the class.</p>`,
       code: R`#include <iostream>
@@ -2140,6 +2218,9 @@ int main() { P a('a'); P b('b'); { P c('c'); } P d('d'); cout << '\n'; }`
       `<p>Hint 2: the inner block <code>{ P c('c'); }</code> finishes completely (born and destroyed) before <code>d</code> is constructed.</p>`,
       `<p>Hint 3: at the end of main, the remaining stack is a, b, d (bottom → top); pop from the top.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "abcCdDBA" }
+    ] },
     solution: {
       approach: `<p>Construct a, b; inner block constructs and destroys c; construct d; end of main destroys d, b, a. Concatenate: <b>abcCdDBA</b>.</p>`,
       code: R`#include <iostream>
@@ -2186,6 +2267,18 @@ int main() {
       `<p>Hint 2: increment both in every constructor — including the copy constructor, which you must write yourself.</p>`,
       `<p>Hint 3: decrement aliveCount in the destructor; static functions return the values.</p>`
     ],
+    tests: { sig: 'int int int -> int[]', fn: 'wd',
+      harness: { cpp: "vector<int> wd(int n, int destroyN, int copies) { int alive0 = Widget::alive(), total0 = Widget::total(); vector<unique_ptr<Widget>> v; for (int i = 0; i < n; ++i) v.push_back(make_unique<Widget>());\n  vector<int> r; r.push_back(Widget::alive() - alive0); r.push_back(Widget::total() - total0);\n  for (int i = 0; i < destroyN; ++i) v.pop_back(); r.push_back(Widget::alive() - alive0); r.push_back(Widget::total() - total0);\n  { vector<Widget> cp; if (!v.empty() && copies > 0) { cp.reserve(copies); for (int i = 0; i < copies; ++i) cp.push_back(*v.front()); } r.push_back(Widget::alive() - alive0); r.push_back(Widget::total() - total0); }\n  r.push_back(Widget::alive() - alive0); r.push_back(Widget::total() - total0); v.clear(); r.push_back(Widget::alive() - alive0); return r; }" }, cases: [
+      [[3,1,0], [3,3,2,3,2,3,2,3,0]],
+      [[0,0,0], [0,0,0,0,0,0,0,0,0]],
+      [[1,1,0], [1,1,0,1,0,1,0,1,0]],
+      [[5,0,2], [5,5,5,5,7,7,5,7,0]],
+      [[5,5,3], [5,5,0,5,0,5,0,5,0]],
+      [[10,4,4], [10,10,6,10,10,14,6,14,0]],
+      [[100,99,1], [100,100,1,100,2,101,1,101,0]],
+      [[2,0,0], [2,2,2,2,2,2,2,2,0]],
+      [[0,0,5], [0,0,0,0,0,0,0,0,0]]
+    ] },
     solution: {
       approach: `<p>Static data members hold the shared counts; constructors and the destructor update them automatically; static member functions expose them.</p>`,
       code: R`#include <iostream>
@@ -2231,6 +2324,22 @@ int main() { TempRaw t{25}; t.celsius = -500; cout << t.celsius << '\n'; }   // 
       `<p>Hint 2: make the constructor private so the only way in is through the validating factories.</p>`,
       `<p>Hint 3: <code>warmBy</code> computes the new value first, checks ≥ 0, then commits. Celsius = Kelvin − 273.15.</p>`
     ],
+    tests: { sig: 'char double double -> double[]', fn: 'tmp', cmp: 'float',
+      harness: { cpp: "vector<double> tmp(char kind, double v, double d) { auto t = kind == 'C' ? Temperature::fromCelsius(v) : Temperature::fromKelvin(v); if (!t) return {}; vector<double> r = {t->kelvin(), t->celsius()}; bool ok = t->warmBy(d); r.push_back(ok ? 1 : 0); r.push_back(t->kelvin()); return r; }" }, cases: [
+      [["C",25,-400], [298.15,25,0,298.15]],
+      [["C",25,10], [298.15,25,1,308.15]],
+      [["C",-300,1], []],
+      [["K",0,0], [0,-273.15,1,0]],
+      [["K",0,-0.001], [0,-273.15,0,0]],
+      [["K",-0.001,1], []],
+      [["C",-273.15,0], [0,-273.15,1,0]],
+      [["C",-273.16,5], []],
+      [["K",300,-300], [300,26.850000000000023,1,0]],
+      [["K",300,-300.5], [300,26.850000000000023,0,300]],
+      [["C",1000000,-1000000], [1000273.15,1000000,1,273.1500000000233]],
+      [["C",0,273.15], [273.15,0,1,546.3]],
+      [["K",1,1000000], [1,-272.15,1,1000001]]
+    ] },
     solution: {
       approach: `<p>Private constructor + static factories that validate and return <code>optional</code>; every mutator checks the invariant before committing.</p>`,
       code: R`#include <iostream>
@@ -2305,6 +2414,9 @@ int main() {
       `<p>Hint 2: inside the block, a is born, then <code>delete h</code> runs (printing -0) while a is still alive, then a dies at the brace.</p>`,
       `<p>Hint 3: after "| ", only the array remains: elements die from the highest index down.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "+0 +1 +2 +3 -3 +4 -0 -4 | -2 -1" }
+    ] },
     solution: {
       approach: `<p>+0 (new), +1 +2 (array in index order), +3 -3 (temporary), +4 (block local), -0 (delete inside block), -4 (block ends), "| ", -2 -1 (array reverse).</p>`,
       code: R`#include <iostream>
@@ -2354,6 +2466,16 @@ int main() {
       `<p>Hint 2: invariant 0 ≤ n ≤ cap. push checks n &lt; cap; pop checks n &gt; 0.</p>`,
       `<p>Hint 3: clamp cap into [1, 1000] in the constructor; mark size/full/top const.</p>`
     ],
+    tests: { cls: "StackBox", sigs: {StackBox:'int',push:'int -> bool',pop:'-> bool',hasTop:'-> bool',topValue:'-> int',size:'-> int',full:'-> bool'},
+      harness: { cpp: "struct StackBox : BoundedStack { using BoundedStack::BoundedStack; bool hasTop() const { return top().has_value(); } int topValue() const { return top().value_or(-123456); } };" }, cases: [
+      { ops: ["StackBox","push","push","push","topValue","pop","topValue","size","full"], args: [[2],[1],[2],[3],[],[],[],[],[]], out: [null,true,true,false,2,true,1,1,false] },
+      { ops: ["StackBox","hasTop","pop","size","push","full","topValue","push","pop","hasTop","full"], args: [[1],[],[],[],[-7],[],[],[8],[],[],[]], out: [null,false,false,0,true,true,-7,false,true,false,false] },
+      { ops: ["StackBox","push","push","push","full","push","size","pop","pop","pop","pop","size","hasTop"], args: [[3],[1],[2],[3],[],[4],[],[],[],[],[],[],[]], out: [null,true,true,true,true,false,3,true,true,true,false,0,false] },
+      { ops: ["StackBox","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push"], args: [[1000],[0],[1],[2],[3],[4],[5],[6],[7],[8],[9],[10],[11],[12],[13],[14],[15],[16],[17],[18],[19],[20],[21],[22],[23],[24],[25],[26],[27],[28],[29],[30],[31],[32],[33],[34],[35],[36],[37],[38],[39],[40],[41],[42],[43],[44],[45],[46],[47],[48],[49],[50],[51],[52],[53],[54],[55],[56],[57],[58],[59],[60],[61],[62],[63],[64],[65],[66],[67],[68],[69],[70],[71],[72],[73],[74],[75],[76],[77],[78],[79],[80],[81],[82],[83],[84],[85],[86],[87],[88],[89],[90],[91],[92],[93],[94],[95],[96],[97],[98],[99],[100],[101],[102],[103],[104],[105],[106],[107],[108],[109],[110],[111],[112],[113],[114],[115],[116],[117],[118],[119],[120],[121],[122],[123],[124],[125],[126],[127],[128],[129],[130],[131],[132],[133],[134],[135],[136],[137],[138],[139],[140],[141],[142],[143],[144],[145],[146],[147],[148],[149],[150],[151],[152],[153],[154],[155],[156],[157],[158],[159],[160],[161],[162],[163],[164],[165],[166],[167],[168],[169],[170],[171],[172],[173],[174],[175],[176],[177],[178],[179],[180],[181],[182],[183],[184],[185],[186],[187],[188],[189],[190],[191],[192],[193],[194],[195],[196],[197],[198],[199],[200],[201],[202],[203],[204],[205],[206],[207],[208],[209],[210],[211],[212],[213],[214],[215],[216],[217],[218],[219],[220],[221],[222],[223],[224],[225],[226],[227],[228],[229],[230],[231],[232],[233],[234],[235],[236],[237],[238],[239],[240],[241],[242],[243],[244],[245],[246],[247],[248],[249],[250],[251],[252],[253],[254],[255],[256],[257],[258],[259],[260],[261],[262],[263],[264],[265],[266],[267],[268],[269],[270],[271],[272],[273],[274],[275],[276],[277],[278],[279],[280],[281],[282],[283],[284],[285],[286],[287],[288],[289],[290],[291],[292],[293],[294],[295],[296],[297],[298],[299],[300],[301],[302],[303],[304],[305],[306],[307],[308],[309],[310],[311],[312],[313],[314],[315],[316],[317],[318],[319],[320],[321],[322],[323],[324],[325],[326],[327],[328],[329],[330],[331],[332],[333],[334],[335],[336],[337],[338],[339],[340],[341],[342],[343],[344],[345],[346],[347],[348],[349],[350],[351],[352],[353],[354],[355],[356],[357],[358],[359],[360],[361],[362],[363],[364],[365],[366],[367],[368],[369],[370],[371],[372],[373],[374],[375],[376],[377],[378],[379],[380],[381],[382],[383],[384],[385],[386],[387],[388],[389],[390],[391],[392],[393],[394],[395],[396],[397],[398],[399],[400],[401],[402],[403],[404],[405],[406],[407],[408],[409],[410],[411],[412],[413],[414],[415],[416],[417],[418],[419],[420],[421],[422],[423],[424],[425],[426],[427],[428],[429],[430],[431],[432],[433],[434],[435],[436],[437],[438],[439],[440],[441],[442],[443],[444],[445],[446],[447],[448],[449],[450],[451],[452],[453],[454],[455],[456],[457],[458],[459],[460],[461],[462],[463],[464],[465],[466],[467],[468],[469],[470],[471],[472],[473],[474],[475],[476],[477],[478],[479],[480],[481],[482],[483],[484],[485],[486],[487],[488],[489],[490],[491],[492],[493],[494],[495],[496],[497],[498],[499],[500],[501],[502],[503],[504],[505],[506],[507],[508],[509],[510],[511],[512],[513],[514],[515],[516],[517],[518],[519],[520],[521],[522],[523],[524],[525],[526],[527],[528],[529],[530],[531],[532],[533],[534],[535],[536],[537],[538],[539],[540],[541],[542],[543],[544],[545],[546],[547],[548],[549],[550],[551],[552],[553],[554],[555],[556],[557],[558],[559],[560],[561],[562],[563],[564],[565],[566],[567],[568],[569],[570],[571],[572],[573],[574],[575],[576],[577],[578],[579],[580],[581],[582],[583],[584],[585],[586],[587],[588],[589],[590],[591],[592],[593],[594],[595],[596],[597],[598],[599],[600],[601],[602],[603],[604],[605],[606],[607],[608],[609],[610],[611],[612],[613],[614],[615],[616],[617],[618],[619],[620],[621],[622],[623],[624],[625],[626],[627],[628],[629],[630],[631],[632],[633],[634],[635],[636],[637],[638],[639],[640],[641],[642],[643],[644],[645],[646],[647],[648],[649],[650],[651],[652],[653],[654],[655],[656],[657],[658],[659],[660],[661],[662],[663],[664],[665],[666],[667],[668],[669],[670],[671],[672],[673],[674],[675],[676],[677],[678],[679],[680],[681],[682],[683],[684],[685],[686],[687],[688],[689],[690],[691],[692],[693],[694],[695],[696],[697],[698],[699],[700],[701],[702],[703],[704],[705],[706],[707],[708],[709],[710],[711],[712],[713],[714],[715],[716],[717],[718],[719],[720],[721],[722],[723],[724],[725],[726],[727],[728],[729],[730],[731],[732],[733],[734],[735],[736],[737],[738],[739],[740],[741],[742],[743],[744],[745],[746],[747],[748],[749],[750],[751],[752],[753],[754],[755],[756],[757],[758],[759],[760],[761],[762],[763],[764],[765],[766],[767],[768],[769],[770],[771],[772],[773],[774],[775],[776],[777],[778],[779],[780],[781],[782],[783],[784],[785],[786],[787],[788],[789],[790],[791],[792],[793],[794],[795],[796],[797],[798],[799],[800],[801],[802],[803],[804],[805],[806],[807],[808],[809],[810],[811],[812],[813],[814],[815],[816],[817],[818],[819],[820],[821],[822],[823],[824],[825],[826],[827],[828],[829],[830],[831],[832],[833],[834],[835],[836],[837],[838],[839],[840],[841],[842],[843],[844],[845],[846],[847],[848],[849],[850],[851],[852],[853],[854],[855],[856],[857],[858],[859],[860],[861],[862],[863],[864],[865],[866],[867],[868],[869],[870],[871],[872],[873],[874],[875],[876],[877],[878],[879],[880],[881],[882],[883],[884],[885],[886],[887],[888],[889],[890],[891],[892],[893],[894],[895],[896],[897],[898],[899],[900],[901],[902],[903],[904],[905],[906],[907],[908],[909],[910],[911],[912],[913],[914],[915],[916],[917],[918],[919],[920],[921],[922],[923],[924],[925],[926],[927],[928],[929],[930],[931],[932],[933],[934],[935],[936],[937],[938],[939],[940],[941],[942],[943],[944],[945],[946],[947],[948],[949],[950],[951],[952],[953],[954],[955],[956],[957],[958],[959],[960],[961],[962],[963],[964],[965],[966],[967],[968],[969],[970],[971],[972],[973],[974],[975],[976],[977],[978],[979],[980],[981],[982],[983],[984],[985],[986],[987],[988],[989],[990],[991],[992],[993],[994],[995],[996],[997],[998],[999]], out: [null,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true] },
+      { ops: ["StackBox","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","push","size","full","topValue","pop","full","topValue"], args: [[1000],[0],[1],[2],[3],[4],[5],[6],[7],[8],[9],[10],[11],[12],[13],[14],[15],[16],[17],[18],[19],[20],[21],[22],[23],[24],[25],[26],[27],[28],[29],[30],[31],[32],[33],[34],[35],[36],[37],[38],[39],[40],[41],[42],[43],[44],[45],[46],[47],[48],[49],[50],[51],[52],[53],[54],[55],[56],[57],[58],[59],[60],[61],[62],[63],[64],[65],[66],[67],[68],[69],[70],[71],[72],[73],[74],[75],[76],[77],[78],[79],[80],[81],[82],[83],[84],[85],[86],[87],[88],[89],[90],[91],[92],[93],[94],[95],[96],[97],[98],[99],[100],[101],[102],[103],[104],[105],[106],[107],[108],[109],[110],[111],[112],[113],[114],[115],[116],[117],[118],[119],[120],[121],[122],[123],[124],[125],[126],[127],[128],[129],[130],[131],[132],[133],[134],[135],[136],[137],[138],[139],[140],[141],[142],[143],[144],[145],[146],[147],[148],[149],[150],[151],[152],[153],[154],[155],[156],[157],[158],[159],[160],[161],[162],[163],[164],[165],[166],[167],[168],[169],[170],[171],[172],[173],[174],[175],[176],[177],[178],[179],[180],[181],[182],[183],[184],[185],[186],[187],[188],[189],[190],[191],[192],[193],[194],[195],[196],[197],[198],[199],[200],[201],[202],[203],[204],[205],[206],[207],[208],[209],[210],[211],[212],[213],[214],[215],[216],[217],[218],[219],[220],[221],[222],[223],[224],[225],[226],[227],[228],[229],[230],[231],[232],[233],[234],[235],[236],[237],[238],[239],[240],[241],[242],[243],[244],[245],[246],[247],[248],[249],[250],[251],[252],[253],[254],[255],[256],[257],[258],[259],[260],[261],[262],[263],[264],[265],[266],[267],[268],[269],[270],[271],[272],[273],[274],[275],[276],[277],[278],[279],[280],[281],[282],[283],[284],[285],[286],[287],[288],[289],[290],[291],[292],[293],[294],[295],[296],[297],[298],[299],[300],[301],[302],[303],[304],[305],[306],[307],[308],[309],[310],[311],[312],[313],[314],[315],[316],[317],[318],[319],[320],[321],[322],[323],[324],[325],[326],[327],[328],[329],[330],[331],[332],[333],[334],[335],[336],[337],[338],[339],[340],[341],[342],[343],[344],[345],[346],[347],[348],[349],[350],[351],[352],[353],[354],[355],[356],[357],[358],[359],[360],[361],[362],[363],[364],[365],[366],[367],[368],[369],[370],[371],[372],[373],[374],[375],[376],[377],[378],[379],[380],[381],[382],[383],[384],[385],[386],[387],[388],[389],[390],[391],[392],[393],[394],[395],[396],[397],[398],[399],[400],[401],[402],[403],[404],[405],[406],[407],[408],[409],[410],[411],[412],[413],[414],[415],[416],[417],[418],[419],[420],[421],[422],[423],[424],[425],[426],[427],[428],[429],[430],[431],[432],[433],[434],[435],[436],[437],[438],[439],[440],[441],[442],[443],[444],[445],[446],[447],[448],[449],[450],[451],[452],[453],[454],[455],[456],[457],[458],[459],[460],[461],[462],[463],[464],[465],[466],[467],[468],[469],[470],[471],[472],[473],[474],[475],[476],[477],[478],[479],[480],[481],[482],[483],[484],[485],[486],[487],[488],[489],[490],[491],[492],[493],[494],[495],[496],[497],[498],[499],[500],[501],[502],[503],[504],[505],[506],[507],[508],[509],[510],[511],[512],[513],[514],[515],[516],[517],[518],[519],[520],[521],[522],[523],[524],[525],[526],[527],[528],[529],[530],[531],[532],[533],[534],[535],[536],[537],[538],[539],[540],[541],[542],[543],[544],[545],[546],[547],[548],[549],[550],[551],[552],[553],[554],[555],[556],[557],[558],[559],[560],[561],[562],[563],[564],[565],[566],[567],[568],[569],[570],[571],[572],[573],[574],[575],[576],[577],[578],[579],[580],[581],[582],[583],[584],[585],[586],[587],[588],[589],[590],[591],[592],[593],[594],[595],[596],[597],[598],[599],[600],[601],[602],[603],[604],[605],[606],[607],[608],[609],[610],[611],[612],[613],[614],[615],[616],[617],[618],[619],[620],[621],[622],[623],[624],[625],[626],[627],[628],[629],[630],[631],[632],[633],[634],[635],[636],[637],[638],[639],[640],[641],[642],[643],[644],[645],[646],[647],[648],[649],[650],[651],[652],[653],[654],[655],[656],[657],[658],[659],[660],[661],[662],[663],[664],[665],[666],[667],[668],[669],[670],[671],[672],[673],[674],[675],[676],[677],[678],[679],[680],[681],[682],[683],[684],[685],[686],[687],[688],[689],[690],[691],[692],[693],[694],[695],[696],[697],[698],[699],[700],[701],[702],[703],[704],[705],[706],[707],[708],[709],[710],[711],[712],[713],[714],[715],[716],[717],[718],[719],[720],[721],[722],[723],[724],[725],[726],[727],[728],[729],[730],[731],[732],[733],[734],[735],[736],[737],[738],[739],[740],[741],[742],[743],[744],[745],[746],[747],[748],[749],[750],[751],[752],[753],[754],[755],[756],[757],[758],[759],[760],[761],[762],[763],[764],[765],[766],[767],[768],[769],[770],[771],[772],[773],[774],[775],[776],[777],[778],[779],[780],[781],[782],[783],[784],[785],[786],[787],[788],[789],[790],[791],[792],[793],[794],[795],[796],[797],[798],[799],[800],[801],[802],[803],[804],[805],[806],[807],[808],[809],[810],[811],[812],[813],[814],[815],[816],[817],[818],[819],[820],[821],[822],[823],[824],[825],[826],[827],[828],[829],[830],[831],[832],[833],[834],[835],[836],[837],[838],[839],[840],[841],[842],[843],[844],[845],[846],[847],[848],[849],[850],[851],[852],[853],[854],[855],[856],[857],[858],[859],[860],[861],[862],[863],[864],[865],[866],[867],[868],[869],[870],[871],[872],[873],[874],[875],[876],[877],[878],[879],[880],[881],[882],[883],[884],[885],[886],[887],[888],[889],[890],[891],[892],[893],[894],[895],[896],[897],[898],[899],[900],[901],[902],[903],[904],[905],[906],[907],[908],[909],[910],[911],[912],[913],[914],[915],[916],[917],[918],[919],[920],[921],[922],[923],[924],[925],[926],[927],[928],[929],[930],[931],[932],[933],[934],[935],[936],[937],[938],[939],[940],[941],[942],[943],[944],[945],[946],[947],[948],[949],[950],[951],[952],[953],[954],[955],[956],[957],[958],[959],[960],[961],[962],[963],[964],[965],[966],[967],[968],[969],[970],[971],[972],[973],[974],[975],[976],[977],[978],[979],[980],[981],[982],[983],[984],[985],[986],[987],[988],[989],[990],[991],[992],[993],[994],[995],[996],[997],[998],[999],[1000],[],[],[],[],[],[]], out: [null,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,false,1000,true,999,true,false,998] },
+      { ops: ["StackBox","push","push","topValue","pop","topValue","pop","hasTop"], args: [[5],[2147483647],[-2147483648],[],[],[],[],[]], out: [null,true,true,-2147483648,true,2147483647,true,false] },
+      { ops: ["StackBox","push","pop","push","push","push","topValue","size"], args: [[2],[5],[],[6],[7],[8],[],[]], out: [null,true,true,true,true,false,7,2] }
+    ] },
     solution: {
       approach: `<p>Encapsulate a fixed array and a count. All bounds checks live in push/pop/top; the class guarantees LIFO and capacity.</p>`,
       code: R`#include <iostream>
@@ -2423,6 +2545,21 @@ int main() {
       `<p>Hint 2: store toppings in a <code>vector&lt;string&gt;</code>; check with <code>find</code> before inserting and stop at 5.</p>`,
       `<p>Hint 3: price() is const and computes from the stored state; unknown sizes leave the old size.</p>`
     ],
+    tests: { sig: 'char string[] bool -> int', fn: 'pz',
+      harness: { cpp: "int pz(char sz, vector<string> tops, bool cheese) { PizzaOrder o; if (&o.size(sz) != &o) return -1; for (auto& t : tops) if (&o.addTopping(t) != &o) return -1; if (cheese && &o.extraCheese() != &o) return -1; return o.price(); }" }, cases: [
+      [["L",["olive","corn","olive"],true], 530],
+      [["S",[],false], 200],
+      [["M",[],false], 300],
+      [["X",[],false], 300],
+      [["s",["a"],false], 340],
+      [["L",["a","b","c","d","e","f","g"],true], 650],
+      [["S",["a","a","a","a","a","a"],false], 240],
+      [["M",["a","b","c","d","e"],false], 500],
+      [["M",["a","b","c","d","a","e","f"],false], 500],
+      [["L",[],true], 450],
+      [["?",["x"],true], 390],
+      [["S",["a","b","c","d","e","f"],true], 450]
+    ] },
     solution: {
       approach: `<p>Each setter validates, updates and returns <code>*this</code> by reference; <code>price()</code> is a const query.</p>`,
       code: R`#include <iostream>
@@ -2483,6 +2620,21 @@ int main() { ManagerCopy m{"Ravi", 100000, 12}; cout << m.describe() << '\n'; }`
       `<p>Hint 2: inside Manager, call the base version explicitly with <code>Employee::describe()</code> — a plain <code>describe()</code> would recurse into Manager's own.</p>`,
       `<p>Hint 3: bonus = (team / 5) × salary / 10. Use long long.</p>`
     ],
+    tests: { sig: 'string long int int -> string', fn: 'emp',
+      harness: { cpp: "string emp(string name, long long salary, int team, int mode) { if (mode == 0) return Employee(name, salary).describe(); Manager m(name, salary, team); if (mode == 1) return m.describe(); const Employee& e = m; return e.describe(); }" }, cases: [
+      [["Asha",50000,0,0], "Asha earns 50000"],
+      [["Ravi",100000,12,1], "Ravi earns 100000 + bonus 20000, team 12"],
+      [["Ravi",100000,12,2], "Ravi earns 100000"],
+      [["Zed",1000000000,1000,1], "Zed earns 1000000000 + bonus 20000000000, team 1000"],
+      [["Zed",1000000000,1000,2], "Zed earns 1000000000"],
+      [["Mo",0,7,1], "Mo earns 0 + bonus 0, team 7"],
+      [["Mo",123,4,1], "Mo earns 123 + bonus 0, team 4"],
+      [["Mo",123,5,1], "Mo earns 123 + bonus 12, team 5"],
+      [["Li",99,9,1], "Li earns 99 + bonus 9, team 9"],
+      [["Li",1,5,1], "Li earns 1 + bonus 0, team 5"],
+      [["Li",7,1000,1], "Li earns 7 + bonus 140, team 1000"],
+      [["Kim",1000000000,0,0], "Kim earns 1000000000"]
+    ] },
     solution: {
       approach: `<p>Public inheritance (a Manager is an Employee), base constructor invoked from the initializer list, protected salary for the bonus formula, and explicit qualification to reuse the base description.</p>`,
       code: R`#include <iostream>
@@ -2546,6 +2698,27 @@ int main() {
       `<p>Hint 2: allow implicit construction from an integer: <code>Fraction(long long n, long long d = 1)</code> (intentionally not explicit).</p>`,
       `<p>Hint 3: hidden friend operators: a/b + c/d = (ad + cb)/bd, then the constructor normalises. Equality is member-wise once normalised.</p>`
     ],
+    tests: { sig: 'long long long long char -> string', fn: 'frac',
+      harness: { cpp: "string frac(long long a, long long b, long long c, long long d, char op) { try { Fraction x(a, b); ostringstream os;\n  if (op == 'i') { os << (int(a) + Fraction(c, d)); return os.str(); }\n  Fraction y(c, d); if (op == '+') os << (x + y); else if (op == '*') os << (x * y); else if (op == '=') os << (x == y ? \"true\" : \"false\"); else os << x; return os.str(); } catch (const invalid_argument&) { return \"invalid\"; } }" }, cases: [
+      [[2,-4,0,1,"p"], "-1/2"],
+      [[1,2,1,3,"+"], "5/6"],
+      [[2,1,1,2,"i"], "5/2"],
+      [[3,4,4,3,"*"], "1"],
+      [[1,2,2,4,"="], "true"],
+      [[1,0,1,1,"+"], "invalid"],
+      [[1,1,1,0,"+"], "invalid"],
+      [[0,5,3,7,"+"], "3/7"],
+      [[0,5,3,7,"*"], "0"],
+      [[-1,2,1,2,"+"], "0"],
+      [[-1,-2,1,2,"="], "true"],
+      [[6,-8,0,1,"p"], "-3/4"],
+      [[5,1,1,1,"p"], "5"],
+      [[-3,4,-1,4,"*"], "3/16"],
+      [[1,2,1,3,"="], "false"],
+      [[1000000,3,3,1000000,"*"], "1"],
+      [[-2,3,1,3,"i"], "-5/3"],
+      [[7,7,0,3,"p"], "1"]
+    ] },
     solution: {
       approach: `<p>The invariant "lowest terms, positive denominator" is established in the only constructor, so every Fraction — including results of operators, which construct new Fractions — is canonical. Equality is then trivial. Friend operators give symmetric conversions.</p>`,
       code: R`#include <iostream>
@@ -2612,6 +2785,30 @@ int main() {
       `<p>Hint 2: make the constructor private; <code>make</code> validates and returns nullopt for bad input.</p>`,
       `<p>Hint 3: nextDay: d+1; if it exceeds daysInMonth → day 1 of next month; if month exceeds 12 → Jan 1 of next year. Compare with <code>tie(y, m, d) &lt; tie(o.y, o.m, o.d)</code>.</p>`
     ],
+    tests: { sig: 'int int int int -> string', fn: 'dt',
+      harness: { cpp: "string dt(int y, int m, int d, int mode) { auto x = Date::make(y, m, d); if (!x) return \"invalid\"; ostringstream os; if (mode == 0) os << *x; else if (mode == 1) os << x->nextDay(); else os << (*x < x->nextDay() ? \"lt\" : \"ge\") << \" \" << (x->nextDay() < *x ? \"lt\" : \"ge\"); return os.str(); }" }, cases: [
+      [[2024,2,29,0], "2024-02-29"],
+      [[2023,2,29,0], "invalid"],
+      [[1900,2,29,0], "invalid"],
+      [[2000,2,29,0], "2000-02-29"],
+      [[2024,12,31,1], "2025-01-01"],
+      [[2024,2,28,1], "2024-02-29"],
+      [[2024,2,29,1], "2024-03-01"],
+      [[2023,2,28,1], "2023-03-01"],
+      [[1,1,1,0], "0001-01-01"],
+      [[9999,12,30,1], "9999-12-31"],
+      [[2024,13,1,0], "invalid"],
+      [[2024,0,1,0], "invalid"],
+      [[2024,4,31,0], "invalid"],
+      [[2024,4,30,1], "2024-05-01"],
+      [[2024,1,0,0], "invalid"],
+      [[0,1,1,0], "invalid"],
+      [[10000,1,1,0], "invalid"],
+      [[2024,5,5,2], "lt ge"],
+      [[2023,12,31,2], "lt ge"],
+      [[1900,2,28,1], "1900-03-01"],
+      [[123,4,5,0], "0123-04-05"]
+    ] },
     solution: {
       approach: `<p>Validation in one static factory makes invalid Dates unrepresentable. nextDay builds the successor directly with O(1) carry logic. friend operators handle comparison and printing.</p>`,
       code: R`#include <iostream>
@@ -2707,6 +2904,9 @@ int main() {
       `<p>Hint 2: Derived x expands to: Base's member B, Base body, Derived's member D, Derived body. Destruction mirrors it.</p>`,
       `<p>Hint 3: T("tmp") prints tmp and ~tmp immediately; the second lazy() prints nothing; S is destroyed after main but before G.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "G [main] B Base D Derived tmp ~tmp S I ~I [end] ~Derived ~D ~Base ~B ~S ~G" }
+    ] },
     solution: {
       approach: `<p>Before main: G. In main: [main], then Derived x → B Base D Derived; temporary → tmp ~tmp; first lazy() → S; block → I, (lazy prints nothing), ~I; [end]. End of main: x dies → ~Derived ~D ~Base ~B. After main: statics reverse: ~S then ~G.</p>`,
       code: R`#include <iostream>
@@ -2769,6 +2969,17 @@ int main() {
       `<p>Hint 2: <code>inline static int nextNumber = 10001;</code> and <code>inline static vector&lt;string&gt; log;</code>; delete the copy constructor and copy assignment.</p>`,
       `<p>Hint 3: expose the log as <code>static const vector&lt;string&gt;&amp; auditLog()</code> so callers can read but not modify. Record entries only on success.</p>`
     ],
+    tests: { sig: 'long[] long[] -> long[]', fn: 'acct',
+      harness: { cpp: "vector<long long> acct(vector<long long> opening, vector<long long> xfers) { static_assert(!is_copy_constructible_v<Account>, \"Account must not be copyable\"); static_assert(!is_copy_assignable_v<Account>, \"Account must not be copy assignable\");\n  size_t n = opening.size(); vector<unique_ptr<Account>> acc; for (size_t i = 0; i < n; ++i) acc.push_back(make_unique<Account>(\"o\" + to_string(i), opening[i]));\n  int base = acc[0]->getNumber(); size_t log0 = Account::auditLog().size(); vector<long long> r; long long badFmt = 0, ok = 0;\n  for (size_t k = 0; k + 2 < xfers.size() + 0; k += 3) { int i = xfers[k], j = xfers[k + 1]; long long amt = xfers[k + 2]; bool res = acc[i]->transfer(*acc[j], amt); r.push_back(res ? 1 : 0); if (res) { ++ok; const string& e = Account::auditLog().back(); if (e != to_string(acc[i]->getNumber()) + \"->\" + to_string(acc[j]->getNumber()) + \":\" + to_string(amt)) ++badFmt; } }\n  for (size_t i = 0; i < n; ++i) { r.push_back(acc[i]->getBalance()); if (acc[i]->getNumber() != base + (int)i) ++badFmt; }\n  r.push_back(Account::auditLog().size() - log0 == (size_t)ok ? 1 : 0); r.push_back(badFmt); return r; }" }, cases: [
+      [[[5000,0],[0,1,3000,1,0,9999,0,0,1]], [1,0,0,2000,3000,1,0]],
+      [[[100],[0,0,50]], [0,100,1,0]],
+      [[[100,100],[0,1,0,0,1,-5,0,1,100,1,0,200,1,0,1]], [0,0,1,1,0,200,0,1,0]],
+      [[[0,0,0],[0,1,1,1,2,1,2,0,1]], [0,0,0,0,0,0,1,0]],
+      [[[10,20,30],[0,1,10,1,2,30,2,0,60,0,2,1,2,1,1000]], [1,1,1,1,0,59,0,1,1,0]],
+      [[[1000000000000,1000000000000],[0,1,1000000000000,1,0,2000000000000,1,0,1000000000001]], [1,1,0,2000000000000,0,1,0]],
+      [[[7,8],[]], [7,8,1,0]],
+      [[[1,1,1,1],[0,1,1,1,2,1,2,3,1,3,0,1,0,3,1]], [1,1,1,1,1,0,1,1,2,1,0]]
+    ] },
     solution: {
       approach: `<p>Invariants (balance ≥ 0, unique numbers, conservation of money) are enforced inside the class. transfer checks all preconditions using <code>this</code> and access to the other object's privates, then commits both sides and appends to the static log. Copy operations are deleted to keep identity unique.</p>`,
       code: R`#include <iostream>
@@ -2837,6 +3048,20 @@ int main() { RawMat a{{1, 2}, {3}}; cout << a[1].size() << '\n'; }   // ragged: 
       `<p>Hint 2: friend <code>operator*</code>: check <code>A.c == B.r</code>, else throw. Use i-k-j loop order for cache-friendly access.</p>`,
       `<p>Hint 3: provide both <code>long long&amp; at(i, j)</code> and <code>long long at(i, j) const</code>; equality compares dimensions then data.</p>`
     ],
+    tests: { sig: 'long[][] long[][] -> long[][]', fn: 'mx',
+      harness: { cpp: "vector<vector<long long>> mx(vector<vector<long long>> A, vector<vector<long long>> B) { Matrix a((int)A.size(), (int)A[0].size()), b((int)B.size(), (int)B[0].size());\n  for (size_t i = 0; i < A.size(); ++i) for (size_t j = 0; j < A[0].size(); ++j) a.at(i, j) = A[i][j];\n  for (size_t i = 0; i < B.size(); ++i) for (size_t j = 0; j < B[0].size(); ++j) b.at(i, j) = B[i][j];\n  if (!(a * Matrix::identity((int)A[0].size()) == a)) throw runtime_error(\"A * I != A\");\n  try { Matrix p = a * b; ostringstream os; os << p; string want; for (int i = 0; i < (int)A.size(); ++i) { for (int j = 0; j < (int)B[0].size(); ++j) want += to_string(p.at(i, j)) + (j + 1 < (int)B[0].size() ? \" \" : \"\"); want += \"\\n\"; } if (os.str() != want) throw runtime_error(\"operator<< format\");\n    vector<vector<long long>> out(A.size(), vector<long long>(B[0].size())); for (size_t i = 0; i < out.size(); ++i) for (size_t j = 0; j < out[0].size(); ++j) out[i][j] = p.at(i, j); return out; }\n  catch (const invalid_argument&) { return {{-1}}; } }" }, cases: [
+      [[[[1,2],[3,4]],[[5],[6]]], [[17],[39]]],
+      [[[[1,2],[3,4]],[[1,0],[0,1]]], [[1,2],[3,4]]],
+      [[[[1,2],[3,4]],[[1],[2],[3]]], [[-1]]],
+      [[[[5]],[[7]]], [[35]]],
+      [[[[1,2,3]],[[4],[5],[6]]], [[32]]],
+      [[[[1],[2],[3]],[[4,5,6]]], [[4,5,6],[8,10,12],[12,15,18]]],
+      [[[[-1,2],[0,-3]],[[2,-2],[4,1]]], [[6,4],[-12,-3]]],
+      [[[[3000000000,0]],[[3000000000],[5]]], [[9000000000000000000]]],
+      [[[[1,2],[3,4]],[[5,6],[7,8]]], [[19,22],[43,50]]],
+      [[[[0,0],[0,0]],[[9,9],[9,9]]], [[0,0],[0,0]]],
+      [[{"$rep":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"n":200},{"$rep":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"n":200}], {"$rep":[200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200],"n":200}]
+    ] },
     solution: {
       approach: `<p>Encapsulated contiguous storage guarantees rectangular shape. Friend operators read the private dimensions and data directly. The i-k-j loop streams through rows of B contiguously.</p>`,
       code: R`#include <iostream>
@@ -2916,6 +3141,20 @@ int main() {
       `<p>Hint 2: destructor: find <code>this</code> in the registry and erase it (swap with back + pop_back is O(1) after the O(N) find).</p>`,
       `<p>Hint 3: <code>Sensor(const Sensor&amp;) = delete;</code> and the copy assignment too. readAll iterates the registry calling each sensor's reading.</p>`
     ],
+    tests: { sig: 'int[] int[] -> long[]', fn: 'sn',
+      harness: { cpp: "vector<long long> sn(vector<int> vals, vector<int> order) { vector<unique_ptr<Sensor>> s; for (int v : vals) s.push_back(make_unique<Sensor>(v)); vector<long long> r; r.push_back(Sensor::readAll()); r.push_back(Sensor::count());\n  { Sensor tmp(100); r.push_back(Sensor::readAll()); r.push_back(Sensor::count()); } r.push_back(Sensor::readAll()); r.push_back(Sensor::count());\n  for (int i : order) { s[i].reset(); r.push_back(Sensor::readAll()); r.push_back(Sensor::count()); } s.clear(); r.push_back(Sensor::readAll()); r.push_back(Sensor::count()); return r; }" }, cases: [
+      [[[5,7],[0]], [12,2,112,3,12,2,7,1,0,0]],
+      [[[5,7],[1,0]], [12,2,112,3,12,2,5,1,0,0,0,0]],
+      [[[],[]], [0,0,100,1,0,0,0,0]],
+      [[[1],[0]], [1,1,101,2,1,1,0,0,0,0]],
+      [[[1,2,3,4],[2,0,3,1]], [10,4,110,5,10,4,7,3,6,2,2,1,0,0,0,0]],
+      [[[1,2,3,4],[0,1,2,3]], [10,4,110,5,10,4,9,3,7,2,4,1,0,0,0,0]],
+      [[[1,2,3,4],[3,2,1,0]], [10,4,110,5,10,4,6,3,3,2,1,1,0,0,0,0]],
+      [[[-5,5,2147483647],[1]], [2147483647,3,2147483747,4,2147483647,3,2147483642,2,0,0]],
+      [[[10,20,30,40,50],[4,0,2]], [150,5,250,6,150,5,100,4,90,3,60,2,0,0]],
+      [[[0,0,0],[1]], [0,3,100,4,0,3,0,2,0,0]],
+      [[{"$range":[1,10001]},[0,9999,5000]], [50005000,10000,50005100,10001,50005000,10000,50004999,9999,49994999,9998,49989998,9997,0,0]]
+    ] },
     solution: {
       approach: `<p>The static registry is the shared "whiteboard"; <code>this</code> is the identity each object writes onto it. Constructor and destructor keep the registry exactly equal to the set of live objects, regardless of destruction order.</p>`,
       code: R`#include <iostream>

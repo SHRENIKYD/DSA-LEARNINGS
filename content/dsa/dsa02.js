@@ -405,7 +405,7 @@ ${H.table(['person i', 'shakes hands with j', 'new handshakes'], [['0', '1, 2, 3
 <p>Why: 3 + 2 + 1 + 0 = ${H.c('p', '6')} = 4·3/2.</p>`,
         brute: {
           why: `<p>Just run the two loops. For N = 10<sup>9</sup> that is about 5·10<sup>17</sup> increments — at 10<sup>8</sup> per second that is roughly <b>150 years</b>. The wasted work: we already know row i has exactly N−1−i strokes, yet we count them one by one.</p>`,
-          code: `
+          code: { lang: 'java', code: `
 long countByLoop(int n) {
     long count = 0;
     for (int i = 0; i < n; i++) {
@@ -414,7 +414,31 @@ long countByLoop(int n) {
         }
     }
     return count;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def count_handshakes(n):
+    count = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            count += 1           # one stroke per handshake
+    return count` }, { lang: 'js', code: String.raw`
+function countHandshakes(n) {
+  let count = 0;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      count++;           // one stroke per handshake
+    }
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+long long countHandshakes(int n) {
+    long long count = 0;
+    for (int i = 0; i < n; i++) {
+        for (int j = i + 1; j < n; j++) {
+            count++;           // one stroke per handshake
+        }
+    }
+    return count;
+}` }] }
         },
         mcq: {
           q: 'Row i of the loop does N−1−i handshakes. Adding all rows gives (N−1) + (N−2) + … + 1 + 0. What is the fastest way to get this sum?',
@@ -506,7 +530,7 @@ ${H.table(['i', 'j values (1, 2, 4, …, ≤ i)', 'inner runs'], [['1', '1', H.c
 <p>Total = 1 + 2 + 2 + 3 + 3 = ${H.c('p', '11')}. Notice the same colour = same inner count.</p>`,
         brute: {
           why: `<p>Running the loops costs about N·log₂ N steps — for N = 10<sup>17</sup> that is ~5.7·10<sup>18</sup> steps, thousands of years. The wasted work: thousands of consecutive i values have the <b>same</b> inner count, yet we recount each one.</p>`,
-          code: `
+          code: { lang: 'java', code: `
 long brute(long n) {
     long count = 0;
     for (long i = 1; i <= n; i++) {
@@ -515,7 +539,33 @@ long brute(long n) {
         }
     }
     return count;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def count_iterations(n):
+    count = 0
+    for i in range(1, n + 1):
+        j = 1
+        while j <= i:
+            count += 1
+            j *= 2
+    return count` }, { lang: 'js', code: String.raw`
+function countIterations(n) {
+  let count = 0;
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= i; j *= 2) {
+      count++;
+    }
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+long long countIterations(long long n) {
+    long long count = 0;
+    for (long long i = 1; i <= n; i++) {
+        for (long long j = 1; j <= i; j *= 2) {
+            count++;
+        }
+    }
+    return count;
+}` }] }
         },
         mcq: {
           q: 'For a fixed i, how many times does the inner loop <code>for (j = 1; j &lt;= i; j *= 2)</code> run?',
@@ -914,7 +964,7 @@ ${H.arr([3, 7, 11, 15, 19], { hl: { 0: 'g', 4: 'g' } })}
 <p>Query (a=10, d=−2, n=6): 10, 8, 6, 4, 2, 0 → ${H.c('p', '<b>30</b>')}. Negative d is fine.</p>`,
         brute: {
           why: `<p>Add the n terms with a loop for each query: Q × n = 10<sup>5</sup> × 10<sup>6</sup> = 10<sup>11</sup> additions → about 1000 seconds → TLE. The wasted work: the terms follow a perfect pattern, so their sum is already known from a, d and n.</p>`,
-          code: `
+          code: { lang: 'java', code: `
 long[] brute(long[][] queries) {
     long[] ans = new long[queries.length];
     for (int q = 0; q < queries.length; q++) {
@@ -927,7 +977,41 @@ long[] brute(long[][] queries) {
         ans[q] = sum;
     }
     return ans;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def answer_queries(queries):
+    ans = []
+    for a, d, n in queries:
+        total, term = 0, a
+        for _ in range(n):
+            total += term     # add current term
+            term += d         # move to next term
+        ans.append(total)
+    return ans` }, { lang: 'js', code: String.raw`
+function answerQueries(queries) {
+  const ans = [];
+  for (const [a, d, n] of queries) {
+    let sum = 0n, term = BigInt(a);       // sums reach 5e17: past 2^53, so BigInt
+    for (let k = 0; k < n; k++) {
+      sum += term;     // add current term
+      term += BigInt(d);       // move to next term
+    }
+    ans.push(sum);
+  }
+  return ans;
+}` }, { lang: 'cpp', code: String.raw`
+vector<long long> answerQueries(const vector<vector<long long>>& queries) {
+    vector<long long> ans;
+    for (const auto& q : queries) {
+        long long a = q[0], d = q[1], n = q[2];
+        long long sum = 0, term = a;
+        for (long long k = 0; k < n; k++) {
+            sum += term;     // add current term
+            term += d;       // move to next term
+        }
+        ans.push_back(sum);
+    }
+    return ans;
+}` }] }
         },
         mcq: {
           q: 'Which expression equals the sum of n AP terms starting at a with difference d?',
@@ -1319,12 +1403,25 @@ console.log(String(power(3, 13)));   // 1594323`, run: true },
 ${H.table(['move', 'pages before', 'pages after'], [['1', '100', '50'], ['2', '50', '25'], ['3', '25', H.c('y', '12 (half of 25, rounded down)')], ['4', '12', '6'], ['5', '6', '3'], ['6', '3', H.c('g', '1')]])}
 <p>Output: ${H.c('p', '<b>6</b>')} — and indeed 2<sup>6</sup> = 64 ≤ 100 &lt; 128 = 2<sup>7</sup>.</p>`,
         brute: {
-          why: `<p>The tempting "one-liner" <code>(int)(Math.log(n) / Math.log(2))</code> (or <code>int(math.log2(n))</code> in Python) looks O(1) but is <b>wrong</b> for big inputs: a <code>double</code> holds only ~15–16 significant digits. For N = 2<sup>60</sup> − 1 the conversion to double rounds up to 2<sup>60</sup>, giving 60 instead of 59. A brute force that literally removes pages one at a time would be O(N) = 10<sup>18</sup> steps. Integer halving is both exact and fast.</p>`,
-          code: `
+          why: `<p>The tempting "one-liner" <code>(int)(Math.log(n) / Math.log(2))</code> (and its equivalents <code>int(math.log(n) / math.log(2))</code> in Python, <code>Math.floor(Math.log(n) / Math.log(2))</code> in JavaScript, <code>(int)(log(n) / log(2))</code> in C++) looks O(1) but is <b>wrong</b> for big inputs: a <code>double</code> holds only ~15–16 significant digits. For N = 2<sup>60</sup> − 1 the conversion to double rounds up to 2<sup>60</sup>, giving 60 instead of 59. A brute force that literally removes pages one at a time would be O(N) = 10<sup>18</sup> steps. Integer halving is both exact and fast.</p>`,
+          code: { lang: 'java', code: `
 int bruteWithDoubles(long n) {
     // Looks clever, but floating point rounding can be off by one for large n
     return (int) (Math.log(n) / Math.log(2));
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+import math
+
+def halvings(n):
+    # Looks clever, but floating point rounding can be off by one for large n
+    return int(math.log(n) / math.log(2))` }, { lang: 'js', code: String.raw`
+function halvings(n) {
+  // Looks clever, but floating point rounding can be off by one for large n
+  return Math.floor(Math.log(n) / Math.log(2));
+}` }, { lang: 'cpp', code: String.raw`
+int halvings(long long n) {
+    // Looks clever, but floating point rounding can be off by one for large n
+    return (int) (log((double) n) / log(2.0));
+}` }] }
         },
         mcq: {
           q: 'N = 10<sup>18</sup>. Roughly how many halvings until we reach 1?',
@@ -1740,7 +1837,7 @@ cout << s.size() << endl;              // 100000` }
 ${H.arr([7, 2, 9], {})}<p>Output: <b>false</b> — all values are different.</p>`,
         brute: {
           why: `<p>Compare every pair (i, j) with i &lt; j: N(N−1)/2 ≈ 5·10<sup>9</sup> comparisons for N = 10<sup>5</sup> → about 50 seconds → TLE. Wasted work: when we look at A[j], we re-scan all earlier elements instead of remembering them.</p>`,
-          code: `
+          code: { lang: 'java', code: `
 boolean brute(int[] a) {
     for (int i = 0; i < a.length; i++) {
         for (int j = i + 1; j < a.length; j++) {
@@ -1748,7 +1845,29 @@ boolean brute(int[] a) {
         }
     }
     return false;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def contains_duplicate(a):
+    for i in range(len(a)):
+        for j in range(i + 1, len(a)):
+            if a[i] == a[j]:
+                return True      # found a repeated value
+    return False` }, { lang: 'js', code: String.raw`
+function containsDuplicate(a) {
+  for (let i = 0; i < a.length; i++) {
+    for (let j = i + 1; j < a.length; j++) {
+      if (a[i] === a[j]) return true;   // found a repeated value
+    }
+  }
+  return false;
+}` }, { lang: 'cpp', code: String.raw`
+bool containsDuplicate(const vector<int>& a) {
+    for (int i = 0; i < (int) a.size(); i++) {
+        for (int j = i + 1; j < (int) a.size(); j++) {
+            if (a[i] == a[j]) return true;   // found a repeated value
+        }
+    }
+    return false;
+}` }] }
         },
         mcq: {
           q: 'The brute force does N(N−1)/2 comparisons in the worst case. What is its Big-O?',
@@ -2160,13 +2279,32 @@ int countIterative(ListNode* head) {
         example: `${H.arr([1, 2, 3, 4, 5], { label: 'before', hl: { 0: 'y', 4: 'y' } })}${H.arr([5, 4, 3, 2, 1], { label: 'after', hl: { 0: 'g', 4: 'g' } })}<p>Swap the ${H.c('y', 'two ends')}, then move both ends inward. The middle element 3 stays where it is.</p>`,
         brute: {
           why: `<p>Copy into a new array backwards, then copy back. Time is fine (O(N)), but it allocates a <b>second array of N ints</b> = O(N) extra space (4 MB for 10<sup>6</sup>) — it breaks the "O(1) extra space" rule. The wasted resource here is memory, not time.</p>`,
-          code: `
+          code: { lang: 'java', code: `
 void bruteReverse(int[] a) {
     int n = a.length;
     int[] copy = new int[n];          // O(N) extra memory
     for (int i = 0; i < n; i++) copy[i] = a[n - 1 - i];
     for (int i = 0; i < n; i++) a[i] = copy[i];
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def reverse(a):
+    n = len(a)
+    copy = [0] * n                    # O(N) extra memory
+    for i in range(n):
+        copy[i] = a[n - 1 - i]
+    for i in range(n):
+        a[i] = copy[i]` }, { lang: 'js', code: String.raw`
+function reverse(a) {
+  const n = a.length;
+  const copy = new Array(n);          // O(N) extra memory
+  for (let i = 0; i < n; i++) copy[i] = a[n - 1 - i];
+  for (let i = 0; i < n; i++) a[i] = copy[i];
+}` }, { lang: 'cpp', code: String.raw`
+void reverse(vector<int>& a) {
+    int n = a.size();
+    vector<int> copy(n);              // O(N) extra memory
+    for (int i = 0; i < n; i++) copy[i] = a[n - 1 - i];
+    for (int i = 0; i < n; i++) a[i] = copy[i];
+}` }] }
         },
         mcq: {
           q: 'What is the extra space of a swap-based reversal that uses indices L, R and one temp variable?',
@@ -2602,8 +2740,8 @@ int main() {
         example: `<p>Input: <b>N = 2000, T = 1</b> → Output: ${H.c('p', '<b>O(N^2 log N)</b>')}</p>
 ${H.table(['class', 'ops at N = 2000', '≤ 10<sup>8</sup>?'], [['O(N!)', 'astronomical', H.c('r', 'no')], ['O(2^N·N)', '≈ 10<sup>605</sup>', H.c('r', 'no')], ['O(2^N)', '≈ 10<sup>602</sup>', H.c('r', 'no')], ['O(N^3)', '8·10<sup>9</sup>', H.c('r', 'no')], ['O(N^2 log N)', '4.4·10<sup>7</sup>', H.c('g', 'yes → answer')]])}`,
         brute: {
-          why: `<p>Compute each operation count <b>exactly</b> with big integers (<code>BigInteger</code>, Python <code>int</code>, JS <code>BigInt</code>) — including N! and 2<sup>N</sup> — and compare with the budget. Even with an early stop for N!, 2<sup>N</sup> for N = 10<sup>5</sup> has about 30,000 digits, and for N = 10<sup>18</sup> it cannot be built at all — so the brute has to give up and guess. Worse, classes with log N or √N are not integers, so exact arithmetic does not even apply. The wasted work: we only need to know <i>how many digits</i> a count has, not the count itself.</p>`,
-          code: `
+          why: `<p>Compute each operation count <b>exactly</b> with big integers (<code>BigInteger</code>, Python <code>int</code>, JS <code>BigInt</code>; C++ has none, so its sketch borrows the 128-bit <code>__int128</code>, which runs out even sooner) — including N! and 2<sup>N</sup> — and compare with the budget. Even with an early stop for N!, 2<sup>N</sup> for N = 10<sup>5</sup> has about 30,000 digits, and for N = 10<sup>18</sup> it cannot be built at all — so the brute has to give up and guess. Worse, classes with log N or √N are not integers, so exact arithmetic does not even apply. The wasted work: we only need to know <i>how many digits</i> a count has, not the count itself.</p>`,
+          code: { lang: 'java', code: `
 import java.math.BigInteger;
 
 class Brute {
@@ -2627,7 +2765,73 @@ class Brute {
         if (N.compareTo(budget) <= 0) return "O(N)";
         return "O(log N)";
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def max_allowed(n, t):
+    budget = 100_000_000 * t
+    # N! computed exactly: hopeless for big n (and n can be 10^18!)
+    fact, i = 1, 2
+    while i <= n and fact <= budget:
+        fact *= i
+        i += 1
+    if fact <= budget:
+        return "O(N!)"
+    # 2^N computed exactly: builds a gigantic number
+    if n < 100_000:
+        two = 2 ** n
+        if two * n <= budget:
+            return "O(2^N * N)"
+        if two <= budget:
+            return "O(2^N)"
+    if n ** 3 <= budget:
+        return "O(N^3)"
+    # ...and every remaining class needs logs or square roots anyway,
+    # so exact integer arithmetic does not even help for the rest.
+    if n ** 2 <= budget:
+        return "O(N^2)"
+    if n <= budget:
+        return "O(N)"
+    return "O(log N)"` }, { lang: 'js', code: String.raw`
+function maxAllowed(n, t) {
+  const budget = 100000000n * BigInt(t);
+  const N = BigInt(n);
+  // N! computed exactly: hopeless for big n (and n can be 10^18!)
+  let fact = 1n;
+  for (let i = 2n; i <= N && fact <= budget; i++) fact *= i;
+  if (fact <= budget) return 'O(N!)';
+  // 2^N computed exactly: builds a gigantic number
+  if (N < 100000n) {
+    const two = 2n ** N;
+    if (two * N <= budget) return 'O(2^N * N)';
+    if (two <= budget) return 'O(2^N)';
+  }
+  if (N ** 3n <= budget) return 'O(N^3)';
+  // ...and every remaining class needs logs or square roots anyway,
+  // so exact integer arithmetic does not even help for the rest.
+  if (N ** 2n <= budget) return 'O(N^2)';
+  if (N <= budget) return 'O(N)';
+  return 'O(log N)';
+}` }, { lang: 'cpp', code: String.raw`
+string maxAllowed(long long n, int t) {
+    // C++ has no built-in big integer: __int128 (about 38 digits) is the closest we get
+    __int128 budget = (__int128) 100000000 * t;
+    // N! computed exactly: hopeless for big n (and n can be 10^18!)
+    __int128 fact = 1;
+    for (long long i = 2; i <= n && fact <= budget; i++) fact *= i;
+    if (fact <= budget) return "O(N!)";
+    // 2^N computed exactly: 128 bits run out after 126 doublings
+    if (n < 100) {
+        __int128 two = (__int128) 1 << n;
+        if (two * n <= budget) return "O(2^N * N)";
+        if (two <= budget) return "O(2^N)";
+    }
+    // n^3 only fits in 128 bits for n below about 10^12
+    if (n < 1000000000000LL && (__int128) n * n * n <= budget) return "O(N^3)";
+    // ...and every remaining class needs logs or square roots anyway,
+    // so exact integer arithmetic does not even help for the rest.
+    if ((__int128) n * n <= budget) return "O(N^2)";
+    if (n <= budget) return "O(N)";
+    return "O(log N)";
+}` }] }
         },
         mcq: {
           q: 'How can you compare 2<sup>N</sup> with 10<sup>8</sup> without ever computing 2<sup>N</sup>?',
@@ -2776,7 +2980,7 @@ console.log(maxAllowed(1e12, 1));   // O(sqrt N)`, run: true },
 <p>Why: n = 3, the range is 0..3 whose sum is 3·4/2 = ${H.c('b', '6')}. The array sums to ${H.c('y', '4')}. The missing number is 6 − 4 = ${H.c('p', '2')}.</p>`,
     brute: {
       why: `<p>For every candidate value v from 0 to n, scan the whole array to see if v is there: (n+1) × n ≈ 10<sup>10</sup> steps for n = 10<sup>5</sup> → TLE. Wasted work: we search for each value separately, although one single total already "remembers" every value.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 int missingBrute(int[] nums) {
     int n = nums.length;
     for (int v = 0; v <= n; v++) {          // every candidate value
@@ -2787,7 +2991,40 @@ int missingBrute(int[] nums) {
         if (!found) return v;
     }
     return -1;                              // never reached for valid input
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def missing_number(nums):
+    n = len(nums)
+    for v in range(n + 1):                  # every candidate value
+        found = False
+        for x in nums:                      # scan the whole array for it
+            if x == v:
+                found = True
+                break
+        if not found:
+            return v
+    return -1                               # never reached for valid input` }, { lang: 'js', code: String.raw`
+function missingNumber(nums) {
+  const n = nums.length;
+  for (let v = 0; v <= n; v++) {            // every candidate value
+    let found = false;
+    for (const x of nums) {                 // scan the whole array for it
+      if (x === v) { found = true; break; }
+    }
+    if (!found) return v;
+  }
+  return -1;                                // never reached for valid input
+}` }, { lang: 'cpp', code: String.raw`
+int missingNumber(const vector<int>& nums) {
+    int n = nums.size();
+    for (int v = 0; v <= n; v++) {          // every candidate value
+        bool found = false;
+        for (int x : nums) {                // scan the whole array for it
+            if (x == v) { found = true; break; }
+        }
+        if (!found) return v;
+    }
+    return -1;                              // never reached for valid input
+}` }] }
     },
     mcq: {
       q: 'Which quantity instantly reveals the missing number?',
@@ -2862,14 +3099,35 @@ console.log(missingNumber([3, 0, 1]));   // 2`, run: true },
 <p>Multiples of 3: ${H.c('b', '3, 6, 9')} (sum 18). Multiples of 5: ${H.c('y', '5')} (sum 5). Nothing is a multiple of 15 below 10. Total 18 + 5 = 23.</p>`,
     brute: {
       why: `<p>Loop i from 1 to N−1 and add i if <code>i % 3 == 0 || i % 5 == 0</code>. That is 10<sup>9</sup> iterations for the largest N — around 2–10 seconds in Java or C++ (minutes in Python), and hopeless if N were 10<sup>18</sup>. Wasted work: the multiples of 3 form an AP whose sum has a formula.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 long brute(long n) {
     long sum = 0;
     for (long i = 1; i < n; i++) {
         if (i % 3 == 0 || i % 5 == 0) sum += i;
     }
     return sum;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def solve(n):
+    total = 0
+    for i in range(1, n):
+        if i % 3 == 0 or i % 5 == 0:
+            total += i
+    return total` }, { lang: 'js', code: String.raw`
+function solve(n) {
+  n = Number(n);
+  let sum = 0n;                       // sums reach 2.3e17: past 2^53, so BigInt
+  for (let i = 1; i < n; i++) {
+    if (i % 3 === 0 || i % 5 === 0) sum += BigInt(i);
+  }
+  return sum;
+}` }, { lang: 'cpp', code: String.raw`
+long long solve(long long n) {
+    long long sum = 0;
+    for (long long i = 1; i < n; i++) {
+        if (i % 3 == 0 || i % 5 == 0) sum += i;
+    }
+    return sum;
+}` }] }
     },
     mcq: {
       q: 'Why must we subtract the multiples of 15?',
@@ -2960,11 +3218,24 @@ long long solve(long long n) {
 <p>Why: the digit count is ⌊log<sub>B</sub> N⌋ + 1 = the number of times you can divide by B before reaching 0.</p>`,
     brute: {
       why: `<p>The "one-liner" <code>(int)(Math.log(n) / Math.log(b)) + 1</code> is O(1) but <b>wrong</b>: Math.log(1000)/Math.log(10) evaluates to 2.9999999999999996 (the same in Python, JS and C++ — they all use IEEE doubles), so it returns 3 digits for 1000. Doubles cannot represent most logarithms exactly, and values just below an integer get truncated. It also crashes logically for N = 0 (log 0 = −∞).</p>`,
-      code: `
+      code: { lang: 'java', code: `
 int digitsWithLogs(long n, int b) {
     // Fast-looking but wrong for n = 1000, b = 10 (prints 3) and undefined for n = 0
     return (int) (Math.log(n) / Math.log(b)) + 1;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+import math
+
+def digits(n, b):
+    # Fast-looking but wrong for n = 1000, b = 10 (prints 3) and undefined for n = 0
+    return int(math.log(n) / math.log(b)) + 1` }, { lang: 'js', code: String.raw`
+function digits(n, b) {
+  // Fast-looking but wrong for n = 1000, b = 10 (prints 3) and undefined for n = 0
+  return Math.floor(Math.log(n) / Math.log(b)) + 1;
+}` }, { lang: 'cpp', code: String.raw`
+int digits(long long n, int b) {
+    // Fast-looking but wrong for n = 1000, b = 10 (prints 3) and undefined for n = 0
+    return (int) (log((double) n) / log((double) b)) + 1;
+}` }] }
     },
     mcq: {
       q: 'How many loop iterations does "divide N by B until it becomes 0" take for N = 10<sup>18</sup>, B = 2?',
@@ -3063,7 +3334,7 @@ ${H.table(['row k', 'coins needed', 'total used', 'complete?'], [['1', '1', '1',
 <p>Output ${H.c('p', '<b>3</b>')}: the largest k with k(k+1)/2 ≤ n.</p>`,
     brute: {
       why: `<p>Build row after row, subtracting k coins each time. The number of rows is about √(2n) ≈ 1.4·10<sup>9</sup> for n = 10<sup>18</sup> → several seconds → TLE. Wasted work: the total after k rows is an AP sum we can compute directly, so we can <b>jump</b> to the right k.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 long bruteRows(long n) {
     long k = 0;
     while (n >= k + 1) {   // enough coins for the next row?
@@ -3071,7 +3342,29 @@ long bruteRows(long n) {
         n -= k;            // build row k
     }
     return k;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def arrange_coins(n):
+    k = 0
+    while n >= k + 1:   # enough coins for the next row?
+        k += 1
+        n -= k          # build row k
+    return k` }, { lang: 'js', code: String.raw`
+function arrangeCoins(n) {
+  let k = 0;
+  while (n >= k + 1) {   // enough coins for the next row?
+    k++;
+    n -= k;              // build row k
+  }
+  return k;
+}` }, { lang: 'cpp', code: String.raw`
+long long arrangeCoins(long long n) {
+    long long k = 0;
+    while (n >= k + 1) {   // enough coins for the next row?
+        k++;
+        n -= k;            // build row k
+    }
+    return k;
+}` }] }
     },
     mcq: {
       q: 'The coins used by k complete rows are 1 + 2 + … + k. The answer is therefore…',
@@ -3167,12 +3460,27 @@ console.log(String(arrangeCoins(8)));   // 3`, run: true },
 <p>x = 999,999,999,999,999,999 → ${H.c('p', '<b>999,999,999</b>')}. ${H.c('r', 'Truncating the floating sqrt (Java (long) Math.sqrt(x), Python int(math.sqrt(x))) gives 1,000,000,000')} because x rounds up to 10<sup>18</sup> when converted to a double.</p>`,
     brute: {
       why: `<p>Try r = 0, 1, 2, … while (r+1)·(r+1) ≤ x. That is √x steps = 10<sup>9</sup> for x = 10<sup>18</sup> → several seconds → TLE. Wasted work: the condition r·r ≤ x is monotone, so most candidates can be skipped by halving.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 long sqrtBrute(long x) {
     long r = 0;
     while ((r + 1) * (r + 1) <= x) r++;   // ~sqrt(x) iterations
     return r;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def isqrt(x):
+    r = 0
+    while (r + 1) * (r + 1) <= x:   # ~sqrt(x) iterations
+        r += 1
+    return r` }, { lang: 'js', code: String.raw`
+function isqrt(x) {
+  let r = 0;
+  while ((r + 1) * (r + 1) <= x) r++;   // ~sqrt(x) iterations
+  return r;
+}` }, { lang: 'cpp', code: String.raw`
+long long isqrt(long long x) {
+    long long r = 0;
+    while ((r + 1) * (r + 1) <= x) r++;   // ~sqrt(x) iterations
+    return r;
+}` }] }
     },
     mcq: {
       q: 'Inside the binary search, why compare <code>mid &lt;= x / mid</code> instead of <code>mid * mid &lt;= x</code>?',
@@ -3278,12 +3586,28 @@ console.log(Math.floor(Math.sqrt(999999999999999999))); // 1000000000 (wrong)`, 
 ${H.table(['bit of 13 (right→left)', 'base (mod 1000)', 'result'], [['1', '3', H.c('g', '3')], ['0', '9', '3 (skip)'], ['1', '81', H.c('g', '243')], ['1', '6561 → 561', H.c('g', '243·561 mod 1000 = 323')]])}`,
     brute: {
       why: `<p>Multiply the result by a, b times: O(b) = 10<sup>18</sup> multiplications ≈ 300 years. Wasted work: a<sup>2k</sup> = (a<sup>k</sup>)<sup>2</sup>, so half the multiplications can be replaced by one squaring — and that halving repeats.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 long powBrute(long a, long b, long m) {
     long r = 1 % m;
     for (long i = 0; i < b; i++) r = r * (a % m) % m;   // b iterations
     return r;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def mod_pow(a, b, m):
+    r = 1 % m
+    for _ in range(b):          # b iterations
+        r = r * (a % m) % m
+    return r` }, { lang: 'js', code: String.raw`
+function modPow(a, b, m) {
+  a = BigInt(a); m = BigInt(m);       // products reach 10^18: past 2^53, so BigInt
+  let r = 1n % m;
+  for (let i = 0n; i < BigInt(b); i++) r = r * (a % m) % m;   // b iterations
+  return r;
+}` }, { lang: 'cpp', code: String.raw`
+long long modPow(long long a, long long b, long long m) {
+    long long r = 1 % m;
+    for (long long i = 0; i < b; i++) r = r * (a % m) % m;   // b iterations
+    return r;
+}` }] }
     },
     mcq: {
       q: 'How many loop iterations does binary exponentiation need for b = 10<sup>18</sup>?',
@@ -3385,7 +3709,7 @@ for (long i = 0; i &lt; n; i++)
     example: `<p>n = 5 → ${H.c('p', '<b>10</b>')}: the loop visits each set of 3 different indices exactly once: {0,1,2}, {0,1,3}, {0,1,4}, {0,2,3}, {0,2,4}, {0,3,4}, {1,2,3}, {1,2,4}, {1,3,4}, {2,3,4}. That is C(5, 3) = 5·4·3/6 = 10.</p>`,
     brute: {
       why: `<p>Running the triple loop is O(n<sup>3</sup>/6) = 4.5·10<sup>18</sup> increments for n = 3·10<sup>6</sup> — centuries. Even the formula is a trap: n(n−1)(n−2) ≈ 2.7·10<sup>19</sup> <b>overflows</b> a 64-bit integer (max ≈ 9.22·10<sup>18</sup>) before you divide by 6, giving garbage.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 long brute(long n) {
     long count = 0;
     for (long i = 0; i < n; i++)
@@ -3393,7 +3717,30 @@ long brute(long n) {
             for (long k = j + 1; k < n; k++)
                 count++;
     return count;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def triple_loop_count(n):
+    count = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            for k in range(j + 1, n):
+                count += 1
+    return count` }, { lang: 'js', code: String.raw`
+function tripleLoopCount(n) {
+  let count = 0;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++)
+      for (let k = j + 1; k < n; k++)
+        count++;
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+long long tripleLoopCount(long long n) {
+    long long count = 0;
+    for (long long i = 0; i < n; i++)
+        for (long long j = i + 1; j < n; j++)
+            for (long long k = j + 1; k < n; k++)
+                count++;
+    return count;
+}` }] }
     },
     mcq: {
       q: 'Why is <code>n * (n - 1) * (n - 2) / 6</code> wrong for n = 3·10<sup>6</sup> with 64-bit integers (Java <code>long</code>, C++ <code>long long</code>)?',
@@ -3480,7 +3827,7 @@ ${H.table(['bulb', 'toggled in rounds (its divisors)', 'toggles', 'final'], [['1
 <p>Bulbs 1, 4, 9 stay on → ${H.c('p', '<b>3</b>')}.</p>`,
     brute: {
       why: `<p>Simulate: round i touches n/i bulbs, total n/1 + n/2 + … + n/n ≈ n ln n (harmonic loop). For n = 10<sup>18</sup> that is ~4·10<sup>19</sup> operations — and a boolean array of 10<sup>18</sup> entries cannot even be allocated. Wasted work: we only care about the <b>parity</b> of each bulb's number of divisors.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 int bruteBulbs(int n) {
     boolean[] on = new boolean[n + 1];
     for (int i = 1; i <= n; i++)
@@ -3489,7 +3836,31 @@ int bruteBulbs(int n) {
     int count = 0;
     for (int j = 1; j <= n; j++) if (on[j]) count++;
     return count;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def bulb_switch(n):
+    on = [False] * (n + 1)
+    for i in range(1, n + 1):
+        for j in range(i, n + 1, i):     # harmonic loop: n/1 + n/2 + ... + n/n
+            on[j] = not on[j]
+    return sum(1 for j in range(1, n + 1) if on[j])` }, { lang: 'js', code: String.raw`
+function bulbSwitch(n) {
+  const on = new Array(n + 1).fill(false);
+  for (let i = 1; i <= n; i++)
+    for (let j = i; j <= n; j += i)   // harmonic loop: n/1 + n/2 + ... + n/n
+      on[j] = !on[j];
+  let count = 0;
+  for (let j = 1; j <= n; j++) if (on[j]) count++;
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+long long bulbSwitch(int n) {
+    vector<bool> on(n + 1, false);
+    for (int i = 1; i <= n; i++)
+        for (int j = i; j <= n; j += i)   // harmonic loop: n/1 + n/2 + ... + n/n
+            on[j] = !on[j];
+    long long count = 0;
+    for (int j = 1; j <= n; j++) if (on[j]) count++;
+    return count;
+}` }] }
     },
     mcq: {
       q: 'A bulb ends up ON exactly when it is toggled an odd number of times. Which numbers have an odd number of divisors?',
@@ -3569,7 +3940,7 @@ console.log(String(bulbSwitch(999999999999999999n)));   // 999999999`, run: true
 <p>Going <b>backwards</b> from 19 is easier: odd → subtract 1, even → halve (while doubles remain): 19 → 18 → 9 → 8 → 4, then 3 more −1 steps to reach 1. Moves = 1 + 1 + 1 + 1 + 3 = 7.</p>`,
     brute: {
       why: `<p>BFS over (value, doubles used) states: values up to 10<sup>9</sup> × 101 double-counts = 10<sup>11</sup> states — impossible in time and memory. Wasted work: a greedy rule decides every step, and each halving shrinks the number, so only O(log target) real decisions exist.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 int bruteBfs(int target, int maxDoubles) {
     // state = value * (maxDoubles + 1) + doublesUsed ; fine only for tiny targets
     int states = (target + 1) * (maxDoubles + 1);
@@ -3590,7 +3961,64 @@ int bruteBfs(int target, int maxDoubles) {
         }
     }
     return -1;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+from collections import deque
+
+def min_moves(target, max_doubles):
+    # state = value * (max_doubles + 1) + doubles_used ; fine only for tiny targets
+    w = max_doubles + 1
+    dist = [-1] * ((target + 1) * w)
+    dist[1 * w] = 0
+    q = deque([(1, 0)])
+    while q:
+        v, d = q.popleft()
+        here = dist[v * w + d]
+        if v == target:
+            return here
+        for nv, nd in ((v + 1, d), (v * 2, d + 1)):
+            if nv > target or nd > max_doubles:
+                continue
+            if dist[nv * w + nd] == -1:
+                dist[nv * w + nd] = here + 1
+                q.append((nv, nd))
+    return -1` }, { lang: 'js', code: String.raw`
+function minMoves(target, maxDoubles) {
+  // state = value * (maxDoubles + 1) + doublesUsed ; fine only for tiny targets
+  const w = maxDoubles + 1;
+  const dist = new Array((target + 1) * w).fill(-1);
+  dist[1 * w] = 0;
+  const q = [[1, 0]];
+  for (let head = 0; head < q.length; head++) {
+    const [v, d] = q[head];
+    const here = dist[v * w + d];
+    if (v === target) return here;
+    for (const [nv, nd] of [[v + 1, d], [v * 2, d + 1]]) {
+      if (nv > target || nd > maxDoubles) continue;
+      if (dist[nv * w + nd] === -1) { dist[nv * w + nd] = here + 1; q.push([nv, nd]); }
+    }
+  }
+  return -1;
+}` }, { lang: 'cpp', code: String.raw`
+int minMoves(int target, int maxDoubles) {
+    // state = value * (maxDoubles + 1) + doublesUsed ; fine only for tiny targets
+    int w = maxDoubles + 1;
+    vector<int> dist((target + 1) * w, -1);
+    dist[1 * w] = 0;
+    queue<pair<int, int>> q;
+    q.push({1, 0});
+    while (!q.empty()) {
+        auto [v, d] = q.front();
+        q.pop();
+        int here = dist[v * w + d];
+        if (v == target) return here;
+        pair<int, int> next[2] = {{v + 1, d}, {v * 2, d + 1}};
+        for (auto [nv, nd] : next) {
+            if (nv > target || nd > maxDoubles) continue;
+            if (dist[nv * w + nd] == -1) { dist[nv * w + nd] = here + 1; q.push({nv, nd}); }
+        }
+    }
+    return -1;
+}` }] }
     },
     mcq: {
       q: 'Working backwards from the target, when should you use a "halve" move?',
@@ -3693,14 +4121,36 @@ console.log(minMoves(19, 2));   // 7`, run: true },
 ${H.table(['digit length d', 'pages', 'count', 'digits'], [['1', '1–9', '9', '9'], ['2', '10–13', '4', '8'], ['total', '', '', H.c('p', '17')]])}`,
     brute: {
       why: `<p>For each page count its digits: O(N · log N) ≈ 10<sup>17</sup> × 17 steps — impossible. Wasted work: all 900 three-digit pages contribute 3 each; groups by digit length are a GP (9, 90, 900, …) and there are only 17 of them.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 long bruteDigits(long n) {
     long total = 0;
     for (long p = 1; p <= n; p++) {
         for (long x = p; x > 0; x /= 10) total++;   // digits of page p
     }
     return total;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def total_digits(n):
+    total = 0
+    for p in range(1, n + 1):
+        x = p
+        while x > 0:            # digits of page p
+            total += 1
+            x //= 10
+    return total` }, { lang: 'js', code: String.raw`
+function totalDigits(n) {
+  let total = 0;
+  for (let p = 1; p <= n; p++) {
+    for (let x = p; x > 0; x = Math.floor(x / 10)) total++;   // digits of page p
+  }
+  return total;
+}` }, { lang: 'cpp', code: String.raw`
+long long totalDigits(long long n) {
+    long long total = 0;
+    for (long long p = 1; p <= n; p++) {
+        for (long long x = p; x > 0; x /= 10) total++;   // digits of page p
+    }
+    return total;
+}` }] }
     },
     mcq: {
       q: 'How many pages have exactly d digits (when N is large enough)?',
@@ -3794,14 +4244,36 @@ console.log(String(totalDigits(13)), String(totalDigits(100)));   // 17 192`, ru
     example: `<p>n = 3 → ${H.c('p', '<b>3</b>')}. n = 11 → the string is 1 2 3 4 5 6 7 8 9 ${H.c('b', '1 0')} ${H.c('y', '1 1')} …, digit 11 is the "0" of 10 → ${H.c('p', '<b>0</b>')}.</p>`,
     brute: {
       why: `<p>Build the string (or walk number by number, subtracting digit counts) until you reach n: for n = 10<sup>15</sup> that is ~7·10<sup>13</sup> numbers → hours, and the string would need petabytes. Wasted work: whole blocks (all 2-digit numbers = 180 digits, all 3-digit = 2700 digits …) can be skipped at once.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 int bruteNthDigit(long n) {
     for (long num = 1; ; num++) {
         String s = Long.toString(num);
         if (n <= s.length()) return s.charAt((int) (n - 1)) - '0';
         n -= s.length();          // skip this whole number
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def find_nth_digit(n):
+    num = 1
+    while True:
+        s = str(num)
+        if n <= len(s):
+            return int(s[n - 1])
+        n -= len(s)             # skip this whole number
+        num += 1` }, { lang: 'js', code: String.raw`
+function findNthDigit(n) {
+  for (let num = 1; ; num++) {
+    const s = String(num);
+    if (n <= s.length) return s.charCodeAt(n - 1) - 48;
+    n -= s.length;              // skip this whole number
+  }
+}` }, { lang: 'cpp', code: String.raw`
+int findNthDigit(long long n) {
+    for (long long num = 1; ; num++) {
+        string s = to_string(num);
+        if (n <= (long long) s.size()) return s[n - 1] - '0';
+        n -= s.size();            // skip this whole number
+    }
+}` }] }
     },
     mcq: {
       q: 'How many digits do all 3-digit numbers (100..999) contribute together?',
@@ -3907,12 +4379,27 @@ console.log(findNthDigit(11), findNthDigit(190));   // 0 1`, run: true },
 <p>Sum = ${H.c('p', '<b>27</b>')}. Notice the long runs of equal values (${H.c('y', '2, 2')}, ${H.c('b', '1, 1, 1, 1, 1')}) — that is the key.</p>`,
     brute: {
       why: `<p>Running the loops is ≈ n ln n ≈ 2.8·10<sup>13</sup> steps. Even the smarter O(n) sum of ⌊n/i⌋ is 10<sup>12</sup> divisions ≈ hours. Wasted work: ⌊n/i⌋ takes only about 2√n <b>distinct values</b> (2·10<sup>6</sup> for n = 10<sup>12</sup>), and long stretches of i share the same value.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 long bruteSum(long n) {
     long total = 0;
     for (long i = 1; i <= n; i++) total += n / i;   // O(n): 10^12 iterations for the max n
     return total;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def harmonic_count(n):
+    total = 0
+    for i in range(1, n + 1):
+        total += n // i         # O(n): 10^12 iterations for the max n
+    return total` }, { lang: 'js', code: String.raw`
+function harmonicCount(n) {
+  let total = 0;
+  for (let i = 1; i <= n; i++) total += Math.floor(n / i);   // O(n): 10^12 iterations for the max n
+  return total;
+}` }, { lang: 'cpp', code: String.raw`
+long long harmonicCount(long long n) {
+    long long total = 0;
+    for (long long i = 1; i <= n; i++) total += n / i;   // O(n): 10^12 iterations for the max n
+    return total;
+}` }] }
     },
     mcq: {
       q: 'For n = 10<sup>12</sup>, roughly how many different values does ⌊n/i⌋ take as i goes from 1 to n?',
@@ -4005,7 +4492,7 @@ console.log(harmonicCount(10));   // 27`, run: true },
 <p>r = 3, n = 4, m = 6 → 1 + 3 + 9 + 27 = 40 → 40 mod 6 = ${H.c('p', '<b>4</b>')}. The formula (3<sup>4</sup> − 1)/(3 − 1) needs "divide by 2 mod 6", which ${H.c('r', 'does not exist')} (2 has no inverse mod 6).</p>`,
     brute: {
       why: `<p>Add the n terms one by one: O(n) = 10<sup>18</sup> steps. The closed form a(r<sup>n</sup> − 1)/(r − 1) needs a modular inverse of (r − 1), which exists only when gcd(r − 1, m) = 1 — false for many m (and r = 1 divides by zero). Wasted work: the second half of the series is just the first half multiplied by r<sup>n/2</sup>.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 long bruteGp(long r, long n, long m) {
     long sum = 0, term = 1 % m;
     for (long i = 0; i < n; i++) {
@@ -4013,7 +4500,30 @@ long bruteGp(long r, long n, long m) {
         term = term * (r % m) % m;
     }
     return sum;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def gp_sum(r, n, m):
+    total, term = 0, 1 % m
+    for _ in range(n):
+        total = (total + term) % m
+        term = term * (r % m) % m
+    return total` }, { lang: 'js', code: String.raw`
+function gpSum(r, n, m) {
+  r = BigInt(r); m = BigInt(m);       // products reach 10^18: past 2^53, so BigInt
+  let sum = 0n, term = 1n % m;
+  for (let i = 0; i < n; i++) {       // n iterations
+    sum = (sum + term) % m;
+    term = term * (r % m) % m;
+  }
+  return sum;
+}` }, { lang: 'cpp', code: String.raw`
+long long gpSum(long long r, long long n, long long m) {
+    long long sum = 0, term = 1 % m;
+    for (long long i = 0; i < n; i++) {
+        sum = (sum + term) % m;
+        term = term * (r % m) % m;
+    }
+    return sum;
+}` }] }
     },
     mcq: {
       q: 'S(2k) = 1 + r + … + r<sup>2k−1</sup>. Which identity lets us halve the problem?',
@@ -4138,7 +4648,7 @@ public:
 ${H.table(['x', '20–24', '25–29'], [['z(x) = ⌊x/5⌋ + ⌊x/25⌋', '4', H.c('r', '6')]])}`,
     brute: {
       why: `<p>Walk x = 0, 1, 2, … computing z(x) until it exceeds k. Since z(x) ≈ x/4, that is about 4k ≈ 4·10<sup>9</sup> values, each costing O(log₅ x) → ~5·10<sup>10</sup> operations → TLE. Wasted work: z(x) is non-decreasing, so we can binary search instead of walking.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 long z(long x) {
     long c = 0;
     for (long p = 5; p <= x; p *= 5) c += x / p;   // log_5(x) terms
@@ -4152,7 +4662,53 @@ long brute(long k) {
         if (zx == k) count++;
         else if (zx > k) return count;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def zeros(x):
+    c = 0
+    p = 5
+    while p <= x:
+        c += x // p         # log_5(x) terms
+        p *= 5
+    return c
+
+def preimage_size_fzf(k):
+    count = 0
+    x = 0
+    while True:
+        zx = zeros(x)
+        if zx == k:
+            count += 1
+        elif zx > k:
+            return count
+        x += 1` }, { lang: 'js', code: String.raw`
+function zeros(x) {
+  let c = 0;
+  for (let p = 5; p <= x; p *= 5) c += Math.floor(x / p);   // log_5(x) terms
+  return c;
+}
+
+function preimageSizeFZF(k) {
+  let count = 0;
+  for (let x = 0; ; x++) {
+    const zx = zeros(x);
+    if (zx === k) count++;
+    else if (zx > k) return count;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+long long zeros(long long x) {
+    long long c = 0;
+    for (long long p = 5; p <= x; p *= 5) c += x / p;   // log_5(x) terms
+    return c;
+}
+
+int preimageSizeFZF(long long k) {
+    int count = 0;
+    for (long long x = 0; ; x++) {
+        long long zx = zeros(x);
+        if (zx == k) count++;
+        else if (zx > k) return count;
+    }
+}` }] }
     },
     mcq: {
       q: 'Why is the answer always either 0 or 5?',
@@ -4288,7 +4844,7 @@ int preimageSizeFZF(long long k) {
 <p>n = 10<sup>18</sup> → ${H.c('p', '<b>999999999999999999</b>')}: no base works with 3+ ones, but every n is "11" in base n − 1.</p>`,
     brute: {
       why: `<p>Try every base k = 2, 3, … , n − 1 and convert n to base k: up to 10<sup>18</sup> bases → impossible. Wasted work: the number of ones (m + 1) can only be from 2 to ~60 (because k ≥ 2 means 2<sup>m</sup> ≤ n), and for each fixed m there is at most <b>one</b> candidate k ≈ n<sup>1/m</sup>.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 long bruteGoodBase(long n) {
     for (long k = 2; k < n; k++) {          // up to 10^18 candidate bases
         long x = n;
@@ -4300,7 +4856,45 @@ long bruteGoodBase(long n) {
         if (allOnes) return k;
     }
     return n - 1;
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def smallest_good_base(s):
+    n = int(s)
+    for k in range(2, n):                   # up to 10^18 candidate bases
+        x = n
+        all_ones = True
+        while x > 0:
+            if x % k != 1:
+                all_ones = False
+                break
+            x //= k
+        if all_ones:
+            return str(k)
+    return str(n - 1)` }, { lang: 'js', code: String.raw`
+function smallestGoodBase(s) {
+  const n = BigInt(s);
+  for (let k = 2n; k < n; k++) {            // up to 10^18 candidate bases
+    let x = n, allOnes = true;
+    while (x > 0n) {
+      if (x % k !== 1n) { allOnes = false; break; }
+      x /= k;
+    }
+    if (allOnes) return k.toString();
+  }
+  return (n - 1n).toString();
+}` }, { lang: 'cpp', code: String.raw`
+string smallestGoodBase(string s) {
+    long long n = stoll(s);
+    for (long long k = 2; k < n; k++) {     // up to 10^18 candidate bases
+        long long x = n;
+        bool allOnes = true;
+        while (x > 0) {
+            if (x % k != 1) { allOnes = false; break; }
+            x /= k;
+        }
+        if (allOnes) return to_string(k);
+    }
+    return to_string(n - 1);
+}` }] }
     },
     mcq: {
       q: 'If n = 1 + k + … + k<sup>m</sup> with k ≥ 2, what is the largest m worth trying for n ≤ 10<sup>18</sup>?',
@@ -4426,9 +5020,9 @@ public:
     { q: 'What is the extra (auxiliary) space of recursive binary search on an array of N elements?', options: ['O(1)', 'O(log N)', 'O(N)', 'O(N log N)'], answer: 1, explain: 'Each call halves the range, so the recursion is log₂ N deep, and each frame stays on the call stack until the deepest call returns. The iterative version is O(1).' },
     { q: 'N ≤ 2·10<sup>5</sup>, time limit 1 second. Which complexity is the intended one?', options: ['O(N<sup>2</sup>)', 'O(N log N)', 'O(2<sup>N</sup>)', 'O(N<sup>3</sup>)'], answer: 1, explain: 'N<sup>2</sup> = 4·10<sup>10</sup> → ~400× over the 10<sup>8</sup> budget. N log N ≈ 3.5·10<sup>6</sup> fits comfortably.' },
     { q: 'N ≤ 20. Which approach is most likely intended?', options: ['O(N log N) greedy only', 'Trying all 2<sup>N</sup> subsets (≈ 10<sup>6</sup>)', 'Nothing — N is too small to matter', 'A segment tree'], answer: 1, explain: 'A tiny limit like 20 is a loud clue that exponential work is allowed: 2<sup>20</sup> ≈ 10<sup>6</sup>, 2<sup>20</sup>·20 ≈ 2·10<sup>7</sup>.' },
-    { q: 'Why can <code>(int) Math.log10(n) + 1</code> give the wrong digit count for n = 999,999,999,999,999,999?', options: ['log10 is not defined for long', 'Converting n to double rounds it up to 10<sup>18</sup>, so log10 returns exactly 18', 'Java truncates log10 to 15 digits', 'It is correct'], answer: 1, explain: 'A double has 53 bits of precision (~16 decimal digits). 10<sup>18</sup> − 1 is not representable and rounds to 10<sup>18</sup>, so the code prints 19. Count digits with integer division instead.' },
+    { q: 'Why can <code>(int) Math.log10(n) + 1</code> (Java; the same idea in Python, JavaScript and C++ with their own <code>log10</code>) give the wrong digit count for n = 999,999,999,999,999,999?', options: ['log10 is not defined for long', 'Converting n to double rounds it up to 10<sup>18</sup>, so log10 returns exactly 18', 'The language truncates log10 to 15 digits', 'It is correct'], answer: 1, explain: 'A double has 53 bits of precision (~16 decimal digits). 10<sup>18</sup> − 1 is not representable and rounds to 10<sup>18</sup>, so the code prints 19. Count digits with integer division instead.' },
     { q: 'How many times does the body run? <code>for (i = 1; i &lt;= n; i++) for (j = i; j &lt;= n; j += i)</code>', options: ['Θ(n<sup>2</sup>)', 'Θ(n log n)', 'Θ(n)', 'Θ(n √n)'], answer: 1, explain: 'For each i the inner loop runs ⌊n/i⌋ times: n(1 + 1/2 + … + 1/n) ≈ n ln n — the harmonic series.' },
-    { q: 'An algorithm needs a <code>long[10000][10000]</code> table. With a 256 MB memory limit…', options: ['Fine: 10<sup>8</sup> bytes', 'MLE: 10<sup>8</sup> longs × 8 bytes = 800 MB', 'Fine: Java compresses arrays', 'MLE only on 32-bit JVMs'], answer: 1, explain: '10<sup>4</sup> × 10<sup>4</sup> = 10<sup>8</sup> cells × 8 bytes = 800 MB. Look for a rolling-array or 1D reformulation.' },
+    { q: 'An algorithm needs a 10000 × 10000 table of 64-bit integers (Java <code>long[10000][10000]</code>, C++ <code>long long</code>). With a 256 MB memory limit…', options: ['Fine: 10<sup>8</sup> bytes', 'MLE: 10<sup>8</sup> longs × 8 bytes = 800 MB', 'Fine: the runtime compresses arrays', 'MLE only on 32-bit runtimes'], answer: 1, explain: '10<sup>4</sup> × 10<sup>4</sup> = 10<sup>8</sup> cells × 8 bytes = 800 MB. Look for a rolling-array or 1D reformulation.' },
     { q: 'Building a max-heap bottom-up does n/4·1 + n/8·2 + n/16·3 + … sift steps. Its complexity is…', options: ['O(n log n)', 'O(n)', 'O(log n)', 'O(n<sup>2</sup>)'], answer: 1, explain: 'The series Σ k/2<sup>k+1</sup> converges to a constant, so the total is O(n). Most nodes are near the bottom and sift only a short distance — a GP-style dominance argument.' }
   );
 
@@ -4468,7 +5062,7 @@ public:
     },
     {
       q: 'What is the difference between worst-case, average-case, amortised and expected complexity?', level: 'I',
-      a: `<p><b>Worst case:</b> the maximum cost over all inputs of size n. <b>Average case:</b> the mean cost over a distribution of inputs (e.g. random arrays). <b>Expected:</b> the mean over the algorithm's own random choices, for the worst input (randomised quicksort: expected O(n log n) on every input). <b>Amortised:</b> a guarantee on the total cost of a sequence of operations divided by their count — ArrayList.add is O(1) amortised because the occasional O(n) resize is paid for by the many cheap adds (copies total 1 + 2 + 4 + … &lt; 2n).</p>`,
+      a: `<p><b>Worst case:</b> the maximum cost over all inputs of size n. <b>Average case:</b> the mean cost over a distribution of inputs (e.g. random arrays). <b>Expected:</b> the mean over the algorithm's own random choices, for the worst input (randomised quicksort: expected O(n log n) on every input). <b>Amortised:</b> a guarantee on the total cost of a sequence of operations divided by their count — appending to a dynamic array (Java ArrayList.add, Python list.append, C++ push_back, JavaScript push) is O(1) amortised because the occasional O(n) resize is paid for by the many cheap adds (copies total 1 + 2 + 4 + … &lt; 2n).</p>`,
       followUps: ['Why is HashMap.get O(1) average but not worst case?', 'Prove that doubling gives O(1) amortised but growing by +10 does not.']
     },
     {
@@ -4477,7 +5071,7 @@ public:
       followUps: ['Where else does a geometric series make an algorithm linear?', 'What is the height of a heap with n nodes?']
     },
     {
-      q: 'Your recursive solution throws StackOverflowError on large input. What do you do?', level: 'I',
+      q: 'Your recursive solution hits a stack overflow on large input (StackOverflowError in Java, RecursionError in Python, RangeError in JavaScript, a crash in C++). What do you do?', level: 'I',
       a: `<p>First compute the recursion <b>depth</b>: O(n) depth (linked list, path-shaped graph, skewed tree) exceeds the default stack (~10<sup>4</sup>–10<sup>5</sup> frames in Java and JS, only 1000 in Python, ~8 MB in C++). Options: (1) rewrite iteratively, or with an explicit <code>ArrayDeque</code> stack on the heap; (2) change the algorithm to bound depth (e.g. quicksort recursing on the smaller part → O(log n)); (3) as a pragmatic fix in contests, run the code in a <code>Thread</code> created with a large stack size; (4) increase <code>-Xss</code> in production only if you control the JVM. Java has no tail-call optimisation, so tail recursion does not help.</p>`,
       followUps: ['How do you keep the same visit order when converting DFS to an explicit stack?', 'Why does quicksort recursing on the smaller side guarantee O(log n) depth?']
     },
@@ -4493,7 +5087,7 @@ public:
     },
     {
       q: 'When can an algorithm with a better Big-O be slower in practice?', level: 'E',
-      a: `<p>Big-O hides constants and memory behaviour. For realistic sizes, an O(n log n) sort over a contiguous <code>int[]</code> can beat an "O(n)" approach that uses a <code>HashMap&lt;Integer,Integer&gt;</code> because of boxing, hashing, allocation and cache misses (~100 cycles each). Insertion sort beats merge sort for n ≲ 32, which is why TimSort and introsort switch to it for small runs. Big-O also ignores I/O: a "fast" algorithm that does one database round trip per item is dominated by network latency. Measure at realistic sizes with a proper harness (JMH) before deciding.</p>`,
+      a: `<p>Big-O hides constants and memory behaviour. For realistic sizes, an O(n log n) sort over a contiguous <code>int[]</code> can beat an "O(n)" approach that uses a hash map of boxed integers (<code>HashMap&lt;Integer,Integer&gt;</code> / <code>dict</code>) because of boxing, hashing, allocation and cache misses (~100 cycles each). Insertion sort beats merge sort for n ≲ 32, which is why TimSort and introsort switch to it for small runs. Big-O also ignores I/O: a "fast" algorithm that does one database round trip per item is dominated by network latency. Measure at realistic sizes with a proper harness (JMH in Java, <code>timeit</code> in Python, <code>performance.now</code> in JavaScript, Google Benchmark in C++) before deciding.</p>`,
       followUps: ['How would you design a benchmark to compare two implementations fairly?', 'Why do linked lists lose to arrays even for O(1) inserts?']
     },
     {

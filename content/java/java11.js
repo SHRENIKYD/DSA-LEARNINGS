@@ -278,6 +278,19 @@ class RacyMax {
         `<p>Hint 2: chunk size = ceil(n / k) = ${C('(n + k - 1) / k')}. Thread t handles ${C('[t*chunk, min(n, t*chunk+chunk))')}. Lambdas need effectively-final copies of ${C('t')}, ${C('lo')}, ${C('hi')}.</p>`,
         `<p>Hint 3: recipe — clamp k to [1, n]; create &amp; start all threads first (do not join inside the creation loop, that would serialize them!); then join each and fold ${C('Math.max')}. Empty chunks leave MIN_VALUE, which never wins.</p>`
       ],
+      tests: { sig: 'int[] int -> int', fn: 'parallelMax', cases: [
+          [[[3, 9, -2, 7, 11, 4, 8], 3], 11],
+          [[[-5], 8], -5],
+          [[[-3, -9, -1, -7], 2], -1],
+          [[[4, 2, 6], 1], 6],
+          [[[1, 2, 3, 4, 5], 5], 5],
+          [[[5, 4, 3, 2, 1], 64], 5],
+          [[[7, 7, 7, 7], 3], 7],
+          [[[-2147483648, -2147483648], 2], -2147483648],
+          [[[1, 2, 3, 4, 5], 4], 5],
+          [[{ $range: [0, 10000000] }, 64], 9999999],
+          [[{ $range: [10000000, 0, -1] }, 7], 10000000]
+        ] },
       solution: {
         approach: `<p><b>Partition, compute locally, publish via join.</b> Each worker loops over its own chunk with a local variable (fast, in a register), writes one result into its private slot, and exits. Main joins each worker; join's happens-before guarantee makes the slot visible. No shared mutable state is written by two threads, so there is nothing to lock.</p>`,
         code: `
@@ -527,6 +540,26 @@ class UnsafeTicketCounter {
         `<p>Hint 2: one lock (the object itself via ${C('synchronized')} methods) guards both fields. Check and act go in the same synchronized method.</p>`,
         `<p>Hint 3: recipe — synchronized tryBook: reject n ≤ 0 or n &gt; available; else available -= n; sold += n; return true. Synchronized getters too (visibility + a consistent view).</p>`
       ],
+      tests: { sig: 'int int int int -> int[]', fn: 'chk', harness: { java: `
+class Check {
+  static int[] chk(int seats, int threads, int attempts, int n) throws Exception {
+    TicketCounter c = new TicketCounter(seats);
+    Thread[] ts = new Thread[threads];
+    for (int i = 0; i < threads; i++) { ts[i] = new Thread(() -> { for (int k = 0; k < attempts; k++) c.tryBook(n); }); ts[i].start(); }
+    for (Thread t : ts) t.join();
+    return new int[]{ c.sold(), c.available() };
+  }
+}` }, cases: [
+          [[100, 8, 50, 1], [100, 0]],
+          [[100, 8, 50, 3], [99, 1]],
+          [[10, 4, 1, 1], [4, 6]],
+          [[5, 2, 10, 0], [0, 5]],
+          [[5, 2, 10, -1], [0, 5]],
+          [[10, 4, 5, 11], [0, 10]],
+          [[10, 4, 5, 10], [10, 0]],
+          [[1, 1, 1, 1], [1, 0]],
+          [[1000000000, 64, 15000, 1000], [960000000, 40000000]]
+        ] },
       solution: {
         approach: `<p><b>Make the invariant's guard explicit.</b> Both fields are "guarded by this". The check and the act happen inside one synchronized method, so from every other thread's point of view a booking is a single indivisible event. Getters are synchronized so they see the latest values (the unlock-lock happens-before rule).</p>`,
         code: `
@@ -818,6 +851,40 @@ class BrokenStats {
         `<p>Hint 2: use a ${C('private final Object lock')}; ${C('add')} updates all four fields inside ${C('synchronized (lock)')}; ${C('snapshot')} copies all four inside the same lock.</p>`,
         `<p>Hint 3: compute derived values (mean) from the <b>copied snapshot</b>, outside the lock, to keep the critical section tiny. Use long for sum (int would overflow at 10<sup>7</sup> adds of 10<sup>9</sup>).</p>`
       ],
+      tests: { sig: 'string int int -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static String[] chk(String kind, int writers, int n) throws Exception {
+    RunningStats st = new RunningStats();
+    AtomicBoolean done = new AtomicBoolean(), bad = new AtomicBoolean();
+    boolean ones = kind.equals("ones");
+    Thread mon = new Thread(() -> {
+      while (!done.get()) {
+        long[] s = st.snapshot();
+        if (s[0] == 0 ? (s[1] != 0 || s[2] != Integer.MAX_VALUE || s[3] != Integer.MIN_VALUE) : s[2] > s[3]) bad.set(true);
+        if (ones && s[0] != s[1]) bad.set(true);
+      }
+    });
+    mon.start();
+    Thread[] ts = new Thread[writers];
+    for (int w = 0; w < writers; w++) {
+      final int id = w;
+      ts[w] = new Thread(() -> { for (int i = 1; i <= n; i++) st.add(ones ? 1 : (id % 2 == 0 ? i : -i)); });
+      ts[w].start();
+    }
+    for (Thread t : ts) t.join();
+    done.set(true); mon.join();
+    return new String[]{ bad.get() ? "torn" : "ok", Arrays.toString(st.snapshot()), String.valueOf(st.mean()) };
+  }
+}` }, cases: [
+          [['pm', 2, 1000], ['ok', '[2000, 0, -1000, 1000]', '0.0']],
+          [['ones', 8, 10000], ['ok', '[80000, 80000, 1, 1]', '1.0']],
+          [['ones', 1, 1], ['ok', '[1, 1, 1, 1]', '1.0']],
+          [['pm', 1, 5], ['ok', '[5, 15, 1, 5]', '3.0']],
+          [['ones', 0, 0], ['ok', '[0, 0, 2147483647, -2147483648]', '0.0']],
+          [['pm', 3, 3], ['ok', '[9, 6, -3, 3]', '0.6666666666666666']],
+          [['pm', 32, 10000], ['ok', '[320000, 0, -10000, 10000]', '0.0']],
+          [['ones', 16, 600000], ['ok', '[9600000, 9600000, 1, 1]', '1.0']]
+        ] },
       solution: {
         approach: `<p><b>One guard per invariant.</b> All mutable fields are guarded by one private lock. Writers update them together; readers copy them together. Because both sides use the same monitor, the snapshot is atomic (no half-applied add) and visible (unlock → lock happens-before). Derived values are computed from the copy, so the lock is held for only a few nanoseconds.</p>`,
         code: `
@@ -1054,6 +1121,60 @@ class MutableConfigHolder {
         `<p>Hint 2: a ${C('record Config(String host, int port, int timeoutMs)')} plus ${C('private volatile Config current')}. Reads = one volatile read, no lock.</p>`,
         `<p>Hint 3: ${C('bumpTimeout')} reads the current config and writes a new one — a read-modify-write — so writers must be mutually exclusive: make the writer methods ${C('synchronized')} (or use ${C('AtomicReference.updateAndGet')}).</p>`
       ],
+      tests: { sig: 'string[] -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static String[] chk(String[] ops) throws Exception {
+    ConfigHolder h = new ConfigHolder();
+    List<String> out = new ArrayList<>();
+    for (String op : ops) {
+      String[] p = op.split(":");
+      switch (p[0]) {
+        case "get": out.add(h.get().toString()); break;
+        case "reload": h.reload(p[1], Integer.parseInt(p[2]), Integer.parseInt(p[3])); break;
+        case "bump": h.bumpTimeout(Integer.parseInt(p[1])); break;
+        case "par": {
+          int T = Integer.parseInt(p[1]), N = Integer.parseInt(p[2]);
+          Thread[] ts = new Thread[T];
+          for (int i = 0; i < T; i++) { ts[i] = new Thread(() -> { for (int k = 0; k < N; k++) h.bumpTimeout(1); }); ts[i].start(); }
+          for (Thread t : ts) t.join();
+          break;
+        }
+        case "tear": {
+          int N = Integer.parseInt(p[1]);
+          AtomicBoolean done = new AtomicBoolean(), torn = new AtomicBoolean();
+          Thread[] readers = new Thread[4];
+          for (int i = 0; i < readers.length; i++) {
+            readers[i] = new Thread(() -> {
+              while (!done.get()) {
+                ConfigHolder.Config c = h.get();
+                boolean a = c.host().equals("a") && c.port() == 1 && c.timeoutMs() == 10;
+                boolean b = c.host().equals("b") && c.port() == 2 && c.timeoutMs() == 20;
+                boolean init = c.host().equals("localhost") && c.port() == 8080 && c.timeoutMs() == 1000;
+                if (!a && !b && !init) torn.set(true);
+              }
+            });
+            readers[i].start();
+          }
+          for (int k = 0; k < N; k++) { if (k % 2 == 0) h.reload("a", 1, 10); else h.reload("b", 2, 20); }
+          done.set(true);
+          for (Thread t : readers) t.join();
+          out.add(torn.get() ? "torn" : "ok");
+          break;
+        }
+      }
+    }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+          [[['get']], ['Config[host=localhost, port=8080, timeoutMs=1000]']],
+          [[['reload:db.internal:5432:2000', 'get', 'bump:500', 'get']], ['Config[host=db.internal, port=5432, timeoutMs=2000]', 'Config[host=db.internal, port=5432, timeoutMs=2500]']],
+          [[['bump:0', 'bump:-1000', 'get']], ['Config[host=localhost, port=8080, timeoutMs=0]']],
+          [[['par:4:1', 'get']], ['Config[host=localhost, port=8080, timeoutMs=1004]']],
+          [[['par:8:50000', 'get']], ['Config[host=localhost, port=8080, timeoutMs=401000]']],
+          [[['reload:x:1:1', 'par:16:10000', 'reload:y:2:2', 'bump:5', 'get']], ['Config[host=y, port=2, timeoutMs=7]']],
+          [[['tear:200000']], ['ok']],
+          [[['reload:h:0:0', 'get', 'reload:h2:65535:2147483647', 'get']], ['Config[host=h, port=0, timeoutMs=0]', 'Config[host=h2, port=65535, timeoutMs=2147483647]']]
+        ] },
       solution: {
         approach: `<p><b>Copy-on-write with a volatile reference.</b> The config is an immutable record. Writers build a complete new record and publish it with a single volatile write; readers do a single volatile read and then use that snapshot. Immutability gives consistency, volatile gives visibility and safe publication. Writers are synchronized among themselves because "read current, write modified" is a read-modify-write. This is the same idea as ${C('CopyOnWriteArrayList')} and many config libraries.</p>`,
         code: `
@@ -1350,6 +1471,35 @@ final class BrokenRegistry {
         `<p>Hint 2: make the field ${C('volatile')}. Read it into a local variable so the fast path does only <b>one</b> volatile read.</p>`,
         `<p>Hint 3: simpler lazy alternative: a private static nested ${C('Holder')} class with ${C('static final Registry INSTANCE = new Registry();')} — the JVM initializes it on first access, under its own class-init lock, with HB guarantees. (An ${C('enum')} singleton also works.)</p>`
       ],
+      tests: { sig: 'int string -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static String[] chk(int threads, String key) throws Exception {
+    Registry first = Registry.getInstance();
+    Registry[] seen = new Registry[threads];
+    String[] vals = new String[threads];
+    Thread[] ts = new Thread[threads];
+    for (int i = 0; i < threads; i++) {
+      final int id = i;
+      ts[i] = new Thread(() -> { Registry r = Registry.getInstance(); seen[id] = r; vals[id] = r.get(key); });
+      ts[i].start();
+    }
+    boolean same = true, valuesEqual = true;
+    for (int i = 0; i < threads; i++) {
+      ts[i].join();
+      if (seen[i] != first) same = false;
+      if (!String.valueOf(vals[i]).equals(String.valueOf(first.get(key)))) valuesEqual = false;
+    }
+    return new String[]{ String.valueOf(same), String.valueOf(valuesEqual), String.valueOf(first.get(key)) };
+  }
+}` }, cases: [
+          [[2, 'region'], ['true', 'true', 'ap-south-1']],
+          [[1, 'tier'], ['true', 'true', 'gold']],
+          [[1, 'missing'], ['true', 'true', 'null']],
+          [[0, 'region'], ['true', 'true', 'ap-south-1']],
+          [[64, 'region'], ['true', 'true', 'ap-south-1']],
+          [[1000, 'tier'], ['true', 'true', 'gold']],
+          [[5000, 'region'], ['true', 'true', 'ap-south-1']]
+        ] },
       solution: {
         approach: `<p><b>Volatile + local variable.</b> The first check reads the volatile once into ${C('local')}; if non-null, we are done with a single volatile load (cheap). Otherwise, take the class lock, re-check (another thread may have created it while we waited), construct, and publish with one volatile write. The constructor's writes happen-before the volatile write, which happens-before any read that sees it. For most code, prefer the <b>holder idiom</b> shown in the alternative: lazy, lock-free on the fast path, and impossible to get wrong.</p>`,
         code: `
@@ -1671,6 +1821,55 @@ class SpinLatch {
         `<p>Hint 2: ${C('await')}: ${C('while (count > 0) wait();')}. ${C('countDown')}: if count &gt; 0, decrement; if it just became 0, ${C('notifyAll()')}.</p>`,
         `<p>Hint 3: ${C('notifyAll')}, not ${C('notify')}: <b>every</b> waiter must be released, not one. A ${C('notify')} when count is still positive is wasted work — only notify on the 1 → 0 transition. Let InterruptedException propagate from await.</p>`
       ],
+      tests: { sig: 'int string[] -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static String[] chk(int count, String[] ops) throws Exception {
+    SimpleLatch latch;
+    try { latch = new SimpleLatch(count); } catch (IllegalArgumentException e) { return new String[]{ "IAE" }; }
+    List<String> out = new ArrayList<>();
+    List<Thread> waiters = new ArrayList<>();
+    AtomicInteger finished = new AtomicInteger(), interrupted = new AtomicInteger();
+    for (String op : ops) {
+      String[] p = op.split(":");
+      switch (p[0]) {
+        case "down": latch.countDown(); break;
+        case "count": out.add(String.valueOf(latch.getCount())); break;
+        case "await": latch.await(); out.add("returned"); break;
+        case "wait": {
+          int n = Integer.parseInt(p[1]);
+          for (int i = 0; i < n; i++) {
+            Thread t = new Thread(() -> {
+              try { latch.await(); finished.incrementAndGet(); } catch (InterruptedException e) { interrupted.incrementAndGet(); }
+            });
+            waiters.add(t); t.start();
+          }
+          long end = System.nanoTime() + 20_000_000_000L;
+          boolean all;
+          do {
+            all = true;
+            for (Thread t : waiters) if (t.getState() != Thread.State.WAITING) all = false;
+            if (!all) Thread.onSpinWait();
+          } while (!all && System.nanoTime() < end);
+          int w = 0; for (Thread t : waiters) if (t.getState() == Thread.State.WAITING) w++;
+          out.add("waiting:" + w);
+          break;
+        }
+        case "release": for (Thread t : waiters) t.join(); out.add("released:" + finished.get()); break;
+        case "interrupt": { Thread t = waiters.get(0); t.interrupt(); t.join(); out.add("interrupted:" + (interrupted.get() == 1)); break; }
+      }
+    }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+          [[3, ['wait:2', 'count', 'down', 'down', 'count', 'down', 'release']], ['waiting:2', '3', '1', 'released:2']],
+          [[0, ['await', 'count']], ['returned', '0']],
+          [[1, ['down', 'down', 'down', 'count']], ['0']],
+          [[5, ['wait:1', 'interrupt', 'count']], ['waiting:1', 'interrupted:true', '5']],
+          [[-1, []], ['IAE']],
+          [[1, ['down', 'await', 'count']], ['returned', '0']],
+          [[2, ['wait:50', 'down', 'down', 'release']], ['waiting:50', 'released:50']],
+          [[1000000, { $concat: [{ $rep: 'down', n: 999999 }, ['count', 'down', 'count']] }], ['1', '0']]
+        ] },
       solution: {
         approach: `<p><b>Guarded block on one int.</b> All access to ${C('count')} is under the latch's monitor, so no volatile is needed. Waiters loop on the guard ${C('count > 0')} (protecting against spurious wake-ups). The thread that moves the count from 1 to 0 calls ${C('notifyAll')}, waking every waiter; each re-acquires the monitor, sees 0, and returns. Once at zero the latch stays open forever (no reset), matching ${C('java.util.concurrent.CountDownLatch')}.</p>`,
         code: `
@@ -1987,6 +2186,66 @@ class NaiveBank {
         `<p>Hint 2: compute ${C('first = from.id < to.id ? from : to')} and ${C('second')} the other; lock first, then second. Do the overdraft check inside both locks.</p>`,
         `<p>Hint 3: edge cases — ${C('from == to')} (would lock the same monitor twice; reentrant, but the transfer is meaningless → return false); ${C('amount <= 0')} → false; readers of balance must also synchronize on the account.</p>`
       ],
+      tests: { sig: 'long[] string[] -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static String[] chk(long[] init, String[] ops) throws Exception {
+    Bank.Account[] acc = new Bank.Account[init.length];
+    for (int i = 0; i < init.length; i++) acc[i] = new Bank.Account(i + 1, init[i]);
+    List<String> out = new ArrayList<>();
+    for (String op : ops) {
+      String[] p = op.split(":");
+      switch (p[0]) {
+        case "t": out.add(String.valueOf(Bank.transfer(acc[Integer.parseInt(p[1])], acc[Integer.parseInt(p[2])], Long.parseLong(p[3])))); break;
+        case "bal": out.add(String.valueOf(acc[Integer.parseInt(p[1])].balance())); break;
+        case "total": { long s = 0; for (Bank.Account a : acc) s += a.balance(); out.add(String.valueOf(s)); break; }
+        case "nonneg": { boolean ok = true; for (Bank.Account a : acc) if (a.balance() < 0) ok = false; out.add(String.valueOf(ok)); break; }
+        case "par": {
+          int T = Integer.parseInt(p[1]), N = Integer.parseInt(p[2]), a = Integer.parseInt(p[3]), b = Integer.parseInt(p[4]);
+          Thread[] ts = new Thread[T];
+          for (int i = 0; i < T; i++) {
+            final boolean fwd = i % 2 == 0;
+            ts[i] = new Thread(() -> { for (int k = 0; k < N; k++) { if (fwd) Bank.transfer(acc[a], acc[b], 1); else Bank.transfer(acc[b], acc[a], 1); } });
+            ts[i].start();
+          }
+          for (Thread t : ts) t.join();
+          break;
+        }
+        case "ring": {
+          int N = Integer.parseInt(p[1]), K = acc.length;
+          Thread[] ts = new Thread[K];
+          for (int i = 0; i < K; i++) {
+            final int from = i, to = (i + 1) % K;
+            ts[i] = new Thread(() -> { for (int k = 0; k < N; k++) Bank.transfer(acc[from], acc[to], 1); });
+            ts[i].start();
+          }
+          for (Thread t : ts) t.join();
+          break;
+        }
+        case "mix": {
+          int T = Integer.parseInt(p[1]), N = Integer.parseInt(p[2]), K = acc.length;
+          Thread[] ts = new Thread[T];
+          for (int t = 0; t < T; t++) {
+            final int id = t;
+            ts[t] = new Thread(() -> { for (int i = 0; i < N; i++) Bank.transfer(acc[(i + id) % K], acc[(i * 7 + id + 1) % K], 1); });
+            ts[t].start();
+          }
+          for (Thread t : ts) t.join();
+          break;
+        }
+      }
+    }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+          [[[100, 100], ['par:2:10000:0:1', 'total', 'nonneg']], ['200', 'true']],
+          [[[1000000000, 1000000000], ['par:2:10000:0:1', 'bal:0', 'bal:1']], ['1000000000', '1000000000']],
+          [[[100, 50], ['t:0:1:30', 'bal:0', 'bal:1', 't:0:1:71', 't:1:0:80', 'bal:0', 'bal:1']], ['true', '70', '80', 'false', 'true', '150', '0']],
+          [[[100, 0], ['t:0:0:5', 't:0:1:0', 't:0:1:-5', 't:0:1:101', 'total']], ['false', 'false', 'false', 'false', '100']],
+          [[[10, 0], ['t:0:1:10', 'bal:0', 'bal:1', 't:0:1:1']], ['true', '0', '10', 'false']],
+          [[[1000000000, 1000000000, 1000000000], ['ring:20000', 'total', 'bal:0', 'bal:1', 'bal:2']], ['3000000000', '1000000000', '1000000000', '1000000000']],
+          [[{ $rep: 1000, n: 100 }, ['mix:64:20000', 'total', 'nonneg']], ['100000', 'true']],
+          [[[5, 5], ['par:8:50000:1:0', 'total', 'nonneg']], ['10', 'true']]
+        ] },
       solution: {
         approach: `<p><b>Global lock ordering by a unique, immutable key.</b> Every transfer locks the account with the smaller id first. Whatever pair of accounts and directions threads use, they all climb the same id ladder, so no cycle can form. Both locks are held during check + debit + credit, so the move is atomic and the bank total is invariant.</p>`,
         code: `
@@ -2057,6 +2316,24 @@ class Counter {
       `<p>Hint 2: ${C('synchronized')} on both methods (same lock: ${C('this')}).</p>`,
       `<p>Hint 3: the getter needs the lock too, for visibility. Alternative: ${C('AtomicInteger')} (lock-free CAS).</p>`
     ],
+    tests: { sig: 'int int -> int', fn: 'chk', harness: { java: `
+class Check {
+  static int chk(int threads, int n) throws Exception {
+    SafeCounter c = new SafeCounter();
+    Thread[] ts = new Thread[threads];
+    for (int i = 0; i < threads; i++) { ts[i] = new Thread(() -> { for (int k = 0; k < n; k++) c.increment(); }); ts[i].start(); }
+    for (Thread t : ts) t.join();
+    return c.get();
+  }
+}` }, cases: [
+        [[2, 100000], 200000],
+        [[1, 1], 1],
+        [[16, 625000], 10000000],
+        [[0, 5], 0],
+        [[8, 0], 0],
+        [[3, 33333], 99999],
+        [[4, 1], 4]
+      ] },
     solution: {
       approach: `<p>Guard the field with one lock and use it on every access. The increment becomes atomic; the getter sees the latest value via the unlock → lock happens-before edge.</p>`,
       code: `
@@ -2106,6 +2383,33 @@ class BrokenWorker implements Runnable {
       `<p>Hint 2: ${C('private volatile boolean running')}; loop on ${C('running && !Thread.currentThread().isInterrupted()')}.</p>`,
       `<p>Hint 3: if the loop body blocks (sleep/wait/take), catch ${C('InterruptedException')}, restore the flag and exit.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(String mode) throws Exception {
+    int n = mode.equals("many") ? 10 : 1;
+    Worker[] ws = new Worker[n]; Thread[] ts = new Thread[n];
+    for (int i = 0; i < n; i++) { ws[i] = new Worker(); ts[i] = new Thread(ws[i], "worker-" + i); }
+    if (mode.equals("preStop")) ws[0].stop();
+    for (Thread t : ts) t.start();
+    for (Thread t : ts) while (!t.isAlive() && t.getState() == Thread.State.NEW) Thread.onSpinWait();
+    for (int i = 0; i < n; i++) {
+      if (mode.equals("interrupt")) ts[i].interrupt();
+      else if (mode.equals("both")) { ws[i].stop(); ts[i].interrupt(); }
+      else if (mode.equals("stopTwice")) { ws[i].stop(); ws[i].stop(); }
+      else ws[i].stop();
+    }
+    boolean alive = false;
+    for (Thread t : ts) { t.join(5000); if (t.isAlive()) alive = true; }
+    return "alive=" + alive;
+  }
+}` }, cases: [
+        [['stop'], 'alive=false'],
+        [['interrupt'], 'alive=false'],
+        [['preStop'], 'alive=false'],
+        [['both'], 'alive=false'],
+        [['stopTwice'], 'alive=false'],
+        [['many'], 'alive=false']
+      ] },
     solution: {
       approach: `<p>Cooperative cancellation: a volatile flag for visibility, plus interrupt support for blocking calls. The worker checks both on each iteration and exits cleanly, leaving no half-done work.</p>`,
       code: `
@@ -2166,6 +2470,9 @@ class RunTrap {
       `<p>Hint 2: after ${C('start()')} the two prints race — order is not guaranteed.</p>`,
       `<p>Hint 3: ${C('t.join()')} before the last print forces ordering (and makes the worker's writes visible).</p>`
     ],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: 'in worker\nmain done\nTERMINATED' }
+      ] },
     solution: {
       approach: `<p>Use ${C('start()')} to get real concurrency, then ${C('join()')} to wait for completion before printing. join gives both ordering and a happens-before edge.</p>`,
       code: `
@@ -2213,6 +2520,35 @@ class UnsafePriceCache {
       `<p>Hint 2: simplest: make ${C('get')} synchronized so check + load + put is one step.</p>`,
       `<p>Hint 3: that serializes all SKUs; per-key atomicity with ${C('ConcurrentHashMap.computeIfAbsent')} lets different SKUs load in parallel (keep the loader short and non-recursive).</p>`
     ],
+    tests: { sig: 'int int int -> int[]', fn: 'chk', harness: { java: `
+class Check {
+  static int[] chk(int threads, int skus, int calls) throws Exception {
+    PriceCache pc = new PriceCache(sku -> Long.parseLong(sku.substring(4)) * 10 + 7);
+    AtomicInteger bad = new AtomicInteger();
+    Thread[] ts = new Thread[threads];
+    for (int t = 0; t < threads; t++) {
+      final int id = t;
+      ts[t] = new Thread(() -> {
+        for (int j = 0; j < calls; j++) {
+          int k = (id + j) % skus;
+          if (pc.get("sku-" + k) != k * 10L + 7) bad.incrementAndGet();
+        }
+      });
+      ts[t].start();
+    }
+    for (Thread t : ts) t.join();
+    return new int[]{ pc.loads(), bad.get() };
+  }
+}` }, cases: [
+        [[8, 1, 1], [1, 0]],
+        [[1, 5, 5], [5, 0]],
+        [[32, 10000, 1], [32, 0]],
+        [[32, 10000, 100], [131, 0]],
+        [[4, 3, 10], [3, 0]],
+        [[16, 1, 1000], [1, 0]],
+        [[0, 5, 5], [0, 0]],
+        [[32, 10000, 10000], [10000, 0]]
+      ] },
     solution: {
       approach: `<p>Version 1: one lock around check-load-put (correct, simple, but loads of different SKUs wait for each other). Version 2 (alt): ${C('computeIfAbsent')} on a ConcurrentHashMap gives per-key atomicity — the standard production answer.</p>`,
       code: `
@@ -2283,6 +2619,39 @@ class FooSpin {
       `<p>Hint 2: second: ${C('while (stage != 2) wait();')}; first sets stage = 2 then ${C('notifyAll()')}.</p>`,
       `<p>Hint 3: all methods synchronized on the same instance so stage needs no volatile.</p>`
     ],
+    tests: { sig: 'string int -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(String order, int rounds) throws Exception {
+    for (int r = 0; r < rounds; r++) {
+      Foo foo = new Foo();
+      StringBuffer sb = new StringBuffer();
+      Thread[] ts = new Thread[3];
+      for (int i = 0; i < 3; i++) {
+        char c = order.charAt(i);
+        ts[i] = new Thread(() -> {
+          try {
+            if (c == 'A') foo.first(() -> sb.append("first"));
+            else if (c == 'B') foo.second(() -> sb.append("second"));
+            else foo.third(() -> sb.append("third"));
+          } catch (InterruptedException e) { }
+        });
+      }
+      for (Thread t : ts) t.start();
+      for (Thread t : ts) t.join();
+      if (!sb.toString().equals("firstsecondthird")) return "bad:" + sb;
+    }
+    return "ok";
+  }
+}` }, cases: [
+        [['ABC', 1], 'ok'],
+        [['ACB', 1], 'ok'],
+        [['BAC', 1], 'ok'],
+        [['BCA', 1], 'ok'],
+        [['CAB', 1], 'ok'],
+        [['CBA', 1], 'ok'],
+        [['CBA', 3000], 'ok'],
+        [['BCA', 3000], 'ok']
+      ] },
     solution: {
       approach: `<p>A guarded block per stage. Each method waits until it is its turn, runs, advances the stage, and wakes everyone so the next stage's thread can re-check its guard.</p>`,
       code: `
@@ -2338,6 +2707,35 @@ class SpinOddEven {
       `<p>Hint 2: wait while ${C('next <= n')} and it is not my turn; then if ${C('next > n')}, wake partner and exit.</p>`,
       `<p>Hint 3: print, ${C('next++')}, ${C('notifyAll()')}, loop.</p>`
     ],
+    tests: { sig: 'int -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(int n) throws Exception {
+    PrintStream old = System.out;
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    System.setOut(new PrintStream(buf, true));
+    try {
+      OddEvenPrinter p = new OddEvenPrinter(n);
+      Thread odd = new Thread(() -> { try { p.run(true); } catch (InterruptedException e) { } }, "odd");
+      Thread even = new Thread(() -> { try { p.run(false); } catch (InterruptedException e) { } }, "even");
+      odd.start(); even.start(); odd.join(); even.join();
+    } finally { System.setOut(old); }
+    String[] lines = buf.toString().split("\\n");
+    if (buf.size() == 0) lines = new String[0];
+    if (n <= 10) return String.join("|", lines);
+    boolean ok = lines.length == n;
+    for (int i = 0; ok && i < lines.length; i++) ok = lines[i].trim().equals((((i + 1) % 2 == 1) ? "odd" : "even") + ": " + (i + 1));
+    return lines.length + " lines ok=" + ok;
+  }
+}` }, cases: [
+        [[5], 'odd: 1|even: 2|odd: 3|even: 4|odd: 5'],
+        [[1], 'odd: 1'],
+        [[2], 'odd: 1|even: 2'],
+        [[4], 'odd: 1|even: 2|odd: 3|even: 4'],
+        [[10], 'odd: 1|even: 2|odd: 3|even: 4|odd: 5|even: 6|odd: 7|even: 8|odd: 9|even: 10'],
+        [[0], ''],
+        [[11], '11 lines ok=true'],
+        [[100000], '100000 lines ok=true']
+      ] },
     solution: {
       approach: `<p>One monitor, one turn variable. Each thread waits for its parity, prints, advances, and notifies. The termination check is part of the guard so both threads leave cleanly for any n.</p>`,
       code: `
@@ -2404,6 +2802,46 @@ class FlakyQueue {
       `<p>Hint 2: enqueue: ${C('while (size == cap) wait();')} write at tail, tail = (tail+1) % cap, size++, notifyAll.</p>`,
       `<p>Hint 3: dequeue mirrors it with ${C('while (size == 0)')}. size() is synchronized too.</p>`
     ],
+    tests: { sig: 'int int int int -> long[]', fn: 'chk', harness: { java: `
+class Check {
+  static long[] chk(int cap, int producers, int consumers, int perP) throws Exception {
+    BoundedBlockingQueue q = new BoundedBlockingQueue(cap);
+    int total = producers * perP, perC = total / consumers;
+    AtomicLong sum = new AtomicLong(); AtomicInteger count = new AtomicInteger(), orderBad = new AtomicInteger();
+    Thread[] ts = new Thread[producers + consumers];
+    for (int p = 0; p < producers; p++) {
+      final int id = p;
+      ts[p] = new Thread(() -> { try { for (int k = 0; k < perP; k++) q.enqueue(id * perP + k); } catch (InterruptedException e) { } });
+    }
+    for (int c = 0; c < consumers; c++) {
+      ts[producers + c] = new Thread(() -> {
+        int[] last = new int[producers];
+        Arrays.fill(last, -1);
+        try {
+          for (int k = 0; k < perC; k++) {
+            int v = q.dequeue();
+            sum.addAndGet(v); count.incrementAndGet();
+            int prod = v / perP, idx = v % perP;
+            if (idx <= last[prod]) orderBad.incrementAndGet();
+            last[prod] = idx;
+          }
+        } catch (InterruptedException e) { }
+      });
+    }
+    for (Thread t : ts) t.start();
+    for (Thread t : ts) t.join();
+    return new long[]{ count.get(), sum.get(), orderBad.get(), q.size() };
+  }
+}` }, cases: [
+        [[2, 1, 1, 3], [3, 3, 0, 0]],
+        [[1, 1, 1, 1000], [1000, 499500, 0, 0]],
+        [[30, 8, 8, 40], [320, 51040, 0, 0]],
+        [[1, 8, 8, 40], [320, 51040, 0, 0]],
+        [[5, 3, 1, 30], [90, 4005, 0, 0]],
+        [[5, 1, 3, 30], [30, 435, 0, 0]],
+        [[2, 4, 2, 5], [20, 190, 0, 0]],
+        [[3, 8, 8, 500], [4000, 7998000, 0, 0]]
+      ] },
     solution: {
       approach: `<p>Classic monitor-based bounded buffer over a ring array. Two guards share one wait set, so ${C('notifyAll')} is required for correctness; the while loops make spurious and stolen wake-ups harmless.</p>`,
       code: `
@@ -2469,6 +2907,42 @@ class SlowDetector {
       `<p>Hint 2: three colours: unvisited, on current path, finished. Walk from each unvisited thread; stop at null or a non-unvisited node.</p>`,
       `<p>Hint 3: if you stop at a node "on current path", the cycle is the path suffix from that node. Mark the path finished otherwise, so no node is walked twice → O(N).</p>`
     ],
+    tests: { sig: 'string[] string[] -> list<string>', fn: 'chk', harness: { java: `
+class Check {
+  static List<String> chk(String[] h, String[] w) {
+    Map<String, String> holder = new HashMap<>(), waits = new HashMap<>();
+    if (h.length == 1 && h[0].startsWith("ring:") || h.length == 1 && h[0].startsWith("chain:")) {
+      boolean ring = h[0].startsWith("ring:");
+      int n = Integer.parseInt(h[0].substring(h[0].indexOf(':') + 1));
+      for (int i = 0; i < n; i++) {
+        holder.put("L" + i, "T" + i);
+        if (ring || i < n - 1) waits.put("T" + i, "L" + ((i + 1) % n));
+      }
+    } else {
+      for (String s : h) { String[] p = s.split(":"); holder.put(p[0], p[1]); }
+      for (String s : w) { String[] p = s.split(":"); waits.put(p[0], p[1]); }
+    }
+    List<String> cyc = new ArrayList<>(DeadlockDetector.findDeadlock(holder, waits));
+    if (cyc.isEmpty()) return cyc;
+    int m = 0;
+    for (int i = 1; i < cyc.size(); i++) if (cyc.get(i).compareTo(cyc.get(m)) < 0) m = i;
+    List<String> rot = new ArrayList<>();
+    for (int i = 0; i < cyc.size(); i++) rot.add(cyc.get((m + i) % cyc.size()));
+    if (rot.size() > 10) return List.of(String.valueOf(rot.size()), rot.get(0), rot.get(1), rot.get(2));
+    return rot;
+  }
+}` }, cases: [
+        [[['A:T1', 'B:T2', 'C:T3'], ['T1:B', 'T2:C', 'T3:A']], ['T1', 'T2', 'T3']],
+        [[['A:T1', 'B:T2', 'C:T3'], ['T1:B']], []],
+        [[[], []], []],
+        [[['A:T1'], ['T1:A']], ['T1']],
+        [[['A:T1', 'B:T2'], ['T1:B', 'T2:A']], ['T1', 'T2']],
+        [[['A:T1', 'B:T2'], ['T0:A', 'T1:B', 'T2:A']], ['T1', 'T2']],
+        [[['A:T1', 'B:T2'], ['T1:Z', 'T2:A']], []],
+        [[['A:T1', 'B:T2', 'C:T3', 'D:T4'], ['T1:B', 'T3:D']], []],
+        [[['ring:100000'], []], ['100000', 'T0', 'T1', 'T2']],
+        [[['chain:100000'], []], []]
+      ] },
     solution: {
       approach: `<p>Pointer-walking cycle detection on a functional graph with path colouring — exactly what ${C('ThreadMXBean.findDeadlockedThreads')} and database deadlock detectors do conceptually.</p>`,
       code: `
@@ -2530,6 +3004,70 @@ class UnfairMutex {
       `<p>Hint 2: lock(): ${C('my = nextTicket++')}; ${C('while (my != nowServing) wait();')}. unlock(): ${C('nowServing++')}; ${C('notifyAll()')}.</p>`,
       `<p>Hint 3: track the owner thread to reject foreign unlocks; on interrupt, keep waiting but remember to restore the interrupt flag afterwards.</p>`
     ],
+    tests: { sig: 'string -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static void waitingState(Thread t) {
+    long end = System.nanoTime() + 20_000_000_000L;
+    while (t.getState() != Thread.State.WAITING && System.nanoTime() < end) Thread.onSpinWait();
+  }
+  static String[] chk(String mode) throws Exception {
+    TicketLock lock = new TicketLock();
+    String[] p = mode.split(":");
+    switch (p[0]) {
+      case "fifo": {
+        int K = Integer.parseInt(p[1]);
+        List<Integer> order = Collections.synchronizedList(new ArrayList<>());
+        lock.lock();
+        Thread[] ts = new Thread[K];
+        for (int i = 0; i < K; i++) {
+          final int id = i + 1;
+          ts[i] = new Thread(() -> { lock.lock(); order.add(id); lock.unlock(); });
+          ts[i].start();
+          waitingState(ts[i]);
+        }
+        lock.unlock();
+        for (Thread t : ts) t.join();
+        StringBuilder sb = new StringBuilder();
+        for (int x : order) { if (sb.length() > 0) sb.append(','); sb.append(x); }
+        return new String[]{ sb.toString() };
+      }
+      case "mutex": {
+        int T = Integer.parseInt(p[1]), N = Integer.parseInt(p[2]);
+        int[] counter = {0};
+        Thread[] ts = new Thread[T];
+        for (int i = 0; i < T; i++) { ts[i] = new Thread(() -> { for (int k = 0; k < N; k++) { lock.lock(); counter[0]++; lock.unlock(); } }); ts[i].start(); }
+        for (Thread t : ts) t.join();
+        return new String[]{ String.valueOf(counter[0]) };
+      }
+      case "notOwner": {
+        String a, b;
+        try { lock.unlock(); a = "no exception"; } catch (IllegalMonitorStateException e) { a = "IMSE"; }
+        lock.lock(); lock.unlock();
+        try { lock.unlock(); b = "no exception"; } catch (IllegalMonitorStateException e) { b = "IMSE"; }
+        return new String[]{ a, b };
+      }
+      default: {
+        boolean[] flag = new boolean[1];
+        lock.lock();
+        Thread t = new Thread(() -> { lock.lock(); flag[0] = Thread.currentThread().isInterrupted(); lock.unlock(); });
+        t.start(); waitingState(t);
+        t.interrupt();
+        lock.unlock();
+        t.join();
+        return new String[]{ "acquired interrupted=" + flag[0] };
+      }
+    }
+  }
+}` }, cases: [
+        [['fifo:4'], ['1,2,3,4']],
+        [['fifo:1'], ['1']],
+        [['fifo:2'], ['1,2']],
+        [['fifo:64'], ['1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64']],
+        [['mutex:8:20000'], ['160000']],
+        [['mutex:1:1'], ['1']],
+        [['notOwner'], ['IMSE', 'IMSE']],
+        [['interrupted'], ['acquired interrupted=true']]
+      ] },
     solution: {
       approach: `<p>A ticket lock: the order is fixed the moment a thread takes its number, inside the monitor. Unlock advances "now serving" and wakes all; only the thread holding that exact ticket passes its guard. Interrupts are deferred so no ticket is ever abandoned.</p>`,
       code: `
@@ -2586,6 +3124,64 @@ class SpinSemaphore {
       `<p>Hint 2: acquire: ${C('while (permits == 0) wait(); permits--;')}. release: ${C('permits++; notify();')}</p>`,
       `<p>Hint 3: tryAcquire is the same check without waiting. Demo: track "inside" and "maxInside" under a separate lock.</p>`
     ],
+    tests: { sig: 'string int int -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static String[] chk(String kind, int permits, int threads) throws Exception {
+    if (kind.equals("neg")) {
+      try { new SimpleSemaphore(permits); return new String[]{ "no exception" }; } catch (IllegalArgumentException e) { return new String[]{ "IAE" }; }
+    }
+    SimpleSemaphore sem = new SimpleSemaphore(permits);
+    if (kind.equals("try")) {
+      int ok1 = 0, ok2 = 0;
+      for (int i = 0; i < threads; i++) if (sem.tryAcquire()) ok1++;
+      sem.release(); sem.release();
+      for (int i = 0; i < 3; i++) if (sem.tryAcquire()) ok2++;
+      return new String[]{ String.valueOf(ok1), String.valueOf(ok2) };
+    }
+    if (kind.equals("interrupt")) {
+      boolean[] got = new boolean[1];
+      Thread t = new Thread(() -> { try { sem.acquire(); } catch (InterruptedException e) { got[0] = true; } });
+      t.start();
+      long end = System.nanoTime() + 20_000_000_000L;
+      while (t.getState() != Thread.State.WAITING && System.nanoTime() < end) Thread.onSpinWait();
+      t.interrupt(); t.join();
+      return new String[]{ got[0] ? "interrupted" : "not interrupted" };
+    }
+    int expected = Math.min(permits, threads);
+    AtomicInteger inside = new AtomicInteger(), max = new AtomicInteger();
+    AtomicBoolean reached = new AtomicBoolean();
+    Thread[] ts = new Thread[threads];
+    for (int i = 0; i < threads; i++) {
+      ts[i] = new Thread(() -> {
+        try {
+          sem.acquire();
+          try {
+            int now = inside.incrementAndGet();
+            max.accumulateAndGet(now, Math::max);
+            if (now >= expected) reached.set(true);
+            long end = System.nanoTime() + 20_000_000_000L;
+            while (!reached.get() && System.nanoTime() < end) Thread.onSpinWait();
+            inside.decrementAndGet();
+          } finally { sem.release(); }
+        } catch (InterruptedException e) { }
+      });
+      ts[i].start();
+    }
+    for (Thread t : ts) t.join();
+    return new String[]{ String.valueOf(max.get()) };
+  }
+}` }, cases: [
+        [['max', 2, 5], ['2']],
+        [['max', 1, 8], ['1']],
+        [['max', 3, 2], ['2']],
+        [['max', 5, 5], ['5']],
+        [['max', 64, 64], ['64']],
+        [['max', 10000, 3], ['3']],
+        [['try', 3, 5], ['3', '2']],
+        [['try', 0, 4], ['0', '2']],
+        [['interrupt', 0, 0], ['interrupted']],
+        [['neg', -1, 0], ['IAE']]
+      ] },
     solution: {
       approach: `<p>A guarded counter. acquire waits for a positive count and decrements under the lock; release increments and wakes one waiter. Because all waiters are interchangeable, a single notify is enough (notifyAll would also be correct, just noisier).</p>`,
       code: `
@@ -2674,6 +3270,41 @@ class ZeroEvenOddBroken {
       `<p>Hint 2: each method loops exactly as many times as it must print: zero n times, even ⌊n/2⌋ times, odd ⌈n/2⌉ times.</p>`,
       `<p>Hint 3: after printing, flip zeroTurn (and i++ for numbers), then notifyAll — waiters have different guards so notify() is unsafe.</p>`
     ],
+    tests: { sig: 'int string int -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(int n, String order, int rounds) throws Exception {
+    String last = "";
+    for (int r = 0; r < rounds; r++) {
+      ZeroEvenOdd z = new ZeroEvenOdd(n);
+      StringBuffer sb = new StringBuffer();
+      IntConsumer pr = x -> sb.append(x);
+      Thread[] ts = new Thread[3];
+      for (int i = 0; i < 3; i++) {
+        char c = order.charAt(i);
+        ts[i] = new Thread(() -> {
+          try {
+            if (c == 'A') z.zero(pr); else if (c == 'B') z.even(pr); else z.odd(pr);
+          } catch (InterruptedException e) { }
+        });
+      }
+      for (Thread t : ts) t.start();
+      for (Thread t : ts) t.join();
+      String cur = sb.toString();
+      if (r > 0 && !cur.equals(last)) return "inconsistent";
+      last = cur;
+    }
+    return n <= 20 ? last : n + " len=" + last.length() + " hash=" + last.hashCode();
+  }
+}` }, cases: [
+        [[5, 'ABC', 1], '0102030405'],
+        [[2, 'CBA', 1], '0102'],
+        [[1, 'BCA', 1], '01'],
+        [[5, 'CAB', 300], '0102030405'],
+        [[2, 'BAC', 300], '0102'],
+        [[3, 'ACB', 1], '010203'],
+        [[100, 'CBA', 1], '100 len=292 hash=1559263995'],
+        [[1000, 'ABC', 1], '1000 len=3893 hash=280371649']
+      ] },
     solution: {
       approach: `<p>One monitor, two state variables, three guards. Every print is followed by a state change and notifyAll; each thread re-checks its own guard in a while loop. Loop counts are fixed up front, so all threads terminate.</p>`,
       code: `
@@ -2746,6 +3377,42 @@ class H2OBroken {
       `<p>Hint 2: H waits while h == 2; O waits while o == 1. After releasing, increment.</p>`,
       `<p>Hint 3: if h == 2 and o == 1 the molecule is complete → reset both to 0. Always notifyAll (H and O wait for different conditions).</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(String arrivals) throws Exception {
+    for (int round = 0; round < 20; round++) {
+      H2O w = new H2O();
+      StringBuffer sb = new StringBuffer();
+      Thread[] ts = new Thread[arrivals.length()];
+      for (int i = 0; i < ts.length; i++) {
+        boolean h = arrivals.charAt(i) == 'H';
+        ts[i] = new Thread(() -> {
+          try { if (h) w.hydrogen(() -> sb.append('H')); else w.oxygen(() -> sb.append('O')); } catch (InterruptedException e) { }
+        });
+      }
+      for (Thread t : ts) t.start();
+      for (Thread t : ts) t.join();
+      String s = sb.toString();
+      if (s.length() != arrivals.length()) return "bad length " + s;
+      for (int i = 0; i < s.length(); i += 3) {
+        String g = s.substring(i, i + 3);
+        long hs = g.chars().filter(c -> c == 'H').count();
+        if (hs != 2) return "invalid:" + s;
+      }
+    }
+    return "valid";
+  }
+}` }, cases: [
+        [['OOHHHH'], 'valid'],
+        [['HHHHOO'], 'valid'],
+        [['HOHOHH'], 'valid'],
+        [['HHO'], 'valid'],
+        [['OHH'], 'valid'],
+        [['HOH'], 'valid'],
+        [[{ $rep: 'HHO', n: 20 }], 'valid'],
+        [[{ $concat: [{ $rep: 'O', n: 20 }, { $rep: 'H', n: 40 }] }], 'valid'],
+        [[{ $concat: [{ $rep: 'H', n: 40 }, { $rep: 'O', n: 20 }] }], 'valid']
+      ] },
     solution: {
       approach: `<p>A monitor that admits at most two H and one O into the current "slot". The atom that completes the molecule resets the slot. Because every group of three consecutive releases fills exactly one slot, the output is always valid.</p>`,
       code: `
@@ -2803,6 +3470,44 @@ class NaiveDiners {
       `<p>Hint 2: ${C('first = min(left, right)')}, ${C('second = max(left, right)')}; lock first then second.</p>`,
       `<p>Hint 3: alternatives: allow at most 4 philosophers to try at once (Semaphore(4)), or tryLock with random back-off.</p>`
     ],
+    tests: { sig: 'int[] -> int[]', fn: 'chk', harness: { java: `
+class Check {
+  static int[] chk(int[] calls) throws Exception {
+    DiningPhilosophers dp = new DiningPhilosophers();
+    AtomicBoolean[] inUse = new AtomicBoolean[5];
+    for (int i = 0; i < 5; i++) inUse[i] = new AtomicBoolean();
+    AtomicInteger violations = new AtomicInteger();
+    int[] eaten = new int[5];
+    Thread[] ts = new Thread[5];
+    for (int p = 0; p < 5; p++) {
+      final int id = p, left = p, right = (p + 1) % 5;
+      ts[p] = new Thread(() -> {
+        try {
+          for (int k = 0; k < calls[id]; k++) {
+            dp.wantsToEat(id,
+              () -> { if (!inUse[left].compareAndSet(false, true)) violations.incrementAndGet(); },
+              () -> { if (!inUse[right].compareAndSet(false, true)) violations.incrementAndGet(); },
+              () -> { eaten[id]++; },
+              () -> inUse[left].set(false),
+              () -> inUse[right].set(false));
+          }
+        } catch (InterruptedException e) { }
+      });
+      ts[p].start();
+    }
+    for (Thread t : ts) t.join();
+    return new int[]{ eaten[0], eaten[1], eaten[2], eaten[3], eaten[4], violations.get() };
+  }
+}` }, cases: [
+        [[[1, 1, 1, 1, 1]], [1, 1, 1, 1, 1, 0]],
+        [[[60, 60, 60, 60, 60]], [60, 60, 60, 60, 60, 0]],
+        [[[1, 0, 0, 0, 0]], [1, 0, 0, 0, 0, 0]],
+        [[[0, 0, 0, 0, 0]], [0, 0, 0, 0, 0, 0]],
+        [[[10, 20, 30, 40, 50]], [10, 20, 30, 40, 50, 0]],
+        [[[60, 0, 60, 0, 60]], [60, 0, 60, 0, 60, 0]],
+        [[[0, 0, 0, 0, 60]], [0, 0, 0, 0, 60, 0]],
+        [[[5000, 5000, 5000, 5000, 5000]], [5000, 5000, 5000, 5000, 5000, 0]]
+      ] },
     solution: {
       approach: `<p>Resource hierarchy (Dijkstra): always acquire the lower-numbered fork first. Circular wait becomes impossible, so deadlock is impossible. Neighbours still exclude each other because they share a fork object.</p>`,
       code: `
@@ -2861,6 +3566,88 @@ class ReaderPreferringRW {
       `<p>Hint 2: readers wait while ${C('writing || waitingWriters > 0')}; writers increment waitingWriters, wait while ${C('writing || readers > 0')}, decrement, then set writing.</p>`,
       `<p>Hint 3: on InterruptedException in lockWrite: decrement waitingWriters, notifyAll, rethrow. Unlocks validate state and notifyAll.</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static class Actor {
+    final String name; final boolean writer; final WriterPreferringRWLock lock;
+    volatile String state = "start"; final Semaphore go = new Semaphore(0); Thread thread;
+    Actor(String n, boolean w, WriterPreferringRWLock l) { name = n; writer = w; lock = l; }
+    void start() {
+      thread = new Thread(() -> {
+        try {
+          if (writer) lock.lockWrite(); else lock.lockRead();
+          state = "acq";
+          go.acquire();
+          if (writer) lock.unlockWrite(); else lock.unlockRead();
+          state = "done";
+        } catch (InterruptedException e) { state = "intr"; }
+      });
+      thread.start();
+    }
+  }
+  static void settle(Collection<Actor> all) {
+    long end = System.nanoTime() + 20_000_000_000L;
+    boolean stable;
+    do {
+      stable = true;
+      for (Actor a : all) {
+        boolean ok = a.state.equals("acq") || a.state.equals("done") || a.state.equals("intr") || a.thread.getState() == Thread.State.WAITING;
+        if (!ok) stable = false;
+      }
+      if (!stable) Thread.onSpinWait();
+    } while (!stable && System.nanoTime() < end);
+  }
+  static String status(Map<String, Actor> actors) {
+    StringBuilder sb = new StringBuilder();
+    for (Actor a : actors.values()) {
+      if (sb.length() > 0) sb.append(' ');
+      sb.append(a.name).append(':').append(a.state.equals("start") ? "wait" : a.state);
+    }
+    return sb.toString();
+  }
+  static String[] chk(String[] ops) throws Exception {
+    WriterPreferringRWLock lock = new WriterPreferringRWLock();
+    Map<String, Actor> actors = new TreeMap<>();
+    List<String> out = new ArrayList<>();
+    for (String op : ops) {
+      String[] p = op.split(":");
+      switch (p[0]) {
+        case "R": case "W": { Actor a = new Actor(p[1], p[0].equals("W"), lock); actors.put(a.name, a); a.start(); settle(actors.values()); break; }
+        case "U": { Actor a = actors.get(p[1]); a.go.release(); a.thread.join(); settle(actors.values()); break; }
+        case "I": { Actor a = actors.get(p[1]); a.thread.interrupt(); a.thread.join(); settle(actors.values()); break; }
+        case "status": out.add(status(actors)); break;
+        case "badR": try { lock.unlockRead(); out.add("no exception"); } catch (IllegalMonitorStateException e) { out.add("IMSE"); } break;
+        case "badW": try { lock.unlockWrite(); out.add("no exception"); } catch (IllegalMonitorStateException e) { out.add("IMSE"); } break;
+        case "stress": {
+          int R = Integer.parseInt(p[1]), W = Integer.parseInt(p[2]), N = Integer.parseInt(p[3]);
+          AtomicInteger readers = new AtomicInteger(), writers = new AtomicInteger(), bad = new AtomicInteger();
+          List<Thread> ts = new ArrayList<>();
+          for (int i = 0; i < R; i++) ts.add(new Thread(() -> {
+            try { for (int k = 0; k < N; k++) { lock.lockRead(); readers.incrementAndGet(); if (writers.get() != 0) bad.incrementAndGet(); readers.decrementAndGet(); lock.unlockRead(); } } catch (InterruptedException e) { }
+          }));
+          for (int i = 0; i < W; i++) ts.add(new Thread(() -> {
+            try { for (int k = 0; k < N; k++) { lock.lockWrite(); if (writers.incrementAndGet() != 1 || readers.get() != 0) bad.incrementAndGet(); writers.decrementAndGet(); lock.unlockWrite(); } } catch (InterruptedException e) { }
+          }));
+          for (Thread t : ts) t.start();
+          for (Thread t : ts) t.join();
+          out.add(bad.get() == 0 ? "ok" : "violations");
+          break;
+        }
+      }
+    }
+    for (Actor a : actors.values()) { if (a.state.equals("acq")) { a.go.release(); a.thread.join(); } }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+        [[['R:R1', 'R:R2', 'W:W', 'R:R3', 'status', 'U:R1', 'U:R2', 'status', 'U:W', 'status']], ['R1:acq R2:acq R3:wait W:wait', 'R1:done R2:done R3:wait W:acq', 'R1:done R2:done R3:acq W:done']],
+        [[['R:a', 'R:b', 'R:c', 'status']], ['a:acq b:acq c:acq']],
+        [[['W:w1', 'W:w2', 'R:r', 'status', 'U:w1', 'status', 'U:w2', 'status']], ['r:wait w1:acq w2:wait', 'r:wait w1:done w2:acq', 'r:acq w1:done w2:done']],
+        [[['R:r1', 'W:w', 'R:r2', 'status', 'I:w', 'status']], ['r1:acq r2:wait w:wait', 'r1:acq r2:acq w:intr']],
+        [[['badR', 'badW']], ['IMSE', 'IMSE']],
+        [[['W:w', 'U:w', 'R:r', 'status']], ['r:acq w:done']],
+        [[['R:r', 'U:r', 'badR', 'W:w', 'U:w', 'badW']], ['IMSE', 'IMSE']],
+        [[['stress:100:10:200']], ['ok']]
+      ] },
     solution: {
       approach: `<p>One monitor, three counters. "A writer is waiting" becomes part of the readers' guard, so writers cannot be starved by overlapping readers. Every state change that might make some guard true is followed by notifyAll. (Trade-off: a constant stream of writers can now starve readers — production locks like ${C('ReentrantReadWriteLock(true)')} use a FIFO queue to be fair to both.)</p>`,
       code: `
@@ -2937,6 +3724,17 @@ class BruteInterleavings {
       `<p>Hint 2: DFS returns {min, max} final count reachable from a state; combine the results of stepping A or B.</p>`,
       `<p>Hint 3: values stay ≤ 2n + 1 and pcs ≤ 3n, so pack the state into one long (6 bits per field) as the memo key.</p>`
     ],
+    tests: { sig: 'int -> int[]', fn: 'chk', harness: { java: `
+class Check {
+  static int[] chk(int n) { return new LostUpdateExplorer(n).explore(); }
+}` }, cases: [
+        [[1], [1, 2]],
+        [[2], [2, 4]],
+        [[3], [2, 6]],
+        [[4], [2, 8]],
+        [[5], [2, 10]],
+        [[6], [2, 12]]
+      ] },
     solution: {
       approach: `<p><b>Explicit-state model checking with memoization.</b> This is how tools like jcstress' cousins and TLA+ reason about concurrency: enumerate reachable states, not paths. Each state is solved once. Hand proof of the minimum: every STORE writes at least 1. For n ≥ 2, the very last STORE belongs to a thread whose last LOAD came <i>after</i> its own earlier STORE, so it loaded ≥ 1 and stores ≥ 2. The schedule in the MCQ reaches exactly 2, so the minimum is 2 (for n = 1 both threads can load 0 and store 1).</p>`,
       code: `

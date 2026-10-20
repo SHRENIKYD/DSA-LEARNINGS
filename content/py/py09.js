@@ -1,5 +1,26 @@
 (function () {
   var topics = [], practice = [], quiz = [], interview = [];
+  // Shared test harness: runs each case as python lines in a fresh namespace; returns repr of every non-None expression, or !ExceptionName.
+  var PYT = String.raw`
+def run_lines(lines):
+    g = dict(globals())
+    out = []
+    for ln in lines:
+        try:
+            try:
+                code = compile(ln, '<t>', 'eval')
+            except SyntaxError:
+                code = None
+            if code is None:
+                exec(compile(ln, '<t>', 'exec'), g)
+            else:
+                v = eval(code, g)
+                if v is not None:
+                    out.append(repr(v))
+        except Exception as e:
+            out.append('!' + type(e).__name__)
+    return out
+`;
 
   /* ---------- shared visualizer helpers (py09) ---------- */
   function cpm(code, hlMap, label) {
@@ -252,6 +273,27 @@ print(good, 'bad =', bad)   # [10, 7, -3] bad = 2` } },
     return total, bad` },
       mcq: { q: 'Where should <code>total += n</code> go?', options: ['In the <code>else</code> block after the try/except', 'Inside the <code>try</code> right after int()', 'In <code>finally</code>', 'Outside the loop'], answer: 0, explain: 'Putting it in else means only the int() call is protected, so an unexpected error in the addition is not mistaken for "bad input". (Inside try also works here, but else expresses intent.) finally would run even for bad values.' },
       hints: [`<p>Hint 1: Let <code>int()</code> be the judge of what a valid integer is — it already handles signs and whitespace.</p>`, `<p>Hint 2: Loop with <code>enumerate</code> so you have the index; wrap only <code>int(s)</code> in try, catch <b>ValueError</b> only.</p>`, `<p>Hint 3: Recipe: for i, s → try n = int(s) / except ValueError: bad.append(i) / else: total += n. Edge cases: empty list → (0, []); empty string → bad.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['sum_valid([\'4\', \' 10 \', \'x\', \'\', \'-3\'])']],
+         ['(11, [2, 3])']],
+        [[['sum_valid([])']],
+         ['(0, [])']],
+        [[['sum_valid([\'²\', \'1_000\'])']],
+         ['(1000, [0])']],
+        [[['sum_valid([\'+5\', \' -0 \', \'0x10\', \'1e3\', \'1 2\', \'3.0\', \'--1\'])']],
+         ['(5, [2, 3, 4, 5, 6])']],
+        [[['sum_valid([\'１２\', \'٣\', \' \\t7\\n\'])']],
+         ['(22, [])']],
+        [[['r = sum_valid([str(i) if i % 2 else "z" for i in range(100000)])',
+           'r[0]',
+           'len(r[1])',
+           'r[1][:3]']],
+         ['2500000000',
+          '50000',
+          '[0, 2, 4]']],
+        [[['sum_valid(["9" * 20, "-" + "9" * 19])']],
+         ['(90000000000000000000, [])']],
+      ] },
       solution: {
         approach: `<p>One pass. Try the conversion; on <code>ValueError</code> record the index; on success (<code>else</code>) add to the total. We catch only ValueError, so a <code>None</code> in the list (TypeError) would still crash loudly — which is what you want for data that breaks the contract.</p>`,
         code: { lang: 'python', run: true, code: `def sum_valid(values):
@@ -465,6 +507,64 @@ except SystemExit as e:
     return cur` },
       mcq: { q: 'Which except clause gives "missing key OR missing index → default" but lets a malformed path crash?', options: ['<code>except LookupError</code>', '<code>except Exception</code>', '<code>except (KeyError, TypeError)</code>', 'bare <code>except:</code>'], answer: 0, explain: 'KeyError and IndexError both inherit from LookupError. TypeError is not a LookupError, so it propagates — exactly the behaviour we want. Exception/bare except would hide the bug.' },
       hints: [`<p>Hint 1: <code>cur = cur[step]</code> works for dicts, lists, tuples and anything with <code>__getitem__</code>. Let it do the work.</p>`, `<p>Hint 2: KeyError (dict) and IndexError (list) share the parent <b>LookupError</b>. Catch that one class.</p>`, `<p>Hint 3: Recipe: cur = data; try: for step in path: cur = cur[step] / except LookupError: return default / return cur. Edge cases: empty path → return data; a stored value of None is a real value, not "missing".</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['data = {\'users\': [{\'name\': \'Asha\', \'tags\': [\'admin\']}], \'empty\': None}',
+           'deep_get(data, [\'users\', 0, \'tags\', 0])',
+           'deep_get(data, [\'users\', -1, \'name\'])',
+           'deep_get(data, [\'users\', 5, \'name\'], \'?\')',
+           'deep_get(data, [\'nope\'], \'missing\')',
+           'deep_get(data, [\'empty\'], \'d\') is None',
+           'deep_get(data, []) is data']],
+         ['\'admin\'',
+          '\'Asha\'',
+          '\'?\'',
+          '\'missing\'',
+          'True',
+          'True']],
+        [[['data = {\'users\': [{\'name\': \'Asha\'}], \'empty\': None}',
+           'deep_get(data, [\'users\', \'name\'])',
+           'deep_get(data, [\'empty\', \'x\'])',
+           'deep_get({\'a\': 1}, [\'a\', \'b\'])']],
+         ['!TypeError',
+          '!TypeError',
+          '!TypeError']],
+        [[['deep_get({\'a\': \'str\'}, [\'a\', 0])',
+           'deep_get({\'a\': \'str\'}, [\'a\', 9], \'d\')',
+           'deep_get({\'a\': 0}, [\'a\'], 5)',
+           'deep_get({\'a\': []}, [\'a\'], 5)',
+           'deep_get({}, [\'a\']) is None']],
+         ['\'s\'',
+          '\'d\'',
+          '0',
+          '[]',
+          'True']],
+        [[['deep_get([1, 2, 3], [-1])',
+           'deep_get([1, 2, 3], [-3])',
+           'deep_get([1, 2, 3], [-4], \'x\')',
+           'deep_get([1, 2, 3], [3], \'x\')',
+           'deep_get([], [0], \'x\')']],
+         ['3',
+          '1',
+          '\'x\'',
+          '\'x\'',
+          '\'x\'']],
+        [[['deep_get({1: \'one\'}, [1])',
+           'deep_get((10, 20), [1])',
+           'deep_get({\'a\': {\'b\': {\'c\': 7}}}, [\'a\', \'b\', \'c\'])',
+           'deep_get({\'a\': {\'b\': {}}}, [\'a\', \'b\', \'c\'], \'gone\')']],
+         ['\'one\'',
+          '20',
+          '7',
+          '\'gone\'']],
+        [[['d = "leaf"',
+           'for i in range(100): d = {"k": [d]}',
+           'deep_get(d, ["k", 0] * 100)',
+           'deep_get(d, ["k", 0] * 100 + ["x"], "no")',
+           'deep_get(d, ["k", 1], "no")']],
+         ['\'leaf\'',
+          '!TypeError',
+          '\'no\'']],
+      ] },
       solution: {
         approach: `<p>EAFP plus the hierarchy: one subscript per step, one handler for the whole family of "not found" errors. TypeError (wrong kind of step) and anything else propagate untouched, so bugs stay visible.</p>`,
         code: { lang: 'python', run: true, code: `def deep_get(data, path, default=None):
@@ -739,6 +839,79 @@ print(handle(lambda: 'ok'))` } },
     return accounts[acc_id]       # caller cannot tell errors from balances easily` },
       mcq: { q: 'Why make <code>AccountNotFoundError</code> also inherit from <code>KeyError</code>?', options: ['So old code that catches KeyError (or LookupError) keeps working', 'Because exceptions must have two parents', 'To make it faster', 'So that it cannot be caught by except BankError'], answer: 0, explain: 'Multiple inheritance places it in both families: callers can catch it as a BankError (new code) or as a KeyError/LookupError (existing code that expected a dict miss).' },
       hints: [`<p>Hint 1: Check the cheap, caller-mistake case first: amount ≤ 0 → <code>ValueError</code> with the bad value in the message.</p>`, `<p>Hint 2: Look up the balance with EAFP: <code>try: balance = accounts[acc_id] except KeyError as e: raise AccountNotFoundError(acc_id) from e</code>.</p>`, `<p>Hint 3: Compute <code>shortfall = amount - balance</code> in the exception's <code>__init__</code>, then call <code>super().__init__(message)</code>. Only subtract after all checks pass, so a failed call never changes state.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['accounts = {"a1": 70}',
+           'withdraw(accounts, "a1", 20)',
+           'accounts',
+           'withdraw(accounts, "a1", 50)',
+           'accounts']],
+         ['50',
+          '{\'a1\': 50}',
+          '0',
+          '{\'a1\': 0}']],
+        [[[String.raw`def err(accounts, acc, amt):
+    try:
+        withdraw(accounts, acc, amt)
+    except Exception as e:
+        return (type(e).__name__, str(e), e.__cause__)`,
+           'err({"a1": 50}, "a1", 100)',
+           'err({"a1": 5}, "zz", 5)']],
+         ['(\'InsufficientFundsError\', \'need 50 more (balance 50, amount 100)\', None)',
+          '(\'AccountNotFoundError\', "no account \'zz\'", KeyError(\'zz\'))']],
+        [[[String.raw`def err(accounts, acc, amt):
+    try:
+        withdraw(accounts, acc, amt)
+    except Exception as e:
+        return (type(e).__name__, str(e))`,
+           'err({"a": 5}, "a", 0)',
+           'err({"a": 5}, "a", -5)',
+           'err({}, "zz", 0)']],
+         ['(\'ValueError\', \'amount must be positive, got 0\')',
+          '(\'ValueError\', \'amount must be positive, got -5\')',
+          '(\'ValueError\', \'amount must be positive, got 0\')']],
+        [[[String.raw`try:
+    withdraw({"a": 70}, "a", 100)
+except InsufficientFundsError as e:
+    info = (e.balance, e.amount, e.shortfall, str(e))`,
+           'info']],
+         ['(70, 100, 30, \'need 30 more (balance 70, amount 100)\')']],
+        [[['issubclass(InsufficientFundsError, BankError)',
+           'issubclass(AccountNotFoundError, KeyError)',
+           'issubclass(AccountNotFoundError, BankError)',
+           'issubclass(InsufficientFundsError, KeyError)',
+           'issubclass(BankError, Exception)',
+           String.raw`try:
+    withdraw({}, "x", 1)
+except KeyError as e:
+    caught = (type(e).__name__, e.acc_id)`,
+           'caught']],
+         ['True',
+          'True',
+          'True',
+          'False',
+          'True',
+          '(\'AccountNotFoundError\', \'x\')']],
+        [[[String.raw`def err(accounts, acc, amt):
+    try:
+        withdraw(accounts, acc, amt)
+    except Exception as e:
+        return type(e).__name__`,
+           'a = {"x": 10}',
+           'err(a, "x", 11)',
+           'err(a, "x", 0)',
+           'err(a, "y", 1)',
+           'a',
+           'withdraw(a, "x", 10)',
+           'a',
+           'withdraw({"a": 10**12}, "a", 10**12 - 1)']],
+         ['\'InsufficientFundsError\'',
+          '\'ValueError\'',
+          '\'AccountNotFoundError\'',
+          '{\'x\': 10}',
+          '0',
+          '{\'x\': 0}',
+          '1']],
+      ] },
       solution: {
         approach: `<p>One base class, specific subclasses that carry data, messages built in <code>__init__</code>, translation of the low-level KeyError with <code>raise … from e</code>, and "validate everything, then mutate" so errors leave no half-done state.</p>`,
         code: { lang: 'python', run: true, code: `class BankError(Exception):
@@ -1001,6 +1174,71 @@ def read_first_lbyl(paths):
     raise FileNotFoundError(f'none of {paths} could be read')` },
       mcq: { q: 'Which single except clause skips missing files, unreadable files AND directories?', options: ['<code>except (FileNotFoundError, PermissionError, IsADirectoryError)</code>', '<code>except Exception</code>', '<code>except ValueError</code>', '<code>except FileExistsError</code>'], answer: 0, explain: 'All three are OSError subclasses we can sensibly skip. except OSError would also work but additionally hides things like disk I/O errors (EIO), which you may want to surface. Exception would hide bugs such as UnicodeDecodeError on a corrupt file.' },
       hints: [`<p>Hint 1: The <code>open()</code> call is the check. Wrap only <code>open + read</code> in try.</p>`, `<p>Hint 2: Catch the specific OSError subclasses you can skip: FileNotFoundError, PermissionError, IsADirectoryError. Let anything else (e.g. UnicodeDecodeError) propagate.</p>`, `<p>Hint 3: Recipe: tried = []; for p in paths: try: open+read → return / except (...) as e: tried.append(f'{p}: {type(e).__name__}') / after loop: raise FileNotFoundError('; '.join(tried)).</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['import os, tempfile',
+           'd = tempfile.mkdtemp()',
+           'real = os.path.join(d, "app.toml")',
+           'with open(real, "w", encoding="utf-8") as f: f.write("port = 8080")',
+           'r = read_first([os.path.join(d, "missing.toml"), d, real])',
+           'os.path.basename(r[0])',
+           'r[1]',
+           'r[0] == real']],
+         ['\'app.toml\'',
+          '\'port = 8080\'',
+          'True']],
+        [[['import os, tempfile',
+           'd = tempfile.mkdtemp()',
+           String.raw`try:
+    read_first([os.path.join(d, "a.toml"), os.path.join(d, "b.toml")])
+except FileNotFoundError as e:
+    msg = str(e).replace(d, "<tmp>")`,
+           'msg']],
+         ['\'no readable config; tried <tmp>/a.toml: FileNotFoundError; <tmp>/b.toml: FileNotFoundError\'']],
+        [[['import os, tempfile',
+           'd = tempfile.mkdtemp()',
+           'p1 = os.path.join(d, "one.txt")',
+           'p2 = os.path.join(d, "two.txt")',
+           'with open(p1, "w", encoding="utf-8") as f: f.write("first")',
+           'with open(p2, "w", encoding="utf-8") as f: f.write("second")',
+           'read_first([p1, p2]) == (p1, "first")',
+           'read_first([p2, p1]) == (p2, "second")',
+           'read_first([os.path.join(d, "none"), p2]) == (p2, "second")']],
+         ['True',
+          'True',
+          'True']],
+        [[['import os, tempfile',
+           'd = tempfile.mkdtemp()',
+           String.raw`try:
+    read_first([d])
+except FileNotFoundError as e:
+    msg = str(e).replace(d, "<tmp>")`,
+           'msg',
+           'read_first([os.path.join(d, "x")])']],
+         ['\'no readable config; tried <tmp>: IsADirectoryError\'',
+          '!FileNotFoundError']],
+        [[['import os, tempfile',
+           'd = tempfile.mkdtemp()',
+           'p = os.path.join(d, "empty.txt")',
+           'with open(p, "wb") as f: f.write(b"")',
+           'read_first([p])[1]',
+           'read_first([p])[0] == p']],
+         ['\'\'',
+          'True']],
+        [[['import os, tempfile',
+           'd = tempfile.mkdtemp()',
+           'p = os.path.join(d, "u.txt")',
+           'with open(p, "w", encoding="utf-8") as f: f.write("naïve 日本")',
+           'read_first([p])[1]']],
+         ['\'naïve 日本\'']],
+        [[['import os, tempfile',
+           'd = tempfile.mkdtemp()',
+           'p = os.path.join(d, "big.txt")',
+           'with open(p, "w", encoding="utf-8") as f: f.write("x" * 1000000)',
+           'len(read_first([p])[1])',
+           'len(read_first([os.path.join(d, str(i)) for i in range(19)] + [p])[1])']],
+         ['1000000',
+          '1000000']],
+      ] },
       solution: {
         approach: `<p>Pure EAFP: attempt the real operation for each candidate, skip the specific failures we expect, and remember why each was skipped so the final error is actionable.</p>`,
         code: { lang: 'python', run: true, code: `import os
@@ -1241,6 +1479,39 @@ def group_by_loose(items: list, key: Callable) -> dict[Any, Any]:
     return out` },
       mcq: { q: 'Why two type variables (T and K) instead of one?', options: ['The element type and the key type are independent (str elements, int keys)', 'TypeVars must always come in pairs', 'K is needed only for performance', 'One TypeVar cannot appear in a return type'], answer: 0, explain: 'T links the element type to the lists in the result; K links the key function\'s return type to the dict keys. They vary independently, so they need separate variables.' },
       hints: [`<p>Hint 1: Declare <code>T = TypeVar('T')</code> and <code>K = TypeVar('K', bound=Hashable)</code>, or use 3.12 syntax <code>def group_by[T, K: Hashable](...)</code>.</p>`, `<p>Hint 2: Parameters: <code>items: Iterable[T]</code>, <code>key: Callable[[T], K]</code>. Return: <code>dict[K, list[T]]</code>.</p>`, `<p>Hint 3: Body: one pass with <code>out.setdefault(key(x), []).append(x)</code> (or defaultdict, converting back to dict). Annotate the empty dict: <code>out: dict[K, list[T]] = {}</code>.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['group_by([\'apple\', \'fig\', \'kiwi\', \'pear\'], len)']],
+         ['{5: [\'apple\'], 3: [\'fig\'], 4: [\'kiwi\', \'pear\']}']],
+        [[['group_by(range(7), lambda n: n % 2 == 0)']],
+         ['{True: [0, 2, 4, 6], False: [1, 3, 5]}']],
+        [[['words = [\'apple\', \'fig\', \'kiwi\', \'pear\']',
+           'group_by((w for w in words), lambda w: w[0])']],
+         ['{\'a\': [\'apple\'], \'f\': [\'fig\'], \'k\': [\'kiwi\'], \'p\': [\'pear\']}']],
+        [[['group_by([], len)',
+           'group_by(iter([]), lambda x: x)',
+           'group_by([1, 2], lambda x: None)']],
+         ['{}',
+          '{}',
+          '{None: [1, 2]}']],
+        [[['g = (x for x in range(5))',
+           'group_by(g, lambda x: x % 2)',
+           'list(g)']],
+         ['{0: [0, 2, 4], 1: [1, 3]}',
+          '[]']],
+        [[['group_by([1], lambda x: [x])',
+           'group_by(["ab", "ba", "cc"], lambda s: tuple(sorted(s)))',
+           'group_by([5, 3, 5, 1, 3], lambda x: x)']],
+         ['!TypeError',
+          '{(\'a\', \'b\'): [\'ab\', \'ba\'], (\'c\', \'c\'): [\'cc\']}',
+          '{5: [5, 5], 3: [3, 3], 1: [1]}']],
+        [[['r = group_by(range(10**5), lambda n: n % 3)',
+           'sorted(r)',
+           '[len(r[k]) for k in (0, 1, 2)]',
+           'r[1][:3]']],
+         ['[0, 1, 2]',
+          '[33334, 33333, 33333]',
+          '[1, 4, 7]']],
+      ] },
       solution: {
         approach: `<p>Two TypeVars connect inputs to outputs: elements flow into the lists (T), key results become dict keys (K, bounded by Hashable). Accept the most general input (<code>Iterable</code>) and return a concrete <code>dict</code>.</p>`,
         code: { lang: 'python', run: true, code: `from collections.abc import Callable, Hashable, Iterable
@@ -1484,6 +1755,79 @@ def parse_port_bad(value: str | int | None, default: int = 8080) -> int:
     return int(cast(str, value)) if value else default   # lies to mypy` },
       mcq: { q: 'In which order should the checks go so mypy narrows correctly and bools are rejected?', options: ['None → bool → int → str', 'int → bool → None → str', 'str → int → None', 'Order does not matter'], answer: 0, explain: 'Handle None first (removes it from the union). bool must be checked before int, because isinstance(True, int) is True. After int is handled, mypy knows only str is left.' },
       hints: [`<p>Hint 1: Each <code>isinstance</code>/<code>is None</code> check that returns early removes one member from the union; after them mypy knows exactly what is left.</p>`, `<p>Hint 2: Check <code>isinstance(value, bool)</code> <b>before</b> <code>isinstance(value, int)</code>. Put the range check in a small helper used by both branches.</p>`, `<p>Hint 3: For str: <code>s = value.strip()</code>; empty → default; <code>try: n = int(s) except ValueError as e: raise ValueError(f'not a number: {value!r}') from e</code>. Final fallback for weird runtime types: raise TypeError.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['parse_port(None)',
+           'parse_port(None, 3000)',
+           'parse_port(\' 443 \')',
+           'parse_port(\'\')',
+           'parse_port(\'   \')',
+           'parse_port(\'\', default=9)']],
+         ['8080',
+          '3000',
+          '443',
+          '8080',
+          '8080',
+          '9']],
+        [[['parse_port(1)',
+           'parse_port(65535)',
+           'parse_port(0)',
+           'parse_port(65536)',
+           'parse_port(-1)',
+           'parse_port(70000)']],
+         ['1',
+          '65535',
+          '!ValueError',
+          '!ValueError',
+          '!ValueError',
+          '!ValueError']],
+        [[['parse_port(\'80\')',
+           'parse_port(\' 8443 \')',
+           'parse_port(\'http\')',
+           'parse_port(\'0\')',
+           'parse_port(\'70000\')',
+           'parse_port(\'12.5\')',
+           'parse_port(\'-1\')',
+           'parse_port(\'+80\')',
+           'parse_port(\'８０\')']],
+         ['80',
+          '8443',
+          '!ValueError',
+          '!ValueError',
+          '!ValueError',
+          '!ValueError',
+          '!ValueError',
+          '80',
+          '80']],
+        [[['parse_port(True)',
+           'parse_port(False)',
+           'parse_port(80.0)',
+           'parse_port([80])',
+           'parse_port(b\'80\')']],
+         ['!TypeError',
+          '!TypeError',
+          '!TypeError',
+          '!TypeError',
+          '!TypeError']],
+        [[[String.raw`def msg(v):
+    try:
+        parse_port(v)
+    except Exception as e:
+        return str(e), type(e.__cause__).__name__`,
+           'msg(70000)',
+           'msg(\'http\')',
+           'msg(\'0\')',
+           'msg(True)']],
+         ['(\'port must be 1-65535, got 70000\', \'NoneType\')',
+          '("not a number: \'http\'", \'ValueError\')',
+          '(\'port must be 1-65535, got 0\', \'NoneType\')',
+          '(\'bool is not a valid port\', \'NoneType\')']],
+        [[['all(parse_port(i) == i for i in range(1, 65536))',
+           'all(parse_port(str(i)) == i for i in range(1, 65536, 7))',
+           'parse_port(None, 1)']],
+         ['True',
+          'True',
+          '1']],
+      ] },
       solution: {
         approach: `<p>Narrow step by step: None → bool → int → str. Each branch returns, so mypy\'s view of <code>value</code> shrinks until only <code>str</code> remains. A final defensive <code>TypeError</code> handles calls from untyped code (mypy marks it unreachable, which is fine).</p>`,
         code: { lang: 'python', run: true, code: `def _check_range(port: int) -> int:
@@ -1708,6 +2052,45 @@ test_weak()
 print('weak test passed on buggy code')` },
       mcq: { q: 'Which single row exposes the bug in <code>year % 4 == 0</code>?', options: ['(1900, False)', '(2000, True)', '(2024, True)', '(2023, False)'], answer: 0, explain: '1900 is divisible by 4, so the buggy code says True, but it is a century not divisible by 400, so the correct answer is False. 2000 is divisible by 400, so both versions agree.' },
       hints: [`<p>Hint 1: There are 4 rules: divisible by 4 → leap; but divisible by 100 → not leap; but divisible by 400 → leap; otherwise not leap. One row per rule.</p>`, `<p>Hint 2: Loop over the rows, collect failures in a list instead of stopping at the first assert — that is what parametrize gives you for free.</p>`, `<p>Hint 3: Run the same table against the buggy and the fixed function. A good test table is "red" on the bug and "green" on the fix.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['run_table(buggy_is_leap)',
+           'run_table(is_leap)']],
+         ['[\'buggy_is_leap(1900) = True, expected False\']',
+          '[]']],
+        [[['import calendar',
+           'all(calendar.isleap(y) == e for y, e in CASES)',
+           'len(CASES)',
+           'sorted(y for y, e in CASES)']],
+         ['True',
+          '4',
+          '[1900, 2000, 2023, 2024]']],
+        [[['def m1(y): return y % 4 == 0 and y % 100 != 0',
+           'run_table(m1)']],
+         ['[\'m1(2000) = False, expected True\']']],
+        [[['def m4(y): return True',
+           'def m5(y): return False',
+           'run_table(m4)',
+           'run_table(m5)']],
+         ['[\'m4(2023) = True, expected False\', \'m4(1900) = True, expected False\']',
+          '[\'m5(2024) = False, expected True\', \'m5(2000) = False, expected True\']']],
+        [[['def m6(y): return y % 400 == 0 or (y % 4 == 0 and y % 100 != 0)',
+           'run_table(m6)',
+           'def m7(y): return y % 100 != 0 or y % 400 == 0',
+           'run_table(m7)']],
+         ['[]',
+          '[\'m7(2023) = True, expected False\']']],
+        [[['is_leap(1600)',
+           'is_leap(2100)',
+           'is_leap(1)',
+           'is_leap(0)',
+           'import calendar',
+           'all(is_leap(y) == calendar.isleap(y) for y in range(1, 10000))']],
+         ['True',
+          'False',
+          'False',
+          'True',
+          'True']],
+      ] },
       solution: {
         approach: `<p>Choose one representative year for each rule (a classic <b>equivalence partition</b> + <b>boundary</b> approach), then run the table against both implementations and print every failing row.</p>`,
         code: { lang: 'python', run: true, code: `CASES = [
@@ -2018,6 +2401,61 @@ def test_alert_wrong_target(app):
         assert app.alert('Pune') == 'HOT'` },
       mcq: { q: 'How do you simulate "timeout on the first call, 20 degrees on the second"?', options: ['<code>side_effect=[TimeoutError(), 20]</code>', '<code>return_value=[TimeoutError(), 20]</code>', '<code>side_effect=TimeoutError</code> then change it manually', 'You cannot do this with Mock'], answer: 0, explain: 'When side_effect is an iterable, each call takes the next item: exception instances are raised, other values are returned. return_value would return the list itself.' },
       hints: [`<p>Hint 1: Patch <code>'app.fetch'</code> — the name the code under test looks up.</p>`, `<p>Hint 2: <code>return_value</code> for a normal reading; <code>side_effect</code> as a list for "fail then succeed"; <code>side_effect</code> as an exception for "always fail".</p>`, `<p>Hint 3: After each call assert both the result and the interaction: <code>m.call_count == 2</code>, <code>m.assert_called_with('Pune')</code>. Use <code>autospec=True</code> so a wrong signature is caught.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[[String.raw`def run_suite():
+    r = unittest.TextTestRunner(stream=io.StringIO(), verbosity=0).run(unittest.defaultTestLoader.loadTestsFromTestCase(TestAlert))
+    return r.testsRun, len(r.failures), len(r.errors)`,
+           'import io',
+           'run_suite()']],
+         ['(3, 0, 0)']],
+        [[[String.raw`def run_suite():
+    r = unittest.TextTestRunner(stream=io.StringIO(), verbosity=0).run(unittest.defaultTestLoader.loadTestsFromTestCase(TestAlert))
+    return r.testsRun, len(r.failures), len(r.errors)`,
+           'import io',
+           'orig = app.alert',
+           'app.alert = lambda city: "ok"',
+           'run_suite()',
+           'app.alert = orig',
+           'run_suite()']],
+         ['(3, 3, 0)',
+          '(3, 0, 0)']],
+        [[[String.raw`def run_suite():
+    r = unittest.TextTestRunner(stream=io.StringIO(), verbosity=0).run(unittest.defaultTestLoader.loadTestsFromTestCase(TestAlert))
+    return r.testsRun, len(r.failures), len(r.errors)`,
+           'import io',
+           'orig = app.alert',
+           String.raw`def noretry(city):
+    try:
+        t = app.fetch(city)
+    except TimeoutError:
+        return "unknown"
+    return "HOT" if t > 35 else "ok"`,
+           'app.alert = noretry',
+           'run_suite()',
+           'app.alert = orig']],
+         ['(3, 2, 0)']],
+        [[['weather.fetch("Pune")',
+           'app.fetch is weather.fetch',
+           'sorted(n for n in dir(TestAlert) if n.startswith("test_"))']],
+         ['!RuntimeError',
+          'True',
+          '[\'test_gives_up\', \'test_hot\', \'test_retry_then_ok\']']],
+        [[['from unittest import mock',
+           'with mock.patch(\'app.fetch\', return_value=36): r1 = app.alert(\'x\')',
+           'with mock.patch(\'app.fetch\', return_value=35): r2 = app.alert(\'x\')',
+           'with mock.patch(\'app.fetch\', return_value=-5): r3 = app.alert(\'x\')',
+           '(r1, r2, r3)']],
+         ['(\'HOT\', \'ok\', \'ok\')']],
+        [[['from unittest import mock',
+           'with mock.patch(\'app.fetch\', side_effect=[TimeoutError(), TimeoutError()]) as m: r = app.alert(\'x\')',
+           '(r, m.call_count)',
+           'with mock.patch(\'app.fetch\', side_effect=[TimeoutError(), 40]) as m: r = app.alert(\'x\')',
+           '(r, m.call_count)',
+           'with mock.patch(\'app.fetch\', side_effect=ValueError(\'bug\')): r = app.alert(\'x\')']],
+         ['(\'unknown\', 2)',
+          '(\'HOT\', 2)',
+          '!ValueError']],
+      ] },
       solution: {
         approach: `<p>Patch the looked-up name with an autospecced mock, drive behaviour with <code>return_value</code>/<code>side_effect</code>, and assert both the returned value and the calls. Each test is independent because <code>patch</code> restores the original afterwards.</p>`,
         code: { lang: 'python', run: true, code: `import sys
@@ -2102,6 +2540,62 @@ print(f_wrong_model(1))
 print(f_wrong_model(0))` },
     mcq: { q: 'What is the last line printed?', options: ['handled', 'finally 0', 'except', 'ret-0'], answer: 0, explain: 'For f(0): try 0 → except → (return "handled" scheduled) → finally 0 → the caller prints handled. So "handled" is last.' },
     hints: [`<p>Hint 1: A return inside try/except computes the value and parks it; the finally block runs before the function really exits.</p>`, `<p>Hint 2: <code>print(f(1))</code> can only print after <code>f(1)</code> has completely finished — including its finally.</p>`, `<p>Hint 3: Trace f(0): try 0 → raise → except prints "except" → return scheduled → finally 0 → caller prints the parked value.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`import io, contextlib
+def cap(fn):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        r = fn()
+    return buf.getvalue(), r`,
+         'cap(lambda: f(1))']],
+       ['(\'try 1\\nfinally 1\\n\', \'ret-1\')']],
+      [[[String.raw`import io, contextlib
+def cap(fn):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        r = fn()
+    return buf.getvalue(), r`,
+         'cap(lambda: f(0))']],
+       ['(\'try 0\\nexcept\\nfinally 0\\n\', \'handled\')']],
+      [[[String.raw`import io, contextlib
+def cap(fn):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        r = fn()
+    return buf.getvalue(), r`,
+         'cap(lambda: print(f(1)))',
+         'cap(lambda: print(f(0)))']],
+       ['(\'try 1\\nfinally 1\\nret-1\\n\', None)',
+        '(\'try 0\\nexcept\\nfinally 0\\nhandled\\n\', None)']],
+      [[[String.raw`import io, contextlib
+def cap(fn):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        r = fn()
+    return buf.getvalue(), r`,
+         'cap(lambda: (print(f(1)), print(f(0))))']],
+       ['(\'try 1\\nfinally 1\\nret-1\\ntry 0\\nexcept\\nfinally 0\\nhandled\\n\', (None, None))']],
+      [[[String.raw`import io, contextlib
+def cap(fn):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        r = fn()
+    return buf.getvalue(), r`,
+         'cap(lambda: print(f(1), f(0)))']],
+       ['(\'try 1\\nfinally 1\\ntry 0\\nexcept\\nfinally 0\\nret-1 handled\\n\', None)']],
+      [[[String.raw`import io, contextlib
+def cap(fn):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        r = fn()
+    return buf.getvalue(), r`,
+         'cap(lambda: f(-3))',
+         'cap(lambda: f("a"))',
+         'cap(lambda: f(0.0))']],
+       ['(\'try -3\\nfinally -3\\n\', \'ret--3\')',
+        '(\'try a\\nfinally a\\n\', \'ret-a\')',
+        '(\'try 0.0\\nexcept\\nfinally 0.0\\n\', \'handled\')']],
+    ] },
     solution: {
       approach: `<p>Order inside a call: try body → (except body if raised) → finally → actual return → caller continues. Output: <code>try 1</code>, <code>finally 1</code>, <code>ret-1</code>, <code>try 0</code>, <code>except</code>, <code>finally 0</code>, <code>handled</code>.</p>`,
       code: { lang: 'python', run: true, code: `def f(n):
@@ -2146,6 +2640,29 @@ print(f(0))
     return out, bad` },
     mcq: { q: 'What does <code>k, v = "a=b=c".split("=")</code> raise?', options: ['ValueError: too many values to unpack', 'KeyError', 'TypeError', 'Nothing, v is "b=c"'], answer: 0, explain: 'split gives 3 items, unpacking into 2 names raises ValueError. (split("=", 1) would give 2 items, but here we want to reject such lines.)' },
     hints: [`<p>Hint 1: Tuple unpacking raises ValueError on the wrong count — use it as the validity check for "exactly one =".</p>`, `<p>Hint 2: Nested EAFP for the value: <code>try: value = int(v) except ValueError: value = v</code>.</p>`, `<p>Hint 3: Use <code>enumerate(lines, 1)</code> for 1-based numbers; strip whitespace around keys and values; skip blanks and comments before anything else.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['parse_config([\'# app\', \'port = 8080\', \'host=localhost\', \'oops\', \'a=b=c\', \'\'])']],
+       ['({\'port\': 8080, \'host\': \'localhost\'}, [4, 5])']],
+      [[['parse_config([])',
+         'parse_config([\'\', \'   \', \'# only comment\', \'  # indented\'])']],
+       ['({}, [])',
+        '({}, [])']],
+      [[['parse_config([\'retries=-1\', \'x = 007\', \'y=+5\', \'z=1_000\', \'w=3.5\', \'v=0x10\'])']],
+       ['({\'retries\': -1, \'x\': 7, \'y\': 5, \'z\': 1000, \'w\': \'3.5\', \'v\': \'0x10\'}, [])']],
+      [[['parse_config([\'  name  =  Ada Lovelace  \', \'url=http://a/b#c\', \'key=\'])']],
+       ['({\'name\': \'Ada Lovelace\', \'url\': \'http://a/b#c\', \'key\': \'\'}, [])']],
+      [[['parse_config([\'a=1\', \'a=2\'])',
+         'parse_config([\'# c\', \'\', \'bad\', \'ok=1\', \'also bad\'])']],
+       ['({\'a\': 2}, [])',
+        '({\'ok\': 1}, [3, 5])']],
+      [[['r = parse_config(["k%d=%d" % (i, i) for i in range(10000)] + ["bad"])',
+         'len(r[0])',
+         'r[1]',
+         'r[0]["k9999"]']],
+       ['10000',
+        '[10001]',
+        '9999']],
+    ] },
     solution: {
       approach: `<p>For each meaningful line, let unpacking validate the shape, then let <code>int()</code> decide whether the value is numeric. Both failures are ValueError, but they mean different things, so they are handled in separate small try blocks.</p>`,
       code: { lang: 'python', run: true, code: `def parse_config(lines):
@@ -2188,6 +2705,72 @@ print(parse_config(['# app', 'port = 8080', 'host=localhost', 'oops', 'a=b=c', '
     return d` },
     mcq: { q: 'Why inherit from ValueError rather than directly from Exception?', options: ['Existing code catching ValueError keeps working, and it describes the error kind', 'Exception cannot have attributes', 'ValueError is faster', 'It is required for custom exceptions'], answer: 0, explain: 'A validation failure is a "right type, wrong value" kind of error. Subclassing ValueError lets both specific (except ValidationError) and generic (except ValueError) handlers catch it.' },
     hints: [`<p>Hint 1: In <code>__init__(self, field, reason)</code> store both attributes, then call <code>super().__init__(f'{field}: {reason}')</code>.</p>`, `<p>Hint 2: <code>isinstance(True, int)</code> is True — check <code>isinstance(age, bool)</code> first or use <code>type(age) is int</code>.</p>`, `<p>Hint 3: Use <code>d.get('name')</code> so a missing key is just "falsy" and gets the same error as an empty string.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['u = {"name": "Asha", "age": 30}',
+         'validate_user(u) is u',
+         'validate_user({"name": "A", "age": 1, "x": 2}) == {"name": "A", "age": 1, "x": 2}']],
+       ['True',
+        'True']],
+      [[[String.raw`def err(d):
+    try:
+        validate_user(d)
+    except ValidationError as e:
+        return (e.field, e.reason, str(e))`,
+         'err({\'name\': \'\', \'age\': 3})',
+         'err({})',
+         'err({\'name\': \'Ben\', \'age\': True})',
+         'err({\'name\': \'Cy\', \'age\': 200})',
+         'err({\'name\': \'Cy\', \'age\': -1})']],
+       ['(\'name\', \'is required\', \'name: is required\')',
+        '(\'name\', \'is required\', \'name: is required\')',
+        '(\'age\', \'must be an integer\', \'age: must be an integer\')',
+        '(\'age\', \'must be between 0 and 150\', \'age: must be between 0 and 150\')',
+        '(\'age\', \'must be between 0 and 150\', \'age: must be between 0 and 150\')']],
+      [[[String.raw`def err(d):
+    try:
+        validate_user(d)
+    except ValidationError as e:
+        return e.field`,
+         'err({\'name\': \'Z\', \'age\': 151})',
+         'err({\'name\': \'Z\', \'age\': 30.5})',
+         'err({\'name\': \'Z\', \'age\': \'30\'})',
+         'err({\'name\': \'Z\'})',
+         'err({\'name\': \'\', \'age\': \'x\'})',
+         'err({\'age\': \'x\'})',
+         'err({"name": 0, "age": 1})',
+         'validate_user({"name": "Z", "age": 150}) == {"name": "Z", "age": 150}',
+         'validate_user({"name": "Z", "age": 0}) == {"name": "Z", "age": 0}']],
+       ['\'age\'',
+        '\'age\'',
+        '\'age\'',
+        '\'age\'',
+        '\'name\'',
+        '\'name\'',
+        '\'name\'',
+        'True',
+        'True']],
+      [[['issubclass(ValidationError, ValueError)',
+         String.raw`try:
+    validate_user({"name": "A", "age": 999})
+except ValueError as e:
+    f = (e.field, type(e).__name__)`,
+         'f']],
+       ['True',
+        '(\'age\', \'ValidationError\')']],
+      [[['len(validate_user({"name": "x" * 100000, "age": 1})["name"])',
+         'e = ValidationError("f", "r")',
+         '(e.field, e.reason, str(e))',
+         'e.args']],
+       ['100000',
+        '(\'f\', \'r\', \'f: r\')',
+        '(\'f: r\',)']],
+      [[['validate_user({"name": "A", "age": 0})["age"]',
+         'validate_user({"name": " ", "age": 5})["name"]',
+         'validate_user({"name": "A", "age": 150})["age"]']],
+       ['0',
+        '\' \'',
+        '150']],
+    ] },
     solution: {
       approach: `<p>A small exception class with structured data plus a readable message, and a validator that raises it with the field name at the first failed rule.</p>`,
       code: { lang: 'python', run: true, code: `class ValidationError(ValueError):
@@ -2228,6 +2811,56 @@ for user in ({'name': 'Asha', 'age': 30}, {'name': '', 'age': 3}, {'name': 'Ben'
     return sum(values) / len(values)    # ZeroDivisionError on [], TypeError on generators` },
     mcq: { q: 'Why <code>Iterable[float]</code> and not <code>list[float]</code>?', options: ['It accepts lists, tuples, sets and generators — anything we can loop over once', 'Iterable is faster at runtime', 'list[float] is not valid syntax', 'mypy requires Iterable for numbers'], answer: 0, explain: 'We only need to iterate once, so we should ask for the weakest capability. Also Iterable is covariant, so Iterable[int] values are accepted too.' },
     hints: [`<p>Hint 1: Accept <code>Iterable[float]</code> from <code>collections.abc</code>; mypy lets ints pass where floats are expected.</p>`, `<p>Hint 2: Count and sum in one loop, because a generator has no <code>len()</code> and cannot be read twice.</p>`, `<p>Hint 3: Return <code>float | None</code>; callers then must write <code>if (avg := average(xs)) is None: ...</code> before using it as a number.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['average([1, 2, 3, 4])',
+         'average((2.5, 3.5))',
+         'average(x for x in []) is None',
+         'average([]) is None']],
+       ['2.5',
+        '3.0',
+        'True',
+        'True']],
+      [[['report([10, 20])',
+         'report([])',
+         'report([1, 2])',
+         'report([1 / 3])']],
+       ['\'average = 15.00\'',
+        '\'no data\'',
+        '\'average = 1.50\'',
+        '\'average = 0.33\'']],
+      [[['average(x for x in range(1, 101))',
+         'average(iter([2, 4]))',
+         'g = (x for x in [1, 2, 3])',
+         'average(g)',
+         'average(g) is None']],
+       ['50.5',
+        '3.0',
+        '2.0',
+        'True']],
+      [[['average([0])',
+         'average([-1, 1])',
+         'average([-5, -7])',
+         'average([1, 2.5])']],
+       ['0.0',
+        '0.0',
+        '-6.0',
+        '1.75']],
+      [[['average(range(10**6))',
+         'average([0.5] * 1000)',
+         'type(average([1, 2])).__name__',
+         'report(range(3))']],
+       ['499999.5',
+        '0.5',
+        '\'float\'',
+        '\'average = 1.00\'']],
+      [[['hints = average.__annotations__',
+         'hints["return"] == (float | None)',
+         'hints["values"] == Iterable[float]',
+         'sorted(hints)']],
+       ['True',
+        'True',
+        '[\'return\', \'values\']']],
+    ] },
     solution: {
       approach: `<p>Weakest parameter type (Iterable), honest return type (float | None), single pass with a running total and count.</p>`,
       code: { lang: 'python', run: true, code: `from collections.abc import Iterable
@@ -2276,6 +2909,117 @@ def call_with_retry(fn):
     return None                  # final error swallowed` },
     mcq: { q: 'After the final failed attempt, what should happen?', options: ['Re-raise the last exception (bare raise inside the except, or raise saved_exc)', 'Return None', 'Raise a generic Exception("failed")', 'Retry forever'], answer: 0, explain: 'The caller needs the real error (type and traceback) to decide what to do. Returning None hides failure; a generic Exception loses information.' },
     hints: [`<p>Hint 1: Three layers: <code>retry(...)</code> returns <code>decorator(fn)</code>, which returns <code>wrapper(*args, **kwargs)</code> decorated with <code>@functools.wraps(fn)</code>.</p>`, `<p>Hint 2: Loop <code>for attempt in range(times)</code>; in <code>except exceptions:</code> if it is the last attempt, <code>raise</code>; otherwise <code>sleep(base_delay * 2 ** attempt)</code>.</p>`, `<p>Hint 3: Test with a fake sleep that appends to a list, and a function that uses a counter or an iterator of outcomes. Check the delays and the number of calls.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['delays = []',
+         'outcomes = iter([ConnectionError("down"), ConnectionError("down"), "ok"])',
+         String.raw`@retry(3, (ConnectionError,), sleep=delays.append)
+def fetch():
+    """Fetch something flaky."""
+    r = next(outcomes)
+    if isinstance(r, Exception):
+        raise r
+    return r`,
+         'fetch()',
+         'delays',
+         'fetch.__name__',
+         'fetch.__doc__']],
+       ['\'ok\'',
+        '[0.1, 0.2]',
+        '\'fetch\'',
+        '\'Fetch something flaky.\'']],
+      [[['delays = []',
+         'calls = []',
+         String.raw`@retry(3, (ConnectionError,), sleep=delays.append)
+def broken():
+    calls.append(1)
+    raise ValueError("bug, not transient")`,
+         'broken()',
+         'len(calls)',
+         'delays']],
+       ['!ValueError',
+        '1',
+        '[]']],
+      [[['delays = []',
+         'calls = []',
+         String.raw`@retry(3, (ConnectionError,), sleep=delays.append)
+def always():
+    calls.append(1)
+    raise ConnectionError("n%d" % len(calls))`,
+         String.raw`def last(f):
+    try:
+        f()
+    except Exception as e:
+        return str(e)`,
+         'last(always)',
+         'len(calls)',
+         'delays']],
+       ['\'n3\'',
+        '3',
+        '[0.1, 0.2]']],
+      [[['delays = []',
+         'calls = []',
+         String.raw`@retry(1, (ConnectionError,), sleep=delays.append)
+def once():
+    calls.append(1)
+    raise ConnectionError("x")`,
+         'once()',
+         'len(calls)',
+         'delays',
+         'retry(0, (ValueError,))',
+         'retry(-2, (ValueError,))']],
+       ['!ConnectionError',
+        '1',
+        '[]',
+        '!ValueError',
+        '!ValueError']],
+      [[['delays = []',
+         'calls = []',
+         String.raw`@retry(5, (OSError,), sleep=delays.append, base_delay=1)
+def slow():
+    calls.append(1)
+    raise ConnectionError("x")`,
+         'slow()',
+         'len(calls)',
+         'delays']],
+       ['!ConnectionError',
+        '5',
+        '[1, 2, 4, 8]']],
+      [[['delays = []',
+         'state = {"n": 0}',
+         String.raw`@retry(3, (KeyError, TimeoutError), sleep=delays.append)
+def add(a, b=0):
+    state["n"] += 1
+    if state["n"] == 1:
+        raise TimeoutError()
+    return a + b`,
+         'add(1, b=2)',
+         'state["n"]',
+         'delays',
+         'add(5)',
+         'delays']],
+       ['3',
+        '2',
+        '[0.1]',
+        '5',
+        '[0.1]']],
+      [[['delays = []',
+         'calls = []',
+         String.raw`@retry(3, (Exception,), sleep=delays.append)
+def stop():
+    calls.append(1)
+    raise KeyboardInterrupt()`,
+         String.raw`def raises(f):
+    try:
+        f()
+    except BaseException as e:
+        return type(e).__name__`,
+         'raises(stop)',
+         'len(calls)',
+         'delays']],
+       ['\'KeyboardInterrupt\'',
+        '1',
+        '[]']],
+    ] },
     solution: {
       approach: `<p>Catch only the configured exception tuple, back off exponentially with an injected sleep, and re-raise the final failure untouched. Non-retryable exceptions are never caught, so they propagate on the first attempt.</p>`,
       code: { lang: 'python', run: true, code: `import functools
@@ -2348,6 +3092,76 @@ except ValueError as e:
         pass` },
     mcq: { q: 'What must <code>__exit__</code> return to swallow the expected exception?', options: ['A truthy value (True)', 'None', 'The exception object', 'It must re-raise it'], answer: 0, explain: 'If __exit__ returns a truthy value, Python suppresses the exception. Returning None/False lets it propagate — which is what we want for unexpected types.' },
     hints: [`<p>Hint 1: <code>__exit__(self, exc_type, exc, tb)</code> receives <code>None</code>s when the block finished without error → raise AssertionError there.</p>`, `<p>Hint 2: If <code>not issubclass(exc_type, self.expected)</code> → <code>return False</code> so it propagates unchanged.</p>`, `<p>Hint 3: If <code>match</code> is set and <code>re.search(match, str(exc))</code> fails → raise AssertionError with both the pattern and the actual message; otherwise store <code>self.value = exc</code> and <code>return True</code>.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`with expect_raises(ZeroDivisionError) as info:
+    1 / 0`,
+         'type(info.value).__name__',
+         'isinstance(info.value, ZeroDivisionError)']],
+       ['\'ZeroDivisionError\'',
+        'True']],
+      [[[String.raw`def blk_none():
+    with expect_raises(KeyError):
+        pass`,
+         String.raw`def msg(f):
+    try:
+        f()
+    except AssertionError as e:
+        return str(e)`,
+         'msg(blk_none)',
+         'blk_none()']],
+       ['\'DID NOT RAISE KeyError\'',
+        '!AssertionError']],
+      [[[String.raw`with expect_raises(ValueError):
+    "a" + 1`]],
+       ['!TypeError']],
+      [[[String.raw`with expect_raises(ValueError, match="positive") as i:
+    raise ValueError("must be positive")`,
+         'str(i.value)',
+         String.raw`def msg(f):
+    try:
+        f()
+    except AssertionError as e:
+        return str(e)`,
+         String.raw`def wrong():
+    with expect_raises(ValueError, match="positive"):
+        raise ValueError("oops")`,
+         'msg(wrong)']],
+       ['\'must be positive\'',
+        '"pattern \'positive\' not found in \'oops\'"']],
+      [[[String.raw`with expect_raises(LookupError) as i:
+    {}["k"]`,
+         'type(i.value).__name__',
+         String.raw`with expect_raises(KeyError):
+    [][0]`]],
+       ['\'KeyError\'',
+        '!IndexError']],
+      [[[String.raw`with expect_raises(ValueError, match=r"^\d+$"):
+    raise ValueError("123")`,
+         String.raw`with expect_raises(ValueError, match=r"^\d+$"):
+    raise ValueError("a123")`,
+         String.raw`with expect_raises(ValueError, match="base 10"):
+    int("abc")`,
+         String.raw`with expect_raises(ValueError, match=""):
+    raise ValueError()`,
+         String.raw`with expect_raises(ValueError, match="x"):
+    raise ValueError()`]],
+       ['!AssertionError',
+        '!AssertionError']],
+      [[['ran = []',
+         String.raw`with expect_raises(ValueError):
+    ran.append(1)
+    raise ValueError()
+    ran.append(2)`,
+         'ran',
+         'e = expect_raises(ValueError)',
+         'e.value is None',
+         String.raw`with expect_raises(Exception) as j:
+    raise OSError("disk")`,
+         'str(j.value)']],
+       ['[1]',
+        'True',
+        '\'disk\'']],
+    ] },
     solution: {
       approach: `<p>The context-manager protocol gives us exactly the hooks pytest uses: __exit__ sees the exception (or its absence), decides whether it is the expected one, and returns True to suppress it.</p>`,
       code: { lang: 'python', run: true, code: `import re
@@ -2423,6 +3237,95 @@ except Exception as e:
 print(risky_wrong_model())` },
     mcq: { q: 'What would the traceback text say between the two exceptions?', options: ['During handling of the above exception, another exception occurred', 'The above exception was the direct cause of the following exception', 'Nothing; only ZeroDivisionError is shown', 'KeyError: k only'], answer: 0, explain: 'Implicit chaining (no "from") sets __context__ and prints "During handling of the above exception…". "direct cause" is printed only for raise … from.' },
     hints: [`<p>Hint 1: The except clause catches the KeyError; then <code>1 / 0</code> raises ZeroDivisionError inside the handler.</p>`, `<p>Hint 2: Any exception raised while another is being handled gets <code>__context__</code> set automatically.</p>`, `<p>Hint 3: finally runs on the way out, printing "cleanup", before the ZeroDivisionError reaches the outer except.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`import io, contextlib
+def cap(fn):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        r = fn()
+    return buf.getvalue(), r`,
+         String.raw`def probe(fn):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        try:
+            fn()
+            e = None
+        except Exception as ex:
+            e = ex
+    return buf.getvalue(), type(e).__name__, type(e.__context__).__name__, e.__cause__, e.__suppress_context__`,
+         'probe(risky)']],
+       ['(\'handling KeyError\\ncleanup\\n\', \'ZeroDivisionError\', \'KeyError\', None, False)']],
+      [[[String.raw`try:
+    risky()
+except Exception as e:
+    ctx = e.__context__`,
+         'ctx.args',
+         'ctx.__context__ is None',
+         'type(ctx)']],
+       ['(\'k\',)',
+        'True',
+        '<class \'KeyError\'>']],
+      [[[String.raw`import io, contextlib
+def cap(fn):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        r = fn()
+    return buf.getvalue(), r`,
+         String.raw`def probe(fn):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        try:
+            fn()
+        except Exception as ex:
+            return buf.getvalue().count("cleanup"), buf.getvalue().count("handling KeyError")`,
+         'probe(risky)',
+         'probe(risky)']],
+       ['(1, 1)',
+        '(1, 1)']],
+      [[[String.raw`try:
+    risky()
+except Exception as e:
+    err = e`,
+         'isinstance(err, ArithmeticError)',
+         'isinstance(err, KeyError)',
+         'err.__traceback__ is not None',
+         'err.args']],
+       ['True',
+        'False',
+        'True',
+        '(\'division by zero\',)']],
+      [[[String.raw`def with_from():
+    try:
+        {}["k"]
+    except KeyError as k:
+        raise ZeroDivisionError from k`,
+         String.raw`try:
+    with_from()
+except Exception as e:
+    chain = (type(e.__cause__).__name__, type(e.__context__).__name__, e.__suppress_context__)`,
+         'chain']],
+       ['(\'KeyError\', \'KeyError\', True)']],
+      [[[String.raw`def with_none():
+    try:
+        {}["k"]
+    except KeyError:
+        raise ZeroDivisionError from None`,
+         String.raw`try:
+    with_none()
+except Exception as e:
+    chain = (e.__cause__, type(e.__context__).__name__, e.__suppress_context__)`,
+         'chain']],
+       ['(None, \'KeyError\', True)']],
+      [[[String.raw`def finally_wins():
+    try:
+        return {}["k"]
+    except KeyError:
+        return 1 / 0
+    finally:
+        return "finally"`,
+         'finally_wins()']],
+       ['\'finally\'']],
+    ] },
     solution: {
       approach: `<p>Sequence: KeyError raised → caught → "handling KeyError" printed → ZeroDivisionError raised in the handler (context = KeyError) → finally prints "cleanup" → outer except prints the type and context.</p>`,
       code: { lang: 'python', run: true, code: `def risky():
@@ -2458,6 +3361,71 @@ except Exception as e:
     return out` },
     mcq: { q: 'Will a plain <code>except ValueError:</code> catch the ExceptionGroup?', options: ['No — the group is an ExceptionGroup, not a ValueError; use except* ValueError', 'Yes, it looks inside', 'Only if there is exactly one ValueError inside', 'Only in Python 3.13+'], answer: 0, explain: 'ExceptionGroup is not a subclass of ValueError. except* splits the group and matches the members; plain except only matches the group object itself.' },
     hints: [`<p>Hint 1: Wrap each row's conversion in try/except (KeyError, ValueError) as e → <code>e.add_note(f'row {i}')</code> → errors.append(e).</p>`, `<p>Hint 2: Raise ValueError yourself when qty ≤ 0 or price ≤ 0, with a clear message.</p>`, `<p>Hint 3: After the loop: <code>if errors: raise ExceptionGroup(f'{len(errors)} bad rows', errors)</code>. Caller: <code>except* KeyError as g:</code> and <code>except* ValueError as g:</code>, iterating <code>g.exceptions</code> and their <code>__notes__</code>.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`def eg(rows):
+    try:
+        return import_orders(rows)
+    except ExceptionGroup as g:
+        return g.message, [(type(e).__name__, str(e), e.__notes__) for e in g.exceptions]`,
+         'eg([{\'id\': 1, \'qty\': \'2\', \'price\': \'9.5\'}, {\'id\': 2, \'qty\': \'x\', \'price\': \'1\'}, {\'id\': 3, \'price\': \'4\'}])']],
+       ['(\'2 bad rows\', [(\'ValueError\', "invalid literal for int() with base 10: \'x\'", [\'row 1 (id=2)\']), (\'KeyError\', "\'qty\'", [\'row 2 (id=3)\'])])']],
+      [[['import_orders([{\'id\': 1, \'qty\': \'2\', \'price\': \'9.5\'}])',
+         'import_orders([])',
+         'import_orders([{\'id\': 7, \'qty\': 3, \'price\': 2}, {\'id\': 8, \'qty\': \' 4 \', \'price\': \' 0.5 \'}])']],
+       ['[(1, 2, 9.5)]',
+        '[]',
+        '[(7, 3, 2.0), (8, 4, 0.5)]']],
+      [[[String.raw`def eg(rows):
+    try:
+        return import_orders(rows)
+    except ExceptionGroup as g:
+        return g.message, [(type(e).__name__, str(e), e.__notes__) for e in g.exceptions]`,
+         'eg([{\'id\': 4, \'qty\': \'0\', \'price\': \'3\'}])',
+         'eg([{\'id\': 5, \'qty\': \'1\', \'price\': \'-2.5\'}])',
+         'eg([{\'id\': 1, \'qty\': \'1\', \'price\': \'abc\'}])',
+         'eg([{\'id\': 1, \'qty\': \'2.5\', \'price\': \'1\'}])']],
+       ['(\'1 bad rows\', [(\'ValueError\', \'qty and price must be positive, got 0, 3.0\', [\'row 0 (id=4)\'])])',
+        '(\'1 bad rows\', [(\'ValueError\', \'qty and price must be positive, got 1, -2.5\', [\'row 0 (id=5)\'])])',
+        '(\'1 bad rows\', [(\'ValueError\', "could not convert string to float: \'abc\'", [\'row 0 (id=1)\'])])',
+        '(\'1 bad rows\', [(\'ValueError\', "invalid literal for int() with base 10: \'2.5\'", [\'row 0 (id=1)\'])])']],
+      [[[String.raw`def eg(rows):
+    try:
+        return import_orders(rows)
+    except ExceptionGroup as g:
+        return g.message, [(type(e).__name__, str(e), e.__notes__) for e in g.exceptions]`,
+         'eg([{\'qty\': \'1\', \'price\': \'1\'}, {\'id\': 2}, {\'id\': 3, \'qty\': \'1\'}, {}])']],
+       ['(\'4 bad rows\', [(\'KeyError\', "\'id\'", [\'row 0 (id=None)\']), (\'KeyError\', "\'qty\'", [\'row 1 (id=2)\']), (\'KeyError\', "\'price\'", [\'row 2 (id=3)\']), (\'KeyError\', "\'qty\'", [\'row 3 (id=None)\'])])']],
+      [[[String.raw`def split(rows):
+    out = {"k": [], "v": []}
+    try:
+        import_orders(rows)
+    except* KeyError as g:
+        out["k"] = [str(e) for e in g.exceptions]
+    except* ValueError as g:
+        out["v"] = [str(e) for e in g.exceptions]
+    return out`,
+         'split([{\'id\': 1, \'qty\': \'2\', \'price\': \'9.5\'}, {\'id\': 2, \'qty\': \'x\', \'price\': \'1\'}, {\'id\': 3, \'price\': \'4\'}, {\'id\': 4, \'qty\': \'0\', \'price\': \'3\'}])',
+         'split([{\'id\': 1, \'qty\': \'2\', \'price\': \'9.5\'}])']],
+       ['{\'k\': ["\'qty\'"], \'v\': ["invalid literal for int() with base 10: \'x\'", \'qty and price must be positive, got 0, 3.0\']}',
+        '{\'k\': [], \'v\': []}']],
+      [[[String.raw`def eg(rows):
+    try:
+        return import_orders(rows)
+    except ExceptionGroup as g:
+        return g.message, [(type(e).__name__, str(e), e.__notes__) for e in g.exceptions]`,
+         'rows = [{"id": i, "qty": "1" if i % 1000 else "x", "price": "2"} for i in range(10000)]',
+         'r = eg(rows)',
+         'r[0]',
+         'len(r[1])',
+         'r[1][0][2]',
+         'r[1][-1][2]',
+         'len(import_orders([{"id": i, "qty": "1", "price": "2"} for i in range(10000)]))']],
+       ['\'10 bad rows\'',
+        '10',
+        '[\'row 0 (id=0)\']',
+        '[\'row 9000 (id=9000)\']',
+        '10000']],
+    ] },
     solution: {
       approach: `<p>Validate every row, attach context with notes, and bundle all failures. except* lets the caller route each family of errors to its own handler.</p>`,
       code: { lang: 'python', run: true, code: `def import_orders(rows):
@@ -2511,6 +3479,77 @@ test_b()          # AssertionError stops everything here
 print('never reached')` },
     mcq: { q: 'Which order of except clauses classifies correctly?', options: ['except AssertionError first, then except Exception', 'except Exception first, then except AssertionError', 'Only except BaseException', 'Order does not matter'], answer: 0, explain: 'AssertionError is a subclass of Exception. If Exception came first, failures would be reported as errors.' },
     hints: [`<p>Hint 1: <code>sorted(name for name, obj in ns.items() if name.startswith('test_') and callable(obj))</code>.</p>`, `<p>Hint 2: try: fn() / except AssertionError: FAIL / except Exception: ERROR / else: PASS.</p>`, `<p>Hint 3: Keep the exception message for the report (<code>f'{type(e).__name__}: {e}'</code>) and count statuses with a Counter for the summary line.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`import io, contextlib
+def cap(fn):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        r = fn()
+    return buf.getvalue(), r`,
+         'def test_add(): assert 2 + 3 == 5',
+         String.raw`def test_sub():
+    got = 5 - 3
+    assert got == 1, f"expected 1, got {got}"`,
+         'def test_div(): return 1 / 0',
+         'def helper(): raise RuntimeError("never called")',
+         'ns = dict(test_add=test_add, test_sub=test_sub, test_div=test_div, helper=helper)',
+         'run_tests(ns)',
+         'cap(lambda: run_tests(ns))[0].splitlines()[-1]',
+         'len(cap(lambda: run_tests(ns))[0].splitlines())']],
+       ['{\'test_add\': \'PASS\', \'test_div\': \'ERROR\', \'test_sub\': \'FAIL\'}',
+        '\'1 passed, 1 failed, 1 error\'',
+        '4']],
+      [[['run_tests({})',
+         'run_tests({"helper": lambda: 1, "not_test_x": lambda: 1})',
+         String.raw`import io, contextlib
+def cap(fn):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        r = fn()
+    return buf.getvalue(), r`,
+         'cap(lambda: run_tests({}))[0]']],
+       ['{}',
+        '{}',
+        '\'0 passed, 0 failed, 0 error\\n\'']],
+      [[['run_tests({"test_x": 5, "test_y": lambda: None})',
+         'run_tests({"test_z": print})']],
+       ['{\'test_y\': \'PASS\'}',
+        '{\'test_z\': \'PASS\'}']],
+      [[['def test_b(): pass',
+         'def test_a(): pass',
+         'def test_c(): pass',
+         'list(run_tests({"test_b": test_b, "test_a": test_a, "test_c": test_c}))']],
+       ['[\'test_a\', \'test_b\', \'test_c\']']],
+      [[[String.raw`def raises(f):
+    try:
+        f()
+    except BaseException as e:
+        return type(e).__name__`,
+         'def test_ctrl(): raise KeyboardInterrupt()',
+         'raises(lambda: run_tests({"test_ctrl": test_ctrl}))',
+         'def test_exit(): raise SystemExit(1)',
+         'raises(lambda: run_tests({"test_exit": test_exit}))']],
+       ['\'KeyboardInterrupt\'',
+        '\'SystemExit\'']],
+      [[['def test_1(): assert False',
+         'def test_2(): raise ValueError("boom")',
+         'class Custom(Exception): pass',
+         'def test_3(): raise Custom()',
+         'def test_4(): assert True',
+         'def test_5(): raise AssertionError',
+         'run_tests(dict(test_1=test_1, test_2=test_2, test_3=test_3, test_4=test_4, test_5=test_5))']],
+       ['{\'test_1\': \'FAIL\', \'test_2\': \'ERROR\', \'test_3\': \'ERROR\', \'test_4\': \'PASS\', \'test_5\': \'FAIL\'}']],
+      [[['ns = {"test_%05d" % i: (lambda i=i: None if i % 3 else 1 / 0) for i in range(3000)}',
+         'r = run_tests(ns)',
+         'len(r)',
+         'sum(1 for v in r.values() if v == "ERROR")',
+         'sum(1 for v in r.values() if v == "PASS")',
+         'list(r)[:2]']],
+       ['3000',
+        '1000',
+        '2000',
+        '[\'test_00000\', \'test_00001\']']],
+    ] },
     solution: {
       approach: `<p>Discovery by naming convention, isolation by catching per test, and classification by exception type: exactly the core loop of unittest and pytest.</p>`,
       code: { lang: 'python', run: true, code: `from collections import Counter
@@ -2567,6 +3606,76 @@ def send_real(email, subject):
         s.sendmail('billing@example.com', [email], subject)` },
     mcq: { q: 'How do you check that the SECOND call had specific arguments?', options: ['<code>send.call_args_list[1] == mock.call(email, subject)</code>', '<code>send.assert_called_once_with(...)</code>', '<code>send.return_value[1]</code>', '<code>send.call_count == 2</code>'], answer: 0, explain: 'call_args_list keeps every call in order as call objects. assert_called_once_with would fail when there are several calls; call_count does not check arguments.' },
     hints: [`<p>Hint 1: Inject <code>send</code> as a parameter — then the test passes <code>Mock()</code> with no patching at all.</p>`, `<p>Hint 2: Days overdue = <code>(today - inv['due']).days</code>; condition <code>not paid and days &gt; 0</code>.</p>`, `<p>Hint 3: For the failure case use <code>Mock(side_effect=[ConnectionError(), None])</code> and assert the return value is 1 while call_count is 2.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['from datetime import date, timedelta',
+         'sent = []',
+         'def send(e, s): sent.append((e, s))',
+         'today = date(2026, 3, 10)',
+         'invs = [{\'id\': 1, \'email\': \'a@x.com\', \'due\': date(2026, 3, 1), \'paid\': False}, {\'id\': 2, \'email\': \'b@x.com\', \'due\': date(2026, 3, 20), \'paid\': False}, {\'id\': 3, \'email\': \'c@x.com\', \'due\': date(2026, 2, 1), \'paid\': True}]',
+         'send_reminders(invs, today, send)',
+         'sent']],
+       ['1',
+        '[(\'a@x.com\', \'Invoice 1 is 9 days overdue\')]']],
+      [[['from datetime import date',
+         'from unittest import mock',
+         'today = date(2026, 3, 10)',
+         'invs = [{\'id\': 1, \'email\': \'a@x.com\', \'due\': date(2026, 3, 1), \'paid\': False}, {\'id\': 2, \'email\': \'b@x.com\', \'due\': date(2026, 3, 20), \'paid\': False}, {\'id\': 3, \'email\': \'c@x.com\', \'due\': date(2026, 2, 1), \'paid\': True}, {\'id\': 4, \'email\': \'d@x.com\', \'due\': date(2026, 2, 28), \'paid\': False}]',
+         'm = mock.Mock()',
+         'send_reminders(invs, today, m)',
+         'm.call_args_list == [mock.call(\'a@x.com\', \'Invoice 1 is 9 days overdue\'), mock.call(\'d@x.com\', \'Invoice 4 is 10 days overdue\')]',
+         'm.call_count']],
+       ['2',
+        'True',
+        '2']],
+      [[['from datetime import date',
+         'sent = []',
+         'def send(e, s): sent.append(s)',
+         'today = date(2026, 3, 10)',
+         'invs = [{\'id\': 5, \'email\': \'e\', \'due\': date(2026, 3, 10), \'paid\': False}, {\'id\': 6, \'email\': \'f\', \'due\': date(2026, 3, 9), \'paid\': False}, {\'id\': 7, \'email\': \'g\', \'due\': date(2026, 3, 11), \'paid\': False}]',
+         'send_reminders(invs, today, send)',
+         'sent']],
+       ['1',
+        '[\'Invoice 6 is 1 days overdue\']']],
+      [[['from datetime import date',
+         'sent = []',
+         String.raw`def send(e, s):
+    if e == "bad@x.com":
+        raise ConnectionError("down")
+    sent.append(e)`,
+         'today = date(2026, 3, 10)',
+         'invs = [{\'id\': i, \'email\': e, \'due\': date(2026, 3, 1), \'paid\': False} for i, e in enumerate([\'a@x.com\', \'bad@x.com\', \'c@x.com\'])]',
+         'send_reminders(invs, today, send)',
+         'sent']],
+       ['2',
+        '[\'a@x.com\', \'c@x.com\']']],
+      [[['from datetime import date',
+         'def send(e, s): raise ValueError("bug")',
+         'invs = [{\'id\': 1, \'email\': \'a\', \'due\': date(2026, 3, 1), \'paid\': False}]',
+         'send_reminders(invs, date(2026, 3, 10), send)']],
+       ['!ValueError']],
+      [[['from datetime import date',
+         'sent = []',
+         'def send(e, s): sent.append(s)',
+         'send_reminders([], date(2026, 3, 10), send)',
+         'send_reminders([{\'id\': 1, \'email\': \'a\', \'due\': date(2020, 1, 1), \'paid\': True}], date(2026, 3, 10), send)',
+         'sent']],
+       ['0',
+        '0',
+        '[]']],
+      [[['from datetime import date, timedelta',
+         'sent = []',
+         'def send(e, s): sent.append((e, s))',
+         'today = date(2026, 3, 10)',
+         'invs = [{"id": i, "email": "u%d@x.com" % i, "due": today - timedelta(days=i + 1), "paid": i % 2 == 1} for i in range(10000)]',
+         'send_reminders(invs, today, send)',
+         'sent[0]',
+         'sent[-1]',
+         'len(sent)']],
+       ['5000',
+        '(\'u0@x.com\', \'Invoice 0 is 1 days overdue\')',
+        '(\'u9998@x.com\', \'Invoice 9998 is 9999 days overdue\')',
+        '5000']],
+    ] },
     solution: {
       approach: `<p>Dependency injection makes the side effect replaceable; the Mock records each call so the test asserts the exact interactions (who, what, how many), including the partial-failure path.</p>`,
       code: { lang: 'python', run: true, code: `from datetime import date
@@ -2630,6 +3739,188 @@ def test_a():
         db.close()` },
     mcq: { q: 'How do you run a generator fixture\'s teardown and verify it yielded exactly once?', options: ['Call next(gen) once more and expect StopIteration; if it yields again, raise an error', 'Call gen.close() only', 'Delete the generator and rely on garbage collection', 'Call gen.send(None) twice'], answer: 0, explain: 'The second next() resumes after the yield, running the teardown code; a correct fixture then finishes with StopIteration. Relying on GC makes teardown timing unpredictable; close() would raise GeneratorExit at the yield and skip teardown code that is not in a finally block.' },
     hints: [`<p>Hint 1: Store <code>name → (fn, scope)</code>. Resolution is a recursive DFS over parameter names with a per-test cache dict and a per-test teardown list (plus a session cache and session teardown list).</p>`, `<p>Hint 2: After calling a fixture function, <code>inspect.isgenerator(result)</code> → value = <code>next(result)</code> and push the generator onto the correct teardown list; otherwise the result is the value.</p>`, `<p>Hint 3: In <code>run</code>, use try/except AssertionError/except Exception/finally; in finally pop teardown generators in reverse, calling next() and expecting StopIteration. Check scope mismatch when a session fixture's dependency is function-scoped.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`log = []
+reg = Registry()
+@reg.fixture(scope='session')
+def db():
+    log.append('setup db')
+    yield {'users': []}
+    log.append('teardown db')
+@reg.fixture()
+def user(db):
+    log.append('setup user')
+    db['users'].append('asha')
+    yield 'asha'
+    db['users'].remove('asha')
+    log.append('teardown user')
+def test_a(user):
+    log.append('test_a')
+    assert user == 'asha'
+def test_b(db, user):
+    log.append('test_b')
+    assert db['users'] == ['asha', 'ben']
+def test_c(missing):
+    pass`,
+         'reg.run(test_a)',
+         'reg.run(test_b)',
+         'reg.run(test_c)',
+         'reg.close()',
+         'log']],
+       ['\'PASS\'',
+        '\'FAIL\'',
+        '"ERROR (LookupError: fixture \'missing\' not found)"',
+        '[\'setup db\', \'setup user\', \'test_a\', \'teardown user\', \'setup user\', \'test_b\', \'teardown user\', \'teardown db\']']],
+      [[[String.raw`log = []
+reg = Registry()
+@reg.fixture()
+def res():
+    log.append('open')
+    yield 1
+    log.append('close')
+def test_fail(res):
+    log.append('body')
+    assert res == 2
+def test_err(res):
+    raise ValueError('boom')`,
+         'reg.run(test_fail)',
+         'reg.run(test_err)',
+         'log']],
+       ['\'FAIL\'',
+        '\'ERROR (ValueError: boom)\'',
+        '[\'open\', \'body\', \'close\', \'open\', \'close\']']],
+      [[[String.raw`reg = Registry()
+@reg.fixture()
+def f():
+    return 1
+@reg.fixture(scope='session')
+def s(f):
+    return f
+def test_x(s):
+    pass`,
+         'reg.run(test_x)',
+         'reg.close()']],
+       ['"ERROR (ScopeMismatch: session fixture \'s\' cannot use function fixture \'f\')"']],
+      [[[String.raw`reg = Registry()
+def test_x(nope):
+    pass
+def test_y():
+    pass`,
+         'reg.run(test_x)',
+         'reg.run(test_y)',
+         'issubclass(ScopeMismatch, Exception)']],
+       ['"ERROR (LookupError: fixture \'nope\' not found)"',
+        '\'PASS\'',
+        'True']],
+      [[[String.raw`log = []
+reg = Registry()
+@reg.fixture(scope='session')
+def conn():
+    log.append('conn+')
+    yield 'c'
+    log.append('conn-')
+@reg.fixture()
+def base():
+    log.append('base+')
+    return 'b'
+@reg.fixture()
+def left(base):
+    return base + 'L'
+@reg.fixture()
+def right(base):
+    return base + 'R'
+def test_1(conn, left, right):
+    log.append((conn, left, right))
+def test_2(conn, base):
+    log.append(base)`,
+         'reg.run(test_1)',
+         'reg.run(test_2)',
+         'reg.close()',
+         'log']],
+       ['\'PASS\'',
+        '\'PASS\'',
+        '[\'conn+\', \'base+\', (\'c\', \'bL\', \'bR\'), \'base+\', \'b\', \'conn-\']']],
+      [[[String.raw`log = []
+reg = Registry()
+@reg.fixture()
+def a():
+    log.append('a+')
+    yield 'a'
+    log.append('a-')
+@reg.fixture()
+def b(a):
+    log.append('b+')
+    yield a + 'b'
+    log.append('b-')
+@reg.fixture()
+def c(b):
+    log.append('c+')
+    yield b + 'c'
+    log.append('c-')
+@reg.fixture()
+def n():
+    return 5
+def test_chain(c):
+    assert c == 'abc'
+def test_n_ok(n):
+    assert n == 5
+def test_n_bad(n):
+    assert n == 6`,
+         'reg.run(test_chain)',
+         'log',
+         'reg.run(test_n_ok)',
+         'reg.run(test_n_bad)']],
+       ['\'PASS\'',
+        '[\'a+\', \'b+\', \'c+\', \'c-\', \'b-\', \'a-\']',
+        '\'PASS\'',
+        '\'FAIL\'']],
+      [[[String.raw`reg = Registry()
+@reg.fixture()
+def twice():
+    yield 1
+    yield 2
+def test_t(twice):
+    pass`,
+         'reg.run(test_t)']],
+       ['!RuntimeError']],
+      [[[String.raw`log = []
+reg = Registry()
+@reg.fixture(scope='session')
+def s1():
+    log.append('s1+')
+    yield
+    log.append('s1-')
+@reg.fixture(scope='session')
+def s2(s1):
+    log.append('s2+')
+    yield
+    log.append('s2-')
+def test_s(s2):
+    pass`,
+         'reg.run(test_s)',
+         'reg.run(test_s)',
+         'log',
+         'reg.close()',
+         'log',
+         'reg.close()',
+         'len(log)']],
+       ['\'PASS\'',
+        '\'PASS\'',
+        '[\'s1+\', \'s2+\']',
+        '[\'s1+\', \'s2+\', \'s2-\', \'s1-\']',
+        '4']],
+      [[[String.raw`reg = Registry()
+@reg.fixture()
+def a(b):
+    return 1
+@reg.fixture()
+def b(a):
+    return 2
+def test_cyc(a):
+    pass`,
+         'reg.run(test_cyc)']],
+       ['\'ERROR (RuntimeError: fixture cycle: a -> b -> a)\'']],
+    ] },
     solution: {
       approach: `<p>A recursive resolver with two caches (per-test and session) and two LIFO teardown stacks. Generators give us setup/teardown in one function, exactly like pytest's yield fixtures.</p>`,
       code: { lang: 'python', run: true, code: `import inspect
@@ -2757,6 +4048,107 @@ print(log)` },
 print(FakeClient().get('/x'))` },
     mcq: { q: 'Why implement child attributes with <code>__getattr__</code> rather than <code>__getattribute__</code>?', options: ['__getattr__ is only called when normal lookup fails, so real attributes (calls, return_value) work normally', '__getattribute__ does not exist', '__getattr__ is faster for every attribute', 'They are identical'], answer: 0, explain: '__getattribute__ intercepts EVERY attribute access, including self.calls, making infinite recursion easy. __getattr__ is the fallback for missing names — exactly "unknown attribute → child mock".' },
     hints: [`<p>Hint 1: In <code>__init__</code> set real attributes (<code>calls</code>, <code>side_effect</code>, <code>_children</code>, <code>_name</code>). <code>__getattr__(self, name)</code> is only consulted for names not found normally.</p>`, `<p>Hint 2: For side_effect classify in order: exception instance or class → raise; callable → call it; otherwise iterable → keep an iterator in <code>self.__dict__</code> created on first use.</p>`, `<p>Hint 3: Make <code>return_value</code> a property that lazily creates a child mock when never set, so <code>m().foo()</code> chains work like unittest.mock.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['m = TinyMock()',
+         'm.client.get.return_value = 200',
+         'm.client.get(\'/x\')',
+         'm.client.get.call_count',
+         'm.client.get.assert_called_once_with(\'/x\') is None',
+         'm.client.get.calls']],
+       ['200',
+        '1',
+        'True',
+        '[((\'/x\',), {})]']],
+      [[['s = TinyMock(side_effect=[1, KeyError("k")])',
+         's()',
+         's()',
+         's()',
+         's.call_count']],
+       ['1',
+        '!KeyError',
+        '!StopIteration',
+        '3']],
+      [[['sq = TinyMock(side_effect=lambda x: x * x)',
+         'sq(7)',
+         'sq(x=3)',
+         'sq.call_count',
+         'TinyMock(side_effect=ValueError)()',
+         'TinyMock(side_effect=KeyError("a"))()']],
+       ['49',
+        '9',
+        '2',
+        '!ValueError',
+        '!KeyError']],
+      [[[String.raw`def msg(f):
+    try:
+        f()
+    except AssertionError as e:
+        return str(e)`,
+         'a = TinyMock()',
+         'a.assert_called_once_with()',
+         '_ = a(1)',
+         'a.assert_called_once_with(2)',
+         '_ = a(1)',
+         'msg(lambda: a.assert_called_once_with(1))',
+         'b = TinyMock(name="b")',
+         '_ = b(1, k=2)',
+         'msg(lambda: b.assert_called_once_with(1))',
+         'b.assert_called_once_with(1, k=2) is None']],
+       ['!AssertionError',
+        '!AssertionError',
+        '"Expected \'mock\' to be called once. Called 2 times."',
+        '"b called with ((1,), {\'k\': 2}), expected ((1,), {})"',
+        'True']],
+      [[['m = TinyMock()',
+         'm.api.get is m.api.get',
+         'm.api.get is m.api.post',
+         'm() is m()',
+         'm.return_value is m()',
+         'm.anything(1).chained() is m.anything(2).chained()',
+         'm.x.return_value = 5',
+         'm.x()',
+         'TinyMock(return_value=None)() is None']],
+       ['True',
+        'False',
+        'True',
+        'True',
+        'True',
+        '5',
+        'True']],
+      [[['m = TinyMock()',
+         'hasattr(m, "__deepcopy__")',
+         'm._private',
+         'repr(m)',
+         'm.api.get',
+         'm()',
+         'm().x',
+         'm.side_effect is None']],
+       ['False',
+        '!AttributeError',
+        '\'<TinyMock mock>\'',
+        '<TinyMock mock.api.get>',
+        '<TinyMock mock()>',
+        '<TinyMock mock().x>',
+        'True']],
+      [[['c = TinyMock()',
+         'c(1, 2, a=3)',
+         'c("x")',
+         'c.calls',
+         'c.call_count']],
+       ['<TinyMock mock()>',
+        '<TinyMock mock()>',
+        '[((1, 2), {\'a\': 3}), ((\'x\',), {})]',
+        '2']],
+      [[['big = TinyMock()',
+         'for i in range(100000): big(i)',
+         'big.call_count',
+         'big.calls[-1]',
+         'big.foo = 5',
+         'big.foo']],
+       ['100000',
+        '((99999,), {})',
+        '5']],
+    ] },
     solution: {
       approach: `<p>Real attributes hold state; <code>__getattr__</code> lazily creates and caches child mocks for unknown public names; <code>__call__</code> records then applies side_effect / return_value.</p>`,
       code: { lang: 'python', run: true, code: `_UNSET = object()
@@ -2860,6 +4252,136 @@ except TypeError as e:
     print(e)` },
     mcq: { q: 'What does <code>typing.get_origin(dict[str, int])</code> return?', options: ['<code>dict</code>', '<code>(str, int)</code>', '<code>typing.Dict</code>', '<code>None</code>'], answer: 0, explain: 'get_origin gives the unparametrised base (dict); get_args gives the parameters (str, int). For a plain class like int, get_origin returns None.' },
     hints: [`<p>Hint 1: Handle the leaves first: Any → True; None/NoneType → value is None; <code>get_origin(hint) is None</code> → plain class → isinstance with the bool/int/float special cases.</p>`, `<p>Hint 2: Unions: origin is <code>typing.Union</code> (from Optional/Union[...]) or <code>types.UnionType</code> (from <code>int | str</code>) → any(check each arg). Literal → value equals one arg AND has the same type (so True does not match Literal[1]).</p>`, `<p>Hint 3: Containers: check isinstance with the origin, then recurse on every element. Tuples: <code>(T, Ellipsis)</code> means homogeneous any length; otherwise lengths must match and check pairwise.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['check_type({"a": [1, 2]}, dict[str, list[int]])',
+         'check_type([1, "x"], list[int])',
+         'check_type(True, int)',
+         'check_type(3, float)',
+         'check_type(\'r\', Literal[\'r\', \'w\'])',
+         'check_type(5, Any)',
+         'check_type(None, Any)']],
+       ['True',
+        'False',
+        'False',
+        'True',
+        'True',
+        'True',
+        'True']],
+      [[['check_type(None, None)',
+         'check_type(0, None)',
+         'check_type(None, Optional[str])',
+         'check_type("a", Optional[str])',
+         'check_type(1, Optional[str])',
+         'check_type("hi", int | str)',
+         'check_type(1.5, int | str)',
+         'check_type([1], Union[int, list[int]])',
+         'check_type(None, type(None))']],
+       ['True',
+        'False',
+        'True',
+        'True',
+        'False',
+        'True',
+        'False',
+        'True',
+        'True']],
+      [[['check_type((1, "a"), tuple[int, str])',
+         'check_type((1,), tuple[int, str])',
+         'check_type((1, 2, 3), tuple[int, ...])',
+         'check_type((), tuple[int, ...])',
+         'check_type((1, "x"), tuple[int, ...])',
+         'check_type((1, 2), tuple[int])',
+         'check_type([1, 2], tuple[int, int])',
+         'check_type((), tuple[()])',
+         'check_type((1,), tuple[()])']],
+       ['True',
+        'False',
+        'True',
+        'True',
+        'False',
+        'False',
+        'False',
+        'True',
+        'False']],
+      [[['check_type(True, Literal[1])',
+         'check_type(1, Literal[1])',
+         'check_type(\'a\', Literal[\'a\', \'b\'])',
+         'check_type(\'c\', Literal[\'a\', \'b\'])',
+         'check_type(1, Literal[True])',
+         'check_type(True, Literal[True])',
+         'check_type(1.5, int)',
+         'check_type(True, float)',
+         'check_type(1, float)',
+         'check_type(2.5, float)',
+         'check_type("1", float)']],
+       ['False',
+        'True',
+        'True',
+        'False',
+        'False',
+        'True',
+        'False',
+        'False',
+        'True',
+        'True',
+        'False']],
+      [[['check_type({1, 2}, set[int])',
+         'check_type({1, "a"}, set[int])',
+         'check_type(frozenset({1}), frozenset[int])',
+         'check_type({1}, frozenset[int])',
+         'check_type([], list[int])',
+         'check_type({}, dict[str, int])',
+         'check_type({"a": 1}, dict[str, int])',
+         'check_type({"a": "b"}, dict[str, int])',
+         'check_type({1: 1}, dict[str, int])',
+         'check_type([[1], [2, "x"]], list[list[int]])',
+         'check_type([[1], [2]], list[list[int]])',
+         'check_type((1, 2), list[int])']],
+       ['True',
+        'False',
+        'True',
+        'False',
+        'True',
+        'True',
+        'True',
+        'False',
+        'False',
+        'False',
+        'True',
+        'False']],
+      [[['class A: pass',
+         'class B(A): pass',
+         'check_type(B(), A)',
+         'check_type(A(), B)',
+         'check_type(A(), object)',
+         'check_type("s", str)',
+         'check_type(b"s", str)',
+         'check_type({"k": [A(), B()]}, dict[str, list[A]])']],
+       ['True',
+        'False',
+        'True',
+        'True',
+        'False',
+        'True']],
+      [[['check_type([], typing.Callable[[int], int])',
+         'check_type(1, "int")',
+         'check_type(1, 5)',
+         'check_type(1, typing.Callable)',
+         'check_type([1], typing.Sequence[int])']],
+       ['!TypeError',
+        '!TypeError',
+        '!TypeError',
+        '!TypeError',
+        '!TypeError']],
+      [[['check_type(list(range(10**5)), list[int])',
+         'check_type(list(range(10**5)) + ["x"], list[int])',
+         'check_type({i: [i] for i in range(20000)}, dict[int, list[int]])',
+         'check_type(tuple(range(10**5)), tuple[int, ...])']],
+       ['True',
+        'False',
+        'True',
+        'True']],
+    ] },
     solution: {
       approach: `<p>A recursive dispatcher on <code>get_origin(hint)</code>. This is the core of what pydantic, beartype and typeguard do (with many more cases and caching).</p>`,
       code: { lang: 'python', run: true, code: `import types
@@ -2945,6 +4467,225 @@ def call_with_hope(fn):
             time.sleep(1)       # hammers a dead service forever` },
     mcq: { q: 'Why should a ValueError from fn NOT count as a failure?', options: ['It signals a bug or bad input, not an unhealthy dependency; opening the circuit would block healthy calls', 'ValueError cannot be caught', 'Because it is a BaseException', 'It should count; all errors are equal'], answer: 0, explain: 'The breaker protects against an unavailable dependency. Caller mistakes say nothing about the dependency\'s health, so only the configured "expected" (transient/infra) exceptions count.' },
     hints: [`<p>Hint 1: State = 'closed' | 'open' | 'half-open', plus <code>failures</code> and <code>opened_at</code>. Check for "open → half-open" lazily at the start of each call using the clock.</p>`, `<p>Hint 2: <code>try: result = fn(...) except self.expected: self._failure(); raise else: self._success(); return result</code> — only expected exceptions touch the counter.</p>`, `<p>Hint 3: Fake clock: <code>now = [0.0]; clock = lambda: now[0]</code>; advance with <code>now[0] = 12</code>. Assert state after each step and that fn was not called while open.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`now = [0.0]
+cb = CircuitBreaker(threshold=2, reset_timeout=10, clock=lambda: now[0])
+calls = []
+def down():
+    calls.append('down')
+    raise ConnectionError('service down')
+def up():
+    calls.append('up')
+    return 'ok'
+def hit(fn):
+    try:
+        return cb.call(fn)
+    except Exception as e:
+        return type(e).__name__`,
+         'hit(down)',
+         'hit(down)',
+         'cb.state',
+         'now[0] = 5',
+         'hit(up)',
+         'calls',
+         String.raw`try:
+    cb.call(up)
+except CircuitOpenError as e:
+    ri = (e.retry_in, str(e))`,
+         'ri',
+         'now[0] = 12',
+         'cb.call(up)',
+         'cb.state',
+         'cb.failures']],
+       ['\'ConnectionError\'',
+        '\'ConnectionError\'',
+        '\'open\'',
+        '\'CircuitOpenError\'',
+        '[\'down\', \'down\']',
+        '(5.0, \'circuit open; retry in 5.0s\')',
+        '\'ok\'',
+        '\'closed\'',
+        '0']],
+      [[[String.raw`now = [0.0]
+cb = CircuitBreaker(threshold=2, reset_timeout=10, clock=lambda: now[0])
+calls = []
+def down():
+    calls.append('down')
+    raise ConnectionError('service down')
+def up():
+    calls.append('up')
+    return 'ok'
+def hit(fn):
+    try:
+        return cb.call(fn)
+    except Exception as e:
+        return type(e).__name__`,
+         'hit(down)',
+         'hit(down)',
+         'now[0] = 10',
+         'hit(down)',
+         'cb.state',
+         'now[0] = 15',
+         'hit(up)',
+         'now[0] = 19.9',
+         'hit(up)',
+         'now[0] = 20',
+         'hit(up)',
+         'cb.state',
+         'calls']],
+       ['\'ConnectionError\'',
+        '\'ConnectionError\'',
+        '\'ConnectionError\'',
+        '\'open\'',
+        '\'CircuitOpenError\'',
+        '\'CircuitOpenError\'',
+        '\'ok\'',
+        '\'closed\'',
+        '[\'down\', \'down\', \'down\', \'up\']']],
+      [[[String.raw`now = [0.0]
+cb = CircuitBreaker(threshold=2, reset_timeout=10, clock=lambda: now[0])
+calls = []
+def down():
+    calls.append('down')
+    raise ConnectionError('service down')
+def up():
+    calls.append('up')
+    return 'ok'
+def hit(fn):
+    try:
+        return cb.call(fn)
+    except Exception as e:
+        return type(e).__name__`,
+         'hit(down)',
+         'cb.failures',
+         'hit(up)',
+         'cb.failures',
+         'hit(down)',
+         'cb.state',
+         'hit(down)',
+         'cb.state']],
+       ['\'ConnectionError\'',
+        '1',
+        '\'ok\'',
+        '0',
+        '\'ConnectionError\'',
+        '\'closed\'',
+        '\'ConnectionError\'',
+        '\'open\'']],
+      [[[String.raw`now = [0.0]
+cb = CircuitBreaker(threshold=2, reset_timeout=10, clock=lambda: now[0])
+calls = []
+def down():
+    calls.append('down')
+    raise ConnectionError('service down')
+def up():
+    calls.append('up')
+    return 'ok'
+def hit(fn):
+    try:
+        return cb.call(fn)
+    except Exception as e:
+        return type(e).__name__`,
+         'hit(lambda: int("x"))',
+         'hit(lambda: int("x"))',
+         'hit(lambda: int("x"))',
+         'cb.state',
+         'cb.failures',
+         'hit(down)',
+         'cb.failures',
+         'hit(lambda: int("x"))',
+         'cb.failures']],
+       ['\'ValueError\'',
+        '\'ValueError\'',
+        '\'ValueError\'',
+        '\'closed\'',
+        '0',
+        '\'ConnectionError\'',
+        '1',
+        '\'ValueError\'',
+        '1']],
+      [[['cb = CircuitBreaker(threshold=1, expected=(KeyError,), clock=lambda: 0.0)',
+         String.raw`def hit(fn):
+    try:
+        return cb.call(fn)
+    except Exception as e:
+        return type(e).__name__`,
+         'hit(lambda: 1 / 0)',
+         'cb.state',
+         'hit(lambda: {}["k"])',
+         'cb.state',
+         'hit(lambda: 1)']],
+       ['\'ZeroDivisionError\'',
+        '\'closed\'',
+        '\'KeyError\'',
+        '\'open\'',
+        '\'CircuitOpenError\'']],
+      [[['cb = CircuitBreaker()',
+         'cb.call(lambda a, b=0: a + b, 1, b=2)',
+         'cb.call(lambda *a, **k: (a, k), 1, 2, x=3)',
+         '(cb.threshold, cb.reset_timeout, cb.state)']],
+       ['3',
+        '((1, 2), {\'x\': 3})',
+        '(3, 30.0, \'closed\')']],
+      [[['cb2 = CircuitBreaker(clock=lambda: 100.0)',
+         String.raw`def boom():
+    raise TimeoutError("slow")`,
+         String.raw`def hit(fn):
+    try:
+        return cb2.call(fn)
+    except Exception as e:
+        return type(e).__name__`,
+         'hit(boom)',
+         'hit(boom)',
+         'cb2.state',
+         'cb2.failures',
+         'hit(boom)',
+         'cb2.state',
+         'cb2.opened_at',
+         'hit(boom)']],
+       ['\'TimeoutError\'',
+        '\'TimeoutError\'',
+        '\'closed\'',
+        '2',
+        '\'TimeoutError\'',
+        '\'open\'',
+        '100.0',
+        '\'CircuitOpenError\'']],
+      [[[String.raw`now = [0.0]
+cb = CircuitBreaker(threshold=2, reset_timeout=10, clock=lambda: now[0])
+calls = []
+def down():
+    calls.append('down')
+    raise ConnectionError('service down')
+def up():
+    calls.append('up')
+    return 'ok'
+def hit(fn):
+    try:
+        return cb.call(fn)
+    except Exception as e:
+        return type(e).__name__`,
+         'issubclass(CircuitOpenError, RuntimeError)',
+         'hit(down)',
+         'hit(down)',
+         'n = len(calls)',
+         'now[0] = 3',
+         'hit(up)',
+         'hit(up)',
+         'hit(up)',
+         'len(calls) == n',
+         'CircuitOpenError(2.25).retry_in',
+         'str(CircuitOpenError(2.25))']],
+       ['True',
+        '\'ConnectionError\'',
+        '\'ConnectionError\'',
+        '\'CircuitOpenError\'',
+        '\'CircuitOpenError\'',
+        '\'CircuitOpenError\'',
+        'True',
+        '2.25',
+        '\'circuit open; retry in 2.2s\'']],
+    ] },
     solution: {
       approach: `<p>A three-state machine. Expected exceptions are counted and re-raised (callers still see the real error); while open we fail fast with a custom exception carrying how long to wait. The clock is injected, so tests control time.</p>`,
       code: { lang: 'python', run: true, code: `import time

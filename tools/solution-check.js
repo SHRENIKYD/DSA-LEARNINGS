@@ -6,6 +6,8 @@
 //   design:     tests: { cls: 'LRUCache', sigs: { LRUCache: 'int', put: 'int int -> void', get: 'int -> int' },
 //                        cases: [{ ops: ['LRUCache', 'put', 'get'], args: [[2], [1, 1], [1]], out: [null, null, 1] }] }
 //   program:    tests: { io: true, cases: [{ stdin: '3\n1 2 3\n', stdout: '6' }] }
+//   SQL:        tests: { db?, engine: 'sqlite'|'postgres'|'both', cmp: 'exact'|'set', cases: [{ setup?, after?, result?, cols?, rows: [[...]] } | { after, error: 'regex' }] }
+//   TS types:   tests: { types: ['type _1 = Expect<Equal<First<[3, 2]>, 3>>', '// @ts-expect-error\nconst x: Id = 5'] }
 //   not code:   tests: { skip: 'reason' }
 // Types: int long double bool string char ListNode TreeNode void, T[] / T[][] arrays, list<T> lists.
 // cmp: exact (default) | set (order-free list) | sets (order-free list of order-free lists) | float | oneOf (expected = list of answers)
@@ -29,7 +31,7 @@ const root = path.join(__dirname, '..');
 const args = process.argv.slice(2);
 const file = args.find((a) => !a.startsWith('--'));
 const opt = (k) => { const i = args.indexOf('--' + k); return i >= 0 ? args[i + 1] : null; };
-const LANGS = (opt('lang') || 'java,python,js,ts,cpp').split(',');
+const LANGS = (opt('lang') || 'java,python,js,ts,cpp,sql').split(',');
 const ONLY = opt('only') !== null ? +opt('only') : null;
 const REPORT = args.includes('--report'), KEEP = args.includes('--keep'), QUIET = args.includes('--quiet');
 const REQUIRE = (opt('require') || '').split(',').filter(Boolean);
@@ -50,11 +52,25 @@ const NORM = { javascript: 'js', typescript: 'ts', py: 'python', 'c++': 'cpp', c
 const problems = [];
 mod.topics.forEach((t, i) => asList(t.problems).concat(asList(t.problem)).forEach((p, j) => problems.push({ id: mod.id + '-t' + i + '-q' + j, p, lang: t.lang || DEF })));
 (mod.practice || []).forEach((p, k) => problems.push({ id: mod.id + '-p' + k, p, lang: DEF }));
+function dedent(src) {
+  if (typeof src !== 'string') return src;
+  const lines = src.replace(/\t/g, '    ').replace(/\r/g, '').split('\n');
+  while (lines.length && !lines[0].trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  const min = Math.min(...lines.filter((l) => l.trim()).map((l) => l.match(/^ */)[0].length));
+  return lines.map((l) => l.slice(Number.isFinite(min) ? min : 0)).join('\n');
+}
 function impls(pr) {
   const s = pr.p.solution || {}, out = {};
-  const add = (c, l) => { if (!c) return; const code = typeof c === 'object' ? c.code : c; const lang = NORM[(typeof c === 'object' && c.lang) || l] || (typeof c === 'object' && c.lang) || l; if (code && !out[lang]) out[lang] = code; };
+  // Code is dedented the way the site displays it (src/engine.js dedent), so an indented template literal still runs.
+  // An alternative marked check: false is illustrative and not meant to run (for example a MongoDB pipeline shown as JS).
+  // The main solution is always tested: there check: false only means the validator cannot compile it (e.g. PostgreSQL-only SQL).
+  const add = (c, l, isAlt) => { if (!c || (isAlt && typeof c === 'object' && c.check === false)) return; const code = dedent(typeof c === 'object' ? c.code : c); const lang = NORM[(typeof c === 'object' && c.lang) || l] || (typeof c === 'object' && c.lang) || l; if (code && !out[lang]) out[lang] = code; };
+  // tests.alt: k tests solution.alt[k] first (e.g. the pure-Python version when the main one needs NumPy).
+  const T0 = pr.p.tests || {};
+  if (Number.isInteger(T0.alt)) add(asList(s.alt)[T0.alt], pr.p.lang || pr.lang, false);
   add(s.code, pr.p.lang || pr.lang);
-  asList(s.alt).forEach((a) => add(a, pr.p.lang || pr.lang));
+  asList(s.alt).forEach((a) => add(a, pr.p.lang || pr.lang, true));
   return out;
 }
 
@@ -95,15 +111,15 @@ const isGen = (v) => !!v && typeof v === 'object' && !Array.isArray(v) && ('$rep
 const genParts = (v) => (v.$concat ? v.$concat : [v]);
 const rangeArgs = (r) => { const [a, b, st = 1] = r; if (!st) throw new Error('$range step 0'); return [a, b, st]; };
 function expand(v, t) {
-  if (Array.isArray(v)) return v.map((x, i) => expand(x, t && t.k === 'arr' ? t.of : t && t.list ? t.list[i] : undefined));
+  if (Array.isArray(v)) return v.map((x, i) => expand(x, t && (t.k === 'arr' || t.k === 'list') ? t.of : t && t.list ? t.list[i] : undefined));
   if (!isGen(v)) return v;
   const hasStr = genParts(v).some((p) => typeof p === 'string' || (isGen(p) && typeof p.$rep === 'string'));
-  const str = t ? t.k === 'string' : hasStr;
+  const str = t ? t.k === 'string' : hasStr, el = t && (t.k === 'arr' || t.k === 'list') ? t.of : undefined;
   const out = [];
   for (const p of genParts(v)) {
     if (typeof p === 'string') out.push(...(str ? [p] : p.split('')));
-    else if (Array.isArray(p)) out.push(...p.map((x) => expand(x)));
-    else if ('$rep' in p) { if (typeof p.$rep === 'string' && str) out.push(p.$rep.repeat(p.n)); else for (let i = 0; i < p.n; i++) out.push(p.$rep); }
+    else if (Array.isArray(p)) out.push(...p.map((x) => expand(x, el)));
+    else if ('$rep' in p) { if (typeof p.$rep === 'string' && str) out.push(p.$rep.repeat(p.n)); else { const one = expand(p.$rep, el); for (let i = 0; i < p.n; i++) out.push(i && one && typeof one === 'object' ? JSON.parse(JSON.stringify(one)) : one); } }
     else { const [a, b, st] = rangeArgs(p.$range); for (let i = a; st > 0 ? i < b : i > b; i += st) out.push(i); }
   }
   return str ? out.join('') : out;
@@ -115,7 +131,7 @@ function jGen(t, v) {
   if (t.k === 'arr' && t.of.k === 'char') return '(' + genParts(v).map((p) => (typeof p === 'string' ? JSON.stringify(p) : Array.isArray(p) ? JSON.stringify(p.join('')) : JSON.stringify(p.$rep) + '.repeat(' + p.n + ')')).join(' + ') + ').toCharArray()';
   const el = t.of, S = STREAM[el.k], st = S ? 'java.util.stream.' + S[0] : 'java.util.stream.Stream';
   const part = (p) => {
-    if (Array.isArray(p)) return st + '.of(' + p.map((x) => jLit0(el, x)).join(',') + ')';
+    if (Array.isArray(p)) return st + '.of(' + p.map((x) => jLit(el, x)).join(',') + ')';
     if ('$rep' in p) return st + '.generate(() -> ' + jLit(el, p.$rep) + ').limit(' + p.n + ')';
     const [a, b, s2] = rangeArgs(p.$range), x = '_hg';
     return st + '.iterate(' + jLit0(el, a) + ', ' + x + ' -> ' + x + (s2 > 0 ? ' < ' : ' > ') + jLit0(el, b) + ', ' + x + ' -> ' + x + ' + ' + jLit0(el, s2) + ')';
@@ -127,7 +143,7 @@ function jGen(t, v) {
 function pyGen(t, v) {
   return '(' + genParts(v).map((p) => {
     if (typeof p === 'string') return t.k === 'string' ? JSON.stringify(p) : 'list(' + JSON.stringify(p) + ')';
-    if (Array.isArray(p)) return '[' + p.map((x) => pyLit0(t.of, x)).join(', ') + ']';
+    if (Array.isArray(p)) return '[' + p.map((x) => pyLit(t.of, x)).join(', ') + ']';
     if ('$rep' in p) return t.k === 'string' ? JSON.stringify(p.$rep) + ' * ' + p.n : PRIM.has(t.of.k) ? '[' + pyLit0(t.of, p.$rep) + '] * ' + p.n : '[' + pyLit(t.of, p.$rep) + ' for _ in range(' + p.n + ')]';
     const [a, b, s2] = rangeArgs(p.$range); return 'list(range(' + a + ', ' + b + ', ' + s2 + '))';
   }).join(' + ') + ')';
@@ -136,7 +152,7 @@ function jsGen(t, v) {
   if (t.k === 'string') return '(' + genParts(v).map((p) => (typeof p === 'string' ? JSON.stringify(p) : JSON.stringify(p.$rep) + '.repeat(' + p.n + ')')).join(' + ') + ')';
   return '[' + genParts(v).map((p) => {
     if (typeof p === 'string') return '...' + JSON.stringify(p);
-    if (Array.isArray(p)) return p.map((x) => jsLit0(t.of, x)).join(', ');
+    if (Array.isArray(p)) return p.map((x) => jsLit(t.of, x)).join(', ');
     if ('$rep' in p) return PRIM.has(t.of.k) ? '...Array(' + p.n + ').fill(' + jsLit0(t.of, p.$rep) + ')' : '...Array.from({ length: ' + p.n + ' }, () => ' + jsLit(t.of, p.$rep) + ')';
     const [a, b, s2] = rangeArgs(p.$range), n = Math.max(0, Math.ceil((b - a) / s2));
     return '...Array.from({ length: ' + n + ' }, (_, i) => ' + a + ' + i * ' + s2 + ')';
@@ -146,7 +162,7 @@ function cGen(t, v) {
   const T = cType(t), el = t.k === 'string' ? 'char' : cType(t.of);
   const part = (p) => {
     if (typeof p === 'string') return t.k === 'string' ? 'string(' + JSON.stringify(p) + ')' : '[]{ string s = ' + JSON.stringify(p) + '; return ' + T + '(s.begin(), s.end()); }()';
-    if (Array.isArray(p)) return T + '{' + p.map((x) => cLit0(t.of, x)).join(', ') + '}';
+    if (Array.isArray(p)) return T + '{' + p.map((x) => cLit(t.of, x)).join(', ') + '}';
     if ('$rep' in p) return t.k === 'string' ? '[]{ string r; for (int i = 0; i < ' + p.n + '; i++) r += ' + JSON.stringify(p.$rep) + '; return r; }()' : PRIM.has(t.of.k) ? T + '(' + p.n + ', ' + cLit0(t.of, p.$rep) + ')' : '[]{ ' + T + ' r; for (int i = 0; i < ' + p.n + '; i++) r.push_back(' + cLit(t.of, p.$rep) + '); return r; }()';
     const [a, b, s2] = rangeArgs(p.$range);
     return '[]{ ' + T + ' r; for (' + el + ' i = ' + a + '; i ' + (s2 > 0 ? '<' : '>') + ' ' + b + '; i += ' + s2 + ') r.push_back(i); return r; }()';
@@ -174,7 +190,7 @@ function jLit0(t, v) {
     case 'list': return 'new ArrayList<' + jBox(t.of) + '>(Arrays.<' + jBox(t.of) + '>asList(' + v.map((x) => jLit(t.of, x)).join(',') + '))';
   }
 }
-function jArrInner(t, v) { return t.k === 'arr' ? '{' + v.map((x) => jArrInner(t.of, x)).join(',') + '}' : jLit(t, v); }
+function jArrInner(t, v) { return t.k === 'arr' && !isGen(v) && v !== null ? '{' + v.map((x) => jArrInner(t.of, x)).join(',') + '}' : jLit(t, v); }
 function jCallTarget(code, fn) {
   const at = code.search(new RegExp('\\b' + fn + '\\s*\\('));
   // The owner is the innermost class whose body contains the method (a nested helper class declared earlier is skipped).
@@ -190,21 +206,28 @@ function javaSource(pr, code, T) {
   body = body.replace(/^(\s*)public\s+(?=((final|abstract|sealed)\s+)*(class|interface|enum|record)\b)/gm, '$1');
   let stubs = '';
   for (const [n, d] of Object.entries(J_NODES)) if (new RegExp('\\b' + n + '\\b').test(body + JSON.stringify(T)) && !new RegExp('(class|record)\\s+' + n + '\\b').test(body)) stubs += d + '\n';
-  let main = '';
+  // Each case (and each block of 200 design operations) gets its own method, so big tests stay under Java's 64 KB method limit.
+  let main = '', methods = '';
   if (T.io) {
     main = null;
   } else if (T.cls) {
+    methods += '  static ' + T.cls + ' obj; static StringBuilder sb;\n';
     T.cases.forEach((c, ci) => {
-      main += '    { StringBuilder sb = new StringBuilder("["); ' + T.cls + ' obj = null;\n';
-      c.ops.forEach((op, oi) => {
-        const sig = parseSig(T.sigs[op] || '');
-        const a = c.args[oi].map((v, i) => jLit(sig.params[i], v)).join(', ');
-        if (oi) main += '      sb.append(",");\n';
-        if (op === T.cls) main += '      obj = new ' + T.cls + '(' + a + '); sb.append("null");\n';
-        else if (sig.ret.k === 'void') main += '      obj.' + op + '(' + a + '); sb.append("null");\n';
-        else main += '      sb.append(H.json(obj.' + op + '(' + a + ')));\n';
-      });
-      main += '      System.out.println("@@' + ci + ' " + sb.append("]")); }\n';
+      const calls = [];
+      for (let k = 0; k * 200 < c.ops.length; k++) {
+        let b = '';
+        c.ops.slice(k * 200, k * 200 + 200).forEach((op, j) => {
+          const oi = k * 200 + j, sig = parseSig(T.sigs[op] || '');
+          const a = c.args[oi].map((v, i) => jLit(sig.params[i], v)).join(', ');
+          if (oi) b += '    sb.append(",");\n';
+          if (op === T.cls) b += '    obj = new ' + T.cls + '(' + a + '); sb.append("null");\n';
+          else if (sig.ret.k === 'void') b += '    obj.' + op + '(' + a + '); sb.append("null");\n';
+          else b += '    sb.append(H.json(obj.' + op + '(' + a + ')));\n';
+        });
+        methods += '  static void c' + ci + '_' + k + '() throws Exception {\n' + b + '  }\n';
+        calls.push('c' + ci + '_' + k + '();');
+      }
+      main += '    try { sb = new StringBuilder("["); obj = null; ' + calls.join(' ') + ' System.out.println("@@' + ci + ' " + sb.append("]")); } catch (Throwable e) { System.out.println("@@' + ci + ' !" + e); }\n';
     });
   } else {
     const sig = parseSig(T.sig), fn = (T.names && T.names.java) || T.fn, target = jCallTarget(body, fn);
@@ -212,10 +235,11 @@ function javaSource(pr, code, T) {
       const decl = c[0].map((v, i) => jType(sig.params[i]) + ' a' + i + ' = ' + jLit(sig.params[i], v) + ';').join(' ');
       const call = target + '(' + c[0].map((_, i) => 'a' + i).join(', ') + ')';
       const res = sig.ret.k === 'void' ? call + '; System.out.println("@@' + ci + ' " + H.json(a' + (T.mutate || 0) + '));' : (T.both !== undefined ? '{ var _r = ' + call + '; System.out.println("@@' + ci + ' [" + H.json(_r) + "," + H.json(a' + T.both + ') + "]"); }' : 'System.out.println("@@' + ci + ' " + H.json(' + call + '));');
-      main += '    try { ' + decl + ' ' + res + ' } catch (Throwable e) { System.out.println("@@' + ci + ' !" + e); }\n';
+      methods += '  static void f' + ci + '() {\n    try { ' + decl + ' ' + res + ' } catch (Throwable e) { System.out.println("@@' + ci + ' !" + e); }\n  }\n';
+      main += '    f' + ci + '();\n';
     });
   }
-  return J_IMP + imps + '\n' + body + '\n' + stubs + J_H + (main === null ? '' : '\nclass Main__ {\n  public static void main(String[] x) throws Exception {\n' + main + '  }\n}\n');
+  return J_IMP + imps + '\n' + body + '\n' + stubs + J_H + (main === null ? '' : '\nclass Main__ {\n' + methods + '  public static void main(String[] x) throws Exception {\n' + main + '  }\n}\n');
 }
 
 /* ---------- Python ---------- */
@@ -329,6 +353,8 @@ function cppSource(pr, code, T) {
   const uses = (n) => new RegExp('\\b' + n + '\\b').test(code + JSON.stringify(T));
   const own = (n) => new RegExp('(struct|class)\\s+' + n + '\\s*\\{').test(code);
   const flags = '#define H_LISTNODE ' + (uses('ListNode') && !own('ListNode') ? 1 : 0) + '\n#define H_TREENODE ' + (uses('TreeNode') && !own('TreeNode') ? 1 : 0) + '\n#define H_USES_LISTNODE ' + (uses('ListNode') ? 1 : 0) + '\n#define H_USES_TREENODE ' + (uses('TreeNode') ? 1 : 0) + '\n';
+  // A lesson program's own main() is renamed so function and design tests can call its functions with many cases.
+  code = code.replace(/\bint\s+main\s*\(/g, 'int lesson_main__(');
   let s = flags + CPP_H + '\n' + code + '\n' + CPP_NODES + '\nint main() {\n';
   if (T.cls) {
     T.cases.forEach((c, ci) => {
@@ -410,7 +436,153 @@ function cppPch() {
   }
   return (pch = h);
 }
+/* ---------- SQL ---------- */
+const SQL_RUNNER = 'sql-runner.js';
+// SQLite runs on the site's own sql.js build (tools/sql-runner.js); PostgreSQL runs on a private throwaway cluster.
+function splitSql(src) {
+  const out = []; let cur = '', i = 0;
+  while (i < src.length) {
+    const ch = src[i], two = src.slice(i, i + 2);
+    if (two === '--') { const j = src.indexOf('\n', i); const e = j < 0 ? src.length : j; cur += src.slice(i, e); i = e; continue; }
+    if (two === '/*') { const j = src.indexOf('*/', i + 2); const e = j < 0 ? src.length : j + 2; cur += src.slice(i, e); i = e; continue; }
+    if (ch === "'" || ch === '"') { let j = i + 1; while (j < src.length) { if (src[j] === ch) { if (src[j + 1] === ch) { j += 2; continue; } break; } j++; } cur += src.slice(i, j + 1); i = j + 1; continue; }
+    const dq = ch === '$' && src.slice(i).match(/^\$[A-Za-z_]*\$/);
+    if (dq) { const j = src.indexOf(dq[0], i + dq[0].length); const e = j < 0 ? src.length : j + dq[0].length; cur += src.slice(i, e); i = e; continue; }
+    if (ch === ';') { if (cur.trim()) out.push(cur.trim()); cur = ''; i++; continue; }
+    cur += ch; i++;
+  }
+  if (cur.replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, '').trim()) out.push(cur.trim());
+  return out;
+}
+function parseCsv(text) {
+  const rows = []; let row = [], f = '', q = false, i = 0, any = false;
+  for (; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += ch; continue; }
+    if (ch === '"') { q = true; any = true; } else if (ch === ',') { row.push(f); f = ''; any = true; } else if (ch === '\n') { row.push(f); rows.push(row); row = []; f = ''; any = false; } else if (ch !== '\r') { f += ch; any = true; }
+  }
+  if (any || f) { row.push(f); rows.push(row); }
+  return rows;
+}
+let pg = null;
+const PG_NULL = '\u2400NULL';
+function pgStart() {
+  if (pg) return pg;
+  const cfg = spawnSync('pg_config', ['--bindir'], { encoding: 'utf8' });
+  const bin = cfg.status === 0 ? cfg.stdout.trim() : '/usr/lib/postgresql/16/bin';
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'imastery-pg-')); fs.chmodSync(d, 0o777);
+  const port = String(20000 + (process.pid % 20000));
+  const root = process.getuid && process.getuid() === 0;
+  const sh = (cmd) => (root ? spawnSync('su', ['postgres', '-s', '/bin/sh', '-c', cmd], { encoding: 'utf8', timeout: 120000 }) : spawnSync('sh', ['-c', cmd], { encoding: 'utf8', timeout: 120000 }));
+  const data = path.join(d, 'data');
+  let r = sh(`"${bin}/initdb" -D "${data}" -A trust -U postgres -E UTF8 --locale=C --no-sync >/dev/null`);
+  if (r.status !== 0) throw new Error('initdb failed: ' + (r.stderr || r.stdout).slice(0, 400));
+  r = sh(`"${bin}/pg_ctl" -D "${data}" -w -l "${d}/log" -o "-k ${d} -p ${port} -c listen_addresses='' -c fsync=off -c full_page_writes=off" start >/dev/null`);
+  if (r.status !== 0) throw new Error('postgres did not start: ' + (r.stderr || r.stdout).slice(0, 400));
+  pg = { d, port, n: 0, stop: () => sh(`"${bin}/pg_ctl" -D "${data}" -m immediate stop >/dev/null 2>&1`) };
+  process.on('exit', () => { pg.stop(); fs.rmSync(d, { recursive: true, force: true }); });
+  return pg;
+}
+function pgCase(schema, code, c) {
+  const P = pgStart(), name = 'c' + (++P.n);
+  const psql = (db, argv, input) => spawnSync('psql', ['-X', '-q', '-h', P.d, '-p', P.port, '-U', 'postgres', '-d', db, '-v', 'ON_ERROR_STOP=1', ...argv], { encoding: 'utf8', input: input || '', timeout: 60000, maxBuffer: 16 << 20 });
+  let r = psql('postgres', ['-c', 'CREATE DATABASE ' + name]);
+  if (r.status !== 0) return { error: 'createdb: ' + r.stderr };
+  // Every statement whose result is compared is followed by a marker, so each result set can be read back separately.
+  const quiet = [schema.replace(/^\s*PRAGMA\b[^;]*;/gim, ''), c.setup, c.after ? code : ''].filter((x) => x && x.trim()).join(';\n');
+  const shown = splitSql(c.after || code);
+  const script = '\\o /dev/null\n' + (quiet ? quiet + ';\n' : '') + "\\o\n\\pset format csv\n\\pset null '" + PG_NULL + "'\n" + shown.map((q) => q + ';\n\\echo @@END\n').join('');
+  r = psql(name, ['-f', '-'], script);
+  psql('postgres', ['-c', 'DROP DATABASE ' + name + ' WITH (FORCE)']);
+  if (r.status !== 0) return { error: (r.stderr || '').replace(/^psql:[^:]*:\d+: /gm, '').trim().slice(0, 500) };
+  // Like sql.js, keep only statements that returned rows.
+  const sets = String(r.stdout || '').split('@@END\n').map(parseCsv).filter((rows) => rows.length > 1)
+    .map((rows) => ({ cols: rows[0], rows: rows.slice(1).map((rw) => rw.map((v) => (v === PG_NULL ? null : v))) }));
+  return { sets };
+}
+function sqlVal(got, exp) {
+  if (exp === null) return got === null;
+  if (got === null) return false;
+  if (typeof exp === 'boolean') return got === exp || got === (exp ? 1 : 0) || got === (exp ? 't' : 'f') || got === String(exp);
+  if (typeof exp === 'number') { const g = typeof got === 'number' ? got : /^-?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(String(got).trim()) ? Number(got) : NaN; return Math.abs(g - exp) <= 1e-6 * Math.max(1, Math.abs(exp)); }
+  return String(got) === String(exp);
+}
+function runSql(pr, code, T) {
+  const sol = pr.p.solution || {};
+  const db = T.db !== undefined ? T.db : (sol.code && typeof sol.code === 'object' ? sol.code.db : undefined);
+  if (db && !(mod.databases && db in mod.databases)) return { err: 'unknown database "' + db + '"' };
+  const schema = db ? mod.databases[db] : '';
+  const engines = T.engine === 'both' ? ['sqlite', 'postgres'] : [T.engine || 'sqlite'];
+  const fails = [];
+  engines.forEach((eng) => {
+    let res;
+    if (eng === 'sqlite') {
+      const r = spawnSync('node', [path.join(__dirname, SQL_RUNNER)], { input: JSON.stringify({ schema, code, cases: T.cases.map((c) => ({ setup: c.setup || '', after: c.after || '' })) }), encoding: 'utf8', timeout: 120000, maxBuffer: 64 << 20 });
+      try { res = JSON.parse(r.stdout); } catch (e) { fails.push('[sqlite] runner failed: ' + String(r.stderr || r.stdout).slice(0, 400)); return; }
+      if (res.fatal) { fails.push('[sqlite] ' + res.fatal); return; }
+    } else if (eng === 'postgres') {
+      const pgSchema = T.pg !== undefined ? T.pg : schema;
+      res = T.cases.map((c) => pgCase(pgSchema, code, c));
+    } else { fails.push('unknown engine ' + eng); return; }
+    T.cases.forEach((c, ci) => {
+      const tag = engines.length > 1 ? '[' + eng + '] ' : '';
+      let g = res[ci];
+      if (!g.error) {
+        // result: k picks the k-th result set (negative counts from the end); the default is the last one.
+        const sets = g.sets || [], k = c.result === undefined ? -1 : c.result, i = k < 0 ? sets.length + k : k;
+        if (c.result !== undefined && !(i >= 0 && i < sets.length)) { fails.push(tag + 'case ' + ci + ': result ' + k + ' does not exist (' + sets.length + ' result sets)'); return; }
+        g = sets[i] || { cols: [], rows: [] };
+      }
+      if (c.error !== undefined) {
+        if (!g.error) fails.push(tag + 'case ' + ci + ': expected an error matching /' + c.error + '/, but it succeeded');
+        else if (!new RegExp(c.error, 'i').test(g.error)) fails.push(tag + 'case ' + ci + ': expected an error matching /' + c.error + '/, got: ' + g.error);
+        return;
+      }
+      if (g.error) { fails.push(tag + 'case ' + ci + ': error: ' + g.error); return; }
+      if (c.cols && !(c.cols.length === g.cols.length && c.cols.every((x, i) => String(x).toLowerCase() === String(g.cols[i]).toLowerCase()))) { fails.push(tag + 'case ' + ci + ': columns ' + JSON.stringify(g.cols) + ', expected ' + JSON.stringify(c.cols)); return; }
+      let ok;
+      if (T.check) ok = !!vm.runInNewContext('(' + T.check + ')')(g.rows, g.cols, c);
+      else {
+        const exp = c.rows || [];
+        const rowEq = (a, b) => a.length === b.length && a.every((v, i) => sqlVal(v, b[i]));
+        if ((T.cmp || 'exact') === 'set') {
+          const left = g.rows.slice(); ok = g.rows.length === exp.length && exp.every((e) => { const k = left.findIndex((x) => rowEq(x, e)); if (k < 0) return false; left.splice(k, 1); return true; });
+        } else ok = g.rows.length === exp.length && g.rows.every((x, i) => rowEq(x, exp[i]));
+      }
+      if (!ok) fails.push(tag + 'case ' + ci + (c.setup ? ' (setup ' + JSON.stringify(c.setup).slice(0, 80) + ')' : '') + ': ' + (T.check ? 'check failed' : 'expected ' + JSON.stringify(c.rows || []).slice(0, 220)) + ', got ' + JSON.stringify(g.rows).slice(0, 220));
+    });
+  });
+  return { fails, n: T.cases.length };
+}
+
+/* ---------- TypeScript type-level tests ---------- */
+// tests.types: assertions compiled with the solution under --strict, e.g. 'type _1 = Expect<Equal<First<[3, 2]>, 3>>'
+// or '// @ts-expect-error\nconst bad: PartialBy<User, "id"> = {}'. Every assertion must type-check (an unused
+// @ts-expect-error is itself an error), so a wrong type fails.
+function runTypes(code, T) {
+  if (!tsMod) for (const p of ['typescript', '/opt/node22/lib/node_modules/typescript']) { try { tsMod = require(p); break; } catch (e) { } }
+  if (!tsMod) return { err: 'typescript is not installed' };
+  const pre = (/\btype\s+Equal\b/.test(code) ? '' : 'type Equal<X, Y> = (<T>() => T extends X ? 1 : 2) extends (<T>() => T extends Y ? 1 : 2) ? true : false;\n') +
+    (/\btype\s+Expect\b/.test(code) ? '' : 'type Expect<T extends true> = T;\n');
+  const fails = [];
+  T.types.forEach((a, ci) => {
+    // A top-level `declare module 'x'` must stay in a script file; otherwise make the file a module so names stay local.
+    const ambient = /^\s*declare\s+module\s+['"]/m.test(code);
+    const name = '/__types/case' + ci + '.ts', src = code + '\n' + pre + a + (ambient ? '\n' : '\nexport {};\n');
+    const opts = { strict: true, noEmit: true, target: tsMod.ScriptTarget.ES2022, lib: ['lib.es2022.d.ts', 'lib.dom.d.ts'], skipLibCheck: true, noUnusedLocals: false };
+    const host = tsMod.createCompilerHost(opts), getSf = host.getSourceFile.bind(host);
+    host.getSourceFile = (f, lv, ...r) => (f === name ? tsMod.createSourceFile(f, src, lv) : getSf(f, lv, ...r));
+    host.fileExists = ((fe) => (f) => f === name || fe(f))(host.fileExists.bind(host));
+    const prog = tsMod.createProgram([name], opts, host);
+    const diags = tsMod.getPreEmitDiagnostics(prog).filter((d) => d.file && d.file.fileName === name);
+    if (diags.length) fails.push('assertion ' + ci + ' ' + JSON.stringify(a).slice(0, 120) + ': ' + diags.map((d) => tsMod.flattenDiagnosticMessageText(d.messageText, ' ')).join(' | ').slice(0, 300));
+  });
+  return { fails, n: T.types.length };
+}
+
 function runLang(lang, pr, code, T, n) {
+  if (lang === 'sql') return runSql(pr, code, T);
+  if (T.types) return lang === 'ts' ? runTypes(code, T) : { err: 'tests.types needs a TypeScript implementation' };
   // Harness-only helpers (e.g. building a cyclic list) are appended here so learner-facing solutions stay clean.
   const extra = T.harness && (T.harness[lang] || (lang === 'ts' && T.harness.js));
   if (extra) code = code + '\n' + extra + '\n';
@@ -470,7 +642,9 @@ problems.forEach((pr, idx) => {
   Object.keys(I).forEach((l) => { cover[l] = (cover[l] || 0) + 1; });
   if (!T) { untested++; if (REQUIRE.length) bad++; if (!REPORT) console.log('NO TESTS  #' + idx + ' ' + pr.id + ' ' + pr.p.title); return; }
   if (T.skip) { skipped++; return; }
-  const n = T.cases ? T.cases.length : 0;
+  const n = T.cases ? T.cases.length : T.types ? T.types.length : 0;
+  // Design cases may generate their operation lists ({ $rep: 'push', n: 5000 }, $concat of arrays).
+  if (T.cls && n) T.cases.forEach((c) => { if (isGen(c.ops)) c.ops = expand(c.ops, { k: 'arr', of: { k: 'string' } }); if (isGen(c.args)) c.args = expand(c.args); });
   if (!n) { bad++; console.log('FAIL #' + idx + ' ' + pr.id + ': tests has no cases'); return; }
   REQUIRE.forEach((alts) => { if (!alts.split('|').some((l) => I[l])) { bad++; console.log('MISSING #' + idx + ' ' + pr.id + ' ' + pr.p.title + ': no ' + alts.replace('|', ' or ') + ' implementation'); } });
   LANGS.forEach((lang) => {

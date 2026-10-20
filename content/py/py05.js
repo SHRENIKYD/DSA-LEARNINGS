@@ -206,6 +206,97 @@ def rotate_brute(nums, k):
 print(rotate_brute([1, 2, 3, 4, 5, 6, 7], 3))` },
       mcq: { q: 'Which line rotates in place in O(n) while keeping the same list object?', options: ['<code>nums = nums[-k:] + nums[:-k]</code>', '<code>nums[:] = nums[-k:] + nums[:-k]</code>', '<code>nums.insert(0, nums.pop())</code> k times', '<code>nums.sort()</code>'], answer: 1, explain: 'Option A rebinds the local name to a NEW list, so the caller never sees it. Slice assignment <code>nums[:] = …</code> replaces the contents of the same object. Note: k must be reduced with k % n first, and k == 0 needs care because nums[-0:] is the whole list.' },
       hints: [`<p>Hint 1: Rotating by n gives back the same list, so reduce <code>k = k % n</code> first. When k becomes 0, return early.</p>`, `<p>Hint 2: The answer is just two slices glued together: the last k items followed by the first n − k items. Slicing copies pointers once — O(n).</p>`, `<p>Hint 3: To mutate the caller's list, assign into a full slice: <code>nums[:] = …</code>. Plain <code>nums = …</code> only rebinds your local name. Recipe: n = len; k %= n; if k: nums[:] = nums[-k:] + nums[:-k]; return nums.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              'nums = [1, 2, 3, 4, 5, 6, 7]\n' +
+                'r = rotate(nums, 3)\n' +
+                'result = [nums, r is nums]'
+            ],
+            [[5, 6, 7, 1, 2, 3, 4], true]
+          ],
+          [
+            [
+              'nums = [1, 2, 3, 4, 5, 6, 7]\n' +
+                'r = rotate(nums, 10)\n' +
+                'result = [nums, r is nums]'
+            ],
+            [[5, 6, 7, 1, 2, 3, 4], true]
+          ],
+          [
+            [
+              'nums = [1, 2, 3]\n' +
+                'r = rotate(nums, 0)\n' +
+                'result = [nums, r is nums]'
+            ],
+            [[1, 2, 3], true]
+          ],
+          [['nums = [1]\nr = rotate(nums, 100)\nresult = [nums, r is nums]'], [[1], true]],
+          [['nums = [1, 2]\nr = rotate(nums, 5)\nresult = [nums, r is nums]'], [[2, 1], true]],
+          [
+            [
+              'nums = [1, 2, 3, 4]\n' +
+                'r = rotate(nums, 4)\n' +
+                'result = [nums, r is nums]'
+            ],
+            [[1, 2, 3, 4], true]
+          ],
+          [['nums = [5, 6]\nr = rotate(nums, 1)\nresult = [nums, r is nums]'], [[6, 5], true]],
+          [
+            [
+              'nums = [1, 2, 3]\n' +
+                'r = rotate(nums, 1000000000)\n' +
+                'result = [nums, r is nums]'
+            ],
+            [[3, 1, 2], true]
+          ],
+          [
+            [
+              'nums = [-1, 0, 1]\n' +
+                'r = rotate(nums, 2)\n' +
+                'result = [nums, r is nums]'
+            ],
+            [[0, 1, -1], true]
+          ],
+          [
+            [
+              'nums = [1, 1, 2]\n' +
+                'r = rotate(nums, 1)\n' +
+                'result = [nums, r is nums]'
+            ],
+            [[2, 1, 1], true]
+          ],
+          [
+            [
+              'nums = list(range(100000))\n' +
+                'r = rotate(nums, 999999999)\n' +
+                'result = [nums[0], nums[1], nums[-1], len(nums), r is nums, nums[5000]]'
+            ],
+            [1, 2, 0, 100000, true, 5001]
+          ],
+          [
+            [
+              'nums = list(range(100000))\n' +
+                'alias = nums\n' +
+                'rotate(nums, 7)\n' +
+                'result = [alias[:3], alias[-1]]'
+            ],
+            [[99993, 99994, 99995], 99992]
+          ]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Reduce k modulo n, build the rotated sequence from two slices (each slice is a shallow O(k) pointer copy), and write it back with slice assignment so the original object is updated. An O(1)-extra-space alternative uses the three-reversal trick.</p>`,
         code: `
@@ -437,6 +528,22 @@ def first_unique_brute(s):
 print(first_unique_brute("loveleetcode"))` },
       mcq: { q: 'After counting with a dict built in one pass, how do we find the FIRST unique character fastest?', options: ['Sort the dict keys', 'Iterate the dict: keys come back in first-seen order (3.7+)', 'Pick a random key with count 1', 'Use max(d.values())'], answer: 1, explain: 'A dict iterates in insertion order, which here equals first-occurrence order. If we also store each char\'s first index, the first key with count 1 is the answer — scanning at most 26 keys.' },
       hints: [`<p>Hint 1: One pass is enough to know, for every character, how many times it appears and where it first appeared.</p>`, `<p>Hint 2: Store <code>info[ch] = [first_index, count]</code> in a dict. Because dicts keep insertion order, iterating <code>info</code> visits characters in order of their first appearance.</p>`, `<p>Hint 3: Edge cases: every char repeated → -1; single-char string → 0. Recipe: build info; for ch, (i, c) in info.items(): if c == 1: return i; return -1.</p>`],
+      tests: {
+        sig: 'string -> int',
+        fn: 'firstUnique',
+        cases: [
+          [['leetcode'], 0],
+          [['loveleetcode'], 2],
+          [['aabb'], -1],
+          [['z'], 0],
+          [['aa'], -1],
+          [['abcabcd'], 6],
+          [['abab'], -1],
+          [['zxyzx'], 2],
+          [[{ $concat: [{ $rep: 'a', n: 50000 }, 'b', { $rep: 'a', n: 49999 }] }], 50000],
+          [[{ $rep: 'zz', n: 50000 }], -1]
+        ]
+      },
       solution: {
         approach: `<p>One pass fills a dict with the first index and count of each character. A second pass over the <b>dict</b> (≤ 26 keys) — not over the string — returns the first character whose count is 1. Insertion order makes "first" correct.</p>`,
         code: `
@@ -627,6 +734,37 @@ def longest_brute(s):
 print(longest_brute("pwwkew"))` },
       mcq: { q: 'The window is "abc" and the next char is "a". What should the window do?', options: ['Reset the window to empty', 'Shrink from the left until the old "a" leaves, then add the new "a"', 'Skip the new "a"', 'Restart from the next index'], answer: 1, explain: 'Remove s[left] from the set and move left forward until "a" is no longer in the window; then add it. Each char enters and leaves the set at most once → O(n).' },
       hints: [`<p>Hint 1: Keep a window [left, right] that never contains a repeat. When the right edge brings a duplicate, only the left edge needs to move.</p>`, `<p>Hint 2: A <code>set</code> holds exactly the characters in the window, so "is this char already inside?" is O(1).</p>`, `<p>Hint 3: Empty string → 0. Recipe: for right, ch in enumerate(s): while ch in window: window.remove(s[left]); left += 1; window.add(ch); best = max(best, right - left + 1).</p>`],
+      tests: {
+        sig: 'string -> int',
+        fn: 'lengthOfLongestSubstring',
+        cases: [
+          [['abcabcbb'], 3],
+          [['pwwkew'], 3],
+          [['bbbbb'], 1],
+          [[''], 0],
+          [['abba'], 2],
+          [['a'], 1],
+          [['dvdf'], 3],
+          [[' '], 1],
+          [['tmmzuxt'], 5],
+          [['abcdefg'], 7],
+          [['aab'], 2],
+          [['a b a'], 3],
+          [['!@#!@#'], 3],
+          [['12345 12345'], 6],
+          [[{ $rep: 'ab', n: 25000 }], 2],
+          [
+            [
+              {
+                $rep: '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~',
+                n: 500
+              }
+            ],
+            94
+          ],
+          [[{ $concat: [{ $rep: 'a', n: 25000 }, { $rep: 'b', n: 25000 }] }], 2]
+        ]
+      },
       solution: {
         approach: `<p>Sliding window + set. Each character is added once and removed at most once, so the total work is linear. (A dict of last-seen indices lets <code>left</code> jump directly — same complexity, fewer steps.)</p>`,
         code: `
@@ -811,6 +949,347 @@ def dup_rows_brute(matrix):
 print(dup_rows_brute([[1, 0, 1], [0, 1, 0], [1, 0, 1], [0, 1, 0], [1, 1, 1]]))` },
       mcq: { q: 'Why can\'t we do <code>seen.add(row)</code> directly?', options: ['Sets are too small', 'A list is unhashable because it is mutable', 'Rows may contain zeros', 'Sets only hold strings'], answer: 1, explain: 'A list could change after insertion, breaking its hash slot, so Python forbids hashing it. <code>tuple(row)</code> is an immutable snapshot that can be hashed.' },
       hints: [`<p>Hint 1: "Have I seen this exact row before?" is a membership question — a set answers it in O(1) average.</p>`, `<p>Hint 2: Lists cannot go into a set; freeze each row with <code>tuple(row)</code> (O(C)).</p>`, `<p>Hint 3: Keep the indices in the order you scan. Recipe: seen = set(); for i, row in enumerate(matrix): key = tuple(row); if key in seen: out.append(i) else: seen.add(key).</p>`],
+      tests: {
+        sig: 'int[][] -> int[]',
+        fn: 'duplicateRows',
+        cases: [
+          [[[[1, 0, 1], [0, 1, 0], [1, 0, 1], [0, 1, 0], [1, 1, 1]]], [2, 3]],
+          [[[[1, 2]]], []],
+          [[[[1, 2], [2, 1]]], []],
+          [[[[1, 2], [1, 2], [1, 2], [1, 2], [1, 2]]], [1, 2, 3, 4]],
+          [[[[0], [0], [0]]], [1, 2]],
+          [[[[1, 2, 3], [1, 2, 4], [1, 2, 3]]], [2]],
+          [[[[-1, 0], [0, -1], [-1, 0]]], [2]],
+          [
+            [
+              {
+                $rep: [
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7,
+                  7
+                ],
+                n: 10000
+              }
+            ],
+            { $range: [1, 10000, 1] }
+          ],
+          [
+            [
+              {
+                $concat: [
+                  [
+                    [
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      1
+                    ]
+                  ],
+                  {
+                    $rep: [
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0
+                    ],
+                    n: 9999
+                  }
+                ]
+              }
+            ],
+            { $range: [2, 10000, 1] }
+          ]
+        ]
+      },
       solution: {
         approach: `<p>Scan rows once. Convert each row to a tuple (hashable snapshot), test membership in a set of earlier rows, record the index on a hit.</p>`,
         code: `
@@ -991,6 +1470,56 @@ def group_brute(owner):
 print(group_brute({"a.py": "ann", "b.py": "bob", "c.py": "ann"}))` },
       mcq: { q: 'Which one-pass approach groups correctly?', options: ['<code>{v: k for k, v in d.items()}</code>', '<code>for k, v in d.items(): out.setdefault(v, []).append(k)</code>', '<code>dict(zip(d.values(), d.keys()))</code>', '<code>set(d.values())</code>'], answer: 1, explain: 'setdefault returns the existing list or inserts a new empty one, so each key is appended to its owner\'s list in one O(1) step. Options A and C overwrite duplicates; D loses the files entirely.' },
       hints: [`<p>Hint 1: Each (file, owner) pair needs to be put into its owner's bucket exactly once — one pass is enough.</p>`, `<p>Hint 2: Use <code>dict.setdefault(owner, [])</code> or <code>collections.defaultdict(list)</code>. Plain dicts keep first-insertion order, which matches the required owner order.</p>`, `<p>Hint 3: Sort each bucket at the end (a dict comprehension does it neatly). Recipe: groups = {}; for f, o in owner.items(): groups.setdefault(o, []).append(f); return {o: sorted(fs) for o, fs in groups.items()}.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_val',
+        cases: [
+          [
+            ['list(group_by_owner({\'a.py\': \'ann\', \'b.py\': \'bob\', \'c.py\': \'ann\'}).items())'],
+            [['ann', ['a.py', 'c.py']], ['bob', ['b.py']]]
+          ],
+          [['list(group_by_owner({}).items())'], []],
+          [['list(group_by_owner({\'x\': \'z\'}).items())'], [['z', ['x']]]],
+          [
+            ['list(group_by_owner({\'z\': \'bob\', \'y\': \'ann\', \'x\': \'bob\'}).items())'],
+            [['bob', ['x', 'z']], ['ann', ['y']]]
+          ],
+          [
+            ['list(group_by_owner({\'f10\': \'o\', \'f2\': \'o\', \'f1\': \'o\'}).items())'],
+            [['o', ['f1', 'f10', 'f2']]]
+          ],
+          [
+            ['list(group_by_owner({\'a\': \'1\', \'b\': \'1\', \'c\': \'1\'}).items())'],
+            [['1', ['a', 'b', 'c']]]
+          ],
+          [['list(group_by_owner({\'b\': \'x\', \'a\': \'y\'}).items())'], [['x', ['b']], ['y', ['a']]]],
+          [
+            [
+              'list(group_by_owner({\'0.md\': \'bob\', \'a.py\': \'ann\', \'b.py\': \'bob\', \'c.py\': \'ann\'}).items())'
+            ],
+            [['bob', ['0.md', 'b.py']], ['ann', ['a.py', 'c.py']]]
+          ],
+          [
+            [
+              '(lambda g: [(w, len(fs), fs[0], fs[-1]) for w, fs in g.items()])(group_by_owner({\'f%d\' % i: \'o%d\' % (i % 3) for i in range(100000)}))'
+            ],
+            [['o0', 33334, 'f0', 'f99999'], ['o1', 33333, 'f1', 'f99997'], ['o2', 33333, 'f10001', 'f99998']]
+          ],
+          [
+            [
+              'group_by_owner({\'a.py\': \'ann\', \'b.py\': \'bob\', \'c.py\': \'ann\'}) == {\'ann\': [\'a.py\', \'c.py\'], \'bob\': [\'b.py\']}'
+            ],
+            true
+          ]
+        ],
+        harness: {
+          python: 'def t_val(src):\n' +
+            '    try:\n' +
+            '        return eval(src)\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>One pass groups files into lists keyed by owner (insertion order gives first-appearance order of owners). A final dict comprehension sorts each list. Comprehension for the clean transform, loop for the accumulation — each tool where it reads best.</p>`,
         code: `
@@ -1203,6 +1732,124 @@ def game_of_life_deepcopy(board):
 print(game_of_life_deepcopy([[0, 1, 0], [0, 0, 1], [1, 1, 1], [0, 0, 0]]))` },
       mcq: { q: '<code>old = board[:]</code> then writing into <code>board[r][c]</code>… what happens to <code>old[r][c]</code>?', options: ['It keeps the old value', 'It changes too — rows are shared by a shallow copy', 'Python raises an error', 'It becomes None'], answer: 1, explain: 'Slicing copies the outer list only; <code>old[r] is board[r]</code> for every r, so the "snapshot" is not a snapshot. Copy each row: <code>[row[:] for row in board]</code>.' },
       hints: [`<p>Hint 1: Every cell must read the <b>previous</b> generation. So you need the old values somewhere while you write new ones.</p>`, `<p>Hint 2: The board is a list of rows of ints. Copying each row (<code>[row[:] for row in board]</code>) gives a full independent snapshot — no need for deepcopy because ints are immutable.</p>`, `<p>Hint 3: For O(1) extra space, encode both states in each cell: 2 = "was live, now dead", 3 = "was dead, now live"; read old state as <code>cell in (1, 2)</code>, then normalise with <code>% 2</code>... careful: 2 % 2 = 0 (dead) and 3 % 2 = 1 (live) — exactly right.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              'b = [[0, 1, 0], [0, 0, 1], [1, 1, 1], [0, 0, 0]]\n' +
+                'r = game_of_life(b)\n' +
+                'result = [b, r is b]'
+            ],
+            [[[0, 0, 0], [1, 0, 1], [0, 1, 1], [0, 1, 0]], true]
+          ],
+          [
+            [
+              'b = [[1, 1], [1, 1]]\n' +
+                'r = game_of_life(b)\n' +
+                'result = [b, r is b]'
+            ],
+            [[[1, 1], [1, 1]], true]
+          ],
+          [
+            [
+              'b = [[0, 0, 0], [1, 1, 1], [0, 0, 0]]\n' +
+                'r = game_of_life(b)\n' +
+                'result = [b, r is b]'
+            ],
+            [[[0, 1, 0], [0, 1, 0], [0, 1, 0]], true]
+          ],
+          [['b = [[1]]\nr = game_of_life(b)\nresult = [b, r is b]'], [[[0]], true]],
+          [['b = [[0]]\nr = game_of_life(b)\nresult = [b, r is b]'], [[[0]], true]],
+          [
+            [
+              'b = [[1, 1, 1], [1, 1, 1], [1, 1, 1]]\n' +
+                'r = game_of_life(b)\n' +
+                'result = [b, r is b]'
+            ],
+            [[[1, 0, 1], [0, 0, 0], [1, 0, 1]], true]
+          ],
+          [
+            [
+              'b = [[0, 1, 0, 0, 0], [0, 0, 1, 0, 0], [1, 1, 1, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]\n' +
+                'r = game_of_life(b)\n' +
+                'result = [b, r is b]'
+            ],
+            [[[0, 0, 0, 0, 0], [1, 0, 1, 0, 0], [0, 1, 1, 0, 0], [0, 1, 0, 0, 0], [0, 0, 0, 0, 0]], true]
+          ],
+          [
+            [
+              'b = [[1, 0], [0, 1]]\n' +
+                'r = game_of_life(b)\n' +
+                'result = [b, r is b]'
+            ],
+            [[[0, 0], [0, 0]], true]
+          ],
+          [
+            [
+              'b = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]\n' +
+                'r = game_of_life(b)\n' +
+                'result = [b, r is b]'
+            ],
+            [[[0, 0, 0], [0, 0, 0], [0, 0, 0]], true]
+          ],
+          [['b = [[1, 1, 0]]\nr = game_of_life(b)\nresult = [b, r is b]'], [[[0, 0, 0]], true]],
+          [
+            [
+              'import random\n' +
+                'rnd = random.Random(5)\n' +
+                'b = [[rnd.randint(0, 1) for _ in range(25)] for _ in range(25)]\n' +
+                'game_of_life(b)\n' +
+                'result = b'
+            ],
+            [
+              [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0],
+              [1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0],
+              [0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+              [0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+              [1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+              [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1],
+              [1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+              [1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0],
+              [1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1],
+              [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1],
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+              [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+              [1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+              [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
+              [0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0],
+              [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0],
+              [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 1],
+              [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1],
+              [1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+              [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0],
+              [0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0],
+              [0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0],
+              [0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0]
+            ]
+          ],
+          [
+            [
+              'b = [[1] * 25 for _ in range(25)]\n' +
+                'game_of_life(b)\n' +
+                'result = [sum(map(sum, b)), b[0][0], b[0][1], b[1][1], b[12][12]]'
+            ],
+            [4, 1, 0, 0, 0]
+          ]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Take a row-wise snapshot (shallow copy of each row = complete copy of a 2-D int grid), count neighbours from the snapshot, write into the board. The alternative encodes transitions in place for O(1) extra space.</p>`,
         code: `
@@ -1392,6 +2039,106 @@ def missing_brute(nums):
 print(missing_brute([4, 3, 2, 7, 8, 2, 3, 1]))` },
       mcq: { q: 'Which single change makes the brute force O(n)?', options: ['Sort nums first', 'Convert nums to a set once before the comprehension', 'Use a generator instead of a list', 'Iterate in reverse'], answer: 1, explain: '<code>present = set(nums)</code> costs O(n) once; each <code>k not in present</code> is then O(1) on average. Sorting would give O(n log n) and still need a merge-like scan.' },
       hints: [`<p>Hint 1: The slow part is the membership test, not the loop. Which structure answers "is k present?" in O(1)?</p>`, `<p>Hint 2: Build <code>present = set(nums)</code> once, outside the loop, then keep the comprehension.</p>`, `<p>Hint 3: For O(1) extra space: for each value v, mark index |v| − 1 by making that entry negative; indices still positive at the end are missing numbers. Restore signs afterwards if the caller needs nums unchanged.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              'a = [4, 3, 2, 7, 8, 2, 3, 1]\n' +
+                'result = [find_missing(a), find_missing_inplace(list(a)), a]'
+            ],
+            [[5, 6], [5, 6], [4, 3, 2, 7, 8, 2, 3, 1]]
+          ],
+          [
+            [
+              'a = [1, 1]\n' +
+                'result = [find_missing(a), find_missing_inplace(list(a)), a]'
+            ],
+            [[2], [2], [1, 1]]
+          ],
+          [
+            [
+              'a = [1]\n' +
+                'result = [find_missing(a), find_missing_inplace(list(a)), a]'
+            ],
+            [[], [], [1]]
+          ],
+          [
+            [
+              'a = [2, 2]\n' +
+                'result = [find_missing(a), find_missing_inplace(list(a)), a]'
+            ],
+            [[1], [1], [2, 2]]
+          ],
+          [
+            [
+              'a = [3, 3, 3]\n' +
+                'result = [find_missing(a), find_missing_inplace(list(a)), a]'
+            ],
+            [[1, 2], [1, 2], [3, 3, 3]]
+          ],
+          [
+            [
+              'a = [1, 2, 3]\n' +
+                'result = [find_missing(a), find_missing_inplace(list(a)), a]'
+            ],
+            [[], [], [1, 2, 3]]
+          ],
+          [
+            [
+              'a = [3, 2, 1]\n' +
+                'result = [find_missing(a), find_missing_inplace(list(a)), a]'
+            ],
+            [[], [], [3, 2, 1]]
+          ],
+          [
+            [
+              'a = [2, 3, 4, 5, 5]\n' +
+                'result = [find_missing(a), find_missing_inplace(list(a)), a]'
+            ],
+            [[1], [1], [2, 3, 4, 5, 5]]
+          ],
+          [
+            [
+              'a = [1, 1, 1, 1, 1, 1]\n' +
+                'result = [find_missing(a), find_missing_inplace(list(a)), a]'
+            ],
+            [[2, 3, 4, 5, 6], [2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1]]
+          ],
+          [
+            [
+              'a = [4, 3, 2, 7, 8, 2, 3, 1]\n' +
+                'r = find_missing_inplace(a)\n' +
+                'result = [r, a]'
+            ],
+            [[5, 6], [4, 3, 2, 7, 8, 2, 3, 1]]
+          ],
+          [
+            [
+              'a = [1] * 100000\n' +
+                'result = [find_missing(a) == list(range(2, 100001)), find_missing_inplace(a) == list(range(2, 100001)), a == [1] * 100000]'
+            ],
+            [true, true, true]
+          ],
+          [
+            [
+              'a = [100000] * 100000\n' +
+                'result = [find_missing(a) == list(range(1, 100000)), find_missing_inplace(list(a)) == list(range(1, 100000))]'
+            ],
+            [true, true]
+          ]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Price each line: building a set is O(n), each lookup O(1) average, the comprehension runs n times → O(n) total. The follow-up variant uses the input itself as a presence bitmap via negation (O(1) extra space).</p>`,
         code: `
@@ -1435,6 +2182,35 @@ def dedupe_brute(items):
 print(dedupe_brute(["b", "a", "b", "c", "a"]))` },
     mcq: { q: 'Which one-liner keeps first-seen order in O(n)?', options: ['<code>list(set(items))</code>', '<code>sorted(set(items))</code>', '<code>list(dict.fromkeys(items))</code>', '<code>[x for x in items if items.count(x) == 1]</code>'], answer: 2, explain: 'dict keys are unique and keep insertion order (3.7+). fromkeys inserts each item once in order; later duplicates are ignored. Option A loses order, B sorts, D keeps only the never-duplicated items and is O(n²).' },
     hints: [`<p>Hint 1: You need two things: a fast "seen before?" test and a record of order. A set gives the first; a list or a dict gives the second.</p>`, `<p>Hint 2: A dict does both at once: unique keys + insertion order. <code>dict.fromkeys(items)</code> builds it in one pass.</p>`, `<p>Hint 3: If items are unhashable (lists), convert each to a tuple for the "seen" key but output the original. Recipe: seen = set(); out = []; for x in items: if x not in seen: seen.add(x); out.append(x).</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['dedupe([\'b\', \'a\', \'b\', \'c\', \'a\'])'], ['b', 'a', 'c']],
+        [['dedupe([])'], []],
+        [['dedupe([1, 1, 1])'], [1]],
+        [['dedupe([3, 1, 3, 2, 1])'], [3, 1, 2]],
+        [['dedupe([1, \'1\', 1])'], [1, '1']],
+        [['dedupe([None, 0, None, False])'], [null, 0]],
+        [['dedupe([(1, 2), (1, 2), (2, 1)])'], [[1, 2], [2, 1]]],
+        [['dedupe_by([\'Hi\', \'hi\', \'Yo\'], str.lower)'], ['Hi', 'Yo']],
+        [['dedupe_by([[1, 2], [1, 2], [3]], tuple)'], [[1, 2], [3]]],
+        [['dedupe_by([], len)'], []],
+        [['dedupe_by([\'aa\', \'b\', \'cc\', \'d\'], len)'], ['aa', 'b']],
+        [['len(dedupe(list(range(1000)) * 1000))'], 1000],
+        [['dedupe(list(range(1000)) * 1000) == list(range(1000))'], true],
+        [['len(dedupe(list(range(10**6))))'], 1000000],
+        [['dedupe([\'x\'] * 10**6)'], ['x']],
+        [['len(dedupe_by(list(range(10**5)), lambda v: v % 7))'], 7]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Use a hash-based "seen" structure so each membership test is O(1) on average; output in scan order. The dict trick is the most idiomatic; the explicit set + list loop is the most flexible (e.g., when deduping by a key function).</p>`,
       code: `
@@ -1476,6 +2252,22 @@ def two_sum_brute(nums, target):
 print(two_sum_brute([2, 7, 11, 15], 9))` },
     mcq: { q: 'Why check for the complement BEFORE storing the current number?', options: ['It is faster', 'So an element is never paired with itself (e.g. target 6, nums [3, …])', 'Dicts require it', 'To keep insertion order'], answer: 1, explain: 'If we stored 3 first, looking up 6 − 3 = 3 would find the same index. Checking first means the dict only holds earlier indices.' },
     hints: [`<p>Hint 1: For each x, the partner you need is exactly <code>target − x</code>. The question becomes "have I already seen that value, and where?"</p>`, `<p>Hint 2: A dict value → index answers that in O(1) average time.</p>`, `<p>Hint 3: Look up first, then insert. Duplicates like [3, 3] with target 6 work because the first 3 is stored before the second is checked. Recipe: seen = {}; for j, x in enumerate(nums): if target - x in seen: return [seen[target - x], j]; seen[x] = j.</p>`],
+    tests: {
+      sig: 'int[] int -> int[]',
+      fn: 'twoSum',
+      cases: [
+        [[[2, 7, 11, 15], 9], [0, 1]],
+        [[[3, 2, 4], 6], [1, 2]],
+        [[[3, 3], 6], [0, 1]],
+        [[[-3, 4, 3, 90], 0], [0, 2]],
+        [[[0, 4, 3, 0], 0], [0, 3]],
+        [[[1, 2], 3], [0, 1]],
+        [[[-1000000000, 1000000000, 5], 0], [0, 1]],
+        [[[5, 75, 25], 100], [1, 2]],
+        [[[-1, -2, -3, -4, -5], -8], [2, 4]],
+        [[{ $range: [0, 100000, 1] }, 199997], [99998, 99999]]
+      ]
+    },
     solution: {
       approach: `<p>One pass with a dict from value to index. Each step does one O(1) lookup and one O(1) insert.</p>`,
       code: `
@@ -1513,6 +2305,81 @@ def transpose_buggy(m):
 print(transpose_buggy([[1, 2, 3], [4, 5, 6]]))   # every row shows the last column` },
     mcq: { q: 'What does <code>list(zip(*m))</code> return for m = [[1, 2], [3, 4]]?', options: ['[[1, 3], [2, 4]]', '[(1, 3), (2, 4)]', '[(1, 2), (3, 4)]', '[1, 2, 3, 4]'], answer: 1, explain: '<code>*m</code> passes each row as a separate argument; zip groups the i-th items together as <b>tuples</b>. Wrap with <code>[list(t) for t in zip(*m)]</code> if lists are required.' },
     hints: [`<p>Hint 1: Result row c is "the c-th item of every input row" — that is a comprehension over rows.</p>`, `<p>Hint 2: Nested comprehension: <code>[[row[c] for row in m] for c in range(C)]</code>. The outer comprehension creates a fresh inner list each time — no aliasing.</p>`, `<p>Hint 3: <code>zip(*m)</code> does the same in C code and returns tuples. Ragged rows? zip truncates to the shortest row; itertools.zip_longest pads.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'm = [[1, 2, 3], [4, 5, 6]]\n' +
+              'result = [transpose(m), transpose_zip(m), m]'
+          ],
+          [[[1, 4], [2, 5], [3, 6]], [[1, 4], [2, 5], [3, 6]], [[1, 2, 3], [4, 5, 6]]]
+        ],
+        [['m = [[1]]\nresult = [transpose(m), transpose_zip(m), m]'], [[[1]], [[1]], [[1]]]],
+        [
+          ['m = [[1, 2, 3]]\nresult = [transpose(m), transpose_zip(m), m]'],
+          [[[1], [2], [3]], [[1], [2], [3]], [[1, 2, 3]]]
+        ],
+        [
+          [
+            'm = [[1], [2], [3]]\n' +
+              'result = [transpose(m), transpose_zip(m), m]'
+          ],
+          [[[1, 2, 3]], [[1, 2, 3]], [[1], [2], [3]]]
+        ],
+        [
+          [
+            'm = [[1, 2], [3, 4], [5, 6]]\n' +
+              'result = [transpose(m), transpose_zip(m), m]'
+          ],
+          [[[1, 3, 5], [2, 4, 6]], [[1, 3, 5], [2, 4, 6]], [[1, 2], [3, 4], [5, 6]]]
+        ],
+        [
+          [
+            'm = [[0, -1], [-2, 0]]\n' +
+              'result = [transpose(m), transpose_zip(m), m]'
+          ],
+          [[[0, -2], [-1, 0]], [[0, -2], [-1, 0]], [[0, -1], [-2, 0]]]
+        ],
+        [
+          [
+            'm = [[1, 2], [3, 4]]\n' +
+              't = transpose(m)\n' +
+              't[0][0] = 99\n' +
+              'z = transpose_zip(m)\n' +
+              'z[0][0] = 77\n' +
+              'result = m'
+          ],
+          [[1, 2], [3, 4]]
+        ],
+        [
+          [
+            'm = [[i * 1000 + j for j in range(1000)] for i in range(1000)]\n' +
+              't = transpose(m)\n' +
+              'z = transpose_zip(m)\n' +
+              'result = [t[0][1], t[999][0], t[5][7], t == z, len(t), len(t[0]), type(z[0]).__name__]'
+          ],
+          [1000, 999, 7005, true, 1000, 1000, 'list']
+        ],
+        [
+          [
+            'm = [[i * 7 + j for j in range(3)] for i in range(1000)]\n' +
+              'result = [len(transpose(m)), len(transpose(m)[0]), transpose(m)[2][999], transpose_zip(m) == transpose(m)]'
+          ],
+          [3, 1000, 6995, true]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Build each output row with its own comprehension (fresh list per row), or use the <code>zip(*m)</code> idiom.</p>`,
       code: `
@@ -1548,6 +2415,68 @@ g = make_grid_trap(3, 4)
 print(g, g[0] is g[1])` },
     mcq: { q: 'Why is <code>[0] * n</code> safe while <code>[[0] * n] * m</code> is not?', options: ['Ints are immutable — sharing the same 0 object is harmless; rows are mutable lists', 'Python copies ints but not lists', 'Multiplication is buggy for nested lists', 'It is safe; the bug is elsewhere'], answer: 0, explain: 'Both multiply references. Sharing an immutable 0 is fine because you can only replace it (rebinding a slot), never modify it in place. Sharing a mutable row means modifications are visible through every reference.' },
     hints: [`<p>Hint 1: The problem is not the zeros — it is that every row must be a <b>different</b> list object.</p>`, `<p>Hint 2: A comprehension evaluates its expression once per iteration: <code>[[0] * n for _ in range(m)]</code> creates m distinct rows.</p>`, `<p>Hint 3: Verify with <code>grid[0] is grid[1]</code> → must be False. Recipe: grid = [[0] * n for _ in range(m)]; for i in range(min(m, n)): grid[i][i] = 1.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          ['result = [make_grid(3, 4), make_grid_direct(3, 4)]'],
+          [[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]], [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]]]
+        ],
+        [
+          ['result = [make_grid(4, 3), make_grid_direct(4, 3)]'],
+          [[[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, 0]], [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, 0]]]
+        ],
+        [['result = [make_grid(1, 1), make_grid_direct(1, 1)]'], [[[1]], [[1]]]],
+        [['result = [make_grid(1, 5), make_grid_direct(1, 5)]'], [[[1, 0, 0, 0, 0]], [[1, 0, 0, 0, 0]]]],
+        [
+          ['result = [make_grid(5, 1), make_grid_direct(5, 1)]'],
+          [[[1], [0], [0], [0], [0]], [[1], [0], [0], [0], [0]]]
+        ],
+        [['result = [make_grid(2, 2), make_grid_direct(2, 2)]'], [[[1, 0], [0, 1]], [[1, 0], [0, 1]]]],
+        [
+          [
+            'g = make_grid(3, 3)\n' +
+              'g[0][2] = 7\n' +
+              'h = make_grid_direct(3, 3)\n' +
+              'h[0][2] = 7\n' +
+              'result = [g[1][2], g[2][2], h[1][2], h[2][2], g[0][2]]'
+          ],
+          [0, 1, 0, 1, 7]
+        ],
+        [['g = make_grid(3, 4)\nresult = [g[0] is g[1], g[1] is g[2]]'], [false, false]],
+        [
+          [
+            'g = make_grid(1000, 1000)\n' +
+              'result = [len(g), len(g[0]), sum(map(sum, g)), g[999][999], g[0][999], g == make_grid_direct(1000, 1000)]'
+          ],
+          [1000, 1000, 1000, 1, 0, true]
+        ],
+        [
+          [
+            'g = make_grid(1000, 3)\n' +
+              'result = [sum(map(sum, g)), g[2][2], g[3][2]]'
+          ],
+          [3, 1, 0]
+        ],
+        [
+          [
+            'g = make_grid(2, 1000)\n' +
+              'result = [sum(map(sum, g)), g[1][1], g[1][2]]'
+          ],
+          [2, 1, 0]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Build rows with a comprehension so each row is a separate list, then set the diagonal. A one-shot comprehension can even compute the values directly.</p>`,
       code: `
@@ -1591,6 +2520,66 @@ def group_brute(words):
 print(group_brute(["eat", "tea", "tan", "ate", "nat", "bat"]))` },
     mcq: { q: 'Which of these can be a dict key that identifies an anagram class?', options: ['<code>sorted(w)</code> (a list)', '<code>"".join(sorted(w))</code> or <code>tuple(sorted(w))</code>', '<code>set(w)</code>', '<code>Counter(w)</code>'], answer: 1, explain: 'Lists, sets and Counters are unhashable. A sorted string or tuple is hashable and equal for anagrams. (set(w) would also be wrong for "aab" vs "abb".) A 26-count tuple is another valid key.' },
     hints: [`<p>Hint 1: Anagrams share a canonical form: their sorted letters. Equal canonical form ⇔ same group.</p>`, `<p>Hint 2: Map canonical form → list of words in a dict; insertion order gives group order for free.</p>`, `<p>Hint 3: For long words, a 26-length count tuple avoids the k log k sort: key = tuple(counts). Recipe: groups = {}; for w in words: groups.setdefault(key(w), []).append(w); return list(groups.values()).</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [
+          [
+            '[group_anagrams([\'eat\', \'tea\', \'tan\', \'ate\', \'nat\', \'bat\']), group_anagrams_counts([\'eat\', \'tea\', \'tan\', \'ate\', \'nat\', \'bat\'])]'
+          ],
+          [[['eat', 'tea', 'ate'], ['tan', 'nat'], ['bat']], [['eat', 'tea', 'ate'], ['tan', 'nat'], ['bat']]]
+        ],
+        [['[group_anagrams([\'\', \'\']), group_anagrams_counts([\'\', \'\'])]'], [[['', '']], [['', '']]]],
+        [['[group_anagrams([\'a\']), group_anagrams_counts([\'a\'])]'], [[['a']], [['a']]]],
+        [
+          ['[group_anagrams([\'ab\', \'ba\', \'ab\']), group_anagrams_counts([\'ab\', \'ba\', \'ab\'])]'],
+          [[['ab', 'ba', 'ab']], [['ab', 'ba', 'ab']]]
+        ],
+        [
+          ['[group_anagrams([\'abc\', \'def\']), group_anagrams_counts([\'abc\', \'def\'])]'],
+          [[['abc'], ['def']], [['abc'], ['def']]]
+        ],
+        [
+          [
+            '[group_anagrams([\'listen\', \'silent\', \'enlist\', \'google\', \'gogole\']), group_anagrams_counts([\'listen\', \'silent\', \'enlist\', \'google\', \'gogole\'])]'
+          ],
+          [
+            [['listen', 'silent', 'enlist'], ['google', 'gogole']],
+            [['listen', 'silent', 'enlist'], ['google', 'gogole']]
+          ]
+        ],
+        [
+          ['[group_anagrams([\'b\', \'a\', \'b\']), group_anagrams_counts([\'b\', \'a\', \'b\'])]'],
+          [[['b', 'b'], ['a']], [['b', 'b'], ['a']]]
+        ],
+        [
+          [
+            '[group_anagrams([\'ab\', \'a\', \'ba\', \'\']), group_anagrams_counts([\'ab\', \'a\', \'ba\', \'\'])]'
+          ],
+          [[['ab', 'ba'], ['a'], ['']], [['ab', 'ba'], ['a'], ['']]]
+        ],
+        [
+          [
+            '(lambda w: [group_anagrams(w) == group_anagrams_counts(w), len(group_anagrams(w)), len(group_anagrams(w)[0])])([\'ab\', \'ba\'] * 5000)'
+          ],
+          [true, 1, 10000]
+        ],
+        [
+          [
+            '(lambda w: [len(group_anagrams(w)), group_anagrams(w) == group_anagrams_counts(w)])([\'a\' * i for i in range(100)] * 100)'
+          ],
+          [100, true]
+        ]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Hash each word to a canonical, <b>hashable</b> key and bucket words in a dict. Iterating the dict's values returns groups in first-appearance order.</p>`,
       code: `
@@ -1634,6 +2623,53 @@ def top_k_brute(nums, k):
 print(top_k_brute([1, 1, 1, 2, 2, 3], 2))` },
     mcq: { q: 'Cost of <code>Counter(nums).most_common(k)</code> for n items, u distinct?', options: ['O(n²)', 'O(n + u log k) — count in one pass, then a size-k heap', 'O(1)', 'O(n · k)'], answer: 1, explain: 'Counting is one O(n) pass with dict updates. most_common(k) uses heapq.nlargest → O(u log k). Without k it sorts everything: O(u log u).' },
     hints: [`<p>Hint 1: First count frequencies in one pass with a dict / Counter — never with list.count in a loop.</p>`, `<p>Hint 2: Selecting the k largest of u counts: a heap of size k (<code>heapq.nlargest</code>) is O(u log k).</p>`, `<p>Hint 3: For O(n): bucket sort — bucket[f] = list of values with frequency f (f ≤ n); walk buckets from high to low until k collected.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [
+          ['[sorted(top_k([1, 1, 1, 2, 2, 3], 2)), sorted(top_k_bucket([1, 1, 1, 2, 2, 3], 2))]'],
+          [[1, 2], [1, 2]]
+        ],
+        [['[sorted(top_k([1], 1)), sorted(top_k_bucket([1], 1))]'], [[1], [1]]],
+        [['[sorted(top_k([1, 2, 3, 3], 1)), sorted(top_k_bucket([1, 2, 3, 3], 1))]'], [[3], [3]]],
+        [['[sorted(top_k([-1, -1, -2], 1)), sorted(top_k_bucket([-1, -1, -2], 1))]'], [[-1], [-1]]],
+        [
+          ['[sorted(top_k([5, 5, 5, 6, 6, 7], 3)), sorted(top_k_bucket([5, 5, 5, 6, 6, 7], 3))]'],
+          [[5, 6, 7], [5, 6, 7]]
+        ],
+        [['[sorted(top_k([0, 0, 0, 1], 1)), sorted(top_k_bucket([0, 0, 0, 1], 1))]'], [[0], [0]]],
+        [
+          [
+            '[sorted(top_k([4, 4, 4, 4, 2, 2, 2, 9, 9, 1], 2)), sorted(top_k_bucket([4, 4, 4, 4, 2, 2, 2, 9, 9, 1], 2))]'
+          ],
+          [[2, 4], [2, 4]]
+        ],
+        [
+          [
+            '(lambda n: [sorted(top_k(n, 2)), sorted(top_k_bucket(n, 2))])([1] * 50000 + [2] * 30000 + [3] * 20000)'
+          ],
+          [[1, 2], [1, 2]]
+        ],
+        [
+          [
+            '(lambda n: [sorted(top_k(n, 3)), sorted(top_k_bucket(n, 3))])([1] * 50000 + [2] * 30000 + [3] * 20000)'
+          ],
+          [[1, 2, 3], [1, 2, 3]]
+        ],
+        [
+          ['(lambda n: [sorted(top_k(n, 1)), sorted(top_k_bucket(n, 1))])(list(range(99999)) + [7])'],
+          [[7], [7]]
+        ]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Count with <code>Counter</code> (dict-based, O(n)), then either use <code>most_common(k)</code> (heap, O(u log k)) or bucket by frequency for a strict O(n).</p>`,
       code: `
@@ -1681,6 +2717,28 @@ def longest_brute(nums):
 print(longest_brute([100, 4, 200, 1, 3, 2]))` },
     mcq: { q: 'Why only start counting at x when x − 1 is NOT in the set?', options: ['To save memory', 'So each run is walked once from its start → total O(n)', 'Because negative numbers break it', 'It is required for correctness only, not speed'], answer: 1, explain: 'Without the check, a run of length L would be re-walked from each of its L members → O(n²). Starting only at run beginnings means every number is visited by at most one walk.' },
     hints: [`<p>Hint 1: Put all numbers in a set so "is y present?" is O(1).</p>`, `<p>Hint 2: A number x starts a run only if x − 1 is absent. From each start, walk x + 1, x + 2, … while present.</p>`, `<p>Hint 3: Iterate over the set (not the list) to skip duplicates. Empty input → 0. Recipe: s = set(nums); for x in s: if x - 1 not in s: y = x; while y + 1 in s: y += 1; best = max(best, y - x + 1).</p>`],
+    tests: {
+      sig: 'int[] -> int',
+      fn: 'longestConsecutive',
+      cases: [
+        [[[100, 4, 200, 1, 3, 2]], 4],
+        [[[]], 0],
+        [[[0, 3, 7, 2, 5, 8, 4, 6, 0, 1]], 9],
+        [[[1]], 1],
+        [[[1, 1, 1]], 1],
+        [[[-3, -2, -1, 0, 1]], 5],
+        [[[10, 5, 12, 3, 55, 30, 4, 11, 2]], 4],
+        [[[-1000000000, 1000000000]], 1],
+        [[[-1000000000, -999999999]], 2],
+        [[[5, 4, 3, 2, 1]], 5],
+        [[[1, 3, 5, 7]], 1],
+        [[{ $range: [0, 100000, 1] }], 100000],
+        [[{ $range: [100000, 0, -1] }], 100000],
+        [[{ $range: [0, 200000, 2] }], 1],
+        [[{ $concat: [{ $range: [0, 50000, 1] }, { $range: [60000, 110000, 1] }] }], 50000],
+        [[{ $rep: 5, n: 100000 }], 1]
+      ]
+    },
     solution: {
       approach: `<p>Hash set + "start of run" check. Each element is touched O(1) times overall: once in the outer loop, at most once inside a walk.</p>`,
       code: `
@@ -1721,6 +2779,89 @@ def flatten_list(x):
 print(flatten_list([1, [2, [3, 4]], [], 5]))` },
     mcq: { q: 'What does <code>yield from flatten(item)</code> do?', options: ['Returns the whole sub-list at once', 'Delegates: re-yields every value the inner generator produces, one at a time', 'Starts a thread', 'Copies the inner generator'], answer: 1, explain: '<code>yield from g</code> is shorthand for <code>for v in g: yield v</code> (plus forwarding of send/throw). Values flow lazily through the chain of generators.' },
     hints: [`<p>Hint 1: Recursion fits the shape: a list item is either a value (yield it) or another list (flatten it).</p>`, `<p>Hint 2: Use <code>yield</code> for values and <code>yield from flatten(item)</code> for sub-lists — no list is ever built.</p>`, `<p>Hint 3: Very deep nesting can exceed the recursion limit; an explicit stack of iterators avoids that. Recipe: stack = [iter(x)]; while stack: for item in stack[-1]: if list: push iter(item); break; else yield item; else: stack.pop().</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          ['result = [list(flatten([1, [2, [3, 4]], [], 5])), list(flatten_iter([1, [2, [3, 4]], [], 5]))]'],
+          [[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]]
+        ],
+        [['result = [list(flatten([])), list(flatten_iter([]))]'], [[], []]],
+        [['result = [list(flatten([[]])), list(flatten_iter([[]]))]'], [[], []]],
+        [['result = [list(flatten([[[[1]]]])), list(flatten_iter([[[[1]]]]))]'], [[1], [1]]],
+        [
+          ['result = [list(flatten([(1, 2), [3]])), list(flatten_iter([(1, 2), [3]]))]'],
+          [[[1, 2], 3], [[1, 2], 3]]
+        ],
+        [
+          ['result = [list(flatten([\'ab\', [\'c\']])), list(flatten_iter([\'ab\', [\'c\']]))]'],
+          [['ab', 'c'], ['ab', 'c']]
+        ],
+        [
+          [
+            'result = [list(flatten([[1, 2], [3, [4, [5, [6]]]], 7])), list(flatten_iter([[1, 2], [3, [4, [5, [6]]]], 7]))]'
+          ],
+          [[1, 2, 3, 4, 5, 6, 7], [1, 2, 3, 4, 5, 6, 7]]
+        ],
+        [
+          ['result = [list(flatten([None, [None]])), list(flatten_iter([None, [None]]))]'],
+          [[null, null], [null, null]]
+        ],
+        [['result = [list(flatten([[[], []], [[]]])), list(flatten_iter([[[], []], [[]]]))]'], [[], []]],
+        [
+          [
+            'class Boom(list):\n' +
+              '    def __iter__(self):\n' +
+              '        raise RuntimeError(\'touched\')\n' +
+              'from itertools import islice\n' +
+              'result = [list(islice(flatten([1, 2, 3, Boom()]), 3)), list(islice(flatten_iter([1, 2, 3, Boom()]), 3))]'
+          ],
+          [[1, 2, 3], [1, 2, 3]]
+        ],
+        [
+          [
+            'x = [0]\n' +
+              'for i in range(1, 500):\n' +
+              '    x = [x, i]\n' +
+              'result = [list(flatten(x)) == list(range(500)), list(flatten_iter(x)) == list(range(500))]'
+          ],
+          [true, true]
+        ],
+        [
+          [
+            'x = [0]\n' +
+              'for i in range(1, 20000):\n' +
+              '    x = [x, i]\n' +
+              'result = list(flatten_iter(x)) == list(range(20000))'
+          ],
+          true
+        ],
+        [
+          [
+            'result = [sum(1 for _ in flatten([list(range(1000)) for _ in range(1000)])), sum(1 for _ in flatten_iter([list(range(1000)) for _ in range(1000)]))]'
+          ],
+          [1000000, 1000000]
+        ],
+        [
+          [
+            'from itertools import islice\n' +
+              'big = [[i, [i]] for i in range(10**5)]\n' +
+              'result = [list(islice(flatten(big), 3)), list(islice(flatten_iter(big), 3))]'
+          ],
+          [[0, 0, 1], [0, 0, 1]]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>A recursive generator with <code>yield from</code> streams values lazily with O(depth) memory. The iterative version keeps a stack of iterators to survive deep nesting.</p>`,
       code: `
@@ -1774,6 +2915,26 @@ def count_brute(nums, k):
 print(count_brute([1, 2, 3], 3), count_brute([1, -1, 0], 0))` },
     mcq: { q: 'Why is the dict seeded with <code>{0: 1}</code>?', options: ['To avoid KeyError', 'It represents the empty prefix, so subarrays starting at index 0 are counted', 'Dicts cannot start empty', 'It handles negative numbers'], answer: 1, explain: 'sum(i..j) = prefix[j] − prefix[i−1]. When the subarray starts at 0, the "previous prefix" is the empty sum 0, which must already be counted once.' },
     hints: [`<p>Hint 1: sum(i..j) = P[j] − P[i−1] where P is the running prefix sum. We need P[i−1] = P[j] − k.</p>`, `<p>Hint 2: Keep a dict prefix_sum → how many times seen so far. At each j add <code>count[P − k]</code> to the answer.</p>`, `<p>Hint 3: Seed {0: 1}; look up before inserting the current prefix (so a subarray is never empty). Recipe: P = ans = 0; seen = {0: 1}; for x in nums: P += x; ans += seen.get(P - k, 0); seen[P] = seen.get(P, 0) + 1.</p>`],
+    tests: {
+      sig: 'int[] int -> int',
+      fn: 'subarraySum',
+      cases: [
+        [[[1, 2, 3], 3], 2],
+        [[[1, -1, 0], 0], 3],
+        [[[1, 1, 1], 2], 2],
+        [[[1], 1], 1],
+        [[[1], 2], 0],
+        [[[0, 0, 0], 0], 6],
+        [[[-1, -1, 1], 0], 1],
+        [[[3, 4, 7, 2, -3, 1, 4, 2], 7], 4],
+        [[[1, 2, 1, 2, 1], 3], 4],
+        [[[-5, 5, -5, 5], 0], 4],
+        [[[1000, -1000, 1000], 0], 2],
+        [[{ $rep: 0, n: 20000 }, 0], 200010000],
+        [[{ $rep: 1, n: 20000 }, 3], 19998],
+        [[{ $concat: [{ $rep: 1000, n: 10000 }, { $rep: -1000, n: 10000 }] }, 0], 10000]
+      ]
+    },
     solution: {
       approach: `<p>One pass, running prefix sum, dict of prefix frequencies. Each step is O(1) average, giving O(n) overall even with negatives.</p>`,
       code: `
@@ -1820,6 +2981,172 @@ class LRUBrute:
 c = LRUBrute(2); c.put(1, 1); c.put(2, 2); print(c.get(1)); c.put(3, 3); print(c.get(2))` },
     mcq: { q: 'How do you mark a key as "most recently used" in a plain dict in O(1)?', options: ['<code>d[key] = d[key]</code>', '<code>d[key] = d.pop(key)</code> (delete, then re-insert at the end)', '<code>d.move_to_end(key)</code>', 'Sort the dict'], answer: 1, explain: 'Reassigning an existing key keeps its position, so option A does nothing to the order. Popping and re-inserting moves it to the end. move_to_end exists only on OrderedDict.' },
     hints: [`<p>Hint 1: A dict iterates oldest-inserted first. If every access moves a key to the end, the first key is always the least recently used.</p>`, `<p>Hint 2: Move to end = <code>d[key] = d.pop(key)</code>. Oldest key = <code>next(iter(d))</code> — O(1) amortized.</p>`, `<p>Hint 3: In put, if the key exists, pop it first (it becomes newest); else, if full, evict <code>next(iter(d))</code>. Then insert.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'c = LRUCache(2)\n' +
+              'r = []\n' +
+              'c.put(1, 1); c.put(2, 2)\n' +
+              'r.append(c.get(1))\n' +
+              'c.put(3, 3)\n' +
+              'r.append(c.get(2))\n' +
+              'c.put(4, 4)\n' +
+              'r += [c.get(1), c.get(3), c.get(4)]\n' +
+              'result = r'
+          ],
+          [1, -1, -1, 3, 4]
+        ],
+        [
+          [
+            'c = LRUCache(1)\n' +
+              'c.put(1, 10)\n' +
+              'r = [c.get(1)]\n' +
+              'c.put(2, 20)\n' +
+              'r += [c.get(1), c.get(2)]\n' +
+              'result = r'
+          ],
+          [10, -1, 20]
+        ],
+        [['c = LRUCache(2)\nresult = [c.get(5)]'], [-1]],
+        [
+          [
+            'c = LRUCache(2)\n' +
+              'c.put(1, 1); c.put(2, 2); c.put(1, 100)\n' +
+              'c.put(3, 3)\n' +
+              'result = [c.get(1), c.get(2), c.get(3)]'
+          ],
+          [100, -1, 3]
+        ],
+        [['c = LRUCache(2)\nc.put(1, 0)\nresult = [c.get(1)]'], [0]],
+        [
+          [
+            'c = LRUCache(2)\n' +
+              'c.put(1, 1); c.put(2, 2); c.get(1); c.put(3, 3)\n' +
+              'result = [c.get(1), c.get(2), c.get(3)]'
+          ],
+          [1, -1, 3]
+        ],
+        [
+          [
+            'c = LRUCache(3)\n' +
+              'for k in range(5):\n' +
+              '    c.put(k, k * k)\n' +
+              'result = [c.get(k) for k in range(5)]'
+          ],
+          [-1, -1, 4, 9, 16]
+        ],
+        [
+          [
+            'c = LRUCache(2)\n' +
+              'c.put(1, 1); c.put(1, 2); c.put(1, 3)\n' +
+              'c.put(2, 2)\n' +
+              'result = [c.get(1), c.get(2)]'
+          ],
+          [3, 2]
+        ],
+        [
+          [
+            'a, b = LRUCache(1), LRUCache(1)\n' +
+              'a.put(1, 1)\n' +
+              'result = [a.get(1), b.get(1)]'
+          ],
+          [1, -1]
+        ],
+        [
+          [
+            'import random\n' +
+              'from collections import OrderedDict\n' +
+              'rnd = random.Random(1)\n' +
+              'c = LRUCache(5)\n' +
+              'ref = OrderedDict()\n' +
+              'ok = True\n' +
+              'for _ in range(5000):\n' +
+              '    k = rnd.randrange(9)\n' +
+              '    if rnd.random() < 0.5:\n' +
+              '        want = -1\n' +
+              '        if k in ref:\n' +
+              '            ref.move_to_end(k)\n' +
+              '            want = ref[k]\n' +
+              '        ok = ok and c.get(k) == want\n' +
+              '    else:\n' +
+              '        v = rnd.randrange(100)\n' +
+              '        c.put(k, v)\n' +
+              '        ref[k] = v\n' +
+              '        ref.move_to_end(k)\n' +
+              '        if len(ref) > 5:\n' +
+              '            ref.popitem(last=False)\n' +
+              'result = ok'
+          ],
+          true
+        ],
+        [
+          [
+            'import random\n' +
+              'from collections import OrderedDict\n' +
+              'rnd = random.Random(2)\n' +
+              'c = LRUCache(1)\n' +
+              'ref = OrderedDict()\n' +
+              'ok = True\n' +
+              'for _ in range(3000):\n' +
+              '    k = rnd.randrange(4)\n' +
+              '    if rnd.random() < 0.5:\n' +
+              '        want = -1\n' +
+              '        if k in ref:\n' +
+              '            ref.move_to_end(k)\n' +
+              '            want = ref[k]\n' +
+              '        ok = ok and c.get(k) == want\n' +
+              '    else:\n' +
+              '        v = rnd.randrange(100)\n' +
+              '        c.put(k, v)\n' +
+              '        ref[k] = v\n' +
+              '        ref.move_to_end(k)\n' +
+              '        if len(ref) > 1:\n' +
+              '            ref.popitem(last=False)\n' +
+              'result = ok'
+          ],
+          true
+        ],
+        [
+          [
+            'import random\n' +
+              'from collections import OrderedDict\n' +
+              'rnd = random.Random(3)\n' +
+              'c = LRUCache(3000)\n' +
+              'ref = OrderedDict()\n' +
+              'ok = True\n' +
+              'for _ in range(200000):\n' +
+              '    k = rnd.randrange(4000)\n' +
+              '    if rnd.random() < 0.5:\n' +
+              '        want = -1\n' +
+              '        if k in ref:\n' +
+              '            ref.move_to_end(k)\n' +
+              '            want = ref[k]\n' +
+              '        ok = ok and c.get(k) == want\n' +
+              '    else:\n' +
+              '        v = rnd.randrange(100)\n' +
+              '        c.put(k, v)\n' +
+              '        ref[k] = v\n' +
+              '        ref.move_to_end(k)\n' +
+              '        if len(ref) > 3000:\n' +
+              '            ref.popitem(last=False)\n' +
+              'result = ok'
+          ],
+          true
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Exploit insertion order: the dict is both the hash map and the recency list. Pop + re-insert moves a key to the newest end; the first key is the eviction victim. (OrderedDict's <code>move_to_end</code>/<code>popitem(last=False)</code> is the explicit alternative.)</p>`,
       code: `
@@ -1890,6 +3217,108 @@ c = clone_naive({"a": shared, "b": shared})
 print(c["a"] is c["b"])     # False: sharing lost (and a cycle would recurse forever)` },
     mcq: { q: 'When must the new container be registered in the memo?', options: ['After all children are cloned', 'Before cloning its children', 'Never — ids are enough', 'Only for dicts'], answer: 1, explain: 'If a child refers back to its parent (a cycle), the recursive call must find the parent\'s copy in the memo. So create the empty copy, store memo[id(obj)] = copy, then fill it.' },
     hints: [`<p>Hint 1: Keep a memo dict <code>id(original) → copy</code>. Before copying any container, check the memo; if present, return the existing copy.</p>`, `<p>Hint 2: Create the empty container first, register it in the memo, then fill it — that is what makes cycles terminate.</p>`, `<p>Hint 3: Immutable atoms can be returned as they are. Recipe: if id in memo → return; if list: new = []; memo[id] = new; new.extend(clone(x) for x in obj); same for dict; else return obj.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'shared = [1]\n' +
+              'data = {\'a\': shared, \'b\': shared}\n' +
+              'data[\'me\'] = data\n' +
+              'c = clone(data)\n' +
+              'result = [c[\'a\'] is c[\'b\'], c[\'me\'] is c, c[\'a\'] is shared, c[\'a\'], c is data]'
+          ],
+          [true, true, false, [1], false]
+        ],
+        [['o = [[1], [2]]\nc = clone(o)\nc[0].append(9)\nresult = [o, c]'], [[[1], [2]], [[1, 9], [2]]]],
+        [
+          ['result = [clone(5), clone(\'s\'), clone(None), clone((1, 2)), clone(2.5)]'],
+          [5, 's', null, [1, 2], 2.5]
+        ],
+        [
+          [
+            'o = {\'k\': [1, {\'z\': [2]}]}\n' +
+              'c = clone(o)\n' +
+              'c[\'k\'][1][\'z\'].append(3)\n' +
+              'result = [o, c]'
+          ],
+          [{ k: [1, { z: [2] }] }, { k: [1, { z: [2, 3] }] }]
+        ],
+        [
+          [
+            'l = []\n' +
+              'l.append(l)\n' +
+              'c = clone(l)\n' +
+              'result = [c is not l, c[0] is c, len(c)]'
+          ],
+          [true, true, 1]
+        ],
+        [
+          [
+            'a = [1]\n' +
+              'b = [a]\n' +
+              'a.append(b)\n' +
+              'c = clone(a)\n' +
+              'result = [c is not a, c[1][0] is c, c[0]]'
+          ],
+          [true, true, 1]
+        ],
+        [
+          [
+            'x = [0]\n' +
+              'for i in range(499):\n' +
+              '    x = [x]\n' +
+              'c = clone(x)\n' +
+              'd = 0\n' +
+              'y, z = c, x\n' +
+              'while isinstance(y, list) and y and isinstance(y[0], list):\n' +
+              '    assert y is not z\n' +
+              '    y, z = y[0], z[0]\n' +
+              '    d += 1\n' +
+              'result = [d, y == [0], y is not z]'
+          ],
+          [499, true, true]
+        ],
+        [
+          [
+            's = [1]\n' +
+              'data = [s] * 100000\n' +
+              'c = clone(data)\n' +
+              'result = [len(c), all(e is c[0] for e in c), c[0] is not s, c[0]]'
+          ],
+          [100000, true, true, [1]]
+        ],
+        [
+          [
+            'data = [[] for _ in range(100000)]\n' +
+              'c = clone(data)\n' +
+              'result = [len(c), c[0] is not data[0], c[5] is not c[6], c == data]'
+          ],
+          [100000, true, true, true]
+        ],
+        [['result = clone([])'], []],
+        [['result = clone({})'], {  }],
+        [['t = (1, 2)\nc = clone([t, t])\nresult = [c[0] is t, c[1] is t]'], [true, true]],
+        [
+          [
+            'o = {\'a\': [1], \'b\': [1]}\n' +
+              'c = clone(o)\n' +
+              'result = [c[\'a\'] is c[\'b\'], c == o]'
+          ],
+          [false, true]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Recursive copy with a memo keyed by object identity — the same strategy as <code>copy.deepcopy</code>. Registering the new container before recursing handles cycles; reusing memo entries preserves sharing.</p>`,
       code: `
@@ -1902,7 +3331,8 @@ def clone(obj, memo=None):
     if isinstance(obj, list):
         new = []
         memo[oid] = new                  # register BEFORE recursing
-        new.extend(clone(x, memo) for x in obj)
+        for x in obj:                    # plain loop: one frame per level, so depth 500 fits
+            new.append(clone(x, memo))
         return new
     if isinstance(obj, dict):
         new = {}
@@ -1948,6 +3378,183 @@ for i in range(1000):
 print(g.copies)                              # 499500 copies for 1000 appends` },
     mcq: { q: 'Why shrink at size ≤ cap/4 (to cap/2) instead of at size ≤ cap/2?', options: ['It saves more memory', 'It leaves a buffer so a push right after a shrink does not immediately trigger a grow — no thrashing', 'Python requires it', 'It makes get() faster'], answer: 1, explain: 'After shrinking to cap/2 at size cap/4, the array is half full: Θ(n) cheap operations must happen before the next resize in either direction, which keeps both push and pop amortized O(1).' },
     hints: [`<p>Hint 1: Grow geometrically (×2, or ×1.125 like CPython). Each element is then copied O(1) times on average.</p>`, `<p>Hint 2: Shrink with hysteresis: halve the capacity only when size drops to a quarter. Keep a minimum capacity of 1.</p>`, `<p>Hint 3: insert(i, x): ensure capacity, shift items i..n−1 right by one from the END backwards, write x. Normalise negative indices with i += n and validate 0 ≤ i &lt; n, raising IndexError otherwise.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'd = DynArray()\n' +
+              'for i in range(1, 10):\n' +
+              '    d.append(i)\n' +
+              'result = [len(d), d[0], d[8], d[-1], d[-9]]'
+          ],
+          [9, 1, 9, 9, 1]
+        ],
+        [['d = DynArray()\nresult = [len(d)]'], [0]],
+        [['d = DynArray()\nresult = d[0]'], '!IndexError'],
+        [['d = DynArray()\nd.append(1)\nresult = d[1]'], '!IndexError'],
+        [['d = DynArray()\nd.append(1)\nresult = d[-2]'], '!IndexError'],
+        [['d = DynArray()\nd[0] = 5'], '!IndexError'],
+        [['d = DynArray()\nresult = d.pop()'], '!IndexError'],
+        [
+          [
+            'd = DynArray()\n' +
+              'for i in range(5):\n' +
+              '    d.append(i)\n' +
+              'd[-1] = 40\n' +
+              'd[0] = -1\n' +
+              'result = [d[i] for i in range(5)]'
+          ],
+          [-1, 1, 2, 3, 40]
+        ],
+        [
+          [
+            'd = DynArray()\n' +
+              'for i in range(1000):\n' +
+              '    d.append(i)\n' +
+              'd.insert(0, -1)\n' +
+              'result = [d[0], d[1], len(d), d[-1]]'
+          ],
+          [-1, 0, 1001, 999]
+        ],
+        [
+          [
+            'd = DynArray()\n' +
+              'for x in \'abc\':\n' +
+              '    d.append(x)\n' +
+              'd.insert(1, \'X\')\n' +
+              'd.insert(-1, \'Y\')\n' +
+              'd.insert(100, \'Z\')\n' +
+              'd.insert(-100, \'W\')\n' +
+              'result = [d[i] for i in range(len(d))]'
+          ],
+          ['W', 'a', 'X', 'b', 'Y', 'c', 'Z']
+        ],
+        [
+          [
+            'd = DynArray()\n' +
+              'for i in range(1000):\n' +
+              '    d.append(i)\n' +
+              'before = d.copies\n' +
+              'result = before < 2 * 1000'
+          ],
+          true
+        ],
+        [
+          [
+            'd = DynArray()\n' +
+              'for i in range(8):\n' +
+              '    d.append(i)\n' +
+              'd.append(8)\n' +
+              'before = d.copies\n' +
+              'for _ in range(10000):\n' +
+              '    d.pop()\n' +
+              '    d.append(0)\n' +
+              'result = [d.copies - before, len(d)]'
+          ],
+          [0, 9]
+        ],
+        [
+          [
+            'd = DynArray()\n' +
+              'for i in range(9):\n' +
+              '    d.append(i)\n' +
+              'for _ in range(9):\n' +
+              '    d.pop()\n' +
+              'r = [len(d)]\n' +
+              'd.append(7)\n' +
+              'result = r + [len(d), d[0]]'
+          ],
+          [0, 1, 7]
+        ],
+        [
+          [
+            'd = DynArray()\n' +
+              'for i in range(10**6):\n' +
+              '    d.append(i)\n' +
+              'result = [len(d), d[-1], d[0], d.copies < 2 * len(d)]'
+          ],
+          [1000000, 999999, 0, true]
+        ],
+        [
+          [
+            'd = DynArray()\n' +
+              'for i in range(100000):\n' +
+              '    d.append(i)\n' +
+              'for _ in range(100000):\n' +
+              '    d.pop()\n' +
+              'result = [len(d), d.copies < 4 * 100000]'
+          ],
+          [0, true]
+        ],
+        [
+          [
+            'import random\n' +
+              'rnd = random.Random(1)\n' +
+              'd = DynArray()\n' +
+              'm = []\n' +
+              'ok = True\n' +
+              'for _ in range(3000):\n' +
+              '    op = rnd.randrange(5)\n' +
+              '    if op <= 1 or not m:\n' +
+              '        x = rnd.randrange(100)\n' +
+              '        d.append(x); m.append(x)\n' +
+              '    elif op == 2:\n' +
+              '        ok = ok and d.pop() == m.pop()\n' +
+              '    elif op == 3:\n' +
+              '        i = rnd.randrange(-len(m) - 3, len(m) + 3)\n' +
+              '        x = rnd.randrange(100)\n' +
+              '        d.insert(i, x); m.insert(i, x)\n' +
+              '    else:\n' +
+              '        i = rnd.randrange(-len(m), len(m))\n' +
+              '        x = rnd.randrange(100)\n' +
+              '        d[i] = x; m[i] = x\n' +
+              '        ok = ok and d[i] == m[i]\n' +
+              '    ok = ok and len(d) == len(m)\n' +
+              'result = ok and [d[i] for i in range(len(d))] == m'
+          ],
+          true
+        ],
+        [
+          [
+            'import random\n' +
+              'rnd = random.Random(2)\n' +
+              'd = DynArray()\n' +
+              'm = []\n' +
+              'ok = True\n' +
+              'for _ in range(20000):\n' +
+              '    op = rnd.randrange(5)\n' +
+              '    if op <= 1 or not m:\n' +
+              '        x = rnd.randrange(100)\n' +
+              '        d.append(x); m.append(x)\n' +
+              '    elif op == 2:\n' +
+              '        ok = ok and d.pop() == m.pop()\n' +
+              '    elif op == 3:\n' +
+              '        i = rnd.randrange(-len(m) - 3, len(m) + 3)\n' +
+              '        x = rnd.randrange(100)\n' +
+              '        d.insert(i, x); m.insert(i, x)\n' +
+              '    else:\n' +
+              '        i = rnd.randrange(-len(m), len(m))\n' +
+              '        x = rnd.randrange(100)\n' +
+              '        d[i] = x; m[i] = x\n' +
+              '        ok = ok and d[i] == m[i]\n' +
+              '    ok = ok and len(d) == len(m)\n' +
+              'result = ok and [d[i] for i in range(len(d))] == m'
+          ],
+          true
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Classic doubling dynamic array with quarter-full shrinking. A copy counter shows the amortized bound empirically (≈ n copies for n appends with doubling).</p>`,
       code: `
@@ -2047,6 +3654,247 @@ class PairListMap:
 m = PairListMap(); m.put("a", 1); m.put("a", 3); print(m.get("a"), m.get("z"))` },
     mcq: { q: 'Why must <code>perturb</code> be made non-negative (masked to 64 bits) in Python?', options: ['Python ints overflow', 'Right-shifting a negative int converges to −1, not 0, so the probe sequence can get stuck', 'Negative hashes are illegal', 'It makes hashing faster'], answer: 1, explain: 'In Python, -5 >> 5 == -1 forever. Then i = (5i + 1 − 1) & mask = 5i & mask can cycle among a few slots (e.g. stuck at 0) and never reach an empty one. Masking with (1 << 64) − 1 mimics C\'s unsigned size_t.' },
     hints: [`<p>Hint 1: Three slot states: EMPTY (never used — stops a search), TOMBSTONE (deleted — keep searching, but reusable for insertion), and LIVE.</p>`, `<p>Hint 2: Track "used" = live + tombstones; when used reaches 2/3 of the table, rebuild into a table sized from the live count (this also clears tombstones).</p>`, `<p>Hint 3: Probe: i = h &amp; mask; perturb = h &amp; (2<sup>64</sup> − 1); then repeatedly perturb &gt;&gt;= 5; i = (5i + 1 + perturb) &amp; mask. Remember the first tombstone you pass so put can reuse it if the key is absent.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'm = OpenHashMap()\n' +
+              'm.put(\'a\', 1); m.put(\'b\', 2); m.remove(\'a\')\n' +
+              'result = [m.get(\'b\'), m.get(\'a\'), len(m)]'
+          ],
+          [2, null, 1]
+        ],
+        [
+          [
+            'm = OpenHashMap()\n' +
+              'm.put(-1, \'neg\'); m.put(-2, \'neg2\')\n' +
+              'result = [m.get(-1), m.get(-2), len(m)]'
+          ],
+          ['neg', 'neg2', 2]
+        ],
+        [
+          [
+            'm = OpenHashMap()\n' +
+              'result = [m.get(\'x\'), m.get(\'x\', 5), m.remove(\'x\'), len(m)]'
+          ],
+          [null, 5, false, 0]
+        ],
+        [
+          [
+            'm = OpenHashMap()\n' +
+              'm.put(\'k\', 1); m.put(\'k\', 2)\n' +
+              'result = [m.get(\'k\'), len(m)]'
+          ],
+          [2, 1]
+        ],
+        [
+          [
+            'm = OpenHashMap()\n' +
+              'm.put(\'k\', 1)\n' +
+              'result = [m.remove(\'k\'), m.remove(\'k\'), len(m), m.get(\'k\')]'
+          ],
+          [true, false, 0, null]
+        ],
+        [
+          [
+            'm = OpenHashMap()\n' +
+              'm.put(1, \'a\'); m.put(1.0, \'b\'); m.put(True, \'c\')\n' +
+              'result = [len(m), m.get(1)]'
+          ],
+          [1, 'c']
+        ],
+        [
+          [
+            'm = OpenHashMap()\n' +
+              'for k in [None, (1, 2), \'x\', 3.5, frozenset([1])]:\n' +
+              '    m.put(k, str(k))\n' +
+              'result = [m.get(None), m.get((1, 2)), m.get(\'x\'), m.get(3.5), m.get(frozenset([1])), len(m)]'
+          ],
+          ['None', '(1, 2)', 'x', '3.5', 'frozenset({1})', 5]
+        ],
+        [
+          [
+            'm = OpenHashMap()\n' +
+              'for i in range(1000):\n' +
+              '    m.put(\'k%d\' % i, i)\n' +
+              'for i in range(0, 1000, 2):\n' +
+              '    m.remove(\'k%d\' % i)\n' +
+              'result = [len(m), m.get(\'k1\'), m.get(\'k2\'), m.get(\'k999\'), m.remove(\'nope\')]'
+          ],
+          [500, 1, null, 999, false]
+        ],
+        [
+          [
+            'm = OpenHashMap()\n' +
+              'for i in range(100000):\n' +
+              '    m.put(i, i * 2)\n' +
+              'r = [len(m), m.get(99999), m.get(0)]\n' +
+              'for i in range(100000):\n' +
+              '    m.remove(i)\n' +
+              'r += [len(m), m.get(5)]\n' +
+              'for i in range(100000):\n' +
+              '    m.put(i, i)\n' +
+              'result = r + [len(m), m.get(77777)]'
+          ],
+          [100000, 199998, 0, 0, null, 100000, 77777]
+        ],
+        [
+          [
+            'm = OpenHashMap()\n' +
+              'for i in range(200000):\n' +
+              '    m.put(i, i)\n' +
+              '    m.remove(i)\n' +
+              'result = [len(m), m.get(5), m.get(199999)]'
+          ],
+          [0, null, null]
+        ],
+        [
+          [
+            'm = OpenHashMap()\n' +
+              'm.put(\'a\', None)\n' +
+              'result = [m.get(\'a\', \'dflt\'), len(m)]'
+          ],
+          [null, 1]
+        ],
+        [
+          [
+            'm = OpenHashMap()\n' +
+              'for i in range(16):\n' +
+              '    m.put(i * 8, i)\n' +
+              'for i in range(0, 16, 2):\n' +
+              '    m.remove(i * 8)\n' +
+              'result = [m.get(i * 8) for i in range(16)]'
+          ],
+          [null, 1, null, 3, null, 5, null, 7, null, 9, null, 11, null, 13, null, 15]
+        ],
+        [
+          [
+            'import random\n' +
+              'rnd = random.Random(1)\n' +
+              'm = OpenHashMap()\n' +
+              'ref = {}\n' +
+              'ok = True\n' +
+              'for _ in range(3000):\n' +
+              '    op = rnd.randrange(3)\n' +
+              '    k = rnd.randrange(50)\n' +
+              '    if op == 0:\n' +
+              '        v = rnd.randrange(1000)\n' +
+              '        m.put(k, v); ref[k] = v\n' +
+              '    elif op == 1:\n' +
+              '        ok = ok and m.get(k, \'none\') == ref.get(k, \'none\')\n' +
+              '    else:\n' +
+              '        ok = ok and m.remove(k) == (k in ref)\n' +
+              '        ref.pop(k, None)\n' +
+              '    ok = ok and len(m) == len(ref)\n' +
+              'result = ok and all(m.get(k) == v for k, v in ref.items())'
+          ],
+          true
+        ],
+        [
+          [
+            'import random\n' +
+              'rnd = random.Random(2)\n' +
+              'm = OpenHashMap()\n' +
+              'ref = {}\n' +
+              'ok = True\n' +
+              'for _ in range(30000):\n' +
+              '    op = rnd.randrange(3)\n' +
+              '    k = rnd.randrange(2000)\n' +
+              '    if op == 0:\n' +
+              '        v = rnd.randrange(1000)\n' +
+              '        m.put(k, v); ref[k] = v\n' +
+              '    elif op == 1:\n' +
+              '        ok = ok and m.get(k, \'none\') == ref.get(k, \'none\')\n' +
+              '    else:\n' +
+              '        ok = ok and m.remove(k) == (k in ref)\n' +
+              '        ref.pop(k, None)\n' +
+              '    ok = ok and len(m) == len(ref)\n' +
+              'result = ok and all(m.get(k) == v for k, v in ref.items())'
+          ],
+          true
+        ],
+        [
+          [
+            'import random\n' +
+              'rnd = random.Random(3)\n' +
+              'm = OpenHashMap()\n' +
+              'ref = {}\n' +
+              'ok = True\n' +
+              'for _ in range(200000):\n' +
+              '    op = rnd.randrange(3)\n' +
+              '    k = rnd.randrange(30000)\n' +
+              '    if op == 0:\n' +
+              '        v = rnd.randrange(1000)\n' +
+              '        m.put(k, v); ref[k] = v\n' +
+              '    elif op == 1:\n' +
+              '        ok = ok and m.get(k, \'none\') == ref.get(k, \'none\')\n' +
+              '    else:\n' +
+              '        ok = ok and m.remove(k) == (k in ref)\n' +
+              '        ref.pop(k, None)\n' +
+              '    ok = ok and len(m) == len(ref)\n' +
+              'result = ok and all(m.get(k) == v for k, v in ref.items())'
+          ],
+          true
+        ],
+        [
+          [
+            'import random\n' +
+              'rnd = random.Random(4)\n' +
+              'm = OpenHashMap()\n' +
+              'ref = {}\n' +
+              'ok = True\n' +
+              'for _ in range(5000):\n' +
+              '    op = rnd.randrange(3)\n' +
+              '    k = \'s%d\' % rnd.randrange(300)\n' +
+              '    if op == 0:\n' +
+              '        v = rnd.randrange(1000)\n' +
+              '        m.put(k, v); ref[k] = v\n' +
+              '    elif op == 1:\n' +
+              '        ok = ok and m.get(k, \'none\') == ref.get(k, \'none\')\n' +
+              '    else:\n' +
+              '        ok = ok and m.remove(k) == (k in ref)\n' +
+              '        ref.pop(k, None)\n' +
+              '    ok = ok and len(m) == len(ref)\n' +
+              'result = ok and all(m.get(k) == v for k, v in ref.items())'
+          ],
+          true
+        ],
+        [
+          [
+            'import random\n' +
+              'rnd = random.Random(5)\n' +
+              'm = OpenHashMap()\n' +
+              'ref = {}\n' +
+              'ok = True\n' +
+              'for _ in range(5000):\n' +
+              '    op = rnd.randrange(3)\n' +
+              '    k = rnd.randrange(-100, 100) * 1024\n' +
+              '    if op == 0:\n' +
+              '        v = rnd.randrange(1000)\n' +
+              '        m.put(k, v); ref[k] = v\n' +
+              '    elif op == 1:\n' +
+              '        ok = ok and m.get(k, \'none\') == ref.get(k, \'none\')\n' +
+              '    else:\n' +
+              '        ok = ok and m.remove(k) == (k in ref)\n' +
+              '        ref.pop(k, None)\n' +
+              '    ok = ok and len(m) == len(ref)\n' +
+              'result = ok and all(m.get(k) == v for k, v in ref.items())'
+          ],
+          true
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Parallel arrays of keys and values, sentinel objects for EMPTY and TOMBSTONE, CPython's perturbation probe, load factor ≤ 2/3 counting tombstones, rebuild on overflow. Lookups compare identity first, then equality (like CPython).</p>`,
       code: `
@@ -2148,6 +3996,60 @@ def window_max_brute(nums, k):
 print(window_max_brute([1, 3, -1, -3, 5, 3, 6, 7], 3))` },
     mcq: { q: 'Why can we drop smaller elements from the back of the deque when a bigger one arrives?', options: ['To save memory only', 'They can never be a window maximum again: the new bigger element is newer and larger', 'Because deque is sorted', 'They are duplicates'], answer: 1, explain: 'Any future window containing the old smaller element also contains the newer bigger one (it leaves later), so the smaller one is useless forever. That keeps the deque decreasing.' },
     hints: [`<p>Hint 1: Keep candidate <b>indices</b> in a deque whose values are strictly decreasing from front to back. The front is the current maximum.</p>`, `<p>Hint 2: For each new index i: pop from the back while nums[back] ≤ nums[i]; append i; pop from the front if it fell out of the window (index ≤ i − k).</p>`, `<p>Hint 3: Start recording answers once i ≥ k − 1. A list with pop(0) would make the front removal O(k) — use collections.deque for O(1) at both ends.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['max_sliding_window([1, 3, -1, -3, 5, 3, 6, 7], 3)'], [3, 3, 5, 5, 6, 7]],
+        [['max_sliding_window([9, 8, 7], 1)'], [9, 8, 7]],
+        [['max_sliding_window([1], 1)'], [1]],
+        [['max_sliding_window([1, 2, 3], 3)'], [3]],
+        [['max_sliding_window([3, 2, 1], 3)'], [3]],
+        [['max_sliding_window([5, 5, 5, 5], 2)'], [5, 5, 5]],
+        [['max_sliding_window([-1, -2, -3], 2)'], [-1, -2]],
+        [['max_sliding_window([1, -1], 1)'], [1, -1]],
+        [['max_sliding_window([4, 2, 12, 3], 2)'], [4, 12, 12]],
+        [['max_sliding_window([7, 2, 4], 2)'], [7, 4]],
+        [['max_sliding_window([0, 0, 0], 3)'], [0]],
+        [
+          ['(lambda r: [len(r), r[0], r[-1], sum(r)])(max_sliding_window(list(range(100000)), 50000))'],
+          [50001, 49999, 99999, 3750024999]
+        ],
+        [
+          ['(lambda r: [len(r), r[0], r[-1], sum(r)])(max_sliding_window(list(range(100000, 0, -1)), 50000))'],
+          [50001, 100000, 50000, 3750075000]
+        ],
+        [
+          [
+            '(lambda r: [len(r), r[0], r[-1], sum(r)])(max_sliding_window([(i * 7919) % 100003 for i in range(100000)], 1000))'
+          ],
+          [99001, 99984, 99910, 9895353342]
+        ],
+        [
+          ['(lambda r: [len(r), r[0], r[-1], sum(r)])(max_sliding_window([5] * 100000, 100000))'],
+          [1, 5, 5, 5]
+        ],
+        [
+          [
+            '(lambda r: [len(r), r[0], r[-1], sum(r)])(max_sliding_window([(-1) ** i * i for i in range(100000)], 3))'
+          ],
+          [99998, 2, 99998, 4999900000]
+        ],
+        [
+          [
+            '(lambda r: [len(r), r[0], r[-1], sum(r)])(max_sliding_window([i % 10 for i in range(100000)], 1))'
+          ],
+          [100000, 0, 9, 450000]
+        ]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Monotonic decreasing deque of indices: each index is appended once and popped at most once, so total work is O(n). This relies on deque's O(1) <code>pop</code>/<code>popleft</code>.</p>`,
       code: `
@@ -2201,6 +4103,203 @@ class ListOnly:
 c = ListOnly(); print(c.insert(1), c.insert(1), c.remove(1), c.vals)` },
     mcq: { q: 'How do you delete from the middle of a list in O(1) when order does not matter?', options: ['<code>del lst[i]</code>', 'Overwrite slot i with the LAST element, then <code>pop()</code> the end', 'Set lst[i] = None', 'Use lst.remove'], answer: 1, explain: 'Swap-with-last avoids the shift: pop() from the end is O(1). You must then update the index bookkeeping for the element that moved.' },
     hints: [`<p>Hint 1: A list gives O(1) random choice; the problem is O(1) removal. Order does not matter, so move the last element into the hole.</p>`, `<p>Hint 2: To find "some index of val" in O(1), keep <code>pos: dict[val → set of indices]</code>. Sets give O(1) add/remove of indices.</p>`, `<p>Hint 3: In remove: i = pos[val].pop(); last = vals[-1]; vals[i] = last; pos[last].add(i); pos[last].discard(len(vals) − 1); vals.pop(); delete pos[val] if empty. The add-then-discard order handles i == last index.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'rc = RandomizedCollection()\n' +
+              'result = [rc.insert(1), rc.insert(1), rc.insert(2), rc.remove(1), rc.remove(1), rc.remove(1), rc.remove(2), rc.insert(1)]'
+          ],
+          [true, false, true, true, true, false, true, true]
+        ],
+        [
+          [
+            'import random\n' +
+              'random.seed(1)\n' +
+              'rc = RandomizedCollection()\n' +
+              'rc.insert(1); rc.insert(1); rc.insert(2)\n' +
+              'c = sum(1 for _ in range(30000) if rc.get_random() == 1)\n' +
+              'result = 19000 < c < 21000'
+          ],
+          true
+        ],
+        [
+          [
+            'import random\n' +
+              'random.seed(2)\n' +
+              'rc = RandomizedCollection()\n' +
+              'rc.insert(1); rc.insert(1); rc.insert(2)\n' +
+              'rc.remove(1)\n' +
+              'c = sum(1 for _ in range(20000) if rc.get_random() == 1)\n' +
+              'result = 9000 < c < 11000'
+          ],
+          true
+        ],
+        [
+          [
+            'rc = RandomizedCollection()\n' +
+              'rc.insert(5); rc.insert(6)\n' +
+              'rc.remove(5)\n' +
+              'result = sorted({rc.get_random() for _ in range(50)})'
+          ],
+          [6]
+        ],
+        [
+          [
+            'rc = RandomizedCollection()\n' +
+              'result = [rc.remove(3), rc.insert(3), rc.remove(3), rc.remove(3), rc.insert(3)]'
+          ],
+          [false, true, true, false, true]
+        ],
+        [
+          [
+            'rc = RandomizedCollection()\n' +
+              'rc.insert(7)\n' +
+              'result = [rc.get_random(), rc.get_random()]'
+          ],
+          [7, 7]
+        ],
+        [
+          [
+            'rc = RandomizedCollection()\n' +
+              'rc.insert(0); rc.insert(0); rc.insert(0)\n' +
+              'result = [rc.remove(0), rc.remove(0), rc.get_random(), rc.remove(0), rc.remove(0)]'
+          ],
+          [true, true, 0, true, false]
+        ],
+        [
+          [
+            'rc = RandomizedCollection()\n' +
+              'rc.insert(-1); rc.insert(10**9); rc.insert(-1)\n' +
+              'result = [rc.remove(-1), rc.remove(10**9), rc.get_random()]'
+          ],
+          [true, true, -1]
+        ],
+        [
+          [
+            'import random\n' +
+              'rnd = random.Random(1)\n' +
+              'rc = RandomizedCollection()\n' +
+              'from collections import Counter\n' +
+              'model = Counter()\n' +
+              'ok = True\n' +
+              'for _ in range(3000):\n' +
+              '    v = rnd.randrange(10)\n' +
+              '    if rnd.random() < 0.55:\n' +
+              '        ok = ok and rc.insert(v) == (model[v] == 0)\n' +
+              '        model[v] += 1\n' +
+              '    else:\n' +
+              '        had = model[v] > 0\n' +
+              '        ok = ok and rc.remove(v) == had\n' +
+              '        if had:\n' +
+              '            model[v] -= 1\n' +
+              '    if sum(model.values()) and _ % 50 == 0:\n' +
+              '        ok = ok and model[rc.get_random()] > 0\n' +
+              'for v, c in list(model.items()):\n' +
+              '    for _ in range(c):\n' +
+              '        ok = ok and rc.remove(v)\n' +
+              '    ok = ok and not rc.remove(v)\n' +
+              'result = ok'
+          ],
+          true
+        ],
+        [
+          [
+            'import random\n' +
+              'rnd = random.Random(2)\n' +
+              'rc = RandomizedCollection()\n' +
+              'from collections import Counter\n' +
+              'model = Counter()\n' +
+              'ok = True\n' +
+              'for _ in range(20000):\n' +
+              '    v = rnd.randrange(100)\n' +
+              '    if rnd.random() < 0.55:\n' +
+              '        ok = ok and rc.insert(v) == (model[v] == 0)\n' +
+              '        model[v] += 1\n' +
+              '    else:\n' +
+              '        had = model[v] > 0\n' +
+              '        ok = ok and rc.remove(v) == had\n' +
+              '        if had:\n' +
+              '            model[v] -= 1\n' +
+              '    if sum(model.values()) and _ % 50 == 0:\n' +
+              '        ok = ok and model[rc.get_random()] > 0\n' +
+              'for v, c in list(model.items()):\n' +
+              '    for _ in range(c):\n' +
+              '        ok = ok and rc.remove(v)\n' +
+              '    ok = ok and not rc.remove(v)\n' +
+              'result = ok'
+          ],
+          true
+        ],
+        [
+          [
+            'import random\n' +
+              'rnd = random.Random(3)\n' +
+              'rc = RandomizedCollection()\n' +
+              'from collections import Counter\n' +
+              'model = Counter()\n' +
+              'ok = True\n' +
+              'for _ in range(200000):\n' +
+              '    v = rnd.randrange(1000)\n' +
+              '    if rnd.random() < 0.55:\n' +
+              '        ok = ok and rc.insert(v) == (model[v] == 0)\n' +
+              '        model[v] += 1\n' +
+              '    else:\n' +
+              '        had = model[v] > 0\n' +
+              '        ok = ok and rc.remove(v) == had\n' +
+              '        if had:\n' +
+              '            model[v] -= 1\n' +
+              '    if sum(model.values()) and _ % 50 == 0:\n' +
+              '        ok = ok and model[rc.get_random()] > 0\n' +
+              'for v, c in list(model.items()):\n' +
+              '    for _ in range(c):\n' +
+              '        ok = ok and rc.remove(v)\n' +
+              '    ok = ok and not rc.remove(v)\n' +
+              'result = ok'
+          ],
+          true
+        ],
+        [
+          [
+            'import random\n' +
+              'rnd = random.Random(4)\n' +
+              'rc = RandomizedCollection()\n' +
+              'from collections import Counter\n' +
+              'model = Counter()\n' +
+              'ok = True\n' +
+              'for _ in range(5000):\n' +
+              '    v = rnd.randrange(2)\n' +
+              '    if rnd.random() < 0.55:\n' +
+              '        ok = ok and rc.insert(v) == (model[v] == 0)\n' +
+              '        model[v] += 1\n' +
+              '    else:\n' +
+              '        had = model[v] > 0\n' +
+              '        ok = ok and rc.remove(v) == had\n' +
+              '        if had:\n' +
+              '            model[v] -= 1\n' +
+              '    if sum(model.values()) and _ % 50 == 0:\n' +
+              '        ok = ok and model[rc.get_random()] > 0\n' +
+              'for v, c in list(model.items()):\n' +
+              '    for _ in range(c):\n' +
+              '        ok = ok and rc.remove(v)\n' +
+              '    ok = ok and not rc.remove(v)\n' +
+              'result = ok'
+          ],
+          true
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Combine a list (random access) with a dict of index sets (O(1) location of any occurrence). Removal swaps the target with the last element and pops — no shifting.</p>`,
       code: `

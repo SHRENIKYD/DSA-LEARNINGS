@@ -303,9 +303,11 @@ A::created() → ${H.c('g', '2')}   A::alive() → ${H.c('g', '1')}   B::created
           }` },
       mcq: { q: 'Why does <code>ObjectCounter&lt;A&gt;</code> keep a separate count from <code>ObjectCounter&lt;B&gt;</code>?', options: ['Each template instantiation is a distinct class with its own static members', 'Static members are stored inside each object', 'The compiler adds a hidden type id', 'Because of virtual inheritance'], answer: 0, explain: '<code>ObjectCounter&lt;A&gt;</code> and <code>ObjectCounter&lt;B&gt;</code> are two unrelated classes, so <code>static inline int alive</code> exists once for each.' },
       hints: [`<p>Make the base a <b>template</b> parameterised on the derived class; static data then becomes per-class automatically.</p>`, `<p>Increment in the default, copy <i>and</i> move constructors; decrement in the destructor. Use <code>static inline</code> (C++17) so you need no out-of-class definition.</p>`, `<p>Make the destructor <code>protected</code> (non-virtual) so nobody deletes a derived object through <code>ObjectCounter&lt;T&gt;*</code>. Recipe: template base → three constructors increment → destructor decrements → static getters.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"2 1 1 0\n3 1\n4 2\n9 2\n0 0\n10 2"}]},
       solution: {
         approach: `<p>CRTP mixin: the derived class passes itself as <code>T</code>, so each class gets its own <code>created_</code>/<code>alive_</code> pair. Every way of making an object (default, copy, move) runs one of the base constructors, so all are counted. The destructor is protected so the base is only usable as a mixin, never as a polymorphic handle.</p>`,
         code: R`
+          #include <vector>
           #include <iostream>
 
           template <typename T>
@@ -327,11 +329,23 @@ A::created() → ${H.c('g', '2')}   A::alive() → ${H.c('g', '1')}   B::created
           struct A : ObjectCounter<A> {};
           struct B : ObjectCounter<B> {};
 
+          struct D : ObjectCounter<D> {};
+
           int main() {
               A a1;
               { A a2 = a1; B b; }
               std::cout << A::created() << " " << A::alive() << " "
                         << B::created() << " " << B::alive() << "\n";   // 2 1 1 0
+              { A m = std::move(a1); }                                  // a move constructs a new object too
+              std::cout << A::created() << " " << A::alive() << "\n";   // 3 1
+              A a3;
+              a3 = a1;                                                  // assignment creates nothing
+              std::cout << A::created() << " " << A::alive() << "\n";   // 4 2
+              { std::vector<A> v(5); }
+              std::cout << A::created() << " " << A::alive() << "\n";   // 9 2
+              std::cout << D::created() << " " << D::alive() << "\n";   // 0 0  (a class never instantiated)
+              A();                                                      // a temporary counts, then dies
+              std::cout << A::created() << " " << A::alive() << "\n";   // 10 2
           }`,
         dry: { head: ['statement', 'A created', 'A alive', 'B created', 'B alive'], rows: [
           ['A a1;', '1', '1', '0', '0'], ['A a2 = a1; (copy ctor)', '2', '2', '0', '0'], ['B b;', '2', '2', '1', '1'], ['} b destroyed', '2', '2', '1', '0'], ['} a2 destroyed', '2', '<span class="c-g">1</span>', '1', '0']] },
@@ -549,6 +563,7 @@ Logger c = std::move(a);  c.size() → ${H.c('g', '2')}   (a is now empty/moved-
           int main() { Logger a("[app] "); a.log("x"); std::cout << a.size() << "\n"; }` },
       mcq: { q: 'You write <code>~Logger() = default;</code> <b>inside the class in the header</b>. What happens?', options: ['Compile error: unique_ptr deletes an incomplete Impl', 'It works exactly like defining it in the .cpp', 'Memory leak: Impl is never freed', 'Linker error: duplicate destructor'], answer: 0, explain: 'Defaulting it in the header defines it there, where <code>Impl</code> is incomplete — the same problem as the implicit destructor. Only <i>declare</i> it in the header.' },
       hints: [`<p>The header keeps only <code>struct Impl;</code> and <code>std::unique_ptr&lt;Impl&gt; p_;</code>. Everything private moves into <code>struct Logger::Impl</code> in the .cpp part.</p>`, `<p>Declare destructor, both moves and both copies in the header. In the .cpp: moves and destructor <code>= default</code>; copy constructor does <code>make_unique&lt;Impl&gt;(*o.p_)</code>.</p>`, `<p>Copy-assignment: either assign <code>*p_ = *o.p_</code> (needs both non-null) or use copy-and-swap: <code>Logger tmp(o); swap(p_, tmp.p_);</code> — strong guarantee and handles a moved-from <code>*this</code>.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"2 3\n2 0\n3 3\n4 3\n3\n4 0\n0\n100000"}]},
       solution: {
         approach: `<p>Split the class: public interface + opaque <code>Impl</code>. Every special member is declared in the header and defined after <code>Impl</code>'s definition. Copying deep-copies the Impl; moving just moves the pointer. Copy-assignment uses copy-and-swap so it also works when <code>*this</code> was moved-from.</p>`,
         code: R`
@@ -599,6 +614,21 @@ Logger c = std::move(a);  c.size() → ${H.c('g', '2')}   (a is now empty/moved-
               std::cout << a.size() << " " << b.size() << "\n";     // 2 3
               Logger c = std::move(a);
               std::cout << c.size() << " " << a.size() << "\n";     // 2 0
+              Logger d("[x] ");
+              d = b;                                                // copy assignment
+              std::cout << d.size() << " " << b.size() << "\n";     // 3 3
+              d.log("z");
+              std::cout << d.size() << " " << b.size() << "\n";     // 4 3  (independent)
+              Logger& rb = b;
+              b = rb;                                               // self-assignment is safe
+              std::cout << b.size() << "\n";                        // 3
+              Logger e("[e] ");
+              e = std::move(d);                                     // move assignment
+              std::cout << e.size() << " " << d.size() << "\n";     // 4 0
+              Logger z("[z] ");
+              std::cout << z.size() << "\n";                        // 0
+              for (int i = 0; i < 100000; ++i) z.log("line");
+              std::cout << z.size() << "\n";                        // 100000
           }`,
         dry: { head: ['statement', 'a.p_', 'b.p_', 'c.p_', 'heap Impls'], rows: [
           ['Logger a("[app] ")', 'Impl#1 (0 lines)', '—', '—', '1'], ['a.log ×2', 'Impl#1 (2)', '—', '—', '1'], ['Logger b = a', 'Impl#1 (2)', 'Impl#2 (2) deep copy', '—', '2'], ['b.log', 'Impl#1 (2)', 'Impl#2 (3)', '—', '2'], ['Logger c = std::move(a)', '<span class="c-r">nullptr</span>', 'Impl#2 (3)', 'Impl#1 (2)', '2 (no new alloc)']] },
@@ -818,9 +848,12 @@ f(3) → ${H.c('g', '9')}     g(3) → ${H.c('g', '13')}     Function&lt;int(int
           }` },
       mcq: { q: 'Inside the Function wrapper, how do you copy a stored callable whose type you no longer know?', options: ['A virtual <code>clone()</code> in the internal Concept, implemented by <code>Model&lt;F&gt;</code>', '<code>memcpy</code> the bytes', '<code>typeid</code> + a switch statement', 'You cannot — Function must be move-only'], answer: 0, explain: 'Only <code>Model&lt;F&gt;</code> still knows F, so copying must be delegated to it through a virtual function — the "virtual constructor" idiom.' },
       hints: [`<p>Partially specialize on the function type: <code>template &lt;class Sig&gt; class Function;</code> then <code>template &lt;class R, class... Args&gt; class Function&lt;R(Args...)&gt;</code>.</p>`, `<p>Internal <code>struct Concept { virtual R call(Args...) = 0; virtual unique_ptr&lt;Concept&gt; clone() const = 0; virtual ~Concept() = default; };</code> and <code>template &lt;class F&gt; struct Model : Concept { F f; ... }</code>.</p>`, `<p>Constrain the template constructor so it does not hijack copies of Function itself: <code>requires (!std::is_same_v&lt;std::decay_t&lt;F&gt;, Function&gt;)</code>. Use <code>std::forward&lt;Args&gt;(args)...</code> when calling. Throw <code>std::bad_function_call</code> if empty.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"9 13\n0\nempty call\n42 6\n1 2 3 3\n0 13\n2\nababab\n0 empty\n105 100"}]},
       solution: {
         approach: `<p>Classic Concept/Model type erasure, specialized on the signature <code>R(Args...)</code>. The template constructor captures the callable's real type F into <code>Model&lt;F&gt;</code>; calls go through the virtual <code>call</code>; copies go through virtual <code>clone</code>; assignment reuses copy-and-swap.</p>`,
         code: R`
+          #include <array>
+          #include <string>
           #include <functional>     // std::bad_function_call
           #include <iostream>
           #include <memory>
@@ -859,6 +892,9 @@ f(3) → ${H.c('g', '9')}     g(3) → ${H.c('g', '13')}     Function&lt;int(int
               }
           };
 
+          int twice(int x) { return 2 * x; }
+          struct Adder { int n; int operator()(int x) const { return x + n; } };
+
           int main() {
               int k = 10;
               Function<int(int)> f = [k](int x) { return x + k; };
@@ -868,6 +904,30 @@ f(3) → ${H.c('g', '9')}     g(3) → ${H.c('g', '13')}     Function&lt;int(int
               Function<int(int)> e;
               std::cout << static_cast<bool>(e) << "\n";   // 0
               try { e(1); } catch (const std::bad_function_call&) { std::cout << "empty call\n"; }
+              Function<int(int)> fp = twice;
+              Function<int(int)> fa = Adder{5};
+              std::cout << fp(21) << " " << fa(1) << "\n";             // 42 6
+              Function<int()> ctr = [n = 0]() mutable { return ++n; };
+              int c1 = ctr(), c2 = ctr();
+              Function<int()> ctr2 = ctr;                              // copies the state too
+              int c3 = ctr2(), c4 = ctr();
+              std::cout << c1 << " " << c2 << " " << c3 << " " << c4 << "\n";   // 1 2 3 3
+              Function<int(int)> m = std::move(g);
+              std::cout << static_cast<bool>(g) << " " << m(3) << "\n";         // 0 13
+              Function<void(int&)> inc = [](int& x) { ++x; };
+              int v = 1;
+              inc(v);
+              std::cout << v << "\n";                                  // 2
+              Function<std::string(std::string, int)> rep = [](std::string s, int n) { std::string r; while (n-- > 0) r += s; return r; };
+              std::cout << rep("ab", 3) << "\n";                       // ababab
+              f = Function<int(int)>{};
+              std::cout << static_cast<bool>(f);
+              try { f(1); } catch (const std::bad_function_call&) { std::cout << " empty\n"; }   // 0 empty
+              std::array<int, 100> ones;
+              ones.fill(1);
+              Function<int(int)> big = [ones](int x) { int s = x; for (int y : ones) s += y; return s; };
+              Function<int(int)> bigCopy = big;
+              std::cout << big(5) << " " << bigCopy(0) << "\n";        // 105 100
           }`,
         dry: { head: ['statement', 'f.self_', 'g.self_', 'output'], rows: [
           ['f = [k](int x){...}', 'Model&lt;Lambda1&gt; {k=10}', 'null', ''], ['g = f', 'Model&lt;Lambda1&gt; #1', 'Model&lt;Lambda1&gt; #2 (clone)', ''], ['f = [](int x){ x*x }', 'Model&lt;Lambda2&gt; (old one freed)', 'Model&lt;Lambda1&gt; #2', ''], ['f(3), g(3)', 'call → 3*3', 'call → 3+10', '<span class="c-g">9 13</span>'], ['e(1) on empty', 'null', '—', '<span class="c-r">bad_function_call</span>']] },
@@ -1134,9 +1194,11 @@ IntBuffer c = std::move(b); → c = [1, 2, 3], b.size() = ${H.c('g', '0')}</pre>
           int main() { IntBufferNaive a(2), b(3); a = b; }` },
       mcq: { q: 'In <code>IntBuffer&amp; operator=(IntBuffer other)</code>, at which moment can a <code>std::bad_alloc</code> be thrown during <code>b = a;</code>?', options: ['While the parameter <code>other</code> is being copy-constructed, before the body runs', 'Inside <code>swap</code>', 'In the destructor of <code>other</code>', 'Never'], answer: 0, explain: 'The only allocation is in the copy constructor that builds <code>other</code>. The body (swap) and the destructor never throw, so <code>b</code> is untouched if the copy fails.' },
       hints: [`<p>Get the copy constructor and destructor right first — copy-and-swap reuses them.</p>`, `<p>Write <code>friend void swap(IntBuffer&amp; x, IntBuffer&amp; y) noexcept</code> that swaps <code>data_</code> and <code>n_</code> with <code>std::swap</code> on each member.</p>`, `<p>Assignment: <code>IntBuffer&amp; operator=(IntBuffer other) noexcept { swap(*this, other); return *this; }</code>. Move constructor: <code>std::exchange</code> the pointer to nullptr and size to 0. Destructor <code>delete[]</code> is safe on nullptr.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"123 0\n100 2 3\n0 0 0\nbad_alloc 3 3\n29999994 0\n5 2"}]},
       solution: {
         approach: `<p>Copy constructor + destructor + member-wise noexcept swap + by-value assignment. Copies are made before the object is touched (strong guarantee); self-assignment copies, swaps and frees the old buffer; rvalues move-construct the parameter so the same operator handles move-assignment.</p>`,
         code: R`
+          #include <new>
           #include <algorithm>
           #include <cstddef>
           #include <iostream>
@@ -1174,6 +1236,24 @@ IntBuffer c = std::move(b); → c = [1, 2, 3], b.size() = ${H.c('g', '0')}</pre>
               b = b;                                              // safe
               IntBuffer c = std::move(b);
               std::cout << c[0] << c[1] << c[2] << " " << b.size() << "\n";   // 123 0
+              std::cout << a[0] << " " << a[1] << " " << a[2] << "\n";          // 100 2 3
+              IntBuffer e;
+              IntBuffer e2 = e;
+              a = e;                                              // assigning an empty buffer
+              std::cout << e.size() << " " << e2.size() << " " << a.size() << "\n";   // 0 0 0
+              try { IntBuffer huge(std::size_t(1) << 60); }
+              catch (const std::bad_alloc&) { std::cout << "bad_alloc "; }
+              std::cout << c.size() << " " << c[2] << "\n";       // 3 3  (c untouched)
+              IntBuffer big(10000000);
+              for (std::size_t i = 0; i < big.size(); ++i) big[i] = static_cast<int>(i % 7);
+              IntBuffer big2 = big;
+              big[0] = 100;
+              long long sum = 0;
+              for (std::size_t i = 0; i < big2.size(); ++i) sum += big2[i];
+              std::cout << sum << " " << big2[0] << "\n";         // 29999994 0
+              IntBuffer x(2), y(5);
+              swap(x, y);
+              std::cout << x.size() << " " << y.size() << "\n";   // 5 2
           }`,
         dry: { head: ['statement', 'a.data_', 'b.data_', 'other.data_', 'note'], rows: [
           ['initial', 'P1 [1,2,3]', 'P2 [9]', '—', ''], ['b = a: build other', 'P1', 'P2', 'P3 [1,2,3]', 'copy ctor allocates (may throw here)'], ['swap(*this, other)', 'P1', 'P3', 'P2', 'noexcept'], ['} ~other', 'P1', 'P3', 'freed P2', 'old data gone'], ['b = b', 'P1', 'P4 [1,2,3]', 'freed P3', 'extra copy, but correct'], ['c = move(b)', 'P1', 'nullptr', '—', 'c owns P4']] },
@@ -1390,6 +1470,7 @@ undo.dismiss(); // success path → undo does nothing</pre>`,
           int main() { std::vector<int> v; addAndSave(v, 1); }` },
       mcq: { q: 'Why must the move constructor of ScopeGuard set the source\'s <code>active_</code> to false?', options: ['Otherwise both the moved-from and the moved-to guard would run the cleanup — it would run twice', 'Moves are not allowed for guards', 'To make the guard copyable', 'It is only needed for performance'], answer: 0, explain: 'After a move there are two guard objects. Only the destination should fire, so the source is deactivated (often with <code>std::exchange(o.active_, false)</code>).' },
       hints: [`<p>Store the callable by value (<code>F fn_</code>) plus a <code>bool active_ = true</code>. The destructor does <code>if (active_) fn_();</code>.</p>`, `<p>Delete the copy constructor/assignment. In the move constructor, move the callable and use <code>std::exchange(o.active_, false)</code>.</p>`, `<p><code>template &lt;class F&gt; ScopeGuard&lt;std::decay_t&lt;F&gt;&gt; makeGuard(F&amp;&amp; f)</code> — or rely on C++17 CTAD: <code>ScopeGuard g([&amp;]{...});</code>. Mark <code>dismiss()</code> noexcept.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"disk full: 2 verbose=0\n1 2\n1\n1\n2\n2\nba\n3"}]},
       solution: {
         approach: `<p>A tiny RAII class holding the callable and an "armed" flag. Destruction fires the callable if still armed; <code>dismiss()</code> disarms it (the commit point); moves transfer the duty and disarm the source. CTAD or <code>makeGuard</code> deduces the lambda type, so there is no <code>std::function</code> and no allocation.</p>`,
         code: R`
@@ -1433,6 +1514,22 @@ undo.dismiss(); // success path → undo does nothing</pre>`,
               addAndSave(v, 1); addAndSave(v, 2);
               try { addAndSave(v, 3); } catch (const std::exception& e) { std::cout << e.what() << ": "; }
               std::cout << v.size() << " verbose=" << verbose << "\n";   // disk full: 2 verbose=0
+              std::cout << v[0] << " " << v[1] << "\n";                  // 1 2  (the failed push was undone)
+              static_assert(!std::is_copy_constructible_v<ScopeGuard<void(*)()>>);
+              int fired = 0;
+              { auto g = makeGuard([&] { ++fired; }); }
+              std::cout << fired << "\n";                                // 1
+              { auto g = makeGuard([&] { ++fired; }); g.dismiss(); }
+              std::cout << fired << "\n";                                // 1
+              { auto g = makeGuard([&] { ++fired; }); auto h = std::move(g); }   // the moved-from guard must not fire
+              std::cout << fired << "\n";                                // 2
+              { auto g = makeGuard([&] { ++fired; }); auto h = std::move(g); h.dismiss(); }
+              std::cout << fired << "\n";                                // 2
+              std::string order;
+              { auto g1 = makeGuard([&] { order += "a"; }); auto g2 = makeGuard([&] { order += "b"; }); }
+              std::cout << order << "\n";                                // ba  (reverse order of construction)
+              try { auto g = makeGuard([&] { ++fired; }); throw 1; } catch (int) {}
+              std::cout << fired << "\n";                                // 3
           }`,
         dry: { head: ['call', 'after push_back', 'save()', 'undo', 'restore', 'v.size()'], rows: [
           ['addAndSave(v,1)', '[1]', 'ok', 'dismissed', 'fires: verbose=false', '1'], ['addAndSave(v,2)', '[1,2]', 'ok', 'dismissed', 'fires', '2'], ['addAndSave(v,3)', '[1,2,3]', '<span class="c-r">throws</span>', '<span class="c-g">fires: pop_back</span>', 'fires', '<span class="c-g">2</span>']] },
@@ -1625,6 +1722,7 @@ for (int x : range(1, 1))      → ${H.c('m', '(nothing)')}</pre>`,
           int main() { for (int x : rangeEager(0, 10, 3)) std::cout << x << " "; }` },
       mcq: { q: 'In <code>begin()</code>, why do we call <code>h_.resume()</code> once before returning the iterator?', options: ['Because initial_suspend is suspend_always — the body has not produced the first value yet', 'To destroy the frame', 'To reset the coroutine to the start', 'It is not needed'], answer: 0, explain: 'A lazy coroutine stops before its first line. Resuming once runs it to the first <code>co_yield</code> so <code>*it</code> has a value (or it finishes immediately for an empty range, making <code>it == end</code>).' },
       hints: [`<p>Start from the Generator in this topic: <code>promise_type</code> with <code>current</code>, <code>yield_value</code>, lazy initial suspend, suspend_always final suspend.</p>`, `<p>Add <code>struct iterator { handle h; int operator*(); iterator&amp; operator++() { h.resume(); ... }; bool operator==(std::default_sentinel_t) const { return h.done(); } };</code> and <code>end()</code> returning <code>std::default_sentinel</code>.</p>`, `<p>Loop condition depends on the sign of step: <code>step &gt; 0 ? i &lt; stop : i &gt; stop</code>. Guard <code>step == 0</code> with <code>co_return;</code>. Make the type move-only and destroy the handle in the destructor.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"0 3 6 9 5 3 1\n[0 3 6 9]\n[]\n[0 1 2 3 4]\n[]\n[]\n[]\n[-3 -1 1]\n[10 5 0]\n[0 1000000000 2000000000]\n[0 -1000000000 -2000000000]\n[2147483646]\n[-2147483648 -2147483647 -2147483646]\n499999500000\n2"}]},
       solution: {
         approach: `<p>A move-only generator type owns the <code>coroutine_handle</code>. Its iterator resumes the coroutine on <code>++</code> and reads <code>promise().current</code> on <code>*</code>; equality with <code>default_sentinel</code> means <code>done()</code>. The coroutine body is a plain loop with <code>co_yield</code>, so values are produced one at a time.</p>`,
         code: R`
@@ -1668,8 +1766,15 @@ for (int x : range(1, 1))      → ${H.c('m', '(nothing)')}</pre>`,
 
           IntGen range(int start, int stop, int step = 1) {
               if (step == 0) co_return;                              // avoid an infinite loop
-              for (int i = start; step > 0 ? i < stop : i > stop; i += step)
+              for (long long i = start; step > 0 ? i < stop : i > stop; i += step)   // 64-bit: i + step cannot overflow
                   co_yield i;
+          }
+
+          void show(IntGen g) {
+              std::cout << '[';
+              bool first = true;
+              for (int x : g) { std::cout << (first ? "" : " ") << x; first = false; }
+              std::cout << "]\n";
           }
 
           int main() {
@@ -1677,6 +1782,24 @@ for (int x : range(1, 1))      → ${H.c('m', '(nothing)')}</pre>`,
               for (int x : range(5, 0, -2)) std::cout << x << " ";   // 5 3 1
               for (int x : range(1, 1)) std::cout << x << " ";       // (nothing)
               std::cout << "\n";
+              show(range(0, 10, 3));                  // [0 3 6 9]
+              show(range(1, 1));                      // []
+              show(range(0, 5));                      // [0 1 2 3 4]
+              show(range(3, 0));                      // []   (default step 1 never reaches the stop)
+              show(range(0, 3, -1));                  // []
+              show(range(0, 10, 0));                  // []   (step 0)
+              show(range(-3, 3, 2));                  // [-3 -1 1]
+              show(range(10, -1, -5));                // [10 5 0]
+              show(range(0, INT_MAX, 1000000000));    // [0 1000000000 2000000000]
+              show(range(0, INT_MIN, -1000000000));   // [0 -1000000000 -2000000000]
+              show(range(INT_MAX - 1, INT_MAX));      // [2147483646]
+              show(range(INT_MIN, INT_MIN + 3));      // [-2147483648 -2147483647 -2147483646]
+              long long sum = 0;
+              for (int x : range(0, 1000000)) sum += x;
+              std::cout << sum << "\n";               // 499999500000
+              int seen = 0;
+              for (int x : range(0, 2000000000)) { if (x == 2) break; ++seen; }   // lazy: two billion values are never built
+              std::cout << seen << "\n";              // 2
           }`,
         dry: { head: ['caller action', 'coroutine does', 'i', 'promise.current', 'done()'], rows: [
           ['range(0,10,3)', 'frame created, suspended at start', '—', '0', 'false'], ['begin(): resume', 'i=0, co_yield 0', '0', '0', 'false'], ['print 0; ++it', 'i=3, co_yield 3', '3', '3', 'false'], ['print 3; ++it', 'i=6, co_yield 6', '6', '6', 'false'], ['print 6; ++it', 'i=9, co_yield 9', '9', '9', 'false'], ['print 9; ++it', 'i=12 fails test → final_suspend', '12', '9', '<span class="c-g">true → loop ends</span>']] },
@@ -1886,6 +2009,7 @@ rl_create(nullptr, -1, 0) → ${H.c('r', 'NULL')} (invalid args, no exception es
           int main() { RateLimiter r("api", 2, 1); return r.tryAcquire() ? 0 : 1; }` },
       mcq: { q: 'Why must every exported function wrap its body in <code>try { ... } catch (...)</code>?', options: ['Letting a C++ exception propagate through a C interface is undefined behavior (the caller may be C, Rust, Python…)', 'To make the code faster', 'Because extern "C" functions cannot contain try blocks otherwise', 'It is only needed on Windows'], answer: 0, explain: 'C callers have no unwinding support for C++ exceptions; the boundary must translate every failure into an error code or NULL.' },
       hints: [`<p>Header: <code>typedef struct rl rl_t;</code> (incomplete type) plus four <code>extern "C"</code> functions using only C types (<code>const char*</code>, <code>double</code>, <code>int</code>).</p>`, `<p>In the .cpp, define <code>struct rl { RateLimiter impl; };</code> or put the members directly; <code>rl_create</code> does <code>new</code> inside a try/catch and returns <code>nullptr</code> on any failure.</p>`, `<p><code>rl_destroy</code> must be the only way to free (same allocator). Validate every pointer argument. Return 1/0 for acquire and −1 for errors so the C caller can distinguish.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"110 1\n3 11100 0\n11\n-1 -1\n10 0.5\n0\n1000000"}]},
       solution: {
         approach: `<p>Hide the C++ class behind an incomplete C struct. Every entry point is <code>extern "C"</code>, takes and returns only C types, validates arguments, catches all exceptions and converts them to <code>NULL</code>/<code>-1</code>. Allocation and deallocation both live in the library. The C++ class can now change freely: clients only know a pointer and four symbol names that never change.</p>`,
         code: R`
@@ -1899,6 +2023,7 @@ rl_create(nullptr, -1, 0) → ${H.c('r', 'NULL')} (invalid args, no exception es
           }
 
           // ===== ratelimit.cpp (C++ inside, free to evolve) =====
+          #include <cstdio>
           #include <string>
           #include <stdexcept>
           #include <chrono>
@@ -1943,6 +2068,27 @@ rl_create(nullptr, -1, 0) → ${H.c('r', 'NULL')} (invalid args, no exception es
               int a = rl_try_acquire(r), b = rl_try_acquire(r), c = rl_try_acquire(r);
               std::cout << a << b << c << " " << (rl_create(nullptr, -1, 0) == nullptr) << "\n";   // 110 1
               rl_destroy(r);
+
+              rl_t* s = rl_create("steady", 3, 0.0);                 // rate 0: no refill, so the answers are exact
+              std::cout << rl_tokens(s) << " ";                       // 3
+              for (int i = 0; i < 5; ++i) std::cout << rl_try_acquire(s);   // 11100
+              std::cout << " " << rl_tokens(s) << "\n";               // 0
+              rl_destroy(s);
+              std::cout << (rl_create("x", 0, 1) == nullptr) << (rl_create("x", 1, -1) == nullptr) << "\n";   // 11
+              std::cout << rl_try_acquire(nullptr) << " " << rl_tokens(nullptr) << "\n";                    // -1 -1
+              rl_destroy(nullptr);
+              rl_t* frac = rl_create("frac", 1.5, 0.0);
+              int f1 = rl_try_acquire(frac), f2 = rl_try_acquire(frac);
+              std::cout << f1 << f2 << " " << rl_tokens(frac) << "\n";   // 10 0.5
+              rl_destroy(frac);
+              rl_t* half = rl_create("half", 0.5, 0.0);
+              std::cout << rl_try_acquire(half) << "\n";              // 0
+              rl_destroy(half);
+              rl_t* big = rl_create("big", 1000000, 0.0);
+              int ok = 0;
+              for (int i = 0; i < 1000001; ++i) ok += rl_try_acquire(big) == 1;
+              std::cout << ok << "\n";                                // 1000000
+              rl_destroy(big);
           }`,
         dry: { head: ['call', 'inside the library', 'returns', 'crosses boundary'], rows: [
           ['rl_create("api", 2, 1.0)', 'new rl{RateLimiter}', 'handle', 'pointer only'], ['rl_try_acquire ×2', 'tokens 2 → 1 → 0', '1, 1', 'int'], ['rl_try_acquire', 'tokens ≈ 0 &lt; 1', '0', 'int'], ['rl_create(NULL, -1, 0)', 'name check fails', 'NULL', 'pointer only'], ['rl_destroy(r)', 'delete inside library', '—', 'nothing']] },
@@ -2163,6 +2309,7 @@ line 5: ${H.c('y', "copy(a') move(a') dtor(~)")}</pre>`,
           }` },
       mcq: { q: 'Why does <code>return t;</code> in <code>Tracer pass(Tracer t)</code> <b>move</b> instead of copy, but cannot be elided?', options: ['Returning a named parameter is an implicit-move context, but parameters live in the caller-built slot so NRVO does not apply', 'Because Tracer has a noexcept move constructor', 'Because the function is inline', 'It actually copies'], answer: 0, explain: 'C++ treats <code>return local_or_param;</code> as an rvalue first (implicit move). NRVO is only permitted for local variables, not function parameters.' },
       hints: [`<p>Lines 1–2 are ordinary construction and copy-construction. Line 3: <code>make</code> returns a <b>prvalue</b> → guaranteed elision, so only one constructor runs.</p>`, `<p>Line 4: <code>std::move(c)</code> is an xvalue → move-assignment; c\'s name becomes <code>~</code>. Line 5: <code>a</code> is copied into the by-value parameter <code>t</code>, then <code>return t;</code> implicitly moves into <code>d</code>, then <code>t</code> (now <code>~</code>) is destroyed.</p>`, `<p>End of main destroys d, c, b, a (reverse declaration order). For the one-character change, ask: which object on line 5 exists only because the parameter is <b>by value</b>? Add a single <code>&amp;</code> to the parameter so no parameter object is built; then <code>return t;</code> has to copy once into the return slot and nothing else runs.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"ctor(a)\ncopy(a')\nctor(c)\nmove=(c)\ncopy(a')\ncopy(a') move(a') dtor(~)\ndtor(a') dtor(a') dtor(~) dtor(c) dtor(a)"}]},
       solution: {
         approach: `<p>Apply the rules in order: prvalue elision (line 3), xvalue → move-assignment (line 4), parameter copy + implicit move on return + parameter destruction (line 5), reverse-order destruction at the end. For the one-character change: declare the parameter as <code>const Tracer&amp; t</code> — then <code>return t;</code> must copy once into the return slot (no parameter object exists), giving <code>copy(a')</code> only: one call instead of three (copy, move, dtor).</p>`,
         code: R`
@@ -2180,13 +2327,16 @@ line 5: ${H.c('y', "copy(a') move(a') dtor(~)")}</pre>`,
           };
           Tracer make(const char* n) { return Tracer(n); }
           Tracer pass(const Tracer& t) { return t; }       // the one-character change: '&' (plus const for clarity)
+          Tracer passVal(Tracer t) { return t; }                  // by value: copy in, implicit move out
+
           int main() {
               Tracer a("a");                 std::cout << "\n";   // ctor(a)
               Tracer b = a;                  std::cout << "\n";   // copy(a')
               Tracer c = make("c");          std::cout << "\n";   // ctor(c)
               b = std::move(c);              std::cout << "\n";   // move=(c)
               Tracer d = pass(a);            std::cout << "\n";   // copy(a')   (was: copy(a') move(a') dtor(~))
-          }                                                       // dtor(a') dtor(~) dtor(c) dtor(a)`,
+              Tracer e = passVal(a);         std::cout << "\n";   // copy(a') move(a') dtor(~)
+          }                                                       // dtor(a') dtor(a') dtor(~) dtor(c) dtor(a)                                                       // dtor(a') dtor(~) dtor(c) dtor(a)`,
         dry: { head: ['line', 'rule applied', 'output'], rows: [
           ['1', 'direct construction', 'ctor(a)'], ['2', 'copy-initialization from lvalue', "copy(a')"], ['3', 'prvalue → guaranteed elision', 'ctor(c)'], ['4', 'xvalue → move-assignment', 'move=(c)'],
           ['5 (by value)', 'copy into param, implicit move on return, param dies', "copy(a') move(a') dtor(~)"], ['5 (const&amp;)', 'copy from reference into return slot', "copy(a')"], ['}', 'reverse destruction d, c, b, a', "dtor(a') dtor(~) dtor(c) dtor(a)"]] },
@@ -2220,6 +2370,7 @@ Date{2024,1,5} != Date{2023,12,31} → ${H.c('g', 'true')}</pre>`,
         int main() { return Money{1} < Money{2} ? 0 : 1; }` },
     mcq: { q: 'Why are the derived operators written as <b>friend functions defined inside</b> <code>Comparable&lt;D&gt;</code>?', options: ['They become hidden friends found by ADL for D, and both operands get symmetric conversions', 'Friends are faster than members', 'Templates cannot have member operators', 'To make them virtual'], answer: 0, explain: 'A friend defined inside the class template is injected for each instantiation and found through argument-dependent lookup when a D is an argument.' },
     hints: [`<p>Everything can be expressed with <code>&lt;</code>: <code>a &gt; b</code> is <code>b &lt; a</code>; <code>a &lt;= b</code> is <code>!(b &lt; a)</code>; <code>a == b</code> is <code>!(a &lt; b) &amp;&amp; !(b &lt; a)</code>.</p>`, `<p>Make the parameters <code>const D&amp;</code> — the base knows D through the template parameter.</p>`, `<p>Each class: <code>struct Money : Comparable&lt;Money&gt; { ... friend bool operator&lt;(...) ... };</code>. Bonus: compare with C++20 <code>operator&lt;=&gt;</code> = default.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"111\n101001\n010101\n001110\n101001\n010101\n101001\n010101\n001110"}]},
     solution: {
       approach: `<p>The CRTP base defines five hidden-friend operators in terms of the derived class's <code>operator&lt;</code>. Each derived class writes only its ordering rule. (In C++20 you'd normally write <code>auto operator&lt;=&gt;(const Date&amp;) const = default;</code> — the CRTP version is the pre-C++20 idiom and a classic interview exercise.)</p>`,
       code: R`
@@ -2246,10 +2397,23 @@ Date{2024,1,5} != Date{2023,12,31} → ${H.c('g', 'true')}</pre>`,
             friend bool operator<(const Date& a, const Date& b) { return std::tie(a.y, a.m, a.d) < std::tie(b.y, b.m, b.d); }
         };
 
+        template <class T>
+        void row(const T& a, const T& b) {          // < > <= >= == !=
+            std::cout << (a < b) << (a > b) << (a <= b) << (a >= b) << (a == b) << (a != b) << "\n";
+        }
+
         int main() {
             std::cout << (Money{150} > Money{99})
                       << (Date{2024, 1, 5} <= Date{2024, 1, 5})
                       << (Date{2024, 1, 5} != Date{2023, 12, 31}) << "\n";   // 111
+            row(Money{1}, Money{2});                                          // 101001
+            row(Money{2}, Money{1});                                          // 010110
+            row(Money{5}, Money{5});                                          // 001111
+            row(Money{-5}, Money{0});                                         // 101001
+            row(Date{2024, 1, 5}, Date{2023, 12, 31});                        // 010101
+            row(Date{2024, 1, 5}, Date{2024, 1, 6});                          // 101001
+            row(Date{2024, 2, 1}, Date{2024, 1, 31});                         // 010101
+            row(Date{2000, 1, 1}, Date{2000, 1, 1});                          // 001111
         }`,
       complexity: `<p>Each derived operator calls <code>&lt;</code> once or twice: O(cost of &lt;). No runtime overhead after inlining.</p>`,
       followUps: ['Rewrite with C++20 <code>operator&lt;=&gt;</code> and explain what <code>= default</code> generates.', 'Why is <code>==</code> via two <code>&lt;</code> calls only "equivalence", not equality, for some types (e.g. case-insensitive strings)?']
@@ -2282,6 +2446,7 @@ a = a;  → a ${H.c('g', 'unchanged')}, no crash</pre>`,
         int main() { Image a(2, 2, 7), b(1, 1, 9); a = b; }` },
     mcq: { q: 'With <code>Image&amp; operator=(Image other)</code>, which special member frees a\'s <b>old</b> buffer after <code>a = b</code>?', options: ['The destructor of the parameter <code>other</code>, after the swap', 'The copy constructor', 'swap()', 'Nobody — it leaks'], answer: 0, explain: 'swap moves the old buffer into <code>other</code>; when the function returns, <code>other</code> is destroyed and its destructor deletes it.' },
     hints: [`<p>Keep the (correct) copy constructor and destructor; they will do all the work.</p>`, `<p>Add <code>friend void swap(Image&amp;, Image&amp;) noexcept</code> swapping w_, h_ and pixels_. Add a move constructor that steals with <code>std::exchange</code>.</p>`, `<p>Assignment: take <code>Image other</code> by value, <code>swap(*this, other); return *this;</code>.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"3 5 9\n4 7 1 1\n4 8\n0 4 8\n0 0\n16000000 200"}]},
     solution: {
       approach: `<p>Copy-and-swap: by-value parameter (copy or move happens before the body), noexcept member-wise swap, the parameter's destructor frees the old buffer. One operator handles copy and move assignment, self-assignment and exceptions.</p>`,
       code: R`
@@ -2315,6 +2480,20 @@ a = a;  → a ${H.c('g', 'unchanged')}, no crash</pre>`,
             a = a;                                            // safe
             a = Image(3, 1, 5);                               // move path (elided temporary)
             std::cout << a.size() << " " << a.at(0) << " " << b.at(0) << "\n";   // 3 5 9
+            Image p(2, 2, 7), q = p;
+            q = Image(1, 1, 1);
+            std::cout << p.size() << " " << p.at(0) << " " << q.size() << " " << q.at(0) << "\n";   // 4 7 1 1
+            Image s(2, 2, 8);
+            s = s;
+            std::cout << s.size() << " " << s.at(3) << "\n";   // 4 8
+            Image mv = std::move(s);
+            std::cout << s.size() << " " << mv.size() << " " << mv.at(0) << "\n";   // 0 4 8
+            Image z(0, 0, 1);
+            Image z2 = z;
+            std::cout << z.size() << " " << z2.size() << "\n";   // 0 0
+            Image big(4000, 4000, 200);
+            Image big2 = big;
+            std::cout << big2.size() << " " << big2.at(15999999) << "\n";   // 16000000 200
         }`,
       complexity: `<p>Copy-assign O(w·h) with one allocation; move-assign O(1); swap O(1).</p>`,
       followUps: ['Run the original under <code>-fsanitize=address</code> — what does LeakSanitizer report?', 'How would <code>std::vector&lt;unsigned char&gt;</code> let you delete all five special members (rule of zero)?']
@@ -2342,9 +2521,11 @@ FileHandle bad("/no/such/dir/x", "r") → ${H.c('r', 'throws runtime_error')}</p
         int main() { try { process(true); } catch (...) {} }` },
     mcq: { q: 'Why should the move constructor set the source\'s pointer to <code>nullptr</code>?', options: ['So the moved-from object\'s destructor does not close the same FILE a second time', 'Because nullptr is faster', 'To make the handle copyable', 'It is optional'], answer: 0, explain: 'Both objects run their destructors; only one may own the FILE.' },
     hints: [`<p>Members: <code>std::FILE* f_ = nullptr;</code>. Delete copy constructor and copy assignment.</p>`, `<p>Move constructor: <code>f_(std::exchange(o.f_, nullptr))</code>. Move assignment: close your current file first (or swap), then steal.</p>`, `<p><code>close()</code> returns <code>std::fclose(f_) == 0</code> and sets <code>f_ = nullptr</code>; the destructor calls <code>if (f_) std::fclose(f_);</code> and ignores errors.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"1 1\ncannot open /no/such/dir/x\nabc\n11\n111\n11\n1"}]},
     solution: {
       approach: `<p>A unique-ownership RAII class: one pointer, deleted copies, stealing moves, explicit <code>close()</code> for callers who need the error code, best-effort destructor. (Equivalent: <code>std::unique_ptr&lt;FILE, Closer&gt;</code> — mention it.)</p>`,
       code: R`
+        #include <type_traits>
         #include <cstdio>
         #include <iostream>
         #include <stdexcept>
@@ -2377,6 +2558,22 @@ FileHandle bad("/no/such/dir/x", "r") → ${H.c('r', 'throws runtime_error')}</p
             std::cout << (f.get() == nullptr) << " " << g.close() << "\n";       // 1 1
             try { FileHandle bad("/no/such/dir/x", "r"); }
             catch (const std::runtime_error& e) { std::cout << e.what() << "\n"; } // cannot open /no/such/dir/x
+            static_assert(!std::is_copy_constructible_v<FileHandle> && !std::is_copy_assignable_v<FileHandle>);
+            { FileHandle w("/tmp/cpp13_fh.txt", "w"); std::fputs("abc\n", w.get()); }   // closed (and flushed) by the destructor
+            { FileHandle r("/tmp/cpp13_fh.txt", "r"); char buf[16] = {}; std::fgets(buf, 16, r.get()); std::cout << buf; }   // abc
+            FileHandle h("/tmp/cpp13_fh.txt", "r");
+            std::FILE* raw = h.release();
+            std::cout << (h.get() == nullptr) << (raw != nullptr) << "\n";       // 11
+            std::fclose(raw);
+            FileHandle k("/dev/null", "w");
+            std::cout << k.close() << k.close() << (k.get() == nullptr) << "\n"; // 111 (closing twice is harmless)
+            FileHandle m1("/dev/null", "w"), m2("/dev/null", "r");
+            m1 = std::move(m2);                                                   // closes m1's old file
+            std::cout << (m2.get() == nullptr) << (m1.get() != nullptr) << "\n"; // 11
+            FileHandle& self = m1;
+            m1 = std::move(self);                                                 // self-move keeps the file open
+            std::cout << (m1.get() != nullptr) << "\n";                          // 1
+            std::remove("/tmp/cpp13_fh.txt");
         }`,
       complexity: `<p>O(1) everything; sizeof(FileHandle) == sizeof(FILE*).</p>`,
       followUps: ['Implement the same with <code>std::unique_ptr&lt;std::FILE, decltype([](std::FILE* f){ std::fclose(f); })&gt;</code> (C++20).', 'Why is a throwing constructor the right way to report "cannot open" here?']
@@ -2406,6 +2603,7 @@ int main() {
         int main() { std::cout << "+1 +2 +3 -3 +4 +5 +7 -7 +6 | -6 -4 -2 -5 -1\n"; }` },
     mcq: { q: 'When is the temporary returned by <code>make(7)</code> destroyed?', options: ['At the end of main, as if it were a local declared at that point (lifetime extension)', 'At the end of the statement', 'After s(5) is destroyed', 'Never — it leaks'], answer: 0, explain: 'Binding a prvalue to a <code>const X&amp;</code> local extends the temporary\'s lifetime to the reference\'s scope; it is destroyed in reverse order with the other locals (after c, before a).' },
     hints: [`<p>Globals are constructed before main. A block <code>{ }</code> ends lifetimes immediately. An unnamed <code>X(4);</code> is destroyed at the semicolon.</p>`, `<p>Function-local statics are constructed when control first passes through them and destroyed after main returns.</p>`, `<p>Locals die in reverse order: c, then the extended temporary (7), then a. Then statics/globals in reverse order of construction: s(5) was built after g(1) → -5 then -1.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"+1 +2 +3 -3 +4 -4 +5 +7 +6 | -6 -7 -2 -5 -1"}]},
     solution: {
       approach: `<p>Walk the program with the lifetime rules: global before main; block scope; full-expression temporaries; lazy statics; lifetime extension through <code>const&amp;</code>; reverse destruction of locals at <code>}</code>; then reverse destruction of statics and globals.</p>`,
       code: R`
@@ -2459,9 +2657,11 @@ auto b = deepCopy(a);   → b[0]->name() = ${H.c('g', '"Circle"')}, b[1]->name()
         int main() { Circle c(1); auto p = c.clone(); return p->name() == "Circle" ? 0 : 1; }` },
     mcq: { q: 'Inside <code>Cloneable&lt;D, Base&gt;::clone()</code>, what does <code>static_cast&lt;const D&amp;&gt;(*this)</code> give you that <code>*this</code> does not?', options: ['The full derived object, so make_unique&lt;D&gt; copies all of it (no slicing)', 'A virtual call', 'A shallow copy', 'Thread safety'], answer: 0, explain: 'In the base, <code>*this</code> has the static type of the CRTP base; casting to D lets the copy constructor of D run on the whole object.' },
     hints: [`<p><code>template &lt;class D, class Base&gt; struct Cloneable : Base { std::unique_ptr&lt;Base&gt; clone() const override { ... } };</code> — the helper sits <b>between</b> Shape and the concrete class.</p>`, `<p>Body: <code>return std::make_unique&lt;D&gt;(static_cast&lt;const D&amp;&gt;(*this));</code></p>`, `<p>Concrete classes: <code>struct Circle : Cloneable&lt;Circle, Shape&gt; { ... };</code>. Forward constructors with <code>using Base::Base;</code> if Base has constructors.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"Circle Square 1\n1 1\n0\n500 1000 2000"}]},
     solution: {
       approach: `<p>A CRTP layer inserted between the abstract base and each concrete class overrides <code>clone()</code> once, using the known derived type. Runtime polymorphism (virtual clone) and compile-time code generation (CRTP) work together: this is the "virtual constructor" idiom without the boilerplate.</p>`,
       code: R`
+        #include <set>
         #include <iostream>
         #include <memory>
         #include <string>
@@ -2505,6 +2705,23 @@ auto b = deepCopy(a);   → b[0]->name() = ${H.c('g', '"Circle"')}, b[1]->name()
             a.push_back(std::make_unique<Square>(2));
             auto b = deepCopy(a);
             std::cout << b[0]->name() << " " << b[1]->name() << " " << (a[0].get() != b[0].get()) << "\n";   // Circle Square 1
+            auto* c = dynamic_cast<Circle*>(b[0].get());                  // the copy is a real Circle, not a sliced Shape
+            auto* s = dynamic_cast<Square*>(b[1].get());
+            std::cout << (c && c->r == 1) << " " << (s && s->s == 2) << "\n";   // 1 1
+            std::cout << deepCopy({}).size() << "\n";                      // 0
+            std::vector<std::unique_ptr<Shape>> many;
+            for (int i = 0; i < 1000; ++i) {
+                if (i % 2) many.push_back(std::make_unique<Square>(i)); else many.push_back(std::make_unique<Circle>(i));
+            }
+            auto copy = deepCopy(many);
+            std::set<const Shape*> ptrs;
+            int circles = 0;
+            for (std::size_t i = 0; i < copy.size(); ++i) {
+                ptrs.insert(copy[i].get());
+                ptrs.insert(many[i].get());
+                circles += copy[i]->name() == "Circle";
+            }
+            std::cout << circles << " " << copy.size() << " " << ptrs.size() << "\n";   // 500 1000 2000
         }`,
       complexity: `<p>O(n) clones for a vector of n; each clone is one allocation + the derived copy constructor.</p>`,
       followUps: ['Support covariant return (<code>std::unique_ptr&lt;Circle&gt;</code>) — why can\'t smart pointers be covariant, and how do you work around it?', 'How does this interact with a three-level hierarchy (Shape → Polygon → Square)?']
@@ -2535,9 +2752,11 @@ auto b = deepCopy(a);   → b[0]->name() = ${H.c('g', '"Circle"')}, b[1]->name()
         }` },
     mcq: { q: 'What should the base setters return in the CRTP version?', options: ['<code>Derived&amp;</code>, via <code>static_cast&lt;Derived&amp;&gt;(*this)</code>', '<code>RequestBuilder&amp;</code>', '<code>void</code>', 'A copy of the builder'], answer: 0, explain: 'Returning <code>Derived&amp;</code> keeps the full static type through the chain, so derived-only methods remain callable.' },
     hints: [`<p>Make the base a template: <code>template &lt;class Derived&gt; struct BuilderBase</code> with a private <code>Derived&amp; self()</code>.</p>`, `<p>Every base setter ends with <code>return self();</code> so its return type is <code>Derived&amp;</code>.</p>`, `<p><code>struct JsonRequestBuilder : BuilderBase&lt;JsonRequestBuilder&gt;</code>; if you also want a plain builder, write <code>struct PlainBuilder : BuilderBase&lt;PlainBuilder&gt; {};</code>.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"POST /api [A: 1] {\"x\":1}\n<POST {}>\n<GET /a >\nPOST /z [A: 1] [B: 2] {\"k\":2}\n1000"}]},
     solution: {
       approach: `<p>CRTP base parameterised on the final builder type; setters return <code>Derived&amp;</code>. The chain's static type stays the derived builder, so base and derived setters can be mixed in any order. (C++23 alternative: deducing <code>this</code> — <code>auto&amp;&amp; url(this auto&amp;&amp; self, std::string s)</code>.)</p>`,
       code: R`
+        #include <type_traits>
         #include <iostream>
         #include <string>
         #include <utility>
@@ -2569,6 +2788,15 @@ auto b = deepCopy(a);   → b[0]->name() = ${H.c('g', '"Circle"')}, b[1]->name()
         int main() {
             std::cout << JsonRequestBuilder{}.url("/api").header("A", "1").json(R"({"x":1})").build() << "\n";
             // POST /api [A: 1] {"x":1}
+            std::cout << '<' << JsonRequestBuilder{}.json("{}").build() << ">\n";                 // <POST  {}>
+            std::cout << '<' << JsonRequestBuilder{}.url("/a").build() << ">\n";                  // <GET /a >
+            std::cout << JsonRequestBuilder{}.header("A", "1").json(R"({"k":2})").url("/z").header("B", "2").build() << "\n";
+            // POST /z [A: 1] [B: 2] {"k":2}
+            static_assert(std::is_same_v<decltype(JsonRequestBuilder{}.url("x")), JsonRequestBuilder&>);
+            JsonRequestBuilder many;
+            for (int i = 0; i < 1000; ++i) many.header("h", std::to_string(i));
+            std::string out = many.build();
+            std::cout << std::count(out.begin(), out.end(), '[') << "\n";                         // 1000
         }`,
       complexity: `<p>O(total string length); zero dispatch overhead.</p>`,
       followUps: ['Rewrite with C++23 deducing this — what does it remove?', 'How would you make <code>build()</code> only callable after <code>url()</code> was set, at compile time? (Typestate builder with template flags.)']
@@ -2599,9 +2827,11 @@ for (auto&amp; p : v) cout &lt;&lt; p &lt;&lt; ' ';   → ${H.c('g', '42 hi (1,2
         }` },
     mcq: { q: 'What goes wrong if the template constructor <code>template &lt;class T&gt; Printable(T&amp;&amp; t)</code> is <b>unconstrained</b> and you copy a non-const Printable?', options: ['It is a better match than the copy constructor (T = Printable&amp;), so it wraps a Printable inside a Printable', 'Nothing', 'Compilation error always', 'It moves from the source'], answer: 0, explain: 'For a non-const lvalue, <code>T&amp;&amp;</code> with T = Printable&amp; is an exact match, beating <code>const Printable&amp;</code>. Constrain it away with requires.' },
     hints: [`<p>Concept/Model: <code>struct Concept { virtual void print(std::ostream&amp;) const = 0; virtual std::unique_ptr&lt;Concept&gt; clone() const = 0; virtual ~Concept() = default; };</code></p>`, `<p><code>template &lt;class T&gt; struct Model : Concept { T v; void print(std::ostream&amp; os) const override { os &lt;&lt; v; } ... };</code></p>`, `<p>Constrain the constructor: <code>requires (!std::same_as&lt;std::remove_cvref_t&lt;T&gt;, Printable&gt;)</code> and a concept that checks <code>os &lt;&lt; t</code> compiles. Add a <code>friend operator&lt;&lt;</code> for Printable.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"42 hi replaced 3.5 | (1,2)\n7 abc\n42 3.5\nlit 1 -5 123456789012\n48890"}]},
     solution: {
       approach: `<p>Type erasure with a constrained template constructor and a concept for good errors. Each element is a value: copying clones the model, so the vector of Printables behaves like a vector of ints.</p>`,
       code: R`
+        #include <sstream>
         #include <concepts>
         #include <iostream>
         #include <memory>
@@ -2629,8 +2859,8 @@ for (auto&amp; p : v) cout &lt;&lt; p &lt;&lt; ' ';   → ${H.c('g', '42 hi (1,2
             std::unique_ptr<Concept> self_;
         public:
             template <typename T>
-                requires (!std::same_as<std::remove_cvref_t<T>, Printable> && Streamable<std::remove_cvref_t<T>>)
-            Printable(T&& t) : self_(std::make_unique<Model<std::remove_cvref_t<T>>>(std::forward<T>(t))) {}
+                requires (!std::same_as<std::decay_t<T>, Printable> && Streamable<std::decay_t<T>>)
+            Printable(T&& t) : self_(std::make_unique<Model<std::decay_t<T>>>(std::forward<T>(t))) {}
             Printable(const Printable& o) : self_(o.self_->clone()) {}
             Printable(Printable&&) noexcept = default;
             Printable& operator=(Printable o) noexcept { self_.swap(o.self_); return *this; }
@@ -2646,6 +2876,20 @@ for (auto&amp; p : v) cout &lt;&lt; p &lt;&lt; ' ';   → ${H.c('g', '42 hi (1,2
             v[2] = std::string("replaced");
             for (const auto& p : v) std::cout << p << ' ';
             std::cout << "| " << copy << "\n";          // 42 hi replaced 3.5 | (1,2)
+            Printable p1 = std::string("abc");
+            Printable p2 = p1;
+            p1 = 7;
+            std::cout << p1 << " " << p2 << "\n";       // 7 abc
+            std::vector<Printable> w = v;               // copies the whole vector deeply
+            v[0] = 0;
+            for (std::size_t i = 0; i < w.size(); ++i) if (i != 1 && i != 2) std::cout << w[i] << ' ';   // 42 3.5
+            std::cout << "\n";
+            std::cout << Printable("lit") << ' ' << Printable(true) << ' ' << Printable(-5) << ' ' << Printable(123456789012LL) << "\n";   // lit 1 -5 123456789012
+            std::vector<Printable> many;
+            for (int i = 0; i < 10000; ++i) many.push_back(i);
+            std::ostringstream os;
+            for (const auto& p : many) os << p << ' ';
+            std::cout << os.str().size() << "\n";       // 48890
         }`,
       complexity: `<p>One allocation per element; printing is one virtual call each; copy O(size of stored value).</p>`,
       followUps: ['Add small buffer optimization for types up to 16 bytes.', 'Add a second operation (e.g. <code>size()</code>) — what has to change? (Concept and Model: the "expression problem".)']
@@ -2675,9 +2919,12 @@ T with throwing move   : push ×3 → relocations use ${H.c('y', 'copy')} (so a 
         int main() { int* d = static_cast<int*>(::operator new(sizeof(int))); ::new (d) int(1); std::size_t cap = 1; growNaive(d, 1, cap); d[0] = 0; ::operator delete(d); }` },
     mcq: { q: 'What does <code>std::move_if_noexcept(x)</code> return when T has a copy constructor and a move constructor that is <b>not</b> noexcept?', options: ['<code>const T&amp;</code> — so the copy constructor is chosen', '<code>T&amp;&amp;</code> — always moves', 'It does not compile', 'A copy of x by value'], answer: 0, explain: 'It casts to an rvalue only if moving cannot throw or if T is not copyable; otherwise it yields a const lvalue reference so copying keeps the source intact.' },
     hints: [`<p>Allocate the new buffer first. Construct the <b>new element</b> there first (its arguments might refer to an old element), then relocate the old ones.</p>`, `<p>Relocate with <code>::new (fresh + i) T(std::move_if_noexcept(data_[i]))</code>, counting how many succeeded.</p>`, `<p>On any exception: destroy what you built in the new buffer (<code>std::destroy_n</code>), free it, rethrow — the old buffer is untouched. Only after full success destroy the old elements and swap in the new buffer.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"move move move | copy copy copy\ncaught size=4 live=4\nlive after=0\n5\nxxx"}]},
     solution: {
       approach: `<p>Do all fallible work in a fresh buffer; commit by pointer assignment (cannot fail). <code>move_if_noexcept</code> picks copy when a move could throw, so the old elements are never modified until the commit — the same rule <code>std::vector</code> follows (which is why you should mark move constructors <code>noexcept</code>).</p>`,
       code: R`
+        #include <stdexcept>
+        #include <string>
         #include <cstddef>
         #include <iostream>
         #include <memory>
@@ -2723,9 +2970,29 @@ T with throwing move   : push ×3 → relocations use ${H.c('y', 'copy')} (so a 
         struct Safe   { Safe() = default; Safe(const Safe&) { std::cout << "copy "; } Safe(Safe&&) noexcept { std::cout << "move "; } };
         struct Unsafe { Unsafe() = default; Unsafe(const Unsafe&) { std::cout << "copy "; } Unsafe(Unsafe&&) { std::cout << "move "; } };
 
+        struct Throwy {                                   // no move constructor: only the copy can be used, and it may throw
+            static inline int live = 0, budget = 100;
+            Throwy() { ++live; }
+            Throwy(const Throwy&) { if (budget-- <= 0) throw std::runtime_error("copy failed"); ++live; }
+            ~Throwy() { --live; }
+        };
+
         int main() {
             Vec<Safe> a;   for (int k = 0; k < 3; ++k) a.emplace_back();   std::cout << "| ";   // move move move |
             Vec<Unsafe> b; for (int k = 0; k < 3; ++k) b.emplace_back();   std::cout << "\n";   // copy copy copy
+            {
+                Vec<Throwy> t;
+                for (int k = 0; k < 4; ++k) t.emplace_back();              // size 4, capacity 4
+                Throwy::budget = 1;                                        // the next growth may copy only one element
+                try { t.emplace_back(); }
+                catch (const std::runtime_error&) { std::cout << "caught size=" << t.size() << " live=" << Throwy::live << "\n"; }   // caught size=4 live=4
+            }
+            std::cout << "live after=" << Throwy::live << "\n";            // live after=0
+            Vec<std::unique_ptr<int>> moveOnly;                            // move-only: relocated by move
+            for (int k = 0; k < 5; ++k) moveOnly.emplace_back(new int(k));
+            std::cout << moveOnly.size() << "\n";                          // 5
+            Vec<std::string> vs;
+            std::cout << vs.emplace_back(3, 'x') << "\n";                  // xxx
         }`,
       complexity: `<p>Amortized O(1) per push (doubling); a growth step is O(n) relocations. Copy-relocation for throwing moves costs more — another reason to make moves <code>noexcept</code>.</p>`,
       followUps: ['Why construct the new element before relocating? (Consider <code>v.emplace_back(v[0])</code>.)', 'What does <code>std::vector</code> do for a move-only type with a throwing move? (Moves anyway — only the basic guarantee.)', 'How do "trivially relocatable" types (P1144/P2786) speed this up?']
@@ -2756,6 +3023,7 @@ balances == ${H.c('g', '{alice: 100, bob: 50}')}  (ops 1–2 rolled back)</pre>`
         int main() { std::map<std::string, long> b{{"a", 1}}; try { applyInPlace(b, {{"a", -5}}); } catch (...) {} }` },
     mcq: { q: 'Why must the undo log be replayed in <b>reverse</b> order?', options: ['Later ops may depend on the state produced by earlier ones; undoing newest-first restores each intermediate state exactly', 'For speed', 'Because std::map iterates backwards', 'Order does not matter for deltas'], answer: 0, explain: 'For pure additive deltas order happens not to matter, but for general undo actions (e.g. "set to X") only reverse replay is correct — the same reason destructors run in reverse.' },
     hints: [`<p>Keep a <code>std::vector&lt;std::pair&lt;long*, long&gt;&gt;</code> of (where, old value) for each successful change. <code>std::map</code> element addresses are stable.</p>`, `<p>Create a <code>ScopeFail</code> (based on <code>std::uncaught_exceptions()</code>) that walks the log backwards restoring old values.</p>`, `<p>Validate before mutating each op (unknown account → <code>at()</code> throws; negative → throw). Reserve the log up front so <code>push_back</code> can't throw <i>after</i> a mutation — or push the log entry <b>before</b> mutating.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"insufficient funds in bob -> 100 50\n70 80\nout_of_range 70 80\n0 80\n0 80\nrolled back 0 80\n0 0\nrolled back 1000000\napplied 1004995"}]},
     solution: {
       approach: `<p>Mutate in place but record an undo entry before each mutation; a <code>ScopeFail</code> guard replays the log in reverse only if the function exits via an exception. On success the guard does nothing. Cost is O(k log n) time and O(k) extra memory — no map copy.</p>`,
       code: R`
@@ -2800,6 +3068,28 @@ balances == ${H.c('g', '{alice: 100, bob: 50}')}  (ops 1–2 rolled back)</pre>`
             std::cout << b["alice"] << " " << b["bob"] << "\n";        // insufficient funds in bob -> 100 50
             applyBatch(b, {{"alice", -30}, {"bob", 30}});
             std::cout << b["alice"] << " " << b["bob"] << "\n";        // 70 80
+            try { applyBatch(b, {{"alice", -10}, {"zed", 5}}); }
+            catch (const std::out_of_range&) { std::cout << "out_of_range "; }
+            std::cout << b["alice"] << " " << b["bob"] << "\n";        // out_of_range 70 80
+            applyBatch(b, {{"alice", -70}});                           // exactly zero is allowed
+            std::cout << b["alice"] << " " << b["bob"] << "\n";        // 0 80
+            applyBatch(b, {});                                         // empty batch
+            std::cout << b["alice"] << " " << b["bob"] << "\n";        // 0 80
+            try { applyBatch(b, {{"bob", -50}, {"bob", -40}}); }       // same account twice
+            catch (const std::runtime_error&) { std::cout << "rolled back "; }
+            std::cout << b["alice"] << " " << b["bob"] << "\n";        // rolled back 0 80
+            applyBatch(b, {{"bob", -30}, {"bob", -50}});
+            std::cout << b["alice"] << " " << b["bob"] << "\n";        // 0 0
+            std::map<std::string, long> many;
+            for (int i = 0; i < 100000; ++i) many["a" + std::to_string(i)] = 10;
+            std::vector<Op> ops;
+            for (int i = 0; i < 999; ++i) ops.push_back({"a" + std::to_string(i), 5});
+            ops.push_back({"a999", -100});
+            auto total = [&] { long s = 0; for (auto& [k, v] : many) s += v; return s; };
+            try { applyBatch(many, ops); } catch (const std::runtime_error&) { std::cout << "rolled back " << total() << "\n"; }   // rolled back 1000000
+            ops.pop_back();
+            applyBatch(many, ops);
+            std::cout << "applied " << total() << "\n";                  // applied 1004995
         }`,
       complexity: `<p>O(k log n) time, O(k) extra space for k operations on n accounts.</p>`,
       followUps: ['Make it thread-safe with one mutex per account without deadlock (lock in a global order, or <code>std::scoped_lock</code>).', 'How does a database implement the same idea? (Undo log / WAL + transaction rollback.)']
@@ -2824,6 +3114,7 @@ balances == ${H.c('g', '{alice: 100, bob: 50}')}  (ops 1–2 rolled back)</pre>`
         int main() { return splitEager("a,b", ',').size() == 2 ? 0 : 1; }` },
     mcq: { q: 'Why is the parameter <code>std::string text</code> taken <b>by value</b> rather than <code>const std::string&amp;</code>?', options: ['The coroutine body runs later; a reference to a caller temporary would dangle — by value copies/moves it into the frame', 'By value is always faster', 'Coroutines cannot take references', 'To allow modification of the caller\'s string'], answer: 0, explain: 'Parameters are stored in the coroutine frame; only a by-value parameter keeps the data alive across suspensions.' },
     hints: [`<p>Generalize the int generator: <code>template &lt;class T&gt;</code>, store <code>std::optional&lt;T&gt; current</code> in the promise (T may not be default-constructible).</p>`, `<p>Iterator <code>operator*</code> returns <code>const T&amp;</code> to <code>*promise().current</code>; <code>operator==(std::default_sentinel_t)</code> checks <code>done()</code>.</p>`, `<p>In <code>split</code>, scan with two indices; on a delimiter, if the token is non-empty <code>co_yield text.substr(start, i - start)</code>; after the loop yield the tail if non-empty.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"[a][bb][ccc]\n1000\n<[a][bb][ccc]>\n<>\n<>\n<[abc]>\n<[a][b]>\n<[a]>\n<[the][quick][brown]>\n100000 100000"}]},
     solution: {
       approach: `<p>A reusable <code>Generator&lt;T&gt;</code> plus a coroutine that keeps the text (by value) and scan position in its frame. Each <code>++</code> resumes the scan until the next non-empty token. Breaking out of the loop destroys the frame via the generator's destructor.</p>`,
       code: R`
@@ -2874,10 +3165,28 @@ balances == ${H.c('g', '{alice: 100, bob: 50}')}  (ops 1–2 rolled back)</pre>`
             }
         }
 
+        void show(Generator<std::string> g) {
+            std::cout << '<';
+            for (const auto& t : g) std::cout << '[' << t << ']';
+            std::cout << ">\n";
+        }
+
         int main() {
             for (const auto& t : split("a,,bb,ccc,", ',')) std::cout << '[' << t << ']';   // [a][bb][ccc]
             std::cout << "\n";
             for (const auto& t : split(std::string(1000, 'x') + ",tail", ',')) { std::cout << t.size() << "\n"; break; }   // 1000
+            show(split("a,,bb,ccc,", ','));        // <[a][bb][ccc]>
+            show(split("", ','));                  // <>
+            show(split(",,,", ','));               // <>
+            show(split("abc", ','));               // <[abc]>
+            show(split("a,b", ','));               // <[a][b]>
+            show(split(",a", ','));                // <[a]>
+            show(split("the quick  brown", ' '));  // <[the][quick][brown]>
+            std::string text;
+            for (int i = 0; i < 100000; ++i) text += "x,";
+            std::size_t count = 0, chars = 0;
+            for (const auto& t : split(text, ',')) { ++count; chars += t.size(); }
+            std::cout << count << " " << chars << "\n";   // 100000 100000
         }`,
       complexity: `<p>O(total length) over the whole iteration, O(1) work per character; memory = one frame + current token.</p>`,
       followUps: ['Yield <code>std::string_view</code> into the frame-owned text instead of copying — when is that safe for the caller?', 'Add a <code>take(n)</code> adapter coroutine.']
@@ -2912,6 +3221,7 @@ f(1) → 2,  g(1) → 6</pre>`,
         }` },
     mcq: { q: 'Why do we only store a callable inline if it is <b>nothrow move-constructible</b>?', options: ['Moving the SboFunction must move the inline callable; for that move to be noexcept the callable\'s move must be noexcept', 'Inline storage cannot hold copyable types', 'Placement new requires noexcept', 'It saves memory'], answer: 0, explain: 'A heap-stored callable moves by stealing a pointer (never throws). An inline one must be move-constructed into the new buffer, so its move must be noexcept to keep the wrapper\'s move noexcept.' },
     hints: [`<p>Storage: <code>alignas(std::max_align_t) std::byte buf_[N];</code> holds either the callable itself or a pointer to a heap copy. A <code>const VTable* vt_</code> says which type is inside (nullptr = empty).</p>`, `<p>VTable fields: <code>call(void*, Args&amp;&amp;...)</code>, <code>destroy(void*)</code>, <code>move(void* dst, void* src)</code>, <code>copy(void* dst, const void* src)</code>, <code>bool inlined</code>. Build one <code>static constexpr VTable</code> per F with capture-less lambdas.</p>`, `<p>Helper <code>get&lt;F&gt;(void* p)</code>: inline → <code>std::launder(reinterpret_cast&lt;F*&gt;(p))</code>; heap → <code>*std::launder(reinterpret_cast&lt;F**&gt;(p))</code>. Heap move = copy the pointer; heap destroy = <code>delete</code>.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"10 2 6 0\n110110\n42 4\n2 0\n2 0\n3 3 3 3\n0 empty\n8 0"}]},
     solution: {
       approach: `<p>Type erasure where the "Concept" is a hand-built table of function pointers selected at construction. The decision inline-vs-heap is a compile-time property of F (<code>if constexpr</code>), so each table is specialized and branch-free. The wrapper's own special members just forward to the table.</p>`,
       code: R`
@@ -2988,6 +3298,25 @@ f(1) → 2,  g(1) → 6</pre>`,
             }
         };
 
+        int twice(int x) { return 2 * x; }
+        struct ThrowingMove {
+            int n;
+            ThrowingMove(int v) : n(v) {}
+            ThrowingMove(const ThrowingMove&) = default;
+            ThrowingMove(ThrowingMove&& o) noexcept(false) : n(o.n) {}
+            int operator()(int x) const { return x + n; }
+        };
+        struct Probe {
+            static inline int live = 0;
+            int pad = 0;
+            Probe() { ++live; }
+            Probe(const Probe&) { ++live; }
+            Probe(Probe&&) noexcept { ++live; }
+            ~Probe() { --live; }
+            int operator()(int x) const { return x; }
+        };
+        struct BigProbe : Probe { char more[100] = {}; };
+
         int main() {
             SboFunction<int(int), 32> f = [k = 1](int x) { return x + k; };
             std::array<int, 64> big{}; big[0] = 5;
@@ -2995,6 +3324,50 @@ f(1) → 2,  g(1) → 6</pre>`,
             SboFunction<int(int), 32> h = g;                    // deep copy of the heap callable
             SboFunction<int(int), 32> m = std::move(f);         // inline move
             std::cout << m.isInline() << g.isInline() << " " << m(1) << " " << h(1) << " " << static_cast<bool>(f) << "\n";   // 10 2 6 0
+
+            std::array<int, 4> a4{}; std::array<int, 8> a8{}; std::array<int, 9> a9{};
+            SboFunction<int(int), 32> s16 = [a4](int x) { return x + a4[0]; };       // 16 bytes
+            SboFunction<int(int), 32> s32 = [a8](int x) { return x + a8[0]; };       // exactly 32 bytes
+            SboFunction<int(int), 32> s36 = [a9](int x) { return x + a9[0]; };       // 36 bytes: heap
+            SboFunction<int(int), 32> fp = twice;
+            SboFunction<int(int), 32> st = [](int x) { return x; };
+            SboFunction<int(int), 32> tm = ThrowingMove{3};                          // may throw when moved: heap
+            std::cout << s16.isInline() << s32.isInline() << s36.isInline() << fp.isInline() << st.isInline() << tm.isInline() << "\n";   // 110110
+            std::cout << fp(21) << " " << tm(1) << "\n";                             // 42 4
+
+            {
+                SboFunction<int(int), 32> pa = Probe{};
+                SboFunction<int(int), 32> pb = pa;
+                std::cout << Probe::live << " ";                                      // 2
+                SboFunction<int(int), 32> pc = std::move(pa);
+                pc = pb;
+            }
+            std::cout << Probe::live << "\n";                                         // 0
+            {
+                SboFunction<int(int), 32> pa = BigProbe{};
+                SboFunction<int(int), 32> pb = pa;
+                std::cout << Probe::live << " ";                                      // 2
+                SboFunction<int(int), 32> pc = std::move(pa);
+                pc = pb;
+            }
+            std::cout << Probe::live << "\n";                                         // 0
+
+            SboFunction<int(), 32> c1 = [n = 0]() mutable { return ++n; };
+            c1(); c1();
+            SboFunction<int(), 32> c2 = c1;
+            std::cout << c2() << " " << c1() << " ";                                  // 3 3
+            SboFunction<int(), 32> h1 = [n = 0, pad = std::array<int, 20>{}]() mutable { return ++n + pad[0]; };
+            h1(); h1();
+            SboFunction<int(), 32> h2 = h1;
+            std::cout << h2() << " " << h1() << "\n";                                 // 3 3
+
+            SboFunction<int(int), 32> e;
+            std::cout << static_cast<bool>(e);
+            try { e(1); } catch (const std::bad_function_call&) { std::cout << " empty\n"; }   // 0 empty
+            e = [](int x) { return x * 2; };
+            std::cout << e(4);
+            e = SboFunction<int(int), 32>{};
+            std::cout << " " << static_cast<bool>(e) << "\n";                          // 8 0
         }`,
       complexity: `<p>Small callables: zero allocations, one indirect call. Large callables: one allocation (like std::function). Moves: O(1); copies: one callable copy.</p>`,
       followUps: ['Why is <code>std::launder</code> used when reading back from the byte buffer?', 'Make a non-owning <code>FunctionRef</code> (like C++26 <code>std::function_ref</code>): just a <code>void*</code> + one function pointer.', 'Add a <code>static_assert</code> mode ("inplace only", like <code>stdext::inplace_function</code>) that refuses heap fallback.']
@@ -3020,9 +3393,11 @@ a = std::string("hi");  anyCast&lt;std::string&gt;(a) → ${H.c('g', '"hi"')}   
         }` },
     mcq: { q: 'How can you get a unique id per type without <code>typeid</code>?', options: ['Take the address of a static variable inside a class/variable template instantiated per type', 'Use sizeof(T)', 'Hash the type name string', 'Use the vptr of T'], answer: 0, explain: 'Each template instantiation has its own static object, so <code>&amp;TypeId&lt;T&gt;::tag</code> is unique per T within a program (watch out across shared libraries).' },
     hints: [`<p><code>template &lt;class T&gt; struct TypeId { static constexpr char tag = 0; };</code> → <code>const void* id = &amp;TypeId&lt;T&gt;::tag;</code></p>`, `<p>Concept with <code>clone()</code> and <code>type()</code>; <code>Model&lt;T&gt;</code> stores the value. <code>anyCast&lt;T&gt;(Any* a)</code>: compare <code>a-&gt;self_-&gt;type()</code> with the id of <code>std::remove_cvref_t&lt;T&gt;</code>, then <code>static_cast</code> to <code>Model&lt;U&gt;*</code>.</p>`, `<p>Make <code>anyCast</code> a friend so it can see the private Model. The throwing form calls the pointer form and throws if null.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"42 1 hi 42 BadAnyCast\n01\n10\n15 0\n11\n3 4\n10\n1\n49995000"}]},
     solution: {
       approach: `<p>Type erasure (Concept/Model) plus a hand-made type id from template static addresses. The pointer cast checks the id and downcasts with <code>static_cast</code> (safe because the id proves the dynamic type) — no RTTI needed.</p>`,
       code: R`
+        #include <vector>
         #include <exception>
         #include <iostream>
         #include <memory>
@@ -3081,6 +3456,31 @@ a = std::string("hi");  anyCast&lt;std::string&gt;(a) → ${H.c('g', '"hi"')}   
             std::cout << anyCast<std::string>(a) << " " << *anyCast<const int>(&b) << " ";        // hi 42
             try { (void)anyCast<int>(a); } catch (const BadAnyCast& e) { std::cout << e.what(); } // BadAnyCast
             std::cout << "\n";
+            Any e;
+            std::cout << e.has_value() << (anyCast<int>(&e) == nullptr) << "\n";                   // 01
+            e = 5;
+            std::cout << e.has_value();
+            e.reset();
+            std::cout << e.has_value() << "\n";                                                    // 10
+            Any m = 10;
+            *anyCast<int>(&m) += 5;                       // in-place change through the pointer form
+            Any m2 = m;
+            *anyCast<int>(&m2) = 0;
+            std::cout << anyCast<int>(m) << " " << anyCast<int>(m2) << "\n";                       // 15 0
+            Any l = 3L;
+            std::cout << (anyCast<int>(&l) == nullptr) << (anyCast<long>(&l) != nullptr) << "\n";  // 11
+            Any v = std::vector<int>{1, 2, 3};
+            Any vc = v;
+            anyCast<std::vector<int>>(&vc)->push_back(4);
+            std::cout << anyCast<std::vector<int>>(&v)->size() << " " << anyCast<std::vector<int>>(&vc)->size() << "\n";   // 3 4
+            Any moved = std::move(v);
+            std::cout << moved.has_value() << v.has_value() << "\n";                               // 10
+            std::cout << (anyCast<int>(static_cast<Any*>(nullptr)) == nullptr) << "\n";            // 1
+            std::vector<Any> many;
+            for (int i = 0; i < 10000; ++i) many.push_back(i);
+            long long sum = 0;
+            for (auto& x : many) sum += anyCast<int>(x);
+            std::cout << sum << "\n";                                                              // 49995000
         }`,
       complexity: `<p>Construction/copy: one allocation; cast: one virtual call + pointer compare, O(1).</p>`,
       followUps: ['Add SBO for small trivially-copyable types (std::any implementations store ints inline).', 'Why can the template-static-address id differ across shared libraries, and how do real implementations cope?', 'Add <code>emplace&lt;T&gt;(args...)</code> and <code>in_place_type</code> construction.']
@@ -3109,6 +3509,7 @@ allocations: naive ${H.c('r', '3 (b*2, +, -)')} → expression templates ${H.c('
         int main() { NVec a(3), b(3), c(3); NVec::allocs = 0; NVec r = a + b * 2.0 - c; return NVec::allocs == 3 ? 0 : 1; }` },
     mcq: { q: 'Why do expression nodes store <b>leaf Vecs by reference</b> but <b>sub-expressions by value</b>?', options: ['Vecs are long-lived and expensive to copy; sub-expression nodes are tiny temporaries that would dangle if held by reference after the full expression', 'References are always faster', 'Sub-expressions cannot be referenced', 'To make the nodes polymorphic'], answer: 0, explain: 'Temporaries die at the end of the full expression. Holding the cheap node by value keeps the tree valid even if it is stored (e.g. in <code>auto e = a + b + c;</code>), while copying a whole Vec would defeat the purpose.' },
     hints: [`<p>CRTP base: <code>template &lt;class E&gt; struct Expr { double operator[](size_t i) const { return self()[i]; } size_t size() const; const E&amp; self() const; };</code></p>`, `<p>Nodes: <code>template &lt;class L, class R, class Op&gt; struct BinExpr : Expr&lt;BinExpr&lt;L,R,Op&gt;&gt; { Store&lt;L&gt; l; Store&lt;R&gt; r; double operator[](size_t i) const { return Op{}(l[i], r[i]); } };</code> where <code>Store&lt;Vec&gt;</code> = <code>const Vec&amp;</code>, otherwise the node by value.</p>`, `<p><code>Vec</code> gets a templated constructor <code>template &lt;class E&gt; Vec(const Expr&lt;E&gt;&amp; e)</code> that allocates once and runs the single loop <code>d[i] = e[i]</code>.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"-79 -158 -237 | allocs = 1\n-9 -18 -27\n6 12 18\n10 20 30 | allocs = 1\n63 3\n12"}]},
     solution: {
       approach: `<p>Operators return expression <b>types</b> instead of values; nothing is computed until a <code>Vec</code> is constructed from the expression, at which point one loop evaluates <code>e[i]</code> — which the compiler inlines into <code>a[i] + b[i]*2.0 - c[i]</code>. CRTP gives a common static interface (<code>Expr&lt;E&gt;</code>) without virtual calls.</p>`,
       code: R`
@@ -3169,6 +3570,17 @@ allocations: naive ${H.c('r', '3 (b*2, +, -)')} → expression templates ${H.c('
             Vec::allocs = 0;
             Vec r = a + b * 2.0 - c;                                    // type: BinExpr<BinExpr<Vec,ScaleExpr<Vec>,plus>,Vec,minus>
             std::cout << r[0] << " " << r[1] << " " << r[2] << " | allocs = " << Vec::allocs << "\n";   // -79 -158 -237 | allocs = 1
+            Vec d = a - b;
+            std::cout << d[0] << " " << d[1] << " " << d[2] << "\n";    // -9 -18 -27
+            Vec e = (a + a) * 3.0;
+            std::cout << e[0] << " " << e[1] << " " << e[2] << "\n";    // 6 12 18
+            Vec::allocs = 0;
+            Vec t = a + a + a + a + a + a + a + a + a + a;
+            std::cout << t[0] << " " << t[1] << " " << t[2] << " | allocs = " << Vec::allocs << "\n";   // 10 20 30 | allocs = 1
+            auto lazy = a + b * 2.0;                                    // nothing computed yet
+            std::cout << lazy[2] << " " << lazy.size() << "\n";         // 63 3
+            Vec f = (a * 2.0) * 3.0;
+            std::cout << f[1] << "\n";                                  // 12
         }`,
       complexity: `<p>O(n) with a single pass and one allocation regardless of expression length; zero runtime dispatch (all nodes inlined).</p>`,
       followUps: ['What goes wrong with <code>auto e = a + b; a = ...; Vec r = e;</code>? (Lazy evaluation sees the new <code>a</code>; aliasing.)', 'How do Eigen\'s <code>.eval()</code> and <code>noalias()</code> relate to this?', 'Add SIMD-friendly evaluation or parallel evaluation in the Vec constructor.']
@@ -3192,9 +3604,11 @@ b.set(0, 'j');                             → a = "hello", b = "jello", sharesW
         }` },
     mcq: { q: 'Why did C++11 effectively forbid copy-on-write <code>std::string</code>?', options: ['Non-const operator[]/iterators must not invalidate references, and COW detach on write would; plus atomic ref-counting cost under threads', 'COW uses too much memory', 'shared_ptr did not exist', 'Strings must be null-terminated'], answer: 0, explain: 'C++11 tightened invalidation rules (and made concurrent const access safe without hidden writes); a COW string must detach on non-const access, invalidating references, and pays atomic increments on every copy.' },
     hints: [`<p>Member: <code>std::shared_ptr&lt;std::string&gt; p_</code>. Copy constructor = copy the shared_ptr (O(1)).</p>`, `<p><code>detach()</code>: <code>if (p_.use_count() &gt; 1) p_ = std::make_shared&lt;std::string&gt;(*p_);</code> — call it at the start of every mutating function.</p>`, `<p>Avoid handing out <code>char&amp;</code>: if a caller holds a reference into a buffer that later becomes shared via a copy, writing through it changes both strings. Provide <code>set(i, c)</code> instead (or mark the buffer "unshareable" once a reference escapes).</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"1 hello jello 0 jello jello!\n111\n10\n1\nrange\n0\n100001 1000"}]},
     solution: {
       approach: `<p>Sharing via <code>shared_ptr</code>; every mutator detaches first so writes never affect other copies. Reads are free. The API deliberately has no mutable references, which is the hole that sank COW <code>std::string</code>. Assignment uses copy-and-swap (here: copy the pointer, swap).</p>`,
       code: R`
+        #include <stdexcept>
         #include <cstddef>
         #include <iostream>
         #include <memory>
@@ -3225,6 +3639,26 @@ b.set(0, 'j');                             → a = "hello", b = "jello", sharesW
             std::cout << a.str() << " " << b.str() << " " << a.sharesWith(b) << " ";   // hello jello 0
             CowString c = b; c.append("!");
             std::cout << b.str() << " " << c.str() << "\n";            // jello jello!
+            CowString x("abc"), y = x;
+            char first = y.at(0);                                      // reading never detaches
+            CowString s("abc");
+            const std::string* before = &s.str();
+            s.set(0, 'X');                                             // sole owner: no copy needed
+            std::cout << x.sharesWith(y) << (before == &s.str()) << (first == 'a') << "\n";   // 111
+            CowString p("q"), q = p, r = p;
+            r.set(0, 'z');
+            std::cout << p.sharesWith(q) << p.sharesWith(r) << "\n";   // 10
+            CowString d = p;
+            std::cout << d.sharesWith(p) << "\n";                      // 1
+            try { d.set(5, 'x'); } catch (const std::out_of_range&) { std::cout << "range\n"; }   // range
+            CowString e;
+            std::cout << e.size() << "\n";                             // 0
+            CowString big("x");
+            for (int i = 0; i < 100000; ++i) big.append("y");
+            std::vector<CowString> copies(1000, big);
+            int shared = 0;
+            for (auto& cp : copies) shared += cp.sharesWith(big);
+            std::cout << big.size() << " " << shared << "\n";          // 100001 1000
         }`,
       complexity: `<p>Copy O(1) (one atomic increment); first write after sharing O(n); later writes O(1) amortized.</p>`,
       followUps: ['Why is <code>use_count()</code> unreliable as a "am I unique?" test with multiple threads?', 'How do Qt\'s implicitly shared classes (QString) handle non-const <code>operator[]</code>?', 'Compare COW with SSO (small string optimization) for typical string sizes.']
@@ -3250,9 +3684,11 @@ naturals produced: ${H.c('g', '9')} values (0..8), not infinitely many</pre>`,
         }` },
     mcq: { q: 'Why does <code>take</code> <code>co_return</code> immediately after yielding the n-th value instead of looping once more?', options: ['Looping again would resume upstream and compute one extra element that is never used', 'co_yield cannot be called n+1 times', 'It would throw', 'No difference'], answer: 0, explain: 'Incrementing the upstream iterator resumes the upstream coroutine. Stopping right after the n-th yield keeps the pipeline exactly as lazy as needed.' },
     hints: [`<p>Adapters take <code>Generator&lt;T&gt; g</code> <b>by value</b> (moved into the frame) and iterate it with a range-for, yielding transformed values.</p>`, `<p><code>mapEach</code>'s result type (named so it doesn't clash with <code>std::map</code>): <code>Generator&lt;std::invoke_result_t&lt;F&amp;, const T&amp;&gt;&gt;</code>.</p>`, `<p><code>take</code>: <code>if (n &lt;= 0) co_return; for (auto&amp;&amp; x : g) { co_yield x; if (--n == 0) co_return; }</code>. Count produced naturals with a global counter.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"0 4 16 36 64 | produced 9\n<0 1 2> p=3\n<> p=0\n<0 1 2>\n<0! 1! 4!>\n<0 3 6 9> p=10\n<0 1 4 9> p=4\n<>\n4999950000"}]},
     solution: {
       approach: `<p>Each adapter is a coroutine that owns its upstream generator and pulls from it on demand. The outermost loop drives everything: each <code>++</code> resumes <code>take</code>, which resumes <code>mapEach</code>, which resumes <code>filter</code>, which resumes <code>naturals</code> until a value flows back out — a pull-based lazy pipeline, like C++20 ranges views but built from coroutines.</p>`,
       code: R`
+        #include <string>
         #include <coroutine>
         #include <exception>
         #include <iostream>
@@ -3305,11 +3741,33 @@ naturals produced: ${H.c('g', '9')} values (0..8), not infinitely many</pre>`,
             for (const T& x : g) { co_yield x; if (--n == 0) co_return; }   // stop before pulling one more
         }
 
+        template <class T>
+        void show(Generator<T> g) {
+            std::cout << '<';
+            bool first = true;
+            for (const T& x : g) { std::cout << (first ? "" : " ") << x; first = false; }
+            std::cout << '>';
+        }
+
+        Generator<int> upTo(int n) { for (int i = 0; i < n; ++i) co_yield i; }
+
         int main() {
             auto even = [](int x) { return x % 2 == 0; };
             auto square = [](int x) { return x * x; };
             for (int v : take(mapEach(filter(naturals(), even), square), 5)) std::cout << v << " ";
             std::cout << "| produced " << produced << "\n";              // 0 4 16 36 64 | produced 9
+            produced = 0; show(take(naturals(), 3));  std::cout << " p=" << produced << "\n";   // <0 1 2> p=3
+            produced = 0; show(take(naturals(), 0));  std::cout << " p=" << produced << "\n";   // <> p=0
+            show(take(upTo(3), 10)); std::cout << "\n";                                          // <0 1 2>
+            show(mapEach(upTo(3), [](int x) { return std::to_string(x * x) + "!"; })); std::cout << "\n";   // <0! 1! 4!>
+            produced = 0;
+            show(take(filter(naturals(), [](int x) { return x % 3 == 0; }), 4)); std::cout << " p=" << produced << "\n";   // <0 3 6 9> p=10
+            produced = 0;
+            show(mapEach(take(naturals(), 4), square)); std::cout << " p=" << produced << "\n";  // <0 1 4 9> p=4
+            show(filter(upTo(5), [](int) { return false; })); std::cout << "\n";                 // <>
+            long long sum = 0;
+            for (int v : take(naturals(), 100000)) sum += v;
+            std::cout << sum << "\n";                                                            // 4999950000
         }`,
       complexity: `<p>O(k) work for k consumed upstream elements; memory = one frame per stage (4 frames), independent of how many values flow.</p>`,
       followUps: ['Add a pipe syntax <code>naturals() | filter(even) | take(5)</code> with small adapter objects.', 'Compare with <code>std::views::iota(0) | std::views::filter(even) | std::views::transform(square) | std::views::take(5)</code> — which is faster and why?', 'What happens to the inner frames when the outer loop breaks early?']

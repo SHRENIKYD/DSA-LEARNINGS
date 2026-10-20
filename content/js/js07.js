@@ -201,6 +201,102 @@ processAllAtOnce(Array.from({ length: 10 }, (_, i) => i + 1), (x) => { sum += x;
 ` } },
       mcq: { q: 'What is the key to keeping the thread responsive?', options: ['Wrap the whole loop in one setTimeout', 'Do a fixed slice of work, then schedule the next slice with setTimeout so other callbacks can run in between', 'Use a faster for loop', 'Use async keyword on the function'], answer: 1, explain: 'One setTimeout just moves the freeze later. Yielding between small slices lets queued callbacks run between them.' },
       hints: [`<p>Hint 1: the thread can only "breathe" when your code returns and the stack is empty. So the function must <b>return</b> after each chunk.</p>`, `<p>Hint 2: keep the position <code>i</code> in a closure variable, and let an inner <code>runChunk</code> function schedule itself again with <code>setTimeout(runChunk, 0)</code>.</p>`, `<p>Hint 3: recipe — end = min(i + chunkSize, n); process i..end-1; if i &lt; n schedule runChunk, else call onDone. Edge cases: empty array → call onDone (once).</p>`],
+      tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name, args) {
+  const adv = __tAdv; __tBegin();
+  const run = async (items, chunk) => {
+    const ev = [], stamps = [], idx = []; let doneCalls = 0, doneStamp = null;
+    setTimeout(() => ev.push('other'), 0);
+    processInChunks(items, chunk, (x, i) => { ev.push(i); stamps.push(__fake.turns); idx.push([x, i]); }, () => { doneCalls++; doneStamp = __fake.turns; ev.push('done'); });
+    const afterSync = stamps.length, pendingAfterSync = __fake.pending(), doneAfterSync = doneCalls;
+    await adv(0);
+    return { afterSync, pendingAfterSync, doneAfterSync, ev, stamps, doneCalls, doneStamp, idx };
+  };
+  const items = (n) => Array.from({ length: n }, (_, i) => i + 1);
+  switch (name) {
+    case 'example': { const r = await run(items(10), 4); return { afterSync: r.afterSync, pendingAfterSync: r.pendingAfterSync, ev: r.ev, doneCalls: r.doneCalls }; }
+    case 'chunk-1': { const r = await run([10, 20, 30], 1); return { afterSync: r.afterSync, stamps: r.stamps, doneStamp: r.doneStamp, doneCalls: r.doneCalls }; }
+    case 'bigger-than-list': { const r = await run([1, 2, 3], 10); return { afterSync: r.afterSync, doneAfterSync: r.doneAfterSync, doneCalls: r.doneCalls, stamps: r.stamps }; }
+    case 'exact-multiple': { const r = await run(items(8), 4); return { stamps: r.stamps, doneStamp: r.doneStamp, doneCalls: r.doneCalls }; }
+    case 'single': { const r = await run(['only'], 1); return { idx: r.idx, doneAfterSync: r.doneAfterSync, doneCalls: r.doneCalls }; }
+    case 'args': { const r = await run(['a', 'b', 'c'], 2); return r.idx; }
+    case 'order-once': { const r = await run(items(25), 7); return { sameOrder: r.idx.every(([x, i], k) => x === k + 1 && i === k), count: r.idx.length, doneCalls: r.doneCalls, maxPerTurn: Math.max(...Object.values(r.stamps.reduce((m, t) => { m[t] = (m[t] || 0) + 1; return m; }, {}))) }; }
+    case 'big': {
+      const n = 10000000; const arr = new Array(n); for (let i = 0; i < n; i++) arr[i] = i;
+      const per = {}; let next = 0, ordered = true, doneCalls = 0;
+      processInChunks(arr, 1000000, (x, i) => { if (i !== next || x !== i) ordered = false; next++; per[__fake.turns] = (per[__fake.turns] || 0) + 1; }, () => { doneCalls++; });
+      await adv(0);
+      return { count: next, ordered, turns: Object.keys(per).length, maxPerTurn: Math.max(...Object.values(per)), doneCalls };
+    }
+    case 'two-lists': { const a = [], b = []; processInChunks([1, 2, 3, 4], 2, (x) => a.push(x), () => a.push('A')); processInChunks([5, 6, 7, 8], 2, (x) => b.push(x), () => b.push('B')); await adv(0); return [a, b]; }
+  }
+}
+/*@@END@@*/` }, cases: [
+        [["example","null"],{"afterSync":4,"pendingAfterSync":2,"ev":[0,1,2,3,"other",4,5,6,7,8,9,"done"],"doneCalls":1}],
+        [["chunk-1","null"],{"afterSync":1,"stamps":[0,2,3],"doneStamp":3,"doneCalls":1}],
+        [["bigger-than-list","null"],{"afterSync":3,"doneAfterSync":1,"doneCalls":1,"stamps":[0,0,0]}],
+        [["exact-multiple","null"],{"stamps":[0,0,0,0,2,2,2,2],"doneStamp":2,"doneCalls":1}],
+        [["single","null"],{"idx":[["only",0]],"doneAfterSync":1,"doneCalls":1}],
+        [["args","null"],[["a",0],["b",1],["c",2]]],
+        [["order-once","null"],{"sameOrder":true,"count":25,"doneCalls":1,"maxPerTurn":7}],
+        [["big","null"],{"count":10000000,"ordered":true,"turns":10,"maxPerTurn":1000000,"doneCalls":1}],
+        [["two-lists","null"],[[1,2,3,4,"A"],[5,6,7,8,"B"]]]
+      ] },
       solution: {
         approach: `<p>Turn one long job into many short jobs. Each <code>runChunk</code> call processes up to <code>chunkSize</code> items and then <b>returns</b>, after queuing the next chunk. Between chunks, any other queued callback (a click, a timer) gets its turn.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -436,6 +532,99 @@ addP(2, 3).then((v) => console.log('manual wrapper:', v));
 ` } },
       mcq: { q: 'Inside promisify, where should the callback go when calling fn?', options: ['As the first argument', 'Appended after all the caller\'s arguments', 'It is not needed, fn returns a promise', 'Bound as this'], answer: 1, explain: 'Error-first APIs expect the callback LAST: fn.call(this, ...args, callback).' },
       hints: [`<p>Hint 1: promisify returns a <b>function</b>; when that function is called, it returns <code>new Promise(...)</code>.</p>`, `<p>Hint 2: inside the executor call <code>fn.call(this, ...args, (err, value) =&gt; ...)</code>. Use a regular <code>function</code> for the returned wrapper so it has its own <code>this</code>, and an arrow for the executor so it reuses it.</p>`, `<p>Hint 3: in the callback: if err → reject(err), else resolve(value). Also wrap the call in try/catch? Not needed: a throw inside the executor already rejects the promise automatically.</p>`],
+      tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const adv = __tAdv, track = __tTrack, sum = __tSum; __tBegin();
+  switch (name) {
+    case 'add': { const add = (a, b, cb) => setTimeout(() => cb(null, a + b), 10); const s = track(promisify(add)(2, 3)); await adv(9); const mid = s.st; await adv(1); return { mid, end: sum(s) }; }
+    case 'error': { const failing = (cb) => setTimeout(() => cb(new Error('disk full')), 10); const s = track(promisify(failing)()); await adv(10); return sum(s); }
+    case 'method-this': { const counter = { n: 10, incLater(by, cb) { setTimeout(() => cb(null, (this.n += by)), 10); } }; counter.incP = promisify(counter.incLater); const s = track(counter.incP(5)); await adv(10); return [sum(s), counter.n]; }
+    case 'sync-throw': { const s = track(promisify(() => { throw new Error('sync'); })()); await __tTick(); return sum(s); }
+    case 'zero-args': { const s = track(promisify((cb) => cb(null, 'z'))()); await __tTick(); return sum(s); }
+    case 'many-args': { const s = track(promisify((...a) => { const cb = a.pop(); cb(null, a.reduce((x, y) => x + y, 0)); })(1, 2, 3, 4, 5)); await __tTick(); return sum(s); }
+    case 'undefined-value': { const s = track(promisify((cb) => cb(null))()); await __tTick(); return sum(s); }
+    case 'callback-twice': { const s = track(promisify((cb) => { cb(null, 1); cb(null, 2); cb(new Error('late')); })()); await __tTick(); return sum(s); }
+    case 'falsy-error': { const s = track(promisify((cb) => cb(0, 'v'))()); await __tTick(); return sum(s); }
+    case 'args-forwarded': { const s = track(promisify((a, b, cb) => cb(null, [a, b, typeof cb]))(1, 2)); await __tTick(); return sum(s); }
+    case 'same-error-object': { const e = new Error('same'); let caught; promisify((cb) => cb(e))().catch((x) => { caught = x; }); await __tTick(); return caught === e; }
+    case 'independent': { const f = promisify((v, d, cb) => setTimeout(() => cb(null, v), d)); const a = track(f('slow', 20)), b = track(f('fast', 5)); await adv(5); const mid = [a.st, b.st]; await adv(15); return [mid, sum(a), sum(b)]; }
+    case 'returns-promise': { const p = promisify((cb) => cb(null))(); return [p instanceof Promise, typeof p.then]; }
+    case 'reuse-wrapper': { const f = promisify((x, cb) => cb(null, x * 2)); const r = []; for (let i = 1; i <= 3; i++) r.push(await f(i)); return r; }
+    case 'error-object-props': { const s = track(promisify((cb) => cb(Object.assign(new Error('E'), { code: 'ENOENT' })))()); await __tTick(); return [sum(s), s.e.code]; }
+  }
+}
+/*@@END@@*/` }, cases: [
+        [["add","null"],{"mid":"pending","end":["ok",5]}],
+        [["error","null"],["err","Error:disk full"]],
+        [["method-this","null"],[["ok",15],15]],
+        [["sync-throw","null"],["err","Error:sync"]],
+        [["zero-args","null"],["ok","z"]],
+        [["many-args","null"],["ok",15]],
+        [["undefined-value","null"],["ok",null]],
+        [["callback-twice","null"],["ok",1]],
+        [["falsy-error","null"],["ok","v"]],
+        [["args-forwarded","null"],["ok",[1,2,"function"]]],
+        [["same-error-object","null"],true],
+        [["independent","null"],[["pending","fulfilled"],["ok","slow"],["ok","fast"]]],
+        [["returns-promise","null"],[true,"function"]],
+        [["reuse-wrapper","null"],[2,4,6]],
+        [["error-object-props","null"],[["err","Error:E"],"ENOENT"]]
+      ] },
       solution: {
         approach: `<p>Return a wrapper that builds a Promise. The executor calls the original function with the caller's arguments plus one extra callback that translates <code>(err, value)</code> into <code>reject</code>/<code>resolve</code>. Because a promise settles only once, a buggy double callback is also harmless.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -644,6 +833,97 @@ setTimeout(function () { resolveLater('value from outside'); }, 10);
 ` } },
       mcq: { q: 'Why is it safe to read resolve right after `new Promise(...)` returns?', options: ['Because the executor runs synchronously, during the constructor call', 'Because resolve is global', 'Because Promise waits for the next tick', 'It is not safe'], answer: 0, explain: 'The executor runs immediately inside the constructor, so the captured functions are already assigned.' },
       hints: [`<p>Hint 1: declare <code>let resolve, reject</code> outside, assign them inside the executor.</p>`, `<p>Hint 2: to track state, wrap them: the first wrapper call sets <code>state</code> if it is still 'pending', then forwards to the real function.</p>`, `<p>Hint 3: return an object with a <code>get state()</code> getter so it is read-only. Edge: resolve(promiseThatRejects) — the state you track is "resolved" not "fulfilled"; for this exercise mark only plain values.</p>`],
+      tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const track = __tTrack, sum = __tSum, tick = __tTick; __tBegin();
+  switch (name) {
+    case 'start': { const d = deferred(); return [d.state, typeof d.resolve, typeof d.reject, d.promise instanceof Promise]; }
+    case 'resolve': { const d = deferred(); const s = track(d.promise); d.resolve('hi'); const st = d.state; await tick(); return [st, sum(s)]; }
+    case 'reject': { const d = deferred(); const s = track(d.promise); d.reject(new Error('x')); const st = d.state; await tick(); return [st, sum(s)]; }
+    case 'resolve-then-reject': { const d = deferred(); const s = track(d.promise); d.resolve('hi'); d.reject(new Error('too late')); await tick(); return [d.state, sum(s)]; }
+    case 'reject-then-resolve': { const d = deferred(); const s = track(d.promise); d.reject(new Error('first')); d.resolve('late'); await tick(); return [d.state, sum(s)]; }
+    case 'double-resolve': { const d = deferred(); const s = track(d.promise); d.resolve(1); d.resolve(2); await tick(); return [d.state, sum(s)]; }
+    case 'readonly-state': { const d = deferred(); try { d.state = 'fulfilled'; } catch (e) { /* strict assignment throws */ } return d.state; }
+    case 'resolve-with-promise': { const d = deferred(); const s = track(d.promise); d.resolve(Promise.resolve(5)); const st = d.state; await tick(); return [st, sum(s)]; }
+    case 'then-before-settle': { const d = deferred(); const seen = []; d.promise.then((v) => seen.push([v, d.state])); await tick(); seen.push('before'); d.resolve('v'); await tick(); return seen; }
+    case 'independent': { const a = deferred(), b = deferred(); a.resolve(1); return [a.state, b.state]; }
+    case 'undefined-value': { const d = deferred(); const s = track(d.promise); d.resolve(); await tick(); return sum(s); }
+    case 'many-order': { const ds = Array.from({ length: 1000 }, () => deferred()); const order = []; ds.forEach((d, i) => d.promise.then(() => order.push(i))); for (let i = 999; i >= 0; i--) ds[i].resolve(); await tick(); return [order.length, order[0], order[999], order.every((v, k) => v === 999 - k)]; }
+    case 'catch-handler': { const d = deferred(); let msg; d.promise.catch((e) => { msg = e.message; }); d.reject(new Error('boom')); await tick(); return [msg, d.state]; }
+    case 'thenable-resolution': { const d = deferred(); const s = track(d.promise); d.resolve({ then(r) { r('from thenable'); } }); await tick(); return [d.state, sum(s)]; }
+  }
+}
+/*@@END@@*/` }, cases: [
+        [["start","null"],["pending","function","function",true]],
+        [["resolve","null"],["fulfilled",["ok","hi"]]],
+        [["reject","null"],["rejected",["err","Error:x"]]],
+        [["resolve-then-reject","null"],["fulfilled",["ok","hi"]]],
+        [["reject-then-resolve","null"],["rejected",["err","Error:first"]]],
+        [["double-resolve","null"],["fulfilled",["ok",1]]],
+        [["readonly-state","null"],"pending"],
+        [["resolve-with-promise","null"],["fulfilled",["ok",5]]],
+        [["then-before-settle","null"],["before",["v","fulfilled"]]],
+        [["independent","null"],["fulfilled","pending"]],
+        [["undefined-value","null"],["ok",null]],
+        [["many-order","null"],[1000,999,0,true]],
+        [["catch-handler","null"],["boom","rejected"]],
+        [["thenable-resolution","null"],["fulfilled",["ok","from thenable"]]]
+      ] },
       solution: {
         approach: `<p>Capture the resolving functions from the synchronous executor, wrap them so the first call records the final state, and return them with the promise. If <code>Promise.withResolvers</code> exists (ES2024, Node 22+) you can use it directly; this is the polyfill.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -859,6 +1139,109 @@ setTimeout(() => console.log('wrong order:', results), 200);
 ` } },
       mcq: { q: 'Why must the input be functions, not promises?', options: ['Promises cannot be stored in arrays', 'A promise means the work has already started; functions let us decide WHEN to start', 'Functions are faster', 'reduce only works on functions'], answer: 1, explain: 'Creating a promise starts the work immediately. To control timing you need a function that creates the promise on demand.' },
       hints: [`<p>Hint 1: you need a chain <code>Promise.resolve().then(t0).then(t1).then(t2)…</code> built from an array → that is a <code>reduce</code>.</p>`, `<p>Hint 2: the accumulator is "the promise of the results so far". In each step: <code>acc.then(results =&gt; tasks[i]().then(r =&gt; [...results, r]))</code>.</p>`, `<p>Hint 3: start the reduce with <code>Promise.resolve([])</code> so an empty list resolves to []. A rejection anywhere skips all later then-handlers automatically — no extra code needed.</p>`],
+      tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const track = __tTrack, sum = __tSum, tick = __tTick, adv = __tAdv, later = __tLater, D = __tD; __tBegin();
+  switch (name) {
+    case 'gated': {
+      const ds = [D(), D(), D()], started = []; const snap = [];
+      const tasks = ds.map((d, i) => () => { started.push(i); return d.p; });
+      const s = track(runSequentially(tasks)); await tick(); snap.push([...started]);
+      ds[0].res('A'); await tick(); snap.push([...started]);
+      ds[1].res('B'); await tick(); snap.push([...started], s.st);
+      ds[2].res('C'); await tick(); snap.push(sum(s)); return snap;
+    }
+    case 'timed': {
+      const starts = {}; const mkT = (n, ms) => () => { starts[n] = __fake.now(); return later(ms, n); };
+      let finished = null; const s = track(runSequentially([mkT('A', 100), mkT('B', 50), mkT('C', 80)]).then((r) => { finished = __fake.now(); return r; }));
+      await adv(1000); return { starts, finished, res: sum(s) };
+    }
+    case 'reject-stops': {
+      const started = []; const mkT = (n, fail) => () => { started.push(n); return fail ? Promise.reject(new Error(n + ' failed')) : Promise.resolve(n); };
+      const s = track(runSequentially([mkT('X'), mkT('Y', true), mkT('Z')])); await tick(); return { started, res: sum(s) };
+    }
+    case 'empty': { const s = track(runSequentially([])); await tick(); return sum(s); }
+    case 'single': { const s = track(runSequentially([() => Promise.resolve('only')])); await tick(); return sum(s); }
+    case 'falsy-results': { const s = track(runSequentially([() => Promise.resolve(0), () => Promise.resolve(''), () => Promise.resolve(null), () => Promise.resolve(undefined)])); await tick(); return sum(s); }
+    case 'sync-throw': { const s = track(runSequentially([() => Promise.resolve(1), () => { throw new Error('thrown'); }, () => Promise.resolve(3)])); await tick(); return sum(s); }
+    case 'first-rejects': { const started = []; const s = track(runSequentially([() => { started.push(1); return Promise.reject(new Error('first')); }, () => { started.push(2); return Promise.resolve(2); }])); await tick(); return [started, sum(s)]; }
+    case 'big': {
+      const n = 10000, started = []; const tasks = Array.from({ length: n }, (_, i) => () => { started.push(i); return Promise.resolve(i * 2); });
+      const r = await runSequentially(tasks);
+      return { len: r.length, first: r[0], last: r[n - 1], ordered: started.every((v, k) => v === k), startedCount: started.length };
+    }
+    case 'new-array': { const t = [() => Promise.resolve(1)]; const r1 = await runSequentially(t); const r2 = await runSequentially(t); return [r1 !== r2, r1, r2]; }
+    case 'not-parallel': { let running = 0, peak = 0; const mkT = () => () => { running++; peak = Math.max(peak, running); return later(10).then(() => { running--; return 'x'; }); }; const s = track(runSequentially([mkT(), mkT(), mkT()])); await adv(100); return [peak, sum(s)]; }
+  }
+}
+/*@@END@@*/` }, cases: [
+        [["gated","null"],[[0],[0,1],[0,1,2],"pending",["ok",["A","B","C"]]]],
+        [["timed","null"],{"starts":{"A":0,"B":100,"C":150},"finished":230,"res":["ok",["A","B","C"]]}],
+        [["reject-stops","null"],{"started":["X","Y"],"res":["err","Error:Y failed"]}],
+        [["empty","null"],["ok",[]]],
+        [["single","null"],["ok",["only"]]],
+        [["falsy-results","null"],["ok",[0,"",null,null]]],
+        [["sync-throw","null"],["err","Error:thrown"]],
+        [["first-rejects","null"],[[1],["err","Error:first"]]],
+        [["big","null"],{"len":10000,"first":0,"last":19998,"ordered":true,"startedCount":10000}],
+        [["new-array","null"],[true,[1],[1]]],
+        [["not-parallel","null"],[1,["ok",["x","x","x"]]]]
+      ] },
       solution: {
         approach: `<p>Fold the task list into one chain. The accumulator promise holds the results array; each step waits for it, then calls the next task, then appends its result. Because each task is only <b>called inside</b> the previous <code>.then</code>, they run strictly one at a time. Errors propagate down the chain and skip the rest.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -1083,6 +1466,105 @@ allWrongOrder([delay(30, 'a'), 'b', delay(10, 'c')]).then((v) => console.log('wr
 ` } },
       mcq: { q: 'How do you know when all items have fulfilled?', options: ['Check results.length === n after each push', 'Keep a counter of fulfilled items and resolve when it reaches n', 'Use setTimeout to wait long enough', 'Compare to the last item'], answer: 1, explain: 'results[i] = v on a sparse array makes length jump early (setting index 2 first gives length 3). A separate counter is reliable.' },
       hints: [`<p>Hint 1: convert the iterable with <code>Array.from</code>; wrap each item with <code>Promise.resolve(item)</code> so values and thenables behave like promises.</p>`, `<p>Hint 2: <code>results[i] = value</code> (by index) and <code>remaining--</code>; when it hits 0, resolve(results). Pass <code>reject</code> directly as the error handler — a promise ignores later calls, so "first rejection wins" is automatic.</p>`, `<p>Hint 3: edge case: empty input → resolve([]) immediately (otherwise you never resolve). Don't rely on <code>results.length</code> — sparse arrays lie.</p>`],
+      tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const track = __tTrack, sum = __tSum, tick = __tTick, adv = __tAdv, later = __tLater, D = __tD; __tBegin();
+  switch (name) {
+    case 'values-order': { const s = track(promiseAll([later(30, 'a'), 'b', later(10, 'c')])); await adv(29); const mid = s.st; await adv(1); return [mid, sum(s)]; }
+    case 'reject-fast': { const s = track(promiseAll([later(50, 'slow'), later(10, 'boom', true)])); await adv(10); return [sum(s), __fake.now()]; }
+    case 'empty': { const s = track(promiseAll([])); await tick(); return sum(s); }
+    case 'set': { const s = track(promiseAll(new Set([1, 2]))); await tick(); return sum(s); }
+    case 'string': { const s = track(promiseAll('ab')); await tick(); return sum(s); }
+    case 'thenable': { const s = track(promiseAll([{ then(r) { r('t'); } }, 2])); await tick(); return sum(s); }
+    case 'thenable-throws': { const s = track(promiseAll([{ then() { throw new Error('bad then'); } }])); await tick(); return sum(s); }
+    case 'already-rejected': { const s = track(promiseAll([Promise.reject(new Error('x')), later(5, 'y')])); await tick(); return sum(s); }
+    case 'two-rejections': { const s = track(promiseAll([later(30, 'late', true), later(10, 'early', true)])); await adv(30); return sum(s); }
+    case 'index-order': { const s = track(promiseAll([later(30, 'a'), later(20, 'b'), later(10, 'c')])); await adv(30); return sum(s); }
+    case 'plain': { const s = track(promiseAll([1, 2, 3])); await tick(); return sum(s); }
+    case 'undefined-null': { const s = track(promiseAll([undefined, null])); await tick(); return sum(s); }
+    case 'holes': { const s = track(promiseAll([1, , 3])); await tick(); return sum(s); }
+    case 'wait-for-last': { const ds = [D(), D(), D()]; const s = track(promiseAll(ds.map((d) => d.p))); ds[2].res(3); ds[0].res(1); await tick(); const mid = s.st; ds[1].res(2); await tick(); return [mid, sum(s)]; }
+    case 'duplicates': { const p = Promise.resolve('v'); const s = track(promiseAll([p, p])); await tick(); return sum(s); }
+    case 'async-not-sync': { const s = track(promiseAll([1])); const immediate = s.st; await tick(); return [immediate, s.st]; }
+    case 'big': { const n = 100000; const r = await promiseAll(Array.from({ length: n }, (_, i) => Promise.resolve(i))); return [r.length, r[0], r[n - 1], r.every((v, k) => v === k)]; }
+    case 'generator': { function* g() { yield 1; yield Promise.resolve(2); } const s = track(promiseAll(g())); await tick(); return sum(s); }
+  }
+}
+/*@@END@@*/` }, cases: [
+        [["values-order","null"],["pending",["ok",["a","b","c"]]]],
+        [["reject-fast","null"],[["err","Error:boom"],10]],
+        [["empty","null"],["ok",[]]],
+        [["set","null"],["ok",[1,2]]],
+        [["string","null"],["ok",["a","b"]]],
+        [["thenable","null"],["ok",["t",2]]],
+        [["thenable-throws","null"],["err","Error:bad then"]],
+        [["already-rejected","null"],["err","Error:x"]],
+        [["two-rejections","null"],["err","Error:early"]],
+        [["index-order","null"],["ok",["a","b","c"]]],
+        [["plain","null"],["ok",[1,2,3]]],
+        [["undefined-null","null"],["ok",[null,null]]],
+        [["holes","null"],["ok",[1,null,3]]],
+        [["wait-for-last","null"],["pending",["ok",[1,2,3]]]],
+        [["duplicates","null"],["ok",["v","v"]]],
+        [["async-not-sync","null"],["pending","fulfilled"]],
+        [["big","null"],[100000,0,99999,true]],
+        [["generator","null"],["ok",[1,2]]]
+      ] },
       solution: {
         approach: `<p>Wrap everything in one <code>new Promise</code>. Subscribe to every item at once (so they are all watched in parallel). Store each value at its own index and count down; resolve at zero. Any rejection calls the outer <code>reject</code>; later settles are ignored because a promise settles once.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -1312,6 +1794,98 @@ Promise.all(attempts).then((r) => console.log('all fired at once:', r));
 ` } },
       mcq: { q: 'What should the catch handler return to try again?', options: ['Nothing — the chain retries automatically', 'A new promise: wait(delay).then(() => attempt(n + 1))', 'throw the error', 'Promise.race of all attempts'], answer: 1, explain: 'Returning the next attempt\'s promise makes the outer chain follow it, so success or the final error flows to the caller.' },
       hints: [`<p>Hint 1: write an inner <code>attempt(n)</code> that returns <code>fn().catch(err =&gt; …)</code>. Recursion replaces the loop.</p>`, `<p>Hint 2: in the catch: if <code>n &gt;= retries</code> or <code>err.retryable === false</code>, <code>throw err</code>. Otherwise <code>return wait(baseDelay * 2 ** n).then(() =&gt; attempt(n + 1))</code>.</p>`, `<p>Hint 3: because each catch <b>returns</b> the next attempt, the first success fulfils the outer promise and the last error rejects it. Add jitter (random 0..delay) in production.</p>`],
+      tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const track = __tTrack, sum = __tSum, adv = __tAdv; __tBegin();
+  let attempts = 0;
+  const failing = (k, msg = 'busy #') => () => { attempts++; return attempts <= k ? Promise.reject(new Error(msg + attempts)) : Promise.resolve('ok on call ' + attempts); };
+  const run = async (fn, opts) => { const s = track(retry(fn, opts)); let at = null; s.p = null; await adv(100000); return { res: sum(s), attempts, delays: [...__fake.delays] }; };
+  switch (name) {
+    case 'success-after-2': { let finished = null; const s = track(retry(failing(2), { retries: 3, baseDelay: 20 }).then((v) => { finished = __fake.now(); return v; })); await adv(1000); return { res: sum(s), attempts, delays: [...__fake.delays], finished }; }
+    case 'give-up': { let finished = null; const s = track(retry(failing(5), { retries: 2, baseDelay: 10 }).catch((e) => { finished = __fake.now(); throw e; })); await adv(1000); return { res: sum(s), attempts, delays: [...__fake.delays], finished }; }
+    case 'not-retryable': return run(() => { attempts++; return Promise.reject(Object.assign(new Error('400 bad input'), { retryable: false })); }, { retries: 5, baseDelay: 10 });
+    case 'retries-0': return run(failing(1), { retries: 0, baseDelay: 10 });
+    case 'first-success': return run(failing(0), { retries: 3, baseDelay: 10 });
+    case 'base-0': return run(failing(2), { retries: 3, baseDelay: 0 });
+    case 'max-10': return run(() => { attempts++; return Promise.reject(new Error('fail #' + attempts)); }, { retries: 10, baseDelay: 1 });
+    case 'midway-not-retryable': return run(() => { attempts++; return Promise.reject(attempts < 3 ? new Error('soft ' + attempts) : Object.assign(new Error('hard'), { retryable: false })); }, { retries: 5, baseDelay: 1 });
+    case 'null-reason': return run(() => { attempts++; return attempts === 1 ? Promise.reject(null) : Promise.resolve('done'); }, { retries: 2, baseDelay: 5 });
+    case 'string-reason': return run(() => { attempts++; return attempts === 1 ? Promise.reject('plain string') : Promise.resolve('done'); }, { retries: 2, baseDelay: 5 });
+    case 'undefined-reason-final': return run(() => { attempts++; return Promise.reject(undefined); }, { retries: 1, baseDelay: 5 });
+    case 'last-error-kept': return run(() => { attempts++; return Promise.reject(new Error('err' + attempts)); }, { retries: 2, baseDelay: 1 });
+    case 'retryable-true': return run(() => { attempts++; return attempts < 2 ? Promise.reject(Object.assign(new Error('t'), { retryable: true })) : Promise.resolve('fine'); }, { retries: 3, baseDelay: 2 });
+  }
+}
+/*@@END@@*/` }, cases: [
+        [["success-after-2","null"],{"res":["ok","ok on call 3"],"attempts":3,"delays":[20,40],"finished":60}],
+        [["give-up","null"],{"res":["err","Error:busy #3"],"attempts":3,"delays":[10,20],"finished":30}],
+        [["not-retryable","null"],{"res":["err","Error:400 bad input"],"attempts":1,"delays":[]}],
+        [["retries-0","null"],{"res":["err","Error:busy #1"],"attempts":1,"delays":[]}],
+        [["first-success","null"],{"res":["ok","ok on call 1"],"attempts":1,"delays":[]}],
+        [["base-0","null"],{"res":["ok","ok on call 3"],"attempts":3,"delays":[0,0]}],
+        [["max-10","null"],{"res":["err","Error:fail #11"],"attempts":11,"delays":[1,2,4,8,16,32,64,128,256,512]}],
+        [["midway-not-retryable","null"],{"res":["err","Error:hard"],"attempts":3,"delays":[1,2]}],
+        [["null-reason","null"],{"res":["ok","done"],"attempts":2,"delays":[5]}],
+        [["string-reason","null"],{"res":["ok","done"],"attempts":2,"delays":[5]}],
+        [["undefined-reason-final","null"],{"res":["err",null],"attempts":2,"delays":[5]}],
+        [["last-error-kept","null"],{"res":["err","Error:err3"],"attempts":3,"delays":[1,2]}],
+        [["retryable-true","null"],{"res":["ok","fine"],"attempts":2,"delays":[2]}]
+      ] },
       solution: {
         approach: `<p>Recursive chain: attempt n calls fn; on rejection either give up (rethrow) or return "wait, then attempt n + 1". Returning the promise from inside <code>.catch</code> links each retry into the same chain, so the caller sees just one promise.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -1321,9 +1895,9 @@ function retry(fn, opts) {
   const retries = opts.retries, baseDelay = opts.baseDelay;
   function attempt(n) {
     return fn(n).catch(function (err) {
-      if (n >= retries || err.retryable === false) throw err; // give up: propagate
+      if (n >= retries || (err && err.retryable === false)) throw err; // give up: propagate (err may be null)
       const delay = baseDelay * Math.pow(2, n);               // 1x, 2x, 4x, ...
-      console.log('  attempt ' + (n + 1) + ' failed (' + err.message + '), retrying in ' + delay + ' ms');
+      console.log('  attempt ' + (n + 1) + ' failed (' + (err && err.message) + '), retrying in ' + delay + ' ms');
       return wait(delay).then(function () { return attempt(n + 1); });
     });
   }
@@ -1376,6 +1950,9 @@ console.log(6);
 ` } },
     mcq: { q: 'Why does 4 print before 6?', options: ['The Promise executor runs synchronously during new Promise', 'Promises are faster than console.log', 'Because 4 < 6', 'Microtasks run first'], answer: 0, explain: 'The executor function is called immediately by the constructor; only .then handlers are deferred.' },
     hints: [`<p>Hint 1: first list only the lines that run <b>immediately</b>: plain console.log calls and the code inside the <code>new Promise</code> executor.</p>`, `<p>Hint 2: after the script finishes, all queued <b>promise handlers</b> run (in the order they were queued) before any timer.</p>`, `<p>Hint 3: the timer callback runs last, even with 0 ms. Recipe: sync lines → promise handlers → timers.</p>`],
+    tests: { io: true, cases: [
+      {"stdin":"","stdout":"1\nfinal order: 1 4 6 3 5 2"}
+    ] },
     solution: {
       approach: `<p>Sort every callback into three buckets: <b>synchronous</b> (1, 4, 6), <b>promise reactions / microtasks</b> (3 then 5, in queue order), <b>timers / tasks</b> (2). Print bucket by bucket. Module JS 8 explains exactly why microtasks beat timers.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1414,6 +1991,9 @@ p.then((v) => console.log('actually got', v), (e) => console.log('caught', e));
 ` } },
     mcq: { q: 'What happens to reject(\'D\')?', options: ['It overrides the value', 'It throws an error', 'It is silently ignored because the promise is already settled', 'It causes an unhandled rejection'], answer: 2, explain: 'A promise settles only once; later resolve/reject calls are no-ops.' },
     hints: [`<p>Hint 1: the executor runs synchronously — so A and C print during construction, before E.</p>`, `<p>Hint 2: only the first of resolve/reject counts; it does not exit the function either.</p>`, `<p>Hint 3: the then handler runs as a microtask after the script ends, printing B. The catch is never triggered.</p>`],
+    tests: { io: true, cases: [
+      {"stdin":"","stdout":"A\nC\nE\nB"}
+    ] },
     solution: {
       approach: `<p>Executor runs immediately: <b>A</b>, settle with 'B', <b>C</b>, ignored reject. Script continues: <b>E</b>. Then the microtask: <b>B</b>. <code>.catch</code> receives a fulfilled promise and passes it through.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1455,6 +2035,9 @@ getUser(1)
 ` } },
     mcq: { q: 'What does the arrow `(u) => { getName(u); }` return?', options: ['getName(u)', 'undefined', 'A pending promise', 'u'], answer: 1, explain: 'With a block body, an arrow function returns undefined unless you write return.' },
     hints: [`<p>Hint 1: check every <code>.then</code> handler: does it <b>return</b> the promise it creates?</p>`, `<p>Hint 2: use the concise arrow body <code>(u) =&gt; getName(u)</code> or add <code>return</code> inside the braces.</p>`, `<p>Hint 3: once every inner promise is returned, the chain waits for it, gets its value, and its rejections flow to the final catch.</p>`],
+    tests: { io: true, cases: [
+      {"stdin":"","stdout":"asha\nsaved\nasha\nerror db down"}
+    ] },
     solution: {
       approach: `<p>Return every inner promise. Then the chain waits for <code>getName</code> (so the next step receives the name) and for <code>save</code> (so 'saved' is truthful), and any rejection reaches the single <code>.catch</code>.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1494,6 +2077,88 @@ setTimeout(() => console.log('go!'), 300);
 ` } },
     mcq: { q: 'In `.then(() => sleep(100))`, why does the chain wait?', options: ['then always waits 100 ms', 'Returning a promise from a handler makes the next promise follow it', 'sleep blocks the thread', 'It does not wait'], answer: 1, explain: 'Returned promises are adopted: the next link settles only when sleep\'s promise does.' },
     hints: [`<p>Hint 1: <code>new Promise(resolve =&gt; setTimeout(resolve, ms))</code> is the whole sleep.</p>`, `<p>Hint 2: build the chain with a loop or reduce over [3, 2, 1]: log, then return sleep(100).</p>`, `<p>Hint 3: don't call sleep without returning it — that would not pause anything. Finish with a final then that logs 'go!'.</p>`],
+    tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const track = __tTrack, sum = __tSum, adv = __tAdv, tick = __tTick;
+  if (name === 'countdown') { await adv(300); return __logs.map((l) => [l.t, l.s.split(' ')[0]]); }
+  __tBegin();
+  switch (name) {
+    case 'basic': { const s = track(sleep(100)); await adv(99); const at99 = s.st; await adv(1); return { at99, at100: sum(s) }; }
+    case 'zero': { const s = track(sleep(0)); await tick(); const before = s.st; await adv(0); return [before, s.st]; }
+    case 'order': { const log = []; sleep(30).then(() => log.push(30)); sleep(10).then(() => log.push(10)); sleep(20).then(() => log.push(20)); await adv(30); return log; }
+    case 'big-ms': { const s = track(sleep(10000)); await adv(9999); const a = s.st; await adv(1); return [a, s.st]; }
+    case 'many': { const ss = Array.from({ length: 1000 }, (_, i) => track(sleep(i))); await adv(998); const mid = ss.filter((s) => s.st === 'fulfilled').length; await adv(1); return [mid, ss.every((s) => s.st === 'fulfilled')]; }
+    case 'returns-promise': { const p = sleep(5); return [p instanceof Promise, __fake.pending()]; }
+    case 'sequential': { const t = []; await (async () => { const p = sleep(10).then(() => t.push(__fake.now())).then(() => sleep(20)).then(() => t.push(__fake.now())); await adv(30); await p; })(); return t; }
+    case 'independent': { const a = track(sleep(5)), b = track(sleep(50)); await adv(5); return [a.st, b.st]; }
+  }
+}
+/*@@END@@*/` }, cases: [
+      [["basic","null"],{"at99":"pending","at100":["ok",null]}],
+      [["zero","null"],["pending","fulfilled"]],
+      [["order","null"],[10,20,30]],
+      [["big-ms","null"],["pending","fulfilled"]],
+      [["many","null"],[999,true]],
+      [["returns-promise","null"],[true,1]],
+      [["sequential","null"],[10,30]],
+      [["independent","null"],["fulfilled","pending"]],
+      [["countdown","null"],[[0,"3"],[100,"2"],[200,"1"],[300,"go!"]]]
+    ] },
     solution: {
       approach: `<p>Wrap setTimeout in a promise. Reduce over the numbers, each step logging and returning <code>sleep(100)</code>, so every log waits for the previous sleep.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1538,6 +2203,98 @@ callbackifyBad(() => Promise.resolve(1))(function (err, v) {
 ` } },
     mcq: { q: 'Which form avoids calling the callback twice?', options: ['.then(ok).catch(fail)', '.then(ok, fail) — two-argument then', '.finally(cb)', 'try/catch around fn'], answer: 1, explain: 'With then(ok, fail), fail only watches fn\'s promise, not errors thrown inside ok.' },
     hints: [`<p>Hint 1: pop the last argument as the callback; call <code>fn.apply(this, args)</code>.</p>`, `<p>Hint 2: use <code>.then(onOk, onErr)</code> so a throw inside the callback is not routed back into it. Rethrow that throw outside the promise (e.g. via <code>queueMicrotask</code> / <code>setTimeout</code>) so it is not silently swallowed.</p>`, `<p>Hint 3: for a falsy reason, create <code>new Error('Promise was rejected with a falsy value')</code> and attach <code>.reason</code>. Also wrap the fn call so a sync throw becomes a callback error.</p>`],
+    tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const tick = __tTick, adv = __tAdv, em = __tEm; __tBegin();
+  const calls = [];
+  switch (name) {
+    case 'ok': { callbackify((a, b) => Promise.resolve(a + b))(2, 3, (e, v) => calls.push([e, v])); const sync = calls.length; await tick(); const afterTick = calls.length; await adv(0); return [sync, afterTick, calls]; }
+    case 'reject-error': { callbackify(() => Promise.reject(new Error('x')))((e) => calls.push(em(e))); await adv(0); return calls; }
+    case 'falsy-null': { callbackify(() => Promise.reject(null))((e) => calls.push([em(e), e.reason === null])); await adv(0); return calls; }
+    case 'falsy-values': { for (const v of [0, '', undefined, false]) callbackify(() => Promise.reject(v))((e) => calls.push([e.message, e.reason === v, 'reason' in e])); await adv(0); return calls; }
+    case 'sync-throw': { callbackify(() => { throw new Error('sync throw'); })((e) => calls.push(em(e))); await adv(0); return calls; }
+    case 'this': { const o = { k: 10, m: callbackify(function (a) { return Promise.resolve(this.k + a); }) }; o.m(1, (e, v) => calls.push([e, v])); await adv(0); return calls; }
+    case 'args': { callbackify((...a) => Promise.resolve(a.length))(1, 2, 3, (e, v) => calls.push(v)); await adv(0); return calls; }
+    case 'cb-throws': { callbackify(() => Promise.resolve(1))(() => { calls.push('called'); throw new Error('cb broke'); }); await adv(0); await adv(100); return [calls, __fake.uncaught]; }
+    case 'missing-callback': { try { callbackify(() => Promise.resolve(1))(1); return 'no error'; } catch (e) { return e.name; } }
+    case 'truthy-reason-as-is': { callbackify(() => Promise.reject('str'))((e) => calls.push(e === 'str')); await adv(0); return calls; }
+    case 'returns-undefined': return String(callbackify(() => Promise.resolve(1))(() => {}));
+    case 'exactly-once': { callbackify(() => Promise.resolve(1))((e, v) => calls.push(v)); await adv(0); await adv(1000); return calls; }
+    case 'many': { let n = 0; for (let i = 0; i < 1000; i++) callbackify((x) => Promise.resolve(x))(i, (e, v) => { n += v; }); await adv(0); return n; }
+    case 'async-fn': { callbackify(async (x) => x * 2)(21, (e, v) => calls.push([e, v])); await adv(0); return calls; }
+  }
+}
+/*@@END@@*/` }, cases: [
+      [["ok","null"],[0,0,[[null,5]]]],
+      [["reject-error","null"],["Error:x"]],
+      [["falsy-null","null"],[["Error:Promise was rejected with a falsy value",true]]],
+      [["falsy-values","null"],[["Promise was rejected with a falsy value",true,true],["Promise was rejected with a falsy value",true,true],["Promise was rejected with a falsy value",true,true],["Promise was rejected with a falsy value",true,true]]],
+      [["sync-throw","null"],["Error:sync throw"]],
+      [["this","null"],[[null,11]]],
+      [["args","null"],[3]],
+      [["cb-throws","null"],[["called"],["cb broke"]]],
+      [["missing-callback","null"],"TypeError"],
+      [["truthy-reason-as-is","null"],[true]],
+      [["returns-undefined","null"],"undefined"],
+      [["exactly-once","null"],[1]],
+      [["many","null"],499500],
+      [["async-fn","null"],[[null,42]]]
+    ] },
     solution: {
       approach: `<p>Use the two-argument <code>then</code> so the error branch only handles fn's rejection. Invoke the callback outside the promise machinery (via <code>setTimeout</code> 0, like Node does with <code>process.nextTick</code>) so its own exceptions surface as normal uncaught errors instead of re-entering our handlers.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1581,6 +2338,98 @@ Promise.all([Promise.resolve(1), Promise.reject(new Error('x')), 3])
 ` } },
     mcq: { q: 'What turns a rejection into a fulfilled entry?', options: ['A .then with a second (onRejected) handler that RETURNS an object', 'Throwing inside catch', 'Using finally', 'Promise.race'], answer: 0, explain: 'Returning from an error handler recovers the chain, so the per-item promise fulfils with the status object.' },
     hints: [`<p>Hint 1: map each item to <code>Promise.resolve(item).then(v =&gt; ({status:'fulfilled', value: v}), r =&gt; ({status:'rejected', reason: r}))</code>.</p>`, `<p>Hint 2: now every mapped promise fulfils. Combine them with your own counter (like promiseAll) storing by index.</p>`, `<p>Hint 3: handle the empty iterable (resolve [] immediately). There is no reject path at all.</p>`],
+    tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const track = __tTrack, tick = __tTick, adv = __tAdv, later = __tLater, em = __tEm; __tBegin();
+  const view = (s) => (s.st === 'pending' ? ['pending'] : s.st === 'rejected' ? ['rejected!', em(s.e)] : s.v.map((x) => (x.status === 'fulfilled' ? { status: 'fulfilled', value: x.value } : { status: 'rejected', reason: em(x.reason) })));
+  switch (name) {
+    case 'mixed': { const s = track(allSettled([Promise.resolve(1), Promise.reject(new Error('x')), 3])); await tick(); return view(s); }
+    case 'timed': { const s = track(allSettled([later(30, 'a'), later(10, 'b failed', true), 3])); await adv(29); const mid = view(s); await adv(1); return [mid, view(s)]; }
+    case 'empty': { const s = track(allSettled([])); await tick(); return view(s); }
+    case 'set': { const s = track(allSettled(new Set([1, 2]))); await tick(); return view(s); }
+    case 'all-rejected': { const s = track(allSettled([Promise.reject(1), Promise.reject(2)])); await tick(); return view(s); }
+    case 'order': { const s = track(allSettled([later(30, 'a'), later(20, 'b'), later(10, 'c')])); await adv(30); return view(s); }
+    case 'thenable': { const s = track(allSettled([{ then(r) { r('t'); } }, { then(_, j) { j('no'); } }])); await tick(); return view(s); }
+    case 'undefined-value': { const s = track(allSettled([undefined])); await tick(); return view(s); }
+    case 'undefined-reason': { const s = track(allSettled([Promise.reject(undefined)])); await tick(); return view(s); }
+    case 'holes': { const s = track(allSettled([1, , 3])); await tick(); return view(s); }
+    case 'string': { const s = track(allSettled('ab')); await tick(); return view(s); }
+    case 'never-rejects': { const s = track(allSettled([Promise.reject(new Error('a')), Promise.reject(new Error('b'))])); await tick(); return s.st; }
+    case 'big': { const r = await allSettled(Array.from({ length: 10000 }, (_, i) => (i % 2 ? Promise.reject(i) : Promise.resolve(i)))); return [r.length, r[0].status, r[1].status, r[9999].reason, r[9998].value]; }
+    case 'wait-for-all': { const d = __tD(); const s = track(allSettled([1, d.p])); await tick(); const mid = s.st; d.rej(new Error('late')); await tick(); return [mid, view(s)]; }
+  }
+}
+/*@@END@@*/` }, cases: [
+      [["mixed","null"],[{"status":"fulfilled","value":1},{"status":"rejected","reason":"Error:x"},{"status":"fulfilled","value":3}]],
+      [["timed","null"],[["pending"],[{"status":"fulfilled","value":"a"},{"status":"rejected","reason":"Error:b failed"},{"status":"fulfilled","value":3}]]],
+      [["empty","null"],[]],
+      [["set","null"],[{"status":"fulfilled","value":1},{"status":"fulfilled","value":2}]],
+      [["all-rejected","null"],[{"status":"rejected","reason":1},{"status":"rejected","reason":2}]],
+      [["order","null"],[{"status":"fulfilled","value":"a"},{"status":"fulfilled","value":"b"},{"status":"fulfilled","value":"c"}]],
+      [["thenable","null"],[{"status":"fulfilled","value":"t"},{"status":"rejected","reason":"no"}]],
+      [["undefined-value","null"],[{"status":"fulfilled"}]],
+      [["undefined-reason","null"],[{"status":"rejected"}]],
+      [["holes","null"],[{"status":"fulfilled","value":1},{"status":"fulfilled"},{"status":"fulfilled","value":3}]],
+      [["string","null"],[{"status":"fulfilled","value":"a"},{"status":"fulfilled","value":"b"}]],
+      [["never-rejects","null"],"fulfilled"],
+      [["big","null"],[10000,"fulfilled","rejected",9999,9998]],
+      [["wait-for-all","null"],["pending",[{"status":"fulfilled","value":1},{"status":"rejected","reason":"Error:late"}]]]
+    ] },
     solution: {
       approach: `<p>Convert each item into a promise that cannot reject (its error handler returns a status object), then wait for all of them with an index-based counter.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1630,6 +2479,101 @@ const poll = setInterval(() => {
 ` } },
     mcq: { q: 'Why can race just pass resolve and reject to every item?', options: ['Because only the first settle of the outer promise counts; later calls are ignored', 'Because items settle in order', 'Because race cancels the others', 'It cannot — it needs a flag'], answer: 0, explain: 'Promise settle-once semantics give "first wins" for free.' },
     hints: [`<p>Hint 1: <code>new Promise((resolve, reject) =&gt; { for (const x of iterable) Promise.resolve(x).then(resolve, reject); })</code> — that's the whole race.</p>`, `<p>Hint 2: withTimeout = race between the promise and a timer promise that rejects. Keep the timer id outside.</p>`, `<p>Hint 3: use <code>.finally(() =&gt; clearTimeout(id))</code> so the timer is cleared on both outcomes and the process can exit early.</p>`],
+    tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const track = __tTrack, sum = __tSum, tick = __tTick, adv = __tAdv, later = __tLater, D = __tD; __tBegin();
+  switch (name) {
+    case 'first-fulfil': { const s = track(race([later(30, 'thirty'), later(10, 'ten')])); await adv(10); return sum(s); }
+    case 'first-reject': { const s = track(race([later(30, 'a'), later(10, 'boom', true)])); await adv(10); return sum(s); }
+    case 'plain-value': { const s = track(race(['x', later(5, 'y')])); await tick(); return sum(s); }
+    case 'array-order-tie': { const s = track(race([Promise.resolve(1), Promise.resolve(2)])); await tick(); return sum(s); }
+    case 'reject-first-in-array': { const s = track(race([Promise.reject(new Error('r')), Promise.resolve(2)])); await tick(); return sum(s); }
+    case 'empty-pending': { const s = track(race([])); await adv(1000000); return s.st; }
+    case 'set': { const s = track(race(new Set([later(5, 'a'), later(2, 'b')]))); await adv(5); return sum(s); }
+    case 'settles-once': { const d1 = D(), d2 = D(); const s = track(race([d1.p, d2.p])); d2.res('second'); d1.rej(new Error('first-late')); await tick(); return sum(s); }
+    case 'timeout-slow': { let at = null; const s = track(withTimeout(later(200, 'slow'), 50).catch((e) => { at = __fake.now(); throw e; })); await adv(300); return [sum(s), at]; }
+    case 'timeout-fast': { const s = track(withTimeout(later(20, 'fast'), 50)); await adv(20); return sum(s); }
+    case 'timer-cleared-on-success': { const d = D(); const s = track(withTimeout(d.p, 100)); const during = __fake.pending(); d.res('v'); await tick(); return [sum(s), during, __fake.pending()]; }
+    case 'timer-cleared-on-failure': { const d = D(); const s = track(withTimeout(d.p, 100)); d.rej(new Error('orig')); await tick(); return [sum(s), __fake.pending()]; }
+    case 'late-after-timeout': { const d = D(); const s = track(withTimeout(d.p, 50)); await adv(50); d.res('late'); await tick(); return [sum(s), __fake.pending()]; }
+    case 'ms-zero': { const d = D(); const s = track(withTimeout(d.p, 0)); await adv(0); return sum(s); }
+    case 'sync-value': { const s = track(withTimeout(5, 100)); await tick(); return [sum(s), __fake.pending()]; }
+    case 'exact-boundary': { const s = track(withTimeout(later(50, 'tie'), 50)); await adv(50); return sum(s); }
+  }
+}
+/*@@END@@*/` }, cases: [
+      [["first-fulfil","null"],["ok","ten"]],
+      [["first-reject","null"],["err","Error:boom"]],
+      [["plain-value","null"],["ok","x"]],
+      [["array-order-tie","null"],["ok",1]],
+      [["reject-first-in-array","null"],["err","Error:r"]],
+      [["empty-pending","null"],"pending"],
+      [["set","null"],["ok","b"]],
+      [["settles-once","null"],["ok","second"]],
+      [["timeout-slow","null"],[["err","Error:Timeout"],50]],
+      [["timeout-fast","null"],["ok","fast"]],
+      [["timer-cleared-on-success","null"],[["ok","v"],1,0]],
+      [["timer-cleared-on-failure","null"],[["err","Error:orig"],0]],
+      [["late-after-timeout","null"],[["err","Error:Timeout"],0]],
+      [["ms-zero","null"],["err","Error:Timeout"]],
+      [["sync-value","null"],[["ok",5],0]],
+      [["exact-boundary","null"],["ok","tie"]]
+    ] },
     solution: {
       approach: `<p>race subscribes resolve/reject of one outer promise to every item — first settle wins by the settle-once rule. withTimeout races the real promise against a rejecting timer and clears the timer in finally.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1674,6 +2618,98 @@ Promise.race([delay(5, 'eu down', true), delay(20, 'us ok')])
 ` } },
     mcq: { q: 'When must any() reject?', options: ['On the first rejection', 'When every item has rejected', 'After a timeout', 'Never'], answer: 1, explain: 'any only fails if there is no success at all — then you need all reasons, hence AggregateError.' },
     hints: [`<p>Hint 1: copy your promiseAll, but count <b>rejections</b> and store reasons by index.</p>`, `<p>Hint 2: pass <code>resolve</code> directly as the success handler: first fulfilment wins.</p>`, `<p>Hint 3: when the rejection counter reaches n → <code>reject(new AggregateError(errors, 'All promises were rejected'))</code>. Handle n = 0 up front.</p>`],
+    tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const track = __tTrack, sum = __tSum, tick = __tTick, adv = __tAdv, later = __tLater, em = __tEm; __tBegin();
+  const agg = (s) => (s.st === 'rejected' ? { name: s.e.name, message: s.e.message, isArray: Array.isArray(s.e.errors), errors: s.e.errors.map(em) } : sum(s));
+  switch (name) {
+    case 'first-success': { const s = track(any([later(5, 'a', true), later(30, 'b'), later(10, 'c')])); await adv(10); return sum(s); }
+    case 'all-reject': { const s = track(any([later(20, 'x', true), later(5, 'y', true)])); await adv(20); return agg(s); }
+    case 'empty': { const s = track(any([])); await tick(); return agg(s); }
+    case 'plain-wins': { const s = track(any(['v', Promise.reject(1)])); await tick(); return sum(s); }
+    case 'set': { const s = track(any(new Set([Promise.reject(1), 2]))); await tick(); return sum(s); }
+    case 'success-after-rejection': { const s = track(any([Promise.reject(1), later(10, 'ok')])); await tick(); const mid = s.st; await adv(10); return [mid, sum(s)]; }
+    case 'non-error-reasons': { const s = track(any([Promise.reject('s'), Promise.reject(2)])); await tick(); return agg(s); }
+    case 'pending-until-all-fail': { const s = track(any([later(5, 'a', true), later(25, 'b', true)])); await adv(5); const mid = s.st; await adv(20); return [mid, agg(s).errors]; }
+    case 'thenable': { const s = track(any([{ then(_, j) { j('no'); } }, { then(r) { r('yes'); } }])); await tick(); return sum(s); }
+    case 'later-rejections-ignored': { const s = track(any([Promise.resolve('win'), later(5, 'x', true)])); await adv(10); return sum(s); }
+    case 'big': { const s = track(any(Array.from({ length: 10000 }, (_, i) => Promise.reject(i)))); await tick(); const a = agg(s); return [a.errors.length, a.errors[0], a.errors[9999], a.name]; }
+    case 'one-success-among-many-fail': { const items = Array.from({ length: 1000 }, (_, i) => (i === 700 ? Promise.resolve('found') : Promise.reject(i))); const s = track(any(items)); await tick(); return sum(s); }
+    case 'undefined-fulfil': { const s = track(any([undefined])); await tick(); return sum(s); }
+    case 'string-iterable': { const s = track(any('ab')); await tick(); return sum(s); }
+  }
+}
+/*@@END@@*/` }, cases: [
+      [["first-success","null"],["ok","c"]],
+      [["all-reject","null"],{"name":"AggregateError","message":"All promises were rejected","isArray":true,"errors":["Error:x","Error:y"]}],
+      [["empty","null"],{"name":"AggregateError","message":"All promises were rejected","isArray":true,"errors":[]}],
+      [["plain-wins","null"],["ok","v"]],
+      [["set","null"],["ok",2]],
+      [["success-after-rejection","null"],["pending",["ok","ok"]]],
+      [["non-error-reasons","null"],{"name":"AggregateError","message":"All promises were rejected","isArray":true,"errors":["s",2]}],
+      [["pending-until-all-fail","null"],["pending",["Error:a","Error:b"]]],
+      [["thenable","null"],["ok","yes"]],
+      [["later-rejections-ignored","null"],["ok","win"]],
+      [["big","null"],[10000,0,9999,"AggregateError"]],
+      [["one-success-among-many-fail","null"],["ok","found"]],
+      [["undefined-fulfil","null"],["ok",null]],
+      [["string-iterable","null"],["ok","a"]]
+    ] },
     solution: {
       approach: `<p>Inverse of all: success short-circuits, failures are collected by index; when all have failed, reject once with an AggregateError.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1728,6 +2764,9 @@ Promise.resolve().then(() => { throw new Error('y'); }).then(() => console.log('
 ` } },
     mcq: { q: 'Why does the skipped .then in chain c still delay c1?', options: ['It doesn\'t', 'A skipped link still creates a promise that settles in its own microtask (pass-through)', 'Errors are slower than values', 'catch waits for a timer'], answer: 1, explain: 'A missing handler is replaced by a pass-through function, which still runs as a reaction job one tick later.' },
     hints: [`<p>Hint 1: number the ticks. Tick 1 runs the first link of every chain in creation order: a1, b1, (c throws).</p>`, `<p>Hint 2: tick 2 runs the second link of each chain: a2, b2, c's skipped then (passes error on).</p>`, `<p>Hint 3: tick 3: a3, b3 (finally), c1 (catch). Within a tick, order = order in which the reactions were queued.</p>`],
+    tests: { io: true, cases: [
+      {"stdin":"","stdout":"a1 b1 a2 b2 a3 b3 c1"}
+    ] },
     solution: {
       approach: `<p>Model each chain as a list of links and advance all chains one link per microtask tick, in the order their reactions were queued. Skipped links still occupy a tick.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1759,6 +2798,102 @@ urls.reduce((p, u) => p.then((acc) => fetcher(u).then((d) => acc.concat([d]))), 
 ` } },
     mcq: { q: 'What is the weakness of fixed batches compared to a sliding pool?', options: ['Results come out of order', 'One slow request holds up the whole next batch', 'It uses more memory', 'It cannot handle errors'], answer: 1, explain: 'A batch finishes only when its slowest member finishes; a pool starts a new request as soon as any slot frees up.' },
     hints: [`<p>Hint 1: split urls into chunks of <code>size</code> (slice in a loop).</p>`, `<p>Hint 2: each batch = <code>Promise.all(chunk.map(fetcher))</code>; chain batches sequentially with reduce, concatenating results.</p>`, `<p>Hint 3: time = (number of batches) × (slowest in each batch). Mention that a sliding-window pool (Hard problem) is better when durations vary.</p>`],
+    tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const track = __tTrack, sum = __tSum, tick = __tTick, adv = __tAdv, later = __tLater; __tBegin();
+  let active = 0, peak = 0; const started = [];
+  const fetcher = (ms) => (u) => { active++; peak = Math.max(peak, active); started.push(u); return later(ms, 'data' + u).then((v) => { active--; return v; }); };
+  const timed = async (urls, size, ms = 100) => { let fin = null; const s = track(fetchInBatches(urls, size, fetcher(ms)).then((r) => { fin = __fake.now(); return r; })); await adv(100000); return { res: sum(s), finishedAt: fin, peak }; };
+  switch (name) {
+    case 'six-by-two': return timed([1, 2, 3, 4, 5, 6], 2);
+    case 'six-by-four': return timed([1, 2, 3, 4, 5, 6], 4);
+    case 'size-ge-length': return timed([1, 2, 3], 10);
+    case 'size-1': return timed([1, 2, 3], 1);
+    case 'empty': return timed([], 3);
+    case 'single': return timed([7], 2);
+    case 'exact-batches': return timed([1, 2, 3, 4], 2, 50);
+    case 'gated-start': {
+      const s = track(fetchInBatches([1, 2, 3, 4], 2, fetcher(100))); await tick(); const first = [...started]; await adv(99); const mid = [...started]; await adv(1); const after = [...started]; await adv(100);
+      return { first, mid, after, res: sum(s) };
+    }
+    case 'failure-stops': {
+      const f = (u) => { started.push(u); return u === 3 ? Promise.reject(new Error('url 3 failed')) : Promise.resolve('d' + u); };
+      const s = track(fetchInBatches([1, 2, 3, 4, 5, 6], 2, f)); await tick(); return { started, res: sum(s) };
+    }
+    case 'order': { const delays = { 1: 50, 2: 10, 3: 30, 4: 5 }; const f = (u) => later(delays[u], 'r' + u); const s = track(fetchInBatches([1, 2, 3, 4], 2, f)); await adv(1000); return sum(s); }
+    case 'fetcher-args': { const seen = []; const f = (u, i, arr) => { seen.push(u); return Promise.resolve(u * 2); }; const s = track(fetchInBatches([1, 2, 3], 2, f)); await tick(); return [seen, sum(s)]; }
+    case 'big': { const urls = Array.from({ length: 20000 }, (_, i) => i); const r = await fetchInBatches(urls, 100, (u) => Promise.resolve(u + 1)); return [r.length, r[0], r[19999]]; }
+  }
+}
+/*@@END@@*/` }, cases: [
+      [["six-by-two","null"],{"res":["ok",["data1","data2","data3","data4","data5","data6"]],"finishedAt":300,"peak":2}],
+      [["six-by-four","null"],{"res":["ok",["data1","data2","data3","data4","data5","data6"]],"finishedAt":200,"peak":4}],
+      [["size-ge-length","null"],{"res":["ok",["data1","data2","data3"]],"finishedAt":100,"peak":3}],
+      [["size-1","null"],{"res":["ok",["data1","data2","data3"]],"finishedAt":300,"peak":1}],
+      [["empty","null"],{"res":["ok",[]],"finishedAt":0,"peak":0}],
+      [["single","null"],{"res":["ok",["data7"]],"finishedAt":100,"peak":1}],
+      [["exact-batches","null"],{"res":["ok",["data1","data2","data3","data4"]],"finishedAt":100,"peak":2}],
+      [["gated-start","null"],{"first":[1,2],"mid":[1,2],"after":[1,2,3,4],"res":["ok",["data1","data2","data3","data4"]]}],
+      [["failure-stops","null"],{"started":[1,2,3,4],"res":["err","Error:url 3 failed"]}],
+      [["order","null"],["ok",["r1","r2","r3","r4"]]],
+      [["fetcher-args","null"],[[1,2,3],["ok",[2,4,6]]]],
+      [["big","null"],[20000,1,20000]]
+    ] },
     solution: {
       approach: `<p>Chunk the list; run each chunk in parallel with Promise.all; run chunks one after another by chaining. Results concatenate in input order.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1804,6 +2939,106 @@ chunks.reduce((p, c) => p.then((acc) => Promise.all(c.map(job)).then((r) => acc.
 ` } },
     mcq: { q: 'What should happen when one worker finishes?', options: ['Wait for the rest of its batch', 'Immediately start the next unstarted item if under the limit', 'Restart all workers', 'Resolve the pool'], answer: 1, explain: 'A sliding window keeps exactly limit tasks busy, so no slot sits idle.' },
     hints: [`<p>Hint 1: keep <code>next</code> (index of the next item to start), <code>active</code> (in flight) and <code>done</code> (finished).</p>`, `<p>Hint 2: a <code>launch()</code> function starts items while <code>active &lt; limit</code> and items remain. Each completion stores <code>results[i]</code>, decrements active, and calls launch again.</p>`, `<p>Hint 3: wrap the worker call in <code>Promise.resolve().then(() =&gt; worker(...))</code> so sync throws become rejections. Set a <code>failed</code> flag on error so no new work starts. Empty input → resolve([]).</p>`],
+    tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const track = __tTrack, sum = __tSum, tick = __tTick, adv = __tAdv, later = __tLater; __tBegin();
+  let running = 0, peak = 0; const started = [];
+  const job = (ms, i) => { started.push(i); running++; peak = Math.max(peak, running); return later(ms, ms).then((v) => { running--; return v; }); };
+  const timed = async (items, limit) => { let fin = null; const s = track(mapLimit(items, limit, (ms, i) => job(ms, i)).then((r) => { fin = __fake.now(); return r; })); await adv(100000); return { res: sum(s), finishedAt: fin, peak }; };
+  switch (name) {
+    case 'example': return timed([100, 50, 80, 30, 60], 2);
+    case 'limit-3': return timed([100, 50, 80, 30, 60], 3);
+    case 'limit-1': return timed([10, 20, 30], 1);
+    case 'limit-big': return timed([10, 20, 30], 100);
+    case 'empty': return timed([], 3);
+    case 'failure': {
+      const s = track(mapLimit([10, 20, 30], 2, (ms, i) => (i === 1 ? Promise.reject(new Error('item 1 failed')) : job(ms, i)))); await adv(1000);
+      return { res: sum(s), started };
+    }
+    case 'sync-throw': { const s = track(mapLimit([1, 2, 3], 2, (x) => { if (x === 2) throw new Error('boom ' + x); return Promise.resolve(x); })); await tick(); return sum(s); }
+    case 'order': { const s = track(mapLimit([30, 10, 20], 3, (ms) => later(ms, 'v' + ms))); await adv(100); return sum(s); }
+    case 'args': { const seen = []; const s = track(mapLimit(['a', 'b'], 2, (item, i) => { seen.push([item, i]); return Promise.resolve(item + i); })); await tick(); return [seen, sum(s)]; }
+    case 'sliding-window': {
+      const log = []; const items = [100, 10, 10, 10]; const s = track(mapLimit(items, 2, (ms, i) => { log.push([__fake.now(), i]); return later(ms, ms); })); await adv(200);
+      return { log, res: sum(s) };
+    }
+    case 'peak-many': { const s = track(mapLimit(Array.from({ length: 1000 }, (_, i) => (i % 5) + 1), 7, (ms, i) => job(ms, i))); await adv(100000); return { peak, res: sum(s)[0], n: started.length }; }
+    case 'big-immediate': { const n = 100000; const r = await mapLimit(Array.from({ length: n }, (_, i) => i), 100, (x) => Promise.resolve(x * 2)); return [r.length, r[0], r[n - 1]]; }
+    case 'after-failure-no-new': { let launched = 0; const s = track(mapLimit([1, 2, 3, 4, 5, 6], 2, (x) => { launched++; return x === 1 ? Promise.reject(new Error('f')) : later(10, x); })); await adv(100); return [launched, sum(s)]; }
+    case 'falsy-results': { const s = track(mapLimit([0, 1, 2], 2, (x) => Promise.resolve(x === 0 ? 0 : x === 1 ? '' : null))); await tick(); return sum(s); }
+  }
+}
+/*@@END@@*/` }, cases: [
+      [["example","null"],{"res":["ok",[100,50,80,30,60]],"finishedAt":190,"peak":2}],
+      [["limit-3","null"],{"res":["ok",[100,50,80,30,60]],"finishedAt":140,"peak":3}],
+      [["limit-1","null"],{"res":["ok",[10,20,30]],"finishedAt":60,"peak":1}],
+      [["limit-big","null"],{"res":["ok",[10,20,30]],"finishedAt":30,"peak":3}],
+      [["empty","null"],{"res":["ok",[]],"finishedAt":0,"peak":0}],
+      [["failure","null"],{"res":["err","Error:item 1 failed"],"started":[0]}],
+      [["sync-throw","null"],["err","Error:boom 2"]],
+      [["order","null"],["ok",["v30","v10","v20"]]],
+      [["args","null"],[[["a",0],["b",1]],["ok",["a0","b1"]]]],
+      [["sliding-window","null"],{"log":[[0,0],[0,1],[10,2],[20,3]],"res":["ok",[100,10,10,10]]}],
+      [["peak-many","null"],{"peak":7,"res":"ok","n":1000}],
+      [["big-immediate","null"],[100000,0,199998]],
+      [["after-failure-no-new","null"],[2,["err","Error:f"]]],
+      [["falsy-results","null"],["ok",[0,"",null]]]
+    ] },
     solution: {
       approach: `<p>A self-refilling pool: launch up to <code>limit</code> tasks; every completion records its result by index and refills the pool. When <code>done === n</code>, resolve. First error → reject and stop launching.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1870,6 +3105,132 @@ new NaivePromise((r) => setTimeout(() => r('late value'), 10)).then((v) => conso
 ` } },
     mcq: { q: 'What must then() do if the promise is ALREADY fulfilled?', options: ['Call the handler synchronously right now', 'Ignore the handler', 'Schedule the handler as a microtask with the stored value', 'Throw'], answer: 2, explain: 'Handlers are always async, whether attached before or after settling — consistent ordering, no Zalgo.' },
     hints: [`<p>Hint 1: store <code>state</code>, <code>value</code> and a list of <b>reactions</b> <code>{onFulfilled, onRejected, resolve, reject}</code>, where resolve/reject belong to the promise that <code>then</code> returns.</p>`, `<p>Hint 2: when settling, schedule every reaction with <code>queueMicrotask</code>. A reaction calls the right handler and passes its return value to the child's <b>resolve</b> (or the thrown error to reject). Missing handler → forward value/error unchanged.</p>`, `<p>Hint 3: resolve(x): if x === this → TypeError; if x has a callable <code>then</code> → call it (once-guarded) to adopt the state; else fulfil. Use one shared "called" flag so only the first resolve/reject counts.</p>`],
+    tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const track = __tTrack, sum = __tSum, tick = __tTick, adv = __tAdv, em = __tEm, D = __tD; __tBegin();
+  const log = [];
+  switch (name) {
+    case 'sync-async-order': { log.push('start'); new MyPromise((r) => { log.push('executor'); r(1); }).then(() => log.push('then')); log.push('end'); await tick(); return log; }
+    case 'chain': { const s = track(MyPromise.resolve(1).then((v) => v + 1).then((v) => v * 10)); await tick(); return sum(s); }
+    case 'adopt-mypromise': { const s = track(MyPromise.resolve(1).then((v) => new MyPromise((r) => r(v + 41)))); await tick(); return sum(s); }
+    case 'adopt-native': { const s = track(MyPromise.resolve(Promise.resolve('native'))); await tick(); return sum(s); }
+    case 'adopt-thenable': { const s = track(new MyPromise((r) => r({ then(res) { res('thenable'); } }))); await tick(); return sum(s); }
+    case 'executor-throws': { const s = track(new MyPromise(() => { throw new Error('exec'); })); await tick(); return sum(s); }
+    case 'settle-once': { const a = track(new MyPromise((res, rej) => { res('first'); rej('second'); res('third'); })); const b = track(new MyPromise((res, rej) => { rej('r1'); res('x'); })); await tick(); return [sum(a), sum(b)]; }
+    case 'pass-through': { const a = track(MyPromise.resolve(5).then().then((v) => v)); const b = track(MyPromise.reject(new Error('e')).then((v) => v).catch((e) => 'caught ' + e.message)); await tick(); return [sum(a), sum(b)]; }
+    case 'catch-recover': { const s = track(MyPromise.reject(new Error('boom')).catch((e) => 'recovered ' + e.message).then((v) => v + '!')); await tick(); return sum(s); }
+    case 'handler-throws': { const s = track(MyPromise.resolve(1).then(() => { throw new Error('in handler'); }).then(() => 'skipped')); await tick(); return sum(s); }
+    case 'finally-pass': { const f = []; const a = track(MyPromise.resolve('v').finally(() => { f.push('f1'); return 'ignored'; })); const b = track(MyPromise.reject(new Error('r')).finally(() => { f.push('f2'); })); await tick(); return [sum(a), sum(b), f]; }
+    case 'finally-throws': { const s = track(MyPromise.resolve('v').finally(() => { throw new Error('fin'); })); await tick(); return sum(s); }
+    case 'finally-awaits': { const d = D(); const s = track(MyPromise.resolve('v').finally(() => d.p)); await tick(); const mid = s.st; d.res(); await tick(); return [mid, sum(s)]; }
+    case 'self-resolution': { let selfP; selfP = new MyPromise((r) => { queueMicrotask(() => r(selfP)); }); const s = track(selfP); await tick(); return sum(s); }
+    case 'resolve-static': { const p = new MyPromise((r) => r(1)); return [MyPromise.resolve(p) === p, MyPromise.resolve(3) instanceof MyPromise, MyPromise.reject(1) instanceof MyPromise]; }
+    case 'multiple-then': { const p = MyPromise.resolve('x'); p.then((v) => log.push('a' + v)); p.then((v) => log.push('b' + v)); p.then((v) => log.push('c' + v)); await tick(); return log; }
+    case 'late-then': { const p = MyPromise.resolve(1); await tick(); p.then((v) => log.push('late' + v)); const sync = log.length; await tick(); return [sync, log]; }
+    case 'pending-then': { let res; const p = new MyPromise((r) => { res = r; }); p.then((v) => log.push(v)); await tick(); const before = log.length; res('go'); await tick(); return [before, log]; }
+    case 'interleave': {
+      const trace = (P) => { const out = []; const a = P.resolve().then(() => out.push('a1')).then(() => out.push('a2')).then(() => out.push('a3')); const b = P.resolve().then(() => out.push('b1')).then(() => out.push('b2')).then(() => out.push('b3')); return { out, done: Promise.all([a, b]) }; };
+      const mine = trace(MyPromise), native = trace(Promise); await tick(100); return [mine.out, native.out, mine.out.join() === native.out.join()];
+    }
+    case 'non-function-handlers': { const s = track(MyPromise.resolve(7).then(5, 6)); const t = track(MyPromise.reject(new Error('z')).then(null, null)); await tick(); return [sum(s), sum(t)]; }
+    case 'thenable-throws-after-resolve': { const s = track(new MyPromise((r) => r({ then(res) { res('ok'); throw new Error('ignored'); } }))); await tick(); return sum(s); }
+    case 'thenable-calls-twice': { const s = track(new MyPromise((r) => r({ then(res, rej) { res('one'); res('two'); rej(new Error('three')); } }))); await tick(); return sum(s); }
+    case 'then-getter-throws': { const evil = {}; Object.defineProperty(evil, 'then', { get() { throw new Error('getter'); } }); const s = track(new MyPromise((r) => r(evil))); await tick(); return sum(s); }
+    case 'nested-adoption': { let p = MyPromise.resolve('deep'); for (let i = 0; i < 100; i++) { const prev = p; p = MyPromise.resolve().then(() => prev); } const s = track(p); await tick(2000); return sum(s); }
+    case 'long-chain': { let p = MyPromise.resolve(0); for (let i = 0; i < 10000; i++) p = p.then((v) => v + 1); const s = track(p); await tick(30000); return sum(s); }
+    case 'rejection-reasons': { const s = track(new MyPromise((_, rej) => rej(undefined))); await tick(); return [s.st, s.e === undefined]; }
+    case 'demo-chain': {
+      const out = []; const p = new MyPromise((r) => setTimeout(() => r(1), 20)).then((v) => v + 1).then((v) => new MyPromise((r) => setTimeout(() => r(v * 10), 20))).then(() => { throw new Error('boom'); }).catch((e) => 'recovered').finally(() => out.push('finally ran')).then((v) => out.push(v));
+      await adv(40); await tick(); return out;
+    }
+    case 'state-fields': { const p = MyPromise.resolve(9); await tick(); const q = MyPromise.reject(new Error('x')); q.catch(() => {}); await tick(); return [p.state, p.value, q.state]; }
+  }
+}
+/*@@END@@*/` }, cases: [
+      [["sync-async-order","null"],["start","executor","end","then"]],
+      [["chain","null"],["ok",20]],
+      [["adopt-mypromise","null"],["ok",42]],
+      [["adopt-native","null"],["ok","native"]],
+      [["adopt-thenable","null"],["ok","thenable"]],
+      [["executor-throws","null"],["err","Error:exec"]],
+      [["settle-once","null"],[["ok","first"],["err","r1"]]],
+      [["pass-through","null"],[["ok",5],["ok","caught e"]]],
+      [["catch-recover","null"],["ok","recovered boom!"]],
+      [["handler-throws","null"],["err","Error:in handler"]],
+      [["finally-pass","null"],[["ok","v"],["err","Error:r"],["f1","f2"]]],
+      [["finally-throws","null"],["err","Error:fin"]],
+      [["finally-awaits","null"],["pending",["ok","v"]]],
+      [["self-resolution","null"],["err","TypeError:Chaining cycle detected"]],
+      [["resolve-static","null"],[true,true,true]],
+      [["multiple-then","null"],["ax","bx","cx"]],
+      [["late-then","null"],[0,["late1"]]],
+      [["pending-then","null"],[0,["go"]]],
+      [["interleave","null"],[["a1","b1","a2","b2","a3","b3"],["a1","b1","a2","b2","a3","b3"],true]],
+      [["non-function-handlers","null"],[["ok",7],["err","Error:z"]]],
+      [["thenable-throws-after-resolve","null"],["ok","ok"]],
+      [["thenable-calls-twice","null"],["ok","one"]],
+      [["then-getter-throws","null"],["err","Error:getter"]],
+      [["nested-adoption","null"],["ok","deep"]],
+      [["long-chain","null"],["ok",10000]],
+      [["rejection-reasons","null"],["rejected",true]],
+      [["demo-chain","null"],["finally ran","recovered"]],
+      [["state-fields","null"],["fulfilled",9,"rejected"]]
+    ] },
     solution: {
       approach: `<p>The promise is a tiny state machine plus a reaction queue. <code>then</code> creates a child promise and registers a reaction; settling (or attaching to an already-settled promise) schedules reactions as microtasks. The resolve procedure adopts thenables, which is what makes chaining flat. <code>finally</code> is built on <code>then</code> so it waits for async cleanup and passes the original result through.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1978,6 +3339,9 @@ setTimeout(() => console.log('plain value version:', out.join(' ')), 0);
 ` } },
     mcq: { q: 'How many microtask ticks does `return Promise.resolve(4)` add compared to `return 4`?', options: ['0', '1', '2', 'It waits for a macrotask'], answer: 2, explain: 'Tick A: NewPromiseResolveThenableJob calls inner.then(resolveOuter). Tick B: that then-reaction runs and resolves the outer promise. Then the next handler is queued.' },
     hints: [`<p>Hint 1: write ticks as columns. Tick 1: log 0 (returns a promise), log 1.</p>`, `<p>Hint 2: resolving with a thenable queues a <b>job</b> (tick 2) that calls <code>p.then(resolve)</code>; that reaction runs on tick 3 and finally fulfils the outer promise.</p>`, `<p>Hint 3: the handler that logs 4 is then queued for tick 4 — the same tick as 3's successor... count carefully: 2 on tick 2, 3 on tick 3, 4 and 5 on tick 4 (4 was queued first), 6 on tick 5.</p>`],
+    tests: { io: true, cases: [
+      {"stdin":"","stdout":"0 1 2 3 4 5 6"}
+    ] },
     solution: {
       approach: `<p>Simulate ticks. Chain B advances one link per tick (1, 2, 3, 5, 6 on ticks 1–5). Chain A: tick 1 logs 0 and returns a native promise → tick 2: ResolveThenableJob → tick 3: inner reaction resolves outer → tick 4: <code>x =&gt; log(x)</code> runs. On tick 3 the adoption reaction runs <b>before</b> the handler that logs 3, so the 4-handler is queued ahead of the 5-handler; on tick 4, 4 prints before 5.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2017,6 +3381,98 @@ Promise.all([getUserBad(1), getUserBad(1), getUserBad(1)]).then(() => console.lo
 ` } },
     mcq: { q: 'What should the cache store to dedupe concurrent calls?', options: ['The resolved value', 'The promise itself, stored immediately', 'A boolean "loading" flag', 'Nothing'], answer: 1, explain: 'Storing the promise synchronously means every later caller gets the same in-flight promise.' },
     hints: [`<p>Hint 1: <code>cache.set(key, promise)</code> <b>before</b> the promise settles; return <code>cache.get(key)</code> on hits.</p>`, `<p>Hint 2: attach <code>p.catch(() =&gt; cache.delete(key))</code> — but only delete if the cache still holds <b>this</b> promise (a newer one may have replaced it).</p>`, `<p>Hint 3: build p as <code>Promise.resolve().then(() =&gt; fn(key))</code> so sync throws reject. The eviction catch also prevents an unhandled-rejection warning for that internal branch; callers still see the rejection.</p>`],
+    tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const track = __tTrack, sum = __tSum, tick = __tTick, adv = __tAdv, D = __tD; __tBegin();
+  let calls = 0; const ds = new Map();
+  const fn = (key) => { calls++; const d = D(); ds.set(key, d); return d.p; };
+  switch (name) {
+    case 'dedupe': { const get = memoizeAsync(fn); const a = get(1), b = get(1), c = get(1); await tick(); const c1 = calls; ds.get(1).res({ id: 1 }); await tick(); const r = await Promise.all([a, b, c]); return { calls: c1, same: a === b && b === c, sameObject: r[0] === r[2], id: r[0].id }; }
+    case 'cached-after-success': { const get = memoizeAsync(fn); const p1 = get('k'); await tick(); ds.get('k').res('v'); await p1; const p2 = get('k'); await tick(); return { calls, same: p1 === p2, v: await p2 }; }
+    case 'evict-on-failure': {
+      const get = memoizeAsync(fn); const p1 = get(-1); await tick(); ds.get(-1).rej(new Error('bad id')); const s1 = track(p1); await tick();
+      const p2 = get(-1); const s2 = track(p2); await tick(); const afterRetry = calls; ds.get(-1).res('good'); await tick(); return { first: sum(s1), afterRetry, second: sum(s2), differentPromise: p1 !== p2 };
+    }
+    case 'concurrent-failure-shared': { const get = memoizeAsync(fn); const a = track(get('x')), b = track(get('x')); await tick(); ds.get('x').rej(new Error('nope')); await tick(); return { calls, a: sum(a), b: sum(b) }; }
+    case 'sync-throw': { const get = memoizeAsync(() => { calls++; throw new Error('sync boom'); }); const s = track(get('k')); await tick(); const s2 = track(get('k')); await tick(); return { calls, a: sum(s), b: sum(s2) }; }
+    case 'independent-keys': { const get = memoizeAsync(fn); get(1); get(2); get('1'); await tick(); return { calls, keys: [...ds.keys()] }; }
+    case 'undefined-result-cached': { const get = memoizeAsync((k) => { calls++; return Promise.resolve(undefined); }); await get('a'); await get('a'); return calls; }
+    case 'falsy-results-cached': { const get = memoizeAsync(() => { calls++; return Promise.resolve(0); }); const r = [await get('a'), await get('a')]; return [r, calls]; }
+    case 'failure-does-not-evict-other-keys': { const get = memoizeAsync(fn); const ok = get('ok'); const bad = track(get('bad')); await tick(); ds.get('ok').res(1); ds.get('bad').rej(new Error('b')); await tick(); await get('ok'); return { calls, bad: sum(bad), ok: await ok }; }
+    case 'many-keys': { const get = memoizeAsync((k) => { calls++; return Promise.resolve(k * 2); }); const r = await Promise.all(Array.from({ length: 10000 }, (_, i) => get(i))); const r2 = await Promise.all(Array.from({ length: 10000 }, (_, i) => get(i))); return [calls, r[9999], r2[5000]]; }
+    case 'many-concurrent-same': { const get = memoizeAsync(fn); const ps = Array.from({ length: 10000 }, () => get('same')); await tick(); ds.get('same').res('one'); const r = await Promise.all(ps); return [calls, r.every((v) => v === 'one')]; }
+    case 'retry-can-fail-again': { const get = memoizeAsync(fn); const a = track(get('r')); await tick(); ds.get('r').rej(new Error('1')); await tick(); const b = track(get('r')); await tick(); ds.get('r').rej(new Error('2')); await tick(); return { calls, a: sum(a), b: sum(b) }; }
+  }
+}
+/*@@END@@*/` }, cases: [
+      [["dedupe","null"],{"calls":1,"same":true,"sameObject":true,"id":1}],
+      [["cached-after-success","null"],{"calls":1,"same":true,"v":"v"}],
+      [["evict-on-failure","null"],{"first":["err","Error:bad id"],"afterRetry":2,"second":["ok","good"],"differentPromise":true}],
+      [["concurrent-failure-shared","null"],{"calls":1,"a":["err","Error:nope"],"b":["err","Error:nope"]}],
+      [["sync-throw","null"],{"calls":2,"a":["err","Error:sync boom"],"b":["err","Error:sync boom"]}],
+      [["independent-keys","null"],{"calls":3,"keys":[1,2,"1"]}],
+      [["undefined-result-cached","null"],1],
+      [["falsy-results-cached","null"],[[0,0],1]],
+      [["failure-does-not-evict-other-keys","null"],{"calls":2,"bad":["err","Error:b"],"ok":1}],
+      [["many-keys","null"],[10000,19998,10000]],
+      [["many-concurrent-same","null"],[1,true]],
+      [["retry-can-fail-again","null"],{"calls":2,"a":["err","Error:1"],"b":["err","Error:2"]}]
+    ] },
     solution: {
       approach: `<p>Cache promises, not values. Insert synchronously for dedupe, evict on rejection (guarded by identity), and let callers handle errors on their own branch.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2061,6 +3517,102 @@ const search = (q) => new Promise((r) => setTimeout(() => r('results for ' + q),
 ` } },
     mcq: { q: 'How do you know a response is stale?', options: ['Compare its timestamp to Date.now()', 'Give each call an increasing id; on arrival, check it is still the latest id', 'Check if the string is shorter', 'Use Promise.race on all calls'], answer: 1, explain: 'A monotonically increasing request id captured in a closure tells each response whether a newer call has started since.' },
     hints: [`<p>Hint 1: keep a counter <code>lastId</code> in the closure; each call captures <code>const id = ++lastId</code>.</p>`, `<p>Hint 2: return a new promise that forwards the inner result only if <code>id === lastId</code> when it arrives.</p>`, `<p>Hint 3: stale promises never settle — fine for UI, but mention the alternative: reject them with an <code>AbortError</code> and also <b>abort</b> the old request with AbortController to save bandwidth.</p>`],
+    tests: { sig: 'string string -> string', fn: '__tA', harness: { js: `function __runChild() {
+  const fs = require('fs'), vm = require('vm'), util = require('util');
+  process.on('unhandledRejection', () => {});
+  process.on('uncaughtException', (e) => { process.stdout.write('@@ERROR uncaught ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+  const src = fs.readFileSync(process.env.SC_FILE, 'utf8');
+  const body = src.slice(0, src.indexOf('/*@@' + 'END@@*/'));
+  let now = 0, seq = 1, timers = [];
+  const logs = [];
+  const fake = {
+    turns: 0, delays: [], uncaught: [],
+    setTimeout(fn, ms, ...a) { const t = { id: seq++, at: now + Math.max(0, +ms || 0), fn, a }; timers.push(t); fake.delays.push(Math.max(0, +ms || 0)); return t.id; },
+    clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+    now: () => now,
+    pending: () => timers.length,
+    reset() { timers = []; logs.length = 0; fake.delays.length = 0; fake.turns = 0; fake.uncaught.length = 0; },
+    async flush(n = 60) { for (let i = 0; i < n; i++) await new Promise((r) => queueMicrotask(r)); },
+    async advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        await fake.flush();
+        timers.sort((a, b) => a.at - b.at || a.id - b.id);
+        const t = timers[0];
+        if (!t || t.at > end) break;
+        timers.shift(); now = t.at; fake.turns++;
+        try { t.fn(...t.a); } catch (e) { fake.uncaught.push(e && e.message); }
+      }
+      now = end; await fake.flush();
+    }
+  };
+  const fmt = (x) => (typeof x === 'string' ? x : util.inspect(x, { depth: 3, breakLength: Infinity }));
+  const ctx = vm.createContext({ console: { log: (...a) => logs.push({ t: now, s: a.map(fmt).join(' ') }), error() {}, warn() {} }, setTimeout: fake.setTimeout, clearTimeout: fake.clearTimeout, queueMicrotask, __fake: fake, __logs: logs });
+  vm.runInContext(body, ctx, { filename: 'main.js' });
+  (async () => {
+    await fake.flush(100);
+    const scenario = vm.runInContext('__scenario', ctx);
+    const r = await scenario(process.env.SC_NAME, JSON.parse(process.env.SC_ARGS));
+    process.stdout.write('@@RESULT ' + JSON.stringify(r === undefined ? null : r) + '\\n');
+    process.exit(0);
+  })().catch((e) => { process.stdout.write('@@ERROR ' + (e && e.stack || e) + '\\n'); process.exit(1); });
+}
+function __tA(name, argsJson) {
+  const r = require('child_process').spawnSync(process.execPath, ['-e', '(' + __runChild.toString() + ')()'], {
+    env: Object.assign({}, process.env, { SC_FILE: __filename, SC_NAME: name, SC_ARGS: argsJson || 'null' }), encoding: 'utf8', timeout: 20000, maxBuffer: 1 << 26
+  });
+  const m = /@@RESULT (.*)/.exec(r.stdout || '');
+  if (!m) throw new Error('scenario failed: ' + String(r.stdout).slice(-400) + String(r.stderr).slice(-300));
+  return JSON.parse(m[1]);
+}
+function __tD() { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; }
+function __tTrack(p) { const s = { st: 'pending' }; p.then((v) => { s.st = 'fulfilled'; s.v = v; }, (e) => { s.st = 'rejected'; s.e = e; }); return s; }
+function __tEm(e) { return e !== null && typeof e === 'object' && 'message' in e ? e.name + ':' + e.message : e; }
+function __tSum(s) { return s.st === 'fulfilled' ? ['ok', s.v] : s.st === 'rejected' ? ['err', __tEm(s.e)] : ['pending']; }
+function __tBegin() { __fake.reset(); }
+function __tTick(n) { return __fake.flush(n); }
+function __tAdv(ms) { return __fake.advance(ms); }
+function __tLater(ms, v, fail) { return new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error(v)) : res(v)), ms)); }
+async function __scenario(name) {
+  const track = __tTrack, sum = __tSum, tick = __tTick, adv = __tAdv, later = __tLater, D = __tD; __tBegin();
+  switch (name) {
+    case 'statement': {
+      const search = (q) => later(q.length === 1 ? 120 : 40, 'results for ' + q); const safe = latestOnly(search);
+      const log = []; const states = {};
+      const fire = (q) => { states[q] = track(safe(q)); states[q].p = 1; safe; };
+      fire('r'); await adv(10); fire('re'); await adv(10); fire('rea'); await adv(40);
+      const at60 = { r: states.r.st, re: states.re.st, rea: sum(states.rea) };
+      await adv(200); return { at60, final: { r: states.r.st, re: states.re.st, rea: sum(states.rea) } };
+    }
+    case 'single': { const safe = latestOnly((x) => Promise.resolve(x * 2)); const s = track(safe(21)); await tick(); return sum(s); }
+    case 'sequential': { const safe = latestOnly((x) => Promise.resolve(x)); const a = await safe(1); const b = await safe(2); return [a, b]; }
+    case 'latest-rejects': { const d1 = D(), d2 = D(); let n = 0; const safe = latestOnly(() => (++n === 1 ? d1.p : d2.p)); const a = track(safe()), b = track(safe()); d1.res('old'); d2.rej(new Error('new failed')); await tick(); return [a.st, sum(b)]; }
+    case 'stale-rejection-ignored': { const d1 = D(), d2 = D(); let n = 0; const safe = latestOnly(() => (++n === 1 ? d1.p : d2.p)); const a = track(safe()), b = track(safe()); d1.rej(new Error('old failed')); d2.res('new ok'); await tick(); return [a.st, sum(b)]; }
+    case 'this-args': { const o = { k: 3, f: latestOnly(function (a, b) { return Promise.resolve(this.k + a + b); }) }; const s = track(o.f(1, 2)); await tick(); return sum(s); }
+    case 'stale-fulfils-after-latest': { const d1 = D(), d2 = D(); let n = 0; const safe = latestOnly(() => (++n === 1 ? d1.p : d2.p)); const a = track(safe()), b = track(safe()); d2.res('latest'); await tick(); d1.res('stale-late'); await tick(); return [a.st, sum(b)]; }
+    case 'sync-throw': { const safe = latestOnly(() => { throw new Error('sync'); }); const s = track(safe()); await tick(); return sum(s); }
+    case 'stale-never-settles': { const d1 = D(), d2 = D(); let n = 0; const safe = latestOnly(() => (++n === 1 ? d1.p : d2.p)); const a = track(safe()); safe(); d1.res('x'); await adv(100000); return a.st; }
+    case 'many-calls': { let n = 0; const ds = []; const safe = latestOnly(() => { const d = D(); ds.push(d); return d.p; }); const ps = Array.from({ length: 1000 }, () => track(safe())); ds.forEach((d, i) => d.res(i)); await tick(); return [ps.filter((s) => s.st === 'fulfilled').length, sum(ps[999]), ps[0].st]; }
+    case 'resolve-order-reversed': { const ds = [D(), D(), D()]; let n = 0; const safe = latestOnly(() => ds[n++].p); const ps = [track(safe()), track(safe()), track(safe())]; ds[2].res('c'); ds[1].res('b'); ds[0].res('a'); await tick(); return ps.map(sum); }
+    case 'after-latest-settled-new-call': { const safe = latestOnly((x) => Promise.resolve(x)); const a = await safe('first'); const b = track(safe('second')); await tick(); return [a, sum(b)]; }
+    case 'independent-wrappers': { const f = latestOnly((x) => Promise.resolve('f' + x)), g = latestOnly((x) => Promise.resolve('g' + x)); const a = track(f(1)), b = track(g(1)); const a2 = track(f(2)); await tick(); return [a.st, sum(b), sum(a2)]; }
+  }
+}
+/*@@END@@*/` }, cases: [
+      [["statement","null"],{"at60":{"r":"pending","re":"pending","rea":["ok","results for rea"]},"final":{"r":"pending","re":"pending","rea":["ok","results for rea"]}}],
+      [["single","null"],["ok",42]],
+      [["sequential","null"],[1,2]],
+      [["latest-rejects","null"],["pending",["err","Error:new failed"]]],
+      [["stale-rejection-ignored","null"],["pending",["ok","new ok"]]],
+      [["this-args","null"],["ok",6]],
+      [["stale-fulfils-after-latest","null"],["pending",["ok","latest"]]],
+      [["sync-throw","null"],["err","Error:sync"]],
+      [["stale-never-settles","null"],"pending"],
+      [["many-calls","null"],[1,["ok",999],"pending"]],
+      [["resolve-order-reversed","null"],[["pending"],["pending"],["ok","c"]]],
+      [["after-latest-settled-new-call","null"],["first",["ok","second"]]],
+      [["independent-wrappers","null"],["pending",["ok","g1"],["ok","f2"]]]
+    ] },
     solution: {
       approach: `<p>Tag every call with an increasing id. When its response (or error) arrives, compare with the current latest id; forward it only if it still is the latest. In production, also abort the previous request (AbortController) so the network work stops, not just the rendering.</p>`,
       code: { lang: 'js', run: true, code: `

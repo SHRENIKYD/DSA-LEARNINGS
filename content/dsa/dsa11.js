@@ -1,6 +1,24 @@
 (function () {
   var topics = [], practice = [], quiz = [], interview = [];
 
+  /* ---------- visualizer code panes: Java is the main version (hl uses its line numbers); alt gives the other languages ---------- */
+  function J(lines) { return lines.join('\n'); }
+  var CU_ALT = {
+    python: { code: J(['def count_up(n):', '    if n == 0:', '        return', '    count_up(n - 1)', '    print(n)']), map: { 3: 4, 4: 5 } },
+    js: { code: J(['function countUp(n) {', '  if (n === 0) return;', '  countUp(n - 1);', '  console.log(n);', '}']), map: {} },
+    cpp: { code: J(['void countUp(int n) {', '  if (n == 0) return;', '  countUp(n - 1);', '  cout << n << endl;', '}']), map: {} }
+  };
+  var CD_ALT = {
+    python: { code: J(['def count_down(n):', '    if n == 0:', '        return', '    print(n)', '    count_down(n - 1)']), map: { 3: 4, 4: 5 } },
+    js: { code: J(['function countDown(n) {', '  if (n === 0) return;', '  console.log(n);', '  countDown(n - 1);', '}']), map: {} },
+    cpp: { code: J(['void countDown(int n) {', '  if (n == 0) return;', '  cout << n << endl;', '  countDown(n - 1);', '}']), map: {} }
+  };
+  var PAREN_ALT = {
+    python: { code: J(['def bt(sb, open_, close):', '    if len(sb) == 2 * n:', '        res.append("".join(sb)); return', '    if open_ < n:', '        sb.append("("); bt(sb, open_ + 1, close); sb.pop()', '    if close < open_:', '        sb.append(")"); bt(sb, open_, close + 1); sb.pop()']), map: { 2: 3, 3: 4, 4: 5 } },
+    js: { code: J(['function bt(sb, open, close) {', '  if (sb.length === 2 * n) { res.push(sb.join("")); return; }', '  if (open < n) {', '    sb.push("("); bt(sb, open + 1, close); sb.pop();', '  }', '  if (close < open) {', '    sb.push(")"); bt(sb, open, close + 1); sb.pop();', '  }', '}']), map: {} },
+    cpp: { code: J(['void bt(string& sb, int open, int close) {', '  if ((int)sb.size() == 2 * n) { res.push_back(sb); return; }', '  if (open < n) {', "    sb.push_back('('); bt(sb, open + 1, close); sb.pop_back();", '  }', '  if (close < open) {', "    sb.push_back(')'); bt(sb, open, close + 1); sb.pop_back();", '  }', '}']), map: {} }
+  };
+
   // ---------- small shared helpers for the visualizers ----------
   function one(k, v) { var o = {}; o[k] = v; return o; }
   function nums(input, def, maxLen, what) {
@@ -469,7 +487,7 @@
     function snap(narr, line, cls) {
       var hl = {}; hl[line] = cls || 'cur';
       frames.push({ narr: narr, parts: [
-        { type: 'code', label: 'Line running now', lang: 'java', code: code, hl: hl },
+        { type: 'code', label: 'Line running now', lang: 'java', code: code, hl: hl, alt: kind === 'up' ? CU_ALT : CD_ALT },
         { type: 'stack', label: 'Call stack (top = running)', items: stack.slice(), hl: stack.length ? one(stack.length - 1, 'cur') : {} },
         { type: 'array', label: 'printed so far', values: out.length ? out.slice() : ['(nothing)'], hl: out.length ? one(out.length - 1, 'ok') : {} }
       ] });
@@ -498,7 +516,7 @@
     snap('Same calls, different order of work. Watch WHEN the print happens relative to the recursive call.', 1);
     go(n);
     frames.push({ narr: 'Finished. Output: <b>' + out.join(' ') + '</b>. Rule of thumb: code before the recursive call = "pre-order" (top-down); code after it = "post-order" (bottom-up).', parts: [
-      { type: 'code', label: 'Code', lang: 'java', code: code },
+      { type: 'code', label: 'Code', lang: 'java', code: code, alt: kind === 'up' ? CU_ALT : CD_ALT },
       { type: 'array', label: 'final output', values: out.slice(), hl: { 0: 'sel' } }
     ] });
     return frames;
@@ -513,7 +531,7 @@
     function snap(narr, line, cls, open, close, resHl) {
       var hl = {}; hl[line] = cls || 'cur';
       frames.push({ narr: narr, parts: [
-        { type: 'code', label: 'choose → explore → un-choose', lang: 'java', code: code, hl: hl },
+        { type: 'code', label: 'choose → explore → un-choose', lang: 'java', code: code, hl: hl, alt: PAREN_ALT },
         { type: 'array', label: 'sb (the ONE shared builder)', values: sb.length ? sb.slice() : ['∅'], hl: sb.length ? one(sb.length - 1, cls === 'bad' ? 'bad' : 'ok') : {} },
         { type: 'vars', vals: { n: n, open: open, close: close } },
         { type: 'set', label: 'answers (' + res.length + ')', items: res.slice(), hl: resHl ? one(resHl, 'ok') : {} }
@@ -1028,6 +1046,8 @@ except RecursionError as e:
           <p>Why: 5! = 5 × 4!, and 4! = 4 × 3!… each doll holds a smaller doll until the solid one, fact(1) = 1.</p>`,
         brute: {
           why: `<p>The "obvious" way is a plain <code>for</code> loop multiplying 1..N. It is actually just as fast (N multiplications) and uses O(1) memory — recursion here is not about speed, it is about <b>learning the shape</b>: base case + smaller call. The recursive version costs O(N) stack frames, which is fine for N ≤ 20 but would overflow for N = 10<sup>6</sup>.</p>`,
+          code: {
+          lang: 'java',
           code: `
             long factLoop(int n) {
                 long ans = 1;
@@ -1035,7 +1055,29 @@ except RecursionError as e:
                     ans *= i;          // multiply 2, 3, ..., n
                 }
                 return ans;
-            }`
+            }`,
+          alt: [
+            { lang: 'python', code: `def factorial(n):
+    ans = 1
+    for i in range(2, n + 1):
+        ans *= i               # multiply 2, 3, ..., n
+    return ans` },
+            { lang: 'js', code: `function factorial(n) {
+  let ans = 1;
+  for (let i = 2; i <= n; i++) {
+    ans *= i;          // multiply 2, 3, ..., n
+  }
+  return ans;
+}` },
+            { lang: 'cpp', code: `long long factorial(int n) {
+    long long ans = 1;
+    for (int i = 2; i <= n; i++) {
+        ans *= i;          // multiply 2, 3, ..., n
+    }
+    return ans;
+}` }
+          ]
+        }
         },
         mcq: {
           q: `You wrote <code>long fact(int n) { return n * fact(n - 1); }</code> with <b>no</b> if-statement. What happens for <code>fact(3)</code>?`,
@@ -1121,6 +1163,8 @@ public:
           <p>Why: 2<sup>10</sup> = (2<sup>5</sup>)<sup>2</sup>. Halving n each time needs only 5 calls instead of 10 multiplications. Example 2: x = 2, n = -2 → 1 / 2<sup>2</sup> = 0.25.</p>`,
         brute: {
           why: `<p>Multiply x by itself |n| times. For n = 2<sup>31</sup> − 1 that is about 2 billion multiplications → too slow (TLE). A plain recursion <code>pow(x, n) = x × pow(x, n − 1)</code> is even worse: 2 billion <b>stack frames</b> → StackOverflowError. The wasted work: we compute x<sup>5</sup> and then <i>again</i> rebuild x<sup>5</sup> for the second half instead of reusing it.</p>`,
+          code: {
+          lang: 'java',
           code: `
             double powBrute(double x, int n) {
                 long m = Math.abs((long) n);   // long so that -2^31 does not overflow
@@ -1129,7 +1173,32 @@ public:
                     ans *= x;                  // one multiplication per unit of n
                 }
                 return n < 0 ? 1.0 / ans : ans;
-            }`
+            }`,
+          alt: [
+            { lang: 'python', code: `def my_pow(x, n):
+    m = abs(n)
+    ans = 1.0
+    for _ in range(m):
+        ans *= x                   # one multiplication per unit of n
+    return 1.0 / ans if n < 0 else ans` },
+            { lang: 'js', code: `function myPow(x, n) {
+  const m = Math.abs(n);
+  let ans = 1.0;
+  for (let i = 0; i < m; i++) {
+    ans *= x;                  // one multiplication per unit of n
+  }
+  return n < 0 ? 1.0 / ans : ans;
+}` },
+            { lang: 'cpp', code: `double myPow(double x, int n) {
+    long long m = llabs((long long)n);   // long long so that -2^31 does not overflow
+    double ans = 1.0;
+    for (long long i = 0; i < m; i++) {
+        ans *= x;                        // one multiplication per unit of n
+    }
+    return n < 0 ? 1.0 / ans : ans;
+}` }
+          ]
+        }
         },
         mcq: {
           q: `To compute x<sup>13</sup> recursively with as few calls as possible, what should <code>pow(x, 13)</code> do?`,
@@ -1540,11 +1609,28 @@ print(fib_memo(90), fib_memo.cache_info().misses, "distinct computations")` }
           <p>Why: F(6) = F(5) + F(4) = 5 + 3 = 8. The naive tree for n = 6 makes 25 calls; F(2) alone is recomputed 5 times.</p>`,
         brute: {
           why: `<p>Direct translation of the definition: two calls per frame, each shrinking by only 1 or 2 → about 1.618<sup>n</sup> calls. n = 50 is already ~4·10<sup>10</sup> calls (tens of seconds to minutes); n = 90 would take longer than a human lifetime. The wasted work: identical subtrees like F(n − 2) are rebuilt from scratch on both sides of the tree.</p>`,
+          code: {
+          lang: 'java',
           code: `
             long fibNaive(int n) {
                 if (n <= 1) return n;                       // F(0) = 0, F(1) = 1
                 return fibNaive(n - 1) + fibNaive(n - 2);   // two calls -> exponential
-            }`
+            }`,
+          alt: [
+            { lang: 'python', code: `def fib(n):
+    if n <= 1:
+        return n                              # F(0) = 0, F(1) = 1
+    return fib(n - 1) + fib(n - 2)            # two calls -> exponential` },
+            { lang: 'js', code: `function fib(n) {
+  if (n <= 1) return n;                        // F(0) = 0, F(1) = 1
+  return fib(n - 1) + fib(n - 2);              // two calls -> exponential
+}` },
+            { lang: 'cpp', code: `long long fib(int n) {
+    if (n <= 1) return n;                       // F(0) = 0, F(1) = 1
+    return fib(n - 1) + fib(n - 2);             // two calls -> exponential
+}` }
+          ]
+        }
         },
         mcq: {
           q: `In the recursion tree of naive fib(n), how many <b>distinct</b> arguments ever appear?`,
@@ -1836,6 +1922,8 @@ console.log(disks.join(' '));            // 1 2 1 3 1 2 1` },
           <p>Why: disk 1 must get out of the way (to B) so disk 2 can go to C, then disk 1 sits on top of it. 2<sup>2</sup> − 1 = 3.</p>`,
         brute: {
           why: `<p>Without the recursive insight you might search the <b>state space</b>: every disk can be on 3 rods → 3<sup>N</sup> possible arrangements, and a BFS finds the shortest path between them. That works but explores 3<sup>N</sup> states (43 million for N = 16) and needs that much memory, while the recursion goes <b>straight</b> to the optimal 2<sup>N</sup> − 1 moves with only N frames of memory.</p>`,
+          code: {
+          lang: 'java',
           code: `
             int bfsMinMoves(int n) {
                 int total = 1;
@@ -1872,7 +1960,111 @@ console.log(disks.join(' '));            // 1 2 1 3 1 2 1` },
                     }
                 }
                 return -1;
-            }`
+            }`,
+          alt: [
+            { lang: 'python', code: `from collections import deque
+
+def bfs_min_moves(n):
+    total = 3 ** n                                  # 3^n states
+    pw = [3 ** i for i in range(n)]
+    dist = [-1] * total
+    # state digit d (base 3) = rod of disk d; disk 0 is the smallest. Start: all on rod 0.
+    goal = total - 1                                # all digits = 2 -> all on rod C
+    q = deque([0])
+    dist[0] = 0
+    while q:
+        s = q.popleft()
+        if s == goal:
+            return dist[s]
+        top = [-1, -1, -1]                          # smallest disk on each rod
+        for d in range(n):
+            rod = (s // pw[d]) % 3
+            if top[rod] == -1:
+                top[rod] = d
+        for p in range(3):
+            if top[p] == -1:
+                continue
+            for r in range(3):
+                if r == p:
+                    continue
+                if top[r] != -1 and top[r] < top[p]:
+                    continue                        # cannot put bigger on smaller
+                ns = s + (r - p) * pw[top[p]]
+                if dist[ns] == -1:
+                    dist[ns] = dist[s] + 1
+                    q.append(ns)
+    return -1` },
+            { lang: 'js', code: `function bfsMinMoves(n) {
+  let total = 1;
+  for (let i = 0; i < n; i++) total *= 3;           // 3^n states
+  const pw = new Array(n);
+  pw[0] = 1;
+  for (let i = 1; i < n; i++) pw[i] = pw[i - 1] * 3;
+  const dist = new Array(total).fill(-1);
+  // state digit d (base 3) = rod of disk d; disk 0 is the smallest. Start: all on rod 0.
+  const goal = total - 1;                           // all digits = 2 -> all on rod C
+  const q = [0];
+  dist[0] = 0;
+  for (let head = 0; head < q.length; head++) {
+    const s = q[head];
+    if (s === goal) return dist[s];
+    const top = [-1, -1, -1];                       // smallest disk on each rod
+    for (let d = 0; d < n; d++) {
+      const rod = Math.floor(s / pw[d]) % 3;
+      if (top[rod] === -1) top[rod] = d;
+    }
+    for (let p = 0; p < 3; p++) {
+      if (top[p] === -1) continue;
+      for (let r = 0; r < 3; r++) {
+        if (r === p) continue;
+        if (top[r] !== -1 && top[r] < top[p]) continue; // cannot put bigger on smaller
+        const ns = s + (r - p) * pw[top[p]];
+        if (dist[ns] === -1) {
+          dist[ns] = dist[s] + 1;
+          q.push(ns);
+        }
+      }
+    }
+  }
+  return -1;
+}` },
+            { lang: 'cpp', code: `int bfsMinMoves(int n) {
+    int total = 1;
+    for (int i = 0; i < n; i++) total *= 3;         // 3^n states
+    vector<int> pw(n);
+    pw[0] = 1;
+    for (int i = 1; i < n; i++) pw[i] = pw[i - 1] * 3;
+    vector<int> dist(total, -1);
+    // state digit d (base 3) = rod of disk d; disk 0 is the smallest. Start: all on rod 0.
+    int goal = total - 1;                           // all digits = 2 -> all on rod C
+    queue<int> q;
+    dist[0] = 0;
+    q.push(0);
+    while (!q.empty()) {
+        int s = q.front(); q.pop();
+        if (s == goal) return dist[s];
+        int top[3] = {-1, -1, -1};                  // smallest disk on each rod
+        for (int d = 0; d < n; d++) {
+            int rod = (s / pw[d]) % 3;
+            if (top[rod] == -1) top[rod] = d;
+        }
+        for (int p = 0; p < 3; p++) {
+            if (top[p] == -1) continue;
+            for (int r = 0; r < 3; r++) {
+                if (r == p) continue;
+                if (top[r] != -1 && top[r] < top[p]) continue; // cannot put bigger on smaller
+                int ns = s + (r - p) * pw[top[p]];
+                if (dist[ns] == -1) {
+                    dist[ns] = dist[s] + 1;
+                    q.push(ns);
+                }
+            }
+        }
+    }
+    return -1;
+}` }
+          ]
+        }
         },
         mcq: {
           q: `You must move 5 disks A → C. Just before the <b>biggest</b> disk (disk 5) moves, where are disks 1–4?`,
@@ -2231,6 +2423,8 @@ int main() {
           <p>Why: every string has three "(" and three ")", and reading left to right the number of ")" never exceeds the number of "(" — e.g. ${H.c('r', '"())(()"')} fails at position 3.</p>`,
         brute: {
           why: `<p>Generate all 2<sup>2n</sup> strings of "(" and ")" and keep the balanced ones. For n = 8 that is 65,536 strings × 16 characters to validate — fine here, but most of the work is wasted on strings that went bad at the 1st or 2nd character (like ")…"). Pruning stops those branches the moment they become hopeless.</p>`,
+          code: {
+          lang: 'java',
           code: `
             List<String> brute(int n) {
                 List<String> res = new ArrayList<>();
@@ -2247,7 +2441,57 @@ int main() {
                     if (ok && bal == 0) res.add(sb.toString());
                 }
                 return res;
-            }`
+            }`,
+          alt: [
+            { lang: 'python', code: `def generate_parenthesis(n):
+    res = []
+    for mask in range(1 << (2 * n)):
+        sb = []
+        bal = 0
+        ok = True
+        for i in range(2 * n):
+            is_open = ((mask >> i) & 1) == 1
+            sb.append('(' if is_open else ')')
+            bal += 1 if is_open else -1
+            if bal < 0:
+                ok = False             # a ')' with no partner
+        if ok and bal == 0:
+            res.append("".join(sb))
+    return res` },
+            { lang: 'js', code: `function generateParenthesis(n) {
+  const res = [];
+  for (let mask = 0; mask < (1 << (2 * n)); mask++) {
+    let sb = "";
+    let bal = 0;
+    let ok = true;
+    for (let i = 0; i < 2 * n; i++) {
+      const open = ((mask >> i) & 1) === 1;
+      sb += open ? '(' : ')';
+      bal += open ? 1 : -1;
+      if (bal < 0) ok = false;      // a ')' with no partner
+    }
+    if (ok && bal === 0) res.push(sb);
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<string> generateParenthesis(int n) {
+    vector<string> res;
+    for (int mask = 0; mask < (1 << (2 * n)); mask++) {
+        string sb;
+        int bal = 0;
+        bool ok = true;
+        for (int i = 0; i < 2 * n; i++) {
+            bool open = ((mask >> i) & 1) == 1;
+            sb += open ? '(' : ')';
+            bal += open ? 1 : -1;
+            if (bal < 0) ok = false;      // a ')' with no partner
+        }
+        if (ok && bal == 0) res.push_back(sb);
+    }
+    return res;
+}` }
+          ]
+        }
         },
         mcq: {
           q: `Partial string "(()" with n = 3. Which next characters keep it fixable?`,
@@ -2728,6 +2972,8 @@ int main() {
           <p>Why: 3 elements, each either in or out → 2<sup>3</sup> = 8. The empty set ${H.c('p', '[]')} counts too ("take nothing").</p>`,
         brute: {
           why: `<p>A beginner's idea is nested loops: one loop for size-1 subsets, two nested loops for size-2, three for size-3… but the number of loops depends on n, so you cannot write it for any n. The bitmask loop below is the iterative equivalent of pick/not-pick — it is <b>not slower</b>, because any method must output 2<sup>n</sup> subsets. The point of the recursive version is that the same pattern extends to pruning, duplicates and harder search problems.</p>`,
+          code: {
+          lang: 'java',
           code: `
             List<List<Integer>> subsetsBits(int[] nums) {
                 List<List<Integer>> res = new ArrayList<>();
@@ -2740,7 +2986,44 @@ int main() {
                     res.add(sub);
                 }
                 return res;
-            }`
+            }`,
+          alt: [
+            { lang: 'python', code: `def subsets(nums):
+    res = []
+    n = len(nums)
+    for mask in range(1 << n):               # 2^n masks
+        sub = []
+        for j in range(n):
+            if (mask >> j) & 1 == 1:
+                sub.append(nums[j])
+        res.append(sub)
+    return res` },
+            { lang: 'js', code: `function subsets(nums) {
+  const res = [];
+  const n = nums.length;
+  for (let mask = 0; mask < (1 << n); mask++) {   // 2^n masks
+    const sub = [];
+    for (let j = 0; j < n; j++) {
+      if (((mask >> j) & 1) === 1) sub.push(nums[j]);
+    }
+    res.push(sub);
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<vector<int>> subsets(vector<int>& nums) {
+    vector<vector<int>> res;
+    int n = nums.size();
+    for (int mask = 0; mask < (1 << n); mask++) {   // 2^n masks
+        vector<int> sub;
+        for (int j = 0; j < n; j++) {
+            if (((mask >> j) & 1) == 1) sub.push_back(nums[j]);
+        }
+        res.push_back(sub);
+    }
+    return res;
+}` }
+          ]
+        }
         },
         mcq: {
           q: `In the pick/not-pick recursion, the code does <code>res.add(cur)</code> instead of <code>res.add(new ArrayList&lt;&gt;(cur))</code>. What does the result look like for [1,2]?`,
@@ -3154,6 +3437,8 @@ int main() {
           <p>Why: 3! = 6 orderings, but swapping the two 1s gives the same list, so 6 / 2! = ${H.c('p', '<b>3</b>')} unique ones.</p>`,
         brute: {
           why: `<p>Generate all n! permutations and throw them into a <code>Set&lt;List&lt;Integer&gt;&gt;</code>. Correct, but for [1,1,1,1,1,1,1,2] it builds 8! = 40,320 lists to keep only 8 — and hashing each list costs O(n). The wasted work: whole subtrees that are mirror images of subtrees already explored.</p>`,
+          code: {
+          lang: 'java',
           code: `
             List<List<Integer>> brute(int[] nums) {
                 Set<List<Integer>> seen = new LinkedHashSet<>();
@@ -3172,7 +3457,58 @@ int main() {
                     gen(a, i + 1, seen);
                     t = a[i]; a[i] = a[j]; a[j] = t;
                 }
-            }`
+            }`,
+          alt: [
+            { lang: 'python', code: `def permute_unique(nums):
+    seen = {}                    # a dict keeps insertion order, like LinkedHashSet
+    gen(nums, 0, seen)
+    return [list(p) for p in seen]
+
+
+def gen(a, i, seen):
+    if i == len(a):
+        seen[tuple(a)] = True    # duplicates silently dropped
+        return
+    for j in range(i, len(a)):
+        a[i], a[j] = a[j], a[i]
+        gen(a, i + 1, seen)
+        a[i], a[j] = a[j], a[i]` },
+            { lang: 'js', code: `function permuteUnique(nums) {
+  const seen = new Map();                  // keyed by the permutation's text; keeps insertion order
+  gen(nums, 0, seen);
+  return [...seen.values()];
+}
+
+function gen(a, i, seen) {
+  if (i === a.length) {
+    seen.set(a.join(","), a.slice());      // duplicates silently dropped
+    return;
+  }
+  for (let j = i; j < a.length; j++) {
+    [a[i], a[j]] = [a[j], a[i]];
+    gen(a, i + 1, seen);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+}` },
+            { lang: 'cpp', code: `void gen(vector<int>& a, int i, set<vector<int>>& seen) {
+    if (i == (int)a.size()) {
+        seen.insert(a);                      // duplicates silently dropped
+        return;
+    }
+    for (int j = i; j < (int)a.size(); j++) {
+        swap(a[i], a[j]);
+        gen(a, i + 1, seen);
+        swap(a[i], a[j]);
+    }
+}
+
+vector<vector<int>> permuteUnique(vector<int>& nums) {
+    set<vector<int>> seen;
+    gen(nums, 0, seen);
+    return vector<vector<int>>(seen.begin(), seen.end());
+}` }
+          ]
+        }
         },
         mcq: {
           q: `Sorted nums = [1, 1, 2]. At the first level, the loop reaches i = 1 (the second 1) while used = [F, F, F]. What should happen?`,
@@ -3664,6 +4000,8 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
           <p>Why: 2 + 2 + 3 = 7 (2 used twice — allowed) and 7 = 7. [2,3,2] is the same bag as [2,2,3], so it is not listed again.</p>`,
         brute: {
           why: `<p>Brute force: at every step try <b>every</b> candidate (start from 0), collect sequences that hit the target, then sort each and de-duplicate with a Set. For target 7 it builds [2,2,3], [2,3,2], [3,2,2] separately — the number of orderings grows factorially with the answer length, so most work is spent producing duplicates that are thrown away.</p>`,
+          code: {
+          lang: 'java',
           code: `
             List<List<Integer>> brute(int[] c, int target) {
                 Set<List<Integer>> set = new HashSet<>();
@@ -3683,7 +4021,66 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
                     go(c, rem - x, cur, set);
                     cur.remove(cur.size() - 1);
                 }
-            }`
+            }`,
+          alt: [
+            { lang: 'python', code: `def combination_sum(c, target):
+    found = set()
+    go(c, target, [], found)
+    return [list(t) for t in found]
+
+
+def go(c, rem, cur, found):
+    if rem < 0:
+        return
+    if rem == 0:
+        found.add(tuple(sorted(cur)))     # canonical form for de-duplication
+        return
+    for x in c:                           # every candidate, every time
+        cur.append(x)
+        go(c, rem - x, cur, found)
+        cur.pop()` },
+            { lang: 'js', code: `function combinationSum(c, target) {
+  const found = new Map();
+  go(c, target, [], found);
+  return [...found.values()];
+}
+
+function go(c, rem, cur, found) {
+  if (rem < 0) return;
+  if (rem === 0) {
+    const s = [...cur].sort((a, b) => a - b);   // canonical form for de-duplication
+    found.set(s.join(","), s);
+    return;
+  }
+  for (const x of c) {                          // every candidate, every time
+    cur.push(x);
+    go(c, rem - x, cur, found);
+    cur.pop();
+  }
+}` },
+            { lang: 'cpp', code: `void go(const vector<int>& c, int rem, vector<int>& cur, set<vector<int>>& found) {
+    if (rem < 0) return;
+    if (rem == 0) {
+        vector<int> s = cur;
+        sort(s.begin(), s.end());          // canonical form for de-duplication
+        found.insert(s);
+        return;
+    }
+    for (int x : c) {                      // every candidate, every time
+        cur.push_back(x);
+        go(c, rem - x, cur, found);
+        cur.pop_back();
+    }
+}
+
+vector<vector<int>> combinationSum(const vector<int>& c, int target) {
+    set<vector<int>> found;
+    vector<int> cur;
+    go(c, target, cur, found);
+    return vector<vector<int>>(found.begin(), found.end());
+}` }
+          ]
+        }
         },
         mcq: {
           q: `In the recursive call after choosing c[i], which start index gives "unlimited reuse but no duplicate orderings"?`,
@@ -4142,6 +4539,8 @@ int main() {
           <p>Why: in each board every row, column and diagonal has at most one Q. n = 1 → [["Q"]]; n = 2 or 3 → no solutions (empty list).</p>`,
         brute: {
           why: `<p>Try every way to place n queens on n² cells: C(n², n) placements (4.4 billion for n = 8), checking each in O(n²). Even "one per row" without pruning tries n<sup>n</sup> = 16.7 million boards for n = 8 and validates each fully, although most die after 2 rows. The waste: continuing to fill rows below a queen that is already attacked.</p>`,
+          code: {
+          lang: 'java',
           code: `
             List<List<String>> brute(int n) {
                 List<List<String>> res = new ArrayList<>();
@@ -4166,7 +4565,79 @@ int main() {
                     res.add(board);
                 }
                 return res;
-            }`
+            }`,
+          alt: [
+            { lang: 'python', code: `def solve_n_queens(n):
+    res = []
+    pos = [0] * n
+    total = n ** n                               # n^n assignments
+    for code in range(total):
+        x = code
+        for r in range(n):
+            pos[r] = x % n
+            x //= n
+        ok = True
+        for i in range(n):
+            for j in range(i + 1, n):
+                if pos[i] == pos[j] or abs(pos[i] - pos[j]) == j - i:
+                    ok = False
+        if not ok:
+            continue
+        board = []
+        for r in range(n):
+            row = ['.'] * n
+            row[pos[r]] = 'Q'
+            board.append("".join(row))
+        res.append(board)
+    return res` },
+            { lang: 'js', code: `function solveNQueens(n) {
+  const res = [];
+  const pos = new Array(n).fill(0);
+  let total = 1;
+  for (let i = 0; i < n; i++) total *= n;        // n^n assignments
+  for (let code = 0; code < total; code++) {
+    let x = code;
+    for (let r = 0; r < n; r++) { pos[r] = x % n; x = Math.floor(x / n); }
+    let ok = true;
+    for (let i = 0; i < n && ok; i++)
+      for (let j = i + 1; j < n && ok; j++)
+        if (pos[i] === pos[j] || Math.abs(pos[i] - pos[j]) === j - i) ok = false;
+    if (!ok) continue;
+    const board = [];
+    for (let r = 0; r < n; r++) {
+      const row = new Array(n).fill('.');
+      row[pos[r]] = 'Q';
+      board.push(row.join(""));
+    }
+    res.push(board);
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<vector<string>> solveNQueens(int n) {
+    vector<vector<string>> res;
+    vector<int> pos(n);
+    int total = 1;
+    for (int i = 0; i < n; i++) total *= n;      // n^n assignments
+    for (int code = 0; code < total; code++) {
+        int x = code;
+        for (int r = 0; r < n; r++) { pos[r] = x % n; x /= n; }
+        bool ok = true;
+        for (int i = 0; i < n && ok; i++)
+            for (int j = i + 1; j < n && ok; j++)
+                if (pos[i] == pos[j] || abs(pos[i] - pos[j]) == j - i) ok = false;
+        if (!ok) continue;
+        vector<string> board;
+        for (int r = 0; r < n; r++) {
+            string row(n, '.');
+            row[pos[r]] = 'Q';
+            board.push_back(row);
+        }
+        res.push_back(board);
+    }
+    return res;
+}` }
+          ]
+        }
         },
         mcq: {
           q: `Queens at (2, 5) and (4, 3) on an 8×8 board. Do they attack?`,
@@ -4650,6 +5121,8 @@ int main() {
           <p>Why (0, 2) = 4: row 0 already has {3,5,7}, column 2 has {8}, box 0 has {3,5,6,8,9}; candidates are {1,2,4}. The solver tries 1 and 2 first, and only 4 survives the deeper checks.</p>`,
         brute: {
           why: `<p>Fill every empty cell with every digit (9<sup>k</sup> combinations for k empty cells — 9<sup>51</sup> for the classic example) and check the full board at the end. Hopeless. Even "check after each placement but rescan the row, column and box" works but costs 27 reads per try; the real waste is not stopping the moment a digit clashes.</p>`,
+          code: {
+          lang: 'java',
           code: `
             boolean bruteSolve(char[][] b) {
                 for (int r = 0; r < 9; r++)
@@ -4672,7 +5145,78 @@ int main() {
                     if (b[3 * (r / 3) + i / 3][3 * (c / 3) + i % 3] == d) return false;
                 }
                 return true;
-            }`
+            }`,
+          alt: [
+            { lang: 'python', code: `def brute_solve(b):
+    for r in range(9):
+        for c in range(9):
+            if b[r][c] == '.':
+                for d in "123456789":
+                    if ok(b, r, c, d):             # rescans 27 cells each time
+                        b[r][c] = d
+                        if brute_solve(b):
+                            return True
+                        b[r][c] = '.'
+                return False
+    return True
+
+
+def ok(b, r, c, d):
+    for i in range(9):
+        if b[r][i] == d or b[i][c] == d:
+            return False
+        if b[3 * (r // 3) + i // 3][3 * (c // 3) + i % 3] == d:
+            return False
+    return True` },
+            { lang: 'js', code: `function bruteSolve(b) {
+  for (let r = 0; r < 9; r++)
+    for (let c = 0; c < 9; c++)
+      if (b[r][c] === '.') {
+        for (let d = 1; d <= 9; d++) {
+          const ch = String(d);
+          if (ok(b, r, c, ch)) {            // rescans 27 cells each time
+            b[r][c] = ch;
+            if (bruteSolve(b)) return true;
+            b[r][c] = '.';
+          }
+        }
+        return false;
+      }
+  return true;
+}
+
+function ok(b, r, c, d) {
+  for (let i = 0; i < 9; i++) {
+    if (b[r][i] === d || b[i][c] === d) return false;
+    if (b[3 * Math.floor(r / 3) + Math.floor(i / 3)][3 * Math.floor(c / 3) + (i % 3)] === d) return false;
+  }
+  return true;
+}` },
+            { lang: 'cpp', code: `bool ok(vector<vector<char>>& b, int r, int c, char d) {
+    for (int i = 0; i < 9; i++) {
+        if (b[r][i] == d || b[i][c] == d) return false;
+        if (b[3 * (r / 3) + i / 3][3 * (c / 3) + i % 3] == d) return false;
+    }
+    return true;
+}
+
+bool bruteSolve(vector<vector<char>>& b) {
+    for (int r = 0; r < 9; r++)
+        for (int c = 0; c < 9; c++)
+            if (b[r][c] == '.') {
+                for (char d = '1'; d <= '9'; d++) {
+                    if (ok(b, r, c, d)) {            // rescans 27 cells each time
+                        b[r][c] = d;
+                        if (bruteSolve(b)) return true;
+                        b[r][c] = '.';
+                    }
+                }
+                return false;
+            }
+    return true;
+}` }
+          ]
+        }
         },
         mcq: {
           q: `Your solver's recursion returns <code>void</code> and always un-chooses after the recursive call. What do you see at the end?`,
@@ -4885,11 +5429,28 @@ private:
       <p>Why: swap the ends (h ↔ o), then the problem is the same on the middle "ell" → swap e ↔ l → middle "l" alone is the base case.</p>`,
     brute: {
       why: `<p>Build a brand-new string by recursing on <code>substring(1)</code> and appending the first char at the end. Each <code>substring</code> copies the rest of the string, so the total work is n + (n−1) + … = O(n²) and O(n²) temporary memory — for n = 10<sup>5</sup> that is 5·10<sup>9</sup> character copies. It is also not in place.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         String reverseBrute(String s) {
             if (s.length() <= 1) return s;                 // base case
             return reverseBrute(s.substring(1)) + s.charAt(0); // copies O(n) every call
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def reverse_brute(s):
+    if len(s) <= 1:
+        return s                                   # base case
+    return reverse_brute(s[1:]) + s[0]             # copies O(n) every call` },
+            { lang: 'js', code: `function reverseBrute(s) {
+  if (s.length <= 1) return s;                     // base case
+  return reverseBrute(s.slice(1)) + s[0];          // copies O(n) every call
+}` },
+            { lang: 'cpp', code: `string reverseBrute(string s) {
+    if (s.size() <= 1) return s;                   // base case
+    return reverseBrute(s.substr(1)) + s[0];       // copies O(n) every call
+}` }
+          ]
+        }
     },
     mcq: {
       q: `Recursive reverse with (l, r) indices on n = 10<sup>5</sup> characters: how deep does the call stack get?`,
@@ -5006,7 +5567,9 @@ private:
       <p>Why: of the 8 binary strings, ${H.c('r', '011, 110, 111')} contain "11", so 5 remain (= F(5)).</p>`,
     brute: {
       why: `<p>Generate all 2<sup>n</sup> strings and filter. For n = 20 that is 1,048,576 strings checked in O(n) each, to keep only 17,711 — 98% of the work thrown away. Pruning "never place a 1 right after a 1" means we only ever build valid prefixes.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         List<String> brute(int n) {
             List<String> res = new ArrayList<>();
             for (int m = 0; m < (1 << n); m++) {
@@ -5016,7 +5579,35 @@ private:
                 res.add(sb.toString());
             }
             return res;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def generate(n):
+    res = []
+    for m in range(1 << n):
+        if m & (m >> 1) != 0:
+            continue                               # two adjacent set bits = "11"
+        res.append(format(m, 'b').zfill(n))        # left-pad to length n
+    return res` },
+            { lang: 'js', code: `function generate(n) {
+  const res = [];
+  for (let m = 0; m < (1 << n); m++) {
+    if ((m & (m >> 1)) !== 0) continue;            // two adjacent set bits = "11"
+    res.push(m.toString(2).padStart(n, '0'));      // left-pad to length n
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<string> generate(int n) {
+    vector<string> res;
+    for (int m = 0; m < (1 << n); m++) {
+        if ((m & (m >> 1)) != 0) continue;         // two adjacent set bits = "11"
+        string s(n, '0');                          // left-padded to length n
+        for (int i = 0; i < n; i++) if ((m >> i) & 1) s[n - 1 - i] = '1';
+        res.push_back(s);
+    }
+    return res;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `Partial string "10". Which characters may come next?`,
@@ -5135,7 +5726,9 @@ private:
       <p>Output: 0 + 1 + 3 + 2 = ${H.c('p', '<b>6</b>')}.</p>`,
     brute: {
       why: `<p>Build every subset as a list, then XOR its elements: 2<sup>n</sup> lists × O(n) each plus the memory for all lists. Correct (n ≤ 12 → 4,096 subsets) but it stores data you never need — you only need a running XOR value per branch.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int brute(int[] nums) {
             int n = nums.length, total = 0;
             for (int mask = 0; mask < (1 << n); mask++) {
@@ -5144,7 +5737,38 @@ private:
                 total += x;
             }
             return total;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def subset_xor_sum(nums):
+    n, total = len(nums), 0
+    for mask in range(1 << n):
+        x = 0
+        for j in range(n):
+            if (mask >> j) & 1 == 1:
+                x ^= nums[j]
+        total += x
+    return total` },
+            { lang: 'js', code: `function subsetXORSum(nums) {
+  const n = nums.length;
+  let total = 0;
+  for (let mask = 0; mask < (1 << n); mask++) {
+    let x = 0;
+    for (let j = 0; j < n; j++) if (((mask >> j) & 1) === 1) x ^= nums[j];
+    total += x;
+  }
+  return total;
+}` },
+            { lang: 'cpp', code: `int subsetXORSum(vector<int>& nums) {
+    int n = nums.size(), total = 0;
+    for (int mask = 0; mask < (1 << n); mask++) {
+        int x = 0;
+        for (int j = 0; j < n; j++) if (((mask >> j) & 1) == 1) x ^= nums[j];
+        total += x;
+    }
+    return total;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `In pick/not-pick, what should the recursion carry so that no list is ever built?`,
@@ -5235,7 +5859,9 @@ private:
       <p>Why: exactly one LED lit = a single power of two, either in the hour (1, 2, 4, 8) or in the minutes (1, 2, 4, 8, 16, 32). Hour 8 + any extra LEDs could exceed 11 — those combos must be rejected for larger inputs.</p>`,
     brute: {
       why: `<p>Here the "brute force" is actually the smart move: there are only 12 × 60 = 720 times. Count the set bits of h and m and keep those with bitCount(h) + bitCount(m) == turnedOn. The backtracking version (choose which of the 10 LEDs are on) explores C(10, k) ≤ 252 LED sets — similar work, but it shows the combinations template.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         List<String> enumerate(int turnedOn) {
             List<String> res = new ArrayList<>();
             for (int h = 0; h < 12; h++)
@@ -5243,7 +5869,34 @@ private:
                     if (Integer.bitCount(h) + Integer.bitCount(m) == turnedOn)
                         res.add(h + ":" + (m < 10 ? "0" : "") + m);
             return res;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def read_binary_watch(turned_on):
+    res = []
+    for h in range(12):
+        for m in range(60):
+            if bin(h).count("1") + bin(m).count("1") == turned_on:
+                res.append(f"{h}:{m:02d}")
+    return res` },
+            { lang: 'js', code: `function readBinaryWatch(turnedOn) {
+  const bits = (x) => x.toString(2).split("1").length - 1;
+  const res = [];
+  for (let h = 0; h < 12; h++)
+    for (let m = 0; m < 60; m++)
+      if (bits(h) + bits(m) === turnedOn)
+        res.push(h + ":" + (m < 10 ? "0" : "") + m);
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<string> readBinaryWatch(int turnedOn) {
+    vector<string> res;
+    for (int h = 0; h < 12; h++)
+        for (int m = 0; m < 60; m++)
+            if (__builtin_popcount(h) + __builtin_popcount(m) == turnedOn)
+                res.push_back(to_string(h) + ":" + (m < 10 ? "0" : "") + to_string(m));
+    return res;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `Which LED set must the backtracking solution reject?`,
@@ -5370,7 +6023,9 @@ private:
       <p>n = 4, k = 5 → ${H.c('p', '<b>1</b>')}. Why: each row is the previous row followed by its flipped copy (row 4 = 0110 + 1001). Position 5 is the first symbol of the flipped half, i.e. row 3's first symbol (0) flipped → 1.</p>`,
     brute: {
       why: `<p>Build the rows as strings. Row n has 2<sup>n−1</sup> characters — for n = 30 that is 536 million chars (over 1 GB in Java). The waste: we build an entire row to read one character.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int brute(int n, int k) {
             StringBuilder row = new StringBuilder("0");
             for (int i = 2; i <= n; i++) {
@@ -5379,7 +6034,33 @@ private:
                 row = next;
             }
             return row.charAt(k - 1) - '0';
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def kth_grammar(n, k):
+    row = "0"
+    for i in range(2, n + 1):
+        row = "".join("01" if ch == '0' else "10" for ch in row)
+    return int(row[k - 1])` },
+            { lang: 'js', code: `function kthGrammar(n, k) {
+  let row = "0";
+  for (let i = 2; i <= n; i++) {
+    let next = "";
+    for (let j = 0; j < row.length; j++) next += row[j] === '0' ? "01" : "10";
+    row = next;
+  }
+  return row.charCodeAt(k - 1) - 48;
+}` },
+            { lang: 'cpp', code: `int kthGrammar(int n, int k) {
+    string row = "0";
+    for (int i = 2; i <= n; i++) {
+        string next;
+        for (size_t j = 0; j < row.size(); j++) next += row[j] == '0' ? "01" : "10";
+        row = next;
+    }
+    return row[k - 1] - '0';
+}` }
+          ]
+        }
     },
     mcq: {
       q: `Symbol k of row n is produced by which symbol of row n − 1?`,
@@ -5455,7 +6136,9 @@ public:
     example: `<p>n = 4, k = 2 → ${H.chips(['[1,2]', '[1,3]', '[1,4]', '[2,3]', '[2,4]', '[3,4]'])}</p><p>Why: C(4, 2) = 4! / (2!·2!) = 6. [2,1] is the same combination as [1,2], so only increasing lists are produced.</p>`,
     brute: {
       why: `<p>Enumerate all 2<sup>n</sup> bitmasks and keep those with exactly k bits. For n = 20, k = 2 that is 1,048,576 masks to find 190 answers. Backtracking with a start index and a "not enough numbers left" prune visits only nodes that can still reach size k.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         List<List<Integer>> brute(int n, int k) {
             List<List<Integer>> res = new ArrayList<>();
             for (int m = 0; m < (1 << n); m++) {
@@ -5465,7 +6148,37 @@ public:
                 res.add(c);
             }
             return res;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def combine(n, k):
+    res = []
+    for m in range(1 << n):
+        if bin(m).count("1") != k:
+            continue
+        res.append([j + 1 for j in range(n) if (m >> j) & 1 == 1])
+    return res` },
+            { lang: 'js', code: `function combine(n, k) {
+  const res = [];
+  for (let m = 0; m < (1 << n); m++) {
+    const c = [];
+    for (let j = 0; j < n; j++) if (((m >> j) & 1) === 1) c.push(j + 1);
+    if (c.length !== k) continue;
+    res.push(c);
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<vector<int>> combine(int n, int k) {
+    vector<vector<int>> res;
+    for (int m = 0; m < (1 << n); m++) {
+        if (__builtin_popcount(m) != k) continue;
+        vector<int> c;
+        for (int j = 0; j < n; j++) if (((m >> j) & 1) == 1) c.push_back(j + 1);
+        res.push_back(c);
+    }
+    return res;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `n = 5, k = 3, cur = [4]. What should happen?`,
@@ -5583,7 +6296,9 @@ private:
     example: `${H.arr([1, 2, 2], { label: 'nums' })}<p>Output: ${H.chips(['[]', '[1]', '[1,2]', '[1,2,2]', '[2]', '[2,2]'])}</p><p>Why: 2<sup>3</sup> = 8 index-subsets, but {nums[1]} and {nums[2]} are both [2], and {1, nums[1]} and {1, nums[2]} are both [1,2] → 6 distinct.</p>`,
     brute: {
       why: `<p>Generate all 2<sup>n</sup> subsets, sort each, and insert into a <code>Set&lt;List&lt;Integer&gt;&gt;</code>. Works for n ≤ 10, but every duplicate costs O(n log n) to sort plus hashing, and with many equal values (e.g. ten 2s) you build 1,024 lists to keep 11.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         List<List<Integer>> brute(int[] nums) {
             Arrays.sort(nums);                    // sorted input -> each generated subset is sorted
             Set<List<Integer>> set = new HashSet<>();
@@ -5594,7 +6309,40 @@ private:
                 set.add(s);
             }
             return new ArrayList<>(set);
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def subsets_with_dup(nums):
+    nums.sort()                           # sorted input -> each generated subset is sorted
+    seen = set()
+    n = len(nums)
+    for m in range(1 << n):
+        s = tuple(nums[j] for j in range(n) if (m >> j) & 1 == 1)
+        seen.add(s)
+    return [list(s) for s in seen]` },
+            { lang: 'js', code: `function subsetsWithDup(nums) {
+  nums.sort((a, b) => a - b);             // sorted input -> each generated subset is sorted
+  const seen = new Map();
+  const n = nums.length;
+  for (let m = 0; m < (1 << n); m++) {
+    const s = [];
+    for (let j = 0; j < n; j++) if (((m >> j) & 1) === 1) s.push(nums[j]);
+    seen.set(s.join(","), s);
+  }
+  return [...seen.values()];
+}` },
+            { lang: 'cpp', code: `vector<vector<int>> subsetsWithDup(vector<int>& nums) {
+    sort(nums.begin(), nums.end());       // sorted input -> each generated subset is sorted
+    set<vector<int>> seen;
+    int n = nums.size();
+    for (int m = 0; m < (1 << n); m++) {
+        vector<int> s;
+        for (int j = 0; j < n; j++) if (((m >> j) & 1) == 1) s.push_back(nums[j]);
+        seen.insert(s);
+    }
+    return vector<vector<int>>(seen.begin(), seen.end());
+}` }
+          ]
+        }
     },
     mcq: {
       q: `In the loop-style recursion the skip condition is <code>j &gt; start &amp;&amp; nums[j] == nums[j − 1]</code>. What breaks if you write <code>j &gt; 0</code> instead?`,
@@ -5712,7 +6460,9 @@ private:
     example: `<p>s = "a1b2" → ${H.chips(['a1b2', 'a1B2', 'A1b2', 'A1B2'])}</p><p>Why: 2 letters → 2 choices each → 2<sup>2</sup> = 4 strings; digits have only one choice.</p>`,
     brute: {
       why: `<p>Try all 2<sup>n</sup> masks over <b>every</b> position (even digits), apply case flips and de-duplicate with a Set. With 12 digits and no letters you would build 4,096 identical strings. Branching only on letters makes the tree exactly as big as the answer.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         List<String> brute(String s) {
             Set<String> set = new LinkedHashSet<>();
             int n = s.length();
@@ -5724,7 +6474,46 @@ private:
                 set.add(new String(c));
             }
             return new ArrayList<>(set);
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def letter_case_permutation(s):
+    seen = {}                             # a dict keeps insertion order, like LinkedHashSet
+    n = len(s)
+    for m in range(1 << n):
+        c = list(s)
+        for j in range(n):
+            if (m >> j) & 1 == 1 and c[j].isalpha():
+                c[j] = c[j].lower() if c[j].isupper() else c[j].upper()
+        seen["".join(c)] = True
+    return list(seen)` },
+            { lang: 'js', code: `function letterCasePermutation(s) {
+  const seen = new Set();                 // a Set keeps insertion order
+  const n = s.length;
+  for (let m = 0; m < (1 << n); m++) {
+    const c = s.split("");
+    for (let j = 0; j < n; j++) {
+      if (((m >> j) & 1) === 1 && /[A-Za-z]/.test(c[j]))
+        c[j] = c[j] === c[j].toUpperCase() ? c[j].toLowerCase() : c[j].toUpperCase();
+    }
+    seen.add(c.join(""));
+  }
+  return [...seen];
+}` },
+            { lang: 'cpp', code: `vector<string> letterCasePermutation(string s) {
+    vector<string> res;
+    unordered_set<string> seen;
+    int n = s.size();
+    for (int m = 0; m < (1 << n); m++) {
+        string c = s;
+        for (int j = 0; j < n; j++)
+            if (((m >> j) & 1) == 1 && isalpha((unsigned char)c[j]))
+                c[j] = isupper((unsigned char)c[j]) ? tolower((unsigned char)c[j]) : toupper((unsigned char)c[j]);
+        if (seen.insert(c).second) res.push_back(c);   // keep first-seen order, drop duplicates
+    }
+    return res;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `s has L letters and D digits. How many strings are returned?`,
@@ -5838,7 +6627,9 @@ private:
     example: `<p>s = "aab" → ${H.chips(['[a, a, b]', '[aa, b]'])}</p><p>Why: cuts after positions give pieces; "ab" and "aab" are not palindromes, so [a, ab] and [aab] are invalid.</p>`,
     brute: {
       why: `<p>There are n − 1 gaps, each cut or not → 2<sup>n−1</sup> partitions (32,768 for n = 16). Check every piece of every partition: O(n · 2<sup>n</sup>) — works, but backtracking stops as soon as the <b>first</b> piece of a branch is not a palindrome, skipping all partitions that share that bad prefix.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         List<List<String>> brute(String s) {
             List<List<String>> res = new ArrayList<>();
             int n = s.length();
@@ -5857,7 +6648,67 @@ private:
                 if (ok) res.add(parts);
             }
             return res;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def partition(s):
+    res = []
+    n = len(s)
+    for m in range(1 << (n - 1)):                   # bit g = cut after position g
+        parts = []
+        start = 0
+        ok = True
+        for g in range(n):
+            if g == n - 1 or (m >> g) & 1 == 1:
+                p = s[start:g + 1]
+                if p[::-1] != p:
+                    ok = False
+                    break
+                parts.append(p)
+                start = g + 1
+        if ok:
+            res.append(parts)
+    return res` },
+            { lang: 'js', code: `function partition(s) {
+  const res = [];
+  const n = s.length;
+  for (let m = 0; m < (1 << (n - 1)); m++) {        // bit g = cut after position g
+    const parts = [];
+    let from = 0;
+    let ok = true;
+    for (let g = 0; g < n; g++) {
+      if (g === n - 1 || ((m >> g) & 1) === 1) {
+        const p = s.slice(from, g + 1);
+        if (p.split("").reverse().join("") !== p) { ok = false; break; }
+        parts.push(p);
+        from = g + 1;
+      }
+    }
+    if (ok) res.push(parts);
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<vector<string>> partition(string s) {
+    vector<vector<string>> res;
+    int n = s.size();
+    for (int m = 0; m < (1 << (n - 1)); m++) {      // bit g = cut after position g
+        vector<string> parts;
+        int from = 0;
+        bool ok = true;
+        for (int g = 0; g < n; g++) {
+            if (g == n - 1 || ((m >> g) & 1) == 1) {
+                string p = s.substr(from, g + 1 - from);
+                string rev(p.rbegin(), p.rend());
+                if (rev != p) { ok = false; break; }
+                parts.push_back(p);
+                from = g + 1;
+            }
+        }
+        if (ok) res.push_back(parts);
+    }
+    return res;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `What is a single "choice" at each level of the decision tree?`,
@@ -5995,7 +6846,9 @@ private:
       <p>word = "ABCCED" → ${H.c('g', '<b>true</b>')} (path shown in green). "ABCB" → false: the B at (0,1) would be reused.</p>`,
     brute: {
       why: `<p>Enumerate every simple path of length L from every cell and compare with the word at the end: up to m·n·4·3<sup>L−1</sup> paths, almost all of which went wrong at the very first or second letter. Backtracking compares <b>as it walks</b> and abandons a path at the first mismatch.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         boolean brute(char[][] b, String w) {
             for (int r = 0; r < b.length; r++)
                 for (int c = 0; c < b[0].length; c++)
@@ -6012,7 +6865,73 @@ private:
             seen[r][c] = false;
             sb.deleteCharAt(sb.length() - 1);
             return found;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def exist(b, w):
+    for r in range(len(b)):
+        for c in range(len(b[0])):
+            seen = [[False] * len(b[0]) for _ in range(len(b))]
+            if all_paths(b, r, c, [], seen, w):
+                return True
+    return False
+
+
+def all_paths(b, r, c, sb, seen, w):
+    if r < 0 or c < 0 or r >= len(b) or c >= len(b[0]) or seen[r][c]:
+        return False
+    sb.append(b[r][c])
+    seen[r][c] = True
+    if len(sb) == len(w):
+        found = "".join(sb) == w                   # compare only at full length
+    else:
+        found = (all_paths(b, r + 1, c, sb, seen, w) or all_paths(b, r - 1, c, sb, seen, w)
+                 or all_paths(b, r, c + 1, sb, seen, w) or all_paths(b, r, c - 1, sb, seen, w))
+    seen[r][c] = False
+    sb.pop()
+    return found` },
+            { lang: 'js', code: `function exist(b, w) {
+  for (let r = 0; r < b.length; r++)
+    for (let c = 0; c < b[0].length; c++) {
+      const seen = Array.from({ length: b.length }, () => new Array(b[0].length).fill(false));
+      if (allPaths(b, r, c, [], seen, w)) return true;
+    }
+  return false;
+}
+
+function allPaths(b, r, c, sb, seen, w) {
+  if (r < 0 || c < 0 || r >= b.length || c >= b[0].length || seen[r][c]) return false;
+  sb.push(b[r][c]);
+  seen[r][c] = true;
+  const found = sb.length === w.length ? sb.join("") === w   // compare only at full length
+    : allPaths(b, r + 1, c, sb, seen, w) || allPaths(b, r - 1, c, sb, seen, w)
+      || allPaths(b, r, c + 1, sb, seen, w) || allPaths(b, r, c - 1, sb, seen, w);
+  seen[r][c] = false;
+  sb.pop();
+  return found;
+}` },
+            { lang: 'cpp', code: `bool allPaths(vector<vector<char>>& b, int r, int c, string& sb, vector<vector<bool>>& seen, const string& w) {
+    if (r < 0 || c < 0 || r >= (int)b.size() || c >= (int)b[0].size() || seen[r][c]) return false;
+    sb.push_back(b[r][c]);
+    seen[r][c] = true;
+    bool found = sb.size() == w.size() ? sb == w          // compare only at full length
+        : allPaths(b, r + 1, c, sb, seen, w) || allPaths(b, r - 1, c, sb, seen, w)
+          || allPaths(b, r, c + 1, sb, seen, w) || allPaths(b, r, c - 1, sb, seen, w);
+    seen[r][c] = false;
+    sb.pop_back();
+    return found;
+}
+
+bool exist(vector<vector<char>>& b, string w) {
+    for (int r = 0; r < (int)b.size(); r++)
+        for (int c = 0; c < (int)b[0].size(); c++) {
+            vector<vector<bool>> seen(b.size(), vector<bool>(b[0].size(), false));
+            string sb;
+            if (allPaths(b, r, c, sb, seen, w)) return true;
+        }
+    return false;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `How do you prevent reusing a cell without an extra visited array?`,
@@ -6141,7 +7060,9 @@ private:
     example: `${H.arr([4, 3, 2, 3, 5, 2, 1], { label: 'nums' })}<p>k = 4 → ${H.c('g', '<b>true</b>')}: total 20, target 5 per bucket: (5), (1,4), (2,3), (2,3).</p>`,
     brute: {
       why: `<p>Assign each number to one of k buckets in every possible way: k<sup>n</sup> assignments (4<sup>16</sup> ≈ 4.3 billion) and check sums at the end. The waste: continuing after a bucket already overflows, and trying symmetric assignments (putting the first number into bucket 1 vs bucket 2 is the same thing when both are empty).</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         boolean brute(int[] nums, int k) {
             int[] bucket = new int[k];
             return assign(nums, 0, bucket);
@@ -6157,7 +7078,55 @@ private:
                 bucket[j] -= nums[i];
             }
             return false;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def can_partition_k_subsets(nums, k):
+    bucket = [0] * k
+    return assign(nums, 0, bucket)
+
+
+def assign(nums, i, bucket):
+    if i == len(nums):
+        return all(b == bucket[0] for b in bucket)
+    for j in range(len(bucket)):                       # no pruning at all
+        bucket[j] += nums[i]
+        if assign(nums, i + 1, bucket):
+            return True
+        bucket[j] -= nums[i]
+    return False` },
+            { lang: 'js', code: `function canPartitionKSubsets(nums, k) {
+  const bucket = new Array(k).fill(0);
+  return assign(nums, 0, bucket);
+}
+
+function assign(nums, i, bucket) {
+  if (i === nums.length) return bucket.every((b) => b === bucket[0]);
+  for (let j = 0; j < bucket.length; j++) {            // no pruning at all
+    bucket[j] += nums[i];
+    if (assign(nums, i + 1, bucket)) return true;
+    bucket[j] -= nums[i];
+  }
+  return false;
+}` },
+            { lang: 'cpp', code: `bool assign(const vector<int>& nums, int i, vector<int>& bucket) {
+    if (i == (int)nums.size()) {
+        for (int b : bucket) if (b != bucket[0]) return false;
+        return true;
+    }
+    for (size_t j = 0; j < bucket.size(); j++) {       // no pruning at all
+        bucket[j] += nums[i];
+        if (assign(nums, i + 1, bucket)) return true;
+        bucket[j] -= nums[i];
+    }
+    return false;
+}
+
+bool canPartitionKSubsets(vector<int>& nums, int k) {
+    vector<int> bucket(k, 0);
+    return assign(nums, 0, bucket);
+}` }
+          ]
+        }
     },
     mcq: {
       q: `nums sorted descending, number x does not fit into an <b>empty</b> bucket's first attempt (the recursion fails). Should you try x in the next empty bucket?`,
@@ -6310,7 +7279,9 @@ private:
     example: `<p>n = 4 → ${H.c('p', '<b>2</b>')}; n = 8 → 92; n = 1 → 1; n = 3 → 0.</p><p>Why: same search as N-Queens, but we never build boards — only count leaves.</p>`,
     brute: {
       why: `<p>Reuse the board-building N-Queens solution and return <code>res.size()</code>. It allocates n strings per solution (365,596 × 14 strings for n = 14) purely to count them, and the boolean-array checks cost more than three ints. Fine for n ≤ 9, wasteful beyond.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int brute(int n) {
             return place(0, n, new boolean[n], new boolean[2 * n - 1], new boolean[2 * n - 1]);
         }
@@ -6324,7 +7295,56 @@ private:
                 cols[c] = d[r - c + n - 1] = a[r + c] = false;
             }
             return total;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def total_n_queens(n):
+    return place(0, n, [False] * n, [False] * (2 * n - 1), [False] * (2 * n - 1))
+
+
+def place(r, n, cols, d, a):
+    if r == n:
+        return 1
+    total = 0
+    for c in range(n):
+        if cols[c] or d[r - c + n - 1] or a[r + c]:
+            continue
+        cols[c] = d[r - c + n - 1] = a[r + c] = True
+        total += place(r + 1, n, cols, d, a)
+        cols[c] = d[r - c + n - 1] = a[r + c] = False
+    return total` },
+            { lang: 'js', code: `function totalNQueens(n) {
+  return place(0, n, new Array(n).fill(false), new Array(2 * n - 1).fill(false), new Array(2 * n - 1).fill(false));
+}
+
+function place(r, n, cols, d, a) {
+  if (r === n) return 1;
+  let total = 0;
+  for (let c = 0; c < n; c++) {
+    if (cols[c] || d[r - c + n - 1] || a[r + c]) continue;
+    cols[c] = d[r - c + n - 1] = a[r + c] = true;
+    total += place(r + 1, n, cols, d, a);
+    cols[c] = d[r - c + n - 1] = a[r + c] = false;
+  }
+  return total;
+}` },
+            { lang: 'cpp', code: `int place(int r, int n, vector<bool>& cols, vector<bool>& d, vector<bool>& a) {
+    if (r == n) return 1;
+    int total = 0;
+    for (int c = 0; c < n; c++) {
+        if (cols[c] || d[r - c + n - 1] || a[r + c]) continue;
+        cols[c] = d[r - c + n - 1] = a[r + c] = true;
+        total += place(r + 1, n, cols, d, a);
+        cols[c] = d[r - c + n - 1] = a[r + c] = false;
+    }
+    return total;
+}
+
+int totalNQueens(int n) {
+    vector<bool> cols(n, false), d(2 * n - 1, false), a(2 * n - 1, false);
+    return place(0, n, cols, d, a);
+}` }
+          ]
+        }
     },
     mcq: {
       q: `Why can you try only the left half of row 0 and double the count?`,
@@ -6469,7 +7489,9 @@ private:
     example: `<p>num = "123", target = 6 → ${H.chips(['1*2*3', '1+2+3'])}</p><p>num = "105", target = 5 → ${H.chips(['1*0+5', '10-5'])} ("1*05" is rejected: leading zero).</p>`,
     brute: {
       why: `<p>Between each pair of digits put one of 4 things (+, −, *, nothing): 4<sup>n−1</sup> strings (262,144 for n = 10), then parse and evaluate each with an expression evaluator respecting precedence. Evaluation is O(n) per string and re-does the same prefix arithmetic over and over.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         List<String> brute(String num, int target) {
             List<String> res = new ArrayList<>();
             int gaps = num.length() - 1;
@@ -6501,7 +7523,112 @@ private:
                 cur = 0;
             }
             return sum + term;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `import re
+
+def add_operators(num, target):
+    res = []
+    gaps = len(num) - 1
+    total = 4 ** gaps
+    ops = "+-*"
+    for code in range(total):
+        sb = [num[0]]
+        x = code
+        for g in range(gaps):
+            o = x % 4
+            x //= 4
+            if o < 3:
+                sb.append(ops[o])                      # o == 3 means "join digits"
+            sb.append(num[g + 1])
+        e = "".join(sb)
+        if not re.search(r"\\b0\\d", e) and evaluate(e) == target:
+            res.append(e)
+    return res
+
+
+def evaluate(e):                                       # + - * with precedence
+    total = term = cur = 0
+    op = '+'
+    for i in range(len(e) + 1):
+        ch = e[i] if i < len(e) else '+'
+        if ch.isdigit():
+            cur = cur * 10 + int(ch)
+            continue
+        if op == '*':
+            term *= cur
+        else:
+            total += term
+            term = cur if op == '+' else -cur
+        op = ch
+        cur = 0
+    return total + term` },
+            { lang: 'js', code: `function addOperators(num, target) {
+  const res = [];
+  const gaps = num.length - 1;
+  let total = 1;
+  for (let i = 0; i < gaps; i++) total *= 4;
+  const ops = "+-*";
+  for (let code = 0; code < total; code++) {
+    let sb = num[0];
+    let x = code;
+    for (let g = 0; g < gaps; g++) {
+      const o = x % 4; x = Math.floor(x / 4);
+      if (o < 3) sb += ops[o];                         // o == 3 means "join digits"
+      sb += num[g + 1];
+    }
+    if (!/\\b0\\d/.test(sb) && evaluate(sb) === target) res.push(sb);
+  }
+  return res;
+}
+
+function evaluate(e) {                                 // + - * with precedence
+  let sum = 0, term = 0, cur = 0;
+  let op = '+';
+  for (let i = 0; i <= e.length; i++) {
+    const ch = i < e.length ? e[i] : '+';
+    if (ch >= '0' && ch <= '9') { cur = cur * 10 + (ch.charCodeAt(0) - 48); continue; }
+    if (op === '*') term *= cur;
+    else { sum += term; term = op === '+' ? cur : -cur; }
+    op = ch;
+    cur = 0;
+  }
+  return sum + term;
+}` },
+            { lang: 'cpp', code: `long long evaluate(const string& e) {                  // + - * with precedence
+    long long sum = 0, term = 0, cur = 0;
+    char op = '+';
+    for (size_t i = 0; i <= e.size(); i++) {
+        char ch = i < e.size() ? e[i] : '+';
+        if (isdigit((unsigned char)ch)) { cur = cur * 10 + (ch - '0'); continue; }
+        if (op == '*') term *= cur;
+        else { sum += term; term = op == '+' ? cur : -cur; }
+        op = ch;
+        cur = 0;
+    }
+    return sum + term;
+}
+
+vector<string> addOperators(string num, int target) {
+    vector<string> res;
+    int gaps = num.size() - 1;
+    int total = 1;
+    for (int i = 0; i < gaps; i++) total *= 4;
+    string ops = "+-*";
+    for (int code = 0; code < total; code++) {
+        string sb(1, num[0]);
+        int x = code;
+        for (int g = 0; g < gaps; g++) {
+            int o = x % 4; x /= 4;
+            if (o < 3) sb += ops[o];                   // o == 3 means "join digits"
+            sb += num[g + 1];
+        }
+        if (!regex_search(sb, regex("\\\\b0\\\\d")) && evaluate(sb) == target) res.push_back(sb);
+    }
+    return res;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `Current expression "2+3" has value 5 and the last operand was +3. You now append "*4". What is the new value?`,
@@ -6664,7 +7791,9 @@ private:
     example: `<p>s = "()())()" → ${H.chips(['(())()', '()()()'])}</p><p>s = ")(" → ${H.chips(['""'])} (remove both). Why: one extra ")" must go; removing different ")" characters gives two distinct valid strings.</p>`,
     brute: {
       why: `<p>Try every subset of characters to delete (2<sup>n</sup>), keep valid strings with maximum length. For n = 25 that is 33 million subsets × O(n) validation. Most subsets delete letters or too many brackets — work we can rule out up front by computing exactly how many "(" and ")" must go.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         List<String> brute(String s) {
             int n = s.length(), best = -1;
             Set<String> res = new HashSet<>();
@@ -6685,7 +7814,77 @@ private:
                 else if (ch == ')' && --bal < 0) return false;
             }
             return bal == 0;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def remove_invalid_parentheses(s):
+    n, best = len(s), -1
+    res = set()
+    for m in range(1 << n):                           # m = characters to KEEP
+        t = "".join(s[i] for i in range(n) if (m >> i) & 1 == 1)
+        if len(t) < best or not valid(t):
+            continue
+        if len(t) > best:
+            best = len(t)
+            res.clear()
+        res.add(t)
+    return list(res)
+
+
+def valid(t):
+    bal = 0
+    for ch in t:
+        if ch == '(':
+            bal += 1
+        elif ch == ')':
+            bal -= 1
+            if bal < 0:
+                return False
+    return bal == 0` },
+            { lang: 'js', code: `function removeInvalidParentheses(s) {
+  const n = s.length;
+  let best = -1;
+  const res = new Set();
+  for (let m = 0; m < (1 << n); m++) {                // m = characters to KEEP
+    let t = "";
+    for (let i = 0; i < n; i++) if (((m >> i) & 1) === 1) t += s[i];
+    if (t.length < best || !valid(t)) continue;
+    if (t.length > best) { best = t.length; res.clear(); }
+    res.add(t);
+  }
+  return [...res];
+}
+
+function valid(t) {
+  let bal = 0;
+  for (const ch of t) {
+    if (ch === '(') bal++;
+    else if (ch === ')' && --bal < 0) return false;
+  }
+  return bal === 0;
+}` },
+            { lang: 'cpp', code: `bool valid(const string& t) {
+    int bal = 0;
+    for (char ch : t) {
+        if (ch == '(') bal++;
+        else if (ch == ')' && --bal < 0) return false;
+    }
+    return bal == 0;
+}
+
+vector<string> removeInvalidParentheses(string s) {
+    int n = s.size(), best = -1;
+    unordered_set<string> res;
+    for (int m = 0; m < (1 << n); m++) {              // m = characters to KEEP
+        string t;
+        for (int i = 0; i < n; i++) if (((m >> i) & 1) == 1) t += s[i];
+        if ((int)t.size() < best || !valid(t)) continue;
+        if ((int)t.size() > best) { best = t.size(); res.clear(); }
+        res.insert(t);
+    }
+    return vector<string>(res.begin(), res.end());
+}` }
+          ]
+        }
     },
     mcq: {
       q: `For s = "()())()", how many "(" and ")" must be removed at minimum?`,
@@ -6855,7 +8054,9 @@ private:
     example: `<p>s = "catsanddog", dict = [cat, cats, and, sand, dog] → ${H.chips(['cats and dog', 'cat sand dog'])}</p><p>Why: "cat|sand|dog" and "cats|and|dog" both split s into dictionary words.</p>`,
     brute: {
       why: `<p>Plain backtracking: from position i try every prefix s[i..j] in the dictionary, recurse on the rest. On inputs like "aaaa…ab" with dict [a, aa, aaa, …] every split of the a's is explored and every one fails at the final "b" — exponential work with zero output. The same suffix is solved again and again.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         List<String> brute(String s, List<String> wordDict) {
             Set<String> dict = new HashSet<>(wordDict);
             List<String> res = new ArrayList<>();
@@ -6871,7 +8072,68 @@ private:
                 go(s, j, dict, cur, res);
                 cur.remove(cur.size() - 1);
             }
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def word_break(s, word_dict):
+    dictionary = set(word_dict)
+    res = []
+    go(s, 0, dictionary, [], res)
+    return res
+
+
+def go(s, i, dictionary, cur, res):
+    if i == len(s):
+        res.append(" ".join(cur))
+        return
+    for j in range(i + 1, len(s) + 1):
+        w = s[i:j]
+        if w not in dictionary:
+            continue
+        cur.append(w)
+        go(s, j, dictionary, cur, res)
+        cur.pop()` },
+            { lang: 'js', code: `function wordBreak(s, wordDict) {
+  const dict = new Set(wordDict);
+  const res = [];
+  go(s, 0, dict, [], res);
+  return res;
+}
+
+function go(s, i, dict, cur, res) {
+  if (i === s.length) { res.push(cur.join(" ")); return; }
+  for (let j = i + 1; j <= s.length; j++) {
+    const w = s.slice(i, j);
+    if (!dict.has(w)) continue;
+    cur.push(w);
+    go(s, j, dict, cur, res);
+    cur.pop();
+  }
+}` },
+            { lang: 'cpp', code: `void go(const string& s, int i, const unordered_set<string>& dict, vector<string>& cur, vector<string>& res) {
+    if (i == (int)s.size()) {
+        string line;
+        for (size_t k = 0; k < cur.size(); k++) line += (k ? " " : "") + cur[k];
+        res.push_back(line);
+        return;
+    }
+    for (int j = i + 1; j <= (int)s.size(); j++) {
+        string w = s.substr(i, j - i);
+        if (!dict.count(w)) continue;
+        cur.push_back(w);
+        go(s, j, dict, cur, res);
+        cur.pop_back();
+    }
+}
+
+vector<string> wordBreak(string s, vector<string>& wordDict) {
+    unordered_set<string> dict(wordDict.begin(), wordDict.end());
+    vector<string> res;
+    vector<string> cur;
+    go(s, 0, dict, cur, res);
+    return res;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `Why memoize on the start index i?`,
@@ -7009,7 +8271,7 @@ private:
   // ===================== QUIZ =====================
   quiz.push(
     {
-      q: `What does this print? <code>void f(int n){ if(n==0) return; f(n-1); System.out.print(n); }</code> called as <code>f(3)</code>`,
+      q: `What does this print? <code>void f(int n){ if(n==0) return; f(n-1); print(n); }</code> called as <code>f(3)</code>`,
       options: ['321', '123', '3', 'Nothing — infinite recursion'],
       answer: 1,
       explain: `The print is AFTER the recursive call, so it runs on the way back up: f(1) prints first, then f(2), then f(3) → 123.`
@@ -7039,10 +8301,10 @@ private:
       explain: `Moves(n) = 2<sup>n</sup> − 1, so 2<sup>10</sup> − 1 = 1024 − 1 = 1023.`
     },
     {
-      q: `A backtracking solution saves answers with <code>res.add(cur)</code> where cur is the shared ArrayList. What goes wrong?`,
+      q: `A backtracking solution saves answers by adding the shared list <code>cur</code> itself to the result (Java <code>res.add(cur)</code>, Python <code>res.append(cur)</code>, JavaScript <code>res.push(cur)</code>). What goes wrong?`,
       options: ['Nothing', 'All saved entries point to the same list, which ends up empty (or in its final state)', 'It throws ConcurrentModificationException', 'It only saves the first answer'],
       answer: 1,
-      explain: `Lists are references. You must store a snapshot: new ArrayList&lt;&gt;(cur).`
+      explain: `Lists are references. You must store a snapshot: Java <code>new ArrayList&lt;&gt;(cur)</code>, Python <code>cur[:]</code> or <code>list(cur)</code>, JavaScript <code>[...cur]</code>. (C++ <code>push_back</code> copies the vector, so it does not have this bug.)`
     },
     {
       q: `How many subsets does a set of 15 distinct elements have?`,
@@ -7088,7 +8350,7 @@ private:
     },
     {
       q: `Why should Sudoku's recursive solve return boolean?`,
-      options: ['Java requires it', 'To stop at the first solution and avoid erasing it while unwinding', 'To count solutions', 'To make it tail-recursive'],
+      options: ['The language requires it', 'To stop at the first solution and avoid erasing it while unwinding', 'To count solutions', 'To make it tail-recursive'],
       answer: 1,
       explain: `When a child reports success, the parent returns immediately without un-choosing, so the filled digits remain on the board.`
     }
@@ -7099,7 +8361,7 @@ private:
     {
       q: `What are the two parts every recursive function needs, and what happens if one is wrong?`,
       level: 'B',
-      a: `<p>A <b>base case</b> — the smallest input answered directly, which stops the recursion — and a <b>recursive case</b> that moves strictly toward the base case and combines the smaller answer. If the base case is missing or unreachable (e.g. stepping n − 2 toward a base case of n == 1 with even n), calls never stop and Java throws <code>StackOverflowError</code>. If the recursive case does not shrink the input, same result. Correctness is proved by induction: base case right + "if the smaller call is right, my combination is right".</p>`,
+      a: `<p>A <b>base case</b> — the smallest input answered directly, which stops the recursion — and a <b>recursive case</b> that moves strictly toward the base case and combines the smaller answer. If the base case is missing or unreachable (e.g. stepping n − 2 toward a base case of n == 1 with even n), calls never stop and the program crashes with a stack overflow (Java <code>StackOverflowError</code>, Python <code>RecursionError</code>). If the recursive case does not shrink the input, same result. Correctness is proved by induction: base case right + "if the smaller call is right, my combination is right".</p>`,
       followUps: ['How would you debug a StackOverflowError?', 'Can a function have several base cases?']
     },
     {

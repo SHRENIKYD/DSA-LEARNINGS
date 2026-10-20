@@ -1,6 +1,12 @@
 (function () {
   var topics = [], practice = [], quiz = [], interview = [];
 
+  // Alternative-language versions of the Java code pane of the LRU visualizer (hl keys are Java line numbers).
+  var LRU_ALT = {
+    python: { code: 'n = cache.get(key)\nif n is None: return -1      # miss\nremove(n); add_front(n)      # hit: move to front\nif len(cache) == capacity:   # full\n    remove(tail.prev); del cache[lru_key]\nadd_front(fresh); cache[key] = fresh', map: { 7: 6 } },
+    js: { code: 'let n = map.get(key);\nif (n === undefined) return -1;   // miss\nremove(n); addFront(n);         // hit: move to front\nif (map.size === capacity) {    // full\n  remove(tail.prev); map.delete(lruKey);\n}\naddFront(fresh); map.set(key, fresh);', map: {} },
+    cpp: { code: 'Node* n = map.count(key) ? map[key] : nullptr;\nif (!n) return -1;            // miss\nremove(n); addFront(n);       // hit: move to front\nif ((int)map.size() == capacity) {  // full\n  remove(tail->prev); map.erase(lruKey);\n}\naddFront(fresh); map[key] = fresh;', map: {} } };
+
   // =====================================================================
   // Shared helpers for the visualizers (pure, deterministic, fast)
   // =====================================================================
@@ -415,7 +421,7 @@ int main() {
             { type: 'list', label: 'doubly linked list (head → tail)', values: lst.length ? lst : ['(empty)'], ptr: lst.length ? ptr : {}, hl: hl },
             { type: 'map', label: 'HashMap key → node', entries: ents.length ? ents : [['—', 'empty']], hl: mhl },
             { type: 'vars', label: 'stats', vals: { capacity: cap, size: order.length, hits: hits, misses: misses, evictions: ev }, hl: extra || {} },
-            { type: 'code', label: 'which lines run', lang: 'java', code: CODE, hl: codeHl || {} }
+            { type: 'code', label: 'which lines run', lang: 'java', code: CODE, hl: codeHl || {}, alt: LRU_ALT }
           ];
           frames.push({ narr: narr, parts: ps });
         }
@@ -597,7 +603,7 @@ public:
       example: `<p>Capacity 2: <code>put(1,1), put(2,2), get(1) → ${H.c('g', '1')}, put(3,3) ${H.c('r', '[evicts 2]')}, get(2) → ${H.c('r', '-1')}, put(4,4) ${H.c('r', '[evicts 1]')}, get(1) → -1, get(3) → 3, get(4) → 4</code>.</p><p>Why 2 is evicted and not 1: <code>get(1)</code> made 1 more recent than 2.</p>`,
       brute: {
         why: `<p>Keep a plain list of keys in recency order (<code>ArrayList</code> / <code>list</code> / <code>Array</code> / <code>vector</code>) plus a hash map for values. Lookups are O(1), but "move key to the front" needs <code>list.remove(key)</code> — an O(capacity) scan and shift. With 2·10<sup>5</sup> calls × 3000 capacity ≈ 6·10<sup>8</sup> operations — too slow, and it misses the O(1) requirement.</p>`,
-        code: `
+        code: { lang: 'java', code: `
       class LRUBrute {
           private final int cap;
           private final Map<Integer, Integer> vals = new HashMap<>();
@@ -615,7 +621,70 @@ public:
               order.add(0, key);
               vals.put(key, value);
           }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class LRUBrute:
+    def __init__(self, cap):
+        self.cap = cap
+        self.vals = {}
+        self.order = []                               # index 0 = most recent
+
+    def get(self, key):
+        if key not in self.vals:
+            return -1
+        self.order.remove(key)                        # O(N) scan + shift: the wasted work
+        self.order.insert(0, key)                     # O(N) shift again
+        return self.vals[key]
+
+    def put(self, key, value):
+        if key in self.vals:
+            self.order.remove(key)
+        elif len(self.vals) == self.cap:
+            del self.vals[self.order.pop()]
+        self.order.insert(0, key)
+        self.vals[key] = value` }, { lang: 'js', code: String.raw`
+class LRUBrute {
+  constructor(cap) {
+    this.cap = cap;
+    this.vals = new Map();
+    this.order = [];                                  // index 0 = most recent
+  }
+
+  get(key) {
+    if (!this.vals.has(key)) return -1;
+    this.order.splice(this.order.indexOf(key), 1);    // O(N) scan + shift: the wasted work
+    this.order.unshift(key);                          // O(N) shift again
+    return this.vals.get(key);
+  }
+
+  put(key, value) {
+    if (this.vals.has(key)) this.order.splice(this.order.indexOf(key), 1);
+    else if (this.vals.size === this.cap) this.vals.delete(this.order.pop());
+    this.order.unshift(key);
+    this.vals.set(key, value);
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class LRUBrute {
+    int cap;
+    unordered_map<int, int> vals;
+    vector<int> order;                                // index 0 = most recent
+
+public:
+    LRUBrute(int cap) : cap(cap) {}
+
+    int get(int key) {
+        if (!vals.count(key)) return -1;
+        order.erase(find(order.begin(), order.end(), key));   // O(N) scan + shift: the wasted work
+        order.insert(order.begin(), key);             // O(N) shift again
+        return vals[key];
+    }
+
+    void put(int key, int value) {
+        if (vals.count(key)) order.erase(find(order.begin(), order.end(), key));
+        else if ((int)vals.size() == cap) { vals.erase(order.back()); order.pop_back(); }
+        order.insert(order.begin(), key);
+        vals[key] = value;
+    }
+};` }] }
       },
       mcq: { q: 'You have the map (key → node). Which list type lets you delete that node from the middle in O(1)?', options: ['Singly linked list', 'Doubly linked list', 'ArrayList', 'A min-heap ordered by time'], answer: 1, explain: 'Deleting needs the predecessor. A doubly linked node knows its <code>prev</code>, so unlinking is 2 pointer writes. A singly linked list must walk from the head to find the predecessor.' },
       hints: [
@@ -1189,7 +1258,7 @@ int victim(int minFreq) { return buckets[minFreq].front(); }
       example: `<p>Capacity 2: <code>put(1,1) put(2,2) get(1)→${H.c('g', '1')} put(3,3) ${H.c('r', '[evict 2: count 1]')} get(2)→-1 get(3)→3 put(4,4) ${H.c('r', '[evict 1: tie at count 2, 1 used earlier]')} get(1)→-1 get(3)→3 get(4)→4</code></p>`,
       brute: {
         why: `<p>Store <code>(value, count, lastUsedTime)</code> per key; on eviction <b>scan all keys</b> for the smallest (count, time). Each eviction is O(capacity) → up to 2·10<sup>5</sup> × 10<sup>4</sup> = 2·10<sup>9</sup> steps. A heap fixes the scan but needs O(log N) updates plus lazy deletion — still not O(1).</p>`,
-        code: `
+        code: { lang: 'java', code: `
       class LFUBrute {
           private final int cap;
           private int time = 0;
@@ -1215,7 +1284,93 @@ int victim(int minFreq) { return buckets[minFreq].front(); }
               }
               m.put(key, new int[]{value, 1, ++time});
           }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class LFUBrute:
+    def __init__(self, cap):
+        self.cap = cap
+        self.time = 0
+        self.m = {}                                   # key -> [value, count, last_used]
+
+    def get(self, key):
+        e = self.m.get(key)
+        if e is None:
+            return -1
+        self.time += 1
+        e[1] += 1
+        e[2] = self.time
+        return e[0]
+
+    def put(self, key, value):
+        if self.cap == 0:
+            return
+        e = self.m.get(key)
+        if e is not None:
+            self.time += 1
+            e[0], e[2] = value, self.time
+            e[1] += 1
+            return
+        if len(self.m) == self.cap:                   # O(N) scan: the wasted work
+            victim = min(self.m, key=lambda k: (self.m[k][1], self.m[k][2]))
+            del self.m[victim]
+        self.time += 1
+        self.m[key] = [value, 1, self.time]` }, { lang: 'js', code: String.raw`
+class LFUBrute {
+  constructor(cap) {
+    this.cap = cap;
+    this.time = 0;
+    this.m = new Map();                               // key -> [value, count, lastUsed]
+  }
+
+  get(key) {
+    const e = this.m.get(key);
+    if (e === undefined) return -1;
+    e[1]++; e[2] = ++this.time;
+    return e[0];
+  }
+
+  put(key, value) {
+    if (this.cap === 0) return;
+    const e = this.m.get(key);
+    if (e !== undefined) { e[0] = value; e[1]++; e[2] = ++this.time; return; }
+    if (this.m.size === this.cap) {                   // O(N) scan: the wasted work
+      let victim = -1, best = null;
+      for (const [k, v] of this.m) {
+        if (best === null || v[1] < best[1] || (v[1] === best[1] && v[2] < best[2])) { best = v; victim = k; }
+      }
+      this.m.delete(victim);
+    }
+    this.m.set(key, [value, 1, ++this.time]);
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class LFUBrute {
+    int cap, time = 0;
+    unordered_map<int, array<int, 3>> m;              // key -> {value, count, lastUsed}
+
+public:
+    LFUBrute(int cap) : cap(cap) {}
+
+    int get(int key) {
+        auto it = m.find(key);
+        if (it == m.end()) return -1;
+        it->second[1]++; it->second[2] = ++time;
+        return it->second[0];
+    }
+
+    void put(int key, int value) {
+        if (cap == 0) return;
+        auto it = m.find(key);
+        if (it != m.end()) { it->second[0] = value; it->second[1]++; it->second[2] = ++time; return; }
+        if ((int)m.size() == cap) {                   // O(N) scan: the wasted work
+            int victim = -1;
+            array<int, 3>* best = nullptr;
+            for (auto& [k, v] : m) {
+                if (!best || v[1] < (*best)[1] || (v[1] == (*best)[1] && v[2] < (*best)[2])) { best = &v; victim = k; }
+            }
+            m.erase(victim);
+        }
+        m[key] = {value, 1, ++time};
+    }
+};` }] }
       },
       mcq: { q: 'After moving a key from count 3 to count 4, bucket 3 is empty and minFreq was 3. What is the new minFreq?', options: ['1', '4', 'We must scan all buckets to find it', '3 (unchanged)'], answer: 1, explain: 'No key has count below 3 (minFreq was 3), bucket 3 is now empty, and our key is in bucket 4 → the minimum is exactly 4. No scan needed.' },
       hints: [
@@ -1862,7 +2017,7 @@ int main() {
       example: `<p><code>add(1) add(2) add(3) search(0)→${H.c('r', 'false')} add(4) search(1)→${H.c('g', 'true')} erase(0)→${H.c('r', 'false')} erase(1)→${H.c('g', 'true')} search(1)→false</code></p><p>After erasing the only 1, it is gone from every lane it lived on.</p>`,
       brute: {
         why: `<p>A single sorted linked list: search walks from the head (O(N)), insert walks to the spot (O(N)). With 5·10<sup>4</sup> calls on up to 5·10<sup>4</sup> elements that is about 2.5·10<sup>9</sup> steps in the worst case. The wasted work: we visit every node even though we only need to "jump" close to the target.</p>`,
-        code: `
+        code: { lang: 'java', code: `
       class SortedListBrute {
           private static class N { int v; N next; N(int v) { this.v = v; } }
           private final N head = new N(Integer.MIN_VALUE);
@@ -1883,7 +2038,103 @@ int main() {
               c.next = c.next.next;
               return true;
           }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class Node:
+    def __init__(self, v):
+        self.v = v
+        self.next = None
+
+class SortedListBrute:
+    def __init__(self):
+        self.head = Node(float("-inf"))
+
+    def search(self, t):
+        c = self.head.next
+        while c is not None and c.v < t:              # O(N) walk
+            c = c.next
+        return c is not None and c.v == t
+
+    def add(self, x):
+        c = self.head
+        while c.next is not None and c.next.v < x:
+            c = c.next
+        n = Node(x)
+        n.next = c.next
+        c.next = n
+
+    def erase(self, x):
+        c = self.head
+        while c.next is not None and c.next.v < x:
+            c = c.next
+        if c.next is None or c.next.v != x:
+            return False
+        c.next = c.next.next
+        return True` }, { lang: 'js', code: String.raw`
+class Node {
+  constructor(v) {
+    this.v = v;
+    this.next = null;
+  }
+}
+
+class SortedListBrute {
+  constructor() {
+    this.head = new Node(-Infinity);
+  }
+
+  search(t) {
+    let c = this.head.next;
+    while (c !== null && c.v < t) c = c.next;         // O(N) walk
+    return c !== null && c.v === t;
+  }
+
+  add(x) {
+    let c = this.head;
+    while (c.next !== null && c.next.v < x) c = c.next;
+    const n = new Node(x);
+    n.next = c.next;
+    c.next = n;
+  }
+
+  erase(x) {
+    let c = this.head;
+    while (c.next !== null && c.next.v < x) c = c.next;
+    if (c.next === null || c.next.v !== x) return false;
+    c.next = c.next.next;
+    return true;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class SortedListBrute {
+    struct N {
+        int v;
+        N* next;
+        N(int v) : v(v), next(nullptr) {}
+    };
+    N head{INT_MIN};
+
+public:
+    bool search(int t) {
+        N* c = head.next;
+        while (c && c->v < t) c = c->next;            // O(N) walk
+        return c && c->v == t;
+    }
+
+    void add(int x) {
+        N* c = &head;
+        while (c->next && c->next->v < x) c = c->next;
+        N* n = new N(x);
+        n->next = c->next;
+        c->next = n;
+    }
+
+    bool erase(int x) {
+        N* c = &head;
+        while (c->next && c->next->v < x) c = c->next;
+        if (!c->next || c->next->v != x) return false;
+        c->next = c->next->next;
+        return true;
+    }
+};` }] }
       },
       mcq: { q: 'During insert, what does update[i] hold?', options: ['The new node\'s height', 'The last node on lane i whose value is less than the new key', 'The first node on lane i greater than the key', 'A copy of lane i'], answer: 1, explain: 'It is where the search dropped down from lane i — the new node must be spliced right after it on that lane.' },
       hints: [
@@ -2461,12 +2712,36 @@ for target in (0.1, 0.01, 0.001):
       example: `<p>m = 16, k = 2. Suppose add("cat") sets bits {3, 9}, add("dog") sets {9, 14}. Then mightContain("cat") → ${H.c('g', 'true')}; a word hashing to {3, 14} → ${H.c('r', 'true (false positive)')}; a word hashing to {5, 9} → ${H.c('g', 'false')} because bit 5 is 0.</p>`,
       brute: {
         why: `<p>Store every string in a <code>HashSet</code>: exact answers, but memory is ~40–100 bytes per string (object header, char array, table slot). For 10<sup>9</sup> strings that is ~60 GB vs ~1.2 GB for a 1% Bloom filter. The wasted resource here is <b>memory</b>, not time.</p>`,
-        code: `
+        code: { lang: 'java', code: `
       class ExactSet {
           private final Set<String> seen = new HashSet<>();   // exact but memory-hungry
           void add(String s) { seen.add(s); }
           boolean mightContain(String s) { return seen.contains(s); }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class ExactSet:
+    def __init__(self):
+        self.seen = set()                             # exact but memory-hungry
+
+    def add(self, s):
+        self.seen.add(s)
+
+    def mightContain(self, s):
+        return s in self.seen` }, { lang: 'js', code: String.raw`
+class ExactSet {
+  constructor() {
+    this.seen = new Set();                            // exact but memory-hungry
+  }
+
+  add(s) { this.seen.add(s); }
+  mightContain(s) { return this.seen.has(s); }
+}` }, { lang: 'cpp', code: String.raw`
+class ExactSet {
+    unordered_set<string> seen;                       // exact but memory-hungry
+
+public:
+    void add(const string& s) { seen.insert(s); }
+    bool mightContain(const string& s) { return seen.count(s) > 0; }
+};` }] }
       },
       mcq: { q: 'mightContain(x) finds one of x\'s k bits equal to 0. What can you conclude?', options: ['x was probably added', 'x was definitely never added', 'x was added and later deleted', 'Nothing — try again with more hashes'], answer: 1, explain: 'Adding x would have set all its k bits to 1, and bits are never cleared. One 0 bit proves x was never added — Bloom filters have no false negatives.' },
       hints: [
@@ -3069,7 +3344,7 @@ print("load per server with 150 vnodes:", dict(sorted(load.items())))
       example: `<p>Positions (simplified to 0–99): A#0=10, B#0=40, A#1=70, B#1=90. Key at 35 → ${H.c('g', 'B')} (40). Key at 95 → wraps to 10 → ${H.c('g', 'A')}. After <code>removeServer("B")</code>: key at 35 → next is 70 → ${H.c('y', 'A')} (only B's keys moved).</p>`,
       brute: {
         why: `<p>Keep all vnode positions in an unsorted list and scan for the smallest position ≥ h (or the global smallest). Each lookup is O(V) — with 1000 servers × 500 vnodes = 500,000 positions and 10<sup>6</sup> lookups that is 5·10<sup>11</sup> steps. Sorting once and binary searching (or using a sorted map) removes the waste.</p>`,
-        code: `
+        code: { lang: 'java', code: `
       class RingBrute {
           private final List<long[]> pts = new ArrayList<>();   // {position, serverIndex}
           private final List<String> names = new ArrayList<>();
@@ -3094,7 +3369,100 @@ print("load per server with 150 vnodes:", dict(sorted(load.items())))
               }
               return names.get((int) (best != null ? best : smallest)[1]);
           }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class RingBrute:
+    def __init__(self, v):
+        self.v = v
+        self.pts = []                                 # (position, server index)
+        self.names = []
+
+    @staticmethod
+    def hash(s):
+        h = 0xcbf29ce484222325
+        for ch in s:
+            h ^= ord(ch)
+            h = h * 0x100000001b3 % (1 << 64)
+        return h & ((1 << 63) - 1)
+
+    def addServer(self, s):
+        self.names.append(s)
+        for i in range(self.v):
+            self.pts.append((self.hash(s + "#" + str(i)), len(self.names) - 1))
+
+    def getServer(self, key):
+        if not self.pts:
+            return None
+        h = self.hash(key)
+        best = smallest = None
+        for p in self.pts:                            # O(V) scan per lookup
+            if p[0] >= h and (best is None or p[0] < best[0]):
+                best = p
+            if smallest is None or p[0] < smallest[0]:
+                smallest = p
+        return self.names[(best if best is not None else smallest)[1]]` }, { lang: 'js', code: String.raw`
+class RingBrute {
+  constructor(v) {
+    this.v = v;
+    this.pts = [];                                    // [position, server index]
+    this.names = [];
+  }
+
+  static hash(s) {
+    let h = 0xcbf29ce484222325n;
+    for (let i = 0; i < s.length; i++) {
+      h ^= BigInt(s.charCodeAt(i));
+      h = (h * 0x100000001b3n) & 0xffffffffffffffffn;
+    }
+    return h & 0x7fffffffffffffffn;
+  }
+
+  addServer(s) {
+    this.names.push(s);
+    for (let i = 0; i < this.v; i++) this.pts.push([RingBrute.hash(s + "#" + i), this.names.length - 1]);
+  }
+
+  getServer(key) {
+    if (this.pts.length === 0) return null;
+    const h = RingBrute.hash(key);
+    let best = null, smallest = null;
+    for (const p of this.pts) {                       // O(V) scan per lookup
+      if (p[0] >= h && (best === null || p[0] < best[0])) best = p;
+      if (smallest === null || p[0] < smallest[0]) smallest = p;
+    }
+    return this.names[(best !== null ? best : smallest)[1]];
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class RingBrute {
+    vector<pair<long long, int>> pts;                 // {position, server index}
+    vector<string> names;
+    int v;
+
+    static long long hash(const string& s) {
+        unsigned long long h = 0xcbf29ce484222325ULL;
+        for (char ch : s) { h ^= (unsigned char)ch; h *= 0x100000001b3ULL; }
+        return (long long)(h & LLONG_MAX);
+    }
+
+public:
+    RingBrute(int v) : v(v) {}
+
+    void addServer(const string& s) {
+        names.push_back(s);
+        for (int i = 0; i < v; i++) pts.push_back({hash(s + "#" + to_string(i)), (int)names.size() - 1});
+    }
+
+    string getServer(const string& key) {
+        if (pts.empty()) return "";                   // no servers
+        long long h = hash(key);
+        const pair<long long, int>* best = nullptr;
+        const pair<long long, int>* smallest = nullptr;
+        for (auto& p : pts) {                         // O(V) scan per lookup
+            if (p.first >= h && (!best || p.first < best->first)) best = &p;
+            if (!smallest || p.first < smallest->first) smallest = &p;
+        }
+        return names[(best ? best : smallest)->second];
+    }
+};` }] }
       },
       mcq: { q: 'hash(key) is larger than every vnode position on the ring. Who owns the key?', options: ['Nobody — return null', 'The server with the largest position', 'The server with the smallest position (wrap around)', 'A random server'], answer: 2, explain: 'The ring is a circle: walking clockwise past the largest position brings you back to position 0, so the first vnode you meet is the smallest one.' },
       hints: [
@@ -3689,7 +4057,7 @@ public:
       example: `<p><code>set(foo,bar,1)</code>; <code>get(foo,1)</code> → ${H.c('g', '"bar"')}; <code>get(foo,3)</code> → ${H.c('g', '"bar"')} (nothing newer ≤ 3); <code>set(foo,bar2,4)</code>; <code>get(foo,4)</code> → ${H.c('g', '"bar2"')}; <code>get(foo,0)</code> → ${H.c('r', '""')} (nothing that early).</p>`,
       brute: {
         why: `<p>Store all versions per key in a list and <b>scan</b> it from newest to oldest on every <code>get</code>. A key with 10<sup>5</sup> versions and 10<sup>5</sup> gets → 10<sup>10</sup> steps. The list is already sorted — scanning ignores that gift.</p>`,
-        code: `
+        code: { lang: 'java', code: `
       class TimeMapBrute {
           private final Map<String, List<Object[]>> m = new HashMap<>();
           void set(String key, String value, int t) {
@@ -3701,9 +4069,55 @@ public:
                   if ((int) l.get(i)[0] <= t) return (String) l.get(i)[1];
               return "";
           }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class TimeMapBrute:
+    def __init__(self):
+        self.m = {}
+
+    def set(self, key, value, t):
+        self.m.setdefault(key, []).append((t, value))
+
+    def get(self, key, t):
+        for ts, value in reversed(self.m.get(key, [])):   # O(V) linear scan
+            if ts <= t:
+                return value
+        return ""` }, { lang: 'js', code: String.raw`
+class TimeMapBrute {
+  constructor() {
+    this.m = new Map();
+  }
+
+  set(key, value, t) {
+    if (!this.m.has(key)) this.m.set(key, []);
+    this.m.get(key).push([t, value]);
+  }
+
+  get(key, t) {
+    const l = this.m.get(key) || [];
+    for (let i = l.length - 1; i >= 0; i--)           // O(V) linear scan
+      if (l[i][0] <= t) return l[i][1];
+    return "";
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class TimeMapBrute {
+    unordered_map<string, vector<pair<int, string>>> m;
+
+public:
+    void set(const string& key, const string& value, int t) {
+        m[key].push_back({t, value});
+    }
+
+    string get(const string& key, int t) {
+        auto it = m.find(key);
+        if (it == m.end()) return "";
+        auto& l = it->second;
+        for (int i = (int)l.size() - 1; i >= 0; i--)  // O(V) linear scan
+            if (l[i].first <= t) return l[i].second;
+        return "";
+    }
+};` }] }
       },
-      mcq: { q: 'Why can set() just append, with no sorting?', options: ['HashMap keeps lists sorted', 'Timestamps for set are strictly increasing, so each new one is the largest', 'Binary search works on unsorted lists', 'Java ArrayList sorts on add'], answer: 1, explain: 'The problem guarantees increasing set timestamps, so appending preserves sorted order — set is O(1) and get can binary search.' },
+      mcq: { q: 'Why can set() just append, with no sorting?', options: ['HashMap keeps lists sorted', 'Timestamps for set are strictly increasing, so each new one is the largest', 'Binary search works on unsorted lists', 'Lists sort themselves on insert'], answer: 1, explain: 'The problem guarantees increasing set timestamps, so appending preserves sorted order — set is O(1) and get can binary search.' },
       hints: [
         `<p>Hint 1: Each key has its own timeline. Because set-timestamps only increase, each timeline is a sorted list built by appending.</p>`,
         `<p>Hint 2: <code>get</code> needs the <b>last</b> index whose time ≤ t: binary search that remembers the latest candidate (ans = mid, go right) and shrinks left when too new.</p>`,
@@ -4313,7 +4727,7 @@ public:
       example: `<p>Input <code>[[1,1],2,[1,1]]</code> → ${H.c('g', '[1,1,2,1,1]')}. Input <code>[1,[4,[6]]]</code> → ${H.c('g', '[1,4,6]')}. Input <code>[[],[[]]]</code> → ${H.c('r', '[]')} — hasNext() must return false straight away, so it has to look through empty lists.</p>`,
       brute: {
         why: `<p>Recursively flatten everything into a list in the constructor, then iterate it. Correct and accepted on LeetCode, but it does <b>all</b> the work and uses O(N) memory before the first <code>next()</code> — wasteful if the caller only needs the first few values, impossible for huge or streaming inputs.</p>`,
-        code: `
+        code: { lang: 'java', code: `
       interface NestedInteger {
           boolean isInteger();
           Integer getInteger();
@@ -4328,7 +4742,65 @@ public:
           }
           @Override public boolean hasNext() { return pos < flat.size(); }
           @Override public Integer next() { return flat.get(pos++); }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+# The judge supplies elements with isInteger(), getInteger() and getList().
+class EagerNestedIterator:
+    def __init__(self, nested):
+        self.flat = []
+        self.pos = 0
+        self._fill(nested)                            # O(N) work + memory up front
+
+    def _fill(self, lst):
+        for x in lst:
+            if x.isInteger():
+                self.flat.append(x.getInteger())
+            else:
+                self._fill(x.getList())
+
+    def hasNext(self):
+        return self.pos < len(self.flat)
+
+    def next(self):
+        self.pos += 1
+        return self.flat[self.pos - 1]` }, { lang: 'js', code: String.raw`
+// The judge supplies elements with isInteger(), getInteger() and getList().
+class EagerNestedIterator {
+  constructor(nested) {
+    this.flat = [];
+    this.pos = 0;
+    this.fill(nested);                                // O(N) work + memory up front
+  }
+
+  fill(list) {
+    for (const x of list) {
+      if (x.isInteger()) this.flat.push(x.getInteger());
+      else this.fill(x.getList());
+    }
+  }
+
+  hasNext() { return this.pos < this.flat.length; }
+  next() { return this.flat[this.pos++]; }
+}` }, { lang: 'cpp', code: String.raw`
+class NestedInteger {
+public:
+    bool isInteger() const;
+    int getInteger() const;
+    const vector<NestedInteger>& getList() const;
+};
+
+class EagerNestedIterator {
+    vector<int> flat;
+    int pos = 0;
+
+    void fill(const vector<NestedInteger>& l) {
+        for (auto& x : l) { if (x.isInteger()) flat.push_back(x.getInteger()); else fill(x.getList()); }
+    }
+
+public:
+    EagerNestedIterator(vector<NestedInteger>& nested) { fill(nested); }   // O(N) work + memory up front
+    bool hasNext() { return pos < (int)flat.size(); }
+    int next() { return flat[pos++]; }
+};` }] }
       },
       mcq: { q: 'Input is [[],[[]]]. What must hasNext() do on its first call?', options: ['Return true because the outer list is non-empty', 'Dig through the empty lists, popping them, and return false', 'Throw an exception', 'Return true and let next() handle it'], answer: 1, explain: 'There are no integers at all. hasNext must advance past empty lists until it finds an integer or runs out — otherwise the caller would call next() on nothing.' },
       hints: [
@@ -5008,7 +5480,7 @@ public:
       example: `<p><code>hit(1) hit(2) hit(3) getHits(4)→${H.c('g', '3')} hit(300) getHits(300)→${H.c('g', '4')} getHits(301)→${H.c('y', '3')}</code> — at 301 the window is (1, 301], so the hit at second 1 has expired.</p>`,
       brute: {
         why: `<p>Keep every hit timestamp in a list and, on <code>getHits</code>, count the ones with <code>t − x &lt; 300</code> by scanning the <b>whole</b> list. Old hits are never removed, so memory grows forever and each query is O(total hits ever) — re-checking hits that expired long ago is the wasted work.</p>`,
-        code: `
+        code: { lang: 'java', code: `
       class HitCounterBrute {
           private final List<Integer> all = new ArrayList<>();
           void hit(int t) { all.add(t); }                // never cleaned up
@@ -5017,7 +5489,41 @@ public:
               for (int x : all) if (t - x < 300) c++;      // O(all hits ever)
               return c;
           }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class HitCounterBrute:
+    def __init__(self):
+        self.all = []
+
+    def hit(self, t):
+        self.all.append(t)                            # never cleaned up
+
+    def getHits(self, t):
+        return sum(1 for x in self.all if t - x < 300)   # O(all hits ever)` }, { lang: 'js', code: String.raw`
+class HitCounterBrute {
+  constructor() {
+    this.all = [];
+  }
+
+  hit(t) { this.all.push(t); }                        // never cleaned up
+
+  getHits(t) {
+    let c = 0;
+    for (const x of this.all) if (t - x < 300) c++;   // O(all hits ever)
+    return c;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class HitCounterBrute {
+    vector<int> all;
+
+public:
+    void hit(int t) { all.push_back(t); }             // never cleaned up
+
+    int getHits(int t) {
+        int c = 0;
+        for (int x : all) if (t - x < 300) c++;       // O(all hits ever)
+        return c;
+    }
+};` }] }
       },
       mcq: { q: 'In the bucket version, hit(t) finds times[t % 300] != t. Why is it safe to overwrite that bucket?', options: ['Because counts are approximate anyway', 'Because the stored second is at least 300 seconds older than t, so its hits are out of every future window', 'Because buckets are cleared by a timer', 'It is not safe; we must add the counts'], answer: 1, explain: 'Seconds sharing a bucket differ by a multiple of 300; with non-decreasing time the stored one is ≤ t − 300, so it can never be inside (t′ − 300, t′] for any t′ ≥ t.' },
       hints: [
@@ -5447,7 +5953,7 @@ public:
       example: `<p>History: i love you (5), island (3), ironman (2), i love leetcode (2). <code>input('i')</code> → ${H.c('g', '[i love you, island, i love leetcode]')}; <code>input(' ')</code> → [i love you, i love leetcode]; <code>input('a')</code> → ${H.c('r', '[]')}; <code>input('#')</code> → [] and "i a" is saved with count 1.</p>`,
       brute: {
         why: `<p>On every keystroke, scan <b>all</b> stored sentences, keep those starting with the prefix, sort them, take 3. Each call costs O(N · L + M log M). It repeats the same prefix filtering from scratch for every character, even though the new prefix only extends the old one by one letter.</p>`,
-        code: `
+        code: { lang: 'java', code: `
       class AutocompleteBrute {
           private final Map<String, Integer> cnt = new HashMap<>();
           private final StringBuilder typed = new StringBuilder();
@@ -5461,7 +5967,64 @@ public:
               m.sort((a, b) -> cnt.get(a).equals(cnt.get(b)) ? a.compareTo(b) : cnt.get(b) - cnt.get(a));
               return new ArrayList<>(m.subList(0, Math.min(3, m.size())));
           }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class AutocompleteBrute:
+    def __init__(self, sentences, times):
+        self.cnt = {}
+        self.typed = ""
+        for s, t in zip(sentences, times):
+            self.cnt[s] = self.cnt.get(s, 0) + t
+
+    def input(self, c):
+        if c == '#':
+            self.cnt[self.typed] = self.cnt.get(self.typed, 0) + 1
+            self.typed = ""
+            return []
+        self.typed += c
+        m = [s for s in self.cnt if s.startswith(self.typed)]       # O(N * L) every keystroke
+        m.sort(key=lambda s: (-self.cnt[s], s))
+        return m[:3]` }, { lang: 'js', code: String.raw`
+class AutocompleteBrute {
+  constructor(sentences, times) {
+    this.cnt = new Map();
+    this.typed = "";
+    sentences.forEach((s, i) => this.cnt.set(s, (this.cnt.get(s) || 0) + times[i]));
+  }
+
+  input(c) {
+    if (c === '#') {
+      this.cnt.set(this.typed, (this.cnt.get(this.typed) || 0) + 1);
+      this.typed = "";
+      return [];
+    }
+    this.typed += c;
+    const m = [];
+    for (const s of this.cnt.keys()) if (s.startsWith(this.typed)) m.push(s);   // O(N * L) every keystroke
+    m.sort((a, b) => this.cnt.get(a) === this.cnt.get(b) ? (a < b ? -1 : a > b ? 1 : 0) : this.cnt.get(b) - this.cnt.get(a));
+    return m.slice(0, 3);
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class AutocompleteBrute {
+    unordered_map<string, int> cnt;
+    string typed;
+
+public:
+    AutocompleteBrute(const vector<string>& s, const vector<int>& t) {
+        for (int i = 0; i < (int)s.size(); i++) cnt[s[i]] += t[i];
+    }
+
+    vector<string> input(char c) {
+        if (c == '#') { cnt[typed] += 1; typed.clear(); return {}; }
+        typed += c;
+        vector<string> m;
+        for (auto& [s, n] : cnt) if (s.compare(0, typed.size(), typed) == 0) m.push_back(s);   // O(N * L) every keystroke
+        sort(m.begin(), m.end(), [&](const string& a, const string& b) {
+            return cnt[a] == cnt[b] ? a < b : cnt[a] > cnt[b];
+        });
+        if (m.size() > 3) m.resize(3);
+        return m;
+    }
+};` }] }
       },
       mcq: { q: 'Two sentences both have count 7: "apple pie" and "apple". Which ranks first?', options: ['"apple pie" — it is longer', '"apple" — a proper prefix is smaller in ASCII/lexicographic order', 'Either; ties are random', 'Neither; ties are excluded'], answer: 1, explain: 'Lexicographic comparison: "apple" runs out of characters first, and a proper prefix compares as smaller. So "apple" comes first.' },
       hints: [
@@ -6127,7 +6690,7 @@ for p in ("FIFO", "LRU", "LFU", "OPT"):
     example: `<p><code>put(1,1) put(2,2) get(1)→${H.c('g', '1')} get(3)→${H.c('r', '-1')} put(2,1) get(2)→${H.c('g', '1')} remove(2) get(2)→${H.c('r', '-1')}</code>. Updating key 2 replaces its value rather than adding a second entry.</p>`,
     brute: {
       why: `<p>Keep one list of (key, value) pairs and scan it for every operation: O(N) per call — 10<sup>4</sup> × 10<sup>4</sup> = 10<sup>8</sup> in the worst case. Alternatively a direct array of size 10<sup>6</sup>+1 is O(1) but wastes ~4 MB for at most 10<sup>4</sup> keys and breaks if keys grow.</p>`,
-      code: `
+      code: { lang: 'java', code: `
       class MyHashMapBrute {
           private final List<int[]> pairs = new ArrayList<>();
           void put(int k, int v) {
@@ -6136,7 +6699,61 @@ for p in ("FIFO", "LRU", "LFU", "OPT"):
           }
           int get(int k) { for (int[] p : pairs) if (p[0] == k) return p[1]; return -1; }
           void remove(int k) { pairs.removeIf(p -> p[0] == k); }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class MyHashMapBrute:
+    def __init__(self):
+        self.pairs = []
+
+    def put(self, k, v):
+        for p in self.pairs:                          # O(N) scan
+            if p[0] == k:
+                p[1] = v
+                return
+        self.pairs.append([k, v])
+
+    def get(self, k):
+        for p in self.pairs:
+            if p[0] == k:
+                return p[1]
+        return -1
+
+    def remove(self, k):
+        self.pairs = [p for p in self.pairs if p[0] != k]` }, { lang: 'js', code: String.raw`
+class MyHashMapBrute {
+  constructor() {
+    this.pairs = [];
+  }
+
+  put(k, v) {
+    for (const p of this.pairs) if (p[0] === k) { p[1] = v; return; }   // O(N) scan
+    this.pairs.push([k, v]);
+  }
+
+  get(k) {
+    for (const p of this.pairs) if (p[0] === k) return p[1];
+    return -1;
+  }
+
+  remove(k) { this.pairs = this.pairs.filter((p) => p[0] !== k); }
+}` }, { lang: 'cpp', code: String.raw`
+class MyHashMapBrute {
+    vector<pair<int, int>> pairs;
+
+public:
+    void put(int k, int v) {
+        for (auto& p : pairs) if (p.first == k) { p.second = v; return; }   // O(N) scan
+        pairs.push_back({k, v});
+    }
+
+    int get(int k) {
+        for (auto& p : pairs) if (p.first == k) return p.second;
+        return -1;
+    }
+
+    void remove(int k) {
+        pairs.erase(remove_if(pairs.begin(), pairs.end(), [&](auto& p) { return p.first == k; }), pairs.end());
+    }
+};` }] }
     },
     mcq: { q: 'Two different keys land in the same bucket. With separate chaining, what happens?', options: ['The second key overwrites the first', 'Both live in that bucket\'s list; lookups compare keys', 'The map must resize immediately', 'The second key is rejected'], answer: 1, explain: 'Chaining stores colliding entries together in a small list; get walks the list comparing keys. Resizing keeps those lists short on average.' },
     hints: [
@@ -6277,7 +6894,7 @@ public:
     example: `<p><code>(1,"foo")→${H.c('g', 'true')} (2,"bar")→true (3,"foo")→${H.c('r', 'false')} (8,"bar")→false (10,"foo")→false (11,"foo")→${H.c('g', 'true')}</code> — foo printed at 1 is muted until 11.</p>`,
     brute: {
       why: `<p>Keep a list of every (time, message) ever printed and scan it backwards for the same message within 10 seconds. Each call is O(total printed) and the list never shrinks — wasteful, since only the <b>last</b> print time of each message matters.</p>`,
-      code: `
+      code: { lang: 'java', code: `
       class LoggerBrute {
           private final List<Object[]> printed = new ArrayList<>();
           boolean shouldPrintMessage(int t, String m) {
@@ -6288,7 +6905,42 @@ public:
               printed.add(new Object[]{t, m});
               return true;
           }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class LoggerBrute:
+    def __init__(self):
+        self.printed = []
+
+    def shouldPrintMessage(self, t, m):
+        for ts, msg in reversed(self.printed):        # O(N) scan
+            if msg == m and t - ts < 10:
+                return False
+        self.printed.append((t, m))
+        return True` }, { lang: 'js', code: String.raw`
+class LoggerBrute {
+  constructor() {
+    this.printed = [];
+  }
+
+  shouldPrintMessage(t, m) {
+    for (let i = this.printed.length - 1; i >= 0; i--) {   // O(N) scan
+      const p = this.printed[i];
+      if (p[1] === m && t - p[0] < 10) return false;
+    }
+    this.printed.push([t, m]);
+    return true;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class LoggerBrute {
+    vector<pair<int, string>> printed;
+
+public:
+    bool shouldPrintMessage(int t, const string& m) {
+        for (int i = (int)printed.size() - 1; i >= 0; i--)   // O(N) scan
+            if (printed[i].second == m && t - printed[i].first < 10) return false;
+        printed.push_back({t, m});
+        return true;
+    }
+};` }] }
     },
     mcq: { q: 'What is the minimum state per message needed?', options: ['All timestamps it appeared at', 'The next time it is allowed to print', 'A count of prints', 'Nothing; use a global timer'], answer: 1, explain: 'One number per message — nextAllowed = lastPrinted + 10 — decides every future call.' },
     hints: [
@@ -6369,7 +7021,7 @@ public:
     example: `<p><code>ping(1)→1, ping(100)→2, ping(3001)→3, ping(3002)→${H.c('y', '3')}</code>. At 3002 the window is [2, 3002], so the ping at 1 has dropped out.</p>`,
     brute: {
       why: `<p>Store all pings and, on each call, count those with time ≥ t − 3000 by scanning the whole list. O(N) per call and memory that never shrinks, although expired pings can never count again.</p>`,
-      code: `
+      code: { lang: 'java', code: `
       class RecentCounterBrute {
           private final List<Integer> all = new ArrayList<>();
           int ping(int t) {
@@ -6378,7 +7030,37 @@ public:
               for (int x : all) if (x >= t - 3000) c++;   // rescans expired pings forever
               return c;
           }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class RecentCounterBrute:
+    def __init__(self):
+        self.all = []
+
+    def ping(self, t):
+        self.all.append(t)
+        return sum(1 for x in self.all if x >= t - 3000)   # rescans expired pings forever` }, { lang: 'js', code: String.raw`
+class RecentCounterBrute {
+  constructor() {
+    this.all = [];
+  }
+
+  ping(t) {
+    this.all.push(t);
+    let c = 0;
+    for (const x of this.all) if (x >= t - 3000) c++;      // rescans expired pings forever
+    return c;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class RecentCounterBrute {
+    vector<int> all;
+
+public:
+    int ping(int t) {
+        all.push_back(t);
+        int c = 0;
+        for (int x : all) if (x >= t - 3000) c++;     // rescans expired pings forever
+        return c;
+    }
+};` }] }
     },
     mcq: { q: 'Times are strictly increasing. Which end of the queue do expired pings leave from?', options: ['The back', 'The front', 'Either', 'They never leave'], answer: 1, explain: 'The oldest pings are at the front, and they expire first. Pop from the front while front &lt; t − 3000.' },
     hints: [
@@ -6459,7 +7141,7 @@ public:
     example: `<p>size = 3: <code>next(1)→1.0, next(10)→5.5, next(3)→4.667, next(5)→${H.c('g', '6.0')}</code> = (10 + 3 + 5) / 3 — the 1 has left the window.</p>`,
     brute: {
       why: `<p>Keep all values and re-sum the last <code>size</code> on every call: O(size) per call. The wasted work is re-adding numbers that did not change — only one value enters and one leaves per step.</p>`,
-      code: `
+      code: { lang: 'java', code: `
       class MovingAverageBrute {
           private final int size;
           private final List<Integer> all = new ArrayList<>();
@@ -6471,7 +7153,46 @@ public:
               for (int i = from; i < all.size(); i++) s += all.get(i);   // O(size) re-sum
               return (double) s / (all.size() - from);
           }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class MovingAverageBrute:
+    def __init__(self, size):
+        self.size = size
+        self.all = []
+
+    def next(self, val):
+        self.all.append(val)
+        frm = max(0, len(self.all) - self.size)
+        s = sum(self.all[frm:])                       # O(size) re-sum
+        return s / (len(self.all) - frm)` }, { lang: 'js', code: String.raw`
+class MovingAverageBrute {
+  constructor(size) {
+    this.size = size;
+    this.all = [];
+  }
+
+  next(val) {
+    this.all.push(val);
+    const from = Math.max(0, this.all.length - this.size);
+    let s = 0;
+    for (let i = from; i < this.all.length; i++) s += this.all[i];   // O(size) re-sum
+    return s / (this.all.length - from);
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class MovingAverageBrute {
+    int size;
+    vector<int> all;
+
+public:
+    MovingAverageBrute(int size) : size(size) {}
+
+    double next(int val) {
+        all.push_back(val);
+        int from = max(0, (int)all.size() - size);
+        long long s = 0;
+        for (int i = from; i < (int)all.size(); i++) s += all[i];    // O(size) re-sum
+        return (double)s / (all.size() - from);
+    }
+};` }] }
     },
     mcq: { q: 'The window is full and a new value arrives. How do you update the running sum in O(1)?', options: ['Recompute it from scratch', 'sum += new − oldest', 'sum = new', 'sum *= size'], answer: 1, explain: 'Exactly one value enters and one leaves, so add the new one and subtract the evicted one.' },
     hints: [
@@ -6573,7 +7294,7 @@ public:
     example: `<p>Over [1, 2, 3]: <code>next()→1, peek()→${H.c('b', '2')}, next()→2, next()→3, hasNext()→${H.c('r', 'false')}</code>. peek did not consume the 2.</p>`,
     brute: {
       why: `<p>Copy every element into a list in the constructor and use an index. It works but reads the entire source up front (O(N) memory) — bad when the wrapped iterator streams from a file or network and you only need a few elements.</p>`,
-      code: `
+      code: { lang: 'java', code: `
       class PeekingCopy {
           private final List<Integer> all = new ArrayList<>();
           private int i = 0;
@@ -6581,7 +7302,45 @@ public:
           Integer peek() { return all.get(i); }
           Integer next() { return all.get(i++); }
           boolean hasNext() { return i < all.size(); }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class PeekingCopy:
+    def __init__(self, iterator):
+        self.all = []
+        self.i = 0
+        while iterator.hasNext():                     # eager copy
+            self.all.append(iterator.next())
+
+    def peek(self):
+        return self.all[self.i]
+
+    def next(self):
+        self.i += 1
+        return self.all[self.i - 1]
+
+    def hasNext(self):
+        return self.i < len(self.all)` }, { lang: 'js', code: String.raw`
+class PeekingCopy {
+  constructor(iterator) {
+    this.all = [];
+    this.i = 0;
+    while (iterator.hasNext()) this.all.push(iterator.next());   // eager copy
+  }
+
+  peek() { return this.all[this.i]; }
+  next() { return this.all[this.i++]; }
+  hasNext() { return this.i < this.all.length; }
+}` }, { lang: 'cpp', code: String.raw`
+template <class Source>
+class PeekingCopy {
+    vector<int> all;
+    int i = 0;
+
+public:
+    PeekingCopy(Source& it) { while (it.hasNext()) all.push_back(it.next()); }   // eager copy
+    int peek() { return all[i]; }
+    int next() { return all[i++]; }
+    bool hasNext() { return i < (int)all.size(); }
+};` }] }
     },
     mcq: { q: 'What is the smallest extra state that makes peek() possible?', options: ['A copy of all elements', 'One cached element plus a "has cached" flag', 'A stack', 'A counter of calls'], answer: 1, explain: 'Pre-fetch exactly one element ahead. peek returns it, next returns it and pre-fetches the following one.' },
     hints: [
@@ -6788,7 +7547,7 @@ public:
     example: `<p>v1 = [1, 2], v2 = [3, 4, 5, 6] → ${H.c('g', '[1, 3, 2, 4, 5, 6]')}. After v1 is exhausted, the rest of v2 follows in order.</p>`,
     brute: {
       why: `<p>Build the full output list in the constructor by looping i = 0.. max length and appending v1[i], v2[i] when they exist. Correct, but O(N) memory up front and the code does not generalise neatly to k lists of very different lengths (you loop to the longest length checking every list each round).</p>`,
-      code: `
+      code: { lang: 'java', code: `
       class ZigzagEager {
           private final List<Integer> out = new ArrayList<>();
           private int i = 0;
@@ -6800,7 +7559,51 @@ public:
           }
           int next() { return out.get(i++); }
           boolean hasNext() { return i < out.size(); }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class ZigzagEager:
+    def __init__(self, a, b):
+        self.out = []
+        self.i = 0
+        for j in range(max(len(a), len(b))):
+            if j < len(a):
+                self.out.append(a[j])
+            if j < len(b):
+                self.out.append(b[j])
+
+    def next(self):
+        self.i += 1
+        return self.out[self.i - 1]
+
+    def hasNext(self):
+        return self.i < len(self.out)` }, { lang: 'js', code: String.raw`
+class ZigzagEager {
+  constructor(a, b) {
+    this.out = [];
+    this.i = 0;
+    for (let j = 0; j < Math.max(a.length, b.length); j++) {
+      if (j < a.length) this.out.push(a[j]);
+      if (j < b.length) this.out.push(b[j]);
+    }
+  }
+
+  next() { return this.out[this.i++]; }
+  hasNext() { return this.i < this.out.length; }
+}` }, { lang: 'cpp', code: String.raw`
+class ZigzagEager {
+    vector<int> out;
+    int i = 0;
+
+public:
+    ZigzagEager(vector<int>& a, vector<int>& b) {
+        for (int j = 0; j < (int)max(a.size(), b.size()); j++) {
+            if (j < (int)a.size()) out.push_back(a[j]);
+            if (j < (int)b.size()) out.push_back(b[j]);
+        }
+    }
+
+    int next() { return out[i++]; }
+    bool hasNext() { return i < (int)out.size(); }
+};` }] }
     },
     mcq: { q: 'For k lists, which structure gives clean round-robin with skipping of finished lists?', options: ['A stack of iterators', 'A queue of non-empty iterators', 'A min-heap', 'A hash set'], answer: 1, explain: 'Pop the front iterator, take one element, push it back if it still has elements. Finished iterators simply are not re-queued.' },
     hints: [
@@ -6904,7 +7707,7 @@ public:
     example: `<p>Tree root 7, left 3, right 15 with children 9 and 20 → next() sequence ${H.c('g', '3, 7, 9, 15, 20')}, then hasNext() → false.</p>`,
     brute: {
       why: `<p>Do a full in-order traversal in the constructor into a list. Each call is O(1), but memory is O(N) instead of O(h) and the constructor does all the work even if the caller stops after one element.</p>`,
-      code: `
+      code: { lang: 'java', code: `
       class BSTIteratorEager {
           private final List<Integer> vals = new ArrayList<>();
           private int i = 0;
@@ -6912,7 +7715,59 @@ public:
           private void inorder(TreeNode n) { if (n == null) return; inorder(n.left); vals.add(n.val); inorder(n.right); }
           int next() { return vals.get(i++); }
           boolean hasNext() { return i < vals.size(); }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class BSTIteratorEager:
+    def __init__(self, root):
+        self.vals = []
+        self.i = 0
+        self._inorder(root)
+
+    def _inorder(self, n):
+        if n is None:
+            return
+        self._inorder(n.left)
+        self.vals.append(n.val)
+        self._inorder(n.right)
+
+    def next(self):
+        self.i += 1
+        return self.vals[self.i - 1]
+
+    def hasNext(self):
+        return self.i < len(self.vals)` }, { lang: 'js', code: String.raw`
+class BSTIteratorEager {
+  constructor(root) {
+    this.vals = [];
+    this.i = 0;
+    this.inorder(root);
+  }
+
+  inorder(n) {
+    if (n === null) return;
+    this.inorder(n.left);
+    this.vals.push(n.val);
+    this.inorder(n.right);
+  }
+
+  next() { return this.vals[this.i++]; }
+  hasNext() { return this.i < this.vals.length; }
+}` }, { lang: 'cpp', code: String.raw`
+class BSTIteratorEager {
+    vector<int> vals;
+    int i = 0;
+
+    void inorder(TreeNode* n) {
+        if (!n) return;
+        inorder(n->left);
+        vals.push_back(n->val);
+        inorder(n->right);
+    }
+
+public:
+    BSTIteratorEager(TreeNode* root) { inorder(root); }
+    int next() { return vals[i++]; }
+    bool hasNext() { return i < (int)vals.size(); }
+};` }] }
     },
     mcq: { q: 'After popping node n from the stack, what do you push?', options: ['n.left and its right spine', 'The left spine of n.right', 'Both children', 'Nothing'], answer: 1, explain: 'Everything in n\'s left subtree was already returned. The next smallest values are in n.right, starting at its leftmost node — so push n.right and all its left descendants.' },
     hints: [
@@ -7162,7 +8017,7 @@ public:
     example: `<p><code>SnapshotArray(3); set(0,5); snap()→0; set(0,6); get(0,0)→${H.c('g', '5')}</code>. The later set(0,6) happened in snapshot 1, so snapshot 0 still sees 5.</p>`,
     brute: {
       why: `<p>On every <code>snap()</code>, copy the whole array. 5·10<sup>4</sup> snaps × 5·10<sup>4</sup> length = 2.5·10<sup>9</sup> integers copied — about 10 GB. Most indexes never change between snaps, so copying them is pure waste.</p>`,
-      code: `
+      code: { lang: 'java', code: `
       class SnapshotCopy {
           private final int[] cur;
           private final List<int[]> snaps = new ArrayList<>();
@@ -7170,7 +8025,51 @@ public:
           void set(int i, int v) { cur[i] = v; }
           int snap() { snaps.add(cur.clone()); return snaps.size() - 1; }   // O(length) per snap
           int get(int i, int s) { return snaps.get(s)[i]; }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class SnapshotCopy:
+    def __init__(self, n):
+        self.cur = [0] * n
+        self.snaps = []
+
+    def set(self, i, v):
+        self.cur[i] = v
+
+    def snap(self):
+        self.snaps.append(list(self.cur))             # O(length) per snap
+        return len(self.snaps) - 1
+
+    def get(self, i, s):
+        return self.snaps[s][i]` }, { lang: 'js', code: String.raw`
+class SnapshotCopy {
+  constructor(n) {
+    this.cur = new Array(n).fill(0);
+    this.snaps = [];
+  }
+
+  set(i, v) { this.cur[i] = v; }
+
+  snap() {
+    this.snaps.push(this.cur.slice());                // O(length) per snap
+    return this.snaps.length - 1;
+  }
+
+  get(i, s) { return this.snaps[s][i]; }
+}` }, { lang: 'cpp', code: String.raw`
+class SnapshotCopy {
+    vector<int> cur;
+    vector<vector<int>> snaps;
+
+public:
+    SnapshotCopy(int n) : cur(n, 0) {}
+    void set(int i, int v) { cur[i] = v; }
+
+    int snap() {
+        snaps.push_back(cur);                         // O(length) per snap
+        return snaps.size() - 1;
+    }
+
+    int get(int i, int s) { return snaps[s][i]; }
+};` }] }
     },
     mcq: { q: 'Index 0 has history [(0,5), (2,6)] as (snapId, value). What is get(0, 1)?', options: ['0', '5', '6', 'Undefined'], answer: 1, explain: 'Floor search: the last snapId ≤ 1 is 0, whose value is 5.' },
     hints: [
@@ -7312,7 +8211,7 @@ public:
     example: `<p><code>update(1,10) update(2,5) current()→5 maximum()→10 update(1,3) maximum()→${H.c('g', '5')} update(4,2) minimum()→${H.c('g', '2')}</code>. The correction at time 1 removes 10 from consideration entirely.</p>`,
     brute: {
       why: `<p>Store time → price in a map and compute max/min by scanning all values each call: O(N) per query, 10<sup>10</sup> work in the worst case. The sorted order of prices is recomputed from scratch every time.</p>`,
-      code: `
+      code: { lang: 'java', code: `
       class StockBrute {
           private final Map<Integer, Integer> byTime = new HashMap<>();
           private int latest = 0;
@@ -7320,7 +8219,63 @@ public:
           int current() { return byTime.get(latest); }
           int maximum() { return Collections.max(byTime.values()); }   // O(N)
           int minimum() { return Collections.min(byTime.values()); }   // O(N)
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class StockBrute:
+    def __init__(self):
+        self.by_time = {}
+        self.latest = 0
+
+    def update(self, t, p):
+        self.by_time[t] = p
+        self.latest = max(self.latest, t)
+
+    def current(self):
+        return self.by_time[self.latest]
+
+    def maximum(self):
+        return max(self.by_time.values())             # O(N)
+
+    def minimum(self):
+        return min(self.by_time.values())             # O(N)` }, { lang: 'js', code: String.raw`
+class StockBrute {
+  constructor() {
+    this.byTime = new Map();
+    this.latest = 0;
+  }
+
+  update(t, p) {
+    this.byTime.set(t, p);
+    this.latest = Math.max(this.latest, t);
+  }
+
+  current() { return this.byTime.get(this.latest); }
+  maximum() { return Math.max(...this.byTime.values()); }   // O(N)
+  minimum() { return Math.min(...this.byTime.values()); }   // O(N)
+}` }, { lang: 'cpp', code: String.raw`
+class StockBrute {
+    unordered_map<int, int> byTime;
+    int latest = 0;
+
+public:
+    void update(int t, int p) {
+        byTime[t] = p;
+        latest = max(latest, t);
+    }
+
+    int current() { return byTime[latest]; }
+
+    int maximum() {                                   // O(N)
+        int best = INT_MIN;
+        for (auto& [t, p] : byTime) best = max(best, p);
+        return best;
+    }
+
+    int minimum() {                                   // O(N)
+        int best = INT_MAX;
+        for (auto& [t, p] : byTime) best = min(best, p);
+        return best;
+    }
+};` }] }
     },
     mcq: { q: 'A correction replaces price 10 at time 1 with 3. What must happen to the multiset of prices?', options: ['Add 3 only', 'Remove one 10 and add 3', 'Remove all 10s', 'Nothing'], answer: 1, explain: 'Exactly one occurrence of the old price disappears (another timestamp might also have price 10), and the new price is added.' },
     hints: [
@@ -7486,7 +8441,7 @@ public:
     example: `<p>Add "bad", "dad", "mad". <code>search("pad")→${H.c('r', 'false')}, search("bad")→${H.c('g', 'true')}, search(".ad")→true, search("b..")→true</code>.</p>`,
     brute: {
       why: `<p>Keep all words in a list and compare the pattern against every word of the same length, character by character. Each search is O(N · L). A trie shares common prefixes, so a pattern without dots follows a single path; dots branch only where needed.</p>`,
-      code: `
+      code: { lang: 'java', code: `
       class WordDictBrute {
           private final List<String> words = new ArrayList<>();
           void addWord(String w) { words.add(w); }
@@ -7500,7 +8455,56 @@ public:
               }
               return false;
           }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class WordDictBrute:
+    def __init__(self):
+        self.words = []
+
+    def addWord(self, w):
+        self.words.append(w)
+
+    def search(self, p):
+        for w in self.words:                          # O(N * L)
+            if len(w) != len(p):
+                continue
+            if all(p[i] == '.' or p[i] == w[i] for i in range(len(p))):
+                return True
+        return False` }, { lang: 'js', code: String.raw`
+class WordDictBrute {
+  constructor() {
+    this.words = [];
+  }
+
+  addWord(w) { this.words.push(w); }
+
+  search(p) {
+    outer:
+    for (const w of this.words) {                     // O(N * L)
+      if (w.length !== p.length) continue;
+      for (let i = 0; i < p.length; i++)
+        if (p[i] !== '.' && p[i] !== w[i]) continue outer;
+      return true;
+    }
+    return false;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class WordDictBrute {
+    vector<string> words;
+
+public:
+    void addWord(const string& w) { words.push_back(w); }
+
+    bool search(const string& p) {
+        for (auto& w : words) {                       // O(N * L)
+            if (w.size() != p.size()) continue;
+            bool ok = true;
+            for (size_t i = 0; i < p.size() && ok; i++)
+                if (p[i] != '.' && p[i] != w[i]) ok = false;
+            if (ok) return true;
+        }
+        return false;
+    }
+};` }] }
     },
     mcq: { q: 'During trie search, the pattern has "." at the current position. What do you do?', options: ['Fail', 'Try every existing child recursively', 'Skip to the end of the word', 'Pick the first child only'], answer: 1, explain: 'A dot matches any letter, so the search branches into each child that exists and succeeds if any branch matches the rest.' },
     hints: [
@@ -7645,7 +8649,7 @@ public:
     example: `<p><code>inc(hello) inc(hello) getMaxKey()→"hello" getMinKey()→"hello" inc(leet) getMaxKey()→${H.c('g', '"hello"')} getMinKey()→${H.c('g', '"leet"')}</code></p>${H.kv([['count 1', 'leet'], ['count 2', 'hello']], { label: 'bucket list (min → max)' })}`,
     brute: {
       why: `<p>A hash map of counts plus a scan for max/min: O(N) per query. A sorted map from count → keys gives O(log N) — close, but the requirement is O(1). The waste: we re-discover the order of counts every time, although each operation changes one count by exactly 1.</p>`,
-      code: `
+      code: { lang: 'java', code: `
       class AllOneBrute {
           private final Map<String, Integer> cnt = new HashMap<>();
           void inc(String k) { cnt.merge(k, 1, Integer::sum); }
@@ -7660,7 +8664,80 @@ public:
               for (Map.Entry<String, Integer> e : cnt.entrySet()) if (e.getValue() < b) { b = e.getValue(); best = e.getKey(); }
               return best;
           }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class AllOneBrute:
+    def __init__(self):
+        self.cnt = {}
+
+    def inc(self, k):
+        self.cnt[k] = self.cnt.get(k, 0) + 1
+
+    def dec(self, k):
+        self.cnt[k] -= 1
+        if self.cnt[k] == 0:
+            del self.cnt[k]
+
+    def getMaxKey(self):                              # O(N) scan
+        best, b = "", float("-inf")
+        for k, v in self.cnt.items():
+            if v > b:
+                b, best = v, k
+        return best
+
+    def getMinKey(self):
+        best, b = "", float("inf")
+        for k, v in self.cnt.items():
+            if v < b:
+                b, best = v, k
+        return best` }, { lang: 'js', code: String.raw`
+class AllOneBrute {
+  constructor() {
+    this.cnt = new Map();
+  }
+
+  inc(k) { this.cnt.set(k, (this.cnt.get(k) || 0) + 1); }
+
+  dec(k) {
+    const c = this.cnt.get(k) - 1;
+    if (c === 0) this.cnt.delete(k); else this.cnt.set(k, c);
+  }
+
+  getMaxKey() {                                       // O(N) scan
+    let best = "", b = -Infinity;
+    for (const [k, v] of this.cnt) if (v > b) { b = v; best = k; }
+    return best;
+  }
+
+  getMinKey() {
+    let best = "", b = Infinity;
+    for (const [k, v] of this.cnt) if (v < b) { b = v; best = k; }
+    return best;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class AllOneBrute {
+    unordered_map<string, int> cnt;
+
+public:
+    void inc(const string& k) { cnt[k]++; }
+
+    void dec(const string& k) {
+        if (--cnt[k] == 0) cnt.erase(k);
+    }
+
+    string getMaxKey() {                              // O(N) scan
+        string best = "";
+        int b = INT_MIN;
+        for (auto& [k, v] : cnt) if (v > b) { b = v; best = k; }
+        return best;
+    }
+
+    string getMinKey() {
+        string best = "";
+        int b = INT_MAX;
+        for (auto& [k, v] : cnt) if (v < b) { b = v; best = k; }
+        return best;
+    }
+};` }] }
     },
     mcq: { q: 'inc(key) moves a key from the count-3 bucket. Where can its new bucket be?', options: ['Anywhere in the list', 'Only immediately after the count-3 bucket (existing count-4 bucket or a new one inserted there)', 'At the tail', 'At the head'], answer: 1, explain: 'Buckets are sorted by count and the new count is exactly 4, so the target is the next bucket if it has count 4, or a brand-new bucket spliced right after the current one.' },
     hints: [
@@ -7907,7 +8984,7 @@ public:
     example: `<p>push 5, 7, 5, 7, 4, 5 → pops: ${H.c('g', '5')} (freq 3), ${H.c('g', '7')} (5 and 7 both freq 2, 7 is newer), ${H.c('g', '5')}, ${H.c('g', '4')} (all freq 1, 4 is newest).</p>`,
     brute: {
       why: `<p>Keep a list in push order and, on pop, scan for the max frequency and the latest element with it: O(N) per pop. A heap keyed by (freq, push time) works in O(log N); the bucket idea gets O(1).</p>`,
-      code: `
+      code: { lang: 'java', code: `
       class FreqStackBrute {
           private final List<Integer> all = new ArrayList<>();
           private final Map<Integer, Integer> freq = new HashMap<>();
@@ -7920,7 +8997,64 @@ public:
               freq.merge(v, -1, Integer::sum);
               return v;
           }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+class FreqStackBrute:
+    def __init__(self):
+        self.all = []
+        self.freq = {}
+
+    def push(self, v):
+        self.all.append(v)
+        self.freq[v] = self.freq.get(v, 0) + 1
+
+    def pop(self):
+        best = -1
+        for i in range(len(self.all) - 1, -1, -1):    # O(N) scan from the top
+            if best == -1 or self.freq[self.all[i]] > self.freq[self.all[best]]:
+                best = i
+        v = self.all.pop(best)
+        self.freq[v] -= 1
+        return v` }, { lang: 'js', code: String.raw`
+class FreqStackBrute {
+  constructor() {
+    this.all = [];
+    this.freq = new Map();
+  }
+
+  push(v) {
+    this.all.push(v);
+    this.freq.set(v, (this.freq.get(v) || 0) + 1);
+  }
+
+  pop() {
+    let best = -1;
+    for (let i = this.all.length - 1; i >= 0; i--)    // O(N) scan from the top
+      if (best === -1 || this.freq.get(this.all[i]) > this.freq.get(this.all[best])) best = i;
+    const v = this.all.splice(best, 1)[0];
+    this.freq.set(v, this.freq.get(v) - 1);
+    return v;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class FreqStackBrute {
+    vector<int> all;
+    unordered_map<int, int> freq;
+
+public:
+    void push(int v) {
+        all.push_back(v);
+        freq[v]++;
+    }
+
+    int pop() {
+        int best = -1;
+        for (int i = (int)all.size() - 1; i >= 0; i--)    // O(N) scan from the top
+            if (best == -1 || freq[all[i]] > freq[all[best]]) best = i;
+        int v = all[best];
+        all.erase(all.begin() + best);
+        freq[v]--;
+        return v;
+    }
+};` }] }
     },
     mcq: { q: 'After pushing 5 three times, which stacks hold a 5?', options: ['Only group[3]', 'group[1], group[2] and group[3]', 'Only group[1]', 'None — 5 is stored in freq only'], answer: 1, explain: 'Each push of 5 lands in the stack for its new frequency: 1, then 2, then 3. Popping from group[3] leaves the earlier copies so 5 is still correctly at frequency 2.' },
     hints: [
@@ -8042,14 +9176,73 @@ public:
     example: `<p><code>insert(1)→true insert(1)→${H.c('y', 'false')} insert(2)→true getRandom()</code> → 1 with probability ${H.c('b', '2/3')}, 2 with 1/3. <code>remove(1)→true</code> leaves {1, 2}, each with probability 1/2.</p>`,
     brute: {
       why: `<p>A dynamic array alone (<code>ArrayList</code> / <code>list</code> / <code>Array</code> / <code>vector</code>) gives O(1) insert and getRandom, but removing a value must search (O(N)) and shift (O(N)). A hash map of counts gives O(1) insert/remove, but getRandom then needs an O(N) walk over weighted counts.</p>`,
-      code: `
+      code: { lang: 'java', code: `
       class RandomBagBrute {
           private final List<Integer> list = new ArrayList<>();
           private final Random rnd = new Random();
           boolean insert(int v) { boolean fresh = !list.contains(v); list.add(v); return fresh; }   // O(N) contains
           boolean remove(int v) { return list.remove(Integer.valueOf(v)); }                        // O(N) search + shift
           int getRandom() { return list.get(rnd.nextInt(list.size())); }
-      }`
+      }`, alt: [{ lang: 'python', code: String.raw`
+import random
+
+class RandomBagBrute:
+    def __init__(self):
+        self.list = []
+
+    def insert(self, v):
+        fresh = v not in self.list                    # O(N) contains
+        self.list.append(v)
+        return fresh
+
+    def remove(self, v):
+        if v not in self.list:                        # O(N) search + shift
+            return False
+        self.list.remove(v)
+        return True
+
+    def getRandom(self):
+        return self.list[random.randrange(len(self.list))]` }, { lang: 'js', code: String.raw`
+class RandomBagBrute {
+  constructor() {
+    this.list = [];
+  }
+
+  insert(v) {
+    const fresh = !this.list.includes(v);             // O(N) contains
+    this.list.push(v);
+    return fresh;
+  }
+
+  remove(v) {
+    const i = this.list.indexOf(v);                   // O(N) search + shift
+    if (i === -1) return false;
+    this.list.splice(i, 1);
+    return true;
+  }
+
+  getRandom() { return this.list[Math.floor(Math.random() * this.list.length)]; }
+}` }, { lang: 'cpp', code: String.raw`
+class RandomBagBrute {
+    vector<int> list;
+    mt19937 rnd{random_device{}()};
+
+public:
+    bool insert(int v) {
+        bool fresh = find(list.begin(), list.end(), v) == list.end();   // O(N) contains
+        list.push_back(v);
+        return fresh;
+    }
+
+    bool remove(int v) {
+        auto it = find(list.begin(), list.end(), v);  // O(N) search + shift
+        if (it == list.end()) return false;
+        list.erase(it);
+        return true;
+    }
+
+    int getRandom() { return list[rnd() % list.size()]; }
+};` }] }
     },
     mcq: { q: 'How do you delete from the middle of the array in O(1)?', options: ['Shift everything left', 'Overwrite the slot with the last element, then remove the last slot', 'Mark it deleted and never compact', 'Sort and binary search'], answer: 1, explain: 'Swap-with-last-and-pop keeps the array dense for uniform random picks — but you must update the index bookkeeping of the moved element.' },
     hints: [
@@ -8214,7 +9407,7 @@ public:
   // QUIZ
   // =====================================================================
   quiz.push(
-    { q: 'In an O(1) LRU cache, why must each list node store its key?', options: ['To sort the list', 'So that when the tail node is evicted we can delete its entry from the HashMap', 'Java requires it', 'To compute the hash faster'], answer: 1, explain: 'Eviction finds a node (tail.prev), not a key. Without node.key the map entry stays behind — a memory leak and wrong get results.' },
+    { q: 'In an O(1) LRU cache, why must each list node store its key?', options: ['To sort the list', 'So that when the tail node is evicted we can delete its entry from the hash map (HashMap / dict / Map / unordered_map)', 'The language requires it', 'To compute the hash faster'], answer: 1, explain: 'Eviction finds a node (tail.prev), not a key. Without node.key the map entry stays behind — a memory leak and wrong get results.' },
     { q: 'LRU cache with capacity 2: put(1), put(2), get(1), put(3). Which key is evicted?', options: ['1', '2', '3', 'none'], answer: 1, explain: 'get(1) made 1 most recent, so 2 is the least recently used when 3 arrives.' },
     { q: 'In the O(1) LFU cache, when does minFreq change?', options: ['After every get', 'It is recomputed by scanning buckets after each eviction', 'It becomes 1 on every new insert, and +1 when a touch empties the minFreq bucket', 'Never'], answer: 2, explain: 'A new key always has count 1. A touch moves a key from f to f+1; if bucket f was the minimum and is now empty, the minimum is f+1. No scan needed.' },
     { q: 'Skip list with promotion probability p = ½ and N keys. Expected search cost?', options: ['O(1)', 'O(log N) expected', 'O(log N) worst case', 'O(√N)'], answer: 1, explain: 'About log₂ N levels with ~1–2 moves right per level → ~2 log₂ N comparisons on average over the coin flips. The worst case is O(N) with astronomically small probability.' },
@@ -8237,7 +9430,7 @@ public:
   interview.push(
     {
       q: 'Walk me through designing an LRU cache with O(1) get and put.', level: 'I',
-      a: `<p>I need two things at once: O(1) lookup by key and O(1) reordering by recency. A <b>HashMap</b> gives lookup; a <b>doubly linked list</b> gives O(1) move-to-front and remove-from-back because each node knows its predecessor. The map stores key → node. With dummy head/tail sentinels: <code>get</code> = lookup, unlink, insert after head. <code>put</code> = update-and-move if present; otherwise, if full, evict <code>tail.prev</code> from both list and map, then insert the new node at the front. I store the key in the node so eviction can clean the map. I would also mention the built-in shortcut: Java <code>LinkedHashMap(accessOrder = true)</code> with <code>removeEldestEntry</code>, or Python <code>OrderedDict</code> with <code>move_to_end</code>.</p>`,
+      a: `<p>I need two things at once: O(1) lookup by key and O(1) reordering by recency. A <b>hash map</b> (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>) gives lookup; a <b>doubly linked list</b> gives O(1) move-to-front and remove-from-back because each node knows its predecessor. The map stores key → node. With dummy head/tail sentinels: <code>get</code> = lookup, unlink, insert after head. <code>put</code> = update-and-move if present; otherwise, if full, evict <code>tail.prev</code> from both list and map, then insert the new node at the front. I store the key in the node so eviction can clean the map. I would also mention the built-in shortcut: Java <code>LinkedHashMap(accessOrder = true)</code> with <code>removeEldestEntry</code>, or Python <code>OrderedDict</code> with <code>move_to_end</code>.</p>`,
       followUps: ['Why is a singly linked list not enough?', 'How do you make it thread-safe without a global lock?', 'How do you add per-entry TTL?']
     },
     {
@@ -8257,7 +9450,7 @@ public:
     },
     {
       q: 'What is consistent hashing and how do virtual nodes help?', level: 'I',
-      a: `<p>Servers and keys are hashed onto the same circular space; each key belongs to the first server clockwise. Adding a server only takes over the arc before it (~1/N of keys), and removing one only moves its own keys — compared with hash % N where adding one server moves ~(N)/(N+1) of all keys and causes a cache stampede. With few points per server, arcs are uneven, so each server gets many <b>virtual nodes</b> (e.g. 100–200 positions): load evens out, capacities can be weighted by vnode count, and a failed server's keys spread across many survivors. Lookup is a ceiling search in a sorted map (TreeMap) with wrap-around: O(log V).</p>`,
+      a: `<p>Servers and keys are hashed onto the same circular space; each key belongs to the first server clockwise. Adding a server only takes over the arc before it (~1/N of keys), and removing one only moves its own keys — compared with hash % N where adding one server moves ~(N)/(N+1) of all keys and causes a cache stampede. With few points per server, arcs are uneven, so each server gets many <b>virtual nodes</b> (e.g. 100–200 positions): load evens out, capacities can be weighted by vnode count, and a failed server's keys spread across many survivors. Lookup is a ceiling search in a sorted map (<code>TreeMap</code> / <code>std::map</code> / a sorted array with binary search) with wrap-around: O(log V).</p>`,
       followUps: ['How do you pick R replicas?', 'How do clients agree on ring membership?', 'Does consistent hashing solve hot keys?']
     },
     {
@@ -8267,7 +9460,7 @@ public:
     },
     {
       q: 'Design a time-based key-value store. What changes if timestamps arrive out of order?', level: 'I',
-      a: `<p>HashMap key → list of (timestamp, value). With increasing timestamps, <code>set</code> appends (O(1)) and the list stays sorted; <code>get(key, t)</code> binary searches for the last timestamp ≤ t (O(log V)) and returns "" if none. If timestamps can arrive <b>out of order</b>, switch each key's list to a <code>TreeMap&lt;Long, String&gt;</code> and use <code>floorEntry(t)</code>, making set O(log V). Production extras: retention (max versions or TTL per key), range reads (two binary searches), compact primitive arrays to avoid boxing, and in distributed settings a reliable timestamp source (hybrid logical clocks or a sequencer).</p>`,
+      a: `<p>A hash map from key → list of (timestamp, value). With increasing timestamps, <code>set</code> appends (O(1)) and the list stays sorted; <code>get(key, t)</code> binary searches for the last timestamp ≤ t (O(log V)) and returns "" if none. If timestamps can arrive <b>out of order</b>, switch each key's list to an ordered map (<code>TreeMap</code> with <code>floorEntry(t)</code> in Java, <code>std::map</code> with <code>upper_bound</code> in C++, a sorted list kept with <code>bisect.insort</code> in Python), making set O(log V). Production extras: retention (max versions or TTL per key), range reads (two binary searches), compact primitive arrays to avoid boxing, and in distributed settings a reliable timestamp source (hybrid logical clocks or a sequencer).</p>`,
       followUps: ['How is this related to MVCC in databases?', 'How would you implement Snapshot Array?', 'How do ML feature stores use point-in-time lookups?']
     },
     {

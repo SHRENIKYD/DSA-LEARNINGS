@@ -268,6 +268,44 @@ w, h = 3, 4
 print(area(w, h), perimeter(w, h))` },
       mcq: { q: 'Where should width and height be stored so each rectangle keeps its own size?', options: ['On <code>self</code> inside <code>__init__</code>', 'As class attributes', 'As global variables', 'As default arguments'], answer: 0, explain: 'Per-object data lives on the instance: <code>self.width = width</code>. Class attributes would be shared by every rectangle.' },
       hints: [`<p>Everything a rectangle "knows" (its width and height) goes on <code>self</code> in <code>__init__</code>; everything it "does" becomes a method.</p>`, `<p>Validate in <code>__init__</code> before assigning: <code>if width &lt;= 0 or height &lt;= 0: raise ValueError(...)</code>.</p>`, `<p>For chaining, <code>scale</code> updates <code>self.width</code> and <code>self.height</code> and ends with <code>return self</code>. <code>is_square</code> just compares the two sides.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              'r = Rectangle(3, 4)\n' +
+                'result = [r.area(), r.perimeter(), r.is_square()]'
+            ],
+            [12, 14, false]
+          ],
+          [['r = Rectangle(3, 4)\nresult = r.scale(2).area()'], 48],
+          [['r = Rectangle(3, 4)\nresult = r.scale(2) is r'], true],
+          [['result = Rectangle(5, 5).is_square()'], true],
+          [['result = Rectangle(-1, 2)'], '!ValueError'],
+          [['result = Rectangle(0, 5)'], '!ValueError'],
+          [['result = Rectangle(5, 0)'], '!ValueError'],
+          [['result = Rectangle(2, -3)'], '!ValueError'],
+          [['result = Rectangle(3, 4).scale(0)'], '!ValueError'],
+          [['result = Rectangle(3, 4).scale(-2)'], '!ValueError'],
+          [['result = Rectangle(10**6, 10**6).area()'], 1000000000000],
+          [['result = Rectangle(1.5, 2).area()'], 3],
+          [['result = Rectangle(4, 6).scale(0.5).perimeter()'], 10],
+          [['result = Rectangle(1, 1).scale(2).scale(3).area()'], 36],
+          [['r = Rectangle(2, 3)\nr.scale(2)\nresult = [r.width, r.height]'], [4, 6]],
+          [['result = Rectangle(1, 2).is_square()'], false],
+          [['result = Rectangle(7, 7).perimeter()'], 28]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Store validated sides on <code>self</code>. Each method reads them through <code>self</code>. Returning <code>self</code> from a mutating method enables fluent chaining (<code>r.scale(2).area()</code>).</p>`,
         code: { lang: 'python', run: true, code: `class Rectangle:
@@ -564,6 +602,127 @@ t1, t2 = Ticket(), Ticket()
 print(t2.number, issued)` },
       mcq: { q: 'Which line correctly bumps the shared total inside <code>__init__</code>?', options: ['<code>Ticket.issued += 1</code>', '<code>self.issued += 1</code>', '<code>issued += 1</code>', '<code>self.__class__.issued = 1</code>'], answer: 0, explain: '<code>self.issued += 1</code> writes a new instance attribute; a bare <code>issued</code> is an undefined local. Writing through the class updates the shared value.' },
       hints: [`<p>The running total belongs to the <b>class</b> (shared). Each ticket's own number belongs to <b>self</b>.</p>`, `<p>In <code>__init__</code>: increment <code>Ticket.issued</code> first, then copy it to <code>self.number</code>.</p>`, `<p>For the code, read <code>self.PREFIX</code> (lookup falls back to the class) and format with <code>f'{self.PREFIX}-{self.number:04d}'</code>.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              'Ticket.issued = 0\n' +
+                'Ticket.PREFIX = \'TKT\'\n' +
+                'a, b, c = Ticket(), Ticket(), Ticket()\n' +
+                'result = [c.code(), Ticket.issued]'
+            ],
+            ['TKT-0003', 3]
+          ],
+          [
+            [
+              'Ticket.issued = 0\n' +
+                'Ticket.PREFIX = \'TKT\'\n' +
+                'a, b, c = Ticket(), Ticket(), Ticket()\n' +
+                'Ticket.PREFIX = \'VIP\'\n' +
+                'result = a.code()'
+            ],
+            'VIP-0001'
+          ],
+          [
+            [
+              'Ticket.issued = 0\n' +
+                'Ticket.PREFIX = \'TKT\'\n' +
+                'a, b, c = Ticket(), Ticket(), Ticket()\n' +
+                'b.PREFIX = \'STAFF\'\n' +
+                'result = [b.code(), c.code()]'
+            ],
+            ['STAFF-0002', 'TKT-0003']
+          ],
+          [
+            [
+              'Ticket.issued = 0\n' +
+                'Ticket.PREFIX = \'TKT\'\n' +
+                'a, b, c = Ticket(), Ticket(), Ticket()\n' +
+                'Ticket.PREFIX = \'VIP\'\n' +
+                'b.PREFIX = \'STAFF\'\n' +
+                'result = [a.code(), b.code(), c.code()]'
+            ],
+            ['VIP-0001', 'STAFF-0002', 'VIP-0003']
+          ],
+          [
+            [
+              'Ticket.issued = 0\n' +
+                'Ticket.PREFIX = \'TKT\'\n' +
+                'result = Ticket.issued'
+            ],
+            0
+          ],
+          [
+            [
+              'Ticket.issued = 0\n' +
+                'Ticket.PREFIX = \'TKT\'\n' +
+                't = Ticket()\n' +
+                'result = [t.number, t.code()]'
+            ],
+            [1, 'TKT-0001']
+          ],
+          [
+            [
+              'Ticket.issued = 0\n' +
+                'Ticket.PREFIX = \'TKT\'\n' +
+                'ts = [Ticket() for _ in range(5)]\n' +
+                'result = [t.number for t in ts]'
+            ],
+            [1, 2, 3, 4, 5]
+          ],
+          [
+            [
+              'Ticket.issued = 0\n' +
+                'Ticket.PREFIX = \'TKT\'\n' +
+                'for i in range(1000000):\n' +
+                '    t = Ticket()\n' +
+                'result = [t.number, Ticket.issued, t.code()]'
+            ],
+            [1000000, 1000000, 'TKT-1000000']
+          ],
+          [
+            [
+              'Ticket.issued = 0\n' +
+                'Ticket.PREFIX = \'TKT\'\n' +
+                'a = Ticket()\n' +
+                'b = Ticket()\n' +
+                'result = [a.number, b.number, \'number\' in vars(a), \'issued\' in vars(a)]'
+            ],
+            [1, 2, true, false]
+          ],
+          [
+            [
+              'Ticket.issued = 0\n' +
+                'Ticket.PREFIX = \'TKT\'\n' +
+                'Ticket()\n' +
+                'Ticket()\n' +
+                'Ticket.issued = 0\n' +
+                'result = \'unused\''
+            ],
+            'unused'
+          ],
+          [
+            [
+              'Ticket.issued = 0\n' +
+                'Ticket.PREFIX = \'TKT\'\n' +
+                '[Ticket() for _ in range(9999)]\n' +
+                'result = [Ticket().code(), Ticket().code()]'
+            ],
+            ['TKT-10000', 'TKT-10001']
+          ]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Class attribute <code>issued</code> is the shared counter; it is updated through the class name. Each object snapshots the current value into its own <code>self.number</code>. <code>PREFIX</code> stays a class attribute read through <code>self</code>, so it acts as a shared, overridable default.</p>`,
         code: { lang: 'python', run: true, code: `class Ticket:
@@ -784,6 +943,129 @@ for v in [5, 3, 7]:
 print(s.get_min())` },
       mcq: { q: 'What extra state lets <code>get_min()</code> be O(1) even after pops?', options: ['A second stack storing the minimum <i>at each depth</i>', 'A single variable holding the current minimum', 'A sorted copy of the stack', 'A set of all values'], answer: 0, explain: 'One variable cannot recover the previous minimum after a pop. Storing the min-so-far alongside each element (or in a parallel stack) gives it back in O(1).' },
       hints: [`<p>The minimum only changes when you push or pop, and after a pop it must go back to <b>exactly</b> the value it had before that push.</p>`, `<p>Keep two lists on <code>self</code>: <code>items</code> and <code>mins</code>, where <code>mins[i]</code> = minimum of <code>items[0..i]</code>.</p>`, `<p>push: append val and <code>min(val, mins[-1])</code> (or val if empty). pop: pop both. top: <code>items[-1]</code>. get_min: <code>mins[-1]</code>.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              's = MinStack()\n' +
+                'for v in [5, 3, 7]:\n' +
+                '    s.push(v)\n' +
+                'r = [s.get_min()]\n' +
+                's.pop(); s.pop()\n' +
+                'r += [s.get_min(), s.top()]\n' +
+                'result = r'
+            ],
+            [3, 5, 5]
+          ],
+          [
+            [
+              's = MinStack()\n' +
+                's.push(-2); s.push(0); s.push(-3)\n' +
+                'r = [s.get_min()]\n' +
+                's.pop()\n' +
+                'r += [s.top(), s.get_min()]\n' +
+                'result = r'
+            ],
+            [-3, 0, -2]
+          ],
+          [
+            [
+              's = MinStack()\n' +
+                'for v in [2, 2, 1, 1]:\n' +
+                '    s.push(v)\n' +
+                'r = []\n' +
+                'for _ in range(3):\n' +
+                '    r.append(s.get_min())\n' +
+                '    s.pop()\n' +
+                'r.append(s.get_min())\n' +
+                'result = r'
+            ],
+            [1, 1, 2, 2]
+          ],
+          [
+            [
+              's = MinStack()\n' +
+                's.push(-2**31); s.push(2**31 - 1)\n' +
+                'result = [s.get_min(), s.top()]'
+            ],
+            [-2147483648, 2147483647]
+          ],
+          [
+            [
+              's = MinStack()\n' +
+                's.push(1); s.pop(); s.push(5)\n' +
+                'result = [s.get_min(), s.top()]'
+            ],
+            [5, 5]
+          ],
+          [
+            [
+              's = MinStack()\n' +
+                'for v in range(30000):\n' +
+                '    s.push(v)\n' +
+                'for _ in range(29999):\n' +
+                '    s.pop()\n' +
+                'result = [s.get_min(), s.top()]'
+            ],
+            [0, 0]
+          ],
+          [
+            [
+              's = MinStack()\n' +
+                'for v in range(30000, 0, -1):\n' +
+                '    s.push(v)\n' +
+                'for _ in range(10):\n' +
+                '    s.pop()\n' +
+                'result = [s.get_min(), s.top()]'
+            ],
+            [11, 11]
+          ],
+          [['s = MinStack()\ns.push(0)\nresult = [s.get_min(), s.top()]'], [0, 0]],
+          [
+            [
+              's = MinStack()\n' +
+                'for v in [3, 1, 2]:\n' +
+                '    s.push(v)\n' +
+                'r = []\n' +
+                'for _ in range(3):\n' +
+                '    r.append([s.top(), s.get_min()])\n' +
+                '    s.pop()\n' +
+                'result = r'
+            ],
+            [[2, 1], [1, 1], [3, 3]]
+          ],
+          [
+            [
+              'a, b = MinStack(), MinStack()\n' +
+                'a.push(1)\n' +
+                'b.push(9)\n' +
+                'result = [a.get_min(), b.get_min()]'
+            ],
+            [1, 9]
+          ],
+          [
+            [
+              's = MinStack()\n' +
+                'for v in [4, 4, 4]:\n' +
+                '    s.push(v)\n' +
+                's.pop()\n' +
+                'result = s.get_min()'
+            ],
+            4
+          ]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Maintain an <b>invariant</b>: <code>self.mins[-1]</code> is always the minimum of everything in the stack. Each method touches only the ends of two lists, so every operation is O(1). This is classic "keep extra bookkeeping on self".</p>`,
         code: { lang: 'python', run: true, code: `class MinStack:
@@ -1105,6 +1387,70 @@ class Manager:
 print(Manager('Ben', 240000, []).describe())` },
       mcq: { q: 'Where should <code>describe()</code> live so it works for Manager and Intern without copies?', options: ['In Employee, calling <code>self.monthly_pay()</code> and <code>type(self).__name__</code>', 'In each subclass', 'In a global function with if/elif on the type', 'In Manager only'], answer: 0, explain: 'Write the shared recipe once in the base class; dynamic dispatch on <code>self.monthly_pay()</code> picks each subclass\'s pay rule.' },
       hints: [`<p>What differs between roles is <b>only the pay rule</b> (and the constructor arguments). Everything else is shared.</p>`, `<p>Manager: <code>super().__init__(name, salary)</code>, then store reports; override <code>monthly_pay</code> as <code>super().monthly_pay() + 100 * len(self.reports)</code>.</p>`, `<p>Intern: call <code>super().__init__(name, 0)</code>, store the stipend, override <code>monthly_pay</code> to return it. <code>describe</code> in the base uses <code>type(self).__name__</code> for the role.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [['result = Employee(\'Asha\', 120000).describe()'], 'Asha (Employee): 10000.0'],
+          [
+            [
+              'asha = Employee(\'Asha\', 120000)\n' +
+                'cy = Intern(\'Cy\', 1500)\n' +
+                'result = Manager(\'Ben\', 240000, [asha, cy]).describe()'
+            ],
+            'Ben (Manager): 20200.0'
+          ],
+          [['result = Intern(\'Cy\', 1500).describe()'], 'Cy (Intern): 1500'],
+          [['result = Employee(\'X\', 100000).monthly_pay()'], 8333.33],
+          [['result = Employee(\'Z\', 0).monthly_pay()'], 0],
+          [
+            [
+              'asha = Employee(\'Asha\', 120000)\n' +
+                'cy = Intern(\'Cy\', 1500)\n' +
+                'ben = Manager(\'Ben\', 240000, [asha, cy])\n' +
+                'result = sum(p.monthly_pay() for p in [asha, ben, cy])'
+            ],
+            31700
+          ],
+          [['result = Manager(\'M\', 60000).describe()'], 'M (Manager): 5000.0'],
+          [['result = Manager(\'Big\', 12, [Employee(\'e\', 1)] * 50).monthly_pay()'], 5001],
+          [['result = [issubclass(Manager, Employee), issubclass(Intern, Employee)]'], [true, true]],
+          [['result = [\'describe\' not in vars(Manager), \'describe\' not in vars(Intern)]'], [true, true]],
+          [
+            [
+              'm1 = Manager(\'a\', 0)\n' +
+                'm1.reports.append(1)\n' +
+                'result = Manager(\'b\', 0).reports'
+            ],
+            []
+          ],
+          [['result = Employee(\'R\', 10).describe()'], 'R (Employee): 0.83'],
+          [['result = Employee(\'Rich\', 10**7).monthly_pay()'], 833333.33],
+          [
+            [
+              'reports = [Employee(\'e\', 1)]\n' +
+                'm = Manager(\'m\', 0, reports)\n' +
+                'reports.append(Employee(\'f\', 1))\n' +
+                'result = len(m.reports)'
+            ],
+            1
+          ],
+          [
+            ['result = [type(p).__name__ for p in [Employee(\'a\', 1), Manager(\'b\', 1), Intern(\'c\', 1)]]'],
+            ['Employee', 'Manager', 'Intern']
+          ],
+          [['result = Intern(\'Flat\', 0).monthly_pay()'], 0]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Put the shared contract (<code>name</code>, <code>monthly_pay</code>, <code>describe</code>) in <code>Employee</code>. Subclasses call <code>super().__init__</code> for shared setup and override only <code>monthly_pay</code>. <code>Manager</code> <b>extends</b> the parent rule via <code>super().monthly_pay()</code>; <code>Intern</code> <b>replaces</b> it.</p>`,
         code: { lang: 'python', run: true, code: `class Employee:
@@ -1362,6 +1708,69 @@ def total_area_ladder(items):
 print(total_area_ladder([('circle', 1), ('rect', 2, 3)]))` },
       mcq: { q: 'How should <code>total_area</code> treat <code>\'hello\'</code> in the list?', options: ['Look up <code>area</code> with <code>getattr(item, \'area\', None)</code> and skip if missing', 'Check <code>isinstance(item, Shape)</code> only', 'Let it crash', 'Convert it to a Shape'], answer: 0, explain: 'Duck typing: we care whether it <i>can</i> compute an area. <code>isinstance(item, Shape)</code> would wrongly skip <code>Sticker</code>.' },
       hints: [`<p>Each shape owns its formula → put <code>area()</code> in each class; the summing function should not know any formulas.</p>`, `<p>Use <code>abc.ABC</code> and <code>@abstractmethod</code> on <code>area</code> so a forgotten implementation fails at construction time.</p>`, `<p>In <code>total_area</code>: <code>fn = getattr(item, 'area', None)</code>; if <code>callable(fn)</code> add <code>fn()</code>. Heron: <code>s = (a+b+c)/2</code>, area = <code>√(s(s−a)(s−b)(s−c))</code>.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              'items = [Circle(1), Rect(2, 3), Triangle(3, 4, 5), \'hello\', Sticker()]\n' +
+                'result = total_area(items)'
+            ],
+            16.14
+          ],
+          [['result = total_area([])'], 0],
+          [['result = total_area([\'a\', 5, None])'], 0],
+          [
+            ['result = [round(s.perimeter(), 2) for s in [Circle(1), Rect(2, 3), Triangle(3, 4, 5)]]'],
+            [6.28, 10, 12]
+          ],
+          [['result = Shape()'], '!TypeError'],
+          [
+            [
+              'class P(Shape):\n' +
+                '    def area(self):\n' +
+                '        return 1\n' +
+                'result = P().perimeter()'
+            ],
+            '!NotImplementedError'
+          ],
+          [
+            [
+              'class Q(Shape):\n' +
+                '    def perimeter(self):\n' +
+                '        return 1\n' +
+                'result = Q()'
+            ],
+            '!TypeError'
+          ],
+          [['result = Triangle(3, 4, 5).area()'], 6],
+          [['result = Triangle(5, 5, 6).area()'], 12],
+          [['result = total_area([Rect(1, 1)] * 100000)'], 100000],
+          [['result = total_area([Circle(10**4)])'], 314159265.36],
+          [
+            [
+              'class Weird:\n' +
+                '    area = 5\n' +
+                'result = total_area([Weird(), Rect(2, 2)])'
+            ],
+            4
+          ],
+          [['result = total_area([Circle(1)] * 3)'], 9.42],
+          [['result = [isinstance(Circle(1), Shape), isinstance(Sticker(), Shape)]'], [true, false]],
+          [['result = total_area([Rect(2, 3), Rect(1, 1)])'], 7],
+          [['result = Circle(2).area() == math.pi * 4'], true]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Abstract base defines the contract, subclasses implement formulas (inheritance polymorphism). <code>total_area</code> uses duck typing with <code>getattr</code> so any object with a callable <code>area</code> participates — and the try-free lookup avoids swallowing real errors raised inside <code>area()</code>.</p>`,
         code: { lang: 'python', run: true, code: `import math
@@ -1664,6 +2073,46 @@ print(sorted(Notifier.registry))     # ['email', 'sms']` } }
 print(TemperatureLadder(212, 'F').celsius)` },
       mcq: { q: 'Why must <code>from_fahrenheit</code> end with <code>return cls(c)</code> instead of <code>return Temperature(c)</code>?', options: ['So subclasses calling it get an instance of the subclass', 'Because <code>Temperature</code> is not defined inside the class', 'It is faster', 'Static methods cannot create objects'], answer: 0, explain: '<code>cls</code> is whichever class the method was called on. Hard-coding the base class breaks <code>BodyTemperature.from_fahrenheit</code>.' },
       hints: [`<p><code>__init__</code> only ever takes Celsius — one canonical representation. Every other unit is converted <b>before</b> calling it.</p>`, `<p>Conversions are pure math with no object needed → <code>@staticmethod</code>. Building an object from another unit → <code>@classmethod</code> that calls <code>cls(...)</code>.</p>`, `<p>Validate in <code>__init__</code> (<code>if celsius &lt; -273.15: raise ValueError</code>) so all constructors share the check. Kelvin: c = k − 273.15; F→C: (f − 32) × 5/9.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [['result = Temperature.from_fahrenheit(212).celsius'], 100],
+          [['result = Temperature.from_kelvin(0).celsius'], -273.15],
+          [['result = Temperature.from_kelvin(-1)'], '!ValueError'],
+          [['result = type(BodyTemperature.from_fahrenheit(98.6)).__name__'], 'BodyTemperature'],
+          [['result = Temperature(-273.16)'], '!ValueError'],
+          [['result = Temperature(-273.15).celsius'], -273.15],
+          [['result = Temperature.c_to_f(100)'], 212],
+          [['result = Temperature.f_to_c(32)'], 0],
+          [['result = Temperature(37).to_fahrenheit()'], 98.6],
+          [['result = Temperature.from_fahrenheit(98.6).celsius'], 37],
+          [['result = Temperature.from_fahrenheit(-459.67).celsius'], -273.15],
+          [['result = Temperature.from_fahrenheit(-460)'], '!ValueError'],
+          [['result = repr(BodyTemperature.from_fahrenheit(101.3))'], 'BodyTemperature(38.5)'],
+          [
+            [
+              'result = [BodyTemperature(38.5).has_fever(), BodyTemperature(37.9).has_fever(), BodyTemperature(38.0).has_fever()]'
+            ],
+            [true, false, true]
+          ],
+          [['result = BodyTemperature.from_kelvin(310.15).celsius'], 37],
+          [['result = type(Temperature.from_kelvin(300)).__name__'], 'Temperature'],
+          [['result = Temperature(36.6667).celsius'], 36.67],
+          [['result = Temperature(0).to_fahrenheit()'], 32],
+          [['result = Temperature(100).c_to_f(0)'], 32],
+          [['result = repr(Temperature.from_fahrenheit(212))'], 'Temperature(100.0)']
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Keep one canonical unit in <code>__init__</code> with validation. Static methods do unit math; class methods convert then delegate to <code>cls(...)</code>, so validation runs once and subclasses are preserved.</p>`,
         code: { lang: 'python', run: true, code: `class Temperature:
@@ -1735,6 +2184,63 @@ pts = [(3, 4), (1, 1), (-2, 0)]
 print(min(pts, key=lambda p: dist(p, (0, 0))))` },
     mcq: { q: 'Inside <code>distance_to(self, other)</code>, how do you read the other point\'s x?', options: ['<code>other.x</code>', '<code>self.other.x</code>', '<code>Point.x</code>', '<code>x</code>'], answer: 0, explain: '<code>other</code> is just another Point object passed as an argument; its data is reached with <code>other.x</code>, exactly like <code>self.x</code> for the current object.' },
     hints: [`<p>Store <code>x</code> and <code>y</code> on <code>self</code> in <code>__init__</code>. A method can receive another object of the same class as a normal parameter.</p>`, `<p><code>math.hypot(self.x - other.x, self.y - other.y)</code> computes the distance safely.</p>`, `<p>For the closest point: <code>min(points, key=lambda p: p.distance_to(origin))</code> where <code>origin = Point(0, 0)</code>.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [['result = Point(3, 4).distance_to(Point(0, 0))'], 5],
+        [
+          [
+            'pts = [Point(3, 4), Point(1, 1), Point(-2, 0)]\n' +
+              'result = repr(closest_to_origin(pts))'
+          ],
+          'Point(1, 1)'
+        ],
+        [
+          [
+            'pts = [Point(3, 4), Point(1, 1), Point(-2, 0)]\n' +
+              'pts[1].move(5, 5)\n' +
+              'result = [repr(pts[1]), repr(closest_to_origin(pts))]'
+          ],
+          ['Point(6, 6)', 'Point(-2, 0)']
+        ],
+        [['result = Point(0, 0).distance_to(Point(0, 0))'], 0],
+        [['result = repr(Point(-2, 0))'], 'Point(-2, 0)'],
+        [['result = Point(1, 1).distance_to(Point(4, 5))'], 5],
+        [['result = Point(4, 5).distance_to(Point(1, 1))'], 5],
+        [['result = abs(Point(1, 1).distance_to(Point(0, 0)) - 2 ** 0.5) < 1e-12'], true],
+        [['p = Point(1, 2)\np.move(-1, -2)\nresult = repr(p)'], 'Point(0, 0)'],
+        [
+          [
+            'a, b = Point(1, 1), Point(-1, -1)\n' +
+              'result = closest_to_origin([a, b]) is a'
+          ],
+          true
+        ],
+        [['result = repr(closest_to_origin([Point(5, 5)]))'], 'Point(5, 5)'],
+        [
+          [
+            'pts = [Point(i % 10000, 5) for i in range(1, 100000)] + [Point(0, 0)]\n' +
+              'result = repr(closest_to_origin(pts))'
+          ],
+          'Point(0, 0)'
+        ],
+        [['result = repr(Point(1.5, -2.5))'], 'Point(1.5, -2.5)'],
+        [
+          ['result = Point(10**4, 10**4).distance_to(Point(-10**4, -10**4)) - 2 * 10**4 * 2 ** 0.5 < 1e-6'],
+          true
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Data on <code>self</code>, behaviour in methods; a method can work with a second object (<code>other</code>). <code>min</code> with a key reuses the method for the search.</p>`,
       code: { lang: 'python', run: true, code: `import math
@@ -1796,6 +2302,7 @@ del a.wheels
 print(a.wheels)` },
     mcq: { q: 'After <code>a.wheels = 3</code>, where does the value 3 live?', options: ['In <code>a.__dict__</code> only', 'In <code>Car.__dict__</code>', 'In both', 'Nowhere, it raises an error'], answer: 0, explain: 'Instance assignment always writes to the instance dict, creating a shadow of the class attribute for that object only.' },
     hints: [`<p>Reading <code>obj.attr</code>: instance dict first, then class. Writing <code>obj.attr = v</code>: always the instance dict.</p>`, `<p>After <code>Car.wheels = 6</code>, only objects <b>without</b> their own <code>wheels</code> see 6.</p>`, `<p><code>del a.wheels</code> removes the shadow, so reads fall back to the class again.</p>`],
+    tests: { io: true, cases: [{ stdin: '', stdout: '3 4 4\n3 6 6\n6\n{} {}' }] },
     solution: {
       approach: `<p>Track the three dictionaries: <code>a.__dict__</code>, <code>b.__dict__</code>, <code>Car.__dict__</code>. Apply "read: instance → class; write/del: the named dict only".</p>`,
       code: { lang: 'python', run: true, code: `class Car:
@@ -1840,6 +2347,20 @@ print(issubclass(Car, Vehicle), issubclass(Vehicle, Car), issubclass(Car, Car))
 print(isinstance(c, object), isinstance(Car, type))` },
     mcq: { q: 'Which check respects inheritance (a Car counts as a Vehicle)?', options: ['<code>isinstance(c, Vehicle)</code>', '<code>type(c) == Vehicle</code>', '<code>type(c) is Vehicle</code>', '<code>c.__class__ == Vehicle</code>'], answer: 0, explain: '<code>isinstance</code> walks the MRO. <code>type(...)</code> comparisons check the exact class only.' },
     hints: [`<p><code>isinstance(obj, C)</code> is True if C appears anywhere in <code>type(obj).__mro__</code>.</p>`, `<p><code>type(obj)</code> is the exact class — no inheritance considered.</p>`, `<p><code>issubclass(C, C)</code> is True by definition; every class inherits from <code>object</code>, and every class is an instance of <code>type</code>.</p>`],
+    tests: {
+      io: true,
+      cases: [
+        {
+          stdin: '',
+          stdout: '[\'Car\', \'Vehicle\', \'object\']\n' +
+            'True True False\n' +
+            'False Car\n' +
+            'True False True\n' +
+            'True True\n' +
+            'True'
+        }
+      ]
+    },
     solution: {
       approach: `<p>Write down <code>Car.__mro__ = (Car, Vehicle, object)</code>. <code>isinstance</code>/<code>issubclass</code> are membership tests in that tuple; <code>type()</code> is the first element only.</p>`,
       code: { lang: 'python', run: true, code: `class Vehicle: pass
@@ -1874,6 +2395,95 @@ print(isinstance(c, (Truck, Car)))                 # True (tuple = any of)` },
 print(balanced_brute('({[]})'), balanced_brute('(]'))` },
     mcq: { q: 'Why wrap a Python list in a Stack class at all?', options: ['To expose only stack operations and give clear errors', 'Because lists cannot append', 'To make it faster than a list', 'Python requires it'], answer: 0, explain: 'Encapsulation: callers can only push/pop/peek, so nobody inserts into the middle by accident, and errors are meaningful.' },
     hints: [`<p>Keep a private list <code>self._items</code>. The top of the stack is the end of the list (<code>append</code>/<code>pop</code> are O(1)).</p>`, `<p>Check <code>if not self._items: raise IndexError('empty stack')</code> in <code>pop</code> and <code>peek</code>.</p>`, `<p>Brackets: push openers; on a closer, the stack must be non-empty and its top must be the matching opener. At the end the stack must be empty.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [['result = [balanced(\'({[]})\'), balanced(\'(]\'), balanced(\'((\')]'], [true, false, false]],
+        [
+          [
+            'result = [balanced(\'\'), balanced(\')\'), balanced(\'a(b)c\'), balanced(\'([)]\'), balanced(\'{[()()]}\'), balanced(\'}{\')]'
+          ],
+          [true, false, true, false, true, false]
+        ],
+        [
+          [
+            'result = [balanced(\'(\' * 5000 + \')\' * 5000), balanced(\'(\' * 10000), balanced(\'()\' * 5000)]'
+          ],
+          [true, false, true]
+        ],
+        [['result = Stack().pop()'], '!IndexError'],
+        [['result = Stack().peek()'], '!IndexError'],
+        [
+          [
+            'try:\n' +
+              '    Stack().pop()\n' +
+              'except IndexError as e:\n' +
+              '    result = str(e)'
+          ],
+          'empty stack'
+        ],
+        [
+          [
+            'try:\n' +
+              '    Stack().peek()\n' +
+              'except IndexError as e:\n' +
+              '    result = str(e)'
+          ],
+          'empty stack'
+        ],
+        [
+          [
+            's = Stack()\n' +
+              'r = [s.is_empty(), s.size()]\n' +
+              's.push(1); s.push(2)\n' +
+              'r += [s.is_empty(), s.size(), s.peek(), s.pop(), s.size(), s.pop(), s.is_empty()]\n' +
+              'result = r'
+          ],
+          [true, 0, false, 2, 2, 2, 1, 1, true]
+        ],
+        [
+          [
+            's = Stack()\n' +
+              'for i in range(100000):\n' +
+              '    s.push(i)\n' +
+              'r = [s.size(), s.peek()]\n' +
+              'for _ in range(100000):\n' +
+              '    s.pop()\n' +
+              'result = r + [s.is_empty()]'
+          ],
+          [100000, 99999, true]
+        ],
+        [
+          [
+            's = Stack()\n' +
+              's.push(None); s.push([1])\n' +
+              'result = [s.pop(), s.pop(), s.is_empty()]'
+          ],
+          [[1], null, true]
+        ],
+        [
+          [
+            'a, b = Stack(), Stack()\n' +
+              'a.push(1)\n' +
+              'result = [a.size(), b.size()]'
+          ],
+          [1, 0]
+        ],
+        [['result = balanced(\'[{(<>)}]\')'], true],
+        [['result = balanced(\'(((((\')'], false],
+        [['result = balanced(\'abc\')'], true]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>The class hides the list and exposes a tiny API. The bracket checker only uses that API, which makes the logic read like the algorithm description.</p>`,
       code: { lang: 'python', run: true, code: `class Stack:
@@ -1955,6 +2565,17 @@ b = TeamBadFix('blue')
 print(r.members)                         # ['Asha'] - but Team.members is now a new list` },
     mcq: { q: 'Why does <code>red.add(\'Asha\')</code> also show up in <code>blue.members</code>?', options: ['<code>append</code> mutates the list found on the class, shared by all instances', 'Python copies attributes between instances', 'Because both were created on the same line', '<code>self</code> refers to the class here'], answer: 0, explain: 'Lookup finds <code>members</code> on the class; <code>.append</code> mutates that single list object. No instance attribute is ever created.' },
     hints: [`<p>Mutation (<code>.append</code>) never creates an instance attribute; assignment (<code>=</code>) does.</p>`, `<p>Trace three objects: the class list, red's dict, blue's dict. After <code>blue.members = ['Cy']</code>, blue's dict has its own list.</p>`, `<p>Fix: create <code>self.members = []</code> in <code>__init__</code> and delete the class attribute.</p>`],
+    tests: {
+      io: true,
+      cases: [
+        {
+          stdin: '',
+          stdout: '[\'Asha\', \'Ben\'] [\'Asha\', \'Ben\']\n' +
+            '[\'Asha\', \'Ben\'] [\'Cy\', \'Dee\'] [\'Asha\', \'Ben\']\n' +
+            '[\'Asha\'] [\'Ben\']'
+        }
+      ]
+    },
     solution: {
       approach: `<p>Explain the shared list, then move mutable state into <code>__init__</code>. Rule of thumb: <b>class attributes should be immutable</b> (numbers, strings, tuples, frozensets) unless sharing is the explicit goal.</p>`,
       code: { lang: 'python', run: true, code: `class Team:
@@ -2031,6 +2652,7 @@ class C(B):
 print(C().tag)` },
     mcq: { q: 'Why is <code>tag</code> equal to <code>\'ABC\'</code> and not <code>\'CBA\'</code>?', options: ['Each child appends after its parent\'s <code>__init__</code> has returned', 'Python sorts attribute strings', 'A runs last', 'super() reverses the order'], answer: 0, explain: 'A sets <code>\'A\'</code> first (deepest call), then B appends B after super returns, then C appends C.' },
     hints: [`<p><code>super().__init__()</code> is an ordinary function call: the current method waits until it returns.</p>`, `<p>Draw the call stack: C.__init__ → B.__init__ → A.__init__. "start" lines print on the way down, "end" lines on the way up.</p>`, `<p>The attribute is created by the deepest call (A) and extended on the way back up (B, then C).</p>`],
+    tests: { io: true, cases: [{ stdin: '', stdout: 'C start\nB start\nA start\nA end\nB end\nC end\nABC' }] },
     solution: {
       approach: `<p>Treat it as nested calls. Down: C start, B start, A start. Up: A end, B end (tag 'AB'), C end (tag 'ABC').</p>`,
       code: { lang: 'python', run: true, code: `class A:
@@ -2086,6 +2708,103 @@ q = MyQueueSlow(); q.push(1); q.push(2)
 print(q.pop())` },
     mcq: { q: 'When should elements move from the <i>in</i> stack to the <i>out</i> stack?', options: ['Only when the out stack is empty', 'On every push', 'On every pop, always', 'Never'], answer: 0, explain: 'Moving only when <code>out</code> is empty means each element is moved at most once → amortised O(1).' },
     hints: [`<p>Keep two lists on <code>self</code>: <code>inbox</code> for pushes and <code>outbox</code> for pops.</p>`, `<p>Reversing a stack into another stack turns newest-first into oldest-first.</p>`, `<p>In <code>pop</code>/<code>peek</code>: if <code>outbox</code> is empty, move everything from <code>inbox</code>; then use <code>outbox[-1]</code>. <code>empty()</code> = both empty.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'q = MyQueue()\n' +
+              'q.push(1); q.push(2)\n' +
+              'result = [q.peek(), q.pop(), q.empty()]'
+          ],
+          [1, 1, false]
+        ],
+        [
+          [
+            'q = MyQueue()\n' +
+              'q.push(1); q.push(2)\n' +
+              'q.pop()\n' +
+              'q.push(3)\n' +
+              'result = [q.pop(), q.pop(), q.empty()]'
+          ],
+          [2, 3, true]
+        ],
+        [['result = MyQueue().empty()'], true],
+        [
+          [
+            'q = MyQueue()\n' +
+              'q.push(1); q.push(2); q.pop(); q.push(3)\n' +
+              'result = [q.peek(), q.pop(), q.pop(), q.empty()]'
+          ],
+          [2, 2, 3, true]
+        ],
+        [
+          [
+            'q = MyQueue()\n' +
+              'q.push(7)\n' +
+              'result = [q.empty(), q.peek(), q.empty(), q.pop(), q.empty()]'
+          ],
+          [false, 7, false, 7, true]
+        ],
+        [
+          [
+            'q = MyQueue()\n' +
+              'for i in range(1, 6):\n' +
+              '    q.push(i)\n' +
+              'result = [q.pop() for _ in range(5)]'
+          ],
+          [1, 2, 3, 4, 5]
+        ],
+        [
+          [
+            'q = MyQueue()\n' +
+              'for i in range(10**6):\n' +
+              '    q.push(i)\n' +
+              'result = all(q.pop() == i for i in range(10**6)) and q.empty()'
+          ],
+          true
+        ],
+        [
+          [
+            'q = MyQueue()\n' +
+              'r = []\n' +
+              'for i in range(1000):\n' +
+              '    q.push(i); q.push(i + 1000)\n' +
+              '    r.append(q.pop())\n' +
+              'result = [len(r), r[:4], r[-1], q.empty()]'
+          ],
+          [1000, [0, 1000, 1, 1001], 1499, false]
+        ],
+        [
+          [
+            'q = MyQueue()\n' +
+              'q.push(1)\n' +
+              'q.pop()\n' +
+              'q.push(2)\n' +
+              'result = [q.peek(), q.empty()]'
+          ],
+          [2, false]
+        ],
+        [
+          [
+            'a, b = MyQueue(), MyQueue()\n' +
+              'a.push(1)\n' +
+              'result = [a.empty(), b.empty()]'
+          ],
+          [false, true]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Two-stack queue with lazy transfer. Each element is pushed to inbox once, moved once, popped once → total O(n) for n operations, amortised O(1) each. A private helper method <code>_shift</code> keeps the logic in one place.</p>`,
       code: { lang: 'python', run: true, code: `class MyQueue:
@@ -2144,6 +2863,103 @@ for t in [1, 2, 3]:
 print(c.get_hits(4))` },
     mcq: { q: 'Since timestamps only increase, which structure lets us drop expired hits cheaply?', options: ['A deque — pop old hits from the left', 'A set', 'A sorted list with insort on every hit', 'A dict keyed by hit count'], answer: 0, explain: 'Expired hits are always the oldest ones, at the front. <code>deque.popleft()</code> is O(1).' },
     hints: [`<p>The window slides forward only; the oldest hits expire first → FIFO.</p>`, `<p>Keep <code>self.q = deque()</code>. In both methods, first call a helper <code>_evict(t)</code> that pops from the left while <code>q[0] &lt;= t - 300</code>.</p>`, `<p>For huge hit rates store <code>[timestamp, count]</code> pairs and increment the last pair when the timestamp repeats, so memory is ≤ 300 entries.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'c = HitCounter()\n' +
+              'for t in [1, 2, 3]:\n' +
+              '    c.hit(t)\n' +
+              'r = [c.get_hits(4)]\n' +
+              'c.hit(300)\n' +
+              'r += [c.get_hits(300), c.get_hits(301)]\n' +
+              'result = r'
+          ],
+          [3, 4, 3]
+        ],
+        [
+          [
+            'c = HitCounter()\n' +
+              'c.hit(1)\n' +
+              'result = [c.get_hits(300), c.get_hits(301)]'
+          ],
+          [1, 0]
+        ],
+        [
+          [
+            'c = HitCounter()\n' +
+              'for _ in range(3):\n' +
+              '    c.hit(5)\n' +
+              'result = [c.get_hits(5), c.get_hits(304), c.get_hits(305)]'
+          ],
+          [3, 3, 0]
+        ],
+        [['result = HitCounter().get_hits(100)'], 0],
+        [
+          [
+            'c = HitCounter()\n' +
+              'for i in range(1, 1000001):\n' +
+              '    c.hit(i)\n' +
+              'result = c.get_hits(1000000)'
+          ],
+          300
+        ],
+        [
+          [
+            'c = HitCounter()\n' +
+              'for _ in range(10**6):\n' +
+              '    c.hit(7)\n' +
+              'result = [c.get_hits(7), c.get_hits(306), c.get_hits(307)]'
+          ],
+          [1000000, 1000000, 0]
+        ],
+        [
+          [
+            'c = HitCounter()\n' +
+              'c.hit(2 * 10**9)\n' +
+              'result = [c.get_hits(2 * 10**9), c.get_hits(2 * 10**9 + 299), c.get_hits(2 * 10**9 + 300)]'
+          ],
+          [1, 1, 0]
+        ],
+        [
+          [
+            'c = HitCounter()\n' +
+              'c.hit(1); c.hit(100); c.hit(200)\n' +
+              'result = [c.get_hits(300), c.get_hits(301), c.get_hits(400), c.get_hits(500)]'
+          ],
+          [3, 2, 1, 0]
+        ],
+        [
+          [
+            'c = HitCounter()\n' +
+              'c.hit(10)\n' +
+              'c.hit(10)\n' +
+              'c.hit(11)\n' +
+              'result = [c.get_hits(310), c.get_hits(311)]'
+          ],
+          [1, 0]
+        ],
+        [
+          [
+            'a, b = HitCounter(), HitCounter()\n' +
+              'a.hit(1)\n' +
+              'result = [a.get_hits(1), b.get_hits(1)]'
+          ],
+          [1, 0]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Deque of <code>[time, count]</code> buckets plus a running total on <code>self</code>. Evicting a bucket subtracts its count. Each bucket is added and removed once → amortised O(1); memory ≤ 300 buckets.</p>`,
       code: { lang: 'python', run: true, code: `from collections import deque
@@ -2205,6 +3021,232 @@ a.withdraw(100)
 print(a.balance)` },
     mcq: { q: 'What is the cleanest single thing for subclasses to override?', options: ['A small hook like <code>_floor()</code> (lowest allowed balance) used by the base <code>withdraw</code>', 'The entire <code>withdraw</code> method in each subclass', '<code>__init__</code> only', 'Nothing — use isinstance in withdraw'], answer: 0, explain: 'Template method: the base class owns the algorithm (validate → subtract → log); subclasses only supply the rule that differs.' },
     hints: [`<p>What actually differs between account types? Only the <b>lowest allowed balance</b> after a withdrawal.</p>`, `<p>Base <code>withdraw</code>: <code>if self.balance - amount &lt; self._floor(): raise ValueError(...)</code>. Base <code>_floor</code> returns 0; Savings returns <code>self.MIN_BALANCE</code>; Checking returns <code>-self.overdraft</code>.</p>`, `<p>Checking needs an extra constructor argument → <code>super().__init__(owner, balance)</code> then <code>self.overdraft = overdraft</code>. Process transactions with <code>getattr(acct, kind)(amount)</code> inside try/except ValueError.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            's = SavingsAccount(\'A\', 1000)\n' +
+              'result = exc = None\n' +
+              'try:\n' +
+              '    s.withdraw(600)\n' +
+              '    result = \'ok\'\n' +
+              'except ValueError:\n' +
+              '    result = \'fail\''
+          ],
+          'fail'
+        ],
+        [
+          [
+            's = SavingsAccount(\'A\', 1000)\n' +
+              'try:\n' +
+              '    s.withdraw(600)\n' +
+              'except ValueError:\n' +
+              '    pass\n' +
+              'result = s.balance'
+          ],
+          1000
+        ],
+        [
+          [
+            'try:\n' +
+              '    c = CheckingAccount(\'B\', 100)\n' +
+              '    c.withdraw(900)\n' +
+              '    result = \'ok\'\n' +
+              'except ValueError:\n' +
+              '    result = \'fail\'\n' +
+              'result = [result, c.balance]'
+          ],
+          ['ok', -800]
+        ],
+        [
+          [
+            'try:\n' +
+              '    c = CheckingAccount(\'B\', -800)\n' +
+              '    c.withdraw(300)\n' +
+              '    result = \'ok\'\n' +
+              'except ValueError:\n' +
+              '    result = \'fail\''
+          ],
+          'fail'
+        ],
+        [
+          [
+            's = SavingsAccount(\'A\', 1000)\n' +
+              'c = CheckingAccount(\'B\', 100)\n' +
+              'txs = [(s, \'withdraw\', 600), (c, \'withdraw\', 900), (c, \'withdraw\', 300), (s, \'deposit\', 50)]\n' +
+              'f = process(txs)\n' +
+              'result = [[i for i, _ in f], s.balance, c.balance]'
+          ],
+          [[0, 2], 1050, -800]
+        ],
+        [
+          [
+            's = SavingsAccount(\'A\', 1000)\n' +
+              's.add_interest(0.05)\n' +
+              'result = s.balance'
+          ],
+          1050
+        ],
+        [
+          [
+            's = SavingsAccount(\'A\', 1050)\n' +
+              's.add_interest(0.05)\n' +
+              'result = s.balance'
+          ],
+          1102.5
+        ],
+        [
+          [
+            'try:\n' +
+              '    s = SavingsAccount(\'A\', 1000)\n' +
+              '    s.withdraw(500)\n' +
+              '    result = \'ok\'\n' +
+              'except ValueError:\n' +
+              '    result = \'fail\'\n' +
+              'result = [result, s.balance]'
+          ],
+          ['ok', 500]
+        ],
+        [
+          [
+            'try:\n' +
+              '    s = SavingsAccount(\'A\', 1000)\n' +
+              '    s.withdraw(501)\n' +
+              '    result = \'ok\'\n' +
+              'except ValueError:\n' +
+              '    result = \'fail\''
+          ],
+          'fail'
+        ],
+        [
+          [
+            'try:\n' +
+              '    c = CheckingAccount(\'B\', 0)\n' +
+              '    c.withdraw(1000)\n' +
+              '    result = \'ok\'\n' +
+              'except ValueError:\n' +
+              '    result = \'fail\'\n' +
+              'result = [result, c.balance]'
+          ],
+          ['ok', -1000]
+        ],
+        [
+          [
+            'try:\n' +
+              '    c = CheckingAccount(\'B\', 0)\n' +
+              '    c.withdraw(1001)\n' +
+              '    result = \'ok\'\n' +
+              'except ValueError:\n' +
+              '    result = \'fail\''
+          ],
+          'fail'
+        ],
+        [
+          [
+            'try:\n' +
+              '    c = CheckingAccount(\'B\', 0, 50)\n' +
+              '    c.withdraw(51)\n' +
+              '    result = \'ok\'\n' +
+              'except ValueError:\n' +
+              '    result = \'fail\''
+          ],
+          'fail'
+        ],
+        [
+          [
+            'try:\n' +
+              '    c = CheckingAccount(\'B\', 0, 50)\n' +
+              '    c.withdraw(50)\n' +
+              '    result = \'ok\'\n' +
+              'except ValueError:\n' +
+              '    result = \'fail\'\n' +
+              'result = [result, c.balance]'
+          ],
+          ['ok', -50]
+        ],
+        [
+          [
+            'try:\n' +
+              '    a = Account(\'x\', 10)\n' +
+              '    a.withdraw(11)\n' +
+              '    result = \'ok\'\n' +
+              'except ValueError:\n' +
+              '    result = \'fail\''
+          ],
+          'fail'
+        ],
+        [
+          [
+            'try:\n' +
+              '    a = Account(\'x\', 10)\n' +
+              '    a.withdraw(10)\n' +
+              '    result = \'ok\'\n' +
+              'except ValueError:\n' +
+              '    result = \'fail\'\n' +
+              'result = [result, a.balance]'
+          ],
+          ['ok', 0]
+        ],
+        [
+          [
+            'try:\n' +
+              '    Account(\'x\', 10).withdraw(0)\n' +
+              '    result = \'ok\'\n' +
+              'except ValueError:\n' +
+              '    result = \'fail\''
+          ],
+          'fail'
+        ],
+        [
+          [
+            'try:\n' +
+              '    Account(\'x\', 10).deposit(-5)\n' +
+              '    result = \'ok\'\n' +
+              'except ValueError:\n' +
+              '    result = \'fail\''
+          ],
+          'fail'
+        ],
+        [
+          [
+            'try:\n' +
+              '    Account(\'x\', 10).deposit(0)\n' +
+              '    result = \'ok\'\n' +
+              'except ValueError:\n' +
+              '    result = \'fail\''
+          ],
+          'fail'
+        ],
+        [['a = Account(\'x\')\na.deposit(5)\nresult = a.balance'], 5],
+        [
+          [
+            'a = Account(\'x\', 0)\n' +
+              'txs = [(a, \'deposit\', 1)] * 100000 + [(a, \'withdraw\', 2)] * 50000\n' +
+              'f = process(txs)\n' +
+              'result = [len(f), a.balance, 0]'
+          ],
+          [0, 0, 0]
+        ],
+        [
+          [
+            'c = CheckingAccount(\'B\', 0)\n' +
+              'result = [isinstance(c, Account), c.overdraft]'
+          ],
+          [true, 1000]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Template method + polymorphic hook. The base class implements <code>withdraw</code> once and asks <code>self._floor()</code> for the limit; dynamic dispatch picks each subclass's rule. The processor treats every account the same way.</p>`,
       code: { lang: 'python', run: true, code: `class Account:
@@ -2282,6 +3324,117 @@ for r in rows:
 print(sum(p['price'] * p['qty'] for p in products))` },
     mcq: { q: 'Which decorator fits <code>valid_sku</code>, which needs neither an object nor the class?', options: ['<code>@staticmethod</code>', '<code>@classmethod</code>', 'No decorator (instance method)', '<code>@property</code>'], answer: 0, explain: 'It is a pure function of its argument that belongs with Product conceptually — a static method. <code>from_csv</code> builds objects, so it is a class method returning <code>cls(...)</code>.' },
     hints: [`<p>Put all validation in <code>__init__</code> (calling the static validator) so every constructor path is checked.</p>`, `<p><code>from_csv</code>: split on commas, convert types, then <code>return cls(sku, name, float(price), int(qty))</code>.</p>`, `<p>Inventory stores <code>self.items = {}</code> keyed by SKU. <code>low_stock</code>: <code>sorted(s for s, p in self.items.items() if p.qty &lt; threshold)</code>. Use <code>re.fullmatch(r'[A-Z]{3}-[0-9]{4}', s)</code>.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'inv = Inventory()\n' +
+              'for line in [\'ABC-1234,Pen,12.5,40\', \'XYZ-0001,Book,300,2\']:\n' +
+              '    inv.add(Product.from_csv(line))\n' +
+              'result = [inv.total_value(), inv.low_stock(5)]'
+          ],
+          [1100, ['XYZ-0001']]
+        ],
+        [
+          [
+            'inv = Inventory()\n' +
+              'for line in [\'ABC-1234,Pen,12.5,40\', \'XYZ-0001,Book,300,2\']:\n' +
+              '    inv.add(Product.from_csv(line))\n' +
+              'inv.remove(\'ABC-1234\', 38)\n' +
+              'result = inv.low_stock(5)'
+          ],
+          ['ABC-1234', 'XYZ-0001']
+        ],
+        [['result = Product.from_csv(\'bad,Pen,1,1\')'], '!ValueError'],
+        [
+          [
+            'result = [Product.valid_sku(s) for s in [\'ABC-1234\', \'abc-1234\', \'ABC-123\', \'ABC-12345\', \'AB-1234\', \'\', \'ABC1234\', \'ABC-12a4\', \' ABC-1234\']]'
+          ],
+          [true, false, false, false, false, false, false, false, false]
+        ],
+        [
+          [
+            'p = Product.from_csv(\' ABC-1234 , Pen , 12.5 , 40 \')\n' +
+              'result = [p.sku, p.name, p.price, p.qty]'
+          ],
+          ['ABC-1234', 'Pen', 12.5, 40]
+        ],
+        [['result = Product(\'ABC-1234\', \'x\', -1, 1)'], '!ValueError'],
+        [['result = Product(\'ABC-1234\', \'x\', 1, -1)'], '!ValueError'],
+        [
+          [
+            'inv = Inventory()\n' +
+              'inv.add(Product(\'ABC-1234\', \'Pen\', 2, 5))\n' +
+              'result = inv.remove(\'ABC-1234\', 6)'
+          ],
+          '!ValueError'
+        ],
+        [
+          [
+            'inv = Inventory()\n' +
+              'inv.add(Product(\'ABC-1234\', \'Pen\', 2, 5))\n' +
+              'inv.add(Product(\'ABC-1234\', \'Pen\', 2, 5))\n' +
+              'result = [inv.total_value(), inv.items[\'ABC-1234\'].qty]'
+          ],
+          [20, 10]
+        ],
+        [
+          [
+            'inv = Inventory()\n' +
+              'inv.add(Product(\'ABC-1234\', \'Pen\', 2, 5))\n' +
+              'result = [inv.low_stock(5), inv.low_stock(6)]'
+          ],
+          [[], ['ABC-1234']]
+        ],
+        [['result = Inventory().total_value()'], 0],
+        [
+          [
+            'inv = Inventory()\n' +
+              'for s in [\'ZZZ-0001\', \'AAA-0002\', \'MMM-0003\']:\n' +
+              '    inv.add(Product(s, \'n\', 1, 1))\n' +
+              'result = inv.low_stock(10)'
+          ],
+          ['AAA-0002', 'MMM-0003', 'ZZZ-0001']
+        ],
+        [
+          [
+            'inv = Inventory()\n' +
+              'for i in range(100000):\n' +
+              '    inv.add(Product(chr(65 + i // 10000) + \'AA-\' + \'%04d\' % (i % 10000), \'n\', 2.0, 3))\n' +
+              'result = [inv.total_value(), len(inv.low_stock(4)), inv.low_stock(4)[0], inv.low_stock(4)[-1]]'
+          ],
+          [600000, 100000, 'AAA-0000', 'JAA-9999']
+        ],
+        [
+          [
+            'inv = Inventory()\n' +
+              'inv.add(Product(\'ABC-1234\', \'Pen\', 1.5, 2))\n' +
+              'inv.remove(\'ABC-1234\', 2)\n' +
+              'result = [inv.items[\'ABC-1234\'].qty, inv.total_value(), inv.low_stock(1)]'
+          ],
+          [0, 0, ['ABC-1234']]
+        ],
+        [
+          [
+            'p = Product.from_csv(\'ABC-0001,Cap,0,0\')\n' +
+              'result = [p.price, p.qty, p.value()]'
+          ],
+          [0, 0, 0]
+        ],
+        [['result = type(Product.from_csv(\'ABC-0001,Cap,1,1\')).__name__'], 'Product']
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Product = data + validation; one canonical <code>__init__</code>; a static validator and a class-method parser. Inventory composes products in a dict for O(1) lookup by SKU.</p>`,
       code: { lang: 'python', run: true, code: `import re
@@ -2406,6 +3559,7 @@ print(Circle.create().describe(), Shape().describe())
 print(Shape.count, Circle.count)` },
     mcq: { q: 'After the first <code>Circle.create()</code>, where does <code>count</code> live?', options: ['Both <code>Shape.__dict__</code> (1) and <code>Circle.__dict__</code> (2)', 'Only in Shape (2)', 'Only in Circle (2)', 'In the Circle instance'], answer: 0, explain: '<code>cls.count += 1</code> with <code>cls = Circle</code> reads Shape\'s 1 through inheritance, then assigns 2 to <code>Circle.count</code>, creating a new class attribute on the subclass.' },
     hints: [`<p>Augmented assignment on a class attribute behaves exactly like on an instance: read via lookup, write onto the object named on the left (<code>cls</code>).</p>`, `<p>Keep a table of <code>Shape.__dict__['count']</code> and <code>Circle.__dict__.get('count')</code> after every statement.</p>`, `<p><code>self.kind()</code> inside <code>describe</code> looks up <code>kind</code> starting at <code>type(self)</code>, so Circle's overridden static method is used for Circle objects.</p>`],
+    tests: { io: true, cases: [{ stdin: '', stdout: '1 3\n3\nCircle:round Shape:shape\n10 4\nTrue' }] },
     solution: {
       approach: `<p>Track both class dicts. Shape.create → Shape.count 1. Circle.create → reads 1, writes Circle.count 2. Again → 3. Setting Shape.count = 10 doesn't touch Circle's own 3. Next Circle.create → 4. Static methods are looked up through the instance's class, so overriding works.</p>`,
       code: { lang: 'python', run: true, code: `class Shape:
@@ -2470,6 +3624,131 @@ Model().save(steps)
 print(steps)        # ['log', 'base', 'cache', 'base'] - base twice!` },
     mcq: { q: 'In <code>class Model(ValidateMixin, LogMixin, CacheMixin)</code>, what does <code>super()</code> inside <code>LogMixin.save</code> resolve to when called on a Model?', options: ['<code>CacheMixin</code> — the next class in <code>Model.__mro__</code>', '<code>Base</code> — LogMixin\'s declared parent', '<code>ValidateMixin</code>', '<code>object</code>'], answer: 0, explain: 'super() uses <code>type(self).__mro__</code> and continues after the class it is written in. For a Model object that is CacheMixin.' },
     hints: [`<p>Every class in the chain must call <code>super().save(...)</code> — that is the "cooperative" contract. Only the final <code>Base</code> stops the chain.</p>`, `<p>C3 linearization for <code>Model(V, L, C)</code> with all three inheriting <code>Base</code>: Model, V, L, C, Base, object — children before parents, left-to-right order kept.</p>`, `<p>Pass shared state (the steps list, or <code>**kwargs</code> in <code>__init__</code>) through the chain so mixins don't need to know about each other.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [['result = Model().save()'], ['validate', 'log', 'cache', 'base']],
+        [
+          ['result = [c.__name__ for c in Model.__mro__]'],
+          ['Model', 'ValidateMixin', 'LogMixin', 'CacheMixin', 'Base', 'object']
+        ],
+        [
+          [
+            'class CachedOnly(CacheMixin):\n' +
+              '    pass\n' +
+              'result = CachedOnly().save([])'
+          ],
+          ['cache', 'base']
+        ],
+        [
+          [
+            'class M2(CacheMixin, ValidateMixin):\n' +
+              '    pass\n' +
+              'result = M2().save([])'
+          ],
+          ['cache', 'validate', 'base']
+        ],
+        [['result = Base().save([])'], ['base']],
+        [
+          [
+            'steps = Model().save()\n' +
+              'result = [steps.count(\'base\'), steps.count(\'log\'), steps.count(\'validate\'), steps.count(\'cache\'), len(steps)]'
+          ],
+          [1, 1, 1, 1, 4]
+        ],
+        [['s = []\nresult = Model().save(s) is s'], true],
+        [
+          [
+            'class M3(LogMixin, ValidateMixin, CacheMixin):\n' +
+              '    pass\n' +
+              'result = M3().save([])'
+          ],
+          ['log', 'validate', 'cache', 'base']
+        ],
+        [
+          [
+            'class Lone(LogMixin):\n' +
+              '    pass\n' +
+              'result = Lone().save([\'start\'])'
+          ],
+          ['start', 'log', 'base']
+        ],
+        [
+          [
+            'mixins = []\n' +
+              'for i in range(50):\n' +
+              '    k = type(\'M%d\' % i, (Base,), {})\n' +
+              '    k.save = lambda self, steps, i=i, k=k: super(k, self).save(steps + [i])\n' +
+              '    mixins.append(k)\n' +
+              'Big = type(\'Big\', tuple(mixins), {})\n' +
+              'result = Big().save([])'
+          ],
+          [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47,
+            48,
+            49,
+            'base'
+          ]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Cooperative multiple inheritance: each mixin does its step then delegates with <code>super().save(steps)</code>. Python's C3 MRO puts Base after all mixins, so each runs once. The same mixins work in any combination because none hard-codes who comes next.</p>`,
       code: { lang: 'python', run: true, code: `class Base:
@@ -2543,6 +3822,119 @@ e = SnapshotEditor(); e.insert(0, 'hi'); e.insert(2, '!')
 print(e.undo())` },
     mcq: { q: 'What must a <code>Delete</code> command remember so it can be reverted?', options: ['The position and the exact text it removed', 'Only the number of characters', 'A full copy of the document', 'Nothing'], answer: 0, explain: 'Revert re-inserts the removed characters at the same position, so the command captures them during <code>apply</code>.' },
     hints: [`<p>Each command class stores just enough to undo itself: Insert(pos, s); Delete(pos, n) plus the removed text captured when applied.</p>`, `<p>The editor keeps two stacks of command objects. Edit: <code>text = cmd.apply(text)</code>, push to undo, clear redo. Undo: pop, <code>text = cmd.revert(text)</code>, push to redo. Redo: pop from redo and apply again.</p>`, `<p>The editor never checks command types — it just calls <code>apply</code>/<code>revert</code> (polymorphism), so adding a <code>Replace</code> command needs no editor changes.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'e = Editor()\n' +
+              'e.insert(0, \'hello\'); e.insert(5, \' world\')\n' +
+              'r = [e.delete(0, 6), e.undo(), e.undo(), e.redo(), e.insert(0, \'>> \'), e.redo()]\n' +
+              'result = r'
+          ],
+          ['world', 'hello world', 'hello', 'hello world', '>> hello world', '>> hello world']
+        ],
+        [['e = Editor()\nresult = [e.undo(), e.redo(), e.text]'], ['', '', '']],
+        [
+          [
+            'e = Editor()\n' +
+              'e.insert(0, \'ac\')\n' +
+              'result = [e.insert(1, \'b\'), e.undo(), e.redo()]'
+          ],
+          ['abc', 'ac', 'abc']
+        ],
+        [
+          [
+            'e = Editor()\n' +
+              'e.insert(0, \'abcdef\')\n' +
+              'result = [e.delete(1, 3), e.undo(), e.redo(), e.undo()]'
+          ],
+          ['aef', 'abcdef', 'aef', 'abcdef']
+        ],
+        [
+          [
+            'e = Editor()\n' +
+              'e.insert(0, \'x\')\n' +
+              'e.undo()\n' +
+              'result = [e.undo(), e.undo(), e.redo(), e.redo(), e.redo()]'
+          ],
+          ['', '', 'x', 'x', 'x']
+        ],
+        [
+          [
+            'e = Editor()\n' +
+              'e.insert(0, \'a\'); e.insert(1, \'b\'); e.undo(); e.insert(1, \'c\')\n' +
+              'result = [e.text, e.redo(), e.undo(), e.undo(), e.undo()]'
+          ],
+          ['ac', 'ac', 'a', '', '']
+        ],
+        [
+          [
+            'e = Editor()\n' +
+              'e.insert(0, \'x\' * 100000)\n' +
+              'e.delete(50000, 10)\n' +
+              'r = [len(e.text), len(e.undo()), len(e.redo())]\n' +
+              'result = r'
+          ],
+          [99990, 100000, 99990]
+        ],
+        [
+          [
+            'e = Editor()\n' +
+              'for i in range(10000):\n' +
+              '    e.insert(len(e.text), \'a\')\n' +
+              'r = [len(e.text)]\n' +
+              'for i in range(10000):\n' +
+              '    e.undo()\n' +
+              'result = r + [e.text, len(e.redo())]'
+          ],
+          [10000, '', 1]
+        ],
+        [
+          [
+            'result = [Insert(0, \'ab\').apply(\'xy\'), Insert(0, \'ab\').revert(\'abxy\'), Insert(1, \'Q\').apply(\'ab\')]'
+          ],
+          ['abxy', 'xy', 'aQb']
+        ],
+        [
+          [
+            'd = Delete(1, 2)\n' +
+              'after = d.apply(\'abcd\')\n' +
+              'result = [after, d.revert(after)]'
+          ],
+          ['ad', 'abcd']
+        ],
+        [['result = [issubclass(Insert, Command), issubclass(Delete, Command)]'], [true, true]],
+        [
+          [
+            'e = Editor()\n' +
+              'e.insert(0, \'ab\')\n' +
+              'e.delete(0, 1)\n' +
+              'e.delete(0, 1)\n' +
+              'result = [e.text, e.undo(), e.undo(), e.undo(), e.undo()]'
+          ],
+          ['', 'b', 'ab', '', '']
+        ],
+        [
+          [
+            'a, b = Editor(), Editor()\n' +
+              'a.insert(0, \'z\')\n' +
+              'result = [a.text, b.text]'
+          ],
+          ['z', '']
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Command pattern: each edit is an object with <code>apply</code> and <code>revert</code>. Memory per edit is proportional to the edited text only, not the whole document. Polymorphism keeps the editor closed for modification but open for new command types.</p>`,
       code: { lang: 'python', run: true, code: `class Command:
@@ -2644,9 +4036,68 @@ print(e.redo())                  # >> hello world  (redo cleared)` },
 print(eval_postfix(['3', '4', '+', '2', '*', '7', '/']))` },
     mcq: { q: 'How does the factory choose which operator class to build without an if/elif ladder?', options: ['A class-level dict mapping symbol → subclass, e.g. <code>{\'+\': Add}</code>', 'isinstance checks on the token', 'eval() on the token', 'One generic class with a symbol attribute and if/elif in evaluate'], answer: 0, explain: 'Classes are objects, so they can be stored in a dict. Looking up <code>OPS[token]</code> and calling it constructs the right node.' },
     hints: [`<p>Leaf: <code>Num.evaluate()</code> returns its value. Binary node base class stores <code>left</code>/<code>right</code>; each subclass defines only <code>symbol</code> and a tiny <code>combine(a, b)</code>.</p>`, `<p>Put <code>evaluate()</code> once in the binary base: <code>return self.combine(self.left.evaluate(), self.right.evaluate())</code> — recursion + dynamic dispatch.</p>`, `<p>Factory: scan tokens with a stack; on an operator pop right then left and push <code>OPS[tok](left, right)</code>; on a number push <code>Num(int(tok))</code>. Truncate division with <code>int(a / b)</code> (or a sign-safe integer version for huge numbers).</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            't = Node.from_postfix([\'3\', \'4\', \'+\', \'2\', \'*\', \'7\', \'/\'])\n' +
+              'result = [t.to_infix(), t.evaluate()]'
+          ],
+          ['(((3 + 4) * 2) / 7)', 2]
+        ],
+        [['result = Node.from_postfix([\'7\', \'-2\', \'/\']).evaluate()'], -3],
+        [['result = Node.from_postfix([\'-7\', \'2\', \'/\']).evaluate()'], -3],
+        [['result = Node.from_postfix([\'7\', \'2\', \'/\']).evaluate()'], 3],
+        [['result = Node.from_postfix([\'-8\', \'-2\', \'/\']).evaluate()'], 4],
+        [
+          [
+            't = Node.from_postfix([\'5\'])\n' +
+              'result = [t.to_infix(), t.evaluate()]'
+          ],
+          ['5', 5]
+        ],
+        [
+          [
+            't = Node.from_postfix([\'2\', \'3\', \'+\', \'4\', \'*\'])\n' +
+              'result = [t.to_infix(), t.evaluate()]'
+          ],
+          ['((2 + 3) * 4)', 20]
+        ],
+        [['result = Node.from_postfix([\'3\', \'5\', \'-\']).evaluate()'], -2],
+        [['result = Node.from_postfix([\'0\', \'5\', \'-\']).to_infix()'], '(0 - 5)'],
+        [
+          ['result = Node.from_postfix([\'9223372036854775807\', \'2\', \'/\']).evaluate()'],
+          '4611686018427387903'
+        ],
+        [['result = Node.from_postfix([\'1\', \'2\'])'], '!ValueError'],
+        [['result = Node.from_postfix([\'1\', \'+\'])'], '!IndexError'],
+        [['result = Node()'], '!TypeError'],
+        [['result = isinstance(Node.from_postfix([\'1\', \'2\', \'*\']), Node)'], true],
+        [['result = Node.from_postfix([\'1\'] + [\'1\', \'+\'] * 4999).evaluate()'], 5000],
+        [['result = Node.from_postfix([\'1\'] * 5000 + [\'+\'] * 4999).evaluate()'], 5000],
+        [['result = len(Node.from_postfix([\'1\'] + [\'1\', \'+\'] * 4999).to_infix())'], 29995],
+        [['result = Node.from_postfix([\'-3\', \'4\', \'*\', \'5\', \'-\']).evaluate()'], -17],
+        [['result = Node.from_postfix([\'10\', \'3\', \'/\', \'3\', \'*\']).evaluate()'], 9]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Composite + polymorphism. <code>BinOp</code> implements the shared recursion; subclasses only provide <code>symbol</code> and <code>combine</code>. A class-level registry maps symbols to classes so the <code>@classmethod</code> factory stays closed to modification — adding <code>Mod</code> is one new class plus a registry line.</p>`,
-      code: { lang: 'python', run: true, code: `from abc import ABC, abstractmethod
+      code: { lang: 'python', run: true, code: `import sys
+from abc import ABC, abstractmethod
+
+# a left-deep tree built from 10**4 tokens is ~5000 levels deep
+sys.setrecursionlimit(max(sys.getrecursionlimit(), 20000))
 
 
 class Node(ABC):

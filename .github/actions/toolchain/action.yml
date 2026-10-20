@@ -1,0 +1,24 @@
+name: Checker toolchain
+description: Node, Java, Python, TypeScript, g++ and PostgreSQL as used by tools/validate.js and tools/solution-check.js
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 21
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+    - name: TypeScript, PyYAML, g++ and PostgreSQL
+      shell: bash
+      run: |
+        npm install -g typescript@6.0.2
+        echo "NODE_PATH=$(npm root -g)" >> "$GITHUB_ENV"
+        python -m pip install --quiet pyyaml==6.0.1
+        g++ --version | head -1
+        command -v psql >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q postgresql-16; }
+        echo "$(ls -d /usr/lib/postgresql/*/bin | tail -1)" >> "$GITHUB_PATH"

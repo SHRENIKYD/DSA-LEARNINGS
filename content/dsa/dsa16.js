@@ -193,7 +193,10 @@ long long minWeightedCompletion(const vector<int>& time, const vector<int>& weig
         ] });
         frames.push({ narr: 'No inversions left → the order is sorted ascending, which is exactly what the greedy "shortest first" produces in one sort. Final total = <b>' + total(cur) + '</b>. ' + (swaps ? 'We needed ' + swaps + ' swaps and every one helped — that is the whole exchange-argument proof.' : 'Your input was already sorted: greedy order, nothing to fix.'), parts: [
           bar(cur, (function () { var h = {}; cur.forEach(function (_, k) { h[k] = 'sel'; }); return h; })(), 'optimal order = sorted ascending'), { type: 'vars', vals: { totalWait: total(cur), swaps: swaps }, hl: { totalWait: 'sel' } },
-          { type: 'code', label: 'the greedy that the proof justifies', lang: 'java', code: 'Arrays.sort(d);\nfor (int x : d) { total += clock; clock += x; }', hl: { 1: 'ok', 2: 'ok' } }
+          { type: 'code', label: 'the greedy that the proof justifies', lang: 'java', code: 'Arrays.sort(d);\nfor (int x : d) { total += clock; clock += x; }', hl: { 1: 'ok', 2: 'ok' }, alt: {
+            python: { code: 'd.sort()\nfor x in d: total, clock = total + clock, clock + x', map: {} },
+            js: { code: 'd.sort((a, b) => a - b);\nfor (const x of d) { total += clock; clock += x; }', map: {} },
+            cpp: { code: 'sort(d.begin(), d.end());\nfor (int x : d) { total += clock; clock += x; }', map: {} } } }
         ] });
         return frames;
       }
@@ -270,7 +273,7 @@ long long minWeightedCompletion(const vector<int>& time, const vector<int>& weig
           <p>Output <b>17</b>. In sorted order the waits are ${H.c('g', '0, 1, 3, 5, 8')} → 0 + 1 + 3 + 5 + 8 = 17. Any order where a longer query runs just before a shorter one can be improved by swapping them, so sorted ascending is optimal.</p>`,
         brute: {
           why: `<p>Try every order (N! permutations), add up the waits, keep the smallest. N = 12 already means ~479 million orders. The wasted work: we never use the fact that "a long query in front of a short one is always a mistake".</p>`,
-          code: `
+          code: { lang: 'java', code: `
             long best;
 
             long bruteMinWaiting(int[] d) {
@@ -288,7 +291,58 @@ long long minWeightedCompletion(const vector<int>& time, const vector<int>& weig
                     permute(d, used, placed + 1, clock + d[i], total + clock); // query i waits 'clock'
                     used[i] = false;
                 }
-            }`
+            }`, alt: [
+          { lang: 'python', code: `def minimum_waiting_time(d):
+    best = float('inf')
+
+    # used[] marks queries already scheduled; clock = time elapsed; total = waits so far
+    def permute(used, placed, clock, total):
+        nonlocal best
+        if placed == len(d):
+            best = min(best, total)
+            return
+        for i in range(len(d)):
+            if used[i]:
+                continue
+            used[i] = True
+            permute(used, placed + 1, clock + d[i], total + clock)  # query i waits 'clock'
+            used[i] = False
+
+    permute([False] * len(d), 0, 0, 0)
+    return best` },
+          { lang: 'js', code: `function minimumWaitingTime(d) {
+  let best = Infinity;
+  // used[] marks queries already scheduled; clock = time elapsed; total = waits so far
+  function permute(used, placed, clock, total) {
+    if (placed === d.length) { best = Math.min(best, total); return; }
+    for (let i = 0; i < d.length; i++) {
+      if (used[i]) continue;
+      used[i] = true;
+      permute(used, placed + 1, clock + d[i], total + clock); // query i waits 'clock'
+      used[i] = false;
+    }
+  }
+  permute(new Array(d.length).fill(false), 0, 0, 0);
+  return best;
+}` },
+          { lang: 'cpp', code: `// used[] marks queries already scheduled; clock = time elapsed; total = waits so far
+void permute(vector<int>& d, vector<bool>& used, int placed, long long clock, long long total, long long& best) {
+    if (placed == (int)d.size()) { best = min(best, total); return; }
+    for (int i = 0; i < (int)d.size(); i++) {
+        if (used[i]) continue;
+        used[i] = true;
+        permute(d, used, placed + 1, clock + d[i], total + clock, best); // query i waits 'clock'
+        used[i] = false;
+    }
+}
+
+long long minimumWaitingTime(vector<int> d) {
+    long long best = LLONG_MAX;
+    vector<bool> used(d.size(), false);
+    permute(d, used, 0, 0, 0, best);
+    return best;
+}` }
+        ] }
         },
         mcq: {
           q: 'Two neighbouring queries take 5 s and 2 s, in that order. If you swap them, how does the total waiting time change?',
@@ -620,7 +674,7 @@ int findMinArrowShots(vector<vector<int>> points) {
           <p>Output: <b>4</b>. Pick ${H.c('g', '(1,2), (3,4), (5,7), (8,9)')}. Meeting (0,6) clashes with (1,2) and (3,4); (5,9) clashes with (5,7). No 5 meetings can fit together.</p>`,
         brute: {
           why: `<p>Try every subset of meetings (2<sup>N</sup> of them), check all pairs inside it for overlap, keep the largest valid subset. For N = 40 that is already 10<sup>12</sup> subsets. The wasted work: most subsets are obviously bad (they contain two clashing meetings), and we never use the fact that "finishing early is always good".</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int bruteMax(int[] s, int[] e) {
                 int n = s.length, best = 0;
                 for (int mask = 0; mask < (1 << n); mask++) {     // every subset
@@ -633,7 +687,52 @@ int findMinArrowShots(vector<vector<int>> points) {
                     if (ok) best = Math.max(best, Integer.bitCount(mask));
                 }
                 return best;
-            }`
+            }`, alt: [
+          { lang: 'python', code: `def max_meetings(s, e):
+    n = len(s)
+    best = 0
+    for mask in range(1 << n):                       # every subset
+        ok = True
+        for i in range(n):
+            for j in range(i + 1, n):
+                if ok and (mask >> i) & 1 and (mask >> j) & 1 \\
+                        and s[i] < e[j] and s[j] < e[i]:   # the two overlap
+                    ok = False
+        if ok:
+            best = max(best, bin(mask).count('1'))
+    return best` },
+          { lang: 'js', code: `function maxMeetings(s, e) {
+  const n = s.length;
+  let best = 0;
+  for (let mask = 0; mask < (1 << n); mask++) {      // every subset
+    let ok = true;
+    for (let i = 0; i < n && ok; i++)
+      for (let j = i + 1; j < n && ok; j++)
+        if (((mask >> i) & 1) === 1 && ((mask >> j) & 1) === 1
+            && s[i] < e[j] && s[j] < e[i])           // the two overlap
+          ok = false;
+    if (ok) {
+      let bits = 0;
+      for (let m = mask; m > 0; m &= m - 1) bits++;
+      best = Math.max(best, bits);
+    }
+  }
+  return best;
+}` },
+          { lang: 'cpp', code: `int maxMeetings(vector<int>& s, vector<int>& e) {
+    int n = s.size(), best = 0;
+    for (int mask = 0; mask < (1 << n); mask++) {    // every subset
+        bool ok = true;
+        for (int i = 0; i < n && ok; i++)
+            for (int j = i + 1; j < n && ok; j++)
+                if (((mask >> i) & 1) == 1 && ((mask >> j) & 1) == 1
+                        && s[i] < e[j] && s[j] < e[i]) // the two overlap
+                    ok = false;
+        if (ok) best = max(best, __builtin_popcount(mask));
+    }
+    return best;
+}` }
+        ] }
         },
         mcq: {
           q: 'You want to fit the most meetings in one room. Which order should you consider them in?',
@@ -1087,7 +1186,7 @@ int maxProfitHeap(const vector<int>& deadline, const vector<int>& profit) {
           <p>Output <b>[2, 60]</b>. Profit order: 40 (d1), 30 (d1), 20 (d4), 10 (d1). ${H.c('g', '40 → slot 1')}, 30 → slot 1 taken ${H.c('r', 'skip')}, ${H.c('g', '20 → slot 4')}, 10 → ${H.c('r', 'skip')}. Three jobs have deadline 1, so only one of them can ever run.</p>`,
         brute: {
           why: `<p>Try all 2<sup>N</sup> subsets; for each, sort its deadlines and check that the k-th smallest deadline is ≥ k (k = 1, 2, …). Keep the most profitable feasible subset. Already 10<sup>6</sup> subsets × sorting at N = 20; hopeless at 10<sup>5</sup>. The waste: we never use the fact that the richest feasible job always belongs in some optimal answer.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int[] bruteJobs(int[] deadline, int[] profit) {
                 int n = deadline.length, bestCount = 0, bestProfit = 0;
                 for (int mask = 1; mask < (1 << n); mask++) {
@@ -1105,7 +1204,65 @@ int maxProfitHeap(const vector<int>& deadline, const vector<int>& profit) {
                     }
                 }
                 return new int[]{bestCount, bestProfit};
-            }`
+            }`, alt: [
+          { lang: 'python', code: `def job_sequencing(deadline, profit):
+    n = len(deadline)
+    best_count, best_profit = 0, 0
+    for mask in range(1, 1 << n):
+        ds = []
+        p = 0
+        for i in range(n):
+            if mask >> i & 1:
+                ds.append(deadline[i])
+                p += profit[i]
+        ds.sort()
+        ok = True
+        for k in range(len(ds)):
+            if ds[k] < k + 1:                        # (k+1)-th job finishes at k+1
+                ok = False
+                break
+        if ok and (p > best_profit or (p == best_profit and len(ds) > best_count)):
+            best_profit = p
+            best_count = len(ds)
+    return [best_count, best_profit]` },
+          { lang: 'js', code: `function jobSequencing(deadline, profit) {
+  const n = deadline.length;
+  let bestCount = 0, bestProfit = 0;
+  for (let mask = 1; mask < (1 << n); mask++) {
+    const ds = [];
+    let p = 0;
+    for (let i = 0; i < n; i++)
+      if ((mask >> i & 1) === 1) { ds.push(deadline[i]); p += profit[i]; }
+    ds.sort((a, b) => a - b);
+    let ok = true;
+    for (let k = 0; k < ds.length; k++)
+      if (ds[k] < k + 1) { ok = false; break; }      // (k+1)-th job finishes at k+1
+    if (ok && (p > bestProfit || (p === bestProfit && ds.length > bestCount))) {
+      bestProfit = p;
+      bestCount = ds.length;
+    }
+  }
+  return [bestCount, bestProfit];
+}` },
+          { lang: 'cpp', code: `vector<int> jobSequencing(vector<int>& deadline, vector<int>& profit) {
+    int n = deadline.size(), bestCount = 0, bestProfit = 0;
+    for (int mask = 1; mask < (1 << n); mask++) {
+        vector<int> ds;
+        int p = 0;
+        for (int i = 0; i < n; i++)
+            if ((mask >> i & 1) == 1) { ds.push_back(deadline[i]); p += profit[i]; }
+        sort(ds.begin(), ds.end());
+        bool ok = true;
+        for (int k = 0; k < (int)ds.size(); k++)
+            if (ds[k] < k + 1) { ok = false; break; }   // (k+1)-th job finishes at k+1
+        if (ok && (p > bestProfit || (p == bestProfit && (int)ds.size() > bestCount))) {
+            bestProfit = p;
+            bestCount = ds.size();
+        }
+    }
+    return {bestCount, bestProfit};
+}` }
+        ] }
         },
         mcq: {
           q: 'You accepted a job with deadline 5 and slots 1..5 are all free. Where should it go?',
@@ -1482,7 +1639,7 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
           <p>W = 50 → Output <b>240.0</b>: ${H.c('g', 'all of item 0 (60) + all of item 1 (100)')} uses 30 kg, then ${H.c('y', '20/30 of item 2 = 80')} fills the last 20 kg.</p>`,
         brute: {
           why: `<p>Every best bag is "fill items in some order, cutting only the last one". So you could try all N! orders and fill greedily in each. For N = 12 that is already ~479 million orders. The wasted work: almost every order is obviously worse than "best ratio first".</p>`,
-          code: `
+          code: { lang: 'java', code: `
             double best = 0;
 
             double bruteAllOrders(int[] val, int[] wt, int cap) {
@@ -1502,7 +1659,63 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
                     tryOrders(val, wt, used, gained + (double) val[i] * take / wt[i], left - take);
                     used[i] = false;
                 }
-            }`
+            }`, alt: [
+          { lang: 'python', code: `def fractional_knapsack(val, wt, cap):
+    best = 0.0
+
+    # fill the bag with the next unused item, in every possible order
+    def try_orders(used, gained, left):
+        nonlocal best
+        best = max(best, gained)
+        if left == 0:
+            return
+        for i in range(len(val)):
+            if used[i]:
+                continue
+            used[i] = True
+            take = min(left, wt[i])                  # whole item or what fits
+            try_orders(used, gained + val[i] * take / wt[i], left - take)
+            used[i] = False
+
+    try_orders([False] * len(val), 0.0, cap)
+    return best` },
+          { lang: 'js', code: `function fractionalKnapsack(val, wt, cap) {
+  let best = 0;
+  // fill the bag with the next unused item, in every possible order
+  function tryOrders(used, gained, left) {
+    best = Math.max(best, gained);
+    if (left === 0) return;
+    for (let i = 0; i < val.length; i++) {
+      if (used[i]) continue;
+      used[i] = true;
+      const take = Math.min(left, wt[i]);            // whole item or what fits
+      tryOrders(used, gained + val[i] * take / wt[i], left - take);
+      used[i] = false;
+    }
+  }
+  tryOrders(new Array(val.length).fill(false), 0, cap);
+  return best;
+}` },
+          { lang: 'cpp', code: `// fill the bag with the next unused item, in every possible order
+void tryOrders(vector<int>& val, vector<int>& wt, vector<bool>& used, double gained, int left, double& best) {
+    best = max(best, gained);
+    if (left == 0) return;
+    for (int i = 0; i < (int)val.size(); i++) {
+        if (used[i]) continue;
+        used[i] = true;
+        int take = min(left, wt[i]);                 // whole item or what fits
+        tryOrders(val, wt, used, gained + (double)val[i] * take / wt[i], left - take, best);
+        used[i] = false;
+    }
+}
+
+double fractionalKnapsack(vector<int>& val, vector<int>& wt, int cap) {
+    double best = 0;
+    vector<bool> used(val.size(), false);
+    tryOrders(val, wt, used, 0.0, cap, best);
+    return best;
+}` }
+        ] }
         },
         mcq: {
           q: 'Same items (val 60/100/120, wt 10/20/30), W = 50, but now items <b>cannot be cut</b>. Ratio-greedy takes items 0 and 1 for 160. What is the true best?',
@@ -1903,7 +2116,7 @@ long long huffmanCostSorted(const vector<long long>& sorted) {
           <p>Output: <b>224</b> bits. Codes: ${H.c('g', 'f = 0')} (1 bit, most frequent), c = 100, d = 101, e = 111, ${H.c('r', 'a = 1100, b = 1101')} (4 bits, rarest). Check: 45·1 + 12·3 + 13·3 + 16·3 + 5·4 + 9·4 = 45 + 36 + 39 + 48 + 20 + 36 = 224.</p>`,
         brute: {
           why: `<p>Every prefix code tree can be built by merging nodes two at a time in <i>some</i> order. Brute force tries every pair at every step: roughly N<sup>2</sup> × (N−1)<sup>2</sup> × … choices — astronomically many even for N = 10. The waste: the cheapest merge is always the two smallest, so all other branches are pointless.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             // try merging every pair, recursively; cost of a merge = merged weight
             long bruteCost(List<Long> w) {
                 if (w.size() == 1) return 0;
@@ -1917,7 +2130,48 @@ long long huffmanCostSorted(const vector<long long>& sorted) {
                         best = Math.min(best, merged + bruteCost(next));
                     }
                 return best;
-            }`
+            }`, alt: [
+          { lang: 'python', code: `# try merging every pair, recursively; cost of a merge = merged weight
+def huffman(w):
+    if len(w) == 1:
+        return 0
+    best = float('inf')
+    for i in range(len(w)):
+        for j in range(i + 1, len(w)):
+            nxt = [w[k] for k in range(len(w)) if k != i and k != j]
+            merged = w[i] + w[j]
+            nxt.append(merged)
+            best = min(best, merged + huffman(nxt))
+    return best` },
+          { lang: 'js', code: `// try merging every pair, recursively; cost of a merge = merged weight
+function huffman(w) {
+  if (w.length === 1) return 0;
+  let best = Infinity;
+  for (let i = 0; i < w.length; i++)
+    for (let j = i + 1; j < w.length; j++) {
+      const next = [];
+      for (let k = 0; k < w.length; k++) if (k !== i && k !== j) next.push(w[k]);
+      const merged = w[i] + w[j];
+      next.push(merged);
+      best = Math.min(best, merged + huffman(next));
+    }
+  return best;
+}` },
+          { lang: 'cpp', code: `// try merging every pair, recursively; cost of a merge = merged weight
+long long huffman(vector<long long> w) {
+    if (w.size() == 1) return 0;
+    long long best = LLONG_MAX;
+    for (int i = 0; i < (int)w.size(); i++)
+        for (int j = i + 1; j < (int)w.size(); j++) {
+            vector<long long> next;
+            for (int k = 0; k < (int)w.size(); k++) if (k != i && k != j) next.push_back(w[k]);
+            long long merged = w[i] + w[j];
+            next.push_back(merged);
+            best = min(best, merged + huffman(next));
+        }
+    return best;
+}` }
+        ] }
         },
         mcq: {
           q: 'Heap holds frequencies 4, 7, 9, 20. Which two nodes should be merged first?',
@@ -2444,7 +2698,7 @@ int peakConcurrent(const vector<int>& start, const vector<int>& end) {   // half
           <p>Output <b>3</b>. At 11:00 the trains ${H.c('y', '9:40→12:00, 9:50→11:20 and 11:00→11:30')} are all at the station. No instant has 4 trains.</p>`,
         brute: {
           why: `<p>The busiest instant is always the moment some train arrives. So for each train i, count the trains j standing at the station at time <code>arr[i]</code> (<code>arr[j] ≤ arr[i] ≤ dep[j]</code>) and take the maximum. O(N²) = 2.5·10<sup>9</sup> steps for N = 5·10<sup>4</sup> → too slow. The waste: we recount the same trains for every arrival instead of keeping a running count.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int brutePlatforms(int[] arr, int[] dep) {
                 int n = arr.length, best = 0;
                 for (int i = 0; i < n; i++) {
@@ -2454,7 +2708,39 @@ int peakConcurrent(const vector<int>& start, const vector<int>& end) {   // half
                     best = Math.max(best, present);
                 }
                 return best;
-            }`
+            }`, alt: [
+          { lang: 'python', code: `def find_platform(arr, dep):
+    n = len(arr)
+    best = 0
+    for i in range(n):
+        present = 0                                  # trains at the station when train i arrives
+        for j in range(n):
+            if arr[j] <= arr[i] <= dep[j]:
+                present += 1
+        best = max(best, present)
+    return best` },
+          { lang: 'js', code: `function findPlatform(arr, dep) {
+  const n = arr.length;
+  let best = 0;
+  for (let i = 0; i < n; i++) {
+    let present = 0;                                 // trains at the station when train i arrives
+    for (let j = 0; j < n; j++)
+      if (arr[j] <= arr[i] && arr[i] <= dep[j]) present++;
+    best = Math.max(best, present);
+  }
+  return best;
+}` },
+          { lang: 'cpp', code: `int findPlatform(vector<int> arr, vector<int> dep) {
+    int n = arr.size(), best = 0;
+    for (int i = 0; i < n; i++) {
+        int present = 0;                             // trains at the station when train i arrives
+        for (int j = 0; j < n; j++)
+            if (arr[j] <= arr[i] && arr[i] <= dep[j]) present++;
+        best = max(best, present);
+    }
+    return best;
+}` }
+        ] }
         },
         mcq: {
           q: 'Why is it OK to sort the arrival and departure arrays separately, losing which departure belongs to which train?',
@@ -2798,7 +3084,7 @@ int startAfterMinPrefix(const vector<int>& gas, const vector<int>& cost) {
           <p>Output <b>3</b>. From station 3 the tank goes ${H.c('g', '3 → 6 → 4 → 2 → 0')}, never negative. Starting at 0, 1 or 2 fails on the very first leg (gain −2).</p>`,
         brute: {
           why: `<p>Try every start and simulate the full loop, stopping when the tank goes negative. O(N²) in the worst case = 10<sup>10</sup> steps for N = 10<sup>5</sup>. The waste: after failing from s at station k, we still try s+1, s+2, …, k — all of which provably fail at the same place.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int bruteStart(int[] gas, int[] cost) {
                 int n = gas.length;
                 for (int s = 0; s < n; s++) {
@@ -2812,7 +3098,50 @@ int startAfterMinPrefix(const vector<int>& gas, const vector<int>& cost) {
                     if (ok) return s;
                 }
                 return -1;
-            }`
+            }`, alt: [
+          { lang: 'python', code: `def can_complete_circuit(gas, cost):
+    n = len(gas)
+    for s in range(n):
+        tank = 0
+        ok = True
+        for step in range(n):
+            i = (s + step) % n                       # current station on the circle
+            tank += gas[i] - cost[i]
+            if tank < 0:
+                ok = False
+                break
+        if ok:
+            return s
+    return -1` },
+          { lang: 'js', code: `function canCompleteCircuit(gas, cost) {
+  const n = gas.length;
+  for (let s = 0; s < n; s++) {
+    let tank = 0;
+    let ok = true;
+    for (let step = 0; step < n; step++) {
+      const i = (s + step) % n;                      // current station on the circle
+      tank += gas[i] - cost[i];
+      if (tank < 0) { ok = false; break; }
+    }
+    if (ok) return s;
+  }
+  return -1;
+}` },
+          { lang: 'cpp', code: `int canCompleteCircuit(vector<int>& gas, vector<int>& cost) {
+    int n = gas.size();
+    for (int s = 0; s < n; s++) {
+        long long tank = 0;
+        bool ok = true;
+        for (int step = 0; step < n; step++) {
+            int i = (s + step) % n;                  // current station on the circle
+            tank += gas[i] - cost[i];
+            if (tank < 0) { ok = false; break; }
+        }
+        if (ok) return s;
+    }
+    return -1;
+}` }
+        ] }
         },
         mcq: {
           q: 'Starting at station 2 you run dry right after station 6. Which station should you try next?',
@@ -3150,7 +3479,7 @@ int jump(const vector<int>& nums) {
           <p>Output <b>2</b>: ${H.c('g', '0 → 1 → 4')} (jump 1 step, then 3 steps). With one jump you can reach at most index 2, so 1 jump is not enough.</p>`,
         brute: {
           why: `<p>DP from the right: <code>dp[i] = 1 + min(dp[i+1 .. i+nums[i]])</code>. Correct, but each index scans up to nums[i] next indices → O(n · max(nums)) = 10<sup>7</sup> here (fine), and O(n²) in general. The waste: indices reachable in k jumps form one contiguous block, so scanning them again and again for each i is unnecessary.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int jumpDP(int[] nums) {
                 int n = nums.length;
                 int[] dp = new int[n];                     // dp[i] = min jumps from i to n-1
@@ -3162,7 +3491,40 @@ int jump(const vector<int>& nums) {
                     }
                 }
                 return dp[0];
-            }`
+            }`, alt: [
+          { lang: 'python', code: `def jump(nums):
+    n = len(nums)
+    INF = float('inf')
+    dp = [INF] * n                                   # dp[i] = min jumps from i to n-1
+    dp[n - 1] = 0
+    for i in range(n - 2, -1, -1):
+        for j in range(i + 1, min(n - 1, i + nums[i]) + 1):
+            if dp[j] != INF:
+                dp[i] = min(dp[i], dp[j] + 1)
+    return dp[0]` },
+          { lang: 'js', code: `function jump(nums) {
+  const n = nums.length;
+  const dp = new Array(n).fill(Infinity);            // dp[i] = min jumps from i to n-1
+  dp[n - 1] = 0;
+  for (let i = n - 2; i >= 0; i--) {
+    for (let j = i + 1; j <= Math.min(n - 1, i + nums[i]); j++) {
+      if (dp[j] !== Infinity) dp[i] = Math.min(dp[i], dp[j] + 1);
+    }
+  }
+  return dp[0];
+}` },
+          { lang: 'cpp', code: `int jump(vector<int>& nums) {
+    int n = nums.size();
+    vector<int> dp(n, INT_MAX);                      // dp[i] = min jumps from i to n-1
+    dp[n - 1] = 0;
+    for (int i = n - 2; i >= 0; i--) {
+        for (int j = i + 1; j <= min(n - 1, i + nums[i]); j++) {
+            if (dp[j] != INT_MAX) dp[i] = min(dp[i], dp[j] + 1);
+        }
+    }
+    return dp[0];
+}` }
+        ] }
         },
         mcq: {
           q: 'nums = [2, 3, 1, 1, 4]. A friend says "always jump as far as you can". How many jumps does that use, and what is the minimum?',
@@ -3492,7 +3854,7 @@ print("random coin systems where greedy breaks:", fails, "of 300")`
         example: `${H.arr([1, 3, 4], { label: 'coins' })}<p>amount = 6 → Output <b>2</b> (${H.c('g', '3 + 3')}). Greedy would take ${H.c('r', '4 + 1 + 1 = 3 coins')}. With coins [2] and amount 3 the output is −1; with amount 0 the output is 0.</p>`,
         brute: {
           why: `<p>Try every coin as the last coin and recurse on the rest: <code>best(a) = 1 + min over c of best(a − c)</code>. Without memory, the same amounts are recomputed over and over — about coins<sup>amount/min coin</sup> calls, astronomically many for amount = 10<sup>4</sup>. The waste: there are only <code>amount + 1</code> different sub-questions.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int bruteCoins(int[] coins, int amount) {
                 if (amount == 0) return 0;
                 int best = Integer.MAX_VALUE;
@@ -3503,7 +3865,40 @@ print("random coin systems where greedy breaks:", fails, "of 300")`
                     }
                 }
                 return best == Integer.MAX_VALUE ? -1 : best;
-            }`
+            }`, alt: [
+          { lang: 'python', code: `def coin_change(coins, amount):
+    if amount == 0:
+        return 0
+    best = float('inf')
+    for c in coins:
+        if c <= amount:
+            sub = coin_change(coins, amount - c)     # best way to pay the rest
+            if sub != -1:
+                best = min(best, sub + 1)
+    return -1 if best == float('inf') else best` },
+          { lang: 'js', code: `function coinChange(coins, amount) {
+  if (amount === 0) return 0;
+  let best = Infinity;
+  for (const c of coins) {
+    if (c <= amount) {
+      const sub = coinChange(coins, amount - c);     // best way to pay the rest
+      if (sub !== -1) best = Math.min(best, sub + 1);
+    }
+  }
+  return best === Infinity ? -1 : best;
+}` },
+          { lang: 'cpp', code: `int coinChange(vector<int>& coins, int amount) {
+    if (amount == 0) return 0;
+    int best = INT_MAX;
+    for (int c : coins) {
+        if (c <= amount) {
+            int sub = coinChange(coins, amount - c); // best way to pay the rest
+            if (sub != -1) best = min(best, sub + 1);
+        }
+    }
+    return best == INT_MAX ? -1 : best;
+}` }
+        ] }
         },
         mcq: {
           q: 'For coins {1, 3, 4}, which statement is true?',
@@ -3622,7 +4017,7 @@ public:
       <p>Output <b>1</b>: both cookies have size 1, so only the child with greed 1 can be satisfied. With g = [1, 2] and s = [1, 2, 3] the output is <b>2</b>.</p>`,
     brute: {
       why: `<p>Backtracking: for each child, either give nothing or try every unused cookie that is big enough. Exponential in the number of children — hopeless at 3·10<sup>4</sup>. The waste: giving a big cookie to an easy child when a small one would do is never better, so most branches are pointless.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteCookies(int[] g, int[] s) {
             return assign(g, s, 0, new boolean[s.length]);
         }
@@ -3638,7 +4033,56 @@ public:
                 }
             }
             return best;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def find_content_children(g, s):
+    used = [False] * len(s)
+
+    def assign(child):
+        if child == len(g):
+            return 0
+        best = assign(child + 1)                     # this child gets nothing
+        for c in range(len(s)):
+            if not used[c] and s[c] >= g[child]:
+                used[c] = True
+                best = max(best, 1 + assign(child + 1))
+                used[c] = False
+        return best
+
+    return assign(0)` },
+          { lang: 'js', code: `function findContentChildren(g, s) {
+  const used = new Array(s.length).fill(false);
+  function assign(child) {
+    if (child === g.length) return 0;
+    let best = assign(child + 1);                    // this child gets nothing
+    for (let c = 0; c < s.length; c++) {
+      if (!used[c] && s[c] >= g[child]) {
+        used[c] = true;
+        best = Math.max(best, 1 + assign(child + 1));
+        used[c] = false;
+      }
+    }
+    return best;
+  }
+  return assign(0);
+}` },
+          { lang: 'cpp', code: `int assign(vector<int>& g, vector<int>& s, int child, vector<bool>& used) {
+    if (child == (int)g.size()) return 0;
+    int best = assign(g, s, child + 1, used);        // this child gets nothing
+    for (int c = 0; c < (int)s.size(); c++) {
+        if (!used[c] && s[c] >= g[child]) {
+            used[c] = true;
+            best = max(best, 1 + assign(g, s, child + 1, used));
+            used[c] = false;
+        }
+    }
+    return best;
+}
+
+int findContentChildren(vector<int> g, vector<int> s) {
+    vector<bool> used(s.size(), false);
+    return assign(g, s, 0, used);
+}` }
+        ] }
     },
     mcq: {
       q: 'Cookies are sorted small to large. The current smallest cookie is too small for the least greedy child still waiting. What should you do with it?',
@@ -3732,7 +4176,7 @@ public:
       <p>Output <b>true</b>: after three $5s you hold 5,5,5; the $10 takes one $5 back (hold 5,5,10); the $20 gets ${H.c('g', '$10 + $5')}. For [5, 5, 10, 10, 20] the output is <b>false</b>: the $20 arrives when you hold only two $10s.</p>`,
     brute: {
       why: `<p>For every $20 there are two ways to give change ($10+$5 or $5+$5+$5). Track the set of all reachable (fives, tens) states after each customer; it is correct but the set can grow with the number of customers. The waste: one of the two choices is always at least as good, so we only ever need one state.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         boolean bruteLemonade(int[] bills) {
             Set<Long> states = new HashSet<>();
             states.add(0L);                                 // state = fives * 1_000_000 + tens
@@ -3751,7 +4195,63 @@ public:
                 states = next;
             }
             return true;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def lemonade_change(bills):
+    states = {(0, 0)}                                # state = (fives, tens)
+    for b in bills:
+        nxt = set()
+        for f, t in states:
+            if b == 5:
+                nxt.add((f + 1, t))
+            elif b == 10:
+                if f >= 1:
+                    nxt.add((f - 1, t + 1))
+            else:
+                if f >= 1 and t >= 1:
+                    nxt.add((f - 1, t - 1))          # $10 + $5
+                if f >= 3:
+                    nxt.add((f - 3, t))              # $5 x 3
+        if not nxt:
+            return False
+        states = nxt
+    return True` },
+          { lang: 'js', code: `function lemonadeChange(bills) {
+  let states = new Set([0]);                         // state = fives * 1_000_000 + tens
+  for (const b of bills) {
+    const next = new Set();
+    for (const st of states) {
+      const f = Math.floor(st / 1000000), t = st % 1000000;
+      if (b === 5) next.add((f + 1) * 1000000 + t);
+      else if (b === 10) { if (f >= 1) next.add((f - 1) * 1000000 + t + 1); }
+      else {
+        if (f >= 1 && t >= 1) next.add((f - 1) * 1000000 + t - 1);   // $10 + $5
+        if (f >= 3) next.add((f - 3) * 1000000 + t);                 // $5 x 3
+      }
+    }
+    if (next.size === 0) return false;
+    states = next;
+  }
+  return true;
+}` },
+          { lang: 'cpp', code: `bool lemonadeChange(vector<int>& bills) {
+    set<long long> states = {0};                     // state = fives * 1'000'000 + tens
+    for (int b : bills) {
+        set<long long> next;
+        for (long long st : states) {
+            long long f = st / 1000000, t = st % 1000000;
+            if (b == 5) next.insert((f + 1) * 1000000 + t);
+            else if (b == 10) { if (f >= 1) next.insert((f - 1) * 1000000 + t + 1); }
+            else {
+                if (f >= 1 && t >= 1) next.insert((f - 1) * 1000000 + t - 1);   // $10 + $5
+                if (f >= 3) next.insert((f - 3) * 1000000 + t);                 // $5 x 3
+            }
+        }
+        if (next.empty()) return false;
+        states = next;
+    }
+    return true;
+}` }
+        ] }
     },
     mcq: {
       q: 'A customer pays $20 and you hold three $5s and one $10. Which change should you give?',
@@ -3864,7 +4364,7 @@ public:
       <p>truckSize = 4 → Output <b>8</b>: ${H.c('g', '1 box × 3 + 2 boxes × 2 + 1 box × 1')} = 3 + 4 + 1. Every box takes one slot, so take the boxes with the most units first.</p>`,
     brute: {
       why: `<p>Expand every box into its own entry and try "take or skip" for each box with at most truckSize taken. That is 2<sup>(total boxes)</sup> choices. The waste: every box costs exactly one slot, so a box with more units is always at least as good as one with fewer — there is nothing to search.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteUnits(int[][] boxTypes, int truckSize) {
             List<Integer> boxes = new ArrayList<>();
             for (int[] t : boxTypes) for (int i = 0; i < t[0]; i++) boxes.add(t[1]);   // one entry per box
@@ -3876,7 +4376,45 @@ public:
             int skip = pick(boxes, i + 1, left);
             int take = boxes.get(i) + pick(boxes, i + 1, left - 1);
             return Math.max(skip, take);
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def maximum_units(box_types, truck_size):
+    boxes = []
+    for count, units in box_types:
+        boxes.extend([units] * count)                # one entry per box
+
+    def pick(i, left):
+        if i == len(boxes) or left == 0:
+            return 0
+        skip = pick(i + 1, left)
+        take = boxes[i] + pick(i + 1, left - 1)
+        return max(skip, take)
+
+    return pick(0, truck_size)` },
+          { lang: 'js', code: `function maximumUnits(boxTypes, truckSize) {
+  const boxes = [];
+  for (const [count, units] of boxTypes)
+    for (let i = 0; i < count; i++) boxes.push(units);   // one entry per box
+  function pick(i, left) {
+    if (i === boxes.length || left === 0) return 0;
+    const skip = pick(i + 1, left);
+    const take = boxes[i] + pick(i + 1, left - 1);
+    return Math.max(skip, take);
+  }
+  return pick(0, truckSize);
+}` },
+          { lang: 'cpp', code: `int pick(vector<int>& boxes, int i, int left) {
+    if (i == (int)boxes.size() || left == 0) return 0;
+    int skip = pick(boxes, i + 1, left);
+    int take = boxes[i] + pick(boxes, i + 1, left - 1);
+    return max(skip, take);
+}
+
+int maximumUnits(vector<vector<int>> boxTypes, int truckSize) {
+    vector<int> boxes;
+    for (auto& t : boxTypes) for (int i = 0; i < t[0]; i++) boxes.push_back(t[1]);   // one entry per box
+    return pick(boxes, 0, truckSize);
+}` }
+        ] }
     },
     mcq: {
       q: 'Why is greedy safe here even though boxes cannot be cut (unlike 0/1 knapsack)?',
@@ -3972,14 +4510,38 @@ public:
       <p>Output <b>7</b>: buy at 1, sell at 5 (+4); buy at 3, sell at 6 (+3). Equivalently, add up every day-to-day rise: ${H.c('g', '(5−1) + (6−3) = 7')}.</p>`,
     brute: {
       why: `<p>Recursion over days with a "holding / not holding" flag: each day you either do nothing or buy/sell. Without memoization this explores 2<sup>N</sup> paths. The waste: the profit of any buy-low/sell-high stretch equals the sum of its daily rises, so we can decide day by day.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteStock(int[] p, int day, boolean holding) {
             if (day == p.length) return 0;
             int best = bruteStock(p, day + 1, holding);                                  // do nothing
             if (holding) best = Math.max(best, p[day] + bruteStock(p, day + 1, false));  // sell today
             else best = Math.max(best, -p[day] + bruteStock(p, day + 1, true));          // buy today
             return best;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def max_profit(p, day=0, holding=False):
+    if day == len(p):
+        return 0
+    best = max_profit(p, day + 1, holding)                              # do nothing
+    if holding:
+        best = max(best, p[day] + max_profit(p, day + 1, False))        # sell today
+    else:
+        best = max(best, -p[day] + max_profit(p, day + 1, True))        # buy today
+    return best` },
+          { lang: 'js', code: `function maxProfit(p, day = 0, holding = false) {
+  if (day === p.length) return 0;
+  let best = maxProfit(p, day + 1, holding);                            // do nothing
+  if (holding) best = Math.max(best, p[day] + maxProfit(p, day + 1, false)); // sell today
+  else best = Math.max(best, -p[day] + maxProfit(p, day + 1, true));         // buy today
+  return best;
+}` },
+          { lang: 'cpp', code: `int maxProfit(vector<int>& p, int day, bool holding) {
+    if (day == (int)p.size()) return 0;
+    int best = maxProfit(p, day + 1, holding);                          // do nothing
+    if (holding) best = max(best, p[day] + maxProfit(p, day + 1, false)); // sell today
+    else best = max(best, -p[day] + maxProfit(p, day + 1, true));         // buy today
+    return best;
+}` }
+        ] }
     },
     mcq: {
       q: 'Prices go 1 → 3 → 6. Which gives more profit: one trade (buy 1, sell 6) or two trades (1→3, 3→6)?',
@@ -4060,7 +4622,7 @@ public:
       <p>Output <b>1</b>: remove ${H.c('r', '[1,3]')}; the other three only touch. Keeping the most intervals = removing the fewest.</p>`,
     brute: {
       why: `<p>Try every subset to keep (2<sup>N</sup>), check all pairs for overlap, and return N − (largest valid subset). Exponential. The waste: it ignores that keeping the earliest-ending interval is always safe.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteErase(int[][] a) {
             int n = a.length, bestKeep = 0;
             for (int mask = 0; mask < (1 << n); mask++) {
@@ -4072,7 +4634,50 @@ public:
                 if (ok) bestKeep = Math.max(bestKeep, Integer.bitCount(mask));
             }
             return n - bestKeep;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def erase_overlap_intervals(a):
+    n = len(a)
+    best_keep = 0
+    for mask in range(1 << n):
+        ok = True
+        for i in range(n):
+            for j in range(i + 1, n):
+                if ok and (mask >> i & 1) and (mask >> j & 1) \\
+                        and a[i][0] < a[j][1] and a[j][0] < a[i][1]:   # real overlap
+                    ok = False
+        if ok:
+            best_keep = max(best_keep, bin(mask).count('1'))
+    return n - best_keep` },
+          { lang: 'js', code: `function eraseOverlapIntervals(a) {
+  const n = a.length;
+  let bestKeep = 0;
+  for (let mask = 0; mask < (1 << n); mask++) {
+    let ok = true;
+    for (let i = 0; i < n && ok; i++)
+      for (let j = i + 1; j < n && ok; j++)
+        if ((mask >> i & 1) === 1 && (mask >> j & 1) === 1
+            && a[i][0] < a[j][1] && a[j][0] < a[i][1]) ok = false;   // real overlap
+    if (ok) {
+      let bits = 0;
+      for (let m = mask; m > 0; m &= m - 1) bits++;
+      bestKeep = Math.max(bestKeep, bits);
+    }
+  }
+  return n - bestKeep;
+}` },
+          { lang: 'cpp', code: `int eraseOverlapIntervals(vector<vector<int>>& a) {
+    int n = a.size(), bestKeep = 0;
+    for (int mask = 0; mask < (1 << n); mask++) {
+        bool ok = true;
+        for (int i = 0; i < n && ok; i++)
+            for (int j = i + 1; j < n && ok; j++)
+                if ((mask >> i & 1) == 1 && (mask >> j & 1) == 1
+                        && a[i][0] < a[j][1] && a[j][0] < a[i][1]) ok = false;   // real overlap
+        if (ok) bestKeep = max(bestKeep, __builtin_popcount(mask));
+    }
+    return n - bestKeep;
+}` }
+        ] }
     },
     mcq: {
       q: 'Two intervals overlap and you must drop one of them. With earliest-end-first, which one survives?',
@@ -4161,7 +4766,7 @@ public:
       <p>Output <b>2</b>: an arrow at ${H.c('g', 'x = 6')} bursts [1,6] and [2,8]; an arrow at ${H.c('g', 'x = 12')} bursts [7,12] and [10,16].</p>`,
     brute: {
       why: `<p>Simulate naively: repeatedly find the unburst balloon with the smallest end (O(N) scan), shoot there, and mark every balloon it hits (another O(N) scan). Correct, but O(N²) = 10<sup>10</sup> for N = 10<sup>5</sup>. The waste: after one sort by end, a single left-to-right pass does the same work.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteArrows(int[][] points) {
             int n = points.length, arrows = 0;
             boolean[] burst = new boolean[n];
@@ -4175,7 +4780,53 @@ public:
                 for (int i = 0; i < n; i++)
                     if (points[i][0] <= x && x <= points[i][1]) burst[i] = true;
             }
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def find_min_arrow_shots(points):
+    n = len(points)
+    arrows = 0
+    burst = [False] * n
+    while True:
+        pick = -1                                    # unburst balloon that ends first
+        for i in range(n):
+            if not burst[i] and (pick == -1 or points[i][1] < points[pick][1]):
+                pick = i
+        if pick == -1:
+            return arrows
+        arrows += 1
+        x = points[pick][1]                          # shoot at its right end
+        for i in range(n):
+            if points[i][0] <= x <= points[i][1]:
+                burst[i] = True` },
+          { lang: 'js', code: `function findMinArrowShots(points) {
+  const n = points.length;
+  let arrows = 0;
+  const burst = new Array(n).fill(false);
+  while (true) {
+    let pick = -1;                                   // unburst balloon that ends first
+    for (let i = 0; i < n; i++)
+      if (!burst[i] && (pick === -1 || points[i][1] < points[pick][1])) pick = i;
+    if (pick === -1) return arrows;
+    arrows++;
+    const x = points[pick][1];                       // shoot at its right end
+    for (let i = 0; i < n; i++)
+      if (points[i][0] <= x && x <= points[i][1]) burst[i] = true;
+  }
+}` },
+          { lang: 'cpp', code: `int findMinArrowShots(vector<vector<int>> points) {
+    int n = points.size(), arrows = 0;
+    vector<bool> burst(n, false);
+    while (true) {
+        int pick = -1;                               // unburst balloon that ends first
+        for (int i = 0; i < n; i++)
+            if (!burst[i] && (pick == -1 || points[i][1] < points[pick][1])) pick = i;
+        if (pick == -1) return arrows;
+        arrows++;
+        long long x = points[pick][1];               // shoot at its right end
+        for (int i = 0; i < n; i++)
+            if (points[i][0] <= x && x <= points[i][1]) burst[i] = true;
+    }
+}` }
+        ] }
     },
     mcq: {
       q: 'Why is the comparator <code>(a, b) -&gt; a[1] - b[1]</code> dangerous in this problem?',
@@ -4267,7 +4918,7 @@ public:
       ${H.kv([['a', 'last at 8'], ['b', 'last at 5'], ['c', 'last at 7'], ['e', 'last at 15'], ['j', 'last at 23']], { label: 'last occurrence' })}`,
     brute: {
       why: `<p>For every position i, check whether you may cut right after it: no letter of s[start..i] appears again after i. Each check scans the prefix and the suffix → O(N²) (or O(N²·26)). Fine for 500, but the waste is obvious: the "furthest last occurrence so far" already answers every check in O(1).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         List<Integer> brutePartition(String s) {
             List<Integer> sizes = new ArrayList<>();
             int start = 0;
@@ -4281,7 +4932,48 @@ public:
                 }
             }
             return sizes;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def partition_labels(s):
+    sizes = []
+    start = 0
+    for i in range(len(s)):
+        can_cut = True                               # no letter of s[start..i] appears after i
+        for a in range(start, i + 1):
+            if can_cut and s.find(s[a], i + 1) != -1:
+                can_cut = False
+        if can_cut:
+            sizes.append(i - start + 1)
+            start = i + 1
+    return sizes` },
+          { lang: 'js', code: `function partitionLabels(s) {
+  const sizes = [];
+  let start = 0;
+  for (let i = 0; i < s.length; i++) {
+    let canCut = true;                               // no letter of s[start..i] appears after i
+    for (let a = start; a <= i && canCut; a++)
+      if (s.indexOf(s[a], i + 1) !== -1) canCut = false;
+    if (canCut) {
+      sizes.push(i - start + 1);
+      start = i + 1;
+    }
+  }
+  return sizes;
+}` },
+          { lang: 'cpp', code: `vector<int> partitionLabels(string s) {
+    vector<int> sizes;
+    int start = 0;
+    for (int i = 0; i < (int)s.size(); i++) {
+        bool canCut = true;                          // no letter of s[start..i] appears after i
+        for (int a = start; a <= i && canCut; a++)
+            if (s.find(s[a], i + 1) != string::npos) canCut = false;
+        if (canCut) {
+            sizes.push_back(i - start + 1);
+            start = i + 1;
+        }
+    }
+    return sizes;
+}` }
+        ] }
     },
     mcq: {
       q: 'You are scanning "abac…" and the current part has seen letters whose last occurrences are at indices 2, 8 and 5. When can you close the part?',
@@ -4380,7 +5072,7 @@ public:
       <p>n = 2 → Output <b>8</b>: ${H.c('g', 'A B idle A B idle A B')}. The three A's need two gaps of length 2 between them; B fills one slot of each gap.</p>`,
     brute: {
       why: `<p>Simulate time unit by unit: each unit, scan all 26 letters and run the ready task with the most copies left (or idle). Correct, but the time can be up to ~10<sup>6</sup> units × 26 letters. The waste: the answer is fully determined by the most frequent count, so a formula gives it in O(N).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int simulate(char[] tasks, int n) {
             int[] freq = new int[26];
             for (char t : tasks) freq[t - 'A']++;
@@ -4398,7 +5090,61 @@ public:
                 time++;                                  // ran a task or stayed idle
             }
             return time;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def least_interval(tasks, n):
+    freq = [0] * 26
+    for t in tasks:
+        freq[ord(t) - ord('A')] += 1
+    ready_at = [0] * 26                              # earliest time each letter may run again
+    done = time = 0
+    while done < len(tasks):
+        pick = -1                                    # ready letter with the most copies left
+        for c in range(26):
+            if freq[c] > 0 and ready_at[c] <= time and (pick == -1 or freq[c] > freq[pick]):
+                pick = c
+        if pick != -1:
+            freq[pick] -= 1
+            ready_at[pick] = time + n + 1
+            done += 1
+        time += 1                                    # ran a task or stayed idle
+    return time` },
+          { lang: 'js', code: `function leastInterval(tasks, n) {
+  const freq = new Array(26).fill(0);
+  for (const t of tasks) freq[t.charCodeAt(0) - 65]++;
+  const readyAt = new Array(26).fill(0);             // earliest time each letter may run again
+  let done = 0, time = 0;
+  while (done < tasks.length) {
+    let pick = -1;                                   // ready letter with the most copies left
+    for (let c = 0; c < 26; c++)
+      if (freq[c] > 0 && readyAt[c] <= time && (pick === -1 || freq[c] > freq[pick])) pick = c;
+    if (pick !== -1) {
+      freq[pick]--;
+      readyAt[pick] = time + n + 1;
+      done++;
+    }
+    time++;                                          // ran a task or stayed idle
+  }
+  return time;
+}` },
+          { lang: 'cpp', code: `int leastInterval(vector<char>& tasks, int n) {
+    int freq[26] = {0};
+    for (char t : tasks) freq[t - 'A']++;
+    int readyAt[26] = {0};                           // earliest time each letter may run again
+    int done = 0, time = 0;
+    while (done < (int)tasks.size()) {
+        int pick = -1;                               // ready letter with the most copies left
+        for (int c = 0; c < 26; c++)
+            if (freq[c] > 0 && readyAt[c] <= time && (pick == -1 || freq[c] > freq[pick])) pick = c;
+        if (pick != -1) {
+            freq[pick]--;
+            readyAt[pick] = time + n + 1;
+            done++;
+        }
+        time++;                                      // ran a task or stayed idle
+    }
+    return time;
+}` }
+        ] }
     },
     mcq: {
       q: 'tasks = A×4, B×4, C×1, n = 3. What is the answer?',
@@ -4483,7 +5229,7 @@ public:
       <p>limit = 3 → Output <b>3</b>: boats ${H.c('g', '(1, 2), (2), (3)')}. Sorted [1, 2, 2, 3]: the heaviest (3) cannot share with anyone; then 2 + 1 = 3 fits; the last 2 goes alone.</p>`,
     brute: {
       why: `<p>Take the first person without a boat and try every partner (or nobody), recursively. That explores all matchings — exponential. The waste: the heaviest person should simply try the lightest; if even the lightest does not fit, nobody does.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteBoats(int[] p, int limit, boolean[] used) {
             int first = -1;
             for (int i = 0; i < p.length; i++) if (!used[i]) { first = i; break; }
@@ -4499,7 +5245,71 @@ public:
             }
             used[first] = false;
             return best;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def num_rescue_boats(p, limit):
+    used = [False] * len(p)
+
+    def solve():
+        first = -1
+        for i in range(len(p)):
+            if not used[i]:
+                first = i
+                break
+        if first == -1:
+            return 0                                 # everyone is on a boat
+        used[first] = True
+        best = 1 + solve()                           # rides alone
+        for j in range(first + 1, len(p)):
+            if not used[j] and p[first] + p[j] <= limit:   # shares with j
+                used[j] = True
+                best = min(best, 1 + solve())
+                used[j] = False
+        used[first] = False
+        return best
+
+    return solve()` },
+          { lang: 'js', code: `function numRescueBoats(p, limit) {
+  const used = new Array(p.length).fill(false);
+  function solve() {
+    let first = -1;
+    for (let i = 0; i < p.length; i++) if (!used[i]) { first = i; break; }
+    if (first === -1) return 0;                      // everyone is on a boat
+    used[first] = true;
+    let best = 1 + solve();                          // rides alone
+    for (let j = first + 1; j < p.length; j++) {
+      if (!used[j] && p[first] + p[j] <= limit) {    // shares with j
+        used[j] = true;
+        best = Math.min(best, 1 + solve());
+        used[j] = false;
+      }
+    }
+    used[first] = false;
+    return best;
+  }
+  return solve();
+}` },
+          { lang: 'cpp', code: `int solveBoats(vector<int>& p, int limit, vector<bool>& used) {
+    int first = -1;
+    for (int i = 0; i < (int)p.size(); i++) if (!used[i]) { first = i; break; }
+    if (first == -1) return 0;                       // everyone is on a boat
+    used[first] = true;
+    int best = 1 + solveBoats(p, limit, used);       // rides alone
+    for (int j = first + 1; j < (int)p.size(); j++) {
+        if (!used[j] && p[first] + p[j] <= limit) {  // shares with j
+            used[j] = true;
+            best = min(best, 1 + solveBoats(p, limit, used));
+            used[j] = false;
+        }
+    }
+    used[first] = false;
+    return best;
+}
+
+int numRescueBoats(vector<int> p, int limit) {
+    vector<bool> used(p.size(), false);
+    return solveBoats(p, limit, used);
+}` }
+        ] }
     },
     mcq: {
       q: 'Sorted weights, the heaviest person cannot share a boat with the lightest person. What follows?',
@@ -4595,7 +5405,7 @@ public:
       <p>Output <b>110</b>: persons 1 and 0 (most negative A − B) fly to ${H.c('g', 'A: 30 + 10')}, persons 3 and 2 fly to ${H.c('b', 'B: 20 + 50')}.</p>`,
     brute: {
       why: `<p>Try every way to choose which n people go to A: C(2n, n) subsets — for 2n = 100 that is about 10<sup>29</sup>. The waste: the only thing that matters about a person is how much cheaper A is than B (A − B).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteTwoCity(int[][] costs) {
             int m = costs.length, n = m / 2, best = Integer.MAX_VALUE;
             for (int mask = 0; mask < (1 << m); mask++) {
@@ -4605,7 +5415,43 @@ public:
                 best = Math.min(best, total);
             }
             return best;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def two_city_sched_cost(costs):
+    m = len(costs)
+    n = m // 2
+    best = float('inf')
+    for mask in range(1 << m):
+        if bin(mask).count('1') != n:                # exactly n people to city A
+            continue
+        total = 0
+        for i in range(m):
+            total += costs[i][0] if (mask >> i) & 1 else costs[i][1]
+        best = min(best, total)
+    return best` },
+          { lang: 'js', code: `function twoCitySchedCost(costs) {
+  const m = costs.length, n = m / 2;
+  let best = Infinity;
+  for (let mask = 0; mask < (1 << m); mask++) {
+    let bits = 0;
+    for (let x = mask; x > 0; x &= x - 1) bits++;
+    if (bits !== n) continue;                        // exactly n people to city A
+    let total = 0;
+    for (let i = 0; i < m; i++) total += ((mask >> i) & 1) === 1 ? costs[i][0] : costs[i][1];
+    best = Math.min(best, total);
+  }
+  return best;
+}` },
+          { lang: 'cpp', code: `int twoCitySchedCost(vector<vector<int>> costs) {
+    int m = costs.size(), n = m / 2, best = INT_MAX;
+    for (int mask = 0; mask < (1 << m); mask++) {
+        if (__builtin_popcount(mask) != n) continue; // exactly n people to city A
+        int total = 0;
+        for (int i = 0; i < m; i++) total += ((mask >> i) & 1) == 1 ? costs[i][0] : costs[i][1];
+        best = min(best, total);
+    }
+    return best;
+}` }
+        ] }
     },
     mcq: {
       q: 'Imagine everyone first flies to B. Sending person i to A instead changes the cost by aCost − bCost. Which n people should switch to A?',
@@ -4682,7 +5528,7 @@ public:
       <p>Output ${H.c('g', '"9534330"')}. Note "3" goes before "30" because "330" &gt; "303" — plain string sorting would put "30" after "3" only by luck, and numeric sorting is simply wrong.</p>`,
     brute: {
       why: `<p>Try all N! orders, build each string, keep the largest (all have the same length, so string comparison = numeric comparison). 100! orders is impossible. The waste: the best relative order of any two numbers can be decided by looking at just those two.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         String best;
 
         String bruteLargest(int[] nums) {
@@ -4702,7 +5548,62 @@ public:
                 perm(nums, used, placed + 1, cur + nums[i]);
                 used[i] = false;
             }
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def largest_number(nums):
+    best = ""
+
+    def perm(used, placed, cur):
+        nonlocal best
+        if placed == len(nums):
+            if cur > best:                           # same length: lexicographic = numeric
+                best = cur
+            return
+        for i in range(len(nums)):
+            if used[i]:
+                continue
+            used[i] = True
+            perm(used, placed + 1, cur + str(nums[i]))
+            used[i] = False
+
+    perm([False] * len(nums), 0, "")
+    return "0" if best.startswith("0") else best` },
+          { lang: 'js', code: `function largestNumber(nums) {
+  let best = "";
+  function perm(used, placed, cur) {
+    if (placed === nums.length) {
+      if (cur > best) best = cur;                    // same length: lexicographic = numeric
+      return;
+    }
+    for (let i = 0; i < nums.length; i++) {
+      if (used[i]) continue;
+      used[i] = true;
+      perm(used, placed + 1, cur + nums[i]);
+      used[i] = false;
+    }
+  }
+  perm(new Array(nums.length).fill(false), 0, "");
+  return best.startsWith("0") ? "0" : best;
+}` },
+          { lang: 'cpp', code: `void perm(vector<int>& nums, vector<bool>& used, int placed, string cur, string& best) {
+    if (placed == (int)nums.size()) {
+        if (cur > best) best = cur;                  // same length: lexicographic = numeric
+        return;
+    }
+    for (int i = 0; i < (int)nums.size(); i++) {
+        if (used[i]) continue;
+        used[i] = true;
+        perm(nums, used, placed + 1, cur + to_string(nums[i]), best);
+        used[i] = false;
+    }
+}
+
+string largestNumber(vector<int>& nums) {
+    string best = "";
+    vector<bool> used(nums.size(), false);
+    perm(nums, used, 0, "", best);
+    return best[0] == '0' ? "0" : best;
+}` }
+        ] }
     },
     mcq: {
       q: 'How should "3" and "30" be ordered?',
@@ -4788,7 +5689,7 @@ public:
       ${H.table(['insert (tallest first)', 'at index k', 'queue after'], [['[7,0]', '0', '[7,0]'], ['[7,1]', '1', '[7,0] [7,1]'], ['[6,1]', '1', '[7,0] [6,1] [7,1]'], ['[5,0]', '0', '[5,0] [7,0] [6,1] [7,1]'], ['[5,2]', '2', '[5,0] [7,0] [5,2] [6,1] [7,1]'], ['[4,4]', '4', H.c('g', '[5,0] [7,0] [5,2] [6,1] [4,4] [7,1]')]])}`,
     brute: {
       why: `<p>Try every permutation and check each person's k: N! orders (pruned backtracking helps but stays exponential). The waste: once taller people are placed, a shorter person's position is forced — exactly index k.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[][] bruteQueue(int[][] people) {
             int[][] cur = new int[people.length][];
             return place(people, new boolean[people.length], cur, 0) ? cur : null;
@@ -4807,7 +5708,71 @@ public:
                 used[i] = false;
             }
             return false;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def reconstruct_queue(people):
+    cur = [None] * len(people)
+    used = [False] * len(people)
+
+    def place(pos):
+        if pos == len(people):
+            return True
+        for i in range(len(people)):
+            if used[i]:
+                continue
+            taller = 0                               # people already in front with height >= h
+            for j in range(pos):
+                if cur[j][0] >= people[i][0]:
+                    taller += 1
+            if taller != people[i][1]:               # k must match exactly
+                continue
+            used[i] = True
+            cur[pos] = people[i]
+            if place(pos + 1):
+                return True
+            used[i] = False
+        return False
+
+    return cur if place(0) else None` },
+          { lang: 'js', code: `function reconstructQueue(people) {
+  const cur = new Array(people.length);
+  const used = new Array(people.length).fill(false);
+  function place(pos) {
+    if (pos === people.length) return true;
+    for (let i = 0; i < people.length; i++) {
+      if (used[i]) continue;
+      let taller = 0;                                // people already in front with height >= h
+      for (let j = 0; j < pos; j++) if (cur[j][0] >= people[i][0]) taller++;
+      if (taller !== people[i][1]) continue;         // k must match exactly
+      used[i] = true;
+      cur[pos] = people[i];
+      if (place(pos + 1)) return true;
+      used[i] = false;
+    }
+    return false;
+  }
+  return place(0) ? cur : null;
+}` },
+          { lang: 'cpp', code: `bool place(vector<vector<int>>& people, vector<bool>& used, vector<vector<int>>& cur, int pos) {
+    if (pos == (int)people.size()) return true;
+    for (int i = 0; i < (int)people.size(); i++) {
+        if (used[i]) continue;
+        int taller = 0;                              // people already in front with height >= h
+        for (int j = 0; j < pos; j++) if (cur[j][0] >= people[i][0]) taller++;
+        if (taller != people[i][1]) continue;        // k must match exactly
+        used[i] = true;
+        cur[pos] = people[i];
+        if (place(people, used, cur, pos + 1)) return true;
+        used[i] = false;
+    }
+    return false;
+}
+
+vector<vector<int>> reconstructQueue(vector<vector<int>> people) {
+    vector<vector<int>> cur(people.size());
+    vector<bool> used(people.size(), false);
+    return place(people, used, cur, 0) ? cur : vector<vector<int>>();
+}` }
+        ] }
     },
     mcq: {
       q: 'Why insert the tallest people first?',
@@ -4888,7 +5853,7 @@ public:
       <p>Output <b>5</b>. With ratings [1, 2, 2] the output is <b>4</b> (candies 1, 2, 1): equal neighbours have no constraint.</p>`,
     brute: {
       why: `<p>Start everyone at 1 and repeatedly sweep the line fixing any violated rule (raise the higher-rated child to neighbour + 1) until nothing changes. It reaches the minimum, but a long decreasing run can need O(N) sweeps → O(N²). The waste: the left rules and right rules can each be satisfied in one directed pass.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteCandy(int[] r) {
             int n = r.length;
             int[] c = new int[n];
@@ -4904,7 +5869,50 @@ public:
             int sum = 0;
             for (int x : c) sum += x;
             return sum;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def candy(r):
+    n = len(r)
+    c = [1] * n
+    changed = True
+    while changed:                                   # relax until every rule holds
+        changed = False
+        for i in range(n):
+            if i > 0 and r[i] > r[i - 1] and c[i] <= c[i - 1]:
+                c[i] = c[i - 1] + 1
+                changed = True
+            if i + 1 < n and r[i] > r[i + 1] and c[i] <= c[i + 1]:
+                c[i] = c[i + 1] + 1
+                changed = True
+    return sum(c)` },
+          { lang: 'js', code: `function candy(r) {
+  const n = r.length;
+  const c = new Array(n).fill(1);
+  let changed = true;
+  while (changed) {                                  // relax until every rule holds
+    changed = false;
+    for (let i = 0; i < n; i++) {
+      if (i > 0 && r[i] > r[i - 1] && c[i] <= c[i - 1]) { c[i] = c[i - 1] + 1; changed = true; }
+      if (i + 1 < n && r[i] > r[i + 1] && c[i] <= c[i + 1]) { c[i] = c[i + 1] + 1; changed = true; }
+    }
+  }
+  return c.reduce((a, b) => a + b, 0);
+}` },
+          { lang: 'cpp', code: `int candy(vector<int>& r) {
+    int n = r.size();
+    vector<int> c(n, 1);
+    bool changed = true;
+    while (changed) {                                // relax until every rule holds
+        changed = false;
+        for (int i = 0; i < n; i++) {
+            if (i > 0 && r[i] > r[i - 1] && c[i] <= c[i - 1]) { c[i] = c[i - 1] + 1; changed = true; }
+            if (i + 1 < n && r[i] > r[i + 1] && c[i] <= c[i + 1]) { c[i] = c[i + 1] + 1; changed = true; }
+        }
+    }
+    int sum = 0;
+    for (int x : c) sum += x;
+    return sum;
+}` }
+        ] }
     },
     mcq: {
       q: 'After the left-to-right pass, why take <code>max(c[i], c[i+1] + 1)</code> in the right-to-left pass instead of just <code>c[i+1] + 1</code>?',
@@ -4998,7 +6006,7 @@ public:
     example: `<p>k = 2, w = 0, profits = [1, 2, 3], capital = [0, 1, 1] → Output <b>4</b>. Round 1: only project 0 is affordable → w = 1. Round 2: projects 1 and 2 are affordable, take the richer ${H.c('g', 'project 2 (+3)')} → w = 4.</p>`,
     brute: {
       why: `<p>Each round, scan all projects, pick the unused affordable one with the largest profit: O(k·N) = 10<sup>10</sup> in the worst case. The waste: projects become affordable in a fixed order (by capital) and never stop being affordable, so a sorted pointer plus a heap avoids rescanning.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteIPO(int k, int w, int[] profits, int[] capital) {
             boolean[] used = new boolean[profits.length];
             for (int round = 0; round < k; round++) {
@@ -5010,7 +6018,44 @@ public:
                 w += profits[pick];
             }
             return w;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def find_maximized_capital(k, w, profits, capital):
+    used = [False] * len(profits)
+    for _ in range(k):
+        pick = -1
+        for i in range(len(profits)):
+            if not used[i] and capital[i] <= w and (pick == -1 or profits[i] > profits[pick]):
+                pick = i
+        if pick == -1:                               # nothing affordable
+            break
+        used[pick] = True
+        w += profits[pick]
+    return w` },
+          { lang: 'js', code: `function findMaximizedCapital(k, w, profits, capital) {
+  const used = new Array(profits.length).fill(false);
+  for (let round = 0; round < k; round++) {
+    let pick = -1;
+    for (let i = 0; i < profits.length; i++)
+      if (!used[i] && capital[i] <= w && (pick === -1 || profits[i] > profits[pick])) pick = i;
+    if (pick === -1) break;                          // nothing affordable
+    used[pick] = true;
+    w += profits[pick];
+  }
+  return w;
+}` },
+          { lang: 'cpp', code: `int findMaximizedCapital(int k, int w, vector<int>& profits, vector<int>& capital) {
+    vector<bool> used(profits.size(), false);
+    for (int round = 0; round < k; round++) {
+        int pick = -1;
+        for (int i = 0; i < (int)profits.size(); i++)
+            if (!used[i] && capital[i] <= w && (pick == -1 || profits[i] > profits[pick])) pick = i;
+        if (pick == -1) break;                       // nothing affordable
+        used[pick] = true;
+        w += profits[pick];
+    }
+    return w;
+}` }
+        ] }
     },
     mcq: {
       q: 'Why is it safe to always take the most profitable affordable project?',
@@ -5154,7 +6199,7 @@ public:
       <p>Output <b>3</b>: A (days 1–100), C (101–1100), B (1101–1300). D would end on day 3300 &gt; 3200. Taking A, C, B, D is impossible.</p>`,
     brute: {
       why: `<p>Try all 2<sup>N</sup> subsets; a subset is feasible iff running it in deadline order finishes each course on time (Earliest Deadline First is optimal for a fixed set). Exponential. The waste: when a deadline is missed, dropping the single longest course taken so far is always the best repair.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteCourses(int[][] courses) {
             int n = courses.length, best = 0;
             int[][] c = courses.clone();
@@ -5170,7 +6215,62 @@ public:
                 if (ok) best = Math.max(best, Integer.bitCount(mask));
             }
             return best;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def schedule_course(courses):
+    n = len(courses)
+    best = 0
+    c = sorted(courses, key=lambda x: x[1])          # deadline order
+    for mask in range(1 << n):
+        time = 0
+        ok = True
+        for i in range(n):
+            if not ok:
+                break
+            if (mask >> i & 1) == 0:
+                continue
+            time += c[i][0]
+            if time > c[i][1]:                       # finished too late
+                ok = False
+        if ok:
+            best = max(best, bin(mask).count('1'))
+    return best` },
+          { lang: 'js', code: `function scheduleCourse(courses) {
+  const n = courses.length;
+  let best = 0;
+  const c = [...courses].sort((a, b) => a[1] - b[1]);   // deadline order
+  for (let mask = 0; mask < (1 << n); mask++) {
+    let time = 0;
+    let ok = true;
+    for (let i = 0; i < n && ok; i++) {
+      if ((mask >> i & 1) === 0) continue;
+      time += c[i][0];
+      if (time > c[i][1]) ok = false;                // finished too late
+    }
+    if (ok) {
+      let bits = 0;
+      for (let m = mask; m > 0; m &= m - 1) bits++;
+      best = Math.max(best, bits);
+    }
+  }
+  return best;
+}` },
+          { lang: 'cpp', code: `int scheduleCourse(vector<vector<int>> courses) {
+    int n = courses.size(), best = 0;
+    vector<vector<int>> c = courses;
+    sort(c.begin(), c.end(), [](auto& a, auto& b) { return a[1] < b[1]; });   // deadline order
+    for (int mask = 0; mask < (1 << n); mask++) {
+        int time = 0;
+        bool ok = true;
+        for (int i = 0; i < n && ok; i++) {
+            if ((mask >> i & 1) == 0) continue;
+            time += c[i][0];
+            if (time > c[i][1]) ok = false;          // finished too late
+        }
+        if (ok) best = max(best, __builtin_popcount(mask));
+    }
+    return best;
+}` }
+        ] }
     },
     mcq: {
       q: 'Processing courses by deadline, adding course X makes you finish too late. Which course should you drop?',
@@ -5308,7 +6408,7 @@ public:
     example: `<p>target = 100, startFuel = 10, stations = [[10,60],[20,30],[30,30],[60,40]] → Output <b>2</b>. Reach 10, take ${H.c('g', '60')} (now reach 70); you passed 20, 30, 60 — take the biggest of them, ${H.c('g', '40 at mile 60')} (reach 110 ≥ 100).</p>`,
     brute: {
       why: `<p>For every station you can reach, choose "stop" or "skip" recursively: 2<sup>N</sup> paths. The waste: you never need to decide <i>when</i> you pass a station. Only when you are about to run dry does it matter which passed station you "should have" stopped at — and the answer is always the one with the most fuel.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         long INF = Long.MAX_VALUE / 4;
 
         int bruteRefuel(int target, int startFuel, int[][] stations) {
@@ -5323,7 +6423,51 @@ public:
             long skip = dfs(target, st, i + 1, reach);
             long stop = 1 + dfs(target, st, i + 1, reach + st[i][1]);
             return Math.min(skip, stop);
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def min_refuel_stops(target, start_fuel, stations):
+    INF = float('inf')
+
+    # reach = farthest position reachable with the fuel picked up so far
+    def dfs(i, reach):
+        if reach >= target:
+            return 0
+        if i == len(stations) or stations[i][0] > reach:   # stuck before station i
+            return INF
+        skip = dfs(i + 1, reach)
+        stop = 1 + dfs(i + 1, reach + stations[i][1])
+        return min(skip, stop)
+
+    r = dfs(0, start_fuel)
+    return -1 if r == INF else r` },
+          { lang: 'js', code: `function minRefuelStops(target, startFuel, stations) {
+  const INF = Infinity;
+  // reach = farthest position reachable with the fuel picked up so far
+  function dfs(i, reach) {
+    if (reach >= target) return 0;
+    if (i === stations.length || stations[i][0] > reach) return INF;   // stuck before station i
+    const skip = dfs(i + 1, reach);
+    const stop = 1 + dfs(i + 1, reach + stations[i][1]);
+    return Math.min(skip, stop);
+  }
+  const r = dfs(0, startFuel);
+  return r === INF ? -1 : r;
+}` },
+          { lang: 'cpp', code: `const long long INF = LLONG_MAX / 4;
+
+// reach = farthest position reachable with the fuel picked up so far
+long long dfs(int target, vector<vector<int>>& st, int i, long long reach) {
+    if (reach >= target) return 0;
+    if (i == (int)st.size() || st[i][0] > reach) return INF;   // stuck before station i
+    long long skip = dfs(target, st, i + 1, reach);
+    long long stop = 1 + dfs(target, st, i + 1, reach + st[i][1]);
+    return min(skip, stop);
+}
+
+int minRefuelStops(int target, int startFuel, vector<vector<int>>& stations) {
+    long long r = dfs(target, stations, 0, startFuel);
+    return r >= INF ? -1 : (int)r;
+}` }
+        ] }
     },
     mcq: {
       q: 'You will run out of fuel before the next station. You have passed stations with 30, 30 and 40 liters without stopping. What does the greedy do?',

@@ -301,26 +301,51 @@
         R`<p>Hint 2: Put <code>left = 0</code>, <code>right = len(s) - 1</code>. Move <code>left</code> forward while it points at a non-alphanumeric; move <code>right</code> back the same way.</p>`,
         R`<p>Hint 3: Compare <code>s[left].lower()</code> with <code>s[right].lower()</code>; if different return False; else step both inward. Loop while <code>left &lt; right</code>. Empty or all-punctuation strings are palindromes.</p>`
       ],
+      tests: {
+        sig: 'string -> bool',
+        fn: 'isPalindrome',
+        cases: [
+          [['A man, a plan, a canal: Panama'], true],
+          [['race a car'], false],
+          [[' '], true],
+          [['0P'], false],
+          [['a'], true],
+          [['.,'], true],
+          [['ab_a'], true],
+          [['Aa'], true],
+          [['ab'], false],
+          [['No \'x\' in Nixon'], true],
+          [['12321'], true],
+          [['1231'], false],
+          [['!!a!!b!!a!!'], true],
+          [['a,b'], false],
+          [[{ $rep: 'a', n: 200000 }], true],
+          [[{ $concat: [{ $rep: 'a', n: 99999 }, 'b', { $rep: 'a', n: 99999 }] }], true],
+          [[{ $rep: 'ab', n: 100000 }], false],
+          [[{ $rep: 'a,', n: 100000 }], true],
+          [[{ $concat: [{ $rep: 'a', n: 100000 }, 'b', { $rep: 'a', n: 99999 }] }], false]
+        ]
+      },
       solution: {
         approach: R`<p><b>Pythonic one-liner:</b> <code>t = [c.lower() for c in s if c.isalnum()]; return t == t[::-1]</code> (clear, O(n) memory). <b>Interview-optimal:</b> two pointers, O(1) extra memory, stop early at the first mismatch.</p>`,
         code: { lang: 'python', run: true, code: R`
-          def is_palindrome(s: str) -> bool:
-              left, right = 0, len(s) - 1
-              while left < right:
-                  # skip anything that is not a letter or digit
-                  while left < right and not s[left].isalnum():
-                      left += 1
-                  while left < right and not s[right].isalnum():
-                      right -= 1
-                  if s[left].lower() != s[right].lower():
-                      return False          # first mismatch decides
-                  left += 1
-                  right -= 1
-              return True
+def is_palindrome(s: str) -> bool:
+    left, right = 0, len(s) - 1
+    while left < right:
+        # skip anything that is not a letter or digit
+        while left < right and not s[left].isalnum():
+            left += 1
+        while left < right and not s[right].isalnum():
+            right -= 1
+        if s[left].lower() != s[right].lower():
+            return False          # first mismatch decides
+        left += 1
+        right -= 1
+    return True
 
-          for t in ["A man, a plan, a canal: Panama", "race a car", " ", "0P"]:
-              print(repr(t), "->", is_palindrome(t))
-        ` },
+for t in ["A man, a plan, a canal: Panama", "race a car", " ", "0P"]:
+    print(repr(t), "->", is_palindrome(t))
+` },
         alt: [{ lang: 'python', title: 'Readable version', code: R`
           def is_palindrome(s: str) -> bool:
               t = [c.casefold() for c in s if c.isalnum()]
@@ -575,7 +600,7 @@ print(f"{name} bought {items} items for ₹{total:,.2f}")
       title: 'Aligned Receipt Printer',
       level: 'Medium', tags: ['f-strings', 'format spec', 'alignment'], companies: ['Flipkart', 'Shopify', 'Swiggy'],
       statement: R`<p>Given a list of <code>(item, quantity, unit_price)</code> tuples, return the receipt as a single string. Columns: item left-aligned in 14 characters (cut longer names to 13 characters plus <code>…</code>), quantity right-aligned in 4, line total right-aligned in 12 with thousands separators and 2 decimals. End with a dashed line of 30 <code>-</code> and a <code>TOTAL</code> row aligned the same way.</p>`,
-      constraints: R`0 ≤ number of items ≤ 1000; 1 ≤ qty ≤ 10<sup>4</sup>; 0 ≤ price ≤ 10<sup>6</sup>.`,
+      constraints: R`0 ≤ number of items ≤ 1000; 1 ≤ qty ≤ 10<sup>4</sup>; 0 ≤ price ≤ 10<sup>6</sup>; every line total and the grand total stay below 10<sup>7</sup>, so they fit the 12-character column.`,
       example: R`<p>Input <code>[("Pen", 2, 15.5), ("Wireless Keyboard Pro", 1, 2499)]</code> → rows ${H.c('g', '"Pen              2       31.00"')} and ${H.c('g', '"Wireless Keyb…   1    2,499.00"')}, then the dashed line and ${H.c('b', '"TOTAL                 2,530.00"')}. The long name is cut so every column stays put.</p>`,
       brute: {
         why: R`<p>Pad with string concatenation and manual space counting: <code>name + " " * (14 - len(name))</code>. It breaks when the name is longer than 14 (negative repeat gives ""), needs separate code for commas, and is hard to read and change.</p>`,
@@ -602,28 +627,1090 @@ print(f"{name} bought {items} items for ₹{total:,.2f}")
         R`<p>Hint 2: Shorten long names first: <code>name if len(name) &lt;= 14 else name[:13] + "…"</code>. Width never truncates, precision would cut without the ellipsis.</p>`,
         R`<p>Hint 3: Money spec <code>&gt;12,.2f</code>. Keep a running total; build all lines in a list and <code>"\n".join</code> them.</p>`
       ],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_val',
+        cases: [
+          [
+            ['receipt([(\'Pen\', 2, 15.5), (\'Wireless Keyboard Pro\', 1, 2499)])'],
+            'Pen              2       31.00\n' +
+              'Wireless Keyb…   1    2,499.00\n' +
+              '------------------------------\n' +
+              'TOTAL                 2,530.00'
+          ],
+          [
+            ['receipt([])'],
+            '------------------------------\n' +
+              'TOTAL                     0.00'
+          ],
+          [
+            ['receipt([(\'A\', 1, 0)])'],
+            'A                1        0.00\n' +
+              '------------------------------\n' +
+              'TOTAL                     0.00'
+          ],
+          [
+            ['receipt([(\'Fourteen-chars\', 1, 1.5)])'],
+            'Fourteen-chars   1        1.50\n' +
+              '------------------------------\n' +
+              'TOTAL                     1.50'
+          ],
+          [
+            ['receipt([(\'Fourteen-char\', 1, 1.5), (\'Fifteen-chars-xx\', 3, 0.25)])'],
+            'Fourteen-char    1        1.50\n' +
+              'Fifteen-chars…   3        0.75\n' +
+              '------------------------------\n' +
+              'TOTAL                     2.25'
+          ],
+          [
+            ['receipt([(\'Item\', 1, 9.99)] * 1000)'],
+            'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              'Item             1        9.99\n' +
+              '------------------------------\n' +
+              'TOTAL                 9,990.00'
+          ],
+          [
+            ['receipt([(\'Bulk\', 10000, 99.99)])'],
+            'Bulk          10000  999,900.00\n' +
+              '------------------------------\n' +
+              'TOTAL               999,900.00'
+          ],
+          [
+            ['receipt([(\'Mid\', 1234, 0.5), (\'x\', 7, 3.14)])'],
+            'Mid           1234      617.00\n' +
+              'x                7       21.98\n' +
+              '------------------------------\n' +
+              'TOTAL                   638.98'
+          ]
+        ],
+        harness: {
+          python: 'def t_val(src):\n' +
+            '    try:\n' +
+            '        return eval(src)\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: R`<p>Fix the column widths as constants, shorten long names with a slice plus an ellipsis, and let the format spec do all alignment, grouping and rounding. Use a list of lines and join once.</p>`,
         code: { lang: 'python', run: true, code: R`
-          NAME_W, QTY_W, AMT_W = 14, 4, 12
+NAME_W, QTY_W, AMT_W = 14, 4, 12
 
-          def fit(name: str, width: int = NAME_W) -> str:
-              """Cut a long name so it fits, marking the cut with an ellipsis."""
-              return name if len(name) <= width else name[: width - 1] + "…"
+def fit(name: str, width: int = NAME_W) -> str:
+    """Cut a long name so it fits, marking the cut with an ellipsis."""
+    return name if len(name) <= width else name[: width - 1] + "…"
 
-          def receipt(items) -> str:
-              lines, total = [], 0.0
-              for name, qty, price in items:
-                  amount = qty * price
-                  total += amount
-                  lines.append(f"{fit(name):<{NAME_W}}{qty:>{QTY_W}}{amount:>{AMT_W},.2f}")
-              lines.append("-" * (NAME_W + QTY_W + AMT_W))
-              lines.append(f"{'TOTAL':<{NAME_W + QTY_W}}{total:>{AMT_W},.2f}")
-              return "\n".join(lines)
+def receipt(items) -> str:
+    lines, total = [], 0.0
+    for name, qty, price in items:
+        amount = qty * price
+        total += amount
+        lines.append(f"{fit(name):<{NAME_W}}{qty:>{QTY_W}}{amount:>{AMT_W},.2f}")
+    lines.append("-" * (NAME_W + QTY_W + AMT_W))
+    lines.append(f"{'TOTAL':<{NAME_W + QTY_W}}{total:>{AMT_W},.2f}")
+    return "\n".join(lines)
 
-          print(receipt([("Pen", 2, 15.5), ("Wireless Keyboard Pro", 1, 2499)]))
-          print(receipt([]))   # just the dashes and a zero total
-        ` },
+print(receipt([("Pen", 2, 15.5), ("Wireless Keyboard Pro", 1, 2499)]))
+print(receipt([]))   # just the dashes and a zero total
+` },
         dry: { head: ['row', 'fit(name)', 'qty', 'amount', 'line'], rows: [
           ['1', "'Pen'", '2', '31.0', "'Pen' + 11 spaces + '   2' + '       31.00'"],
           ['2', "'Wireless Keyb…'", '1', '2499', "'Wireless Keyb…' + '   1' + '    2,499.00'"],
@@ -820,24 +1907,55 @@ print(f"{name} bought {items} items for ₹{total:,.2f}")
         R`<p>Hint 2: A cut at index i is safe if <code>b[i]</code> is NOT a continuation byte (<code>b[i] &amp; 0xC0 != 0x80</code>) — that means a character starts there.</p>`,
         R`<p>Hint 3: If <code>len(b) &lt;= max_bytes</code> return s. Else start at <code>i = max_bytes</code> and step back while <code>b[i]</code> is a continuation byte (at most 3 steps). Decode <code>b[:i]</code>. Shortcut: <code>b[:max_bytes].decode("utf-8", "ignore")</code> also works because only the tail can be broken.</p>`
       ],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_val',
+        cases: [
+          [['truncate_utf8(\'café!\', 4)'], 'caf'],
+          [['truncate_utf8(\'café!\', 5)'], 'café'],
+          [['truncate_utf8(\'😀😀\', 5)'], '😀'],
+          [['truncate_utf8(\'abc\', 10)'], 'abc'],
+          [['truncate_utf8(\'€\', 2)'], ''],
+          [['truncate_utf8(\'€\', 3)'], '€'],
+          [['truncate_utf8(\'\', 0)'], ''],
+          [['truncate_utf8(\'abc\', 0)'], ''],
+          [['truncate_utf8(\'aé\', 1)'], 'a'],
+          [['truncate_utf8(\'aé\', 2)'], 'a'],
+          [['truncate_utf8(\'aé\', 3)'], 'aé'],
+          [['truncate_utf8(\'😀😀\', 4)'], '😀'],
+          [['truncate_utf8(\'😀😀\', 8)'], '😀😀'],
+          [['truncate_utf8(\'😀a\', 5)'], '😀a'],
+          [['truncate_utf8(\'abc\', 3)'], 'abc'],
+          [['len(truncate_utf8(\'é\' * 10**6, 999999))'], 499999],
+          [['len(truncate_utf8(\'a\' * 10**6, 10**6))'], 1000000],
+          [['len(truncate_utf8(\'€\' * 10**6, 10**6))'], 333333]
+        ],
+        harness: {
+          python: 'def t_val(src):\n' +
+            '    try:\n' +
+            '        return eval(src)\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: R`<p>Encode once (O(n)), then use UTF-8's self-synchronising property: walk back from the cut point over at most 3 continuation bytes to the start of a character, and decode the safe prefix.</p>`,
         code: { lang: 'python', run: true, code: R`
-          def truncate_utf8(s: str, max_bytes: int) -> str:
-              b = s.encode("utf-8")
-              if len(b) <= max_bytes:
-                  return s
-              i = max_bytes
-              # 0b10xxxxxx bytes continue a character; never cut just before one
-              while i > 0 and (b[i] & 0xC0) == 0x80:
-                  i -= 1
-              return b[:i].decode("utf-8")
+def truncate_utf8(s: str, max_bytes: int) -> str:
+    b = s.encode("utf-8")
+    if len(b) <= max_bytes:
+        return s
+    i = max_bytes
+    # 0b10xxxxxx bytes continue a character; never cut just before one
+    while i > 0 and (b[i] & 0xC0) == 0x80:
+        i -= 1
+    return b[:i].decode("utf-8")
 
-          tests = [("café!", 4), ("café!", 5), ("😀😀", 5), ("abc", 10), ("€", 2)]
-          for s, n in tests:
-              out = truncate_utf8(s, n)
-              print(repr(s), n, "->", repr(out), len(out.encode()))
-        ` },
+tests = [("café!", 4), ("café!", 5), ("😀😀", 5), ("abc", 10), ("€", 2)]
+for s, n in tests:
+    out = truncate_utf8(s, n)
+    print(repr(s), n, "->", repr(out), len(out.encode()))
+` },
         alt: [{ lang: 'python', title: 'Shortcut with errors="ignore"', code: R`
           def truncate_utf8(s: str, max_bytes: int) -> str:
               # cutting can only damage the LAST character, and "ignore" drops that partial tail
@@ -1074,32 +2192,170 @@ print(f"{name} bought {items} items for ₹{total:,.2f}")
         R`<p>Hint 2: <code>len(line)</code> counts the newline too (what wc counts); <code>len(line.split())</code> counts words.</p>`,
         R`<p>Hint 3: Track the longest line using <code>line.rstrip("\n")</code>. Empty file → (0, 0, 0, ""). A last line without a newline still counts as a line here.</p>`
       ],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              'import os, tempfile\n' +
+                'fd, p = tempfile.mkstemp()\n' +
+                'os.write(fd, \'to be\\nor not to be\\n\'.encode(\'utf-8\'))\n' +
+                'os.close(fd)\n' +
+                'result = wc(p)\n' +
+                'os.remove(p)'
+            ],
+            [2, 6, 19, 'or not to be']
+          ],
+          [
+            [
+              'import os, tempfile\n' +
+                'fd, p = tempfile.mkstemp()\n' +
+                'os.write(fd, \'\'.encode(\'utf-8\'))\n' +
+                'os.close(fd)\n' +
+                'result = wc(p)\n' +
+                'os.remove(p)'
+            ],
+            [0, 0, 0, '']
+          ],
+          [
+            [
+              'import os, tempfile\n' +
+                'fd, p = tempfile.mkstemp()\n' +
+                'os.write(fd, \'no newline\'.encode(\'utf-8\'))\n' +
+                'os.close(fd)\n' +
+                'result = wc(p)\n' +
+                'os.remove(p)'
+            ],
+            [1, 2, 10, 'no newline']
+          ],
+          [
+            [
+              'import os, tempfile\n' +
+                'fd, p = tempfile.mkstemp()\n' +
+                'os.write(fd, \'\\n\\n\'.encode(\'utf-8\'))\n' +
+                'os.close(fd)\n' +
+                'result = wc(p)\n' +
+                'os.remove(p)'
+            ],
+            [2, 0, 2, '']
+          ],
+          [
+            [
+              'import os, tempfile\n' +
+                'fd, p = tempfile.mkstemp()\n' +
+                'os.write(fd, \'a\\nbb\\ncc\\n\'.encode(\'utf-8\'))\n' +
+                'os.close(fd)\n' +
+                'result = wc(p)\n' +
+                'os.remove(p)'
+            ],
+            [3, 3, 8, 'bb']
+          ],
+          [
+            [
+              'import os, tempfile\n' +
+                'fd, p = tempfile.mkstemp()\n' +
+                'os.write(fd, \'héllo wörld\\n\'.encode(\'utf-8\'))\n' +
+                'os.close(fd)\n' +
+                'result = wc(p)\n' +
+                'os.remove(p)'
+            ],
+            [1, 2, 12, 'héllo wörld']
+          ],
+          [
+            [
+              'import os, tempfile\n' +
+                'fd, p = tempfile.mkstemp()\n' +
+                'os.write(fd, \'x\\n\'.encode(\'utf-8\'))\n' +
+                'os.close(fd)\n' +
+                'result = wc(p)\n' +
+                'os.remove(p)'
+            ],
+            [1, 1, 2, 'x']
+          ],
+          [
+            [
+              'import os, tempfile\n' +
+                'fd, p = tempfile.mkstemp()\n' +
+                'os.write(fd, \'  spaced   out  \\n\\ttabs\\there\\n\'.encode(\'utf-8\'))\n' +
+                'os.close(fd)\n' +
+                'result = wc(p)\n' +
+                'os.remove(p)'
+            ],
+            [2, 4, 28, '  spaced   out  ']
+          ],
+          [
+            [
+              'import os, tempfile\n' +
+                'fd, p = tempfile.mkstemp()\n' +
+                'os.write(fd, \'one\\n\\nthree words here\\n\'.encode(\'utf-8\'))\n' +
+                'os.close(fd)\n' +
+                'result = wc(p)\n' +
+                'os.remove(p)'
+            ],
+            [3, 4, 22, 'three words here']
+          ],
+          [
+            [
+              'import os, tempfile\n' +
+                'fd, p = tempfile.mkstemp()\n' +
+                'os.write(fd, (\'x\\n\' * 100000).encode(\'utf-8\'))\n' +
+                'os.close(fd)\n' +
+                'r = wc(p)\n' +
+                'result = list(r)\n' +
+                'os.remove(p)'
+            ],
+            [100000, 100000, 200000, 'x']
+          ],
+          [
+            [
+              'import os, tempfile\n' +
+                'fd, p = tempfile.mkstemp()\n' +
+                'os.write(fd, (\'a\' * 100000).encode(\'utf-8\'))\n' +
+                'os.close(fd)\n' +
+                'r = wc(p)\n' +
+                'result = [r[0], r[1], r[2], len(r[3])]\n' +
+                'os.remove(p)'
+            ],
+            [1, 1, 100000, 100000]
+          ]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: R`<p>Stream the file line by line, updating four running values. Memory is O(longest line) regardless of file size.</p>`,
         code: { lang: 'python', run: true, code: R`
-          import os, tempfile
+import os, tempfile
 
-          def wc(path):
-              lines = words = chars = 0
-              longest = ""
-              with open(path, encoding="utf-8") as f:
-                  for line in f:                       # streaming: one line in memory
-                      lines += 1
-                      words += len(line.split())
-                      chars += len(line)
-                      body = line.rstrip("\n")
-                      if len(body) > len(longest):
-                          longest = body
-              return lines, words, chars, longest
+def wc(path):
+    lines = words = chars = 0
+    longest = ""
+    with open(path, encoding="utf-8") as f:
+        for line in f:                       # streaming: one line in memory
+            lines += 1
+            words += len(line.split())
+            chars += len(line)
+            body = line.rstrip("\n")
+            if len(body) > len(longest):
+                longest = body
+    return lines, words, chars, longest
 
-          fd, p = tempfile.mkstemp()
-          with os.fdopen(fd, "w", encoding="utf-8") as f:
-              f.write("to be\nor not to be\n")
-          print(wc(p))                                  # (2, 6, 19, 'or not to be')
-          open(p, "w").close()                          # make it empty
-          print(wc(p))                                  # (0, 0, 0, '')
-          os.remove(p)
-        ` },
+fd, p = tempfile.mkstemp()
+with os.fdopen(fd, "w", encoding="utf-8") as f:
+    f.write("to be\nor not to be\n")
+print(wc(p))                                  # (2, 6, 19, 'or not to be')
+open(p, "w").close()                          # make it empty
+print(wc(p))                                  # (0, 0, 0, '')
+os.remove(p)
+` },
         dry: { head: ['line (repr)', 'lines', 'words', 'chars', 'longest'], rows: [
           ["'to be\\n'", '1', '2', '6', "'to be'"],
           ["'or not to be\\n'", '2', '6', '19', "'or not to be'"],
@@ -1319,7 +2575,7 @@ else:
     problems: [{
       title: 'Merge Files with Headers (two context managers)',
       level: 'Medium', tags: ['with', 'files', 'context managers'], companies: ['Microsoft', 'Oracle', 'Freshworks'],
-      statement: R`<p>Write <code>merge(paths, out_path)</code> that writes every input file into one output file. Before each file's content write a header line <code>==&gt; name &lt;==</code> (just the file name). Make sure every file is closed even if one of the inputs is missing; in that case write <code>[missing]</code> under its header and continue. Return the number of files merged successfully.</p>`,
+      statement: R`<p>Write <code>merge(paths, out_path)</code> that writes every input file into one output file. Before each file's content write a header line <code>==&gt; name &lt;==</code> (just the file name). Make sure every file is closed even if one of the inputs is missing; in that case write <code>[missing]</code> under its header and continue. If a file does not end with a newline, add one so the next header starts on its own line. Return the number of files merged successfully.</p>`,
       constraints: R`1 ≤ len(paths) ≤ 1000; files are UTF-8; individual files may be larger than memory.`,
       example: R`<p>Inputs <code>a.txt</code> = <code>"x\n"</code>, <code>nope.txt</code> missing, <code>b.txt</code> = <code>"y\n"</code> → output:<br><code>==&gt; a.txt &lt;==</code> / <code>x</code> / <code>==&gt; nope.txt &lt;==</code> / ${H.c('r', '[missing]')} / <code>==&gt; b.txt &lt;==</code> / <code>y</code>. Return ${H.c('g', '2')}.</p>`,
       brute: {
@@ -1351,37 +2607,163 @@ else:
         R`<p>Hint 2: Wrap only the inner open in <code>try/except FileNotFoundError</code>. Use <code>os.path.basename</code> (or <code>Path(p).name</code>) for the header.</p>`,
         R`<p>Hint 3: Stream: <code>for line in src: dst.write(line)</code> (or <code>shutil.copyfileobj(src, dst)</code>). If a file does not end in "\n", add one so the next header starts on a new line.</p>`
       ],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              'import tempfile, pathlib\n' +
+                'd = pathlib.Path(tempfile.mkdtemp())\n' +
+                '(d / \'sub\').mkdir()\n' +
+                '(d / \'a.txt\').write_text(\'x\\n\', encoding=\'utf-8\')\n' +
+                '(d / \'b.txt\').write_text(\'y\\n\', encoding=\'utf-8\')\n' +
+                'paths = [d / n for n in [\'a.txt\', \'nope.txt\', \'b.txt\']]\n' +
+                'n = merge(paths, d / \'out.txt\')\n' +
+                'result = [n, (d / \'out.txt\').read_text(encoding=\'utf-8\')]'
+            ],
+            [2, '==> a.txt <==\nx\n==> nope.txt <==\n[missing]\n==> b.txt <==\ny\n']
+          ],
+          [
+            [
+              'import tempfile, pathlib\n' +
+                'd = pathlib.Path(tempfile.mkdtemp())\n' +
+                '(d / \'sub\').mkdir()\n' +
+                '(d / \'a.txt\').write_text(\'x\\n\', encoding=\'utf-8\')\n' +
+                '(d / \'b.txt\').write_text(\'y\', encoding=\'utf-8\')\n' +
+                'paths = [d / n for n in [\'a.txt\', \'b.txt\']]\n' +
+                'n = merge(paths, d / \'out.txt\')\n' +
+                'result = [n, (d / \'out.txt\').read_text(encoding=\'utf-8\')]'
+            ],
+            [2, '==> a.txt <==\nx\n==> b.txt <==\ny\n']
+          ],
+          [
+            [
+              'import tempfile, pathlib\n' +
+                'd = pathlib.Path(tempfile.mkdtemp())\n' +
+                '(d / \'sub\').mkdir()\n' +
+                'paths = [d / n for n in [\'nope.txt\']]\n' +
+                'n = merge(paths, d / \'out.txt\')\n' +
+                'result = [n, (d / \'out.txt\').read_text(encoding=\'utf-8\')]'
+            ],
+            [0, '==> nope.txt <==\n[missing]\n']
+          ],
+          [
+            [
+              'import tempfile, pathlib\n' +
+                'd = pathlib.Path(tempfile.mkdtemp())\n' +
+                '(d / \'sub\').mkdir()\n' +
+                '(d / \'e.txt\').write_text(\'\', encoding=\'utf-8\')\n' +
+                'paths = [d / n for n in [\'e.txt\']]\n' +
+                'n = merge(paths, d / \'out.txt\')\n' +
+                'result = [n, (d / \'out.txt\').read_text(encoding=\'utf-8\')]'
+            ],
+            [1, '==> e.txt <==\n']
+          ],
+          [
+            [
+              'import tempfile, pathlib\n' +
+                'd = pathlib.Path(tempfile.mkdtemp())\n' +
+                '(d / \'sub\').mkdir()\n' +
+                '(d / \'sub/s.txt\').write_text(\'deep\\n\', encoding=\'utf-8\')\n' +
+                'paths = [d / n for n in [\'sub/s.txt\']]\n' +
+                'n = merge(paths, d / \'out.txt\')\n' +
+                'result = [n, (d / \'out.txt\').read_text(encoding=\'utf-8\')]'
+            ],
+            [1, '==> s.txt <==\ndeep\n']
+          ],
+          [
+            [
+              'import tempfile, pathlib\n' +
+                'd = pathlib.Path(tempfile.mkdtemp())\n' +
+                '(d / \'sub\').mkdir()\n' +
+                '(d / \'u.txt\').write_text(\'é€\\n\', encoding=\'utf-8\')\n' +
+                '(d / \'v.txt\').write_text(\'line1\\nline2\\n\', encoding=\'utf-8\')\n' +
+                'paths = [d / n for n in [\'u.txt\', \'v.txt\']]\n' +
+                'n = merge(paths, d / \'out.txt\')\n' +
+                'result = [n, (d / \'out.txt\').read_text(encoding=\'utf-8\')]'
+            ],
+            [2, '==> u.txt <==\né€\n==> v.txt <==\nline1\nline2\n']
+          ],
+          [
+            [
+              'import tempfile, pathlib\n' +
+                'd = pathlib.Path(tempfile.mkdtemp())\n' +
+                '(d / \'sub\').mkdir()\n' +
+                '(d / \'a.txt\').write_text(\'x\\n\', encoding=\'utf-8\')\n' +
+                'paths = [d / n for n in [\'a.txt\', \'a.txt\']]\n' +
+                'n = merge(paths, d / \'out.txt\')\n' +
+                'result = [n, (d / \'out.txt\').read_text(encoding=\'utf-8\')]'
+            ],
+            [2, '==> a.txt <==\nx\n==> a.txt <==\nx\n']
+          ],
+          [
+            [
+              'import tempfile, pathlib\n' +
+                'd = pathlib.Path(tempfile.mkdtemp())\n' +
+                'ps = []\n' +
+                'for i in range(1000):\n' +
+                '    (d / (\'f%d.txt\' % i)).write_text(\'z%d\\n\' % i)\n' +
+                '    ps.append(d / (\'f%d.txt\' % i))\n' +
+                'n = merge(ps, d / \'out.txt\')\n' +
+                'lines = (d / \'out.txt\').read_text().split(\'\\n\')\n' +
+                'result = [n, len(lines), lines[0], lines[1], lines[-3], lines[-2]]'
+            ],
+            [1000, 2001, '==> f0.txt <==', 'z0', '==> f999.txt <==', 'z999']
+          ],
+          [
+            [
+              'import tempfile, pathlib\n' +
+                'd = pathlib.Path(tempfile.mkdtemp())\n' +
+                '(d / \'big.txt\').write_text(\'abcdefghi\\n\' * 500000)\n' +
+                'n = merge([d / \'big.txt\'], d / \'out.txt\')\n' +
+                'text = (d / \'out.txt\').read_text()\n' +
+                'result = [n, len(text), text.startswith(\'==> big.txt <==\\nabcdefghi\\n\')]'
+            ],
+            [1, 5000016, true]
+          ]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: R`<p>Nested context managers: the output stays open for the whole job; each input lives only inside its own with. Exceptions for a single missing input are handled locally; any other error still closes everything on the way out.</p>`,
         code: { lang: 'python', run: true, code: R`
-          import os, tempfile
-          from pathlib import Path
+import os, tempfile
+from pathlib import Path
 
-          def merge(paths, out_path) -> int:
-              merged = 0
-              with open(out_path, "w", encoding="utf-8") as dst:
-                  for p in paths:
-                      dst.write(f"==> {Path(p).name} <==\n")
-                      try:
-                          with open(p, encoding="utf-8") as src:
-                              last = ""
-                              for line in src:          # streaming copy
-                                  dst.write(line)
-                                  last = line
-                              if last and not last.endswith("\n"):
-                                  dst.write("\n")       # keep headers on their own line
-                          merged += 1
-                      except FileNotFoundError:
-                          dst.write("[missing]\n")
-              return merged
+def merge(paths, out_path) -> int:
+    merged = 0
+    with open(out_path, "w", encoding="utf-8") as dst:
+        for p in paths:
+            dst.write(f"==> {Path(p).name} <==\n")
+            try:
+                with open(p, encoding="utf-8") as src:
+                    last = ""
+                    for line in src:          # streaming copy
+                        dst.write(line)
+                        last = line
+                    if last and not last.endswith("\n"):
+                        dst.write("\n")       # keep headers on their own line
+                merged += 1
+            except FileNotFoundError:
+                dst.write("[missing]\n")
+    return merged
 
-          d = Path(tempfile.mkdtemp())
-          (d / "a.txt").write_text("x\n", encoding="utf-8")
-          (d / "b.txt").write_text("y", encoding="utf-8")       # no trailing newline
-          n = merge([d / "a.txt", d / "nope.txt", d / "b.txt"], d / "out.txt")
-          print(n)
-          print((d / "out.txt").read_text(encoding="utf-8"))
-        ` },
+d = Path(tempfile.mkdtemp())
+(d / "a.txt").write_text("x\n", encoding="utf-8")
+(d / "b.txt").write_text("y", encoding="utf-8")       # no trailing newline
+n = merge([d / "a.txt", d / "nope.txt", d / "b.txt"], d / "out.txt")
+print(n)
+print((d / "out.txt").read_text(encoding="utf-8"))
+` },
         dry: { head: ['path', 'header written', 'inner with', 'merged'], rows: [
           ['a.txt', '==&gt; a.txt &lt;==', 'opened, copied "x\\n", closed', '1'],
           ['nope.txt', '==&gt; nope.txt &lt;==', '<span class="c-r">FileNotFoundError</span> → write [missing]', '1'],
@@ -1631,27 +3013,47 @@ else:
         R`<p>Hint 2: Turn each entry into a module name: <code>"x.py"</code> → <code>"x"</code>; a folder name stays as is; anything else (like <code>.txt</code>) is skipped.</p>`,
         R`<p>Hint 3: Set membership is O(1). Folder vs file: in this exercise, names without a dot are folders. Return <code>sorted(...)</code> of the original names.</p>`
       ],
+      tests: {
+        sig: 'string[] -> string[]',
+        fn: 'findShadowing',
+        cases: [
+          [
+            [['main.py', 'random.py', 'utils.py', 'email', 'json.txt', 'string.py']],
+            ['email', 'random.py', 'string.py']
+          ],
+          [[[]], []],
+          [[['os', 'sys.py', 'math']], ['math', 'os', 'sys.py']],
+          [[['Random.py']], []],
+          [[['random.pyc']], []],
+          [[['collections', 'collections.py']], ['collections', 'collections.py']],
+          [[['numpy', 'pandas.py', 'requests']], []],
+          [[['typing.py', 'README.md', 'data.csv', 'json']], ['json', 'typing.py']],
+          [[['math.py', 'math.py']], ['math.py', 'math.py']],
+          [[{ $rep: 'random.py', n: 100000 }], { $rep: 'random.py', n: 100000 }],
+          [[{ $concat: [{ $rep: 'app.py', n: 50000 }, ['json'], { $rep: 'app.py', n: 50000 }] }], ['json']]
+        ]
+      },
       solution: {
         approach: R`<p>Pure data check: normalise each name to a candidate module name and test membership in the stdlib name set. No imports, no side effects, O(n).</p>`,
         code: { lang: 'python', run: true, code: R`
-          import sys
+import sys
 
-          def find_shadowing(names):
-              stdlib = sys.stdlib_module_names          # frozenset, Python 3.10+
-              hits = []
-              for n in names:
-                  if n.endswith(".py"):
-                      mod = n[:-3]                      # module file
-                  elif "." not in n:
-                      mod = n                           # treat as a package folder
-                  else:
-                      continue                          # json.txt, data.csv ... harmless
-                  if mod in stdlib:
-                      hits.append(n)
-              return sorted(hits)
+def find_shadowing(names):
+    stdlib = sys.stdlib_module_names          # frozenset, Python 3.10+
+    hits = []
+    for n in names:
+        if n.endswith(".py"):
+            mod = n[:-3]                      # module file
+        elif "." not in n:
+            mod = n                           # treat as a package folder
+        else:
+            continue                          # json.txt, data.csv ... harmless
+        if mod in stdlib:
+            hits.append(n)
+    return sorted(hits)
 
-          print(find_shadowing(["main.py", "random.py", "utils.py", "email", "json.txt", "string.py"]))
-        ` },
+print(find_shadowing(["main.py", "random.py", "utils.py", "email", "json.txt", "string.py"]))
+` },
         dry: { head: ['name', 'candidate module', 'in stdlib?', 'result'], rows: [
           ['main.py', 'main', 'no', '—'],
           ['random.py', 'random', '<span class="c-r">yes</span>', 'add'],
@@ -1886,33 +3288,59 @@ if __name__ == "__main__":     # True only when run directly
         R`<p>Hint 2: Going up <code>level - 1</code> times from the package: <code>bits = package.rsplit(".", level - 1)</code>. If there are fewer parts than needed, it is beyond the top.</p>`,
         R`<p>Hint 3: Base = <code>bits[0]</code>; answer is <code>base + "." + name</code> if name else base. Level 0 → return target unchanged. Verify with <code>importlib.util.resolve_name</code>.</p>`
       ],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_val',
+        cases: [
+          [['resolve(\'shop.payments\', \'.card\')'], 'shop.payments.card'],
+          [['resolve(\'shop.payments\', \'..utils\')'], 'shop.utils'],
+          [['resolve(\'shop.payments\', \'..\')'], 'shop'],
+          [['resolve(\'shop.payments\', \'json\')'], 'json'],
+          [['resolve(\'shop\', \'...x\')'], '!ImportError'],
+          [['resolve(\'shop\', \'.x\')'], 'shop.x'],
+          [['resolve(\'shop\', \'.\')'], 'shop'],
+          [['resolve(\'a.b.c\', \'...z\')'], 'a.z'],
+          [['resolve(\'a.b.c\', \'....z\')'], '!ImportError'],
+          [['resolve(\'a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s.t\', \'...................x\')'], 'a.b.x'],
+          [['resolve(\'a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s.t\', \'....................x\')'], 'a.x'],
+          [['resolve(\'shop\', \'os.path\')'], 'os.path'],
+          [['resolve(\'a.b\', \'..\')'], 'a']
+        ],
+        harness: {
+          python: 'def t_val(src):\n' +
+            '    try:\n' +
+            '        return eval(src)\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: R`<p>Split off the dots, climb the package path with one <code>rsplit</code>, and join the remaining name. This is exactly the algorithm CPython uses (<code>_resolve_name</code> in importlib).</p>`,
         code: { lang: 'python', run: true, code: R`
-          import importlib.util
+import importlib.util
 
-          def resolve(package: str, target: str) -> str:
-              level = len(target) - len(target.lstrip("."))
-              name = target[level:]
-              if level == 0:
-                  return target                         # already absolute
-              bits = package.rsplit(".", level - 1)     # climb level-1 times
-              if len(bits) < level:
-                  raise ImportError("attempted relative import beyond top-level package")
-              base = bits[0]
-              return f"{base}.{name}" if name else base
+def resolve(package: str, target: str) -> str:
+    level = len(target) - len(target.lstrip("."))
+    name = target[level:]
+    if level == 0:
+        return target                         # already absolute
+    bits = package.rsplit(".", level - 1)     # climb level-1 times
+    if len(bits) < level:
+        raise ImportError("attempted relative import beyond top-level package")
+    base = bits[0]
+    return f"{base}.{name}" if name else base
 
-          cases = [("shop.payments", ".card"), ("shop.payments", "..utils"),
-                   ("shop.payments", ".."), ("shop.payments", "json")]
-          for pkg, tgt in cases:
-              mine = resolve(pkg, tgt)
-              ref = importlib.util.resolve_name(tgt, pkg)
-              print(f"{tgt:>8} in {pkg} -> {mine}  (stdlib agrees: {mine == ref})")
-          try:
-              resolve("shop", "...x")
-          except ImportError as e:
-              print("ImportError:", e)
-        ` },
+cases = [("shop.payments", ".card"), ("shop.payments", "..utils"),
+         ("shop.payments", ".."), ("shop.payments", "json")]
+for pkg, tgt in cases:
+    mine = resolve(pkg, tgt)
+    ref = importlib.util.resolve_name(tgt, pkg)
+    print(f"{tgt:>8} in {pkg} -> {mine}  (stdlib agrees: {mine == ref})")
+try:
+    resolve("shop", "...x")
+except ImportError as e:
+    print("ImportError:", e)
+` },
         dry: { head: ['package', 'target', 'level', 'rsplit result', 'answer'], rows: [
           ['shop.payments', '.card', '1', "['shop.payments']", 'shop.payments.card'],
           ['shop.payments', '..utils', '2', "['shop', 'payments']", 'shop.utils'],
@@ -2149,46 +3577,108 @@ deactivate</pre>
         R`<p>Hint 2: <code>req, _, marker = line.partition(";")</code>. In <code>req</code>, the name is the leading run of letters/digits/<code>-_.</code>; then optional <code>[extras]</code>; the rest is the version spec.</p>`,
         R`<p>Hint 3: A regex like <code>^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(\[[^\]]*\])?\s*(.*)$</code> captures all three. Normalise with <code>re.sub(r"[-_.]+", "-", name).lower()</code>. Remove spaces inside the spec.</p>`
       ],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_val',
+        cases: [
+          [
+            [
+              'parse_requirements(\'\\n# runtime\\nRequests==2.32.3            # http client\\nRich[jupyter] >= 13 ; python_version >= "3.10"\\nTyping_Extensions==4.12.2\\n-r base.txt\\nuvloop ; sys_platform != "win32"\\n\')'
+            ],
+            [
+              { name: 'requests', extras: [], spec: '==2.32.3', marker: '' },
+              { name: 'rich', extras: ['jupyter'], spec: '>=13', marker: 'python_version >= "3.10"' },
+              { name: 'typing-extensions', extras: [], spec: '==4.12.2', marker: '' },
+              { name: 'uvloop', extras: [], spec: '', marker: 'sys_platform != "win32"' }
+            ]
+          ],
+          [
+            ['parse_requirements(\'Rich[jupyter]>=13 ; python_version >= "3.10"   # pretty output\')'],
+            [{ name: 'rich', extras: ['jupyter'], spec: '>=13', marker: 'python_version >= "3.10"' }]
+          ],
+          [['parse_requirements(\'\')'], []],
+          [['parse_requirements(\'# only a comment\\n\\n   \\n\')'], []],
+          [['parse_requirements(\'-r base.txt\\n--hash=sha256:abc\\n-e .\')'], []],
+          [
+            ['parse_requirements(\'Foo__Bar.baz==1\')'],
+            [{ name: 'foo-bar-baz', extras: [], spec: '==1', marker: '' }]
+          ],
+          [
+            ['parse_requirements(\'pkg[a, b]==1.0\')'],
+            [{ name: 'pkg', extras: ['a', 'b'], spec: '==1.0', marker: '' }]
+          ],
+          [
+            ['parse_requirements(\'pkg >= 1.0 , < 2\')'],
+            [{ name: 'pkg', extras: [], spec: '>=1.0,<2', marker: '' }]
+          ],
+          [['parse_requirements(\'pkg\')'], [{ name: 'pkg', extras: [], spec: '', marker: '' }]],
+          [['parse_requirements(\'pkg==1 #c\')'], [{ name: 'pkg', extras: [], spec: '==1', marker: '' }]],
+          [
+            ['parse_requirements(\'pkg # only comment\')'],
+            [{ name: 'pkg', extras: [], spec: '', marker: '' }]
+          ],
+          [
+            ['parse_requirements(\'pkg ; python_version < "3.9" and os_name == "nt"\')'],
+            [{ name: 'pkg', extras: [], spec: '', marker: 'python_version < "3.9" and os_name == "nt"' }]
+          ],
+          [['parse_requirements(\'a-b_c.d\')'], [{ name: 'a-b-c-d', extras: [], spec: '', marker: '' }]],
+          [
+            ['parse_requirements(\'  Django>=4.2,<5.0  \\r\\n\')'],
+            [{ name: 'django', extras: [], spec: '>=4.2,<5.0', marker: '' }]
+          ],
+          [['parse_requirements(\'pkg[]==1\')'], [{ name: 'pkg', extras: [], spec: '==1', marker: '' }]],
+          [['parse_requirements(\'@@@\')'], '!ValueError'],
+          [['len(parse_requirements(\'pkg==1\\n\' * 10000))'], 10000],
+          [['parse_requirements(\'pkg==1\\n\' * 10000)[-1][\'name\']'], 'pkg']
+        ],
+        harness: {
+          python: 'def t_val(src):\n' +
+            '    try:\n' +
+            '        return eval(src)\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: R`<p>Line-oriented parsing with <code>partition</code> for the marker and one anchored regular expression for name/extras/spec, followed by PEP 503 name normalisation. Real tools should use the <code>packaging</code> library (<code>packaging.requirements.Requirement</code>), but writing it once teaches you the format.</p>`,
         code: { lang: 'python', run: true, code: R`
-          import re
+import re
 
-          REQ = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(\[[^\]]*\])?\s*(.*)$")
+REQ = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(\[[^\]]*\])?\s*(.*)$")
 
-          def normalise(name: str) -> str:
-              return re.sub(r"[-_.]+", "-", name).lower()      # PEP 503
+def normalise(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()      # PEP 503
 
-          def parse_requirements(text: str):
-              result = []
-              for raw in text.splitlines():
-                  line = re.split(r"\s+#", raw, maxsplit=1)[0].strip()  # inline comment
-                  if not line or line.startswith(("#", "-")):
-                      continue                                  # blank, comment, option
-                  req, _, marker = line.partition(";")
-                  m = REQ.match(req.strip())
-                  if not m:
-                      raise ValueError(f"cannot parse: {raw!r}")
-                  name, extras, spec = m.groups()
-                  result.append({
-                      "name": normalise(name),
-                      "extras": [e.strip() for e in extras[1:-1].split(",") if e.strip()] if extras else [],
-                      "spec": spec.replace(" ", ""),
-                      "marker": marker.strip(),
-                  })
-              return result
+def parse_requirements(text: str):
+    result = []
+    for raw in text.splitlines():
+        line = re.split(r"\s+#", raw, maxsplit=1)[0].strip()  # inline comment
+        if not line or line.startswith(("#", "-")):
+            continue                                  # blank, comment, option
+        req, _, marker = line.partition(";")
+        m = REQ.match(req.strip())
+        if not m:
+            raise ValueError(f"cannot parse: {raw!r}")
+        name, extras, spec = m.groups()
+        result.append({
+            "name": normalise(name),
+            "extras": [e.strip() for e in extras[1:-1].split(",") if e.strip()] if extras else [],
+            "spec": spec.replace(" ", ""),
+            "marker": marker.strip(),
+        })
+    return result
 
-          sample = """
-          # runtime
-          Requests==2.32.3            # http client
-          Rich[jupyter] >= 13 ; python_version >= "3.10"
-          Typing_Extensions==4.12.2
-          -r base.txt
-          uvloop ; sys_platform != "win32"
-          """
-          for r in parse_requirements(sample):
-              print(r)
-        ` },
+sample = """
+# runtime
+Requests==2.32.3            # http client
+Rich[jupyter] >= 13 ; python_version >= "3.10"
+Typing_Extensions==4.12.2
+-r base.txt
+uvloop ; sys_platform != "win32"
+"""
+for r in parse_requirements(sample):
+    print(r)
+` },
         dry: { head: ['line', 'after comment strip', 'name / extras / spec', 'marker'], rows: [
           ['# runtime', '(empty → skip)', '—', '—'],
           ['Requests==2.32.3  # http client', 'Requests==2.32.3', 'requests / [] / ==2.32.3', "''"],
@@ -2240,24 +3730,43 @@ print(len("café".encode()))       # 10</pre>`,
       R`<p>Hint 2: <code>split(sep, 1)</code> splits at most once; <code>replace(old, new, 1)</code> replaces only the first; <code>join</code> on a string iterates its characters.</p>`,
       R`<p>Hint 3: <code>title()</code> capitalises after ANY non-letter, including an apostrophe. <code>len</code> of encoded bytes counts UTF-8 bytes (é is 2).</p>`
     ],
+    tests: {
+      io: true,
+      cases: [
+        {
+          stdin: '',
+          stdout: 'ter\n' +
+            'view\n' +
+            'iei\n' +
+            'vret\n' +
+            '\'\'\n' +
+            '[\'a\', \'b-c\']\n' +
+            'HeLlo\n' +
+            'a-b-c\n' +
+            'They\'Re\n' +
+            '5\n' +
+            'They\'re Here'
+        }
+      ]
+    },
     solution: {
       approach: R`<p>Apply the rules mechanically: (1) ter (2) view (3) iei — indices 0, 3, 6 (4) vret (5) '' — slices never raise (6) ['a', 'b-c'] (7) HeLlo (8) a-b-c (9) They'Re — the famous title() gotcha; use <code>string.capwords</code> instead (10) 5.</p>`,
       code: { lang: 'python', run: true, code: R`
-        s = "interview"
-        print(s[2:5])                        # ter
-        print(s[-4:])                        # view
-        print(s[::3])                        # iei
-        print(s[5:1:-1])                     # vret
-        print(repr(s[100:]))                 # ''
-        print("a-b-c".split("-", 1))         # ['a', 'b-c']
-        print("Hello".replace("l", "L", 1))  # HeLlo
-        print("-".join("abc"))               # a-b-c
-        print("they're".title())             # They'Re
-        print(len("café".encode()))          # 5
+s = "interview"
+print(s[2:5])                        # ter
+print(s[-4:])                        # view
+print(s[::3])                        # iei
+print(s[5:1:-1])                     # vret
+print(repr(s[100:]))                 # ''
+print("a-b-c".split("-", 1))         # ['a', 'b-c']
+print("Hello".replace("l", "L", 1))  # HeLlo
+print("-".join("abc"))               # a-b-c
+print("they're".title())             # They'Re
+print(len("café".encode()))          # 5
 
-        import string
-        print(string.capwords("they're here"))   # They're Here  (the fix for 9)
-      ` },
+import string
+print(string.capwords("they're here"))   # They're Here  (the fix for 9)
+` },
       dry: { head: ['line', 'indices / rule', 'output'], rows: [['3', '0, 3, 6', 'iei'], ['4', '5, 4, 3, 2', 'vret'], ['5', 'start clamped to 9 → nothing', "''"], ['9', 'capitalise after the apostrophe', "They'Re"]] },
       complexity: R`<p>Each slice is O(k) for k characters copied; split/replace/join are O(n).</p>`,
       followUps: ['What is <code>s[-1:-4]</code>? (empty: positive step cannot go left)', 'What does <code>"abc"[::-2]</code> give?']
@@ -2292,15 +3801,29 @@ print(len("café".encode()))       # 10</pre>`,
       R`<p>Hint 2: Reverse the list with <code>[::-1]</code> or <code>reversed()</code>, then glue with <code>" ".join(...)</code>.</p>`,
       R`<p>Hint 3: Interview follow-up: do it "in place" on a list of characters — reverse the whole thing, then reverse each word.</p>`
     ],
+    tests: {
+      sig: 'string -> string',
+      fn: 'reverseWords',
+      cases: [
+        [['  the sky   is blue '], 'blue is sky the'],
+        [['hello'], 'hello'],
+        [['a good   example'], 'example good a'],
+        [['a'], 'a'],
+        [['  a  '], 'a'],
+        [['x y z'], 'z y x'],
+        [['one two'], 'two one'],
+        [[{ $rep: 'ab ', n: 3333 }], { $concat: [{ $rep: 'ab ', n: 3332 }, 'ab'] }]
+      ]
+    },
     solution: {
       approach: R`<p>One line: <code>" ".join(reversed(s.split()))</code>. split() handles all spacing, reversed() gives the order, join builds the answer in one O(n) pass.</p>`,
       code: { lang: 'python', run: true, code: R`
-        def reverse_words(s: str) -> str:
-            return " ".join(reversed(s.split()))
+def reverse_words(s: str) -> str:
+    return " ".join(reversed(s.split()))
 
-        for t in ["  the sky   is blue ", "hello", "a good   example"]:
-            print(repr(reverse_words(t)))
-      ` },
+for t in ["  the sky   is blue ", "hello", "a good   example"]:
+    print(repr(reverse_words(t)))
+` },
       dry: { head: ['step', 'value'], rows: [['s.split()', "['the', 'sky', 'is', 'blue']"], ['reversed', "['blue', 'is', 'sky', 'the']"], ['" ".join', "'blue is sky the'"]] },
       complexity: R`<p>O(n) time, O(n) space for the word list.</p>`,
       followUps: ['Reverse the letters of each word but keep word order', 'Do it with O(1) extra space on a mutable character list']
@@ -2332,23 +3855,49 @@ print(len("café".encode()))       # 10</pre>`,
       R`<p>Hint 2: <code>"*" * (len(d) - 4) + d[-4:]</code> masks by position, not by value.</p>`,
       R`<p>Hint 3: Group with slices in steps of 4; validate the digit count first and raise <code>ValueError</code> with a helpful message.</p>`
     ],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['mask_card(\'4111-1111-1111-1234\')'], '**** **** **** 1234'],
+        [['mask_card(\'378282246310005\')'], '**** **** ***0 005'],
+        [['mask_card(\'3782 822463 10005\')'], '**** **** ***0 005'],
+        [['mask_card(\'1234\')'], '!ValueError'],
+        [['mask_card(\'12345678901\')'], '!ValueError'],
+        [['mask_card(\'123456789012\')'], '**** **** 9012'],
+        [['mask_card(\'1111111111111111111\')'], '**** **** **** ***1 111'],
+        [['mask_card(\'11111111111111111111\')'], '!ValueError'],
+        [['mask_card(\'\')'], '!ValueError'],
+        [['mask_card(\'abcd 4111 1111 1111 1234 xyz\')'], '**** **** **** 1234'],
+        [['mask_card(\'----- 4111 1111 1111 1111 -----\')'], '**** **** **** 1111'],
+        [['mask_card(\'0000000000000000\')'], '**** **** **** 0000'],
+        [['mask_card(\' 5 5 5 5 5 5 5 5 5 5 5 5 5 \')'], '**** **** *555 5']
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: R`<p>Normalise (keep digits), validate, mask by position, then chunk with a stepped range and join. Each step is a standard string idiom.</p>`,
       code: { lang: 'python', run: true, code: R`
-        def mask_card(raw: str) -> str:
-            digits = "".join(c for c in raw if c.isdecimal())
-            if not 12 <= len(digits) <= 19:
-                raise ValueError(f"expected 12-19 digits, got {len(digits)}")
-            masked = "*" * (len(digits) - 4) + digits[-4:]
-            return " ".join(masked[i:i + 4] for i in range(0, len(masked), 4))
+def mask_card(raw: str) -> str:
+    digits = "".join(c for c in raw if c.isdecimal())
+    if not 12 <= len(digits) <= 19:
+        raise ValueError(f"expected 12-19 digits, got {len(digits)}")
+    masked = "*" * (len(digits) - 4) + digits[-4:]
+    return " ".join(masked[i:i + 4] for i in range(0, len(masked), 4))
 
-        print(mask_card("4111-1111-1111-1234"))
-        print(mask_card("3782 822463 10005"))
-        try:
-            mask_card("1234")
-        except ValueError as e:
-            print("ValueError:", e)
-      ` },
+print(mask_card("4111-1111-1111-1234"))
+print(mask_card("3782 822463 10005"))
+try:
+    mask_card("1234")
+except ValueError as e:
+    print("ValueError:", e)
+` },
       dry: { head: ['step', 'value'], rows: [['digits', '4111111111111234'], ['masked', '************1234'], ['chunks', "'****' '****' '****' '1234'"], ['result', '**** **** **** 1234']] },
       complexity: R`<p>O(n) time and space.</p>`,
       followUps: ['Also validate the Luhn checksum', 'Keep the original separators (dashes vs spaces) in the output']
@@ -2379,22 +3928,61 @@ print(len("café".encode()))       # 10</pre>`,
       R`<p>Hint 2: <code>.encode("ascii", "ignore").decode("ascii")</code> drops everything non-ASCII, including those marks.</p>`,
       R`<p>Hint 3: Then <code>casefold()</code>, keep <code>c.isalnum() or c.isspace()</code>, <code>"_".join(t.split())</code>, slice <code>[:20]</code>, <code>rstrip("_")</code>, fallback <code>or "user"</code>.</p>`
     ],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['to_username("  José   O\'Néil!! ")'], 'jose_oneil'],
+        [['to_username(\'😀😀\')'], 'user'],
+        [['to_username(\'Ōsaka Café\')'], 'osaka_cafe'],
+        [['to_username(\'A Very Long Display Name Indeed\')'], 'a_very_long_display'],
+        [['to_username(\'\')'], 'user'],
+        [['to_username(\'   \')'], 'user'],
+        [['to_username(\'ÀÉÎ\')'], 'aei'],
+        [['to_username(\'Hello World\')'], 'hello_world'],
+        [['to_username(\'UPPER123\')'], 'upper123'],
+        [['to_username(\'a-b_c\')'], 'abc'],
+        [['to_username(\'ＡＢＣ\')'], 'abc'],
+        [
+          [
+            'to_username(\'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\')'
+          ],
+          'xxxxxxxxxxxxxxxxxxxx'
+        ],
+        [
+          [
+            'to_username(\'ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab \')'
+          ],
+          'ab_ab_ab_ab_ab_ab_ab'
+        ],
+        [['to_username(\'aaaaaaaaaaaaaaaaaaa b\')'], 'aaaaaaaaaaaaaaaaaaa'],
+        [['to_username(\'aaaaaaaaaaaaaaaaaaaa b\')'], 'aaaaaaaaaaaaaaaaaaaa'],
+        [['to_username(\'  ---  \')'], 'user']
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: R`<p>Decompose → ASCII-fold via encode/decode with an error policy → casefold → filter → collapse whitespace with split/join → truncate → fallback. A pipeline of standard string tools.</p>`,
       code: { lang: 'python', run: true, code: R`
-        import unicodedata
+import unicodedata
 
-        def to_username(display_name: str, limit: int = 20) -> str:
-            t = unicodedata.normalize("NFKD", display_name)
-            t = t.encode("ascii", "ignore").decode("ascii")      # drop accents/emoji
-            t = t.casefold()
-            t = "".join(c for c in t if c.isalnum() or c.isspace())
-            t = "_".join(t.split())                               # collapse spaces
-            return t[:limit].rstrip("_") or "user"
+def to_username(display_name: str, limit: int = 20) -> str:
+    t = unicodedata.normalize("NFKD", display_name)
+    t = t.encode("ascii", "ignore").decode("ascii")      # drop accents/emoji
+    t = t.casefold()
+    t = "".join(c for c in t if c.isalnum() or c.isspace())
+    t = "_".join(t.split())                               # collapse spaces
+    return t[:limit].rstrip("_") or "user"
 
-        for n in ["  José   O'Néil!! ", "Ōsaka Café", "😀😀", "A Very Long Display Name Indeed"]:
-            print(repr(n), "->", to_username(n))
-      ` },
+for n in ["  José   O'Néil!! ", "Ōsaka Café", "😀😀", "A Very Long Display Name Indeed"]:
+    print(repr(n), "->", to_username(n))
+` },
       dry: { head: ['step', 'value'], rows: [['NFKD + ascii ignore', "'  Jose   O'Neil!! '"], ['casefold + filter', "'  jose   oneil '"], ['split/join', "'jose_oneil'"], ['truncate/fallback', "'jose_oneil'"]] },
       complexity: R`<p>O(n) time and space.</p>`,
       followUps: ['Ensure uniqueness by appending a number if the name is taken', 'Why can NFKD change "ﬁ" (one ligature char) into "fi"?']
@@ -2440,29 +4028,30 @@ with open(p) as f:
       R`<p>Hint 2: read() with no argument takes everything from the cursor; a second read() at EOF returns ''.</p>`,
       R`<p>Hint 3: "r+" overwrites from position 0 without truncating; opening with "w" erases the file even if you write nothing.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: 'ab\ncdef\n\'\'\nabcdef\nXYcdef\n\'\'' }] },
     solution: {
       approach: R`<p>Answers: (1) ab (2) cdef (3) '' (4) abcdef (5) XYcdef (6) ''. The traps: append mode, empty string at EOF, r+ overwriting in place, and "w" truncating immediately on open.</p>`,
       code: { lang: 'python', run: true, code: R`
-        import os, tempfile
-        p = os.path.join(tempfile.mkdtemp(), "t.txt")
-        with open(p, "w", encoding="utf-8") as f: f.write("abc")
-        with open(p, "a", encoding="utf-8") as f: f.write("def")
-        with open(p, encoding="utf-8") as f:
-            print(f.read(2))            # ab
-            print(f.read())             # cdef
-            print(repr(f.read()))       # ''
-            f.seek(0)
-            print(f.readline())         # abcdef  (no newline in the file)
-        with open(p, "r+", encoding="utf-8") as f:
-            f.write("XY")               # overwrite in place
-        with open(p, encoding="utf-8") as f:
-            print(f.read())             # XYcdef
-        with open(p, "w", encoding="utf-8") as f:
-            pass                        # truncated on open
-        with open(p, encoding="utf-8") as f:
-            print(repr(f.read()))       # ''
-        os.remove(p)
-      ` },
+import os, tempfile
+p = os.path.join(tempfile.mkdtemp(), "t.txt")
+with open(p, "w", encoding="utf-8") as f: f.write("abc")
+with open(p, "a", encoding="utf-8") as f: f.write("def")
+with open(p, encoding="utf-8") as f:
+    print(f.read(2))            # ab
+    print(f.read())             # cdef
+    print(repr(f.read()))       # ''
+    f.seek(0)
+    print(f.readline())         # abcdef  (no newline in the file)
+with open(p, "r+", encoding="utf-8") as f:
+    f.write("XY")               # overwrite in place
+with open(p, encoding="utf-8") as f:
+    print(f.read())             # XYcdef
+with open(p, "w", encoding="utf-8") as f:
+    pass                        # truncated on open
+with open(p, encoding="utf-8") as f:
+    print(repr(f.read()))       # ''
+os.remove(p)
+` },
       dry: { head: ['call', 'content', 'cursor after', 'printed'], rows: [['read(2)', 'abcdef', '2', 'ab'], ['read()', 'abcdef', '6', 'cdef'], ['read()', 'abcdef', '6', "''"], ['r+ write XY', 'XYcdef', '2', '—'], ['open "w"', "''", '0', "''"]] },
       complexity: R`<p>Each read/write is O(characters moved).</p>`,
       followUps: ['What happens with mode "a+" and seek(0) followed by write?', 'Why is seek(3) in text mode with non-ASCII content risky?']
@@ -2497,22 +4086,52 @@ with open(p) as f:
       R`<p>Hint 2: <code>itertools.groupby(s)</code> gives each run directly: <code>f"{ch}{len(list(run))}"</code>.</p>`,
       R`<p>Hint 3: For decode, use <code>re.findall(r"([A-Za-z])(\d+)", t)</code> to get (char, count) pairs with multi-digit counts; build parts and join once.</p>`
     ],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['encode(\'aaabccdddd\')'], 'a3b1c2d4'],
+        [['encode(\'\')'], ''],
+        [['encode(\'a\')'], 'a1'],
+        [['encode(\'xxxxxxxxxxxxy\')'], 'x12y1'],
+        [['encode(\'aA\')'], 'a1A1'],
+        [['encode(\'ab\')'], 'a1b1'],
+        [['encode(\'zzzzzzzzzz\')'], 'z10'],
+        [['decode(\'x12y1\')'], 'xxxxxxxxxxxxy'],
+        [['decode(\'\')'], ''],
+        [['decode(\'a1\')'], 'a'],
+        [['decode(\'a3b1c2d4\')'], 'aaabccdddd'],
+        [['decode(\'z10\')'], 'zzzzzzzzzz'],
+        [['decode(\'a0b2\')'], 'bb'],
+        [['decode(encode(\'a\' * 500000 + \'b\' * 500000)) == \'a\' * 500000 + \'b\' * 500000'], true],
+        [['encode(\'ab\' * 500000) == \'a1b1\' * 500000'], true],
+        [['encode(\'a\' * 1000000)'], 'a1000000'],
+        [['decode(\'a1000000\') == \'a\' * 1000000'], true]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: R`<p>Encode with <code>groupby</code> + join; decode with a regex that captures a letter followed by one or more digits. Both are linear and avoid repeated string concatenation.</p>`,
       code: { lang: 'python', run: true, code: R`
-        import re
-        from itertools import groupby
+import re
+from itertools import groupby
 
-        def encode(s: str) -> str:
-            return "".join(f"{ch}{sum(1 for _ in run)}" for ch, run in groupby(s))
+def encode(s: str) -> str:
+    return "".join(f"{ch}{sum(1 for _ in run)}" for ch, run in groupby(s))
 
-        def decode(t: str) -> str:
-            return "".join(ch * int(n) for ch, n in re.findall(r"([A-Za-z])(\d+)", t))
+def decode(t: str) -> str:
+    return "".join(ch * int(n) for ch, n in re.findall(r"([A-Za-z])(\d+)", t))
 
-        for s in ["aaabccdddd", "", "x" * 12 + "y"]:
-            e = encode(s)
-            print(repr(s[:15]), "->", e, "->", decode(e) == s)
-      ` },
+for s in ["aaabccdddd", "", "x" * 12 + "y"]:
+    e = encode(s)
+    print(repr(s[:15]), "->", e, "->", decode(e) == s)
+` },
       dry: { head: ['run', 'char', 'length', 'part'], rows: [['aaa', 'a', '3', 'a3'], ['b', 'b', '1', 'b1'], ['cc', 'c', '2', 'c2'], ['dddd', 'd', '4', 'd4 → "a3b1c2d4"']] },
       complexity: R`<p>O(n) time for both; output O(n) worst case (no repeats doubles the length).</p>`,
       followUps: ['Only encode runs longer than 1 to guarantee no growth', 'Make it work on bytes for binary data']
@@ -2546,37 +4165,211 @@ with open(p) as f:
       R`<p>Hint 2: Faster version: open in <b>binary</b>, <code>seek(0, 2)</code> to the end, and read blocks backwards until you have collected more than n newline bytes.</p>`,
       R`<p>Hint 3: Decode only the final lines with <code>splitlines()</code>; handle n = 0 separately (because <code>lst[-0:]</code> is the WHOLE list).</p>`
     ],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp()\n' +
+              'os.write(fd, \'line1\\nline2\\nline3\\nline4\\nline5\\nline6\\nline7\\nline8\\nline9\\nline10\\n\'.encode(\'utf-8\'))\n' +
+              'os.close(fd)\n' +
+              'N = 3\n' +
+              'result = [tail(p, N), tail_stream(p, N)]\n' +
+              'os.remove(p)'
+          ],
+          [['line8', 'line9', 'line10'], ['line8', 'line9', 'line10']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp()\n' +
+              'os.write(fd, \'line1\\nline2\\nline3\\nline4\\nline5\\nline6\\nline7\\nline8\\nline9\\nline10\\n\'.encode(\'utf-8\'))\n' +
+              'os.close(fd)\n' +
+              'N = 0\n' +
+              'result = [tail(p, N), tail_stream(p, N)]\n' +
+              'os.remove(p)'
+          ],
+          [[], []]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp()\n' +
+              'os.write(fd, \'a\\nb\\n\'.encode(\'utf-8\'))\n' +
+              'os.close(fd)\n' +
+              'N = 5\n' +
+              'result = [tail(p, N), tail_stream(p, N)]\n' +
+              'os.remove(p)'
+          ],
+          [['a', 'b'], ['a', 'b']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp()\n' +
+              'os.write(fd, \'\'.encode(\'utf-8\'))\n' +
+              'os.close(fd)\n' +
+              'N = 5\n' +
+              'result = [tail(p, N), tail_stream(p, N)]\n' +
+              'os.remove(p)'
+          ],
+          [[], []]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp()\n' +
+              'os.write(fd, \'a\\nb\\nc\'.encode(\'utf-8\'))\n' +
+              'os.close(fd)\n' +
+              'N = 2\n' +
+              'result = [tail(p, N), tail_stream(p, N)]\n' +
+              'os.remove(p)'
+          ],
+          [['b', 'c'], ['b', 'c']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp()\n' +
+              'os.write(fd, \'only\'.encode(\'utf-8\'))\n' +
+              'os.close(fd)\n' +
+              'N = 1\n' +
+              'result = [tail(p, N), tail_stream(p, N)]\n' +
+              'os.remove(p)'
+          ],
+          [['only'], ['only']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp()\n' +
+              'os.write(fd, \'a\\n\\n\\nb\\n\\n\'.encode(\'utf-8\'))\n' +
+              'os.close(fd)\n' +
+              'N = 3\n' +
+              'result = [tail(p, N), tail_stream(p, N)]\n' +
+              'os.remove(p)'
+          ],
+          [['', 'b', ''], ['', 'b', '']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp()\n' +
+              'os.write(fd, \'a\\n\'.encode(\'utf-8\'))\n' +
+              'os.close(fd)\n' +
+              'N = 1\n' +
+              'result = [tail(p, N), tail_stream(p, N)]\n' +
+              'os.remove(p)'
+          ],
+          [['a'], ['a']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp()\n' +
+              'os.write(fd, \'é\\n€\\n\'.encode(\'utf-8\'))\n' +
+              'os.close(fd)\n' +
+              'N = 1\n' +
+              'result = [tail(p, N), tail_stream(p, N)]\n' +
+              'os.remove(p)'
+          ],
+          [['€'], ['€']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp()\n' +
+              'os.write(fd, \'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\\ncccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\\n\'.encode(\'utf-8\'))\n' +
+              'os.close(fd)\n' +
+              'N = 2\n' +
+              'r = [tail(p, N), tail_stream(p, N)]\n' +
+              'result = [[[l[0], len(l)] for l in x] for x in r]\n' +
+              'os.remove(p)'
+          ],
+          [[['b', 5000], ['c', 5000]], [['b', 5000], ['c', 5000]]]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp()\n' +
+              'os.write(fd, \'éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\\néééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\\néééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\\néééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\\néééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\\n\'.encode(\'utf-8\'))\n' +
+              'os.close(fd)\n' +
+              'N = 3\n' +
+              'r = [tail(p, N), tail_stream(p, N)]\n' +
+              'result = [[len(l) for l in x] + [l == \'é\' * 3000 for l in x] for x in r]\n' +
+              'os.remove(p)'
+          ],
+          [[3000, 3000, 3000, true, true, true], [3000, 3000, 3000, true, true, true]]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp()\n' +
+              'os.write(fd, (\'\'.join(\'line%d\\n\' % i for i in range(1, 100001))).encode(\'utf-8\'))\n' +
+              'os.close(fd)\n' +
+              'N = 10000\n' +
+              'r = [tail(p, N), tail_stream(p, N)]\n' +
+              'result = [[len(x), x[0], x[-1]] for x in r]\n' +
+              'os.remove(p)'
+          ],
+          [[10000, 'line90001', 'line100000'], [10000, 'line90001', 'line100000']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp()\n' +
+              'os.write(fd, (\'\'.join(\'line%d\\n\' % i for i in range(1, 100001))).encode(\'utf-8\'))\n' +
+              'os.close(fd)\n' +
+              'N = 5\n' +
+              'result = [tail(p, 200000) == tail_stream(p, 200000), len(tail(p, 200000))]\n' +
+              'os.remove(p)'
+          ],
+          [true, 100000]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: R`<p>Read backwards in fixed-size binary blocks from the end until the buffer contains more than n newlines, then split and decode the last n lines. Work is proportional to the size of the answer, not the file. (The deque version is the simple streaming alternative.)</p>`,
       code: { lang: 'python', run: true, code: R`
-        import os, tempfile
-        from collections import deque
+import os, tempfile
+from collections import deque
 
-        def tail(path, n, block=4096):
-            if n <= 0:
-                return []                       # careful: lines[-0:] would return everything
-            with open(path, "rb") as f:
-                f.seek(0, os.SEEK_END)
-                pos = f.tell()
-                data = b""
-                while pos > 0 and data.count(b"\n") <= n:
-                    step = min(block, pos)
-                    pos -= step
-                    f.seek(pos)
-                    data = f.read(step) + data  # prepend the earlier block
-            return [line.decode("utf-8") for line in data.splitlines()[-n:]]
+def tail(path, n, block=4096):
+    if n <= 0:
+        return []                       # careful: lines[-0:] would return everything
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        pos = f.tell()
+        data = b""
+        while pos > 0 and data.count(b"\n") <= n:
+            step = min(block, pos)
+            pos -= step
+            f.seek(pos)
+            data = f.read(step) + data  # prepend the earlier block
+    return [line.decode("utf-8") for line in data.splitlines()[-n:]]
 
-        def tail_stream(path, n):
-            with open(path, encoding="utf-8") as f:
-                return [l.rstrip("\n") for l in deque(f, maxlen=n)] if n > 0 else []
+def tail_stream(path, n):
+    with open(path, encoding="utf-8") as f:
+        return [l.rstrip("\n") for l in deque(f, maxlen=n)] if n > 0 else []
 
-        fd, p = tempfile.mkstemp()
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.writelines(f"line{i}\n" for i in range(1, 100_001))
-        print(tail(p, 3), tail_stream(p, 3))
-        print(tail(p, 0), len(tail(p, 200_000)))
-        os.remove(p)
-      ` },
+fd, p = tempfile.mkstemp()
+with os.fdopen(fd, "w", encoding="utf-8") as f:
+    f.writelines(f"line{i}\n" for i in range(1, 100_001))
+print(tail(p, 3), tail_stream(p, 3))
+print(tail(p, 0), len(tail(p, 200_000)))
+os.remove(p)
+` },
       dry: { head: ['iteration', 'pos', 'bytes buffered', 'newlines seen'], rows: [['start', 'end of file', '0', '0'], ['1', 'end − 4096', '4096', '≈ 370 &gt; 3 → stop'], ['split', '—', '—', "last 3 → ['line99998', 'line99999', 'line100000']"]] },
       complexity: R`<p>Seek version: O(answer size + block) time and memory. deque version: O(file size) time, O(n) memory.</p>`,
       followUps: ['Implement tail -f (follow new lines as they are appended)', 'Why is it safe to split UTF-8 bytes on b"\\n"? (0x0A never appears inside a multi-byte character)']
@@ -2602,31 +4395,158 @@ with open(p) as f:
       R`<p>Hint 2: Accumulate in a dict <code>totals[region] = totals.get(region, 0) + amount</code>, then <code>sorted(totals.items(), key=lambda kv: kv[1], reverse=True)</code>.</p>`,
       R`<p>Hint 3: Format rows with <code>f"{region:&lt;12}{total:&gt;14,.2f}{share:&gt;8.1%}"</code>; share = total / grand (guard grand == 0).</p>`
     ],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.csv\')\n' +
+              'with os.fdopen(fd, \'w\', newline=\'\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'region,product,amount\\nNorth,x,100\\nSouth,x,"1,250.50"\\nNorth,x,49.5\\n\')\n' +
+              'result = sales_report(p)\n' +
+              'os.remove(p)'
+          ],
+          'Region               Total   Share\n' +
+            'South             1,250.50   89.3%\n' +
+            'North               149.50   10.7%\n' +
+            'TOTAL             1,400.00  100.0%'
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.csv\')\n' +
+              'with os.fdopen(fd, \'w\', newline=\'\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'region,product,amount\\nSolo,x,10\\n\')\n' +
+              'result = sales_report(p)\n' +
+              'os.remove(p)'
+          ],
+          'Region               Total   Share\n' +
+            'Solo                 10.00  100.0%\n' +
+            'TOTAL                10.00  100.0%'
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.csv\')\n' +
+              'with os.fdopen(fd, \'w\', newline=\'\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'region,product,amount\\n\')\n' +
+              'result = sales_report(p)\n' +
+              'os.remove(p)'
+          ],
+          'Region               Total   Share\n' +
+            'TOTAL                 0.00    0.0%'
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.csv\')\n' +
+              'with os.fdopen(fd, \'w\', newline=\'\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'region,product,amount\\nA,x,"1,000,000.00"\\nB,x,2.50\\n\')\n' +
+              'result = sales_report(p)\n' +
+              'os.remove(p)'
+          ],
+          'Region               Total   Share\n' +
+            'A             1,000,000.00  100.0%\n' +
+            'B                     2.50    0.0%\n' +
+            'TOTAL         1,000,002.50  100.0%'
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.csv\')\n' +
+              'with os.fdopen(fd, \'w\', newline=\'\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'region,product,amount\\nWest,x,333.33\\nEast,x,666.67\\n\')\n' +
+              'result = sales_report(p)\n' +
+              'os.remove(p)'
+          ],
+          'Region               Total   Share\n' +
+            'East                666.67   66.7%\n' +
+            'West                333.33   33.3%\n' +
+            'TOTAL             1,000.00  100.0%'
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.csv\')\n' +
+              'with os.fdopen(fd, \'w\', newline=\'\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'region,product,amount\\nN,x,0.01\\nS,x,0.02\\nN,x,0.01\\n\')\n' +
+              'result = sales_report(p)\n' +
+              'os.remove(p)'
+          ],
+          'Region               Total   Share\n' +
+            'N                     0.02   50.0%\n' +
+            'S                     0.02   50.0%\n' +
+            'TOTAL                 0.04  100.0%'
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.csv\')\n' +
+              'with os.fdopen(fd, \'w\', newline=\'\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'region,product,amount\\nAlpha,x,0\\nBeta,x,5\\n\')\n' +
+              'result = sales_report(p)\n' +
+              'os.remove(p)'
+          ],
+          'Region               Total   Share\n' +
+            'Beta                  5.00  100.0%\n' +
+            'Alpha                 0.00    0.0%\n' +
+            'TOTAL                 5.00  100.0%'
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.csv\')\n' +
+              'with os.fdopen(fd, \'w\', newline=\'\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'region,product,amount\\n\')\n' +
+              '    for i in range(1000000):\n' +
+              '        f.write(\'R%d,x,%d\\n\' % (i % 3, i % 3 + 1))\n' +
+              'result = sales_report(p)\n' +
+              'os.remove(p)'
+          ],
+          'Region               Total   Share\n' +
+            'R2              999,999.00   50.0%\n' +
+            'R1              666,666.00   33.3%\n' +
+            'R0              333,334.00   16.7%\n' +
+            'TOTAL         1,999,999.00  100.0%'
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: R`<p>Stream rows with DictReader (constant memory per row), aggregate per region in a dict, sort once, and format with fixed-width specs so columns align.</p>`,
       code: { lang: 'python', run: true, code: R`
-        import csv, os, tempfile
+import csv, os, tempfile
 
-        def sales_report(path: str) -> str:
-            totals = {}
-            with open(path, newline="", encoding="utf-8") as f:
-                for row in csv.DictReader(f):
-                    amount = float(row["amount"].replace(",", ""))
-                    totals[row["region"]] = totals.get(row["region"], 0.0) + amount
-            grand = sum(totals.values())
-            lines = [f"{'Region':<12}{'Total':>14}{'Share':>8}"]
-            for region, total in sorted(totals.items(), key=lambda kv: kv[1], reverse=True):
-                share = total / grand if grand else 0.0
-                lines.append(f"{region:<12}{total:>14,.2f}{share:>8.1%}")
-            lines.append(f"{'TOTAL':<12}{grand:>14,.2f}{1 if grand else 0:>8.1%}")
-            return "\n".join(lines)
+def sales_report(path: str) -> str:
+    totals = {}
+    with open(path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            amount = float(row["amount"].replace(",", ""))
+            totals[row["region"]] = totals.get(row["region"], 0.0) + amount
+    grand = sum(totals.values())
+    lines = [f"{'Region':<12}{'Total':>14}{'Share':>8}"]
+    for region, total in sorted(totals.items(), key=lambda kv: kv[1], reverse=True):
+        share = total / grand if grand else 0.0
+        lines.append(f"{region:<12}{total:>14,.2f}{share:>8.1%}")
+    lines.append(f"{'TOTAL':<12}{grand:>14,.2f}{1 if grand else 0:>8.1%}")
+    return "\n".join(lines)
 
-        fd, p = tempfile.mkstemp(suffix=".csv")
-        with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
-            f.write('region,product,amount\nNorth,pen,100\nSouth,bag,"1,250.50"\nNorth,ink,49.5\n')
-        print(sales_report(p))
-        os.remove(p)
-      ` },
+fd, p = tempfile.mkstemp(suffix=".csv")
+with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
+    f.write('region,product,amount\nNorth,pen,100\nSouth,bag,"1,250.50"\nNorth,ink,49.5\n')
+print(sales_report(p))
+os.remove(p)
+` },
       dry: { head: ['row', 'region', 'amount', 'totals'], rows: [['1', 'North', '100.0', "{'North': 100.0}"], ['2', 'South', '1250.5', "{'North': 100.0, 'South': 1250.5}"], ['3', 'North', '49.5', "{'North': 149.5, 'South': 1250.5}"]] },
       complexity: R`<p>O(rows + R log R) time for R regions; O(R) memory regardless of file size.</p>`,
       followUps: ['Use Decimal so totals of money never drift', 'Write the report to a new CSV with csv.writer instead of text']
@@ -2657,27 +4577,65 @@ with open(p) as f:
       R`<p>Hint 2: If either step raises <code>UnicodeError</code>, this codec was not the culprit; try <code>latin-1</code> next (it can represent bytes cp1252 cannot).</p>`,
       R`<p>Hint 3: Repeat up to 3 times while the text keeps changing (double-encoded data). Stop when no codec produces a different valid result.</p>`
     ],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['fix_mojibake(\'cafÃ©\')'], 'café'],
+        [['fix_mojibake(\'cafÃƒÂ©\')'], 'café'],
+        [['fix_mojibake(\'cafÃƒÆ’Ã‚Â©\')'], 'café'],
+        [['fix_mojibake(\'donâ€™t\')'], 'don’t'],
+        [['fix_mojibake(\'donÃ¢â‚¬â„¢t\')'], 'don’t'],
+        [['fix_mojibake(\'donÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢t\')'], 'don’t'],
+        [['fix_mojibake(\'ðŸ˜€ ok\')'], '😀 ok'],
+        [['fix_mojibake(\'Ã°Å¸Ëœâ‚¬ ok\')'], '😀 ok'],
+        [['fix_mojibake(\'ÃƒÂ°Ã…Â¸Ã‹Å“Ã¢â€šÂ¬ ok\')'], '😀 ok'],
+        [['fix_mojibake(\'naÃ¯ve rÃ©sumÃ©\')'], 'naïve résumé'],
+        [['fix_mojibake(\'naÃƒÂ¯ve rÃƒÂ©sumÃƒÂ©\')'], 'naïve résumé'],
+        [['fix_mojibake(\'naÃƒÆ’Ã‚Â¯ve rÃƒÆ’Ã‚Â©sumÃƒÆ’Ã‚Â©\')'], 'naïve résumé'],
+        [['fix_mojibake(\'Ã¼Ã±Ã®\')'], 'üñî'],
+        [['fix_mojibake(\'ÃƒÂ¼ÃƒÂ±ÃƒÂ®\')'], 'üñî'],
+        [['fix_mojibake(\'ÃƒÆ’Ã‚Â¼ÃƒÆ’Ã‚Â±ÃƒÆ’Ã‚Â®\')'], 'üñî'],
+        [['fix_mojibake(\'â‚¬5\')'], '€5'],
+        [['fix_mojibake(\'Ã¢â€šÂ¬5\')'], '€5'],
+        [['fix_mojibake(\'ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬5\')'], '€5'],
+        [['fix_mojibake(\'café\')'], 'café'],
+        [['fix_mojibake(\'plain ascii\')'], 'plain ascii'],
+        [['fix_mojibake(\'\')'], ''],
+        [['fix_mojibake(\'don’t\')'], 'don’t'],
+        [['fix_mojibake(\'日本語\')'], '日本語'],
+        [['fix_mojibake(\'caf\\xc3\\xa9 \' * 10000) == \'café \' * 10000'], true],
+        [['fix_mojibake(\'a\' * 100000) == \'a\' * 100000'], true]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: R`<p>Try to undo one layer with each candidate codec; accept the first that round-trips without errors and changes the text; loop for multiple layers. Correct text is safe because re-encoding it rarely yields valid UTF-8. (For production, the <code>ftfy</code> library implements a far more careful version of this idea.)</p>`,
       code: { lang: 'python', run: true, code: R`
-        def fix_mojibake(s: str, max_layers: int = 3) -> str:
-            for _ in range(max_layers):
-                for codec in ("cp1252", "latin-1"):
-                    try:
-                        candidate = s.encode(codec).decode("utf-8")
-                    except UnicodeError:
-                        continue                  # this codec cannot explain the text
-                    if candidate != s:
-                        s = candidate
-                        break                     # undo one layer, then try again
-                else:
-                    return s                      # no codec changed anything: done
-            return s
+def fix_mojibake(s: str, max_layers: int = 3) -> str:
+    for _ in range(max_layers):
+        for codec in ("cp1252", "latin-1"):
+            try:
+                candidate = s.encode(codec).decode("utf-8")
+            except UnicodeError:
+                continue                  # this codec cannot explain the text
+            if candidate != s:
+                s = candidate
+                break                     # undo one layer, then try again
+        else:
+            return s                      # no codec changed anything: done
+    return s
 
-        tests = ["cafÃ©", "donâ€™t", "café", "plain ascii", "cafÃƒÂ©"]
-        for t in tests:
-            print(f"{t!r:16} -> {fix_mojibake(t)!r}")
-      ` },
+tests = ["cafÃ©", "donâ€™t", "café", "plain ascii", "cafÃƒÂ©"]
+for t in tests:
+    print(f"{t!r:16} -> {fix_mojibake(t)!r}")
+` },
       dry: { head: ['input', 'cp1252 encode', 'utf-8 decode', 'result'], rows: [['cafÃ©', "b'caf\\xc3\\xa9'", 'café', 'changed → loop again → stable'], ['café', "b'caf\\xe9'", '<span class="c-r">UnicodeDecodeError</span>', 'try latin-1 → same error → keep'], ['cafÃƒÂ©', 'layer 1 → cafÃ©', 'layer 2 → café', 'café']] },
       complexity: R`<p>O(L · n) for L ≤ 3 layers and text length n.</p>`,
       followUps: ['How would you detect mojibake in a whole database column?', 'Why is guessing encodings (chardet / charset-normalizer) only probabilistic?']
@@ -2713,43 +4671,345 @@ with open(p) as f:
       R`<p>Hint 2: <code>key, sep, value = line.partition("=")</code>; if <code>not sep</code> or <code>not key.strip().isidentifier()</code> → ValueError with the line number.</p>`,
       R`<p>Hint 3: Quoted: <code>len(v) &gt;= 2 and v[0] == v[-1] and v[0] in "'\""</code> → <code>v[1:-1]</code>. Unquoted: <code>v.split(" #", 1)[0].strip()</code>.</p>`
     ],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'# settings\\nexport DB_URL = "postgres://u:p@h/db?x=1"\\nDEBUG=true # dev only\\nMSG=\\\'hi # there\\\'\\nDEBUG=false\\n\')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { DB_URL: 'postgres://u:p@h/db?x=1', DEBUG: 'false', MSG: 'hi # there' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'\')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          {  }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'A=1\\n\\n  \\n# c\\nB = 2\')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { A: '1', B: '2' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'K=a=b=c\')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { K: 'a=b=c' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write("Q=\'\'")\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { Q: '' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'E=\')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { E: '' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'export  X=1\')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { X: '1' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'X=1 #c\')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { X: '1' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'X=1#c\')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { X: '1#c' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'M="it\\\'s"\')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { M: 'it\'s' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'  SPACED  =  value with spaces  \')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { SPACED: 'value with spaces' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'Q="  keep  "\')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { Q: '  keep  ' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'H="a # b"\')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { H: 'a # b' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'A=1\\nA=2\\nA=3\')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { A: '3' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'Q=\\\'x"\')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { Q: '\'x"' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'X="\')\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { X: '"' }
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'1BAD=x\\n\')\n' +
+              'try:\n' +
+              '    load_env(p)\n' +
+              '    result = None\n' +
+              'except ValueError as e:\n' +
+              '    result = \'line 1\' in str(e)\n' +
+              'os.remove(p)'
+          ],
+          true
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'ok=1\\nBAD LINE\\n\')\n' +
+              'try:\n' +
+              '    load_env(p)\n' +
+              '    result = None\n' +
+              'except ValueError as e:\n' +
+              '    result = \'line 2\' in str(e)\n' +
+              'os.remove(p)'
+          ],
+          true
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'# c\\n\\n=novalue\\n\')\n' +
+              'try:\n' +
+              '    load_env(p)\n' +
+              '    result = None\n' +
+              'except ValueError as e:\n' +
+              '    result = \'line 3\' in str(e)\n' +
+              'os.remove(p)'
+          ],
+          true
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'A=1\\nB=2\\nC.D=3\\n\')\n' +
+              'try:\n' +
+              '    load_env(p)\n' +
+              '    result = None\n' +
+              'except ValueError as e:\n' +
+              '    result = \'line 3\' in str(e)\n' +
+              'os.remove(p)'
+          ],
+          true
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'noequals\')\n' +
+              'try:\n' +
+              '    load_env(p)\n' +
+              '    result = None\n' +
+              'except ValueError as e:\n' +
+              '    result = \'line 1\' in str(e)\n' +
+              'os.remove(p)'
+          ],
+          true
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\', encoding=\'utf-8\') as f:\n' +
+              '    f.write(\'\')\n' +
+              'result = len(load_env(p))\n' +
+              'os.remove(p)'
+          ],
+          0
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\') as f:\n' +
+              '    for i in range(10000):\n' +
+              '        f.write(\'K%d=v%d\\n\' % (i, i))\n' +
+              'r = load_env(p)\n' +
+              'result = [len(r), r[\'K0\'], r[\'K9999\']]\n' +
+              'os.remove(p)'
+          ],
+          [10000, 'v0', 'v9999']
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'fd, p = tempfile.mkstemp(suffix=\'.env\')\n' +
+              'with os.fdopen(fd, \'w\') as f:\n' +
+              '    for i in range(10000):\n' +
+              '        f.write(\'K=%d\\n\' % i)\n' +
+              'result = load_env(p)\n' +
+              'os.remove(p)'
+          ],
+          { K: '9999' }
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: R`<p>A small line-oriented parser: strip → skip → <code>removeprefix</code> → <code>partition</code> on the first "=" → validate key → unquote or drop the inline comment. Each rule is one string method.</p>`,
       code: { lang: 'python', run: true, code: R`
-        import os, tempfile
+import os, tempfile
 
-        def load_env(path: str) -> dict:
-            env = {}
-            with open(path, encoding="utf-8") as f:
-                for lineno, raw in enumerate(f, start=1):
-                    line = raw.strip()
-                    if not line or line.startswith("#"):
-                        continue
-                    line = line.removeprefix("export ").lstrip()
-                    key, sep, value = line.partition("=")
-                    key, value = key.strip(), value.strip()
-                    if not sep or not key.isidentifier():
-                        raise ValueError(f"line {lineno}: expected KEY=VALUE, got {raw.strip()!r}")
-                    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-                        value = value[1:-1]                    # quoted: keep inner text verbatim
-                    else:
-                        value = value.split(" #", 1)[0].strip()  # unquoted: drop inline comment
-                    env[key] = value
-            return env
+def load_env(path: str) -> dict:
+    env = {}
+    with open(path, encoding="utf-8") as f:
+        for lineno, raw in enumerate(f, start=1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            line = line.removeprefix("export ").lstrip()
+            key, sep, value = line.partition("=")
+            key, value = key.strip(), value.strip()
+            if not sep or not key.isidentifier():
+                raise ValueError(f"line {lineno}: expected KEY=VALUE, got {raw.strip()!r}")
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                value = value[1:-1]                    # quoted: keep inner text verbatim
+            else:
+                value = value.split(" #", 1)[0].strip()  # unquoted: drop inline comment
+            env[key] = value
+    return env
 
-        fd, p = tempfile.mkstemp(suffix=".env")
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write('# settings\nexport DB_URL = "postgres://u:p@h/db?x=1"\nDEBUG=true # dev only\n'
-                    "MSG='hi # there'\nDEBUG=false\n")
-        print(load_env(p))
-        with open(p, "a", encoding="utf-8") as f:
-            f.write("not a valid line\n")
-        try:
-            load_env(p)
-        except ValueError as e:
-            print("ValueError:", e)
-        os.remove(p)
-      ` },
+fd, p = tempfile.mkstemp(suffix=".env")
+with os.fdopen(fd, "w", encoding="utf-8") as f:
+    f.write('# settings\nexport DB_URL = "postgres://u:p@h/db?x=1"\nDEBUG=true # dev only\n'
+            "MSG='hi # there'\nDEBUG=false\n")
+print(load_env(p))
+with open(p, "a", encoding="utf-8") as f:
+    f.write("not a valid line\n")
+try:
+    load_env(p)
+except ValueError as e:
+    print("ValueError:", e)
+os.remove(p)
+` },
       dry: { head: ['line', 'key', 'raw value', 'stored'], rows: [['2', 'DB_URL', '"postgres://u:p@h/db?x=1"', 'quotes removed'], ['3', 'DEBUG', 'true # dev only', "'true'"], ['4', 'MSG', "'hi # there'", "'hi # there'"], ['5', 'DEBUG', 'false', "overwrites → 'false'"]] },
       complexity: R`<p>O(file size) time; O(number of keys) memory.</p>`,
       followUps: ['Support &#36;{OTHER} variable interpolation (careful with cycles)', 'Never log secret values: how would you redact them in error messages?']
@@ -2801,27 +5061,31 @@ print(VALUE, b.VALUE)</pre>`,
       R`<p>Hint 2: Later <code>import b</code> and <code>import a</code> are cache hits in <code>sys.modules</code>: no output. <code>a.b</code> is the same module object as <code>b</code>.</p>`,
       R`<p>Hint 3: <code>reload(b)</code> re-executes b.py in the SAME module object: prints again and resets <code>b.VALUE</code> to 7; main's <code>VALUE</code> name is untouched (still 7).</p>`
     ],
+    tests: {
+      io: true,
+      cases: [{ stdin: '', stdout: 'a start\nb runs as b\na end 7\n7 99 99\nb runs as b\n7 7' }]
+    },
     solution: {
       approach: R`<p>Output: <code>a start</code> / <code>b runs as b</code> / <code>a end 7</code> / <code>7 99 99</code> / <code>b runs as b</code> / <code>7 7</code>. Key facts: modules run once per process; every importer shares one module object; from-import copies the current binding; reload re-runs code in place.</p>`,
       code: { lang: 'python', run: true, code: R`
-        import importlib, sys, tempfile
-        from pathlib import Path
+import importlib, sys, tempfile
+from pathlib import Path
 
-        d = Path(tempfile.mkdtemp())
-        (d / "b.py").write_text('print("b runs as", __name__)\nVALUE = 7\n', encoding="utf-8")
-        (d / "a.py").write_text('print("a start")\nimport b\nprint("a end", b.VALUE)\n', encoding="utf-8")
-        sys.path.insert(0, str(d))
-        importlib.invalidate_caches()
+d = Path(tempfile.mkdtemp())
+(d / "b.py").write_text('print("b runs as", __name__)\nVALUE = 7\n', encoding="utf-8")
+(d / "a.py").write_text('print("a start")\nimport b\nprint("a end", b.VALUE)\n', encoding="utf-8")
+sys.path.insert(0, str(d))
+importlib.invalidate_caches()
 
-        import a
-        import b
-        import a
-        from b import VALUE
-        b.VALUE = 99
-        print(VALUE, b.VALUE, a.b.VALUE)     # 7 99 99
-        importlib.reload(b)                  # prints "b runs as b" again
-        print(VALUE, b.VALUE)                # 7 7
-      ` },
+import a
+import b
+import a
+from b import VALUE
+b.VALUE = 99
+print(VALUE, b.VALUE, a.b.VALUE)     # 7 99 99
+importlib.reload(b)                  # prints "b runs as b" again
+print(VALUE, b.VALUE)                # 7 7
+` },
       dry: { head: ['statement', 'sys.modules before', 'prints'], rows: [['import a', '{}', 'a start / b runs as b / a end 7'], ['import b', '{a, b}', '(nothing)'], ['import a', '{a, b}', '(nothing)'], ['print(...)', '{a, b}', '7 99 99'], ['reload(b)', '{a, b}', 'b runs as b'], ['print(...)', '{a, b}', '7 7']] },
       complexity: R`<p>Each cached import is an O(1) dictionary lookup; a first import costs the module's execution time.</p>`,
       followUps: ['What would change if a.py did "from b import VALUE" instead of "import b"?', 'Run python b.py directly: what does the first line print now?']
@@ -2862,42 +5126,211 @@ print(VALUE, b.VALUE)</pre>`,
       R`<p>Hint 2: For buckets with ≥ 2 files, hash each in binary chunks: <code>h = hashlib.sha256(); while chunk := f.read(1 &lt;&lt; 20): h.update(chunk)</code>. Python 3.11+ has <code>hashlib.file_digest(f, "sha256")</code>.</p>`,
       R`<p>Hint 3: Bucket again by digest; keep groups of size ≥ 2. Optional speed-up: first hash only the first 4 KB to split big buckets before full hashing.</p>`
     ],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'import os, tempfile\n' +
+              'root = tempfile.mkdtemp()\n' +
+              'files = {\'a.txt\': b\'hello\', \'sub/b.txt\': b\'hello\', \'c.txt\': b\'world\', \'d.bin\': b\'x\' * 10}\n' +
+              'for rel, data in files.items():\n' +
+              '    full = os.path.join(root, rel)\n' +
+              '    os.makedirs(os.path.dirname(full), exist_ok=True)\n' +
+              '    with open(full, \'wb\') as f:\n' +
+              '        f.write(data)\n' +
+              'result = [[os.path.relpath(p, root) for p in g] for g in find_duplicates(root)]'
+          ],
+          [['a.txt', 'sub/b.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'root = tempfile.mkdtemp()\n' +
+              'files = {}\n' +
+              'for rel, data in files.items():\n' +
+              '    full = os.path.join(root, rel)\n' +
+              '    os.makedirs(os.path.dirname(full), exist_ok=True)\n' +
+              '    with open(full, \'wb\') as f:\n' +
+              '        f.write(data)\n' +
+              'result = [[os.path.relpath(p, root) for p in g] for g in find_duplicates(root)]'
+          ],
+          []
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'root = tempfile.mkdtemp()\n' +
+              'files = {\'a\': b\'1\', \'b\': b\'22\', \'c\': b\'333\'}\n' +
+              'for rel, data in files.items():\n' +
+              '    full = os.path.join(root, rel)\n' +
+              '    os.makedirs(os.path.dirname(full), exist_ok=True)\n' +
+              '    with open(full, \'wb\') as f:\n' +
+              '        f.write(data)\n' +
+              'result = [[os.path.relpath(p, root) for p in g] for g in find_duplicates(root)]'
+          ],
+          []
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'root = tempfile.mkdtemp()\n' +
+              'files = {\'a\': b\'ab\', \'b\': b\'ba\'}\n' +
+              'for rel, data in files.items():\n' +
+              '    full = os.path.join(root, rel)\n' +
+              '    os.makedirs(os.path.dirname(full), exist_ok=True)\n' +
+              '    with open(full, \'wb\') as f:\n' +
+              '        f.write(data)\n' +
+              'result = [[os.path.relpath(p, root) for p in g] for g in find_duplicates(root)]'
+          ],
+          []
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'root = tempfile.mkdtemp()\n' +
+              'files = {\'z1\': b\'q\', \'z2\': b\'q\', \'a1\': b\'w\', \'a2\': b\'w\'}\n' +
+              'for rel, data in files.items():\n' +
+              '    full = os.path.join(root, rel)\n' +
+              '    os.makedirs(os.path.dirname(full), exist_ok=True)\n' +
+              '    with open(full, \'wb\') as f:\n' +
+              '        f.write(data)\n' +
+              'result = [[os.path.relpath(p, root) for p in g] for g in find_duplicates(root)]'
+          ],
+          [['a1', 'a2'], ['z1', 'z2']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'root = tempfile.mkdtemp()\n' +
+              'files = {\'e1\': b\'\', \'e2\': b\'\', \'e3\': b\'\'}\n' +
+              'for rel, data in files.items():\n' +
+              '    full = os.path.join(root, rel)\n' +
+              '    os.makedirs(os.path.dirname(full), exist_ok=True)\n' +
+              '    with open(full, \'wb\') as f:\n' +
+              '        f.write(data)\n' +
+              'result = [[os.path.relpath(p, root) for p in g] for g in find_duplicates(root)]'
+          ],
+          [['e1', 'e2', 'e3']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'root = tempfile.mkdtemp()\n' +
+              'files = {\'x/y/z/deep.txt\': b\'dup\', \'top.txt\': b\'dup\', \'mid/m.txt\': b\'dup\', \'other.txt\': b\'dup!\'}\n' +
+              'for rel, data in files.items():\n' +
+              '    full = os.path.join(root, rel)\n' +
+              '    os.makedirs(os.path.dirname(full), exist_ok=True)\n' +
+              '    with open(full, \'wb\') as f:\n' +
+              '        f.write(data)\n' +
+              'result = [[os.path.relpath(p, root) for p in g] for g in find_duplicates(root)]'
+          ],
+          [['mid/m.txt', 'top.txt', 'x/y/z/deep.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'root = tempfile.mkdtemp()\n' +
+              'files = {\'p1\': b\'x\' * (3 << 20), \'p2\': b\'x\' * ((3 << 20) - 1) + b\'y\'}\n' +
+              'for rel, data in files.items():\n' +
+              '    full = os.path.join(root, rel)\n' +
+              '    os.makedirs(os.path.dirname(full), exist_ok=True)\n' +
+              '    with open(full, \'wb\') as f:\n' +
+              '        f.write(data)\n' +
+              'result = [[os.path.relpath(p, root) for p in g] for g in find_duplicates(root)]'
+          ],
+          []
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'root = tempfile.mkdtemp()\n' +
+              'files = {\'q1\': b\'x\' * (3 << 20), \'q2\': b\'x\' * (3 << 20)}\n' +
+              'for rel, data in files.items():\n' +
+              '    full = os.path.join(root, rel)\n' +
+              '    os.makedirs(os.path.dirname(full), exist_ok=True)\n' +
+              '    with open(full, \'wb\') as f:\n' +
+              '        f.write(data)\n' +
+              'result = [[os.path.relpath(p, root) for p in g] for g in find_duplicates(root)]'
+          ],
+          [['q1', 'q2']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'root = tempfile.mkdtemp()\n' +
+              'files = {\'a\': b\'k\', \'b\': b\'k\', \'c\': b\'k\', \'d\': b\'j\', \'e\': b\'j\'}\n' +
+              'for rel, data in files.items():\n' +
+              '    full = os.path.join(root, rel)\n' +
+              '    os.makedirs(os.path.dirname(full), exist_ok=True)\n' +
+              '    with open(full, \'wb\') as f:\n' +
+              '        f.write(data)\n' +
+              'result = [[os.path.relpath(p, root) for p in g] for g in find_duplicates(root)]'
+          ],
+          [['a', 'b', 'c'], ['d', 'e']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'root = tempfile.mkdtemp()\n' +
+              'for i in range(1000):\n' +
+              '    with open(os.path.join(root, \'f%d\' % i), \'wb\') as f:\n' +
+              '        f.write(b\'u\' * (i + 1))\n' +
+              'for i in range(2):\n' +
+              '    with open(os.path.join(root, \'dup%d\' % i), \'wb\') as f:\n' +
+              '        f.write(b\'u\' * 500)\n' +
+              'result = [[os.path.relpath(p, root) for p in g] for g in find_duplicates(root)]'
+          ],
+          [['dup0', 'dup1', 'f499']]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: R`<p>Three-stage funnel: size (free) → hash in streamed binary chunks (only for size collisions) → group by digest. Memory is O(number of files), never O(file size).</p>`,
       code: { lang: 'python', run: true, code: R`
-        import hashlib, os, tempfile
-        from collections import defaultdict
+import hashlib, os, tempfile
+from collections import defaultdict
 
-        def file_hash(path, chunk=1 << 20):
-            h = hashlib.sha256()
-            with open(path, "rb") as f:
-                while block := f.read(chunk):      # stream: constant memory
-                    h.update(block)
-            return h.hexdigest()
+def file_hash(path, chunk=1 << 20):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while block := f.read(chunk):      # stream: constant memory
+            h.update(block)
+    return h.hexdigest()
 
-        def find_duplicates(root):
-            by_size = defaultdict(list)
-            for folder, _dirs, files in os.walk(root):
-                for name in files:
-                    p = os.path.join(folder, name)
-                    by_size[os.path.getsize(p)].append(p)
-            groups = []
-            for paths in by_size.values():
-                if len(paths) < 2:
-                    continue                       # unique size -> cannot be a duplicate
-                by_hash = defaultdict(list)
-                for p in paths:
-                    by_hash[file_hash(p)].append(p)
-                groups.extend(sorted(g) for g in by_hash.values() if len(g) > 1)
-            return sorted(groups)
+def find_duplicates(root):
+    by_size = defaultdict(list)
+    for folder, _dirs, files in os.walk(root):
+        for name in files:
+            p = os.path.join(folder, name)
+            by_size[os.path.getsize(p)].append(p)
+    groups = []
+    for paths in by_size.values():
+        if len(paths) < 2:
+            continue                       # unique size -> cannot be a duplicate
+        by_hash = defaultdict(list)
+        for p in paths:
+            by_hash[file_hash(p)].append(p)
+        groups.extend(sorted(g) for g in by_hash.values() if len(g) > 1)
+    return sorted(groups)
 
-        root = tempfile.mkdtemp()
-        os.makedirs(os.path.join(root, "sub"))
-        for rel, data in [("a.txt", b"hello"), ("sub/b.txt", b"hello"), ("c.txt", b"world"), ("d.bin", b"x" * 10)]:
-            with open(os.path.join(root, rel), "wb") as f:
-                f.write(data)
-        print([[os.path.relpath(p, root) for p in g] for g in find_duplicates(root)])
-      ` },
+root = tempfile.mkdtemp()
+os.makedirs(os.path.join(root, "sub"))
+for rel, data in [("a.txt", b"hello"), ("sub/b.txt", b"hello"), ("c.txt", b"world"), ("d.bin", b"x" * 10)]:
+    with open(os.path.join(root, rel), "wb") as f:
+        f.write(data)
+print([[os.path.relpath(p, root) for p in g] for g in find_duplicates(root)])
+` },
       dry: { head: ['stage', 'buckets', 'kept'], rows: [['by size', '5 bytes: a, sub/b, c · 10 bytes: d', '5-byte bucket only'], ['by sha256', 'hash(hello): a, sub/b · hash(world): c', 'group [a.txt, sub/b.txt]'], ['result', '—', "[['a.txt', 'sub/b.txt']]"]] },
       complexity: R`<p>O(total bytes of files that share a size) for hashing + O(F) metadata; memory O(F).</p>`,
       followUps: ['Skip symlinks and hard links to the same inode (os.stat st_ino)', 'Parallelise hashing with concurrent.futures', 'Replace duplicates with hard links safely']
@@ -2932,44 +5365,240 @@ print(VALUE, b.VALUE)</pre>`,
       R`<p>Hint 2: Use <code>@contextlib.contextmanager</code>: open the temp file, <code>yield</code> it, then flush + <code>os.fsync</code>, close, and <code>os.replace(tmp, path)</code>.</p>`,
       R`<p>Hint 3: Wrap the yield in try/except <code>BaseException</code>: on any error delete the temp file (ignore FileNotFoundError) and re-raise. Pass <code>encoding</code> only for text modes.</p>`
     ],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'import os, tempfile\n' +
+              'from pathlib import Path\n' +
+              'folder = Path(tempfile.mkdtemp())\n' +
+              'cfg = folder / \'config.txt\'\n' +
+              'cfg.write_text(\'v1\')\n' +
+              'try:\n' +
+              '    with atomic_write(cfg) as f:\n' +
+              '        f.write(\'v2-partial\')\n' +
+              '        raise RuntimeError(\'crash\')\n' +
+              'except RuntimeError:\n' +
+              '    pass\n' +
+              'result = [cfg.read_text(), sorted(p.name for p in folder.iterdir())]'
+          ],
+          ['v1', ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'from pathlib import Path\n' +
+              'folder = Path(tempfile.mkdtemp())\n' +
+              'cfg = folder / \'config.txt\'\n' +
+              'cfg.write_text(\'v1\')\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'v2\')\n' +
+              'result = [cfg.read_text(), sorted(p.name for p in folder.iterdir())]'
+          ],
+          ['v2', ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'from pathlib import Path\n' +
+              'folder = Path(tempfile.mkdtemp())\n' +
+              'cfg = folder / \'config.txt\'\n' +
+              'with atomic_write(folder / \'blob.bin\', \'wb\') as f:\n' +
+              '    f.write(bytes([1, 2, 3]))\n' +
+              'result = [list((folder / \'blob.bin\').read_bytes()), sorted(p.name for p in folder.iterdir())]'
+          ],
+          [[1, 2, 3], ['blob.bin']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'from pathlib import Path\n' +
+              'folder = Path(tempfile.mkdtemp())\n' +
+              'cfg = folder / \'config.txt\'\n' +
+              'try:\n' +
+              '    with atomic_write(cfg) as f:\n' +
+              '        f.write(\'x\')\n' +
+              '        raise ValueError(\'no\')\n' +
+              'except ValueError:\n' +
+              '    pass\n' +
+              'result = [cfg.exists(), sorted(p.name for p in folder.iterdir())]'
+          ],
+          [false, []]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'from pathlib import Path\n' +
+              'folder = Path(tempfile.mkdtemp())\n' +
+              'cfg = folder / \'config.txt\'\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'fresh\')\n' +
+              'result = [cfg.read_text(), sorted(p.name for p in folder.iterdir())]'
+          ],
+          ['fresh', ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'from pathlib import Path\n' +
+              'folder = Path(tempfile.mkdtemp())\n' +
+              'cfg = folder / \'config.txt\'\n' +
+              'cfg.write_text(\'v1\')\n' +
+              'try:\n' +
+              '    with atomic_write(cfg) as f:\n' +
+              '        f.write(\'zz\')\n' +
+              '        raise KeyboardInterrupt()\n' +
+              'except KeyboardInterrupt:\n' +
+              '    pass\n' +
+              'result = [cfg.read_text(), sorted(p.name for p in folder.iterdir())]'
+          ],
+          ['v1', ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'from pathlib import Path\n' +
+              'folder = Path(tempfile.mkdtemp())\n' +
+              'cfg = folder / \'config.txt\'\n' +
+              'for i in range(100):\n' +
+              '    with atomic_write(cfg) as f:\n' +
+              '        f.write(\'v\' + str(i))\n' +
+              'result = [cfg.read_text(), sorted(p.name for p in folder.iterdir())]'
+          ],
+          ['v99', ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'from pathlib import Path\n' +
+              'folder = Path(tempfile.mkdtemp())\n' +
+              'cfg = folder / \'config.txt\'\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'x\' * 5000000)\n' +
+              'result = [len(cfg.read_text()), sorted(p.name for p in folder.iterdir())]'
+          ],
+          [5000000, ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'from pathlib import Path\n' +
+              'folder = Path(tempfile.mkdtemp())\n' +
+              'cfg = folder / \'config.txt\'\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'héllo €\')\n' +
+              'result = cfg.read_text(encoding=\'utf-8\')'
+          ],
+          'héllo €'
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'from pathlib import Path\n' +
+              'folder = Path(tempfile.mkdtemp())\n' +
+              'cfg = folder / \'config.txt\'\n' +
+              'cfg.write_text(\'old\')\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    pass\n' +
+              'result = [cfg.read_text(), sorted(p.name for p in folder.iterdir())]'
+          ],
+          ['', ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'from pathlib import Path\n' +
+              'folder = Path(tempfile.mkdtemp())\n' +
+              'cfg = folder / \'config.txt\'\n' +
+              'cfg.write_text(\'v1\')\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'new\')\n' +
+              '    f.flush()\n' +
+              '    seen = cfg.read_text()\n' +
+              'result = [seen, cfg.read_text()]'
+          ],
+          ['v1', 'new']
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'from pathlib import Path\n' +
+              'folder = Path(tempfile.mkdtemp())\n' +
+              'cfg = folder / \'config.txt\'\n' +
+              'cfg.write_bytes(b\'old\')\n' +
+              'try:\n' +
+              '    with atomic_write(cfg, \'wb\') as f:\n' +
+              '        f.write(b\'partial\')\n' +
+              '        raise OSError(\'disk\')\n' +
+              'except OSError:\n' +
+              '    pass\n' +
+              'result = [cfg.read_bytes().decode(), sorted(p.name for p in folder.iterdir())]'
+          ],
+          ['old', ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'from pathlib import Path\n' +
+              'folder = Path(tempfile.mkdtemp())\n' +
+              'cfg = folder / \'config.txt\'\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'a\\nb\\n\')\n' +
+              'result = cfg.read_text().splitlines()'
+          ],
+          ['a', 'b']
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: R`<p>Write to a sibling temp file, make it durable (flush + fsync), then atomically rename over the target. On failure, clean up the temp file and let the exception propagate. This is how editors, package managers and databases update files safely.</p>`,
       code: { lang: 'python', run: true, code: R`
-        import contextlib, os, tempfile
-        from pathlib import Path
+import contextlib, os, tempfile
+from pathlib import Path
 
-        @contextlib.contextmanager
-        def atomic_write(path, mode="w", encoding="utf-8"):
-            path = Path(path)
-            fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
-            try:
-                with os.fdopen(fd, mode, encoding=None if "b" in mode else encoding) as f:
-                    yield f
-                    f.flush()
-                    os.fsync(f.fileno())           # data really on disk before the swap
-                os.replace(tmp, path)               # atomic: readers see old OR new
-            except BaseException:
-                with contextlib.suppress(FileNotFoundError):
-                    os.unlink(tmp)                  # leave no garbage behind
-                raise
+@contextlib.contextmanager
+def atomic_write(path, mode="w", encoding="utf-8"):
+    path = Path(path)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, mode, encoding=None if "b" in mode else encoding) as f:
+            yield f
+            f.flush()
+            os.fsync(f.fileno())           # data really on disk before the swap
+        os.replace(tmp, path)               # atomic: readers see old OR new
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp)                  # leave no garbage behind
+        raise
 
-        folder = Path(tempfile.mkdtemp())
-        cfg = folder / "config.txt"
-        cfg.write_text("v1", encoding="utf-8")
-        try:
-            with atomic_write(cfg) as f:
-                f.write("v2-partial")
-                raise RuntimeError("crash midway")
-        except RuntimeError:
-            pass
-        print(cfg.read_text(encoding="utf-8"), sorted(p.name for p in folder.iterdir()))
-        with atomic_write(cfg) as f:
-            f.write("v2")
-        print(cfg.read_text(encoding="utf-8"))
-        with atomic_write(folder / "blob.bin", "wb") as f:
-            f.write(bytes([1, 2, 3]))
-        print((folder / "blob.bin").read_bytes())
-      ` },
+folder = Path(tempfile.mkdtemp())
+cfg = folder / "config.txt"
+cfg.write_text("v1", encoding="utf-8")
+try:
+    with atomic_write(cfg) as f:
+        f.write("v2-partial")
+        raise RuntimeError("crash midway")
+except RuntimeError:
+    pass
+print(cfg.read_text(encoding="utf-8"), sorted(p.name for p in folder.iterdir()))
+with atomic_write(cfg) as f:
+    f.write("v2")
+print(cfg.read_text(encoding="utf-8"))
+with atomic_write(folder / "blob.bin", "wb") as f:
+    f.write(bytes([1, 2, 3]))
+print((folder / "blob.bin").read_bytes())
+` },
       dry: { head: ['moment', 'config.txt', 'temp file', 'visible to readers'], rows: [['mkstemp', 'v1', 'empty', 'v1'], ['write v2-partial', 'v1', 'v2-partial', 'v1'], ['exception', 'v1', 'deleted', 'v1'], ['2nd block ends', 'v2 (os.replace)', 'renamed away', 'v2']] },
       complexity: R`<p>O(size of data) I/O plus one fsync; O(1) extra memory.</p>`,
       followUps: ['Also fsync the directory so the rename itself survives power loss (POSIX)', 'Preserve the original file permissions (os.stat / os.chmod)', 'How do databases achieve the same with a write-ahead log?']
@@ -2996,61 +5625,233 @@ print(VALUE, b.VALUE)</pre>`,
       R`<p>Hint 2: For <code>import a.b</code> use the first part <code>a</code>; keep only names present in the dict. That gives adjacency lists.</p>`,
       R`<p>Hint 3: Cycle detection = DFS with three colours (white/grey/black). Meeting a grey node means a back edge: slice the current path from that node and append it again to close the loop.</p>`
     ],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'srcs = {\'a\': \'import b\\nimport os\\n\', \'b\': \'from c import f\\n\', \'c\': \'import a\\ndef f(): pass\\n\'}\n' +
+              'deps = {\'a\': [\'b\'], \'b\': [\'c\'], \'c\': [\'a\']}\n' +
+              'r = find_cycle(srcs)\n' +
+              'if r is None:\n' +
+              '    result = None\n' +
+              'else:\n' +
+              '    result = r[0] == r[-1] and len(r) >= 2 and all(b in deps[a] for a, b in zip(r, r[1:]))'
+          ],
+          true
+        ],
+        [
+          [
+            'srcs = {\'a\': \'import b\\nimport os\\n\', \'b\': \'from c import f\\n\', \'c\': \'def f():\\n    import a\\n\'}\n' +
+              'deps = {\'a\': [\'b\'], \'b\': [\'c\'], \'c\': []}\n' +
+              'r = find_cycle(srcs)\n' +
+              'if r is None:\n' +
+              '    result = None\n' +
+              'else:\n' +
+              '    result = r[0] == r[-1] and len(r) >= 2 and all(b in deps[a] for a, b in zip(r, r[1:]))'
+          ],
+          null
+        ],
+        [
+          [
+            'srcs = {\'a\': \'import a\\n\'}\n' +
+              'deps = {\'a\': [\'a\']}\n' +
+              'r = find_cycle(srcs)\n' +
+              'if r is None:\n' +
+              '    result = None\n' +
+              'else:\n' +
+              '    result = r[0] == r[-1] and len(r) >= 2 and all(b in deps[a] for a, b in zip(r, r[1:]))'
+          ],
+          true
+        ],
+        [
+          [
+            'srcs = {\'a\': \'import b\\n\', \'b\': \'import a\\n\'}\n' +
+              'deps = {\'a\': [\'b\'], \'b\': [\'a\']}\n' +
+              'r = find_cycle(srcs)\n' +
+              'if r is None:\n' +
+              '    result = None\n' +
+              'else:\n' +
+              '    result = r[0] == r[-1] and len(r) >= 2 and all(b in deps[a] for a, b in zip(r, r[1:]))'
+          ],
+          true
+        ],
+        [
+          [
+            'srcs = {\'a\': \'import b\\nimport c\\n\', \'b\': \'import d\\n\', \'c\': \'import d\\n\', \'d\': \'x = 1\\n\'}\n' +
+              'deps = {\'a\': [\'b\', \'c\'], \'b\': [\'d\'], \'c\': [\'d\'], \'d\': []}\n' +
+              'r = find_cycle(srcs)\n' +
+              'if r is None:\n' +
+              '    result = None\n' +
+              'else:\n' +
+              '    result = r[0] == r[-1] and len(r) >= 2 and all(b in deps[a] for a, b in zip(r, r[1:]))'
+          ],
+          null
+        ],
+        [
+          [
+            'srcs = {\'a\': \'import b\\n\', \'b\': \'import c\\n\', \'c\': \'import b\\n\'}\n' +
+              'deps = {\'a\': [\'b\'], \'b\': [\'c\'], \'c\': [\'b\']}\n' +
+              'r = find_cycle(srcs)\n' +
+              'if r is None:\n' +
+              '    result = None\n' +
+              'else:\n' +
+              '    result = r[0] == r[-1] and len(r) >= 2 and all(b in deps[a] for a, b in zip(r, r[1:]))'
+          ],
+          true
+        ],
+        [
+          [
+            'srcs = {\'a\': \'import os, sys\\nimport json\\n\', \'b\': \'from collections import deque\\n\'}\n' +
+              'deps = {\'a\': [], \'b\': []}\n' +
+              'r = find_cycle(srcs)\n' +
+              'if r is None:\n' +
+              '    result = None\n' +
+              'else:\n' +
+              '    result = r[0] == r[-1] and len(r) >= 2 and all(b in deps[a] for a, b in zip(r, r[1:]))'
+          ],
+          null
+        ],
+        [
+          [
+            'srcs = {\'a\': \'from . import b\\n\', \'b\': \'from .a import x\\n\'}\n' +
+              'deps = {\'a\': [], \'b\': []}\n' +
+              'r = find_cycle(srcs)\n' +
+              'if r is None:\n' +
+              '    result = None\n' +
+              'else:\n' +
+              '    result = r[0] == r[-1] and len(r) >= 2 and all(b in deps[a] for a, b in zip(r, r[1:]))'
+          ],
+          null
+        ],
+        [
+          [
+            'srcs = {}\n' +
+              'deps = {}\n' +
+              'r = find_cycle(srcs)\n' +
+              'if r is None:\n' +
+              '    result = None\n' +
+              'else:\n' +
+              '    result = r[0] == r[-1] and len(r) >= 2 and all(b in deps[a] for a, b in zip(r, r[1:]))'
+          ],
+          null
+        ],
+        [
+          [
+            'srcs = {\'a\': \'from b import x, y\\n\', \'b\': \'import a.sub\\n\'}\n' +
+              'deps = {\'a\': [\'b\'], \'b\': [\'a\']}\n' +
+              'r = find_cycle(srcs)\n' +
+              'if r is None:\n' +
+              '    result = None\n' +
+              'else:\n' +
+              '    result = r[0] == r[-1] and len(r) >= 2 and all(b in deps[a] for a, b in zip(r, r[1:]))'
+          ],
+          true
+        ],
+        [
+          [
+            'srcs = {\'x\': \'import y\\n\', \'y\': \'import z\\n\', \'z\': \'pass\\n\', \'p\': \'import q\\n\', \'q\': \'import p\\n\'}\n' +
+              'deps = {\'x\': [\'y\'], \'y\': [\'z\'], \'z\': [], \'p\': [\'q\'], \'q\': [\'p\']}\n' +
+              'r = find_cycle(srcs)\n' +
+              'if r is None:\n' +
+              '    result = None\n' +
+              'else:\n' +
+              '    result = r[0] == r[-1] and len(r) >= 2 and all(b in deps[a] for a, b in zip(r, r[1:]))'
+          ],
+          true
+        ],
+        [
+          [
+            'N = 5000\n' +
+              'srcs = {\'m%d\' % i: \'import m%d\\n\' % (i + 1) for i in range(N - 1)}\n' +
+              'srcs[\'m%d\' % (N - 1)] = \'x = 1\\n\'\n' +
+              'result = find_cycle(srcs)'
+          ],
+          null
+        ],
+        [
+          [
+            'N = 5000\n' +
+              'srcs = {\'m%d\' % i: \'import m%d\\n\' % ((i + 1) % N) for i in range(N)}\n' +
+              'r = find_cycle(srcs)\n' +
+              'result = [len(r), r[0] == r[-1], sorted(set(r)) == sorted(srcs)]'
+          ],
+          [5001, true, true]
+        ],
+        [
+          [
+            'N = 10000\n' +
+              'srcs = {\'m%d\' % i: \'import m%d\\n\' % (i + 1) for i in range(N - 1)}\n' +
+              'srcs[\'m%d\' % (N - 1)] = \'import m5000\\n\'\n' +
+              'r = find_cycle(srcs)\n' +
+              'result = [r[0] == r[-1], len(r) == 5001]'
+          ],
+          [true, true]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
-      approach: R`<p>Parse with <code>ast</code> (robust to strings/comments), build a directed graph of module-level imports, then run an iterative-friendly recursive DFS with colour marking and an explicit path stack to extract the first cycle found.</p>`,
+      approach: R`<p>Parse with <code>ast</code> (robust to strings/comments), build a directed graph of module-level imports, then run a DFS with colour marking and an explicit stack (Python recursion stops at about 1000 frames, and a chain of 10<sup>4</sup> modules is allowed) to extract the first cycle found.</p>`,
       code: { lang: 'python', run: true, code: R`
-        import ast
+import ast
 
-        def import_graph(sources: dict) -> dict:
-            graph = {}
-            for mod, src in sources.items():
-                deps = []
-                for node in ast.parse(src).body:           # top-level statements only
-                    if isinstance(node, ast.Import):
-                        names = [alias.name for alias in node.names]
-                    elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-                        names = [node.module]
-                    else:
-                        continue
-                    for n in names:
-                        top = n.split(".")[0]
-                        if top in sources and top not in deps:
-                            deps.append(top)
-                graph[mod] = deps
-            return graph
+def import_graph(sources: dict) -> dict:
+    graph = {}
+    for mod, src in sources.items():
+        deps = []
+        for node in ast.parse(src).body:           # top-level statements only
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                names = [node.module]
+            else:
+                continue
+            for n in names:
+                top = n.split(".")[0]
+                if top in sources and top not in deps:
+                    deps.append(top)
+        graph[mod] = deps
+    return graph
 
-        def find_cycle(sources: dict):
-            graph = import_graph(sources)
-            WHITE, GREY, BLACK = 0, 1, 2
-            color = {m: WHITE for m in graph}
-            path = []
+def find_cycle(sources: dict):
+    graph = import_graph(sources)
+    WHITE, GREY, BLACK = 0, 1, 2
+    color = {m: WHITE for m in graph}
+    for start in sorted(graph):
+        if color[start] != WHITE:
+            continue
+        color[start] = GREY
+        path = [start]                         # modules on the current DFS path
+        stack = [iter(graph[start])]            # explicit stack: no recursion limit
+        while path:
+            for v in stack[-1]:
+                if color[v] == GREY:           # back edge: cycle!
+                    return path[path.index(v):] + [v]
+                if color[v] == WHITE:
+                    color[v] = GREY
+                    path.append(v)
+                    stack.append(iter(graph[v]))
+                    break
+            else:                              # all neighbours done
+                color[path.pop()] = BLACK
+                stack.pop()
+    return None
 
-            def dfs(u):
-                color[u] = GREY
-                path.append(u)
-                for v in graph[u]:
-                    if color[v] == GREY:                    # back edge: cycle!
-                        return path[path.index(v):] + [v]
-                    if color[v] == WHITE:
-                        found = dfs(v)
-                        if found:
-                            return found
-                path.pop()
-                color[u] = BLACK
-                return None
-
-            for m in sorted(graph):
-                if color[m] == WHITE:
-                    cyc = dfs(m)
-                    if cyc:
-                        return cyc
-            return None
-
-        project = {"a": "import b\nimport os\n", "b": "from c import f\n", "c": "import a\ndef f(): pass\n"}
-        print(find_cycle(project))                          # ['a', 'b', 'c', 'a']
-        project["c"] = "def f():\n    import a\n"            # deferred import
-        print(find_cycle(project))                          # None
-      ` },
+project = {"a": "import b\nimport os\n", "b": "from c import f\n", "c": "import a\ndef f(): pass\n"}
+print(find_cycle(project))                          # ['a', 'b', 'c', 'a']
+project["c"] = "def f():\n    import a\n"            # deferred import
+print(find_cycle(project))                          # None
+` },
       dry: { head: ['dfs call', 'path', 'colour change', 'edge seen'], rows: [['dfs(a)', '[a]', 'a grey', 'a → b (white)'], ['dfs(b)', '[a, b]', 'b grey', 'b → c (white)'], ['dfs(c)', '[a, b, c]', 'c grey', 'c → a (<span class="c-r">grey!</span>)'], ['return', '—', '—', "['a', 'b', 'c', 'a']"]] },
       complexity: R`<p>O(total source size) to parse + O(V + E) for the DFS. Recursion depth up to V; use an explicit stack for very deep graphs.</p>`,
       followUps: ['Resolve relative imports using the resolve() function from the packages topic', 'Return ALL cycles (strongly connected components, Tarjan)', 'Also treat imports inside if/try at module level as top-level']
@@ -3077,59 +5878,107 @@ print(VALUE, b.VALUE)</pre>`,
       R`<p>Hint 2: Convert to int tuples and pad the shorter with zeros before comparing, so (1, 0) equals (1, 0, 0). Python compares tuples lexicographically — exactly version order.</p>`,
       R`<p>Hint 3: <code>~=V</code> = (version ≥ V) and (version's first len(V)−1 parts equal V's). <code>==P.*</code> = version's first len(P) parts (padded) equal P. Combine clauses with <code>all()</code>.</p>`
     ],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['satisfies(\'2.10.1\', \'>=2.2,<3\')'], true],
+        [['satisfies(\'2.3\', \'~=2.2.0\')'], false],
+        [['satisfies(\'2.9\', \'~=2.2\')'], true],
+        [['satisfies(\'1.4.7\', \'==1.4.*\')'], true],
+        [['satisfies(\'1.0\', \'==1.0.0\')'], true],
+        [['satisfies(\'3.0\', \'>=2.2,<3\')'], false],
+        [['satisfies(\'2.5.1\', \'>=2,!=2.5.1\')'], false],
+        [['satisfies(\'1.5\', \'==1.4.*\')'], false],
+        [['satisfies(\'1.4\', \'!=1.4.*\')'], false],
+        [['satisfies(\'3.0\', \'~=2.2\')'], false],
+        [['satisfies(\'2.2.5\', \'~=2.2.0\')'], true],
+        [['satisfies(\'2.2.0\', \'~=2.2.0\')'], true],
+        [['satisfies(\'2.1.9\', \'~=2.2.0\')'], false],
+        [['satisfies(\'1.0.0.0.0.0\', \'==1\')'], true],
+        [['satisfies(\'2.10\', \'>2.9\')'], true],
+        [['satisfies(\'2\', \'>=2.0.0\')'], true],
+        [['satisfies(\'1.0\', \'<=1.0.0\')'], true],
+        [['satisfies(\'1.0\', \'<1.0.0\')'], false],
+        [['satisfies(\'1.0.1\', \'~=1.0.1\')'], true],
+        [['satisfies(\'1.1\', \'~=1.0.1\')'], false],
+        [['satisfies(\'1.2.3\', \'!=1.2.4\')'], true],
+        [['satisfies(\'1.2.4\', \'!=1.2.4\')'], false],
+        [['satisfies(\'9\', \'==9.*\')'], true],
+        [['satisfies(\'10.0.0\', \'>9,<11\')'], true],
+        [['satisfies(\'0.0.1\', \'>0\')'], true],
+        [['satisfies(\'1.0\', \'>= 1.0 , < 2\')'], true],
+        [['satisfies(\'1.0\', \'~=1\')'], '!ValueError'],
+        [['satisfies(\'1.0\', \'abc\')'], '!ValueError'],
+        [['satisfies(\'1.0\', \'>=\')'], '!ValueError'],
+        [['satisfies(\'1.0\', \'\')'], '!ValueError'],
+        [['satisfies(\'1.0\', \'>=1.a\')'], '!ValueError'],
+        [['satisfies(\'1.0\', \'>=1.*\')'], '!ValueError'],
+        [['satisfies(\'1.0\', \'=>1\')'], '!ValueError'],
+        [['satisfies(\'1.0\', \'>=0,>=0,>=0,>=0,>=0,>=0,>=0,>=0,>=0,>=0\')'], true],
+        [['satisfies(\'1.0\', \'>=0,xx\')'], '!ValueError']
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: R`<p>Tokenise with a regex, normalise to zero-padded integer tuples, and map each operator to a tuple comparison. Prefix matching handles <code>.*</code> and the compatible-release operator. (Real tools: <code>packaging.specifiers.SpecifierSet</code>, which also handles pre-releases, post-releases and local versions.)</p>`,
       code: { lang: 'python', run: true, code: R`
-        import operator, re
+import operator, re
 
-        CLAUSE = re.compile(r"^(~=|==|!=|>=|<=|>|<)\s*(\d+(?:\.\d+)*)(\.\*)?$")
-        OPS = {"==": operator.eq, "!=": operator.ne, ">=": operator.ge,
-               "<=": operator.le, ">": operator.gt, "<": operator.lt}
+CLAUSE = re.compile(r"^(~=|==|!=|>=|<=|>|<)\s*(\d+(?:\.\d+)*)(\.\*)?$")
+OPS = {"==": operator.eq, "!=": operator.ne, ">=": operator.ge,
+       "<=": operator.le, ">": operator.gt, "<": operator.lt}
 
-        def parse(v: str) -> tuple:
-            return tuple(int(p) for p in v.split("."))
+def parse(v: str) -> tuple:
+    return tuple(int(p) for p in v.split("."))
 
-        def pad(a: tuple, b: tuple):
-            n = max(len(a), len(b))
-            return a + (0,) * (n - len(a)), b + (0,) * (n - len(b))
+def pad(a: tuple, b: tuple):
+    n = max(len(a), len(b))
+    return a + (0,) * (n - len(a)), b + (0,) * (n - len(b))
 
-        def prefix_match(v: tuple, prefix: tuple) -> bool:
-            return (v + (0,) * len(prefix))[:len(prefix)] == prefix
+def prefix_match(v: tuple, prefix: tuple) -> bool:
+    return (v + (0,) * len(prefix))[:len(prefix)] == prefix
 
-        def check(v: tuple, op: str, target: str, star: bool) -> bool:
-            t = parse(target)
-            if star:
-                if op not in ("==", "!="):
-                    raise ValueError(f"wildcard not allowed with {op}")
-                return prefix_match(v, t) == (op == "==")
-            if op == "~=":
-                if len(t) < 2:
-                    raise ValueError("~= needs at least two version parts")
-                a, b = pad(v, t)
-                return a >= b and prefix_match(v, t[:-1])
-            a, b = pad(v, t)
-            return OPS[op](a, b)
+def check(v: tuple, op: str, target: str, star: bool) -> bool:
+    t = parse(target)
+    if star:
+        if op not in ("==", "!="):
+            raise ValueError(f"wildcard not allowed with {op}")
+        return prefix_match(v, t) == (op == "==")
+    if op == "~=":
+        if len(t) < 2:
+            raise ValueError("~= needs at least two version parts")
+        a, b = pad(v, t)
+        return a >= b and prefix_match(v, t[:-1])
+    a, b = pad(v, t)
+    return OPS[op](a, b)
 
-        def satisfies(version: str, spec: str) -> bool:
-            v = parse(version)
-            results = []
-            for clause in spec.split(","):
-                m = CLAUSE.match(clause.strip())
-                if not m:
-                    raise ValueError(f"bad clause: {clause!r}")
-                op, target, star = m.groups()
-                results.append(check(v, op, target, bool(star)))
-            return all(results)
+def satisfies(version: str, spec: str) -> bool:
+    v = parse(version)
+    results = []
+    for clause in spec.split(","):
+        m = CLAUSE.match(clause.strip())
+        if not m:
+            raise ValueError(f"bad clause: {clause!r}")
+        op, target, star = m.groups()
+        results.append(check(v, op, target, bool(star)))
+    return all(results)
 
-        cases = [("2.10.1", ">=2.2,<3"), ("2.3", "~=2.2.0"), ("2.9", "~=2.2"), ("1.4.7", "==1.4.*"),
-                 ("1.0", "==1.0.0"), ("3.0", ">=2.2,<3"), ("2.5.1", ">=2,!=2.5.1")]
-        for v, s in cases:
-            print(f"{v:>7} {s:<12} {satisfies(v, s)}")
-        try:
-            satisfies("1.0", "~=1")
-        except ValueError as e:
-            print("ValueError:", e)
-      ` },
+cases = [("2.10.1", ">=2.2,<3"), ("2.3", "~=2.2.0"), ("2.9", "~=2.2"), ("1.4.7", "==1.4.*"),
+         ("1.0", "==1.0.0"), ("3.0", ">=2.2,<3"), ("2.5.1", ">=2,!=2.5.1")]
+for v, s in cases:
+    print(f"{v:>7} {s:<12} {satisfies(v, s)}")
+try:
+    satisfies("1.0", "~=1")
+except ValueError as e:
+    print("ValueError:", e)
+` },
       dry: { head: ['version', 'clause', 'padded compare', 'result'], rows: [['2.10.1', '&gt;=2.2', '(2,10,1) ≥ (2,2,0)', 'True'], ['2.10.1', '&lt;3', '(2,10,1) &lt; (3,0,0)', 'True → all True'], ['2.3', '~=2.2.0', '≥ ok, prefix (2,3) ≠ (2,2)', 'False'], ['1.4.7', '==1.4.*', 'prefix (1,4) = (1,4)', 'True']] },
       complexity: R`<p>O(C · P) for C clauses and P version parts.</p>`,
       followUps: ['Support pre-releases like 2.0rc1 (excluded by default unless asked for)', 'Given many candidate versions, pick the newest that satisfies the spec (what pip does)', 'Why does PEP 440 treat 1.0 and 1.0.0 as equal?']

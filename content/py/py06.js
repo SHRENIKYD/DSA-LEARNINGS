@@ -232,6 +232,36 @@ print(add_good('a'), add_good('b'))` } }
     return out` },
       mcq: { q: 'What should the dict values be?', options: ['Function objects like <code>operator.add</code>', 'The results of calling <code>operator.add()</code>', 'Strings like <code>"a + b"</code> to pass to eval'], answer: 0, explain: 'Store the remotes, not the button presses. Calling while building the dict fails (no arguments yet), and eval on strings is unsafe and slow.' },
       hints: [`<p>Hint 1: The op name is just a key. A dict can map that key straight to the function that does the work.</p>`, `<p>Hint 2: Use <code>operator.add</code>, <code>operator.sub</code>, <code>operator.mul</code>, <code>operator.floordiv</code>, and <code>OPS.get(op)</code> which returns None for unknown keys.</p>`, `<p>Hint 3: Edge cases: unknown op → 'error'; division by zero → catch <code>ZeroDivisionError</code>. Recipe: split, look up, if None append 'error', else try call and append result.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_val',
+        cases: [
+          [['evaluate([\'add 2 3\', \'div 7 2\', \'pow 2 3\', \'div 1 0\'])'], [5, 3, 'error', 'error']],
+          [
+            ['evaluate([\'div -7 2\', \'div 7 -2\', \'div -7 -2\', \'div 0 5\', \'div 0 0\'])'],
+            [-4, -4, 3, 0, 'error']
+          ],
+          [
+            ['evaluate([\'mul 1000000000 1000000000\', \'sub 0 1000000000\', \'add -1000000000 -1000000000\'])'],
+            ['1000000000000000000', -1000000000, -2000000000]
+          ],
+          [['evaluate([\'ADD 1 2\', \'Add 1 2\', \'mod 5 3\', \'div 5 2\'])'], ['error', 'error', 'error', 2]],
+          [['evaluate([\'sub 5 8\'])'], [-3]],
+          [['evaluate([\'mul 0 7\', \'mul -3 4\', \'mul -3 -4\'])'], [0, -12, 12]],
+          [
+            ['(lambda r: [len(r), r[0], r[-1], sorted(set(r))])(evaluate([\'add 1 2\'] * 100000))'],
+            [100000, 3, 3, [3]]
+          ],
+          [['evaluate([\'div 1000000000 -1000000000\', \'div -1000000000 3\'])'], [-1, -333333334]]
+        ],
+        harness: {
+          python: 'def t_val(src):\n' +
+            '    try:\n' +
+            '        return eval(src)\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Build the table once at module level. For each command: split, look up the function object in O(1), call it inside a <code>try</code> so division by zero becomes <code>'error'</code>. Adding an op later is a one-line change.</p>`,
         code: { lang: 'python', run: true, code: `import operator
@@ -494,6 +524,87 @@ def assign(name, value, scopes):
     scopes[0][name] = value` },
       mcq: { q: 'In which order should resolve() check the dicts?', options: ['Innermost (local) to outermost (builtins), stop at first hit', 'Builtins first, then global, then local', 'Check all and return the last match'], answer: 0, explain: 'LEGB: the nearest definition wins. Checking outward and stopping early is also the fastest.' },
       hints: [`<p>Hint 1: You do not need to merge anything. Just ask each dict, from the inside out, "do you have this key?"</p>`, `<p>Hint 2: <code>collections.ChainMap(*scopes)</code> does exactly this: lookups search the maps in order, and writes go to the first map.</p>`, `<p>Hint 3: Edge cases: name missing everywhere → raise NameError; a key whose value is <code>None</code> still counts as found (use <code>in</code>, not truthiness). Recipe: for s in scopes: if name in s: return s[name]; raise NameError.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              'scopes = [{\'z\': 1}, {\'y\': 2}, {\'x\': 3, \'y\': 99}, {\'len\': len}]\n' +
+                'result = [resolve(\'y\', scopes), resolve(\'z\', scopes), resolve(\'x\', scopes), resolve(\'len\', scopes)(\'abc\')]'
+            ],
+            [2, 1, 3, 3]
+          ],
+          [['scopes = [{\'z\': 1}, {\'y\': 2}]\nresult = resolve(\'w\', scopes)'], '!NameError'],
+          [['result = resolve(\'a\', [{\'a\': None}, {\'a\': 1}])'], null],
+          [
+            [
+              'scopes = [{}, {\'q\': 5}]\n' +
+                'assign(\'q\', 7, scopes)\n' +
+                'result = [scopes[0], scopes[1], resolve(\'q\', scopes)]'
+            ],
+            [{ q: 7 }, { q: 5 }, 7]
+          ],
+          [
+            [
+              'scopes = [{}, {}]\n' +
+                'assign(\'n\', 0, scopes)\n' +
+                'result = [scopes, resolve(\'n\', scopes)]'
+            ],
+            [[{ n: 0 }, {  }], 0]
+          ],
+          [
+            [
+              'scopes = [{\'v%d\' % i: i} for i in range(50)]\n' +
+                'result = [resolve(\'v49\', scopes), resolve(\'v0\', scopes), resolve(\'v25\', scopes)]'
+            ],
+            [49, 0, 25]
+          ],
+          [
+            [
+              'scopes = [{} for _ in range(49)] + [{\'deep\': \'found\'}]\n' +
+                'r = 0\n' +
+                'for _ in range(100000):\n' +
+                '    r += len(resolve(\'deep\', scopes))\n' +
+                'result = r'
+            ],
+            500000
+          ],
+          [
+            [
+              'scopes = [{\'k%d\' % i: i for i in range(10000)}, {\'k5\': \'outer\'}]\n' +
+                'result = [resolve(\'k5\', scopes), resolve(\'k9999\', scopes)]'
+            ],
+            [5, 9999]
+          ],
+          [
+            [
+              'scopes = [{\'x\': 1}]\n' +
+                'result = [resolve(\'x\', scopes), resolve(\'y\', scopes)]'
+            ],
+            '!NameError'
+          ],
+          [['scopes = [{\'x\': 0}, {\'x\': 1}]\nresult = resolve(\'x\', scopes)'], 0],
+          [['scopes = [{}, {\'e\': \'\'}]\nresult = resolve(\'e\', scopes)'], ''],
+          [
+            [
+              'scopes = [{\'a\': 1}, {\'a\': 2}]\n' +
+                'assign(\'a\', 3, scopes)\n' +
+                'result = [resolve(\'a\', scopes), scopes[1][\'a\']]'
+            ],
+            [3, 2]
+          ]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Walk the scopes innermost → outermost and return at the first dict that contains the key (O(depth) dict lookups). <code>ChainMap</code> packages the same behaviour, and its write semantics (first mapping only) match a plain assignment.</p>`,
         code: { lang: 'python', run: true, code: `from collections import ChainMap
@@ -720,6 +831,69 @@ for x in [10, 20, 60]:
     return add` },
       mcq: { q: 'You keep <code>count</code> and <code>total</code> as ints in the enclosing function. What must the inner function do?', options: ['Declare <code>nonlocal count, total</code> before rebinding them', 'Declare <code>global count, total</code>', 'Nothing — inner functions can always assign outer variables'], answer: 0, explain: '<code>count += 1</code> rebinds the name, so without nonlocal the compiler makes it local → UnboundLocalError. global would point to module variables shared by all averagers.' },
       hints: [`<p>Hint 1: The average only needs two numbers: how many values and their sum. You never need the old values themselves.</p>`, `<p>Hint 2: Keep <code>count</code> and <code>total</code> in the factory's scope; the inner function captures them in cells.</p>`, `<p>Hint 3: Since ints are immutable, <code>count += 1</code> rebinds → add <code>nonlocal count, total</code>. Recipe: count += 1; total += x; return total / count.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [['a = make_averager()\nresult = [a(10), a(20), a(60)]'], [10, 15, 30]],
+          [
+            [
+              'a = make_averager()\n' +
+                'b = make_averager()\n' +
+                'a(10); a(20)\n' +
+                'result = [b(5), a(0)]'
+            ],
+            [5, 10]
+          ],
+          [['a = make_averager()\nresult = a(0)'], 0],
+          [['a = make_averager()\nresult = [a(-1), a(1)]'], [-1, 0]],
+          [
+            [
+              'a = make_averager()\n' +
+                'for i in range(10**6):\n' +
+                '    last = a(10**9)\n' +
+                'result = last'
+            ],
+            1000000000
+          ],
+          [
+            [
+              'a = make_averager()\n' +
+                'for i in range(10**6):\n' +
+                '    last = a(i % 10)\n' +
+                'result = last'
+            ],
+            4.5
+          ],
+          [['a = make_averager()\nresult = [a(1), a(2), a(3), a(4)]'], [1, 1.5, 2, 2.5]],
+          [['a = make_averager()\nresult = [a(-10**9), a(10**9)]'], [-1000000000, 0]],
+          [
+            [
+              'a, b = make_averager(), make_averager()\n' +
+                'a(100)\n' +
+                'b(1)\n' +
+                'result = [a(0), b(3)]'
+            ],
+            [50, 2]
+          ],
+          [
+            [
+              'a = make_averager()\n' +
+                'result = [callable(a), type(a(1)).__name__]'
+            ],
+            [true, 'float']
+          ]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Capture two numbers in the closure and update them with <code>nonlocal</code>. Every factory call creates fresh cells, so averagers are independent.</p>`,
         code: { lang: 'python', run: true, code: `def make_averager():
@@ -935,6 +1109,50 @@ print(opts)                  # {'x': 1}  caller's dict untouched` } }
     return result` },
       mcq: { q: 'Why is <code>skip_none</code> placed after <code>*layers</code>?', options: ['Anything after *args is keyword-only, so a dict can never be mistaken for it', 'It makes the function faster', 'Python requires booleans to come last'], answer: 0, explain: 'All extra positional arguments are swallowed by *layers, so skip_none can only be set by name — exactly what we want for a flag.' },
       hints: [`<p>Hint 1: Process layers in order and simply overwrite: the last writer wins automatically. Treat the overrides dict as one final layer.</p>`, `<p>Hint 2: <code>for layer in (*layers, overrides): for k, v in layer.items(): ...</code> — one pass over all keys.</p>`, `<p>Hint 3: Edge cases: no layers at all; None in the very first layer (keep it — nothing to protect yet, but a later real value should replace it); never mutate inputs. Recipe: result = {}; for each pair: if skip_none and v is None and k in result: continue; result[k] = v.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_val',
+        cases: [
+          [
+            [
+              'merge_settings({\'theme\': \'light\', \'lang\': \'en\'}, {\'theme\': None, \'font\': 12}, lang=\'hi\')'
+            ],
+            { theme: 'light', lang: 'hi', font: 12 }
+          ],
+          [
+            [
+              'merge_settings({\'theme\': \'light\', \'lang\': \'en\'}, {\'theme\': None, \'font\': 12}, skip_none=False)'
+            ],
+            { theme: null, lang: 'en', font: 12 }
+          ],
+          [['merge_settings()'], {  }],
+          [['merge_settings({\'a\': None}, {\'a\': None})'], { a: null }],
+          [['merge_settings({\'a\': 1}, a=None)'], { a: 1 }],
+          [['merge_settings({\'a\': 1}, {\'a\': 0})'], { a: 0 }],
+          [['merge_settings({\'a\': 1}, {\'a\': \'\'}, {\'a\': False})'], { a: false }],
+          [['merge_settings({\'a\': 1}, {\'b\': 2}, {\'a\': 3, \'c\': 4}, b=5)'], { a: 3, b: 5, c: 4 }],
+          [['merge_settings({\'a\': 1}, a=None, skip_none=False)'], { a: null }],
+          [
+            ['(lambda d, u: [merge_settings(d, u, z=1), d, u])({\'a\': {\'k\': 1}}, {\'a\': {\'j\': 2}})'],
+            [{ a: { j: 2 }, z: 1 }, { a: { k: 1 } }, { a: { j: 2 } }]
+          ],
+          [
+            ['str(__import__(\'inspect\').signature(merge_settings).parameters[\'skip_none\'].kind)'],
+            'KEYWORD_ONLY'
+          ],
+          [['len(merge_settings(*[{k: i for k in range(10000)} for i in range(100)]))'], 10000],
+          [['merge_settings(*[{k: i for k in range(10000)} for i in range(100)])[5]'], 99],
+          [['merge_settings(*[{\'a\': (None if i % 2 else i)} for i in range(100)])'], { a: 98 }],
+          [['merge_settings({}, {}, {})'], {  }]
+        ],
+        harness: {
+          python: 'def t_val(src):\n' +
+            '    try:\n' +
+            '        return eval(src)\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>One forward pass: start with an empty dict, walk the layers and finally the overrides, and assign each key. Later assignments overwrite earlier ones, which is exactly "later wins". The only special case is a <code>None</code> that would overwrite an existing value.</p>`,
         code: { lang: 'python', run: true, code: `def merge_settings(*layers, skip_none=True, **overrides):
@@ -1186,6 +1404,170 @@ def mul(a, b):
     return a * b` },
       mcq: { q: 'Where should the counter live so that two decorated functions have separate counts?', options: ['On (or in a closure of) each wrapper created by the decorator', 'In one module-level integer', 'Inside the original function body'], answer: 0, explain: 'The decorator runs once per decorated function, creating a new wrapper each time — state attached to that wrapper is per-function automatically.' },
       hints: [`<p>Hint 1: The decorator runs once per function. Anything you create inside it (a new wrapper, a new attribute) belongs to that function only.</p>`, `<p>Hint 2: Use <code>@functools.wraps(func)</code> on a <code>wrapper(*args, **kwargs)</code>, set <code>wrapper.calls = 0</code>, and attach a small <code>reset</code> function.</p>`, `<p>Hint 3: Remember to <b>return</b> the original's result. Recipe: wrapper increments wrapper.calls, then returns func(*args, **kwargs); define reset() that sets wrapper.calls = 0; attach it; return wrapper.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              '@count_calls\n' +
+                'def add(a, b):\n' +
+                '    """Add two numbers."""\n' +
+                '    return a + b\n' +
+                '\n' +
+                '@count_calls\n' +
+                'def greet(name=\'world\'):\n' +
+                '    return \'hello \' + name\n' +
+                'add(1, 2); add(3, b=4)\n' +
+                'result = [add.calls, add.__name__, add.__doc__]'
+            ],
+            [2, 'add', 'Add two numbers.']
+          ],
+          [
+            [
+              '@count_calls\n' +
+                'def add(a, b):\n' +
+                '    """Add two numbers."""\n' +
+                '    return a + b\n' +
+                '\n' +
+                '@count_calls\n' +
+                'def greet(name=\'world\'):\n' +
+                '    return \'hello \' + name\n' +
+                'add(1, 2)\n' +
+                'add.reset()\n' +
+                'result = add.calls'
+            ],
+            0
+          ],
+          [
+            [
+              '@count_calls\n' +
+                'def add(a, b):\n' +
+                '    """Add two numbers."""\n' +
+                '    return a + b\n' +
+                '\n' +
+                '@count_calls\n' +
+                'def greet(name=\'world\'):\n' +
+                '    return \'hello \' + name\n' +
+                'r = [add(1, 2), add(3, b=4), greet(), greet(name=\'py\'), greet()]\n' +
+                'result = [r, add.calls, greet.calls]'
+            ],
+            [[3, 7, 'hello world', 'hello py', 'hello world'], 2, 3]
+          ],
+          [
+            [
+              '@count_calls\n' +
+                'def add(a, b):\n' +
+                '    """Add two numbers."""\n' +
+                '    return a + b\n' +
+                '\n' +
+                '@count_calls\n' +
+                'def greet(name=\'world\'):\n' +
+                '    return \'hello \' + name\n' +
+                'result = [add.calls, greet.calls]'
+            ],
+            [0, 0]
+          ],
+          [
+            [
+              '@count_calls\n' +
+                'def add(a, b):\n' +
+                '    """Add two numbers."""\n' +
+                '    return a + b\n' +
+                '\n' +
+                '@count_calls\n' +
+                'def greet(name=\'world\'):\n' +
+                '    return \'hello \' + name\n' +
+                'add(1, 2); add.reset(); add(1, 2); add(1, 2)\n' +
+                'result = [add.calls, greet.calls]'
+            ],
+            [2, 0]
+          ],
+          [
+            [
+              '@count_calls\n' +
+                'def f(*args, **kwargs):\n' +
+                '    return (args, kwargs)\n' +
+                'result = [f(1, 2, k=3), f(), f.calls]'
+            ],
+            [[[1, 2], { k: 3 }], [[], {  }], 2]
+          ],
+          [
+            [
+              '@count_calls\n' +
+                'def f(x):\n' +
+                '    return x\n' +
+                'for i in range(10**6):\n' +
+                '    f(i)\n' +
+                'result = [f.calls, f(5)]'
+            ],
+            [1000000, 5]
+          ],
+          [
+            [
+              '@count_calls\n' +
+                'def f(x):\n' +
+                '    raise ValueError(\'boom\')\n' +
+                'try:\n' +
+                '    f(1)\n' +
+                'except ValueError:\n' +
+                '    pass\n' +
+                'result = f.calls'
+            ],
+            1
+          ],
+          [
+            [
+              '@count_calls\n' +
+                'def f():\n' +
+                '    return None\n' +
+                'result = [f(), f.calls]'
+            ],
+            [null, 1]
+          ],
+          [
+            [
+              '@count_calls\n' +
+                'def f(a, b=2, *, c=3):\n' +
+                '    return a + b + c\n' +
+                'result = [f(1), f(1, 1), f(1, c=0), str(__import__(\'inspect\').signature(f))]'
+            ],
+            [6, 5, 3, '(a, b=2, *, c=3)']
+          ],
+          [
+            [
+              '@count_calls\n' +
+                'def fib(n):\n' +
+                '    return n if n < 2 else fib(n - 1) + fib(n - 2)\n' +
+                'result = [fib(10), fib.calls]'
+            ],
+            [55, 177]
+          ],
+          [
+            [
+              '@count_calls\n' +
+                'def add(a, b):\n' +
+                '    """Add two numbers."""\n' +
+                '    return a + b\n' +
+                '\n' +
+                '@count_calls\n' +
+                'def greet(name=\'world\'):\n' +
+                '    return \'hello \' + name\n' +
+                'result = [add.reset(), add.calls]'
+            ],
+            [null, 0]
+          ]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Create a wrapper per decorated function, keep the count as an attribute on the wrapper (readable from outside as <code>add.calls</code>), and attach a <code>reset</code> closure that rebinds that attribute. <code>wraps</code> preserves identity.</p>`,
         code: { lang: 'python', run: true, code: `import functools
@@ -1471,6 +1853,228 @@ except RuntimeError as e:
     raise RuntimeError('failed') from last_error   # loses the original type` },
       mcq: { q: 'How many nested functions does <code>retry(times=3)</code> need?', options: ['Three: factory(settings) → decorator(func) → wrapper(*args, **kwargs)', 'One: wrapper only', 'Two: the factory can take func and settings together'], answer: 0, explain: '<code>@retry(times=3)</code> first calls retry with settings; the result must be a decorator that takes func and returns the wrapper.' },
       hints: [`<p>Hint 1: Write the plain decorator first (decorator + wrapper), then wrap it in an outer function that receives the settings and returns it.</p>`, `<p>Hint 2: Inside wrapper: <code>for attempt in range(1, times + 1): try: return func(...) except exceptions: if attempt == times: raise</code>. A bare <code>raise</code> re-raises the current exception unchanged.</p>`, `<p>Hint 3: Exceptions outside the tuple are simply not caught, so they propagate on the first attempt. Set <code>wrapper.last_attempts = attempt</code> before each try. Use <code>@functools.wraps(func)</code>.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              'def make_flaky(script):\n' +
+                '    steps = iter(script)\n' +
+                '    def call():\n' +
+                '        step = next(steps)\n' +
+                '        if step == \'fail\':\n' +
+                '            raise ConnectionError(\'timeout\')\n' +
+                '        if step == \'bug\':\n' +
+                '            raise KeyError(\'missing\')\n' +
+                '        return step\n' +
+                '    return call\n' +
+                'w = retry(times=3, exceptions=(ConnectionError,))(make_flaky([\'fail\', \'fail\', \'ok\']))\n' +
+                'result = [w(), w.last_attempts]'
+            ],
+            ['ok', 3]
+          ],
+          [
+            [
+              'def make_flaky(script):\n' +
+                '    steps = iter(script)\n' +
+                '    def call():\n' +
+                '        step = next(steps)\n' +
+                '        if step == \'fail\':\n' +
+                '            raise ConnectionError(\'timeout\')\n' +
+                '        if step == \'bug\':\n' +
+                '            raise KeyError(\'missing\')\n' +
+                '        return step\n' +
+                '    return call\n' +
+                'w = retry(times=3, exceptions=(ConnectionError,))(make_flaky([\'bug\']))\n' +
+                'try:\n' +
+                '    w()\n' +
+                'except KeyError:\n' +
+                '    result = [\'KeyError\', w.last_attempts]'
+            ],
+            ['KeyError', 1]
+          ],
+          [
+            [
+              'def make_flaky(script):\n' +
+                '    steps = iter(script)\n' +
+                '    def call():\n' +
+                '        step = next(steps)\n' +
+                '        if step == \'fail\':\n' +
+                '            raise ConnectionError(\'timeout\')\n' +
+                '        if step == \'bug\':\n' +
+                '            raise KeyError(\'missing\')\n' +
+                '        return step\n' +
+                '    return call\n' +
+                'w = retry(times=2, exceptions=(ConnectionError,))(make_flaky([\'fail\', \'fail\']))\n' +
+                'try:\n' +
+                '    w()\n' +
+                'except ConnectionError:\n' +
+                '    result = [\'ConnectionError\', w.last_attempts]'
+            ],
+            ['ConnectionError', 2]
+          ],
+          [
+            [
+              'def make_flaky(script):\n' +
+                '    steps = iter(script)\n' +
+                '    def call():\n' +
+                '        step = next(steps)\n' +
+                '        if step == \'fail\':\n' +
+                '            raise ConnectionError(\'timeout\')\n' +
+                '        if step == \'bug\':\n' +
+                '            raise KeyError(\'missing\')\n' +
+                '        return step\n' +
+                '    return call\n' +
+                'w = retry()(make_flaky([\'ok\']))\n' +
+                'result = [w(), w.last_attempts]'
+            ],
+            ['ok', 1]
+          ],
+          [
+            [
+              'raised = []\n' +
+                'def f():\n' +
+                '    e = ConnectionError(str(len(raised)))\n' +
+                '    raised.append(e)\n' +
+                '    raise e\n' +
+                'w = retry(times=3, exceptions=(ConnectionError,))(f)\n' +
+                'try:\n' +
+                '    w()\n' +
+                'except ConnectionError as err:\n' +
+                '    result = [err is raised[-1], str(err), len(raised)]'
+            ],
+            [true, '2', 3]
+          ],
+          [
+            [
+              'calls = []\n' +
+                '@retry(times=1)\n' +
+                'def f():\n' +
+                '    calls.append(1)\n' +
+                '    raise ValueError(\'x\')\n' +
+                'try:\n' +
+                '    f()\n' +
+                'except ValueError:\n' +
+                '    pass\n' +
+                'result = [len(calls), f.last_attempts]'
+            ],
+            [1, 1]
+          ],
+          [
+            [
+              'calls = []\n' +
+                '@retry(times=10)\n' +
+                'def f():\n' +
+                '    calls.append(1)\n' +
+                '    raise ValueError(\'x\')\n' +
+                'try:\n' +
+                '    f()\n' +
+                'except ValueError:\n' +
+                '    pass\n' +
+                'result = [len(calls), f.last_attempts]'
+            ],
+            [10, 10]
+          ],
+          [
+            [
+              '@retry(times=3)\n' +
+                'def f(a, b=1):\n' +
+                '    """doc"""\n' +
+                '    return a + b\n' +
+                'result = [f(1), f(1, b=5), f.__name__, f.__doc__]'
+            ],
+            [2, 6, 'f', 'doc']
+          ],
+          [
+            [
+              '@retry(times=3, exceptions=(ValueError,))\n' +
+                'def f():\n' +
+                '    raise KeyboardInterrupt()\n' +
+                'try:\n' +
+                '    f()\n' +
+                'except KeyboardInterrupt:\n' +
+                '    result = f.last_attempts'
+            ],
+            1
+          ],
+          [
+            [
+              '@retry(times=3)\n' +
+                'def f():\n' +
+                '    return 1\n' +
+                'result = [f.last_attempts, f(), f.last_attempts]'
+            ],
+            [0, 1, 1]
+          ],
+          [
+            [
+              'def make_flaky(script):\n' +
+                '    steps = iter(script)\n' +
+                '    def call():\n' +
+                '        step = next(steps)\n' +
+                '        if step == \'fail\':\n' +
+                '            raise ConnectionError(\'timeout\')\n' +
+                '        if step == \'bug\':\n' +
+                '            raise KeyError(\'missing\')\n' +
+                '        return step\n' +
+                '    return call\n' +
+                'w = retry(times=3, exceptions=(ConnectionError,))(make_flaky([\'fail\', \'ok\', \'ok\']))\n' +
+                'r = [w(), w.last_attempts, w(), w.last_attempts]\n' +
+                'result = r'
+            ],
+            ['ok', 2, 'ok', 1]
+          ],
+          [
+            [
+              'a = retry(times=2)(lambda: 1)\n' +
+                'b = retry(times=5)(lambda: 2)\n' +
+                'a(); b()\n' +
+                'result = [a.last_attempts, b.last_attempts]'
+            ],
+            [1, 1]
+          ],
+          [
+            [
+              'def make_flaky(script):\n' +
+                '    steps = iter(script)\n' +
+                '    def call():\n' +
+                '        step = next(steps)\n' +
+                '        if step == \'fail\':\n' +
+                '            raise ConnectionError(\'timeout\')\n' +
+                '        if step == \'bug\':\n' +
+                '            raise KeyError(\'missing\')\n' +
+                '        return step\n' +
+                '    return call\n' +
+                'w = retry(times=3, exceptions=(ConnectionError, KeyError))(make_flaky([\'fail\', \'bug\', \'done\']))\n' +
+                'result = [w(), w.last_attempts]'
+            ],
+            ['done', 3]
+          ],
+          [
+            [
+              'n = [0]\n' +
+                '@retry(times=5, exceptions=(ValueError,))\n' +
+                'def f():\n' +
+                '    n[0] += 1\n' +
+                '    if n[0] < 5:\n' +
+                '        raise ValueError(n[0])\n' +
+                '    return n[0]\n' +
+                'result = [f(), f.last_attempts]'
+            ],
+            [5, 5]
+          ]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Three levels: the factory captures <code>times</code> and <code>exceptions</code>; the decorator captures <code>func</code>; the wrapper loops over attempts and returns on success. Catch only the configured exceptions; on the last attempt use bare <code>raise</code> so the original exception and traceback reach the caller.</p>`,
         code: { lang: 'python', run: true, code: `import functools
@@ -1777,6 +2381,44 @@ print(reduce(lambda best, w: w if len(w) > len(best) else best, words))` } }
     return ways(n - 1) + ways(n - 2) + ways(n - 3)` },
       mcq: { q: 'Why does adding <code>@lru_cache(maxsize=None)</code> make this O(n)?', options: ['Each distinct n is computed once; repeats are dictionary hits', 'lru_cache runs the calls in parallel', 'It converts recursion into a loop automatically'], answer: 0, explain: 'There are only n+1 distinct arguments. After the first computation of ways(k), every other call with k is an O(1) cache hit.' },
       hints: [`<p>Hint 1: Draw the call tree for ways(5): ways(3) and ways(2) appear many times. Same input, same output → cache it.</p>`, `<p>Hint 2: <code>@lru_cache(maxsize=None)</code> (or <code>@cache</code>) on the recursive function. For your own version: a dict keyed by <code>args</code> inside a decorator.</p>`, `<p>Hint 3: Edge cases: n = 0 → 1; negative → 0; deep n → recursion limit (warm the cache with increasing n or go iterative). Recipe: if args in memo return it; else compute, store, return.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_val',
+        cases: [
+          [
+            ['ways(900)'],
+            '9457636273862243878761234674352694703563982835999712736789279740329521710815023415136511638604388002624829216747964076582517657140957316362167211537427470364571635015262635876089965598136437548819125631924360572238630616525404905759078151'
+          ],
+          [['[ways(i) for i in range(8)]'], [1, 1, 2, 4, 7, 13, 24, 44]],
+          [['ways(4)'], 7],
+          [['ways(0)'], 1],
+          [['ways(-1)'], 0],
+          [['ways(1)'], 1],
+          [['ways(2)'], 2],
+          [['ways(3)'], 4],
+          [['ways(50)'], 10562230626642],
+          [['ways(100)'], '180396380815100901214157639'],
+          [
+            ['ways(899)'],
+            '5142012928136931300021872768969652793717198815316315917037620854832054771904331024644867062480490657831150631020196968620542854514861297849551008692550433706398687596531134708069230259254050030160326039715530826136215638497198333669887556'
+          ],
+          [['[ways2(i) for i in range(8)]'], [1, 1, 2, 4, 7, 13, 24, 44]],
+          [['ways2(300)'], '15350287614359738671843506567023635268924281173051801861566524609184461020990367'],
+          [['ways2(50) == ways(50)'], true],
+          [['ways2.__name__'], 'ways2'],
+          [['ways.__name__'], 'ways'],
+          [['ways2(0)'], 1],
+          [['ways2(-5)'], 0],
+          [['all(ways(i) == ways2(i) for i in range(0, 301))'], true]
+        ],
+        harness: {
+          python: 'def t_val(src):\n' +
+            '    try:\n' +
+            '        return eval(src)\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Same recursion, plus memoization. With <code>lru_cache</code>, each <code>ways(k)</code> for 0 ≤ k ≤ n runs its body once. The hand-written <code>memoize</code> shows what <code>lru_cache</code> does underneath (without the LRU eviction).</p>`,
         code: { lang: 'python', run: true, code: `import functools
@@ -1830,6 +2472,52 @@ print(len(ways2.memo), ways2.__name__)` },
     return g` },
     mcq: { q: 'What must <code>repeat_fn</code> return?', options: ['A function object (the closure), not a value', 'The result of <code>f(x)</code>', 'A list of n functions'], answer: 0, explain: 'It is a higher-order function: configuration now (f, n), work later when the returned function is called with x.' },
     hints: [`<p>Hint 1: Return an inner function that remembers <code>f</code> and <code>n</code> through the closure.</p>`, `<p>Hint 2: Inside it, loop <code>n</code> times: <code>x = f(x)</code>, then return <code>x</code>. No nesting needed.</p>`, `<p>Hint 3: n = 0 means the loop does nothing → identity for free. You do not need <code>functools.wraps</code> here: g is a new function, not a disguise for f.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [['result = repeat_fn(lambda x: x + 1, 3)(10)'], 13],
+        [['result = repeat_fn(lambda s: s + \'!\', 2)(\'hi\')'], 'hi!!'],
+        [['result = repeat_fn(abs, 0)(-5)'], -5],
+        [['result = repeat_fn(lambda x: x * 2, 10)(1)'], 1024],
+        [['result = repeat_fn(lambda x: x + 1, 100000)(0)'], 100000],
+        [['result = repeat_fn(lambda x: x + 1, 1)(0)'], 1],
+        [['result = repeat_fn(str, 3)(7)'], '7'],
+        [['result = repeat_fn(lambda x: -x, 5)(3)'], -3],
+        [['result = repeat_fn(lambda x: -x, 6)(3)'], 3],
+        [['result = (lambda g: [g(1), g(1), g(2)])(repeat_fn(lambda x: x * 3, 2))'], [9, 9, 18]],
+        [['result = repeat_fn(lambda x: x // 2, 100000)(10**9)'], 0],
+        [
+          [
+            'calls = []\n' +
+              'g = repeat_fn(lambda x: calls.append(x) or x, 3)\n' +
+              'before = len(calls)\n' +
+              'g(1)\n' +
+              'result = [before, len(calls)]'
+          ],
+          [0, 3]
+        ],
+        [['x = [1]\nresult = repeat_fn(lambda v: v, 0)(x) is x'], true],
+        [['g = repeat_fn(lambda x: x + [0], 3)\nresult = [g([]), g([])]'], [[0, 0, 0], [0, 0, 0]]],
+        [
+          [
+            'g = repeat_fn(lambda x: x + 1, 2)\n' +
+              'h = repeat_fn(lambda x: x * 2, 2)\n' +
+              'result = [g(0), h(1), g(5)]'
+          ],
+          [2, 4, 7]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Return a closure that loops: O(n) per call, constant stack depth. <code>f</code> and <code>n</code> are captured in cells and read (never rebound), so no <code>nonlocal</code> is needed.</p>`,
       code: { lang: 'python', run: true, code: `def repeat_fn(f, n):
@@ -1864,6 +2552,57 @@ print(repeat_fn(lambda x: x + 1, 100000)(0))      # no recursion problem` },
     return tags` },
     mcq: { q: 'When is the default value <code>[]</code> evaluated?', options: ['Once, when the def statement executes', 'On every call that omits the argument', 'Lazily on first use, then cached per caller'], answer: 0, explain: 'Defaults are evaluated at function definition time and stored on the function object in __defaults__.' },
     hints: [`<p>Hint 1: Print <code>tag_list.__defaults__</code> after two calls — you will see the shared list growing.</p>`, `<p>Hint 2: Use an immutable sentinel such as <code>None</code> as the default, and create the list inside the body.</p>`, `<p>Hint 3: Compare with <code>is None</code>, not truthiness — an empty list passed by the caller must still be extended, not replaced.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [['r = [tag_list(\'a\'), tag_list(\'b\')]\nresult = r'], [['a'], ['b']]],
+        [['mine = []\nr = tag_list(\'c\', mine)\nresult = [r is mine, mine]'], [true, ['c']]],
+        [['result = tag_list(\'c\', [\'x\'])'], ['x', 'c']],
+        [
+          [
+            'for i in range(1000):\n' +
+              '    tag_list(str(i))\n' +
+              'result = tag_list(\'z\')'
+          ],
+          ['z']
+        ],
+        [['a = tag_list(\'a\')\nb = tag_list(\'b\')\nresult = a is not b'], true],
+        [['t = [\'p\', \'q\']\ntag_list(\'r\', t)\ntag_list(\'s\', t)\nresult = t'], ['p', 'q', 'r', 's']],
+        [['result = tag_list(\'a\', None)'], ['a']],
+        [
+          [
+            't = []\n' +
+              'result = [tag_list(\'a\', t) is t, tag_list(\'a\', tags=t), tag_list(tag=\'b\')]'
+          ],
+          [true, ['a', 'a'], ['b']]
+        ],
+        [['tag_list(\'first\')\nresult = tag_list(\'second\')'], ['second']],
+        [
+          [
+            'shared = [\'s\']\n' +
+              'result = [tag_list(\'1\', shared), tag_list(\'2\')]'
+          ],
+          [['s', '1'], ['2']]
+        ],
+        [
+          [
+            'tag_list(\'x\')\n' +
+              'result = tag_list.__defaults__ in [(None,), None] or not any(isinstance(d, list) for d in (tag_list.__defaults__ or ()))'
+          ],
+          true
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Replace the mutable default with <code>None</code> and build a fresh list per call. Use <code>is None</code> so that a caller-supplied empty list is respected.</p>`,
       code: { lang: 'python', run: true, code: `def tag_list_buggy(tag, tags=[]):
@@ -1905,6 +2644,35 @@ print(tag_list.__defaults__)                        # (None,)` },
     return [r[0] for r in rows]` },
     mcq: { q: 'How do you make score descending but time and name ascending in one key?', options: ['Return <code>(-score, time, name)</code>', 'Use <code>reverse=True</code> with <code>(score, time, name)</code>', 'Sort three separate times with different keys in any order'], answer: 0, explain: 'Negating a number flips only that field. reverse=True would flip all three fields. (Multiple stable sorts also work, but must go from least to most important key.)' },
     hints: [`<p>Hint 1: Tuples compare field by field, left to right — exactly "first by…, then by…".</p>`, `<p>Hint 2: Key: <code>lambda r: (-r[1], r[2], r[0])</code>. Negate the field you want descending.</p>`, `<p>Hint 3: If a field cannot be negated (e.g. strings descending), use two stable sorts: sort by the secondary key first, then by the primary.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [
+          ['leaderboard([(\'mei\', 90, 50), (\'asha\', 95, 70), (\'ravi\', 90, 40), (\'bo\', 90, 40)])'],
+          ['asha', 'bo', 'ravi', 'mei']
+        ],
+        [['leaderboard([(\'x\', 1, 1)])'], ['x']],
+        [['leaderboard([(\'b\', 5, 5), (\'a\', 5, 5)])'], ['a', 'b']],
+        [['leaderboard([(\'B\', 1, 1), (\'a\', 1, 1)])'], ['B', 'a']],
+        [['leaderboard([(\'a\', -5, 3), (\'b\', -1, 9), (\'c\', -1, 2)])'], ['c', 'b', 'a']],
+        [['leaderboard([(\'a\', 0, 0), (\'a\', 0, 0)])'], ['a', 'a']],
+        [['leaderboard([(\'p\', 10, 100), (\'q\', 10, 99), (\'r\', 9, 1)])'], ['q', 'p', 'r']],
+        [
+          [
+            '(lambda r: [len(r), r[:3], r[-3:]])(leaderboard([(\'n%d\' % i, i % 100, (i * 7) % 50) for i in range(100000)]))'
+          ],
+          [100000, ['n10099', 'n10199', 'n10299'], ['n99700', 'n99800', 'n99900']]
+        ]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>One <code>sorted</code> call with a tuple key. The key is computed once per row (N calls), then Timsort compares tuples.</p>`,
       code: { lang: 'python', run: true, code: `from operator import itemgetter
@@ -1943,6 +2711,29 @@ print([m(10) for m in make_multipliers()])</pre>`,
     return [times0, times1, times2, times3]` },
     mcq: { q: 'Why do all four lambdas return 30 for input 10?', options: ['They share one cell for i, which holds 3 when they are called', 'range(4) is evaluated lazily and resets', 'Lambdas cannot capture loop variables'], answer: 0, explain: 'Late binding: free variables are looked up at call time. The comprehension has one i; by call time it is 3.' },
     hints: [`<p>Hint 1: Ask "when is <code>i</code> looked up?" — at call time, not when the lambda is created.</p>`, `<p>Hint 2: Default arguments are evaluated at creation time: <code>lambda x, i=i: i * x</code>.</p>`, `<p>Hint 3: Other fixes: a factory <code>def times(i): return lambda x: i * x</code>, or <code>functools.partial(operator.mul, i)</code>. Beware: the default-arg trick adds an overridable parameter.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['[m(10) for m in make_multipliers()]'], [0, 10, 20, 30]],
+        [['[m(0) for m in make_multipliers()]'], [0, 0, 0, 0]],
+        [['len(make_multipliers())'], 4],
+        [['[m(-1) for m in make_multipliers()]'], [0, -1, -2, -3]],
+        [['[m(1.5) for m in make_multipliers()]'], [0, 1.5, 3, 4.5]],
+        [['(lambda ms: [ms[2](5), ms[3](1), ms[2](5)])(make_multipliers())'], [10, 3, 10]],
+        [['[[m(2) for m in make_multipliers()] == [m(2) for m in make_multipliers()]]'], [true]],
+        [['all(callable(m) for m in make_multipliers())'], true],
+        [['[m(7) for m in reversed(make_multipliers())]'], [21, 14, 7, 0]],
+        [['(lambda a, b: [a[1](4), b[1](4)])(make_multipliers(), make_multipliers())'], [4, 4]]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Bind the current value at creation time. <code>partial(mul, i)</code> is the cleanest: no extra parameter visible to callers, picklable, and explicit.</p>`,
       code: { lang: 'python', run: true, code: `from functools import partial
@@ -1984,6 +2775,35 @@ def compose(*fns):
     return reduce(lambda f, g: lambda x: f(g(x)), fns)    # nesting depth = len(fns)` },
     mcq: { q: 'Why might the nested-lambda version crash for 5000 functions?', options: ['Each call goes through ~5000 nested Python frames → RecursionError', 'reduce cannot handle more than 1000 items', 'Lambdas cannot be returned from reduce'], answer: 0, explain: 'reduce builds f1(f2(…)) as lambdas calling lambdas; calling it descends one frame per function, exceeding the default limit of 1000.' },
     hints: [`<p>Hint 1: Instead of building nested functions, store the tuple of functions and loop over it at call time.</p>`, `<p>Hint 2: For compose, call the <b>last</b> function first with <code>*args, **kwargs</code>, then feed the result through the rest in reverse order.</p>`, `<p>Hint 3: pipe is compose with the order reversed: <code>pipe(*fns) = compose(*reversed(fns))</code>. Handle zero functions: return the single argument unchanged.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['compose(str, lambda x: x * 2, abs)(-4)'], '8'],
+        [['pipe(abs, lambda x: x * 2, str)(-4)'], '8'],
+        [['compose(max)(3, 9, 2)'], 9],
+        [['compose()(42)'], 42],
+        [['pipe()(42)'], 42],
+        [['compose(*[lambda x: x + 1] * 10000)(0)'], 10000],
+        [['pipe(*[lambda x: x + 1] * 10000)(0)'], 10000],
+        [['compose(lambda s: s + \'a\', lambda s: s + \'b\')(\'x\')'], 'xba'],
+        [['pipe(lambda s: s + \'a\', lambda s: s + \'b\')(\'x\')'], 'xab'],
+        [['compose(str.upper, lambda *, s: s + \'!\')(s=\'hi\')'], 'HI!'],
+        [['(lambda c: [c(0), c(10)])(compose(lambda x: x + 1, lambda x: x + 1))'], [2, 12]],
+        [['compose(lambda x: x * 10, lambda a, b=1: a + b)(2, b=3)'], 50],
+        [['compose(sorted)([3, 1, 2])'], [1, 2, 3]],
+        [['compose(len, str, abs)(-12345)'], 5],
+        [['pipe(max, str)(1, 5, 3)'], '5'],
+        [['compose(*[lambda x: x * 2] * 10)(1)'], 1024]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Capture the functions in a closure and apply them with a loop at call time — constant stack depth. <code>reduce</code> is still a perfect fit for the loop itself: fold the value through the remaining functions.</p>`,
       code: { lang: 'python', run: true, code: `from functools import reduce
@@ -2029,6 +2849,153 @@ def add(a, b, log):
     return result` },
     mcq: { q: 'Where should the append to <code>sink</code> happen so failures are recorded too?', options: ['In a <code>finally</code> block (with an ok flag set on success)', 'After <code>return func(...)</code>', 'Inside an <code>except</code> that does not re-raise'], answer: 0, explain: 'finally runs on both success and exception; code after return never runs; swallowing the exception changes behaviour.' },
     hints: [`<p>Hint 1: Three levels: <code>timed(sink, label)</code> → <code>decorator(func)</code> → <code>wrapper(*args, **kwargs)</code>.</p>`, `<p>Hint 2: Set <code>ok = False</code> before the call, set it to True right after a successful call, and append in <code>finally</code>.</p>`, `<p>Hint 3: Compute the name once at decoration time (<code>label or func.__qualname__</code>). Methods just work because <code>self</code> is in <code>args</code>.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'log = []\n' +
+              '@timed(log)\n' +
+              'def add(a, b):\n' +
+              '    return a + b\n' +
+              'r = add(1, 2)\n' +
+              'result = [r, [(n, ok) for n, _, ok in log], isinstance(log[0][1], float), log[0][1] >= 0]'
+          ],
+          [3, [['add', true]], true, true]
+        ],
+        [
+          [
+            'log = []\n' +
+              '@timed(log, label=\'parse\')\n' +
+              'def parse_int(s):\n' +
+              '    return int(s)\n' +
+              'parse_int(\'4\')\n' +
+              'result = [(n, ok) for n, _, ok in log]'
+          ],
+          [['parse', true]]
+        ],
+        [
+          [
+            'log = []\n' +
+              'class Repo:\n' +
+              '    @timed(log)\n' +
+              '    def get(self, key):\n' +
+              '        return key.upper()\n' +
+              'r = Repo().get(\'k\')\n' +
+              'result = [r, log[0][0], log[0][2]]'
+          ],
+          ['K', 'Repo.get', true]
+        ],
+        [
+          [
+            'log = []\n' +
+              '@timed(log, label=\'p\')\n' +
+              'def parse_int(s):\n' +
+              '    return int(s)\n' +
+              'try:\n' +
+              '    parse_int(\'oops\')\n' +
+              'except ValueError:\n' +
+              '    caught = True\n' +
+              'result = [caught, [(n, ok) for n, _, ok in log]]'
+          ],
+          [true, [['p', false]]]
+        ],
+        [
+          [
+            'log = []\n' +
+              '@timed(log)\n' +
+              'def f():\n' +
+              '    """doc"""\n' +
+              'result = [f.__name__, f.__doc__, f()]'
+          ],
+          ['f', 'doc', null]
+        ],
+        [
+          [
+            'import time\n' +
+              'log = []\n' +
+              '@timed(log)\n' +
+              'def nap():\n' +
+              '    time.sleep(0.02)\n' +
+              'nap()\n' +
+              'result = 19 <= log[0][1] < 5000'
+          ],
+          true
+        ],
+        [
+          [
+            'a, b = [], []\n' +
+              '@timed(a)\n' +
+              'def f():\n' +
+              '    pass\n' +
+              '@timed(b)\n' +
+              'def g():\n' +
+              '    pass\n' +
+              'f(); f(); g()\n' +
+              'result = [len(a), len(b)]'
+          ],
+          [2, 1]
+        ],
+        [
+          [
+            'log = []\n' +
+              '@timed(log)\n' +
+              'def f(x):\n' +
+              '    return x\n' +
+              'for i in range(100000):\n' +
+              '    f(i)\n' +
+              'result = [len(log), log[-1][0], all(ok for _, _, ok in log)]'
+          ],
+          [100000, 'f', true]
+        ],
+        [
+          [
+            'log = []\n' +
+              '@timed(log)\n' +
+              'def f(*a, **k):\n' +
+              '    return (a, k)\n' +
+              'result = f(1, z=2)'
+          ],
+          [[1], { z: 2 }]
+        ],
+        [
+          [
+            'log = []\n' +
+              '@timed(log)\n' +
+              'def f():\n' +
+              '    raise RuntimeError(\'x\')\n' +
+              'for _ in range(3):\n' +
+              '    try:\n' +
+              '        f()\n' +
+              '    except RuntimeError:\n' +
+              '        pass\n' +
+              'result = [len(log), [ok for _, _, ok in log]]'
+          ],
+          [3, [false, false, false]]
+        ],
+        [
+          [
+            'log = []\n' +
+              '@timed(log)\n' +
+              'def f():\n' +
+              '    return 1\n' +
+              'f()\n' +
+              'result = [len(log[0]), type(log[0]).__name__]'
+          ],
+          [3, 'tuple']
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Factory captures <code>sink</code> and <code>label</code>; the wrapper measures with <code>perf_counter</code> and records in <code>finally</code>, so both outcomes are logged while exceptions still propagate.</p>`,
       code: { lang: 'python', run: true, code: `import functools
@@ -2094,6 +3061,96 @@ print(add.__name__, all(ms >= 0 for _, ms, _ in log))` },
     return allow` },
     mcq: { q: 'Which structure keeps only timestamps inside the window efficiently?', options: ['A deque: pop expired items from the left, append new ones on the right', 'A set of timestamps', 'A sorted list with binary search insertions'], answer: 0, explain: 'Timestamps arrive in order, so expired ones are always at the left end: O(1) amortized per call with a deque (sliding window).' },
     hints: [`<p>Hint 1: Since time never goes backwards, the oldest timestamps expire first — classic sliding window.</p>`, `<p>Hint 2: Keep a <code>collections.deque</code> in the closure. You only mutate it (popleft/append), so <code>nonlocal</code> is not required.</p>`, `<p>Hint 3: Expired means <code>t &lt;= now - window</code>. After evicting, allow if <code>len(q) &lt; k</code>. Rejected calls are not recorded.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'allow = make_limiter(2, 10)\n' +
+              'result = [allow(t) for t in [1, 2, 3, 11, 12, 12.5, 21]]'
+          ],
+          [true, true, false, true, true, false, true]
+        ],
+        [
+          [
+            'allow = make_limiter(1, 5)\n' +
+              'result = [allow(t) for t in [1, 2, 6, 6.5, 11]]'
+          ],
+          [true, false, true, false, true]
+        ],
+        [
+          [
+            'allow = make_limiter(3, 1)\n' +
+              'result = [allow(t) for t in [0, 0, 0, 0, 0.5, 1, 1, 1.5]]'
+          ],
+          [true, true, true, false, false, true, true, true]
+        ],
+        [
+          [
+            'allow = make_limiter(1, 10)\n' +
+              'result = [allow(t) for t in [0, 10, 10, 20, 20.5]]'
+          ],
+          [true, true, false, true, false]
+        ],
+        [
+          [
+            'allow = make_limiter(5, 100)\n' +
+              'result = [allow(t) for t in [1, 2, 3]]'
+          ],
+          [true, true, true]
+        ],
+        [
+          [
+            'allow = make_limiter(2, 0.5)\n' +
+              'result = [allow(t) for t in [0, 0.25, 0.5, 0.75, 1.0, 1.25]]'
+          ],
+          [true, true, true, true, true, true]
+        ],
+        [
+          [
+            'allow = make_limiter(1, 1)\n' +
+              'result = [allow(t) for t in [5, 5, 5, 5]]'
+          ],
+          [true, false, false, false]
+        ],
+        [
+          [
+            'allow = make_limiter(2, 10)\n' +
+              'other = make_limiter(1, 5)\n' +
+              'result = [other(1), other(2), allow(30), allow(30), allow(30)]'
+          ],
+          [true, false, true, true, false]
+        ],
+        [
+          [
+            'allow = make_limiter(1000, 1.0)\n' +
+              'n = 0\n' +
+              'for i in range(10**6):\n' +
+              '    n += allow(i * 0.001)\n' +
+              'result = n'
+          ],
+          999990
+        ],
+        [
+          [
+            'allow = make_limiter(100000, 1.0)\n' +
+              'n = sum(allow(0.0) for _ in range(100001))\n' +
+              'result = [n, allow(1.0)]'
+          ],
+          [100000, true]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Sliding-window log in a deque captured by the closure: evict expired timestamps from the left, then decide. Each timestamp is appended and popped at most once → O(1) amortized.</p>`,
       code: { lang: 'python', run: true, code: `from collections import deque
@@ -2136,6 +3193,157 @@ def emit(event, **payload):
     return []` },
     mcq: { q: 'What should the inner decorator returned by <code>bus.on(event)</code> return?', options: ['The original function unchanged (after registering it)', 'A wrapper that calls emit', 'None'], answer: 0, explain: 'Registration decorators record and return the same function, so the name in the module still refers to the callable handler.' },
     hints: [`<p>Hint 1: <code>on(event)</code> is a factory: it captures the event name and returns <code>decorator(func)</code>.</p>`, `<p>Hint 2: Store handlers in <code>defaultdict(list)</code>; emit loops over a <b>copy</b> of the list so handlers can unsubscribe during emit safely.</p>`, `<p>Hint 3: Wrap each handler call in try/except Exception and append the exception object instead of crashing.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'bus = EventBus()\n' +
+              '@bus.on(\'order_paid\')\n' +
+              'def send_email(order_id):\n' +
+              '    return \'email sent for %s\' % order_id\n' +
+              '@bus.on(\'order_paid\')\n' +
+              'def update_stock(order_id):\n' +
+              '    return \'stock updated for %s\' % order_id\n' +
+              'result = bus.emit(\'order_paid\', order_id=7)'
+          ],
+          ['email sent for 7', 'stock updated for 7']
+        ],
+        [
+          [
+            'bus = EventBus()\n' +
+              '@bus.on(\'order_paid\')\n' +
+              'def send_email(order_id):\n' +
+              '    return \'email sent for %s\' % order_id\n' +
+              '@bus.on(\'order_paid\')\n' +
+              'def update_stock(order_id):\n' +
+              '    return \'stock updated for %s\' % order_id\n' +
+              'bus.off(\'order_paid\', send_email)\n' +
+              'result = bus.emit(\'order_paid\', order_id=8)'
+          ],
+          ['stock updated for 8']
+        ],
+        [
+          [
+            'bus = EventBus()\n' +
+              '@bus.on(\'order_paid\')\n' +
+              'def send_email(order_id):\n' +
+              '    return \'email sent for %s\' % order_id\n' +
+              '@bus.on(\'order_paid\')\n' +
+              'def update_stock(order_id):\n' +
+              '    return \'stock updated for %s\' % order_id\n' +
+              'result = bus.emit(\'nothing\')'
+          ],
+          []
+        ],
+        [
+          [
+            'bus = EventBus()\n' +
+              '@bus.on(\'order_paid\')\n' +
+              'def send_email(order_id):\n' +
+              '    return \'email sent for %s\' % order_id\n' +
+              '@bus.on(\'order_paid\')\n' +
+              'def update_stock(order_id):\n' +
+              '    return \'stock updated for %s\' % order_id\n' +
+              '@bus.on(\'order_paid\')\n' +
+              'def flaky(order_id):\n' +
+              '    raise RuntimeError(\'crm down\')\n' +
+              'r = bus.emit(\'order_paid\', order_id=1)\n' +
+              'result = [r[0], r[1], type(r[2]).__name__, str(r[2])]'
+          ],
+          ['email sent for 1', 'stock updated for 1', 'RuntimeError', 'crm down']
+        ],
+        [
+          [
+            'bus = EventBus()\n' +
+              'def f():\n' +
+              '    return 1\n' +
+              'result = bus.on(\'e\')(f) is f'
+          ],
+          true
+        ],
+        [
+          [
+            'a, b = EventBus(), EventBus()\n' +
+              '@a.on(\'e\')\n' +
+              'def f():\n' +
+              '    return \'a\'\n' +
+              'result = [a.emit(\'e\'), b.emit(\'e\')]'
+          ],
+          [['a'], []]
+        ],
+        [
+          [
+            'bus = EventBus()\n' +
+              'order = []\n' +
+              'for i in range(5):\n' +
+              '    bus.on(\'e\')(lambda i=i: order.append(i))\n' +
+              'bus.emit(\'e\')\n' +
+              'result = order'
+          ],
+          [0, 1, 2, 3, 4]
+        ],
+        [
+          [
+            'bus = EventBus()\n' +
+              'def make(i):\n' +
+              '    return lambda **p: i\n' +
+              'for i in range(10000):\n' +
+              '    bus.on(\'e\')(make(i))\n' +
+              'r = bus.emit(\'e\', x=1)\n' +
+              'result = [len(r), r[0], r[-1]]'
+          ],
+          [10000, 0, 9999]
+        ],
+        [
+          [
+            'bus = EventBus()\n' +
+              'def h1(**p):\n' +
+              '    bus.off(\'e\', h1)\n' +
+              '    return \'h1\'\n' +
+              'def h2(**p):\n' +
+              '    return \'h2\'\n' +
+              'bus.on(\'e\')(h1); bus.on(\'e\')(h2)\n' +
+              'result = [bus.emit(\'e\'), bus.emit(\'e\')]'
+          ],
+          [['h1', 'h2'], ['h2']]
+        ],
+        [
+          [
+            'bus = EventBus()\n' +
+              '@bus.on(\'a\')\n' +
+              'def fa(**p):\n' +
+              '    return (\'a\', p)\n' +
+              '@bus.on(\'b\')\n' +
+              'def fb(**p):\n' +
+              '    return (\'b\', p)\n' +
+              'result = [bus.emit(\'a\', x=1, y=2), bus.emit(\'b\')]'
+          ],
+          [[['a', { x: 1, y: 2 }]], [['b', {  }]]]
+        ],
+        [
+          [
+            'bus = EventBus()\n' +
+              'def h(**p):\n' +
+              '    return None\n' +
+              'bus.on(\'e\')(h)\n' +
+              'bus.off(\'e\', h)\n' +
+              'result = [bus.emit(\'e\'), bus.emit(\'e\')]'
+          ],
+          [[], []]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>A dict of lists maps event → handlers. <code>on</code> is a method that returns a decorator closing over the event name; it appends and returns the function. <code>emit</code> forwards <code>**payload</code> and isolates handler failures.</p>`,
       code: { lang: 'python', run: true, code: `from collections import defaultdict
@@ -2212,6 +3420,7 @@ for new in ['E', 'E2', 'G2']:
 print(history[-1])      # wrongly predicts 'G2' for every later read` },
     mcq: { q: 'After <code>c()</code> runs, what does <code>a()</code> print?', options: ['a: E2', 'a: G2', 'a: E'], answer: 0, explain: 'a looks up x: not local → enclosing outer.x, which b set to E2. The global x (now G2) is shadowed.' },
     hints: [`<p>Hint 1: There are two different variables named x: <code>outer</code>'s local (E) and the module global (G).</p>`, `<p>Hint 2: <code>nonlocal x</code> in b targets outer's x; <code>global x</code> in c targets the module x.</p>`, `<p>Hint 3: a has no assignment to x, so it always reads the nearest enclosing x — outer's.</p>`],
+    tests: { io: true, cases: [{ stdin: '', stdout: 'a: E\na: E2\na: E2\nE2 G2' }] },
     solution: {
       approach: `<p>Track the two variables separately: outer.x goes E → E2 (by b); module x goes G → G2 (by c). a always reads outer.x. outer returns outer.x; the final print reads module x.</p>`,
       code: { lang: 'python', run: true, code: `x = 'G'
@@ -2262,6 +3471,215 @@ def my_lru_cache(maxsize=128):
     return decorator` },
     mcq: { q: 'Which operation sequence implements an O(1) cache hit with OrderedDict?', options: ['<code>od.move_to_end(key)</code> then return <code>od[key]</code>', '<code>sorted(od)</code> then take the first', '<code>od.popitem(last=True)</code>'], answer: 0, explain: 'move_to_end marks the key most-recent in O(1); popitem(last=False) evicts the least-recent in O(1).' },
     hints: [`<p>Hint 1: You need a hash map for lookup and an ordering for recency — <code>collections.OrderedDict</code> gives both, with <code>move_to_end</code> and <code>popitem(last=False)</code>.</p>`, `<p>Hint 2: Key = <code>args</code> plus, if kwargs exist, a sentinel and <code>tuple(sorted(kwargs.items()))</code> so <code>f(a=1, b=2)</code> and <code>f(b=2, a=1)</code> share an entry.</p>`, `<p>Hint 3: Keep hits/misses in a small mutable object or use <code>nonlocal</code>. Evict only after inserting, while <code>len &gt; maxsize</code>. maxsize=None → never evict.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'calls = []\n' +
+              '@my_lru_cache(maxsize=2)\n' +
+              'def f(x):\n' +
+              '    calls.append(x)\n' +
+              '    return x * x\n' +
+              'for v in [1, 2, 1, 3, 2]:\n' +
+              '    f(v)\n' +
+              'result = [tuple(f.cache_info()), calls]'
+          ],
+          [[1, 4, 2, 2], [1, 2, 3, 2]]
+        ],
+        [
+          [
+            '@my_lru_cache(maxsize=None)\n' +
+              'def area(w, h=1):\n' +
+              '    return w * h\n' +
+              'area(2, h=3); area(2, h=3); area(w=2, h=3); area(h=3, w=2)\n' +
+              'result = [tuple(area.cache_info()), area.__name__]'
+          ],
+          [[2, 2, null, 2], 'area']
+        ],
+        [
+          [
+            '@my_lru_cache(maxsize=None)\n' +
+              'def f(x):\n' +
+              '    return x\n' +
+              'for i in range(1000):\n' +
+              '    f(i)\n' +
+              'r = tuple(f.cache_info())\n' +
+              'f.cache_clear()\n' +
+              'result = [r, tuple(f.cache_info())]'
+          ],
+          [[0, 1000, null, 1000], [0, 0, null, 0]]
+        ],
+        [
+          [
+            '@my_lru_cache(maxsize=1)\n' +
+              'def f(x):\n' +
+              '    return x\n' +
+              'f(1); f(1); f(2); f(1)\n' +
+              'result = tuple(f.cache_info())'
+          ],
+          [1, 3, 1, 1]
+        ],
+        [
+          [
+            '@my_lru_cache()\n' +
+              'def f(x):\n' +
+              '    """doc"""\n' +
+              '    return x\n' +
+              'result = [f.__name__, f.__doc__, tuple(f.cache_info())]'
+          ],
+          ['f', 'doc', [0, 0, 128, 0]]
+        ],
+        [
+          [
+            '@my_lru_cache(maxsize=3)\n' +
+              'def f(x):\n' +
+              '    return x\n' +
+              'for v in [1, 2, 3, 1, 4, 2]:\n' +
+              '    f(v)\n' +
+              'result = tuple(f.cache_info())'
+          ],
+          [1, 5, 3, 3]
+        ],
+        [
+          [
+            'calls = []\n' +
+              '@my_lru_cache(maxsize=2)\n' +
+              'def f(x):\n' +
+              '    calls.append(x)\n' +
+              '    return x\n' +
+              'for v in [1, 2, 1, 3, 1, 2]:\n' +
+              '    f(v)\n' +
+              'result = calls'
+          ],
+          [1, 2, 3, 2]
+        ],
+        [
+          [
+            '@my_lru_cache(maxsize=2)\n' +
+              'def f(a, b=0, *, c=0):\n' +
+              '    return a + b + c\n' +
+              'result = [f(1, 2, c=3), f(1, 2, c=3), f(1, c=3, b=2), tuple(f.cache_info())]'
+          ],
+          [6, 6, 6, [1, 2, 2, 2]]
+        ],
+        [
+          [
+            '@my_lru_cache(maxsize=2)\n' +
+              'def f():\n' +
+              '    return \'z\'\n' +
+              'result = [f(), f(), tuple(f.cache_info())]'
+          ],
+          ['z', 'z', [1, 1, 2, 1]]
+        ],
+        [
+          [
+            'import random, functools\n' +
+              'rnd = random.Random(1)\n' +
+              'calls = [0]\n' +
+              'def base(x, y=0):\n' +
+              '    calls[0] += 1\n' +
+              '    return x * 31 + y\n' +
+              'mine = my_lru_cache(maxsize=5)(base)\n' +
+              'ref = functools.lru_cache(maxsize=5)(base)\n' +
+              'ok = True\n' +
+              'for _ in range(3000):\n' +
+              '    x = rnd.randrange(12)\n' +
+              '    if rnd.random() < 0.5:\n' +
+              '        ok = ok and mine(x) == ref(x)\n' +
+              '    else:\n' +
+              '        y = rnd.randrange(3)\n' +
+              '        ok = ok and mine(x, y=y) == ref(x, y=y)\n' +
+              '    mi, ri = mine.cache_info(), ref.cache_info()\n' +
+              '    ok = ok and tuple(mi) == tuple(ri)\n' +
+              'result = ok'
+          ],
+          true
+        ],
+        [
+          [
+            'import random, functools\n' +
+              'rnd = random.Random(2)\n' +
+              'calls = [0]\n' +
+              'def base(x, y=0):\n' +
+              '    calls[0] += 1\n' +
+              '    return x * 31 + y\n' +
+              'mine = my_lru_cache(maxsize=1)(base)\n' +
+              'ref = functools.lru_cache(maxsize=1)(base)\n' +
+              'ok = True\n' +
+              'for _ in range(2000):\n' +
+              '    x = rnd.randrange(4)\n' +
+              '    if rnd.random() < 0.5:\n' +
+              '        ok = ok and mine(x) == ref(x)\n' +
+              '    else:\n' +
+              '        y = rnd.randrange(3)\n' +
+              '        ok = ok and mine(x, y=y) == ref(x, y=y)\n' +
+              '    mi, ri = mine.cache_info(), ref.cache_info()\n' +
+              '    ok = ok and tuple(mi) == tuple(ri)\n' +
+              'result = ok'
+          ],
+          true
+        ],
+        [
+          [
+            'import random, functools\n' +
+              'rnd = random.Random(3)\n' +
+              'calls = [0]\n' +
+              'def base(x, y=0):\n' +
+              '    calls[0] += 1\n' +
+              '    return x * 31 + y\n' +
+              'mine = my_lru_cache(maxsize=None)(base)\n' +
+              'ref = functools.lru_cache(maxsize=None)(base)\n' +
+              'ok = True\n' +
+              'for _ in range(2000):\n' +
+              '    x = rnd.randrange(50)\n' +
+              '    if rnd.random() < 0.5:\n' +
+              '        ok = ok and mine(x) == ref(x)\n' +
+              '    else:\n' +
+              '        y = rnd.randrange(3)\n' +
+              '        ok = ok and mine(x, y=y) == ref(x, y=y)\n' +
+              '    mi, ri = mine.cache_info(), ref.cache_info()\n' +
+              '    ok = ok and tuple(mi) == tuple(ri)\n' +
+              'result = ok'
+          ],
+          true
+        ],
+        [
+          [
+            'import random, functools\n' +
+              'rnd = random.Random(4)\n' +
+              'calls = [0]\n' +
+              'def base(x, y=0):\n' +
+              '    calls[0] += 1\n' +
+              '    return x * 31 + y\n' +
+              'mine = my_lru_cache(maxsize=100)(base)\n' +
+              'ref = functools.lru_cache(maxsize=100)(base)\n' +
+              'ok = True\n' +
+              'for _ in range(300000):\n' +
+              '    x = rnd.randrange(150)\n' +
+              '    if rnd.random() < 0.5:\n' +
+              '        ok = ok and mine(x) == ref(x)\n' +
+              '    else:\n' +
+              '        y = rnd.randrange(3)\n' +
+              '        ok = ok and mine(x, y=y) == ref(x, y=y)\n' +
+              '    mi, ri = mine.cache_info(), ref.cache_info()\n' +
+              '    ok = ok and tuple(mi) == tuple(ri)\n' +
+              'result = ok'
+          ],
+          true
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Three-level decorator factory. The closure holds an OrderedDict and counters. Hit: <code>move_to_end</code> + count. Miss: compute, insert at the end, evict from the front if over capacity. The key is normalized so keyword order does not matter. Attach <code>cache_info</code>/<code>cache_clear</code> as function attributes.</p>`,
       code: { lang: 'python', run: true, code: `import functools
@@ -2356,6 +3774,164 @@ def trace_with(prefix):               # second copy just for arguments
     return decorator` },
     mcq: { q: 'How can one function tell <code>@trace</code> apart from <code>@trace(prefix="x")</code>?', options: ['Make the first parameter <code>func=None</code> and the options keyword-only; func is set only in the bare form', 'Check <code>len(sys.argv)</code>', 'Inspect the caller\'s source line'], answer: 0, explain: 'Bare @trace calls trace(func). With parentheses, trace is called with only keywords, so func is None → return the real decorator.' },
     hints: [`<p>Hint 1: Signature: <code>def trace(func=None, *, prefix='TRACE', show_result=True)</code>. If <code>func</code> is None, return <code>functools.partial(trace, prefix=..., show_result=...)</code> or an inner decorator.</p>`, `<p>Hint 2: Use <code>inspect.iscoroutinefunction(func)</code> to choose between a sync wrapper and an <code>async def</code> wrapper that <code>await</code>s.</p>`, `<p>Hint 3: <code>functools.wraps</code> sets <code>__wrapped__</code>, which makes <code>inspect.signature</code> report the original parameters. Format args with <code>', '.join([*map(repr, args), *(f'{k}={v!r}' for k, v in kwargs.items())])</code>.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'TRACE_LOG.clear()\n' +
+              '@trace\n' +
+              'def add(a, b):\n' +
+              '    return a + b\n' +
+              'r = add(2, b=3)\n' +
+              'result = [r, list(TRACE_LOG)]'
+          ],
+          [5, ['TRACE add(2, b=3) -> 5']]
+        ],
+        [
+          [
+            'TRACE_LOG.clear()\n' +
+              '@trace()\n' +
+              'def neg(x):\n' +
+              '    return -x\n' +
+              'neg(4)\n' +
+              'result = list(TRACE_LOG)'
+          ],
+          ['TRACE neg(4) -> -4']
+        ],
+        [
+          [
+            'TRACE_LOG.clear()\n' +
+              'class Repo:\n' +
+              '    def __repr__(self):\n' +
+              '        return \'Repo()\'\n' +
+              '    @trace(prefix=\'DB\', show_result=False)\n' +
+              '    def get(self, key):\n' +
+              '        return key.upper()\n' +
+              'r = Repo().get(\'k\')\n' +
+              'result = [r, list(TRACE_LOG)]'
+          ],
+          ['K', ['DB Repo.get(Repo(), \'k\')']]
+        ],
+        [
+          [
+            'TRACE_LOG.clear()\n' +
+              'import asyncio\n' +
+              '@trace(prefix=\'ASYNC\')\n' +
+              'async def fetch(n):\n' +
+              '    return n * 10\n' +
+              'r = asyncio.run(fetch(5))\n' +
+              'result = [r, list(TRACE_LOG)]'
+          ],
+          [50, ['ASYNC fetch(5) -> 50']]
+        ],
+        [
+          [
+            'TRACE_LOG.clear()\n' +
+              'import inspect\n' +
+              '@trace\n' +
+              'def add(a, b=1):\n' +
+              '    """doc"""\n' +
+              '    return a + b\n' +
+              'result = [str(inspect.signature(add)), add.__name__, add.__doc__]'
+          ],
+          ['(a, b=1)', 'add', 'doc']
+        ],
+        [
+          [
+            'TRACE_LOG.clear()\n' +
+              '@trace\n' +
+              'def f(*args, **kwargs):\n' +
+              '    return len(args)\n' +
+              'f(\'x\', 2, k=\'v\', z=None)\n' +
+              'result = list(TRACE_LOG)'
+          ],
+          ['TRACE f(\'x\', 2, k=\'v\', z=None) -> 2']
+        ],
+        [
+          [
+            'TRACE_LOG.clear()\n' +
+              '@trace(show_result=False)\n' +
+              'def f():\n' +
+              '    return 1\n' +
+              'f()\n' +
+              'result = list(TRACE_LOG)'
+          ],
+          ['TRACE f()']
+        ],
+        [
+          [
+            'TRACE_LOG.clear()\n' +
+              '@trace(prefix=\'P\')\n' +
+              'def f(s):\n' +
+              '    return s\n' +
+              'f(\'a\'); f(\'b\')\n' +
+              'result = TRACE_LOG'
+          ],
+          ['P f(\'a\') -> \'a\'', 'P f(\'b\') -> \'b\'']
+        ],
+        [
+          [
+            'TRACE_LOG.clear()\n' +
+              '@trace\n' +
+              'def f(x):\n' +
+              '    return x\n' +
+              'for i in range(100000):\n' +
+              '    f(i)\n' +
+              'result = [len(TRACE_LOG), TRACE_LOG[0], TRACE_LOG[-1]]'
+          ],
+          [100000, 'TRACE f(0) -> 0', 'TRACE f(99999) -> 99999']
+        ],
+        [
+          [
+            'TRACE_LOG.clear()\n' +
+              'import inspect\n' +
+              '@trace\n' +
+              'async def g():\n' +
+              '    return 1\n' +
+              'result = [inspect.iscoroutinefunction(g), g.__name__]'
+          ],
+          [true, 'g']
+        ],
+        [
+          [
+            'TRACE_LOG.clear()\n' +
+              'import asyncio\n' +
+              '@trace\n' +
+              'async def g(x):\n' +
+              '    await asyncio.sleep(0)\n' +
+              '    return [x]\n' +
+              'r = asyncio.run(g(3))\n' +
+              'result = [r, list(TRACE_LOG)]'
+          ],
+          [[3], ['TRACE g(3) -> [3]']]
+        ],
+        [
+          [
+            'TRACE_LOG.clear()\n' +
+              '@trace\n' +
+              'def f(x):\n' +
+              '    raise ValueError(\'bad\')\n' +
+              'try:\n' +
+              '    f(1)\n' +
+              'except ValueError:\n' +
+              '    pass\n' +
+              'result = list(TRACE_LOG)'
+          ],
+          []
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Optional-argument pattern with a <code>func=None</code> sentinel and keyword-only options. A shared <code>record</code> helper formats the line; two wrapper variants handle sync and async targets. <code>wraps</code> keeps name, doc and signature.</p>`,
       code: { lang: 'python', run: true, code: `import asyncio
@@ -2429,6 +4005,98 @@ print(inspect.signature(add), add.__name__)` },
     return p` },
     mcq: { q: 'Which merge gives call-time keywords priority over frozen ones?', options: ['<code>{**self.keywords, **kw}</code>', '<code>{**kw, **self.keywords}</code>', '<code>self.keywords.update(kw)</code>'], answer: 0, explain: 'In a dict display later keys win, so kw goes last. update() would permanently mutate the stored dict — a bug across calls.' },
     hints: [`<p>Hint 1: A small class with <code>__init__</code> storing the pieces and <code>__call__</code> doing the forward is the natural shape (that is how the real one works).</p>`, `<p>Hint 2: Flattening: if <code>func</code> is itself a <code>my_partial</code>, take its func, prepend its args, and merge its keywords under the new ones.</p>`, `<p>Hint 3: Copy keywords into a new dict in <code>__init__</code>; never mutate it in <code>__call__</code>. Check <code>callable(func)</code> and raise TypeError otherwise.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'p = my_partial(int, base=2)\n' +
+              'result = [p(\'101\'), p(\'ff\', base=16), p.keywords]'
+          ],
+          [5, 255, { base: 2 }]
+        ],
+        [
+          [
+            'q = my_partial(my_partial(max, 3), 9)\n' +
+              'result = [q(4), q.func is max, q.args]'
+          ],
+          [9, true, [3, 9]]
+        ],
+        [['p = my_partial(int, base=2)\nresult = repr(p)'], 'my_partial(<class \'int\'>, base=2)'],
+        [['result = my_partial(42)'], '!TypeError'],
+        [
+          [
+            'p = my_partial(int, base=2)\n' +
+              'p(\'ff\', base=16)\n' +
+              'result = p.keywords'
+          ],
+          { base: 2 }
+        ],
+        [['result = my_partial(lambda *a: a, 1, 2)(3, 4)'], [1, 2, 3, 4]],
+        [
+          [
+            'def f(**k):\n' +
+              '    return k\n' +
+              'p = my_partial(my_partial(f, a=1), a=2, b=3)\n' +
+              'result = [p.keywords, p()]'
+          ],
+          [{ a: 2, b: 3 }, { a: 2, b: 3 }]
+        ],
+        [
+          [
+            'p = my_partial(print)\n' +
+              'result = [p.args, p.keywords, p.func is print]'
+          ],
+          [[], {  }, true]
+        ],
+        [
+          [
+            'def f(a, b, c):\n' +
+              '    return (a, b, c)\n' +
+              'p = my_partial(f, 1)\n' +
+              'result = [p(2, 3), p(2, c=9), p.args]'
+          ],
+          [[1, 2, 3], [1, 2, 9], [1]]
+        ],
+        [
+          [
+            'p = f = len\n' +
+              'for _ in range(10000):\n' +
+              '    p = my_partial(p, 1)\n' +
+              'result = [p.func is len, len(p.args), type(p).__name__]'
+          ],
+          [true, 10000, 'my_partial']
+        ],
+        [
+          [
+            'kw = {\'base\': 2}\n' +
+              'p = my_partial(int, **kw)\n' +
+              'kw[\'base\'] = 16\n' +
+              'result = [p(\'11\'), p.keywords]'
+          ],
+          [3, { base: 2 }]
+        ],
+        [['p = my_partial(max, key=len)\nresult = p([\'a\', \'bbb\', \'cc\'])'], 'bbb'],
+        [
+          [
+            'p = my_partial(my_partial(my_partial(pow, 2), 3), 5)\n' +
+              'result = [p.args, p()]'
+          ],
+          [[2, 3, 5], 3]
+        ],
+        [['p = my_partial(int)\nresult = [p(\'7\'), repr(p)]'], [7, 'my_partial(<class \'int\'>)']]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>A callable class: <code>__init__</code> validates and flattens, <code>__call__</code> forwards with unpacking, <code>__repr__</code> mirrors the standard one. Using <code>__slots__</code> keeps instances small.</p>`,
       code: { lang: 'python', run: true, code: `class my_partial:
@@ -2480,6 +4148,287 @@ except TypeError as e:
     return x * factor` },
     mcq: { q: 'Which tool maps a call\'s actual arguments to parameter names exactly like Python does?', options: ['<code>inspect.signature(func).bind(*args, **kwargs)</code>', '<code>zip(func.__code__.co_varnames, args)</code>', '<code>func.__defaults__</code>'], answer: 0, explain: 'Signature.bind implements the full binding algorithm, including keyword arguments, *args/**kwargs and errors; apply_defaults() fills the rest.' },
     hints: [`<p>Hint 1: At decoration time: <code>sig = inspect.signature(func)</code> and collect <code>{name: annotation}</code> for annotations that are classes (<code>isinstance(ann, type)</code>).</p>`, `<p>Hint 2: At call time: <code>bound = sig.bind(*args, **kwargs)</code>; <code>bound.apply_defaults()</code>; then loop over <code>bound.arguments</code>.</p>`, `<p>Hint 3: For a <code>*args</code> parameter the bound value is a tuple — check each element; for <code>**kwargs</code> check each value. Note <code>bool</code> is a subclass of <code>int</code>, so <code>True</code> passes an <code>int</code> check.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              'result = [scale(3, 1.5), scale(x=4), scale(True)]'
+          ],
+          [4.5, 8, 2]
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              'try:\n' +
+              '    scale(\'3\')\n' +
+              '    result = \'no error\'\n' +
+              'except TypeError as e:\n' +
+              '    result = str(e)'
+          ],
+          'param \'x\' expected int, got str'
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              'try:\n' +
+              '    scale(3, \'f\')\n' +
+              '    result = \'no error\'\n' +
+              'except TypeError as e:\n' +
+              '    result = str(e)'
+          ],
+          'param \'factor\' expected float, got str'
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              'result = [total(1, 2, 3, label=\'t\', unit=\'kg\'), total()]'
+          ],
+          [6, 0]
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              'try:\n' +
+              '    total(1, \'x\')\n' +
+              '    result = \'no error\'\n' +
+              'except TypeError as e:\n' +
+              '    result = str(e)'
+          ],
+          'param \'nums\' item expected int, got str'
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              'try:\n' +
+              '    total(1, note=5)\n' +
+              '    result = \'no error\'\n' +
+              'except TypeError as e:\n' +
+              '    result = str(e)'
+          ],
+          'param \'extra\' value expected str, got int'
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              'try:\n' +
+              '    total(1, label=5)\n' +
+              '    result = \'no error\'\n' +
+              'except TypeError as e:\n' +
+              '    result = str(e)'
+          ],
+          'param \'label\' expected str, got int'
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              'try:\n' +
+              '    scale()\n' +
+              '    result = \'no error\'\n' +
+              'except TypeError as e:\n' +
+              '    result = \'missing\' in str(e)'
+          ],
+          true
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              '@enforce_types\n' +
+              'def bad() -> int:\n' +
+              '    return \'x\'\n' +
+              'try:\n' +
+              '    bad()\n' +
+              'except TypeError as e:\n' +
+              '    result = str(e)'
+          ],
+          'return value expected int, got str'
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def f(x: list[int], y) -> list:\n' +
+              '    return x\n' +
+              'result = [f([1], \'anything\'), f([\'a\'], 2)]'
+          ],
+          [[1], ['a']]
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def f(a, b=2):\n' +
+              '    """doc"""\n' +
+              '    return a + b\n' +
+              'result = [f(1), f.__name__, f.__doc__]'
+          ],
+          [3, 'f', 'doc']
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              'import inspect\n' +
+              'result = [str(inspect.signature(scale)), scale.__name__]'
+          ],
+          ['(x: int, factor: float = 2.0) -> float', 'scale']
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              'import inspect\n' +
+              'orig = inspect.signature\n' +
+              'n = [0]\n' +
+              'def counting(*a, **k):\n' +
+              '    n[0] += 1\n' +
+              '    return orig(*a, **k)\n' +
+              'inspect.signature = counting\n' +
+              'try:\n' +
+              '    for i in range(1000):\n' +
+              '        scale(i)\n' +
+              'finally:\n' +
+              '    inspect.signature = orig\n' +
+              'result = n[0]'
+          ],
+          0
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              'n = 0\n' +
+              'for i in range(100000):\n' +
+              '    n += scale(i, 1.0) > -1\n' +
+              'result = n'
+          ],
+          100000
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              'result = [scale(1, 3.5), scale(-2)]'
+          ],
+          [3.5, -4]
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              'try:\n' +
+              '    scale(1, 2, 3)\n' +
+              'except TypeError:\n' +
+              '    result = \'arity\''
+          ],
+          'arity'
+        ],
+        [
+          [
+            '@enforce_types\n' +
+              'def scale(x: int, factor: float = 2.0) -> float:\n' +
+              '    return x * factor\n' +
+              '\n' +
+              '@enforce_types\n' +
+              'def total(*nums: int, label: str = \'sum\', **extra: str) -> int:\n' +
+              '    return sum(nums)\n' +
+              'try:\n' +
+              '    scale(y=1)\n' +
+              'except TypeError:\n' +
+              '    result = \'kw\''
+          ],
+          'kw'
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Precompute the signature and the class-typed annotations once. On each call, use <code>Signature.bind</code> (raises the normal TypeError for bad arity), check each bound value (element-wise for variadics), call the function, then check the return annotation.</p>`,
       code: { lang: 'python', run: true, code: `import functools
@@ -2488,9 +4437,10 @@ import inspect
 def enforce_types(func):
     sig = inspect.signature(func)                       # once, at decoration time
     checks = {name: p.annotation for name, p in sig.parameters.items()
-              if isinstance(p.annotation, type)}
+              if isinstance(p.annotation, type) and p.annotation is not p.empty}   # 'empty' is itself a class!
     kinds = {name: p.kind for name, p in sig.parameters.items()}
-    ret = sig.return_annotation if isinstance(sig.return_annotation, type) else None
+    ret = sig.return_annotation
+    ret = ret if isinstance(ret, type) and ret is not sig.empty else None
 
     def check(label, value, expected):
         if not isinstance(value, expected):
@@ -2550,6 +4500,149 @@ vol = curry3(lambda l, w, h: l * w * h)
 print(vol(2)(3)(4))` },
     mcq: { q: 'Why must each step return a NEW function that captures the collected arguments, instead of appending to one shared list?', options: ['So intermediate functions can be reused independently (no shared mutable state)', 'Because lists are slow', 'Because closures cannot capture lists'], answer: 0, explain: 'If g = f(1) appended into a shared list, calling g(3, 4) and then g(5)(1) would mix arguments. Immutable tuples per step keep branches independent.' },
     hints: [`<p>Hint 1: Find the arity once: count parameters that are positional and have no default (<code>inspect.signature</code>).</p>`, `<p>Hint 2: Write a helper <code>collect(got)</code> that returns a function <code>step(*more)</code>: <code>args = got + more</code>; if enough → call f; else → return <code>collect(args)</code>.</p>`, `<p>Hint 3: Use tuples (immutable) for collected args so branches never interfere. Raise TypeError if <code>len(args) &gt; arity</code>. Use <code>functools.wraps</code> on each step.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            '@curry\n' +
+              'def vol(l, w, h):\n' +
+              '    return l * w * h\n' +
+              'result = [vol(2)(3)(4), vol(2, 3)(4), vol(2)(3, 4), vol(2, 3, 4), vol()(2)()(3)(4)]'
+          ],
+          [24, 24, 24, 24, 24]
+        ],
+        [
+          [
+            '@curry\n' +
+              'def vol(l, w, h):\n' +
+              '    return l * w * h\n' +
+              'g = vol(2)\n' +
+              'result = [g(3, 4), g(5)(1), g(1)(1)]'
+          ],
+          [24, 10, 2]
+        ],
+        [
+          [
+            '@curry\n' +
+              'def vol(l, w, h):\n' +
+              '    return l * w * h\n' +
+              'try:\n' +
+              '    vol(1, 2, 3, 4)\n' +
+              'except TypeError:\n' +
+              '    result = \'TypeError\''
+          ],
+          'TypeError'
+        ],
+        [
+          [
+            '@curry\n' +
+              'def vol(l, w, h):\n' +
+              '    return l * w * h\n' +
+              'result = vol.__name__'
+          ],
+          'vol'
+        ],
+        [['@curry\ndef neg(x):\n    return -x\nresult = [neg(5), neg()(6)]'], [-5, -6]],
+        [
+          [
+            '@curry\n' +
+              'def s20(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19):\n' +
+              '    return sum((a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19,))\n' +
+              'f = s20\n' +
+              'for i in range(20):\n' +
+              '    f = f(i)\n' +
+              'result = f'
+          ],
+          190
+        ],
+        [
+          [
+            '@curry\n' +
+              'def f(a, b, c=10):\n' +
+              '    return a + b + c\n' +
+              'result = f(1)(2)'
+          ],
+          13
+        ],
+        [
+          [
+            '@curry\n' +
+              'def f(a, b, c=10):\n' +
+              '    return a + b + c\n' +
+              'try:\n' +
+              '    f(1, 2, 3)\n' +
+              'except TypeError:\n' +
+              '    result = \'too many\''
+          ],
+          'too many'
+        ],
+        [
+          [
+            '@curry\n' +
+              'def vol(l, w, h):\n' +
+              '    return l * w * h\n' +
+              'g = vol(1)\n' +
+              'h = g(2)\n' +
+              'result = [h(3), h(4), g(5, 6), h(7)]'
+          ],
+          [6, 8, 30, 14]
+        ],
+        [
+          [
+            '@curry\n' +
+              'def vol(l, w, h):\n' +
+              '    return l * w * h\n' +
+              'try:\n' +
+              '    vol(1)(2)(3)(4)\n' +
+              'except TypeError:\n' +
+              '    result = \'TypeError\''
+          ],
+          'TypeError'
+        ],
+        [
+          [
+            '@curry\n' +
+              'def f(a, b):\n' +
+              '    return [a, b]\n' +
+              'result = [f(\'x\')(\'y\'), f(\'x\', \'y\')]'
+          ],
+          [['x', 'y'], ['x', 'y']]
+        ],
+        [
+          [
+            '@curry\n' +
+              'def f(a, b, c):\n' +
+              '    """doc"""\n' +
+              '    return a - b - c\n' +
+              'result = [f(10)(3)(2), f.__doc__]'
+          ],
+          [5, 'doc']
+        ],
+        [
+          [
+            '@curry\n' +
+              'def vol(l, w, h):\n' +
+              '    return l * w * h\n' +
+              'r = []\n' +
+              'for i in range(100000):\n' +
+              '    r.append(vol(1)(i)(2))\n' +
+              'result = [len(r), r[-1]]'
+          ],
+          [100000, 199998]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Recursive closure factory. <code>collect(got)</code> closes over an immutable tuple of arguments so far and returns a step function; each call either completes (enough args) or returns a fresh <code>collect</code> with a longer tuple.</p>`,
       code: { lang: 'python', run: true, code: `import functools

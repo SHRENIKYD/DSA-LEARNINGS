@@ -4,6 +4,26 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR for breaking ch
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.0] — 2026-10-20 · Phase 3 of 3
+
+Full release notes: [docs/RELEASE_PHASE3.md](docs/RELEASE_PHASE3.md).
+
+### Added
+- Tests for every problem in the Java, Python, JavaScript/TypeScript, C++ and SQL tracks: 1,508 problems, 6 skipped with the reason shown. SQL runs on the site's own SQLite build and on PostgreSQL, and TypeScript type puzzles are checked by the compiler.
+- Python, JavaScript/TypeScript and C++ versions of every brute-force sketch in DSA and Low-Level Design (913), and of the visualizer code panes, which now show the learner's language.
+- Route project checklists (6 criteria each) that count towards route progress and stage completion; "Study next" can point at a project.
+- Terraform (HCL) syntax highlighting.
+- The daily lesson-video search now spreads across every track (each module's first topic first) instead of finishing DSA before starting the next track.
+- A CI workflow that validates and tests every changed module on each push and pull request, plus a weekly full run.
+
+### Fixed
+- More than 110 faults in solutions, statements and examples found by the new tests: SQL boundaries and missing constraints, Python recursion crashes, JavaScript crashes and slow paths, Java code that could not compile, and C++ undefined behaviour.
+- Quiz, interview and quick-check wording that assumed Java now names each language's equivalent, with the same answers.
+- Two lessons had code blocks tagged with the wrong language: C++ programs in CS 8 were tagged as shell, and a RabbitMQ routing sketch in Backend 9 was tagged as YAML. They now display and validate correctly.
+
+### Changed
+- The solution checker gained SQL and TypeScript-type modes, nested generated values, large design tests, and support for C++ lesson programs that keep their own `main()`.
+
 ## [1.9.0] — 2026-10-19 · Phase 2 of 3
 
 Full release notes: [docs/RELEASE_PHASE2.md](docs/RELEASE_PHASE2.md).

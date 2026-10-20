@@ -256,6 +256,23 @@ console.log(safeDivide(10, 2), safeDivide(10, 0), safeDivide('x', 2)); // 5 null
 console.log(calc('+', 2, 3), calc('**', 2, 10), calc('max', 7, 9));` } },
       mcq: { q: 'You store operators in a plain object <code>OPS</code>. Why can <code>OPS[\'toString\']</code> be a problem?', options: ['It is inherited from Object.prototype, so the lookup finds a function you never added', 'It throws a SyntaxError', 'Plain objects cannot hold functions', 'Strings cannot be keys'], answer: 0, explain: 'Plain objects inherit from Object.prototype. Guard with Object.hasOwn(OPS, op), or build the table with Object.create(null) or a Map.' },
       hints: [`<p>Functions are values. What if each operator <b>key</b> mapped to a small arrow function that does the work?</p>`, `<p>Build <code>const OPS = { '+': (a, b) =&gt; a + b, … }</code>. Then <code>calc</code> is just: find the function, call it.</p>`, `<p>Edge case: inherited keys like <code>'toString'</code>. Use <code>Object.hasOwn(OPS, op)</code> before calling. Recipe: if not own key → throw; else return <code>OPS[op](a, b)</code>.</p>`],
+      tests: { sig: 'string double double -> string', fn: 'cc', harness: { js: `function cc(op, a, b) { try { return calc(op, a, b); } catch (e) { return 'throws:' + e.message; } }` }, cases: [
+        [["+",2,3],5],
+        [["-",2,3],-1],
+        [["*",4,5],20],
+        [["/",7,2],3.5],
+        [["**",2,10],1024],
+        [["max",7,9],9],
+        [["max",-3,-9],-3],
+        [["+",0.5,0.25],0.75],
+        [["/",1,4],0.25],
+        [["toString",1,2],"throws:Unknown operator: toString"],
+        [["constructor",1,2],"throws:Unknown operator: constructor"],
+        [["__proto__",1,2],"throws:Unknown operator: __proto__"],
+        [["hasOwnProperty",1,2],"throws:Unknown operator: hasOwnProperty"],
+        [["^",1,2],"throws:Unknown operator: ^"],
+        [["",1,2],"throws:Unknown operator: "]
+      ] },
       solution: {
         approach: `<p>Separate <b>data</b> (which operations exist) from <b>logic</b> (how to dispatch). A table of arrow functions is open for extension: adding <code>'%'</code> is one new line in the table. <code>Object.hasOwn</code> blocks inherited keys.</p>`,
         code: { lang: 'js', run: true, code: `// Lookup table: operator symbol -> function that performs it.
@@ -496,6 +513,26 @@ try { divide(10); } catch (e) { console.log(e.message); } // Missing parameter: 
 console.log(range(5), range(10, 0, -3));` } },
       mcq: { q: 'Inside <code>function range(start, end, step = 1)</code>, how do you detect that only ONE argument was passed?', options: ['<code>end === undefined</code>', '<code>end === null</code>', '<code>!end</code>', '<code>step === 1</code>'], answer: 0, explain: 'A missing argument is undefined. <code>!end</code> would wrongly treat range(5, 0) (end = 0) as one argument.' },
       hints: [`<p>Default parameters handle <code>step</code>. The tricky part is "one argument means it is the end".</p>`, `<p>If <code>end === undefined</code>, shift: <code>end = start; start = 0</code>. Use <code>let</code>-style reassignment of parameters (fine for primitives).</p>`, `<p>Loop condition depends on direction: <code>step &gt; 0 ? i &lt; end : i &gt; end</code>. Guard <code>step === 0</code> first, or you loop forever.</p>`],
+      tests: { sig: 'int[] -> int[]', fn: 'rg', harness: { js: `function rg(a) { try { return range(...a); } catch (e) { return e.name; } }` }, cases: [
+        [[[5]],[0,1,2,3,4]],
+        [[[2,6]],[2,3,4,5]],
+        [[[10,0,-3]],[10,7,4,1]],
+        [[[3,1]],[]],
+        [[[1,5,0]],"RangeError"],
+        [[[0]],[]],
+        [[[-3]],[]],
+        [[[-2,2]],[-2,-1,0,1]],
+        [[[5,0,-1]],[5,4,3,2,1]],
+        [[[0,10,3]],[0,3,6,9]],
+        [[[0,10,5]],[0,5]],
+        [[[1,2,10]],[1]],
+        [[[7,7]],[]],
+        [[[4,4,-1]],[]],
+        [[[0,5,0]],"RangeError"],
+        [[[0,1000000,10]],{"$range":[0,1000000,10]}],
+        [[[1000000,-1000000,-20]],{"$range":[1000000,-1000000,-20]}],
+        [[[100000]],{"$range":[0,100000]}]
+      ] },
       solution: {
         approach: `<p>Use defaults for <code>step</code>, detect the one-argument form with <code>end === undefined</code>, guard the infinite-loop case, then run one loop whose stopping test depends on the sign of <code>step</code>.</p>`,
         code: { lang: 'js', run: true, code: `function range(start, end, step = 1) {
@@ -745,6 +782,21 @@ console.log(added === todos); // false — a new array, so a UI can detect the c
 console.log(moveZeroes([0, 1, 0, 3, 12])); // [ 1, 3, 12, 0, 0 ]` } },
       mcq: { q: 'What is the key idea that avoids O(n²) shifting?', options: ['Keep a "write" index: copy each non-zero to the next write slot, then fill the rest with zeros', 'Sort the array descending', 'Use filter and concat', 'Use unshift for non-zeros'], answer: 0, explain: 'filter/concat creates a new array (violates in-place). A write pointer touches each item a constant number of times: O(n).' },
       hints: [`<p>You never need to <i>remove</i> anything. Think of compacting non-zeros to the front, like squeezing toothpaste.</p>`, `<p>Keep <code>write = 0</code>. For each item, if it is non-zero, put it at <code>nums[write]</code> and do <code>write++</code>.</p>`, `<p>After the loop, every slot from <code>write</code> to the end must become 0. Edge cases: no zeros (write reaches n), all zeros (write stays 0).</p>`],
+      tests: { sig: 'int[] -> int[]', fn: 'mz', harness: { js: `function mz(arr) { const r = moveZeroes(arr); return r === arr ? arr : 'NOT THE SAME ARRAY'; }` }, cases: [
+        [[[0,1,0,3,12]],[1,3,12,0,0]],
+        [[[0]],[0]],
+        [[[1]],[1]],
+        [[[0,0,0]],[0,0,0]],
+        [[[1,2,3]],[1,2,3]],
+        [[[0,0,1]],[1,0,0]],
+        [[[-1,0,-2]],[-1,-2,0]],
+        [[[4,5]],[4,5]],
+        [[[5,0]],[5,0]],
+        [[[0,-7,0,0,7]],[-7,7,0,0,0]],
+        [[{"$concat":[{"$rep":0,"n":50000},{"$rep":7,"n":50000}]}],{"$concat":[{"$rep":7,"n":50000},{"$rep":0,"n":50000}]}],
+        [[{"$range":[1,100001]}],{"$range":[1,100001]}],
+        [[{"$rep":0,"n":100000}],{"$rep":0,"n":100000}]
+      ] },
       solution: {
         approach: `<p>Two pointers: <code>read</code> scans every item; <code>write</code> marks where the next non-zero belongs. Non-zeros are copied forward in order; then the tail is filled with zeros. Each element is read once and written at most twice.</p>`,
         code: { lang: 'js', run: true, code: `function moveZeroes(nums) {
@@ -988,6 +1040,28 @@ demo();` } }
 console.log(report([{ id: 'A1', status: 'paid', items: [{ price: 30, qty: 2 }, { price: 50, qty: 1 }] }]));` } },
       mcq: { q: 'Which order of steps does the least work?', options: ['filter by status → map to {id, total} → filter by total', 'map to totals for all → filter by status → filter by total', 'sort by total → filter → map', 'forEach and push'], answer: 0, explain: 'The cheap status check removes unpaid orders before the expensive total calculation; the total is computed once in map and reused by the second filter.' },
       hints: [`<p>Do the <b>cheap</b> filter first (status), the <b>expensive</b> calculation once (total), then the filter that needs it.</p>`, `<p>Total of one order: <code>o.items.reduce((s, it) =&gt; s + it.price * it.qty, 0)</code> — or a <code>for...of</code> if reduce feels new (next topic!).</p>`, `<p>Recipe: <code>orders.filter(paid).map(o =&gt; ({ id: o.id, total: totalOf(o) })).filter(r =&gt; r.total &gt;= 100)</code>. Remember the brackets around the object literal. Empty items → total 0.</p>`],
+      tests: { sig: 'string -> string', fn: 'rp', harness: { js: `function rp(spec) {
+  if (spec.startsWith('BIG:')) {
+    const n = +spec.slice(4), orders = [];
+    for (let i = 0; i < n; i++) orders.push({ id: 'o' + i, status: i % 3 === 0 ? 'paid' : 'pending', items: [{ price: (i % 50) * 10, qty: (i % 4) + 1 }, { price: 5, qty: 3 }] });
+    const r = report(orders); let sum = 0; for (const x of r) sum += x.total;
+    return { n: r.length, sum, first: r[0].id, last: r[r.length - 1].id };
+  }
+  const orders = JSON.parse(spec), before = JSON.stringify(orders);
+  const r = report(orders);
+  return JSON.stringify(orders) === before ? r : 'MUTATED';
+}` }, cases: [
+        [["[{\"id\":\"A1\",\"status\":\"paid\",\"items\":[{\"price\":30,\"qty\":2},{\"price\":50,\"qty\":1}]},{\"id\":\"A2\",\"status\":\"pending\",\"items\":[{\"price\":500,\"qty\":1}]},{\"id\":\"A3\",\"status\":\"paid\",\"items\":[{\"price\":20,\"qty\":3}]},{\"id\":\"A4\",\"status\":\"paid\",\"items\":[]},{\"id\":\"A5\",\"status\":\"paid\",\"items\":[{\"price\":100,\"qty\":1}]}]"],[{"id":"A1","total":110},{"id":"A5","total":100}]],
+        [["[]"],[]],
+        [["[{\"id\":\"x\",\"status\":\"paid\",\"items\":[{\"price\":99,\"qty\":1}]}]"],[]],
+        [["[{\"id\":\"x\",\"status\":\"paid\",\"items\":[{\"price\":100,\"qty\":1}]}]"],[{"id":"x","total":100}]],
+        [["[{\"id\":\"x\",\"status\":\"PAID\",\"items\":[{\"price\":1000,\"qty\":1}]}]"],[]],
+        [["[{\"id\":\"x\",\"status\":\"paid\",\"items\":[{\"price\":0,\"qty\":5},{\"price\":50,\"qty\":2}]}]"],[{"id":"x","total":100}]],
+        [["[{\"id\":\"b\",\"status\":\"paid\",\"items\":[{\"price\":1000000,\"qty\":1000},{\"price\":1,\"qty\":1}]},{\"id\":\"a\",\"status\":\"paid\",\"items\":[{\"price\":60,\"qty\":1},{\"price\":40,\"qty\":1}]}]"],[{"id":"b","total":1000000001},{"id":"a","total":100}]],
+        [["[{\"id\":\"x\",\"status\":\"refunded\",\"items\":[{\"price\":1000,\"qty\":1}]},{\"id\":\"y\",\"status\":\"pending\",\"items\":[{\"price\":1000,\"qty\":1}]}]"],[]],
+        [["[{\"id\":\"o0\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":0,\"qty\":1}]},{\"id\":\"o1\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":1,\"qty\":1}]},{\"id\":\"o2\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":2,\"qty\":1}]},{\"id\":\"o3\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":3,\"qty\":1}]},{\"id\":\"o4\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":4,\"qty\":1}]},{\"id\":\"o5\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":5,\"qty\":1}]},{\"id\":\"o6\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":6,\"qty\":1}]},{\"id\":\"o7\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":7,\"qty\":1}]},{\"id\":\"o8\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":8,\"qty\":1}]},{\"id\":\"o9\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":9,\"qty\":1}]},{\"id\":\"o10\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":10,\"qty\":1}]},{\"id\":\"o11\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":11,\"qty\":1}]},{\"id\":\"o12\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":12,\"qty\":1}]},{\"id\":\"o13\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":13,\"qty\":1}]},{\"id\":\"o14\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":14,\"qty\":1}]},{\"id\":\"o15\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":15,\"qty\":1}]},{\"id\":\"o16\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":16,\"qty\":1}]},{\"id\":\"o17\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":17,\"qty\":1}]},{\"id\":\"o18\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":18,\"qty\":1}]},{\"id\":\"o19\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":19,\"qty\":1}]},{\"id\":\"o20\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":20,\"qty\":1}]},{\"id\":\"o21\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":21,\"qty\":1}]},{\"id\":\"o22\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":22,\"qty\":1}]},{\"id\":\"o23\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":23,\"qty\":1}]},{\"id\":\"o24\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":24,\"qty\":1}]},{\"id\":\"o25\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":25,\"qty\":1}]},{\"id\":\"o26\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":26,\"qty\":1}]},{\"id\":\"o27\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":27,\"qty\":1}]},{\"id\":\"o28\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":28,\"qty\":1}]},{\"id\":\"o29\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":29,\"qty\":1}]},{\"id\":\"o30\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":30,\"qty\":1}]},{\"id\":\"o31\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":31,\"qty\":1}]},{\"id\":\"o32\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":32,\"qty\":1}]},{\"id\":\"o33\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":33,\"qty\":1}]},{\"id\":\"o34\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":34,\"qty\":1}]},{\"id\":\"o35\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":35,\"qty\":1}]},{\"id\":\"o36\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":36,\"qty\":1}]},{\"id\":\"o37\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":37,\"qty\":1}]},{\"id\":\"o38\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":38,\"qty\":1}]},{\"id\":\"o39\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":39,\"qty\":1}]},{\"id\":\"o40\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":40,\"qty\":1}]},{\"id\":\"o41\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":41,\"qty\":1}]},{\"id\":\"o42\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":42,\"qty\":1}]},{\"id\":\"o43\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":43,\"qty\":1}]},{\"id\":\"o44\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":44,\"qty\":1}]},{\"id\":\"o45\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":45,\"qty\":1}]},{\"id\":\"o46\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":46,\"qty\":1}]},{\"id\":\"o47\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":47,\"qty\":1}]},{\"id\":\"o48\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":48,\"qty\":1}]},{\"id\":\"o49\",\"status\":\"paid\",\"items\":[{\"price\":2,\"qty\":1},{\"price\":49,\"qty\":1}]}]"],[]],
+        [["BIG:100000"],{"n":30002,"sum":20823310,"first":"o3","last":"o99999"}]
+      ] },
       solution: {
         approach: `<p>Three-station pipeline: cheap filter → map that computes each total exactly once into a new small object → filter on the computed total. Pure: the input array and its objects are never modified.</p>`,
         code: { lang: 'js', run: true, code: `// Sum of price * qty for one order (0 for no items).
@@ -1231,6 +1305,17 @@ console.log(prefixA, prefixB); // [ 2, 7, 8 ] [ 2, 7, 8 ]` } }
 console.log(tally(['bob', 'amy', 'bob', 'cat', 'amy']));` } },
       mcq: { q: 'After counting, how do you apply the tie-break "alphabetically smaller wins" in one pass?', options: ['Replace the best when count is greater, OR equal and name &lt; best name', 'Sort names descending first', 'Only replace when count is greater', 'Use Math.max on the counts'], answer: 0, explain: 'Comparing (count, then name) in the replacement condition handles ties without sorting. Only "greater" would keep whichever name appeared first in insertion order.' },
       hints: [`<p>Two stages: (1) count everything in one pass, (2) scan the counts once to pick the winner.</p>`, `<p>Counting: <code>votes.reduce((acc, v) =&gt; { acc[v] = (acc[v] ?? 0) + 1; return acc; }, {})</code>. Picking: <code>Object.entries(counts).reduce(...)</code> with the tie rule.</p>`, `<p>Tie rule in the comparison: <code>c &gt; best.c || (c === best.c &amp;&amp; name &lt; best.name)</code>. Empty input: counts is <code>{}</code> and winner stays <code>null</code>.</p>`],
+      tests: { sig: 'string[] -> string', fn: 'ty', harness: { js: `function ty(votes) { return tally(votes); }` }, cases: [
+        [[["bob","amy","bob","cat","amy"]],{"winner":"amy","counts":{"bob":2,"amy":2,"cat":1}}],
+        [[["zed","zed","amy"]],{"winner":"zed","counts":{"zed":2,"amy":1}}],
+        [[[]],{"winner":null,"counts":{}}],
+        [[["a"]],{"winner":"a","counts":{"a":1}}],
+        [[["b","a","c","b","a","c"]],{"winner":"a","counts":{"b":2,"a":2,"c":2}}],
+        [[["constructor","constructor","a"]],{"winner":"constructor","counts":{"constructor":2,"a":1}}],
+        [[["tostring","valueof","valueof"]],{"winner":"valueof","counts":{"tostring":1,"valueof":2}}],
+        [[["z","y","x"]],{"winner":"x","counts":{"z":1,"y":1,"x":1}}],
+        [[{"$concat":[{"$rep":"x","n":500000},{"$rep":"y","n":500001}]}],{"winner":"y","counts":{"x":500000,"y":500001}}]
+      ] },
       solution: {
         approach: `<p>Reduce #1 builds the frequency object in O(n). Reduce #2 walks the (name, count) pairs once and keeps the best pair, using the tie-break in the comparison. Starting the second accumulator at <code>{ name: null, c: 0 }</code> handles the empty case naturally.</p>`,
         code: { lang: 'js', run: true, code: `function tally(votes) {
@@ -1238,7 +1323,7 @@ console.log(tally(['bob', 'amy', 'bob', 'cat', 'amy']));` } },
   const counts = votes.reduce((acc, name) => {
     acc[name] = (acc[name] ?? 0) + 1;
     return acc;
-  }, {});
+  }, Object.create(null)); // no inherited keys, so a candidate named 'constructor' counts correctly
 
   // Pass 2: pick the best (higher count, then alphabetically smaller name)
   const best = Object.entries(counts).reduce(
@@ -1457,6 +1542,23 @@ console.log(s.length, s.toSorted((x, y) => x - y).join() === deck.join()); // 5 
 console.log(sortEmployees([{ name: 'Zed', dept: 'eng', salary: 120 }, { name: 'Amy', dept: 'Eng', salary: 150 }]).map(e => e.name));` } },
       mcq: { q: 'Which comparator implements dept asc → salary desc → name asc?', options: ['<code>(a, b) =&gt; cmp(a.dept, b.dept) || b.salary - a.salary || cmp(a.name, b.name)</code>', '<code>(a, b) =&gt; a.dept &gt; b.dept || a.salary &lt; b.salary</code>', '<code>(a, b) =&gt; a.salary - b.salary || cmp(a.dept, b.dept)</code>', '<code>(a, b) =&gt; cmp(a.name, b.name)</code>'], answer: 0, explain: 'Compare keys in priority order; || falls through to the next key only when the previous result is 0 (a tie). Salary descending means b − a.' },
       hints: [`<p>Write one comparator that checks keys in priority order. A key only matters when all earlier keys tie.</p>`, `<p><code>||</code> returns the first non-zero (truthy) result. Salary descending = <code>b.salary - a.salary</code>. Case-insensitive strings: <code>localeCompare</code> with <code>{ sensitivity: 'base' }</code>.</p>`, `<p>Use <code>toSorted</code> (or <code>[...list].sort</code>) to avoid mutation. Edge cases: equal everything → 0 (stable keeps input order), empty list → [].</p>`],
+      tests: { sig: 'string[][] -> string[][]', fn: 'se', harness: { js: `function se(rows) {
+  const staff = rows.map(([name, dept, salary]) => ({ name, dept, salary })), before = JSON.stringify(staff);
+  const r = sortEmployees(staff);
+  return JSON.stringify(staff) === before ? r.map((e) => [e.name, e.dept, e.salary]) : 'MUTATED';
+}` }, cases: [
+        [[[["Zed","eng",120],["Amy","Eng",150],["Bob","ops",90],["Cal","eng",120]]],[["Amy","Eng",150],["Cal","eng",120],["Zed","eng",120],["Bob","ops",90]]],
+        [[[]],[]],
+        [[[["Solo","x",1]]],[["Solo","x",1]]],
+        [[[["a","d",10],["b","d",30],["c","d",20]]],[["b","d",30],["c","d",20],["a","d",10]]],
+        [[[["n","B",1],["m","a",1]]],[["m","a",1],["n","B",1]]],
+        [[[["bob","x",1],["Amy","x",1]]],[["Amy","x",1],["bob","x",1]]],
+        [[[["Amy","d",1],["amy","d",1]]],[["Amy","d",1],["amy","d",1]]],
+        [[[["amy","d",1],["Amy","d",1]]],[["amy","d",1],["Amy","d",1]]],
+        [[[["a","z",-5],["b","z",-10],["c","z",0]]],[["c","z",0],["a","z",-5],["b","z",-10]]],
+        [[[["a","ops",5],["b","eng",1],["c","Ops",9],["d","ENG",1]]],[["b","eng",1],["d","ENG",1],["c","Ops",9],["a","ops",5]]],
+        [[{"$rep":["n","d",5],"n":100000}],{"$rep":["n","d",5],"n":100000}]
+      ] },
       solution: {
         approach: `<p>One comparator, three keys chained with <code>||</code>. A shared <code>Intl.Collator</code> gives fast, case-insensitive string comparison. <code>toSorted</code> keeps the input intact; TimSort makes it O(n log n) and stable.</p>`,
         code: { lang: 'js', run: true, code: `const collator = new Intl.Collator('en', { sensitivity: 'base' }); // 'Eng' equals 'eng'
@@ -1698,6 +1800,28 @@ console.log(counter.incArrow());           // 'object' or 'undefined' depending 
 console.log(invert({ alice: 'admin', bob: 'user', cara: 'admin' }));` } },
       mcq: { q: 'Why use <code>Object.create(null)</code> (or a Map) for the result here?', options: ['A value like "constructor" or "__proto__" would clash with inherited properties of a plain {}', 'Plain objects cannot hold arrays', 'It is faster to create', 'Object.entries does not work on plain objects'], answer: 0, explain: 'If a value is "constructor", <code>result["constructor"]</code> already exists on a plain object (inherited), so <code>??=</code> would not create a fresh array. A prototype-less object or Map avoids that.' },
       hints: [`<p>Walk the entries once. For each <code>[key, value]</code>, the <b>value</b> becomes a bucket name and the <b>key</b> goes in that bucket.</p>`, `<p><code>(out[value] ??= []).push(key)</code> creates the bucket on first sight. Use <code>Object.create(null)</code> for <code>out</code> so values like "constructor" are safe.</p>`, `<p>Order: <code>Object.entries</code> follows key order, so buckets fill in original order. Empty object → empty result. Number values become string keys automatically.</p>`],
+      tests: { sig: 'string -> string', fn: 'inv', harness: { js: `function inv(json) {
+  if (json.startsWith('BIG:')) {
+    const n = +json.slice(4), o = {};
+    for (let i = 0; i < n; i++) o['k' + i] = i % 10;
+    const r = invert(o), out = {};
+    for (const k of Object.keys(r)) out[k] = [r[k].length, r[k][0], r[k][r[k].length - 1]];
+    return out;
+  }
+  const o = JSON.parse(json), before = JSON.stringify(o), r = invert(o);
+  return JSON.stringify(o) === before ? r : 'MUTATED';
+}` }, cases: [
+        [["{\"alice\":\"admin\",\"bob\":\"user\",\"cara\":\"admin\"}"],{"admin":["alice","cara"],"user":["bob"]}],
+        [["{\"x\":1,\"y\":2,\"z\":1}"],{"1":["x","z"],"2":["y"]}],
+        [["{\"a\":\"constructor\"}"],{"constructor":["a"]}],
+        [["{\"a\":\"toString\",\"b\":\"toString\"}"],{"toString":["a","b"]}],
+        [["{}"],{}],
+        [["{\"a\":1}"],{"1":["a"]}],
+        [["{\"a\":1,\"b\":\"1\"}"],{"1":["a","b"]}],
+        [["{\"a\":1.5,\"b\":-2,\"c\":1.5}"],{"1.5":["a","c"],"-2":["b"]}],
+        [["{\"c\":\"v\",\"b\":\"v\",\"a\":\"v\"}"],{"v":["c","b","a"]}],
+        [["BIG:100000"],{"0":[10000,"k0","k99990"],"1":[10000,"k1","k99991"],"2":[10000,"k2","k99992"],"3":[10000,"k3","k99993"],"4":[10000,"k4","k99994"],"5":[10000,"k5","k99995"],"6":[10000,"k6","k99996"],"7":[10000,"k7","k99997"],"8":[10000,"k8","k99998"],"9":[10000,"k9","k99999"]}]
+      ] },
       solution: {
         approach: `<p>Single pass over <code>Object.entries</code>; group keys into buckets named by their value. A prototype-less accumulator prevents clashes with inherited names. Returns a fresh object, input untouched.</p>`,
         code: { lang: 'js', run: true, code: `function invert(obj) {
@@ -1941,6 +2065,33 @@ const out = mergeSettings(
 console.log(out.editor); // { tabSize: 4 } — 'wrap' is gone` } },
       mcq: { q: 'Which check correctly decides "merge recursively" for a value v?', options: ['<code>v !== null &amp;&amp; typeof v === \'object\' &amp;&amp; !Array.isArray(v)</code>', '<code>typeof v === \'object\'</code>', '<code>v instanceof Object</code>', '<code>Object.keys(v).length &gt; 0</code>'], answer: 0, explain: 'typeof null is "object" and arrays are objects too; both must be excluded. instanceof Object is also true for arrays, dates and functions.' },
       hints: [`<p>Start from a shallow copy of <code>defaults</code>. Then walk the override's entries and decide per key: recurse or replace.</p>`, `<p>Write a helper <code>isPlainObject(v)</code>. Recurse only when <b>both</b> the default value and the override value are plain objects.</p>`, `<p>Skip keys whose override is <code>undefined</code>. Because you always build new objects with spread, neither input is mutated. Arrays are replaced (copy them with <code>[...v]</code> so the result does not share them).</p>`],
+      tests: { sig: 'string string -> string', fn: 'ms', harness: { js: `function ms(d, o) {
+  const fix = (v) => { if (v === '__undef__') return undefined; if (Array.isArray(v)) return v.map(fix); if (v && typeof v === 'object') { const r = {}; for (const k of Object.keys(v)) r[k] = fix(v[k]); return r; } return v; };
+  if (d === 'DEEP') {
+    const nest = (leaf) => { let x = leaf; for (let i = 0; i < 20; i++) x = { a: x }; return x; };
+    const dd = nest({ x: 1, y: 2 }), oo = nest({ x: 9 }), b1 = JSON.stringify(dd), b2 = JSON.stringify(oo);
+    const r = mergeSettings(dd, oo); let leaf = r; for (let i = 0; i < 20; i++) leaf = leaf.a;
+    return JSON.stringify(dd) === b1 && JSON.stringify(oo) === b2 ? leaf : 'MUTATED';
+  }
+  const dd = fix(JSON.parse(d)), oo = o === '' ? undefined : fix(JSON.parse(o)), b1 = JSON.stringify(dd), b2 = JSON.stringify(oo);
+  const r = mergeSettings(dd, oo);
+  return JSON.stringify(dd) === b1 && JSON.stringify(oo) === b2 ? r : 'MUTATED';
+}` }, cases: [
+        [["{\"theme\":\"light\",\"editor\":{\"tabSize\":2,\"wrap\":true},\"plugins\":[\"git\"]}","{\"editor\":{\"tabSize\":4},\"plugins\":[\"lint\"]}"],{"theme":"light","editor":{"tabSize":4,"wrap":true},"plugins":["lint"]}],
+        [["{\"theme\":\"light\",\"editor\":{\"tabSize\":2,\"wrap\":true},\"plugins\":[\"git\"]}","{\"theme\":\"__undef__\"}"],{"theme":"light","editor":{"tabSize":2,"wrap":true},"plugins":["git"]}],
+        [["{\"theme\":\"light\",\"editor\":{\"tabSize\":2,\"wrap\":true},\"plugins\":[\"git\"]}","{\"editor\":null}"],{"theme":"light","editor":null,"plugins":["git"]}],
+        [["{\"a\":1}","{\"a\":{\"b\":2}}"],{"a":{"b":2}}],
+        [["{\"p\":[1,2,3]}","{\"p\":[9]}"],{"p":[9]}],
+        [["{\"p\":[1,2,3]}","{\"p\":[]}"],{"p":[]}],
+        [["{\"a\":[1]}","{\"a\":{\"x\":1}}"],{"a":{"x":1}}],
+        [["{\"a\":{\"b\":{\"c\":1,\"d\":2},\"e\":3}}","{\"a\":{\"b\":{\"c\":10}}}"],{"a":{"b":{"c":10,"d":2},"e":3}}],
+        [["{\"theme\":\"light\",\"editor\":{\"tabSize\":2,\"wrap\":true},\"plugins\":[\"git\"]}",""],{"theme":"light","editor":{"tabSize":2,"wrap":true},"plugins":["git"]}],
+        [["{\"theme\":\"light\",\"editor\":{\"tabSize\":2,\"wrap\":true},\"plugins\":[\"git\"]}","{}"],{"theme":"light","editor":{"tabSize":2,"wrap":true},"plugins":["git"]}],
+        [["{}","{\"x\":{\"y\":1},\"z\":0}"],{"x":{"y":1},"z":0}],
+        [["{\"flag\":true,\"n\":5}","{\"flag\":false,\"n\":0}"],{"flag":false,"n":0}],
+        [["{\"a\":{\"b\":1}}","{\"a\":{\"b\":\"__undef__\",\"c\":2}}"],{"a":{"b":1,"c":2}}],
+        [["DEEP",""],{"x":9,"y":2}]
+      ] },
       solution: {
         approach: `<p>Recursive structural merge. Copy the defaults' top level, then for each override key: if both sides are plain objects, recurse; if the override is undefined, keep the default; otherwise replace (copying arrays). Every level that differs is a fresh object, so inputs stay untouched.</p>`,
         code: { lang: 'js', run: true, code: `const isPlainObject = v =>
@@ -2210,10 +2361,28 @@ const r = load(save({ at: new Date(0), steps: [{ due: new Date(0) }] }));
 console.log(r.value.at instanceof Date, r.value.steps[0].due instanceof Date); // true false` } },
       mcq: { q: 'Why does a reviver reach nested dates automatically?', options: ['JSON.parse calls it for every key at every depth, children before parents', 'It only runs on top-level keys, so you must recurse yourself', 'Dates are revived by default', 'Because stringify stored type information'], answer: 0, explain: 'The reviver is invoked bottom-up for every property in every object and array, ending with the root (key ""). JSON itself stores no type information — that is why we must recognise the ISO pattern.' },
       hints: [`<p>stringify already turns Dates into ISO strings via <code>Date.prototype.toJSON</code>. The hard part is going back.</p>`, `<p>Use a reviver that tests strings against an ISO-8601 regex and returns <code>new Date(value)</code>. It runs on every nested value for free.</p>`, `<p>Wrap <code>JSON.parse</code> in try/catch and return <code>{ ok: false, error }</code>. Also reject an invalid date (<code>isNaN(d.getTime())</code>) by leaving the string as it was.</p>`],
+      tests: { sig: 'string -> string', fn: 'rt', harness: { js: `function rt(spec) {
+  const build = (v) => { if (typeof v === 'string' && v.startsWith('date:')) return new Date(v.slice(5)); if (Array.isArray(v)) return v.map(build); if (v && typeof v === 'object') { const r = {}; for (const k of Object.keys(v)) r[k] = build(v[k]); return r; } return v; };
+  const show = (v) => { if (v instanceof Date) return 'DATE:' + v.getTime(); if (Array.isArray(v)) return v.map(show); if (v && typeof v === 'object') { const r = {}; for (const k of Object.keys(v)) r[k] = show(v[k]); return r; } return v; };
+  if (spec.startsWith('RAW:')) { const r = load(spec.slice(4)); return r.ok ? { ok: true, value: show(r.value) } : { ok: false, name: r.error.split(':')[0] }; }
+  const original = build(JSON.parse(spec)), r = load(save(original));
+  return r.ok ? { ok: true, value: show(r.value) } : { ok: false, name: r.error };
+}` }, cases: [
+        [["{\"title\":\"launch\",\"at\":\"date:2026-03-01T09:30:00.000Z\",\"steps\":[{\"due\":\"date:1970-01-01T00:00:00.000Z\"}]}"],{"ok":true,"value":{"title":"launch","at":"DATE:1772357400000","steps":[{"due":"DATE:0"}]}}],
+        [["RAW:{oops}"],{"ok":false,"name":"SyntaxError"}],
+        [["RAW:"],{"ok":false,"name":"SyntaxError"}],
+        [["RAW:[1,2"],{"ok":false,"name":"SyntaxError"}],
+        [["RAW:null"],{"ok":true,"value":null}],
+        [["{\"a\":1,\"b\":\"x\",\"c\":[true,null]}"],{"ok":true,"value":{"a":1,"b":"x","c":[true,null]}}],
+        [["[\"date:2026-02-20T00:00:00.000Z\",1,{\"d\":\"date:2000-01-01T12:34:56.789Z\"}]"],{"ok":true,"value":["DATE:1771545600000",1,{"d":"DATE:946730096789"}]}],
+        [["{\"s\":\"2020-01-01\",\"t\":\"not a date\"}"],{"ok":true,"value":{"s":"2020-01-01","t":"not a date"}}],
+        [["{\"a\":{\"b\":{\"c\":[[{\"d\":\"date:1999-12-31T23:59:59.999Z\"}]]}}}"],{"ok":true,"value":{"a":{"b":{"c":[[{"d":"DATE:946684799999"}]]}}}}],
+        [["{\"far\":\"date:+010000-01-01T00:00:00.000Z\",\"old\":\"date:0001-01-01T00:00:00.000Z\"}"],{"ok":true,"value":{"far":"DATE:253402300800000","old":"DATE:-62135596800000"}}]
+      ] },
       solution: {
         approach: `<p>Serialise with plain <code>JSON.stringify</code> (Dates become ISO strings). Deserialise with <code>JSON.parse</code> plus a reviver that recognises the exact ISO format stringify produces and rebuilds valid Dates. try/catch turns syntax errors into a result object instead of an exception.</p>`,
         code: { lang: 'js', run: true, code: `// Exactly the format Date.prototype.toJSON produces: 2026-03-01T09:30:00.000Z
-const ISO_DATE = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/;
+const ISO_DATE = /^(?:\\d{4}|[+-]\\d{6})-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/;
 
 function save(obj) {
   return JSON.stringify(obj);
@@ -2637,6 +2806,29 @@ class KthLargest {
 console.log(chunk([1, 2, 3, 4, 5], 2)); // [ [ 1, 2 ], [ 3, 4 ], [ 5 ] ]` } },
     mcq: { q: 'Which call extracts the chunk that starts at index i?', options: ['<code>arr.slice(i, i + size)</code>', '<code>arr.splice(i, i + size)</code>', '<code>arr.slice(i, size)</code>', '<code>arr.slice(i * size)</code>'], answer: 0, explain: 'slice(start, end) copies [start, end). slice ignores an end past the array length, which handles the short last chunk for free. splice would mutate.' },
     hints: [`<p>Jump the index by <code>size</code> each time: 0, size, 2·size… Each jump starts a new group.</p>`, `<p><code>arr.slice(i, i + size)</code> copies one group without mutating, and quietly stops at the array's end.</p>`, `<p>Validate <code>size</code> first (0 would loop forever). Empty input → <code>[]</code>. One-liner variant: <code>Array.from({ length: Math.ceil(n / size) }, (_, k) =&gt; arr.slice(k * size, k * size + size))</code>.</p>`],
+    tests: { sig: 'int[] int -> string', fn: 'ck', harness: { js: `function ck(arr, size) {
+  try {
+    const before = arr.length;
+    const r = chunk(arr, size);
+    if (arr.length !== before) return 'MUTATED';
+    if (before > 1000) { let total = 0; for (const c of r) total += c.length; return { chunks: r.length, first: r.length ? r[0].length : 0, last: r.length ? r[r.length - 1].length : 0, total }; }
+    return r;
+  } catch (e) { return e.name; }
+}` }, cases: [
+      [[[1,2,3,4,5],2],[[1,2],[3,4],[5]]],
+      [[["a","b","c"],5],[["a","b","c"]]],
+      [[[],3],[]],
+      [[[1],0],"RangeError"],
+      [[[1],-1],"RangeError"],
+      [[[1,2,3],3],[[1,2,3]]],
+      [[[1,2,3],1],[[1],[2],[3]]],
+      [[[1,2,3,4],2],[[1,2],[3,4]]],
+      [[[7],1],[[7]]],
+      [[[1,2],1000000],[[1,2]]],
+      [[{"$range":[0,1000000]},3],{"chunks":333334,"first":3,"last":1,"total":1000000}],
+      [[{"$range":[0,1000000]},1000000],{"chunks":1,"first":1000000,"last":1000000,"total":1000000}],
+      [[{"$range":[0,1000000]},1],{"chunks":1000000,"first":1,"last":1,"total":1000000}]
+    ] },
     solution: {
       approach: `<p>Step the start index by <code>size</code> and slice each window. Every element is copied exactly once, the input is untouched, and the short tail falls out naturally.</p>`,
       code: { lang: 'js', run: true, code: `function chunk(arr, size) {
@@ -2670,6 +2862,27 @@ try { chunk([1], 0); } catch (e) { console.log(e.name); } // RangeError` },
 console.log(unique([3, 1, 3, 'a', 1, NaN, NaN])); // [ 3, 1, 'a' ]  <- NaN lost!` } },
     mcq: { q: 'Why does <code>[...new Set(arr)]</code> keep exactly one NaN?', options: ['Set uses SameValueZero equality, where NaN equals NaN', 'Set converts values to strings', 'Spread removes NaN duplicates', 'It does not — all NaNs are removed'], answer: 0, explain: 'Set, Map and includes use SameValueZero: like === except NaN equals NaN. Sets also keep insertion order, so first occurrences stay in place.' },
     hints: [`<p>You need fast "have I seen this before?" checks — a hash-based structure, not a scan.</p>`, `<p>A <code>Set</code> stores each value once and remembers insertion order. Spreading it back gives an array.</p>`, `<p>Check NaN handling and order. Explicit loop version: if <code>!seen.has(x)</code>, add it to <code>seen</code> and push to output.</p>`],
+    tests: { sig: 'string string[] -> string[]', fn: 'uq', harness: { js: `function uq(mode, tokens) {
+  const mk = (t) => t === 'null' ? null : t === 'undef' ? undefined : t === 'NaN' ? NaN : t === 'true' ? true : t === 'false' ? false
+    : t.startsWith('n:') ? Number(t.slice(2)) : t.startsWith('s:') ? t.slice(2) : (() => { const [id, tag] = t.slice(3).split('/'); return { id: Number(id), tag }; })();
+  const show = (v) => v === null ? 'null' : v === undefined ? 'undef' : typeof v === 'number' ? (Number.isNaN(v) ? 'NaN' : 'n:' + (Object.is(v, -0) ? '-0' : v)) : typeof v === 'string' ? 's:' + v : typeof v === 'boolean' ? String(v) : 'id:' + v.id + '/' + v.tag;
+  const input = tokens.map(mk);
+  const r = mode === 'u' ? unique(input) : uniqueBy(input, (o) => o.id);
+  return r === input ? ['SAME ARRAY'] : r.map(show);
+}` }, cases: [
+      [["u",["n:3","n:1","n:3","s:a","n:1","NaN","NaN"]],["n:3","n:1","s:a","NaN"]],
+      [["u",[]],[]],
+      [["u",["NaN"]],["NaN"]],
+      [["u",["s:1","n:1"]],["s:1","n:1"]],
+      [["u",["null","undef","null","undef"]],["null","undef"]],
+      [["u",["n:0","n:-0"]],["n:0"]],
+      [["u",["n:0","n:-0","n:5"]],["n:0","n:5"]],
+      [["u",["true","false","true","s:true"]],["true","false","s:true"]],
+      [["ub",["id:1/a","id:2/a","id:1/b"]],["id:1/a","id:2/a"]],
+      [["ub",[]],[]],
+      [["ub",["id:5/x","id:5/y","id:5/z"]],["id:5/x"]],
+      [["u",{"$concat":[{"$rep":"n:1","n":400000},{"$rep":"s:1","n":300000},{"$rep":"NaN","n":300000}]}],["n:1","s:1","NaN"]]
+    ] },
     solution: {
       approach: `<p>Insert values into a <code>Set</code> (O(1) average per insert, insertion-ordered, SameValueZero equality) and spread it back into an array.</p>`,
       code: { lang: 'js', run: true, code: `const unique = arr => [...new Set(arr)];
@@ -2709,6 +2922,30 @@ console.log(uniqueBy([{ id: 1 }, { id: 2 }, { id: 1 }], o => o.id)); // [ { id: 
 console.log(omit({ id: 7, name: 'Asha', password: 'x' }, ['password']));` } },
     mcq: { q: 'In <code>pick</code>, why check <code>Object.hasOwn(obj, k)</code> before copying?', options: ['So missing keys are skipped instead of being added as undefined, and inherited keys are ignored', 'Because obj[k] throws for missing keys', 'To make it faster', 'It is required by Object.fromEntries'], answer: 0, explain: 'Without the check, pick({}, ["email"]) would return { email: undefined }, and a key like "toString" would copy an inherited function.' },
     hints: [`<p>Both functions build a <b>new</b> object; neither needs <code>delete</code>.</p>`, `<p><code>pick</code>: loop over <code>keys</code>, copy own ones. <code>omit</code>: turn <code>keys</code> into a <code>Set</code>, then <code>Object.fromEntries(Object.entries(obj).filter(([k]) =&gt; !drop.has(k)))</code>.</p>`, `<p>For a single fixed key, destructuring with rest is the neatest omit: <code>const { password, ...safe } = user</code>. Edge cases: empty keys list, keys not present.</p>`],
+    tests: { sig: 'string string string[] -> string', fn: 'po', harness: { js: `function po(mode, json, keys) {
+  if (json === 'BIG') {
+    const o = {}, ks = []; for (let i = 0; i < 100000; i++) { o['k' + i] = i; if (i % 2 === 0) ks.push('k' + i); }
+    const r = mode === 'pick' ? pick(o, ks) : omit(o, ks), names = Object.keys(r);
+    return { n: names.length, first: names[0], last: names[names.length - 1], mutated: Object.keys(o).length !== 100000 };
+  }
+  const o = JSON.parse(json), before = JSON.stringify(o);
+  const r = mode === 'pick' ? pick(o, keys) : omit(o, keys);
+  return JSON.stringify(o) === before ? r : 'MUTATED';
+}` }, cases: [
+      [["pick","{\"id\":7,\"name\":\"Asha\",\"password\":\"x\",\"age\":30}",["id","name","email"]],{"id":7,"name":"Asha"}],
+      [["omit","{\"id\":7,\"name\":\"Asha\",\"password\":\"x\",\"age\":30}",["password"]],{"id":7,"name":"Asha","age":30}],
+      [["pick","{\"id\":7,\"name\":\"Asha\",\"password\":\"x\",\"age\":30}",[]],{}],
+      [["omit","{\"id\":7,\"name\":\"Asha\",\"password\":\"x\",\"age\":30}",[]],{"id":7,"name":"Asha","password":"x","age":30}],
+      [["pick","{\"id\":7,\"name\":\"Asha\",\"password\":\"x\",\"age\":30}",["toString","constructor"]],{}],
+      [["omit","{\"a\":1,\"b\":2}",["a","zzz"]],{"b":2}],
+      [["omit","{\"a\":1,\"b\":2}",["a","b"]],{}],
+      [["pick","{\"a\":0,\"b\":null,\"c\":\"\",\"d\":false}",["a","b","c","d"]],{"a":0,"b":null,"c":"","d":false}],
+      [["pick","{\"a\":1,\"b\":2}",["a","a","b"]],{"a":1,"b":2}],
+      [["pick","{}",["a"]],{}],
+      [["omit","{}",["a"]],{}],
+      [["pick","BIG",[]],{"n":50000,"first":"k0","last":"k99998","mutated":false}],
+      [["omit","BIG",[]],{"n":50000,"first":"k1","last":"k99999","mutated":false}]
+    ] },
     solution: {
       approach: `<p><code>pick</code> walks the requested keys and copies only own properties. <code>omit</code> filters entries against a Set of excluded keys and rebuilds with <code>Object.fromEntries</code>. Both are pure.</p>`,
       code: { lang: 'js', run: true, code: `function pick(obj, keys) {
@@ -2753,6 +2990,21 @@ try {
 }` } },
     mcq: { q: 'Why does <code>Math.max(...bigArray)</code> fail but a loop does not?', options: ['Spread turns each element into a function argument and argument count is limited by stack size', 'Math.max only accepts 255 arguments', 'Spread is O(n²)', 'Loops use less CPU'], answer: 0, explain: 'All arguments are placed on the call stack for the call. A loop or reduce keeps only one running value.' },
     hints: [`<p>You only ever need to remember <b>one</b> number: the biggest seen so far.</p>`, `<p>A simple <code>for</code> loop or <code>reduce((m, x) =&gt; x &gt; m ? x : m)</code> keeps one running value.</p>`, `<p>Handle empty input first (return undefined). Start the running max from <code>nums[0]</code>, not 0 — all numbers could be negative.</p>`],
+    tests: { sig: 'int[] -> double', fn: 'mo', harness: { js: `function mo(a) { const r = maxOf(a); return r === undefined ? 'undefined' : r; }` }, cases: [
+      [[[3,9,4]],9],
+      [[[-5,-2,-9]],-2],
+      [[[]],"undefined"],
+      [[[7]],7],
+      [[[0,0]],0],
+      [[[-1]],-1],
+      [[[1.5,2.5,0.5]],2.5],
+      [[[5,5,5]],5],
+      [[[9,1,2]],9],
+      [[[1,2,9]],9],
+      [[{"$range":[0,5000000]}],4999999],
+      [[{"$rep":-3,"n":5000000}],-3],
+      [[{"$concat":[{"$rep":-1,"n":4999999},[5]]}],5]
+    ] },
     solution: {
       approach: `<p>Single pass keeping the best value. Constant extra memory, no argument-count limits, and an explicit decision for empty input.</p>`,
       code: { lang: 'js', run: true, code: `function maxOf(nums) {
@@ -2800,6 +3052,9 @@ console.log([1, 2, 3].map(x => { x * 2 }));
 console.log([1, 2, 3].forEach(x => x * 2));` } },
     mcq: { q: 'What does <code>[3, 1, 2, 10].sort()</code> produce?', options: ['<code>[1, 10, 2, 3]</code>', '<code>[1, 2, 3, 10]</code>', '<code>[10, 3, 2, 1]</code>', '<code>[3, 1, 2, 10]</code>'], answer: 0, explain: 'Default sort compares strings: "1" &lt; "10" &lt; "2" &lt; "3".' },
     hints: [`<p>Keep a little table: line → state of <code>a</code> → printed value. Update the state only for mutating methods.</p>`, `<p>Return values: push → length; sort → same array (string order by default!); splice → removed items; slice → copy; map → array of callback results; forEach → undefined.</p>`, `<p>The map callback has braces but no <code>return</code>. After the default sort, a is <code>[1, 10, 2, 3]</code>; splice(1, 2) removes index 1 and 2.</p>`],
+    tests: { io: true, cases: [
+      {"stdin":"","stdout":"4\ntrue [ 1, 10, 2, 3 ]\n[ 10, 2 ]\n[ 1 ] [ 1, 3 ]\n[ undefined, undefined, undefined ]\nundefined"}
+    ] },
     solution: {
       approach: `<p>Trace state: a = [3,1,2] → push → [3,1,2,10] (prints 4) → sort (string order) → [1,10,2,3], b is the same array → splice(1,2) removes [10,2] leaving [1,3] → slice(0,1) copies [1] → map with braces returns undefineds → forEach returns undefined.</p>`,
       code: { lang: 'js', run: true, code: `const a = [3, 1, 2];
@@ -2834,6 +3089,32 @@ console.log([1, 2, 3].forEach(x => x * 2));    // undefined` },
 console.log(flatten([1, [2, [3, [4]]], 5], Infinity)); // [ 1, 2, 3, 4, 5 ]` } },
     mcq: { q: 'In the recursive version, when do you recurse into an element?', options: ['When it is an array AND depth &gt; 0 (recursing with depth − 1)', 'Whenever it is an object', 'Only at depth 0', 'Always, then trim the result'], answer: 0, explain: 'Each recursion consumes one level of depth. At depth 0 nested arrays are copied as-is.' },
     hints: [`<p>Think recursively: flattening <code>[a, [b, c]]</code> to depth d means: keep non-arrays, and for each array element, flatten <i>it</i> to depth d − 1 and splice its items in.</p>`, `<p><code>arr.reduce((acc, x) =&gt; Array.isArray(x) &amp;&amp; depth &gt; 0 ? acc.concat(flatten(x, depth - 1)) : (acc.push(x), acc), [])</code> — or a loop with push to avoid concat copies.</p>`, `<p><code>reduce</code> already skips holes. Infinity − 1 is still Infinity, so full flattening works for free. For very deep inputs, use an explicit stack instead of recursion.</p>`],
+    tests: { sig: 'string string -> string', fn: 'fl', harness: { js: `function fl(lit, depthText) {
+  const depth = Number(depthText);
+  let arr;
+  if (lit.startsWith('NEST:')) { arr = [1]; for (let i = 0; i < +lit.slice(5); i++) arr = [arr]; }
+  else if (lit.startsWith('BIG:')) { arr = []; for (let i = 0; i < +lit.slice(4); i++) arr.push(i, [i]); }
+  else arr = new Function('return ' + lit)();
+  const r = flatten(arr, depth);
+  if (lit.startsWith('BIG:')) { let sum = 0; for (const x of r) sum += x; return { len: r.length, first: r[0], last: r[r.length - 1], sum }; }
+  return r;
+}` }, cases: [
+      [["[1,[2,[3,[4]]],5]","1"],[1,2,[3,[4]],5]],
+      [["[1,[2,[3,[4]]],5]","2"],[1,2,3,[4],5]],
+      [["[1,[2,[3,[4]]],5]","Infinity"],[1,2,3,4,5]],
+      [["[1,[2,[3,[4]]],5]","0"],[1,[2,[3,[4]]],5]],
+      [["[1,[2,[3,[4]]],5]","-1"],[1,[2,[3,[4]]],5]],
+      [["[1,,[2,,3]]","1"],[1,2,3]],
+      [["[]","1"],[]],
+      [["[[]]","1"],[]],
+      [["[[[]]]","1"],[[]]],
+      [["[\"a\",[\"b\",[\"c\"]]]","Infinity"],["a","b","c"]],
+      [["[[1],[2],[3]]","1"],[1,2,3]],
+      [["[null,[null]]","Infinity"],[null,null]],
+      [["NEST:1000","Infinity"],[1]],
+      [["NEST:1000","10"],[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]],
+      [["BIG:100000","1"],{"len":200000,"first":0,"last":99999,"sum":9999900000}]
+    ] },
     solution: {
       approach: `<p>Depth-first recursion that pushes into one shared output array (no intermediate concat copies). <code>forEach</code> skips holes, matching <code>flat</code>. An iterative stack-based alternative avoids recursion limits.</p>`,
       code: { lang: 'js', run: true, code: `function flatten(arr, depth = 1, out = []) {
@@ -2889,6 +3170,23 @@ console.log(JSON.stringify(flatten(data, 2)) === JSON.stringify(data.flat(2))); 
 console.log(zip(['a', 'b', 'c'], [1, 2])); // [ [ 'a', 1 ], [ 'b', 2 ], [ 'c', undefined ] ]` } },
     mcq: { q: 'How do you get the shortest length among all input arrays?', options: ['<code>Math.min(...arrays.map(a =&gt; a.length))</code>', '<code>arrays.length</code>', '<code>arrays[0].length</code>', '<code>Math.min(arrays)</code>'], answer: 0, explain: 'Map each array to its length, then spread the lengths into Math.min. With zero arrays Math.min() is Infinity — guard that case.' },
     hints: [`<p>A rest parameter <code>...arrays</code> gives you a real array of all the input arrays.</p>`, `<p>Result length = shortest length. Build with <code>Array.from({ length: n }, (_, i) =&gt; arrays.map(arr =&gt; arr[i]))</code>.</p>`, `<p>No arguments: <code>Math.min()</code> is <code>Infinity</code> — return <code>[]</code> first. One argument: each group has a single item.</p>`],
+    tests: { sig: 'string[][] -> string[][]', fn: 'zp', harness: { js: `function zp(arrays) {
+  const r = zip(...arrays);
+  if (r.length > 1000) return { len: r.length, first: r[0], last: r[r.length - 1] };
+  return r;
+}` }, cases: [
+      [[[["a","b","c"],[1,2,3],[true,false]]],[["a",1,true],["b",2,false]]],
+      [[[[1,2]]],[[1],[2]]],
+      [[[]],[]],
+      [[[[],[1]]],[]],
+      [[[[1,2],[3,4]]],[[1,3],[2,4]]],
+      [[[["x","y"],[10,20]]],[["x",10],["y",20]]],
+      [[[["x",10],["y",20]]],[["x","y"],[10,20]]],
+      [[[[1],[2],[3]]],[[1,2,3]]],
+      [[[[1,2,3],[4]]],[[1,4]]],
+      [[{"$rep":[1,2,3],"n":100}],[{"$rep":1,"n":100},{"$rep":2,"n":100},{"$rep":3,"n":100}]],
+      [[[{"$range":[0,100000]},{"$range":[100000,200000]}]],{"len":100000,"first":[0,100000],"last":[99999,199999]}]
+    ] },
     solution: {
       approach: `<p>Gather inputs with rest, compute the shortest length, then build each group by mapping over the arrays at index i. Pure and works for any number of inputs.</p>`,
       code: { lang: 'js', run: true, code: `function zip(...arrays) {
@@ -2924,6 +3222,24 @@ const fail = arr.filter(x => !isEven(x));
 console.log(pass, fail, 'predicate calls:', calls); // [ 2, 4 ] [ 1, 3, 5 ] predicate calls: 10` } },
     mcq: { q: 'Which return shape lets callers write <code>const [ok, bad] = partition(...)</code>?', options: ['An array of two arrays', 'An object { pass, fail }', 'A Map', 'Two separate return statements'], answer: 0, explain: 'Array destructuring is positional, so [pass, fail] works. An object would need const { pass, fail } instead.' },
     hints: [`<p>One loop, two buckets. Decide each item's bucket with a single predicate call.</p>`, `<p>With reduce: initial value <code>[[], []]</code>; push into <code>acc[predicate(x, i) ? 0 : 1]</code>; return acc.</p>`, `<p>Destructure the result at the call site. Empty array → <code>[[], []]</code>. Keep original order by pushing in iteration order.</p>`],
+    tests: { sig: 'int[] string -> string', fn: 'pt', harness: { js: `function pt(arr, rule) {
+  let calls = 0;
+  const R = { even: (x) => x % 2 === 0, idxEven: (x, i) => i % 2 === 0, truthy: (x) => x, pos: (x) => x > 0 };
+  const [pass, fail] = partition(arr, (x, i) => { calls++; return R[rule](x, i); });
+  if (arr.length > 1000) return { pass: [pass.length, pass[0], pass[pass.length - 1]], fail: [fail.length, fail[0], fail[fail.length - 1]], calls };
+  return { pass, fail, calls };
+}` }, cases: [
+      [[[1,2,3,4,5],"even"],{"pass":[2,4],"fail":[1,3,5],"calls":5}],
+      [[[],"even"],{"pass":[],"fail":[],"calls":0}],
+      [[[2,4],"even"],{"pass":[2,4],"fail":[],"calls":2}],
+      [[[1,3],"even"],{"pass":[],"fail":[1,3],"calls":2}],
+      [[[10,20,30,40],"idxEven"],{"pass":[10,30],"fail":[20,40],"calls":4}],
+      [[[0,1,"",null,"a"],"truthy"],{"pass":[1,"a"],"fail":[0,"",null],"calls":5}],
+      [[[-1,0,1],"pos"],{"pass":[1],"fail":[-1,0],"calls":3}],
+      [[[5],"pos"],{"pass":[5],"fail":[],"calls":1}],
+      [[{"$range":[0,1000000]},"even"],{"pass":[500000,0,999998],"fail":[500000,1,999999],"calls":1000000}],
+      [[{"$range":[1,1000001]},"idxEven"],{"pass":[500000,1,999999],"fail":[500000,2,1000000],"calls":1000000}]
+    ] },
     solution: {
       approach: `<p>Reduce into a pair of arrays, choosing the bucket by one predicate call. Return the pair so callers can destructure it.</p>`,
       code: { lang: 'js', run: true, code: `function partition(arr, predicate) {
@@ -2967,6 +3283,34 @@ console.log([1, 2, 3].badMap(x => x * 2)); // [] — 'this' is not the array
 delete Array.prototype.badMap;` } },
     mcq: { q: 'Why must the polyfill be a <code>function</code>, not an arrow?', options: ['A method needs its own <code>this</code> (the array it was called on); arrows inherit this from outside', 'Arrows are slower', 'Arrows cannot return arrays', 'Prototypes only accept named functions'], answer: 0, explain: 'arr.myMap(...) sets this = arr only for normal functions. An arrow captures this from where it was defined (module/global scope).' },
     hints: [`<p>Inside <code>function (callback, thisArg) { … }</code>, <code>this</code> is the array. Validate <code>typeof callback === 'function'</code> first.</p>`, `<p>Read <code>len = this.length</code> once. For each index use <code>if (i in this)</code> to skip holes, and call <code>callback.call(thisArg, this[i], i, this)</code>.</p>`, `<p>map: pre-size the result <code>new Array(len)</code> and assign <code>result[i]</code> so holes stay holes. filter: push only when the callback returns truthy. Define them with <code>Object.defineProperty</code> (non-enumerable) so <code>for...in</code> on arrays is not polluted.</p>`],
+    tests: { sig: 'string string string -> string', fn: 'pf', harness: { js: `function pf(op, lit, cb) {
+  let arr;
+  if (lit.startsWith('BIG:')) arr = Array.from({ length: +lit.slice(4) }, (_, i) => i); else arr = new Function('return ' + lit)();
+  const before = JSON.stringify(arr), orig = arr;
+  const CBS = { times_i: (x, i) => x * i, inc: (x) => x + 1, gt5: (x) => x > 5, factor: function (x) { return x * this.factor; }, sameArr: (x, i, a) => a === orig, idxOdd: (x, i) => i % 2 === 1, sq: (x) => x * x, none: null, str: 'abc' };
+  let r;
+  try { r = arr[op](CBS[cb], cb === 'factor' ? { factor: 10 } : undefined); } catch (e) { return e.name; }
+  if (JSON.stringify(arr) !== before) return 'MUTATED';
+  if (lit.startsWith('BIG:')) { let sum = 0; for (const x of r) sum += x; return { len: r.length, first: r[0], last: r[r.length - 1], sum }; }
+  return Array.from({ length: r.length }, (_, i) => (i in r ? r[i] : '<hole>'));
+}` }, cases: [
+      [["myMap","[1,2,3]","times_i"],[0,2,6]],
+      [["myMap","[5,,7]","inc"],[6,"<hole>",8]],
+      [["myMap","[]","inc"],[]],
+      [["myMap","[1,2]","factor"],[10,20]],
+      [["myMap","[1,2,3]","sameArr"],[true,true,true]],
+      [["myMap","[1]","none"],"TypeError"],
+      [["myMap","[1]","str"],"TypeError"],
+      [["myFilter","[4,9,16]","gt5"],[9,16]],
+      [["myFilter","[1,,7,9]","gt5"],[7,9]],
+      [["myFilter","[10,20,30,40]","idxOdd"],[20,40]],
+      [["myFilter","[1,2]","sameArr"],[1,2]],
+      [["myFilter","[3]","none"],"TypeError"],
+      [["myFilter","[1,2,3]","gt5"],[]],
+      [["myFilter","[1,2]","factor"],[1,2]],
+      [["myMap","BIG:100000","sq"],{"len":100000,"first":0,"last":9999800001,"sum":333328333350000}],
+      [["myFilter","BIG:100000","idxOdd"],{"len":50000,"first":1,"last":99999,"sum":2500000000}]
+    ] },
     solution: {
       approach: `<p>Follow the spec steps: validate the callback, capture length once, loop indices, skip holes with <code>in</code>, call with <code>(element, index, array)</code> and <code>thisArg</code>. map writes to the same index of a pre-sized array; filter pushes passing elements. Installed as non-enumerable properties.</p>`,
       code: { lang: 'js', run: true, code: `Object.defineProperty(Array.prototype, 'myMap', {
@@ -3028,6 +3372,30 @@ for (const k in [1]) console.log('enumerable key:', k);  // only '0' — no 'myM
 console.log(diff({ a: 1, b: 2 }, { b: 3, c: 4 }));` } },
     mcq: { q: 'Why use <code>Object.is</code> rather than <code>!==</code> for "changed"?', options: ['Object.is(NaN, NaN) is true, so a NaN that stayed NaN is not reported as changed', 'It compares deeply', 'It is faster', 'It ignores types'], answer: 0, explain: 'NaN !== NaN is true, which would flag an unchanged NaN. Object.is treats NaN as equal to itself (and distinguishes +0 from -0).' },
     hints: [`<p>Use <code>Object.hasOwn</code> for O(1) "does the other object have this key?" checks instead of scanning key arrays.</p>`, `<p>Loop over <code>after</code>'s keys → added or (maybe) changed. Loop over <code>before</code>'s keys → removed.</p>`, `<p>Compare values with <code>Object.is</code>. Sort each result list at the end. Empty objects → three empty lists.</p>`],
+    tests: { sig: 'string string -> string', fn: 'df', harness: { js: `function df(b, a) {
+  if (b === 'BIG') {
+    const before = {}, after = {};
+    for (let i = 0; i < 50000; i++) before['k' + i] = i;
+    for (let j = 25000; j < 75000; j++) after['k' + j] = j < 50000 ? (j % 2 === 0 ? j + 1 : j) : j;
+    const r = diff(before, after);
+    return { added: [r.added.length, r.added[0], r.added[r.added.length - 1]], removed: [r.removed.length, r.removed[0], r.removed[r.removed.length - 1]], changed: [r.changed.length, r.changed[0], r.changed[r.changed.length - 1]] };
+  }
+  return diff(new Function('return ' + b)(), new Function('return ' + a)());
+}` }, cases: [
+      [["({ name: 'Asha', age: 30, city: 'Pune' })","({ name: 'Asha', age: 31, email: 'a@x.io' })"],{"added":["email"],"removed":["city"],"changed":["age"]}],
+      [["({ v: NaN, tags: ['a'] })","({ v: NaN, tags: ['a'] })"],{"added":[],"removed":[],"changed":["tags"]}],
+      [["({ v: NaN })","({ v: NaN })"],{"added":[],"removed":[],"changed":[]}],
+      [["({ z: 0 })","({ z: -0 })"],{"added":[],"removed":[],"changed":["z"]}],
+      [["({})","({})"],{"added":[],"removed":[],"changed":[]}],
+      [["({ a: undefined })","({})"],{"added":[],"removed":["a"],"changed":[]}],
+      [["({})","({ a: undefined })"],{"added":["a"],"removed":[],"changed":[]}],
+      [["({ b: 1, a: 1, c: 1 })","({})"],{"added":[],"removed":["a","b","c"],"changed":[]}],
+      [["({})","({ c: 1, a: 1, b: 1 })"],{"added":["a","b","c"],"removed":[],"changed":[]}],
+      [["({})","({ toString: 1 })"],{"added":["toString"],"removed":[],"changed":[]}],
+      [["({ a: 1, b: '1' })","({ a: '1', b: '1' })"],{"added":[],"removed":[],"changed":["a"]}],
+      [["({ b: 1, a: 2 })","({ a: 3, b: 4 })"],{"added":[],"removed":[],"changed":["a","b"]}],
+      [["BIG",""],{"added":[25000,"k50000","k74999"],"removed":[25000,"k0","k9999"],"changed":[12500,"k25000","k49998"]}]
+    ] },
     solution: {
       approach: `<p>Two linear passes with constant-time own-key checks. The first pass over <code>after</code> classifies keys as added or changed; the second over <code>before</code> finds removed keys.</p>`,
       code: { lang: 'js', run: true, code: `function diff(before, after) {
@@ -3065,6 +3433,28 @@ console.log(diff({ v: NaN, tags: ['a'] }, { v: NaN, tags: ['a'] }));
 console.log(countBy(['apple', 'avocado', 'banana'], w => w[0]));` } },
     mcq: { q: 'How do you accept either a function or a property name for <code>keyFn</code>?', options: ['<code>const fn = typeof keyFn === \'function\' ? keyFn : x =&gt; x[keyFn]</code>', '<code>keyFn.call(x)</code>', '<code>x.keyFn</code>', '<code>eval(keyFn)</code>'], answer: 0, explain: 'Normalise once at the start: wrap a string into an accessor arrow. x.keyFn would look for a property literally named "keyFn".' },
     hints: [`<p>Both are single-pass folds: one into an object, one into a Map.</p>`, `<p>Normalise the key function first. keyBy: <code>acc[fn(x)] = x</code>. countBy: <code>m.set(k, (m.get(k) ?? 0) + 1)</code>.</p>`, `<p>"Last item wins" in keyBy happens automatically because later writes overwrite earlier ones. Use <code>Object.create(null)</code> for keyBy so keys like "constructor" are safe.</p>`],
+    tests: { sig: 'string string string -> string', fn: 'kc', harness: { js: `function kc(mode, json, key) {
+  const KF = { first: (w) => w[0], floor: Math.floor, len: (w) => w.length, mod10: (x) => x % 10 };
+  const keyFn = key in KF ? KF[key] : key;
+  let rows;
+  if (json.startsWith('BIG:')) rows = Array.from({ length: +json.slice(4) }, (_, i) => i); else rows = JSON.parse(json);
+  const r = mode === 'keyBy' ? keyBy(rows, keyFn) : [...countBy(rows, keyFn).entries()];
+  return r;
+}` }, cases: [
+      [["keyBy","[{\"id\":\"a\",\"v\":1},{\"id\":\"b\",\"v\":2},{\"id\":\"a\",\"v\":3}]","id"],{"a":{"id":"a","v":3},"b":{"id":"b","v":2}}],
+      [["countBy","[\"apple\",\"avocado\",\"banana\"]","first"],[["a",2],["b",1]]],
+      [["countBy","[1.2,1.7,2.1]","floor"],[[1,2],[2,1]]],
+      [["countBy","[]","first"],[]],
+      [["keyBy","[]","id"],{}],
+      [["countBy","[{\"id\":\"a\",\"v\":1},{\"id\":\"b\",\"v\":2},{\"id\":\"a\",\"v\":3}]","id"],[["a",2],["b",1]]],
+      [["keyBy","[\"aa\",\"b\",\"cc\"]","len"],{"1":"b","2":"cc"}],
+      [["keyBy","[{\"id\":\"constructor\",\"v\":1}]","id"],{"constructor":{"id":"constructor","v":1}}],
+      [["countBy","[\"b\",\"a\",\"b\",\"c\",\"a\"]","len"],[[1,5]]],
+      [["countBy","[\"b\",\"a\",\"b\",\"c\",\"a\"]","first"],[["b",2],["a",2],["c",1]]],
+      [["keyBy","[{\"k\":1,\"v\":\"x\"},{\"k\":1,\"v\":\"y\"}]","k"],{"1":{"k":1,"v":"y"}}],
+      [["countBy","BIG:1000000","mod10"],[[0,100000],[1,100000],[2,100000],[3,100000],[4,100000],[5,100000],[6,100000],[7,100000],[8,100000],[9,100000]]],
+      [["keyBy","BIG:1000000","mod10"],{"0":999990,"1":999991,"2":999992,"3":999993,"4":999994,"5":999995,"6":999996,"7":999997,"8":999998,"9":999999}]
+    ] },
     solution: {
       approach: `<p>Normalise <code>keyFn</code>, then one reduce per helper: keyBy assigns into a prototype-less object (later items overwrite earlier ones), countBy increments counts in a Map.</p>`,
       code: { lang: 'js', run: true, code: `const toFn = keyFn => (typeof keyFn === 'function' ? keyFn : item => item[keyFn]);
@@ -3125,6 +3515,9 @@ console.log(c.n, c.inner === a.inner, d.inner === a.inner);
 console.log(a === b, a === c, JSON.stringify(a) === JSON.stringify(b));` } },
     mcq: { q: 'After <code>c.list = [9]</code>, what is <code>a.list</code>?', options: ['<code>[1]</code> — c.list was re-pointed to a new array, a still points to the old one', '<code>[9]</code> — lists are shared', '<code>undefined</code>', '<code>[1, 9]</code>'], answer: 0, explain: 'Assigning a new array to c.list changes only c\'s own property. Mutating it (c.list.push(9)) would have affected a, because the spread copy shared the array.' },
     hints: [`<p>Draw boxes: a and b → object O1. c → new object O2 whose inner/list arrows point to the <b>same</b> inner/list as O1. d → a completely separate deep copy.</p>`, `<p>Mutation through a shared arrow (<code>c.inner.m = 2</code>) is visible to everyone sharing it. Re-pointing (<code>c.list = [9]</code>) is not.</p>`, `<p>c was copied <b>before</b> <code>b.n = 2</code>, so c.n is still 1. d's inner is its own object.</p>`],
+    tests: { io: true, cases: [
+      {"stdin":"","stdout":"2 2 [ 1 ]\n1 true false\ntrue false true"}
+    ] },
     solution: {
       approach: `<p>a/b share O1. c is a shallow copy taken when n was 1, sharing inner and list. d is a deep copy. b.n=2 → a.n=2. c.inner.m=2 → shared inner, so a.inner.m=2. c.list=[9] re-points only c. d.inner.m=3 changes d's private inner.</p>`,
       code: { lang: 'js', run: true, code: `const a = { n: 1, inner: { m: 1 }, list: [1] };
@@ -3163,6 +3556,37 @@ console.log([, , 5].naiveReduce((a, b) => a + b));       // NaN (should be 5)
 delete Array.prototype.naiveReduce;` } },
     mcq: { q: 'How can the polyfill distinguish <code>reduce(fn)</code> from <code>reduce(fn, undefined)</code>?', options: ['Check <code>arguments.length &gt;= 2</code> (or use a rest parameter and check its length)', 'Check <code>initialValue === undefined</code>', 'Check <code>typeof initialValue</code>', 'It is impossible in JavaScript'], answer: 0, explain: 'Both calls make initialValue undefined, but arguments.length is 1 vs 2. The spec makes exactly this distinction.' },
     hints: [`<p>Three phases: validate the callback; find the starting accumulator and index; loop the remaining present indices.</p>`, `<p>If <code>arguments.length &gt;= 2</code>, acc = initialValue, start at 0. Otherwise scan forward for the first <code>k in this</code>; if none, throw <code>TypeError('Reduce of empty array with no initial value')</code>; acc = this[k], start at k + 1.</p>`, `<p>In the loop, skip holes with <code>if (i in this)</code>, and read <code>len</code> once before the loop. Define it non-enumerable with <code>Object.defineProperty</code>.</p>`],
+    tests: { sig: 'string string string -> string', fn: 'mr', harness: { js: `function mr(lit, cbName, init) {
+  const CBS = { add: (a, b) => a + b, pair: (a, b) => [a, b], concatRev: (a, ch) => ch + a, idx: (a, x, i) => a + i, none: null };
+  let calls = 0;
+  const base = CBS[cbName];
+  const cb = typeof base === 'function' ? (...a) => { calls++; return base(...a); } : base;
+  let src;
+  if (lit.startsWith('BIG:')) src = Array.from({ length: +lit.slice(4) }, (_, i) => i); else src = new Function('return ' + lit)();
+  const iv = init === 'none' ? [] : init === 'undef' ? [undefined] : init === 'str' ? [''] : [Number(init)];
+  try {
+    const r = Array.isArray(src) || typeof src === 'object' && !Array.isArray(src) && 'length' in src
+      ? Array.prototype.myReduce.call(src, cb, ...iv)
+      : Array.prototype.myReduce.call(src, cb, ...iv);
+    return { r: r === undefined ? 'undefined' : r, calls };
+  } catch (e) { return e.name; }
+}` }, cases: [
+      [["[1,2,3]","add","none"],{"r":6,"calls":2}],
+      [["[,,5]","add","none"],{"r":5,"calls":0}],
+      [["[]","add","none"],"TypeError"],
+      [["[,,]","add","none"],"TypeError"],
+      [["[1]","pair","undef"],{"r":[null,1],"calls":1}],
+      [["[1,2,3]","add","10"],{"r":16,"calls":3}],
+      [["'abc'","concatRev","str"],{"r":"cba","calls":3}],
+      [["[]","add","7"],{"r":7,"calls":0}],
+      [["[,]","add","0"],{"r":0,"calls":0}],
+      [["[1]","none","0"],"TypeError"],
+      [["[7]","add","none"],{"r":7,"calls":0}],
+      [["[10,20,30]","idx","0"],{"r":3,"calls":3}],
+      [["[10,20,30]","idx","none"],{"r":13,"calls":2}],
+      [["({ length: 2, 0: 'a', 1: 'b' })","concatRev","str"],{"r":"ba","calls":2}],
+      [["BIG:1000000","add","0"],{"r":499999500000,"calls":1000000}]
+    ] },
     solution: {
       approach: `<p>Mirror the spec (Array.prototype.reduce, steps 1–10): length captured once; "initial value present" decided by argument count; first present element search when absent; TypeError if none; loop skipping holes; return the accumulator.</p>`,
       code: { lang: 'js', run: true, code: `Object.defineProperty(Array.prototype, 'myReduce', {
@@ -3213,6 +3637,49 @@ a.self = a;
 try { JSON.stringify(a); } catch (e) { console.log(e.name); } // TypeError (circular)` } },
     mcq: { q: 'Why record the clone in the WeakMap BEFORE recursing into children?', options: ['So a child that points back to the parent finds the half-built clone instead of recursing forever', 'WeakMap needs entries sorted', 'To save memory', 'Order does not matter'], answer: 0, explain: 'In a cycle, the recursion reaches the same object again while still building it. If the clone is registered first, that lookup returns it and the cycle is reproduced.' },
     hints: [`<p>Primitives and functions: return as-is. Objects: check a <code>WeakMap</code> of original → clone first, to handle cycles and shared references.</p>`, `<p>Branch by type: Date → <code>new Date(v.getTime())</code>; RegExp → <code>new RegExp(v.source, v.flags)</code>; Map/Set → new collection, cloning keys and values; arrays → <code>new Array(len)</code>; others → <code>Object.create(Object.getPrototypeOf(v))</code>.</p>`, `<p>Register the empty clone in the WeakMap <b>before</b> filling it. Copy keys with <code>Reflect.ownKeys</code> filtered to enumerable ones (gets symbols too).</p>`],
+    tests: { sig: 'string -> string', fn: 'dc', harness: { js: `function dc(kind) {
+  class Point { constructor(x) { this.x = x; } norm() { return Math.abs(this.x); } }
+  switch (kind) {
+    case 'example': {
+      const a = { when: new Date(0), tags: new Set(['x']), list: [1, { y: 2 }] }; a.self = a;
+      const b = deepClone(a); b.list[1].y = 99;
+      return { self: b.self === b, notSame: b !== a, date: b.when instanceof Date, time: b.when.getTime(), dateDistinct: b.when !== a.when, has: b.tags.has('x'), listCopy: b.list[1] !== a.list[1], independent: a.list[1].y === 2 };
+    }
+    case 'class': { const p = new Point(-3), c = deepClone({ p }); return { isPoint: c.p instanceof Point, norm: c.p.norm(), distinct: c.p !== p, x: c.p.x }; }
+    case 'regexp': { const re = /ab+c/gi, c = deepClone([re])[0]; return { flags: c.flags, source: c.source, distinct: c !== re, isRe: c instanceof RegExp }; }
+    case 'symbols': {
+      const s = Symbol('t'), o = { [s]: { v: 1 }, plain: 1 }; Object.defineProperty(o, 'hidden', { value: 5, enumerable: false });
+      const c = deepClone(o); return { sym: c[s].v, symDistinct: c[s] !== o[s], plain: c.plain, hidden: 'hidden' in c };
+    }
+    case 'mapcycle': { const a = { n: 1 }; a.map = new Map([['back', a]]); const c = deepClone(a); return { isMap: c.map instanceof Map, back: c.map.get('back') === c, distinct: c !== a && c.map !== a.map }; }
+    case 'mapkeys': { const k = { id: 1 }, m = new Map([[k, { v: 2 }]]), c = deepClone(m), [[ck, cv]] = [...c]; return { keyDistinct: ck !== k, keyId: ck.id, value: cv.v, size: c.size }; }
+    case 'setobjs': { const e = { a: 1 }, c = deepClone(new Set([e, 5])); const vals = [...c]; return { size: c.size, objDistinct: vals[0] !== e, a: vals[0].a, five: vals[1] }; }
+    case 'shared': { const s = { q: 1 }, c = deepClone({ x: s, y: s }); return { same: c.x === c.y, distinct: c.x !== s, q: c.x.q }; }
+    case 'holes': { const c = deepClone([1, , 3]); return { len: c.length, hole: 1 in c, third: c[2] }; }
+    case 'fn': { const f = () => 1, c = deepClone({ f }); return { shared: c.f === f }; }
+    case 'primitives': return [deepClone(5), deepClone(null), deepClone('x'), deepClone(true), deepClone(undefined) === undefined];
+    case 'deep': { let o = { leaf: true }; for (let i = 0; i < 1000; i++) o = { next: o }; const c = deepClone(o); let d = 0, p = c; while (p.next) { p = p.next; d++; } return { depth: d, leaf: p.leaf, distinct: c !== o }; }
+    case 'big': { const arr = Array.from({ length: 100000 }, (_, i) => ({ i })), c = deepClone(arr); return { len: c.length, last: c[99999].i, distinct: c[5] !== arr[5] && c !== arr }; }
+    case 'dateinmap': { const m = new Map([['d', new Date(5)]]), c = deepClone(m); return { time: c.get('d').getTime(), isDate: c.get('d') instanceof Date }; }
+    case 'nullproto': { const o = Object.create(null); o.a = { b: 1 }; const c = deepClone(o); return { proto: Object.getPrototypeOf(c) === null, b: c.a.b, distinct: c.a !== o.a }; }
+  }
+}` }, cases: [
+      [["example"],{"self":true,"notSame":true,"date":true,"time":0,"dateDistinct":true,"has":true,"listCopy":true,"independent":true}],
+      [["class"],{"isPoint":true,"norm":3,"distinct":true,"x":-3}],
+      [["regexp"],{"flags":"gi","source":"ab+c","distinct":true,"isRe":true}],
+      [["symbols"],{"sym":1,"symDistinct":true,"plain":1,"hidden":false}],
+      [["mapcycle"],{"isMap":true,"back":true,"distinct":true}],
+      [["mapkeys"],{"keyDistinct":true,"keyId":1,"value":2,"size":1}],
+      [["setobjs"],{"size":2,"objDistinct":true,"a":1,"five":5}],
+      [["shared"],{"same":true,"distinct":true,"q":1}],
+      [["holes"],{"len":3,"hole":false,"third":3}],
+      [["fn"],{"shared":true}],
+      [["primitives"],[5,null,"x",true,true]],
+      [["deep"],{"depth":1000,"leaf":true,"distinct":true}],
+      [["big"],{"len":100000,"last":99999,"distinct":true}],
+      [["dateinmap"],{"time":5,"isDate":true}],
+      [["nullproto"],{"proto":true,"b":1,"distinct":true}]
+    ] },
     solution: {
       approach: `<p>Recursive copy with a WeakMap "visited" table. Each object type gets its own construction; the empty clone is registered before children are cloned, so cycles and shared sub-objects are reproduced faithfully.</p>`,
       code: { lang: 'js', run: true, code: `function deepClone(value, seen = new WeakMap()) {
@@ -3280,6 +3747,46 @@ try {
 }` } },
     mcq: { q: 'What does <code>setIn</code> copy when updating <code>a.b.c</code>?', options: ['The root, a, and a.b (the path); everything else is shared', 'Every object in the tree', 'Only the leaf', 'Nothing — it mutates'], answer: 0, explain: 'Structural sharing: copy each container on the path so the original is untouched, and reuse all untouched branches. That is how Redux/Immer stay fast.' },
     hints: [`<p>First turn the path into segments: replace <code>[n]</code> with <code>.n</code>, split on dots, drop empty pieces, and convert digit-only pieces to numbers.</p>`, `<p>get: walk the segments; if the current value is <code>null</code>/<code>undefined</code> or does not own the key, return the fallback. setIn: recursive — copy the current container (<code>Array.isArray ? [...c] : { ...c }</code>), then set <code>copy[key] = setIn(child, rest, value)</code>.</p>`, `<p>When a container is missing, create <code>[]</code> if the next segment is a number, else <code>{}</code>. Throw on forbidden keys before touching anything.</p>`],
+    tests: { sig: 'string string string string -> string', fn: 'gs', harness: { js: `function gs(op, dataJson, path, extra) {
+  const data = JSON.parse(dataJson);
+  const before = JSON.stringify(data);
+  const FB = { none: undefined, 'n/a': 'n/a', nope: 'none', fb: 'fb', 9: 9 };
+  if (op === 'get') { const r = get(data, path, extra in FB ? FB[extra] : extra); return r === undefined ? 'undefined' : r; }
+  if (op === 'set') {
+    try { const r = setIn(data, path, JSON.parse(extra)); return [r, JSON.stringify(data) === before, ({}).polluted === undefined]; } catch (e) { return 'throws:' + e.message + '|' + ({}).polluted; }
+  }
+  if (op === 'share') { const r = setIn(data, path, JSON.parse(extra)); return { settings: r.settings === data.settings, addr0: r.user.addresses[0] === data.user.addresses[0], user: r.user !== data.user, addrs: r.user.addresses !== data.user.addresses }; }
+  if (op === 'deep') { const p = Array(100).fill('k').join('.'), r = setIn({}, p, 1); let d = 0, c = r; while (typeof c === 'object') { c = c.k; d++; } return [d, c]; }
+  if (op === 'wide') { const o = {}; for (let i = 0; i < 100000; i++) o['k' + i] = i; const r = setIn(o, 'k5', -1); return [Object.keys(r).length, r.k5, r.k6, o.k5]; }
+}` }, cases: [
+      [["get","{\"user\":{\"name\":\"Asha\",\"addresses\":[{\"city\":\"Pune\"},{\"city\":\"Goa\"}]},\"settings\":{\"dark\":true}}","user.addresses[0].city","none"],"Pune"],
+      [["get","{\"user\":{\"name\":\"Asha\",\"addresses\":[{\"city\":\"Pune\"},{\"city\":\"Goa\"}]},\"settings\":{\"dark\":true}}","user.phone.home","n/a"],"n/a"],
+      [["get","{\"user\":{\"name\":\"Asha\",\"addresses\":[{\"city\":\"Pune\"},{\"city\":\"Goa\"}]},\"settings\":{\"dark\":true}}","user.addresses[5].city","nope"],"none"],
+      [["get","{\"user\":{\"name\":\"Asha\",\"addresses\":[{\"city\":\"Pune\"},{\"city\":\"Goa\"}]},\"settings\":{\"dark\":true}}","user.name","none"],"Asha"],
+      [["get","{\"user\":{\"name\":\"Asha\",\"addresses\":[{\"city\":\"Pune\"},{\"city\":\"Goa\"}]},\"settings\":{\"dark\":true}}","settings.dark","none"],true],
+      [["get","{\"user\":{\"name\":\"Asha\",\"addresses\":[{\"city\":\"Pune\"},{\"city\":\"Goa\"}]},\"settings\":{\"dark\":true}}","user.addresses.1.city","none"],"Goa"],
+      [["get","{\"user\":{\"name\":\"Asha\",\"addresses\":[{\"city\":\"Pune\"},{\"city\":\"Goa\"}]},\"settings\":{\"dark\":true}}","user.name.first","fb"],"fb"],
+      [["get","{\"a\":0}","a","9"],0],
+      [["get","{\"a\":null}","a","9"],null],
+      [["get","{\"a\":false}","a","9"],false],
+      [["get","{}","a.b.c","none"],"undefined"],
+      [["get","{\"a\":{\"b\":1}}","a.toString","fb"],"fb"],
+      [["get","{\"user\":{\"name\":\"Asha\",\"addresses\":[{\"city\":\"Pune\"},{\"city\":\"Goa\"}]},\"settings\":{\"dark\":true}}","user.constructor","fb"],"fb"],
+      [["get","{\"user\":{\"name\":\"Asha\",\"addresses\":[{\"city\":\"Pune\"},{\"city\":\"Goa\"}]},\"settings\":{\"dark\":true}}","__proto__.x","fb"],"fb"],
+      [["set","{\"user\":{\"name\":\"Asha\",\"addresses\":[{\"city\":\"Pune\"},{\"city\":\"Goa\"}]},\"settings\":{\"dark\":true}}","user.addresses[1].city","\"Delhi\""],[{"user":{"name":"Asha","addresses":[{"city":"Pune"},{"city":"Delhi"}]},"settings":{"dark":true}},true,true]],
+      [["set","{}","a.list[1].x","5"],[{"a":{"list":[null,{"x":5}]}},true,true]],
+      [["set","{}","a.b","1"],[{"a":{"b":1}},true,true]],
+      [["set","{\"a\":{\"b\":1}}","a.c","2"],[{"a":{"b":1,"c":2}},true,true]],
+      [["set","[]","[0]","\"x\""],[["x"],true,true]],
+      [["set","{\"a\":5}","a.b","1"],[{"a":{"b":1}},true,true]],
+      [["set","{\"a\":[1,2,3]}","a[1]","9"],[{"a":[1,9,3]},true,true]],
+      [["set","{}","__proto__.polluted","true"],"throws:Forbidden key: __proto__|undefined"],
+      [["set","{}","a.constructor.prototype.x","true"],"throws:Forbidden key: constructor|undefined"],
+      [["set","{}","a.prototype","true"],"throws:Forbidden key: prototype|undefined"],
+      [["share","{\"user\":{\"name\":\"Asha\",\"addresses\":[{\"city\":\"Pune\"},{\"city\":\"Goa\"}]},\"settings\":{\"dark\":true}}","user.addresses[1].city","\"Delhi\""],{"settings":true,"addr0":true,"user":true,"addrs":true}],
+      [["deep","{}","",""],[100,1]],
+      [["wide","{}","",""],[100000,-1,6,5]]
+    ] },
     solution: {
       approach: `<p>A tiny path parser produces segments. <code>get</code> walks them defensively with own-property checks. <code>setIn</code> recurses along the path, shallow-copying each container (structural sharing) and creating missing ones based on the next segment's type. Dangerous keys are rejected.</p>`,
       code: { lang: 'js', run: true, code: String.raw`const FORBIDDEN = new Set(['__proto__', 'constructor', 'prototype']);
@@ -3296,7 +3803,9 @@ function parsePath(path) {
 
 function get(obj, path, fallback) {
   let cur = obj;
-  for (const key of parsePath(path)) {
+  let segs;
+  try { segs = parsePath(path); } catch { return fallback; } // get never throws
+  for (const key of segs) {
     if (cur === null || typeof cur !== 'object' || !Object.hasOwn(cur, key)) return fallback;
     cur = cur[key];
   }
@@ -3350,6 +3859,50 @@ console.log(out);
 try { JSON.parse(out); } catch (e) { console.log('invalid JSON:', e.name); }` } },
     mcq: { q: 'Inside an ARRAY, what does stringify output for <code>undefined</code>?', options: ['<code>null</code> — positions must be preserved', 'Nothing — the item is skipped', '<code>"undefined"</code>', 'It throws'], answer: 0, explain: 'Objects can drop a key, but arrays cannot drop a position without shifting every later index, so the spec writes null.' },
     hints: [`<p>Write one recursive function <code>ser(value, inArray)</code> that returns a string, or <code>undefined</code> meaning "nothing to write". The caller decides: skip the key (object) or write <code>null</code> (array).</p>`, `<p>Order of checks: call <code>toJSON</code> if present → null → boolean → number (finite?) → string (escape) → undefined/function/symbol → array → object. Keep a <code>Set</code> of objects on the current path to detect cycles.</p>`, `<p>Escaping: <code>\\</code> → <code>\\\\</code>, <code>"</code> → <code>\\"</code>, newline → <code>\\n</code>, other chars below U+0020 → <code>\\u00XX</code>. Remove the object from the path set after serialising it (shared, non-cyclic references are allowed).</p>`],
+    tests: { sig: 'string -> string', fn: 'tj', harness: { js: `function tj(src) {
+  const v = new Function('return ' + src)();
+  try {
+    const r = toJSON(v);
+    if (r === undefined) return 'undefined';
+    return r.length > 2000 ? { len: r.length, head: r.slice(0, 30), tail: r.slice(-30) } : r;
+  } catch (e) { return 'throws ' + e.name; }
+}` }, cases: [
+      [["({ a: [1, undefined, 'x\"y'], b: undefined, c: NaN, d: new Date(0) })"],"{\"a\":[1,null,\"x\\\"y\"],\"c\":null,\"d\":\"1970-01-01T00:00:00.000Z\"}"],
+      [["(['line\\nbreak', 'tab\\there', 'back\\\\slash', '\\u0001'])"],"[\"line\\nbreak\",\"tab\\there\",\"back\\\\slash\",\"\\u0001\"]"],
+      [["({ nested: { deep: [true, false, null, -0, 1e21] }, fn() {} })"],"{\"nested\":{\"deep\":[true,false,null,0,1e+21]}}"],
+      [["('plain')"],"\"plain\""],
+      [["(42)"],"42"],
+      [["(null)"],"null"],
+      [["(undefined)"],"undefined"],
+      [["(true)"],"true"],
+      [["(() => 1)"],"undefined"],
+      [["(Symbol(\"s\"))"],"undefined"],
+      [["([])"],"[]"],
+      [["({})"],"{}"],
+      [["([[], {}, [[]]])"],"[[],{},[[]]]"],
+      [["([1e-7, 0.1, -1.5, 1e21, 123456789012345680000])"],"[1e-7,0.1,-1.5,1e+21,123456789012345680000]"],
+      [["([Infinity, -Infinity, NaN])"],"[null,null,null]"],
+      [["({ 'k\"ey': 1, 'new\\nline': 2, 2: 'two', 1: 'one' })"],"{\"1\":\"one\",\"2\":\"two\",\"k\\\"ey\":1,\"new\\nline\":2}"],
+      [["([function () {}, Symbol(\"q\"), undefined])"],"[null,null,null]"],
+      [["({ f() {}, s: Symbol(\"q\"), u: undefined, n: null })"],"{\"n\":null}"],
+      [["({ toJSON() { return { a: 1 }; } })"],"{\"a\":1}"],
+      [["({ x: { toJSON() { return undefined; } }, y: 1 })"],"{\"y\":1}"],
+      [["([{ toJSON() { return undefined; } }])"],"[null]"],
+      [["(new Date(Date.UTC(2020, 1, 29, 12, 0, 0)))"],"\"2020-02-29T12:00:00.000Z\""],
+      [["({ d: new Date(NaN) })"],"{\"d\":null}"],
+      [["('\\u00e9\\u4e2d\\ud83d\\ude00')"],"\"é中😀\""],
+      [["('a\\u001fb\\u0000c')"],"\"a\\u001fb\\u0000c\""],
+      [["([1, , 3])"],"[1,null,3]"],
+      [["(10n)"],"throws TypeError"],
+      [["({ a: [10n] })"],"throws TypeError"],
+      [["((() => { const c = { name: \"c\" }; c.me = c; return c; })())"],"throws TypeError"],
+      [["((() => { const a = []; a.push(a); return a; })())"],"throws TypeError"],
+      [["((() => { const s = { k: 1 }; return { x: s, y: s, z: [s, s] }; })())"],"{\"x\":{\"k\":1},\"y\":{\"k\":1},\"z\":[{\"k\":1},{\"k\":1}]}"],
+      [["((() => { let o = {}; for (let i = 0; i < 1000; i++) o = { a: [o] }; return o; })())"],{"len":8002,"head":"{\"a\":[{\"a\":[{\"a\":[{\"a\":[{\"a\":[","tail":"]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}"}],
+      [["(Array.from({ length: 100000 }, (_, i) => i))"],{"len":588891,"head":"[0,1,2,3,4,5,6,7,8,9,10,11,12,","tail":"99995,99996,99997,99998,99999]"}],
+      [["('x'.repeat(100000) + '\"')"],{"len":100004,"head":"\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxx","tail":"xxxxxxxxxxxxxxxxxxxxxxxxxxx\\\"\""}],
+      [["(Object.fromEntries(Array.from({ length: 20000 }, (_, i) => [\"k\" + i, i % 3 ? null : \"v\"])))"],{"len":262224,"head":"{\"k0\":\"v\",\"k1\":null,\"k2\":null,","tail":"ll,\"k19998\":\"v\",\"k19999\":null}"}]
+    ] },
     solution: {
       approach: `<p>Recursive serializer returning <code>undefined</code> for "no representation". Arrays turn that into <code>null</code>; objects skip the key. A path Set detects true cycles while still allowing the same object to appear twice in different branches. Strings are escaped per the JSON grammar.</p>`,
       code: { lang: 'js', run: true, code: String.raw`function quote(s) {

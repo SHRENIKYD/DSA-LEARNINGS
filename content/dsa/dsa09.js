@@ -405,7 +405,9 @@ string trim(const string& s) {
         <p class="c-m">Slots shown 0..19: a (0), r (17), t (19). Subtracting t = "car" makes slot 2 (c) go to −1 → not an anagram.</p>`,
       brute: {
         why: `<p>For each letter of s, search t for an unused equal letter and mark it used: O(N) search per letter → O(N<sup>2</sup>) ≈ 2.5·10<sup>9</sup> steps for N = 5·10<sup>4</sup>. Sorting both strings (O(N log N)) is acceptable but still does more work than needed. The wasted work: we only care <b>how many</b> of each letter, not where they are.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           boolean isAnagramBrute(String s, String t) {
               if (s.length() != t.length()) return false;
               boolean[] used = new boolean[t.length()];
@@ -417,7 +419,48 @@ string trim(const string& s) {
                   if (!found) return false;
               }
               return true;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def is_anagram(s, t):
+    if len(s) != len(t):
+        return False
+    used = [False] * len(t)
+    for i in range(len(s)):
+        found = False
+        for j in range(len(t)):               # linear search every time
+            if not used[j] and t[j] == s[i]:
+                used[j] = True
+                found = True
+                break
+        if not found:
+            return False
+    return True` },
+            { lang: 'js', code: `function isAnagram(s, t) {
+  if (s.length !== t.length) return false;
+  const used = new Array(t.length).fill(false);
+  for (let i = 0; i < s.length; i++) {
+    let found = false;
+    for (let j = 0; j < t.length; j++) {          // linear search every time
+      if (!used[j] && t[j] === s[i]) { used[j] = true; found = true; break; }
+    }
+    if (!found) return false;
+  }
+  return true;
+}` },
+            { lang: 'cpp', code: `bool isAnagram(const string& s, const string& t) {
+    if (s.size() != t.size()) return false;
+    vector<bool> used(t.size(), false);
+    for (size_t i = 0; i < s.size(); i++) {
+        bool found = false;
+        for (size_t j = 0; j < t.size(); j++) {          // linear search every time
+            if (!used[j] && t[j] == s[i]) { used[j] = true; found = true; break; }
+        }
+        if (!found) return false;
+    }
+    return true;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'The strings contain only lowercase letters. Which structure gives O(1) extra space and O(N) time?',
@@ -832,7 +875,9 @@ def can_permute_palindrome(s):
         <p>Small example used in the dry run: <code>"Race car"</code> → R/r, a/a, c/c match, the space is skipped, middle <code>e</code> matches itself → <b>true</b>.</p>`,
       brute: {
         why: `<p>Build a cleaned string with <code>+=</code>, build its reverse with <code>+=</code>, then compare. It is correct, but each <code>+=</code> copies the whole string built so far, so building costs 1 + 2 + ... + N ≈ N²/2 character copies — for N = 2·10<sup>5</sup> that is 2·10<sup>10</sup> copies. Plus two extra strings of memory. The wasted work: copying the same characters again and again just to look at each one once.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           boolean isPalindromeBrute(String s) {
               String clean = "";
               for (int i = 0; i < s.length(); i++) {
@@ -842,7 +887,38 @@ def can_permute_palindrome(s):
               String rev = "";
               for (int i = clean.length() - 1; i >= 0; i--) rev += clean.charAt(i);  // O(len) copy each time
               return clean.equals(rev);
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def is_palindrome(s):
+    clean = ""
+    for c in s:
+        if c.isalnum():
+            clean = clean + c.lower()       # O(len) copy each time
+    rev = ""
+    for i in range(len(clean) - 1, -1, -1):
+        rev = rev + clean[i]                # O(len) copy each time
+    return clean == rev` },
+            { lang: 'js', code: `function isPalindrome(s) {
+  let clean = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (/[A-Za-z0-9]/.test(c)) clean = clean + c.toLowerCase();   // O(len) copy each time
+  }
+  let rev = "";
+  for (let i = clean.length - 1; i >= 0; i--) rev = rev + clean[i];   // O(len) copy each time
+  return clean === rev;
+}` },
+            { lang: 'cpp', code: `bool isPalindrome(const string& s) {
+    string clean = "";
+    for (char c : s) {
+        if (isalnum((unsigned char)c)) clean = clean + (char)tolower((unsigned char)c);   // O(len) copy each time
+    }
+    string rev = "";
+    for (int i = (int)clean.size() - 1; i >= 0; i--) rev = rev + clean[i];   // O(len) copy each time
+    return clean == rev;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Your left pointer is on <code>\',\'</code> and your right pointer is on <code>\'a\'</code>. What should you do?',
@@ -1305,7 +1381,9 @@ int main() {
         <p><code>"abc"</code> → <code>"a1b1c1"</code> is longer (6 ≥ 3) → return <code>"abc"</code>.</p>`,
       brute: {
         why: `<p>Same run-scanning idea but gluing with <code>result += c + count</code>. Each <code>+=</code> copies the whole result built so far; with many short runs (e.g. "ababab...") the result grows by 2 chars per run, so total copying is about N<sup>2</sup> → 10<sup>10</sup> for N = 10<sup>5</sup>. The wasted work is re-copying the already-finished prefix every round.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           String compressBrute(String s) {
               String res = "";
               int i = 0;
@@ -1317,7 +1395,46 @@ int main() {
                   res += cnt;          // another full copy
               }
               return res.length() < s.length() ? res : s;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def compress(s):
+    res = ""
+    i = 0
+    while i < len(s):
+        c = s[i]
+        cnt = 0
+        while i < len(s) and s[i] == c:
+            i += 1
+            cnt += 1
+        res = res + c              # full copy of res
+        res = res + str(cnt)       # another full copy
+    return res if len(res) < len(s) else s` },
+            { lang: 'js', code: `function compress(s) {
+  let res = "";
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    let cnt = 0;
+    while (i < s.length && s[i] === c) { i++; cnt++; }
+    res = res + c;            // full copy of res
+    res = res + cnt;          // another full copy
+  }
+  return res.length < s.length ? res : s;
+}` },
+            { lang: 'cpp', code: `string compress(const string& s) {
+    string res = "";
+    size_t i = 0;
+    while (i < s.size()) {
+        char c = s[i];
+        int cnt = 0;
+        while (i < s.size() && s[i] == c) { i++; cnt++; }
+        res = res + c;                  // full copy of res
+        res = res + to_string(cnt);     // another full copy
+    }
+    return res.size() < s.size() ? res : s;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'You are standing at the start of a run at index <code>i</code>. What is the cleanest way to get the run length?',
@@ -1425,7 +1542,9 @@ public:
         <p><code>"the sky is blue"</code> → <code>"blue is sky the"</code>.</p>`,
       brute: {
         why: `<p>Split on spaces, then glue the words in reverse with <code>res += word + " "</code>. Each <code>+=</code> copies the entire result again — with many tiny words this is O(N<sup>2</sup>) character copies. Splitting also creates an array of all words first (extra memory). The repeated work is re-copying the growing answer for every word.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           String reverseWordsBrute(String s) {
               String[] w = s.trim().split(" +");       // regex: one or more spaces
               String res = "";
@@ -1434,7 +1553,39 @@ public:
                   if (k > 0) res += " ";
               }
               return res;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def reverse_words(s):
+    w = s.split()                     # splits on runs of spaces and trims the ends
+    res = ""
+    for k in range(len(w) - 1, -1, -1):
+        res = res + w[k]              # full copy every time
+        if k > 0:
+            res = res + " "
+    return res` },
+            { lang: 'js', code: `function reverseWords(s) {
+  const w = s.trim().split(/ +/);          // regex: one or more spaces
+  let res = "";
+  for (let k = w.length - 1; k >= 0; k--) {
+    res = res + w[k];                       // full copy every time
+    if (k > 0) res = res + " ";
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `string reverseWords(const string& s) {
+    vector<string> w;
+    istringstream in(s);
+    string tok;
+    while (in >> tok) w.push_back(tok);        // splits on runs of spaces
+    string res = "";
+    for (int k = (int)w.size() - 1; k >= 0; k--) {
+        res = res + w[k];                       // full copy every time
+        if (k > 0) res = res + " ";
+    }
+    return res;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'If you scan the string from the <b>right end</b> to the left, in what order do you meet the words?',
@@ -1796,7 +1947,9 @@ int main() {
         <p>Output: ${H.c('p', '"bb"')} — an <b>even</b> palindrome; its center is the gap between the two b's.</p>`,
       brute: {
         why: `<p>Try every pair (i, j) — about N<sup>2</sup>/2 substrings — and check each with two pointers (up to N steps): O(N<sup>3</sup>) ≈ 10<sup>9</sup>/6 for N = 1000, too slow. The wasted work: when checking "xabay" and then "abay", "aba" etc., we keep re-comparing the same inner pairs. Expanding from the center reuses them: the inner part is already known to match when we test the next outer pair.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           String longestBrute(String s) {
               String best = s.substring(0, 1);
               for (int i = 0; i < s.length(); i++) {
@@ -1808,7 +1961,49 @@ int main() {
                   }
               }
               return best;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def longest_palindrome(s):
+    best = s[0]
+    for i in range(len(s)):
+        for j in range(i + len(best), len(s)):    # only longer candidates
+            l, r = i, j
+            ok = True
+            while l < r:
+                if s[l] != s[r]:
+                    ok = False
+                    break
+                l += 1
+                r -= 1
+            if ok:
+                best = s[i:j + 1]
+    return best` },
+            { lang: 'js', code: `function longestPalindrome(s) {
+  let best = s.slice(0, 1);
+  for (let i = 0; i < s.length; i++) {
+    for (let j = i + best.length; j < s.length; j++) {   // only longer candidates
+      let l = i, r = j;
+      let ok = true;
+      while (l < r) { if (s[l++] !== s[r--]) { ok = false; break; } }
+      if (ok) best = s.slice(i, j + 1);
+    }
+  }
+  return best;
+}` },
+            { lang: 'cpp', code: `string longestPalindrome(const string& s) {
+    string best = s.substr(0, 1);
+    for (int i = 0; i < (int)s.size(); i++) {
+        for (int j = i + (int)best.size(); j < (int)s.size(); j++) {   // only longer candidates
+            int l = i, r = j;
+            bool ok = true;
+            while (l < r) { if (s[l++] != s[r--]) { ok = false; break; } }
+            if (ok) best = s.substr(i, j - i + 1);
+        }
+    }
+    return best;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Why must we expand from <b>both</b> <code>(c, c)</code> and <code>(c, c+1)</code>?',
@@ -2200,7 +2395,9 @@ int main() {
         <p>pattern = <code>"abc"</code> → Output: ${H.c('g', '[0, 4]')}. With B = 31, hash("abc") = 1·961 + 2·31 + 3 = <b>1026</b>; the windows "abc" at 0 and 4 both hash to 1026, every other window hashes differently.</p>`,
       brute: {
         why: `<p>For each of the N − M + 1 starting positions compare up to M characters: O(N·M). With N = 10<sup>5</sup> and M = 5·10<sup>4</sup> that is ~2.5·10<sup>9</sup> comparisons. The wasted work: neighbouring windows share M − 1 characters, yet we re-read all of them from scratch every time.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           List<Integer> searchBrute(String txt, String pat) {
               List<Integer> res = new ArrayList<>();
               int n = txt.length(), m = pat.length();
@@ -2210,7 +2407,40 @@ int main() {
                   if (k == m) res.add(i);
               }
               return res;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def search(txt, pat):
+    res = []
+    n, m = len(txt), len(pat)
+    for i in range(n - m + 1):
+        k = 0
+        while k < m and txt[i + k] == pat[k]:
+            k += 1
+        if k == m:
+            res.append(i)
+    return res` },
+            { lang: 'js', code: `function search(txt, pat) {
+  const res = [];
+  const n = txt.length, m = pat.length;
+  for (let i = 0; i + m <= n; i++) {
+    let k = 0;
+    while (k < m && txt[i + k] === pat[k]) k++;
+    if (k === m) res.push(i);
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<int> search(const string& txt, const string& pat) {
+    vector<int> res;
+    int n = txt.size(), m = pat.size();
+    for (int i = 0; i + m <= n; i++) {
+        int k = 0;
+        while (k < m && txt[i + k] == pat[k]) k++;
+        if (k == m) res.push_back(i);
+    }
+    return res;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Window hash for "bcb" is 2017 (B = 31, m = 3, B<sup>2</sup> = 961). The window slides to "cba". What is the update?',
@@ -2683,7 +2913,9 @@ int main() {
         <p>Why KMP shines here: at text index 8 we have matched "abcab" and then see ${H.c('r', 'c ≠ y')}. lps[4] = 2 says the matched part ends with "ab" = pattern start, so we continue with j = 2 — the text pointer never goes back.</p>`,
       brute: {
         why: `<p>Try every start, compare up to M letters: O(N·M). Killer input: text = "aaaa…a" (10<sup>6</sup>), pattern = "aaa…ab" (5·10<sup>5</sup>) → ~2.5·10<sup>11</sup> comparisons. The wasted work: after a long partial match fails, we shift by just one and re-compare letters we already know.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           List<Integer> searchBrute(String txt, String pat) {
               List<Integer> res = new ArrayList<>();
               for (int i = 0; i + pat.length() <= txt.length(); i++) {
@@ -2692,7 +2924,37 @@ int main() {
                   if (k == pat.length()) res.add(i);
               }
               return res;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def kmp_search(txt, pat):
+    res = []
+    for i in range(len(txt) - len(pat) + 1):
+        k = 0
+        while k < len(pat) and txt[i + k] == pat[k]:
+            k += 1
+        if k == len(pat):
+            res.append(i)
+    return res` },
+            { lang: 'js', code: `function kmpSearch(txt, pat) {
+  const res = [];
+  for (let i = 0; i + pat.length <= txt.length; i++) {
+    let k = 0;
+    while (k < pat.length && txt[i + k] === pat[k]) k++;
+    if (k === pat.length) res.push(i);
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<int> kmpSearch(const string& txt, const string& pat) {
+    vector<int> res;
+    for (int i = 0; i + (int)pat.size() <= (int)txt.size(); i++) {
+        int k = 0;
+        while (k < (int)pat.size() && txt[i + k] == pat[k]) k++;
+        if (k == (int)pat.size()) res.push_back(i);
+    }
+    return res;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Pattern <code>"abcaby"</code> (lps = [0,0,0,1,2,0]). You matched j = 5 letters "abcab" and then hit a mismatch. Where does j go?',
@@ -3143,14 +3405,39 @@ int main() {
         <p>Combined string <code>"aba$ababa"</code> has Z = [0, 0, 1, 0, <b>3</b>, 0, <b>3</b>, 0, 1] → two values equal to m = 3.</p>`,
       brute: {
         why: `<p>Check every starting index of the text against the whole pattern: O(N·M). With txt = "aaaa…" and pat = "aaa…a" (half as long) that is about 2.5·10<sup>11</sup> character compares. The wasted work: neighbouring attempts overlap heavily and re-read the same letters.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           int countBrute(String txt, String pat) {
               int cnt = 0;
               for (int i = 0; i + pat.length() <= txt.length(); i++) {
                   if (txt.startsWith(pat, i)) cnt++;   // O(M) compare each time
               }
               return cnt;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def count_occurrences(txt, pat):
+    cnt = 0
+    for i in range(len(txt) - len(pat) + 1):
+        if txt.startswith(pat, i):    # O(M) compare each time
+            cnt += 1
+    return cnt` },
+            { lang: 'js', code: `function countOccurrences(txt, pat) {
+  let cnt = 0;
+  for (let i = 0; i + pat.length <= txt.length; i++) {
+    if (txt.startsWith(pat, i)) cnt++;   // O(M) compare each time
+  }
+  return cnt;
+}` },
+            { lang: 'cpp', code: `int countOccurrences(const string& txt, const string& pat) {
+    int cnt = 0;
+    for (int i = 0; i + (int)pat.size() <= (int)txt.size(); i++) {
+        if (txt.compare(i, pat.size(), pat) == 0) cnt++;   // O(M) compare each time
+    }
+    return cnt;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Why do we put a separator like <code>$</code> between pattern and text?',
@@ -3296,7 +3583,9 @@ public:
       <p>Output <b class="c-g">2</b>: "l" and "o" appear twice, "${H.c('g', 'v')}" (index 2) is the first letter with count 1. <code>"aabb"</code> → <b>-1</b> (every letter repeats).</p>`,
     brute: {
       why: `<p>For each index i, scan the whole string to see whether s[i] appears anywhere else: O(N) per index → O(N<sup>2</sup>) = 10<sup>10</sup> for N = 10<sup>5</sup>. The wasted work: we recount the same letters over and over.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int firstUniqBrute(String s) {
             for (int i = 0; i < s.length(); i++) {
                 boolean repeated = false;
@@ -3306,7 +3595,40 @@ public:
                 if (!repeated) return i;
             }
             return -1;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def first_uniq_char(s):
+    for i in range(len(s)):
+        repeated = False
+        for j in range(len(s)):
+            if i != j and s[i] == s[j]:
+                repeated = True
+                break
+        if not repeated:
+            return i
+    return -1` },
+            { lang: 'js', code: `function firstUniqChar(s) {
+  for (let i = 0; i < s.length; i++) {
+    let repeated = false;
+    for (let j = 0; j < s.length; j++) {
+      if (i !== j && s[i] === s[j]) { repeated = true; break; }
+    }
+    if (!repeated) return i;
+  }
+  return -1;
+}` },
+            { lang: 'cpp', code: `int firstUniqChar(const string& s) {
+    for (size_t i = 0; i < s.size(); i++) {
+        bool repeated = false;
+        for (size_t j = 0; j < s.size(); j++) {
+            if (i != j && s[i] == s[j]) { repeated = true; break; }
+        }
+        if (!repeated) return i;
+    }
+    return -1;
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'Why do we need <b>two</b> passes over the string?',
@@ -3403,7 +3725,9 @@ public:
       <p>"ab-cd" → <b>"dc-ba"</b>: ${H.c('g', 'a ↔ d')}, ${H.c('y', 'b ↔ c')}, the ${H.c('m', '"-"')} stays at index 2. "a-bC-dEf-ghIj" → "j-Ih-gfE-dCba".</p>`,
     brute: {
       why: `<p>Collect all letters into a list, reverse it, then rebuild the string with <code>+=</code>, filling letters back in. Correct, but uses an extra list, and <code>+=</code> in a loop is O(N<sup>2</sup>) copying. The wasted work: we copy everything twice when two pointers can swap in place.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         String reverseOnlyLettersBrute(String s) {
             List<Character> letters = new ArrayList<>();
             for (char c : s.toCharArray()) if (Character.isLetter(c)) letters.add(c);
@@ -3412,7 +3736,40 @@ public:
             int k = 0;
             for (char c : s.toCharArray()) res += Character.isLetter(c) ? letters.get(k++) : c; // O(N) copy each time
             return res;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def reverse_only_letters(s):
+    letters = [c for c in s if c.isalpha()]
+    letters.reverse()
+    res = ""
+    k = 0
+    for c in s:
+        if c.isalpha():
+            res = res + letters[k]       # O(N) copy each time
+            k += 1
+        else:
+            res = res + c
+    return res` },
+            { lang: 'js', code: `function reverseOnlyLetters(s) {
+  const isLetter = (ch) => /[A-Za-z]/.test(ch);
+  const letters = [...s].filter(isLetter);
+  letters.reverse();
+  let res = "";
+  let k = 0;
+  for (const c of s) res = res + (isLetter(c) ? letters[k++] : c);   // O(N) copy each time
+  return res;
+}` },
+            { lang: 'cpp', code: `string reverseOnlyLetters(string s) {
+    vector<char> letters;
+    for (char c : s) if (isalpha((unsigned char)c)) letters.push_back(c);
+    reverse(letters.begin(), letters.end());
+    string res = "";
+    int k = 0;
+    for (char c : s) res = res + (isalpha((unsigned char)c) ? letters[k++] : c);   // O(N) copy each time
+    return res;
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'Left pointer is on <code>\'-\'</code>, right pointer is on a letter. What happens?',
@@ -3526,7 +3883,9 @@ public:
       <p>Columns 0 and 1 agree everywhere; column 2 has o, o, ${H.c('r', 'i')} → stop. Output <b class="c-g">"fl"</b>. ["dog", "racecar", "car"] → "".</p>`,
     brute: {
       why: `<p>Try every prefix of strs[0] from longest to shortest and test it against all strings with <code>startsWith</code>: up to L prefixes × N strings × L chars = O(N·L<sup>2</sup>). The wasted work: each candidate re-checks the characters the previous candidate already verified.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         String lcpBrute(String[] strs) {
             for (int len = strs[0].length(); len > 0; len--) {
                 String p = strs[0].substring(0, len);
@@ -3535,7 +3894,39 @@ public:
                 if (ok) return p;
             }
             return "";
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def longest_common_prefix(strs):
+    for length in range(len(strs[0]), 0, -1):
+        p = strs[0][:length]
+        ok = True
+        for s in strs:
+            if not s.startswith(p):
+                ok = False
+                break
+        if ok:
+            return p
+    return ""` },
+            { lang: 'js', code: `function longestCommonPrefix(strs) {
+  for (let len = strs[0].length; len > 0; len--) {
+    const p = strs[0].slice(0, len);
+    let ok = true;
+    for (const s of strs) if (!s.startsWith(p)) { ok = false; break; }
+    if (ok) return p;
+  }
+  return "";
+}` },
+            { lang: 'cpp', code: `string longestCommonPrefix(const vector<string>& strs) {
+    for (int len = strs[0].size(); len > 0; len--) {
+        string p = strs[0].substr(0, len);
+        bool ok = true;
+        for (const string& s : strs) if (s.compare(0, len, p) != 0) { ok = false; break; }
+        if (ok) return p;
+    }
+    return "";
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'Scanning column by column, when must you stop?',
@@ -3636,7 +4027,9 @@ public:
       <p>needle = "sad" occurs at ${H.c('g', '0')} and ${H.c('b', '6')}; the <b>first</b> is <b>0</b>. haystack = "leetcode", needle = "leeto" → <b>-1</b>.</p>`,
     brute: {
       why: `<p>Check every start i with an inner loop over the needle: O(n·m) = 10<sup>8</sup> in the worst case ("aaaa…a" vs "aaa…ab"). The wasted work: after a long partial match fails, the next attempt re-reads almost the same characters.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int strStrBrute(String h, String nd) {
             for (int i = 0; i + nd.length() <= h.length(); i++) {
                 int k = 0;
@@ -3644,7 +4037,34 @@ public:
                 if (k == nd.length()) return i;
             }
             return -1;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def str_str(haystack, needle):
+    for i in range(len(haystack) - len(needle) + 1):
+        k = 0
+        while k < len(needle) and haystack[i + k] == needle[k]:
+            k += 1
+        if k == len(needle):
+            return i
+    return -1` },
+            { lang: 'js', code: `function strStr(haystack, needle) {
+  for (let i = 0; i + needle.length <= haystack.length; i++) {
+    let k = 0;
+    while (k < needle.length && haystack[i + k] === needle[k]) k++;
+    if (k === needle.length) return i;
+  }
+  return -1;
+}` },
+            { lang: 'cpp', code: `int strStr(const string& haystack, const string& needle) {
+    for (int i = 0; i + (int)needle.size() <= (int)haystack.size(); i++) {
+        int k = 0;
+        while (k < (int)needle.size() && haystack[i + k] == needle[k]) k++;
+        if (k == (int)needle.size()) return i;
+    }
+    return -1;
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'In KMP, once <code>j == m</code> (full match) in this problem, what should you do?',
@@ -3792,7 +4212,9 @@ public:
       <p>s = "abcde", goal = "cdeab": every rotation of s is a window of length n inside <b>s + s</b>, and "cdeab" sits at index 2 → <b class="c-g">true</b>. goal = "abced" → not in s + s → <b class="c-r">false</b>.</p>`,
     brute: {
       why: `<p>Generate all n rotations (each a new O(n) String) and compare each with goal: O(n<sup>2</sup>) = 10<sup>10</sup> for n = 10<sup>5</sup>. The wasted work: building rotation strings that already exist as windows of s + s.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         boolean rotateBrute(String s, String goal) {
             if (s.length() != goal.length()) return false;
             for (int k = 0; k < s.length(); k++) {
@@ -3800,7 +4222,34 @@ public:
                 if (rot.equals(goal)) return true;
             }
             return false;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def rotate_string(s, goal):
+    if len(s) != len(goal):
+        return False
+    for k in range(len(s)):
+        rot = s[k:] + s[:k]           # O(n) new string
+        if rot == goal:
+            return True
+    return False` },
+            { lang: 'js', code: `function rotateString(s, goal) {
+  if (s.length !== goal.length) return false;
+  for (let k = 0; k < s.length; k++) {
+    const rot = s.slice(k) + s.slice(0, k);   // O(n) new string
+    if (rot === goal) return true;
+  }
+  return false;
+}` },
+            { lang: 'cpp', code: `bool rotateString(const string& s, const string& goal) {
+    if (s.size() != goal.size()) return false;
+    for (size_t k = 0; k < s.size(); k++) {
+        string rot = s.substr(k) + s.substr(0, k);   // O(n) new string
+        if (rot == goal) return true;
+    }
+    return false;
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'Why does searching for goal inside <code>s + s</code> work?',
@@ -3956,7 +4405,9 @@ public:
       <p>p = "abc" → <b>[0, 6]</b>: ${H.c('g', '"cba"')} at 0 and ${H.c('b', '"bac"')} at 6 both use one a, one b, one c.</p>`,
     brute: {
       why: `<p>For each of the n − m + 1 windows, sort it (or count it from scratch) and compare with p: O(n·m log m) or O(n·m). With n = m/2 … 3·10<sup>4</sup> that is up to ~10<sup>8</sup>–10<sup>9</sup>. The wasted work: neighbouring windows share m − 1 letters, yet we recount all of them.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         List<Integer> findAnagramsBrute(String s, String p) {
             List<Integer> res = new ArrayList<>();
             char[] target = p.toCharArray();
@@ -3967,7 +4418,38 @@ public:
                 if (Arrays.equals(w, target)) res.add(i);
             }
             return res;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def find_anagrams(s, p):
+    res = []
+    target = sorted(p)
+    for i in range(len(s) - len(p) + 1):
+        w = sorted(s[i:i + len(p)])          # O(m log m) per window
+        if w == target:
+            res.append(i)
+    return res` },
+            { lang: 'js', code: `function findAnagrams(s, p) {
+  const res = [];
+  const target = [...p].sort().join("");
+  for (let i = 0; i + p.length <= s.length; i++) {
+    const w = [...s.slice(i, i + p.length)].sort().join("");   // O(m log m) per window
+    if (w === target) res.push(i);
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<int> findAnagrams(const string& s, const string& p) {
+    vector<int> res;
+    string target = p;
+    sort(target.begin(), target.end());
+    for (int i = 0; i + (int)p.size() <= (int)s.size(); i++) {
+        string w = s.substr(i, p.size());
+        sort(w.begin(), w.end());                    // O(m log m) per window
+        if (w == target) res.push_back(i);
+    }
+    return res;
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'The window slides from s[i..i+m−1] to s[i+1..i+m]. How do you update the window counts?',
@@ -4090,7 +4572,9 @@ public:
       ${H.kv([['a1e1t1', 'eat, tea, ate'], ['a1n1t1', 'tan, nat'], ['a1b1t1', 'bat']], { label: 'key → group', hl: { a1e1t1: 'g', a1n1t1: 'b', a1b1t1: 'p' } })}`,
     brute: {
       why: `<p>Compare every pair of words with an anagram check and union them: O(N<sup>2</sup>·L) ≈ 10<sup>8</sup>·100 = 10<sup>10</sup>. The wasted work: words in the same family are re-compared many times. A canonical <b>key</b> per word lets a HashMap group them in one pass.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         List<List<String>> groupBrute(String[] strs) {
             List<List<String>> res = new ArrayList<>();
             boolean[] used = new boolean[strs.length];
@@ -4112,7 +4596,77 @@ public:
             for (int k = 0; k < a.length(); k++) { c[a.charAt(k) - 'a']++; c[b.charAt(k) - 'a']--; }
             for (int x : c) if (x != 0) return false;
             return true;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def group_anagrams(strs):
+    res = []
+    used = [False] * len(strs)
+    for i in range(len(strs)):
+        if used[i]:
+            continue
+        g = [strs[i]]
+        used[i] = True
+        for j in range(i + 1, len(strs)):
+            if not used[j] and same_letters(strs[i], strs[j]):
+                g.append(strs[j])
+                used[j] = True
+        res.append(g)
+    return res
+
+
+def same_letters(a, b):
+    if len(a) != len(b):
+        return False
+    c = [0] * 26
+    for k in range(len(a)):
+        c[ord(a[k]) - ord('a')] += 1
+        c[ord(b[k]) - ord('a')] -= 1
+    return all(x == 0 for x in c)` },
+            { lang: 'js', code: `function groupAnagrams(strs) {
+  const res = [];
+  const used = new Array(strs.length).fill(false);
+  for (let i = 0; i < strs.length; i++) {
+    if (used[i]) continue;
+    const g = [strs[i]];
+    used[i] = true;
+    for (let j = i + 1; j < strs.length; j++) {
+      if (!used[j] && sameLetters(strs[i], strs[j])) { g.push(strs[j]); used[j] = true; }
+    }
+    res.push(g);
+  }
+  return res;
+}
+
+function sameLetters(a, b) {
+  if (a.length !== b.length) return false;
+  const c = new Array(26).fill(0);
+  for (let k = 0; k < a.length; k++) { c[a.charCodeAt(k) - 97]++; c[b.charCodeAt(k) - 97]--; }
+  return c.every((x) => x === 0);
+}` },
+            { lang: 'cpp', code: `bool sameLetters(const string& a, const string& b) {
+    if (a.size() != b.size()) return false;
+    int c[26] = {0};
+    for (size_t k = 0; k < a.size(); k++) { c[a[k] - 'a']++; c[b[k] - 'a']--; }
+    for (int x : c) if (x != 0) return false;
+    return true;
+}
+
+vector<vector<string>> groupAnagrams(const vector<string>& strs) {
+    vector<vector<string>> res;
+    vector<bool> used(strs.size(), false);
+    for (size_t i = 0; i < strs.size(); i++) {
+        if (used[i]) continue;
+        vector<string> g = {strs[i]};
+        used[i] = true;
+        for (size_t j = i + 1; j < strs.size(); j++) {
+            if (!used[j] && sameLetters(strs[i], strs[j])) { g.push_back(strs[j]); used[j] = true; }
+        }
+        res.push_back(g);
+    }
+    return res;
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'Which is a correct hash-map key that is identical for all anagrams?',
@@ -4219,8 +4773,10 @@ public:
     constraints: `0 ≤ |s| ≤ 200; s has English letters, digits, ' ', '+', '-' and '.'.`,
     example: `${H.table(['input', 'reading', 'output'], [['"   -42"', 'skip spaces, sign −, digits 4 2', '<b>-42</b>'], ['"4193 with words"', 'digits 4 1 9 3, stop at space', '<b>4193</b>'], ['"words 987"', 'first char is a letter → no digits', '<b>0</b>'], ['"-91283472332"', 'too small', '<b>-2147483648</b> (clamped)']])}`,
     brute: {
-      why: `<p>Extract the digit substring and call <code>Long.parseLong</code>, then clamp. It breaks on long digit strings (more than 19 digits overflow even a long and throw NumberFormatException), and hides the overflow logic interviewers want to see. The wasted/risky part: building a substring and trusting a library for out-of-range input.</p>`,
-      code: `
+      why: `<p>Extract the digit substring and call a library parser (<code>Long.parseLong</code> in Java, <code>stoll</code> in C++), then clamp. It breaks on long digit strings: more than 19 digits overflow even a 64-bit integer and throw in Java and C++, and JavaScript's <code>Number</code> silently loses precision. Python's <code>int</code> copes with any length, but the sketch still hides the overflow logic interviewers want to see. The wasted/risky part: building a substring and trusting a library for out-of-range input.</p>`,
+      code: {
+          lang: 'java',
+          code: `
         int atoiBrute(String s) {
             s = s.trim();
             if (s.isEmpty()) return 0;
@@ -4232,7 +4788,51 @@ public:
             if (j == i) return 0;
             long v = Long.parseLong(sign + s.substring(i, j));   // throws for > 19 digits!
             return (int) Math.max(Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, v));
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def my_atoi(s):
+    s = s.strip()
+    if not s:
+        return 0
+    i = 0
+    sign = ""
+    if s[0] in "-+":
+        sign = s[0]
+        i = 1
+    j = i
+    while j < len(s) and s[j].isdigit():
+        j += 1
+    if j == i:
+        return 0
+    v = int(sign + s[i:j])        # never overflows in Python, but hides the clamping logic
+    return max(-2**31, min(2**31 - 1, v))` },
+            { lang: 'js', code: `function myAtoi(s) {
+  s = s.trim();
+  if (s.length === 0) return 0;
+  let i = 0;
+  let sign = "";
+  if (s[0] === "-" || s[0] === "+") { sign = s[0]; i = 1; }
+  let j = i;
+  while (j < s.length && s[j] >= "0" && s[j] <= "9") j++;
+  if (j === i) return 0;
+  const v = Number(sign + s.slice(i, j));   // loses precision for huge values
+  return Math.max(-2147483648, Math.min(2147483647, v));
+}` },
+            { lang: 'cpp', code: `int myAtoi(string s) {
+    size_t b = s.find_first_not_of(' ');
+    if (b == string::npos) return 0;
+    s = s.substr(b);
+    int i = 0;
+    string sign = "";
+    if (s[0] == '-' || s[0] == '+') { sign = s.substr(0, 1); i = 1; }
+    int j = i;
+    while (j < (int)s.size() && isdigit((unsigned char)s[j])) j++;
+    if (j == i) return 0;
+    long long v = stoll(sign + s.substr(i, j - i));   // throws for > 19 digits!
+    return (int)max((long long)INT_MIN, min((long long)INT_MAX, v));
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'Before doing <code>res = res * 10 + d</code> (res is an int, positive), which check prevents overflow?',
@@ -4381,13 +4981,30 @@ public:
     example: `${H.table(['', '', '1', '2', '3'], [['', '×', '', '4', '5'], ['', '', '6', '1', '5'], ['', '4', '9', '2', ''], ['', '<b>5</b>', '<b>5</b>', '<b>3</b>', '<b>5</b>']])}
       <p>"123" × "45" = <b>"5535"</b>. Key fact: digit i of num1 times digit j of num2 lands in result position <b>i + j + 1</b> (with carry going to i + j).</p>`,
     brute: {
-      why: `<p>Repeated addition (add num1 to itself num2 times) is O(value) — impossible for 200-digit numbers. Converting to <code>long</code> overflows beyond 19 digits. We need schoolbook multiplication on digit arrays: O(n·m).</p>`,
-      code: `
+      why: `<p>Repeated addition (add num1 to itself num2 times) is O(value) — impossible for 200-digit numbers. Converting to a fixed-width integer (<code>long</code> in Java, <code>long long</code> in C++) overflows beyond 19 digits, and a JavaScript <code>Number</code> loses precision past 15 digits; only Python's big integers avoid it, but then the library hides the digit work. We need schoolbook multiplication on digit arrays: O(n·m).</p>`,
+      code: {
+          lang: 'java',
+          code: `
         String multiplyBrute(String a, String b) {
             // only works while the product fits in a long (about 18 digits) -> wrong for big inputs
             long x = Long.parseLong(a), y = Long.parseLong(b);
             return String.valueOf(x * y);
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def multiply(num1, num2):
+    # Python's big ints make this correct, but the library does all the digit work for us
+    return str(int(num1) * int(num2))` },
+            { lang: 'js', code: `function multiply(num1, num2) {
+  // only exact while the product stays below 2^53 (about 15 digits) -> wrong for big inputs
+  return String(Number(num1) * Number(num2));
+}` },
+            { lang: 'cpp', code: `string multiply(const string& num1, const string& num2) {
+    // only works while the product fits in a long long (about 18 digits) -> wrong for big inputs
+    long long x = stoll(num1), y = stoll(num2);
+    return to_string(x * y);
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'num1[i] × num2[j] (0-based from the left, lengths n and m) contributes to which slots of a result array of size n + m?',
@@ -4513,8 +5130,10 @@ public:
     constraints: `1 ≤ n ≤ 30 (terms grow ~30% per step; term 30 has about 4 400 characters).`,
     example: `${H.table(['n', 'term', 'read aloud'], [['1', '1', '—'], ['2', '11', 'one 1'], ['3', '21', 'two 1s'], ['4', '<b class="c-g">1211</b>', 'one 2, one 1'], ['5', '111221', 'one 1, one 2, two 1s']])}`,
     brute: {
-      why: `<p>Same simulation but building each term with <code>next += count + digit</code>. Terms reach thousands of characters and each += copies the whole term-so-far → quadratic per term. The wasted work is re-copying; with StringBuilder each term costs O(length).</p>`,
-      code: `
+      why: `<p>Same simulation but building each term with <code>next += count + digit</code>. Terms reach thousands of characters and each += copies the whole term-so-far → quadratic per term. The wasted work is re-copying; with a string builder (Java <code>StringBuilder</code>, a Python list joined at the end, a JavaScript array joined at the end, C++ <code>std::string</code> append) each term costs O(length).</p>`,
+      code: {
+          lang: 'java',
+          code: `
         String countAndSayBrute(int n) {
             String cur = "1";
             for (int t = 1; t < n; t++) {
@@ -4529,7 +5148,53 @@ public:
                 cur = next;
             }
             return cur;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def count_and_say(n):
+    cur = "1"
+    for t in range(1, n):
+        nxt = ""
+        i = 0
+        while i < len(cur):
+            j = i
+            while j < len(cur) and cur[j] == cur[i]:
+                j += 1
+            nxt = nxt + str(j - i) + cur[i]    # full copy each time
+            i = j
+        cur = nxt
+    return cur` },
+            { lang: 'js', code: `function countAndSay(n) {
+  let cur = "1";
+  for (let t = 1; t < n; t++) {
+    let next = "";
+    let i = 0;
+    while (i < cur.length) {
+      let j = i;
+      while (j < cur.length && cur[j] === cur[i]) j++;
+      next = next + (j - i) + cur[i];   // full copy each time
+      i = j;
+    }
+    cur = next;
+  }
+  return cur;
+}` },
+            { lang: 'cpp', code: `string countAndSay(int n) {
+    string cur = "1";
+    for (int t = 1; t < n; t++) {
+        string next = "";
+        size_t i = 0;
+        while (i < cur.size()) {
+            size_t j = i;
+            while (j < cur.size() && cur[j] == cur[i]) j++;
+            next = next + to_string(j - i) + cur[i];   // full copy each time
+            i = j;
+        }
+        cur = next;
+    }
+    return cur;
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'Reading "111221": what are the runs?',
@@ -4647,8 +5312,10 @@ public:
       ${H.table(['letter', 'A', 'C', 'G', 'T'], [['2-bit code', '00', '01', '10', '11']])}
       <p>10 letters × 2 bits = 20 bits → each window is a single int below 2<sup>20</sup>: a <b>perfect</b> rolling hash (no collisions possible).</p>`,
     brute: {
-      why: `<p>Put every 10-letter <code>substring</code> into a HashSet&lt;String&gt;: creates N strings of 10 chars and hashes each (10 operations) — O(10·N), fine here, but memory-heavy. For a general window length L it is O(N·L). The rolling-hash version makes each window O(1) and stores ints.</p>`,
-      code: `
+      why: `<p>Put every 10-letter <code>substring</code> into a hash set of strings: creates N strings of 10 chars and hashes each (10 operations) — O(10·N), fine here, but memory-heavy. For a general window length L it is O(N·L). The rolling-hash version makes each window O(1) and stores ints.</p>`,
+      code: {
+          lang: 'java',
+          code: `
         List<String> dnaBrute(String s) {
             Set<String> seen = new HashSet<>(), rep = new HashSet<>();
             for (int i = 0; i + 10 <= s.length(); i++) {
@@ -4656,7 +5323,36 @@ public:
                 if (!seen.add(w)) rep.add(w);
             }
             return new ArrayList<>(rep);
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def find_repeated_dna_sequences(s):
+    seen, rep = set(), set()
+    for i in range(len(s) - 10 + 1):
+        w = s[i:i + 10]                # new 10-char string every step
+        if w in seen:
+            rep.add(w)
+        else:
+            seen.add(w)
+    return list(rep)` },
+            { lang: 'js', code: `function findRepeatedDnaSequences(s) {
+  const seen = new Set(), rep = new Set();
+  for (let i = 0; i + 10 <= s.length; i++) {
+    const w = s.slice(i, i + 10);       // new 10-char string every step
+    if (seen.has(w)) rep.add(w);
+    else seen.add(w);
+  }
+  return [...rep];
+}` },
+            { lang: 'cpp', code: `vector<string> findRepeatedDnaSequences(const string& s) {
+    unordered_set<string> seen, rep;
+    for (int i = 0; i + 10 <= (int)s.size(); i++) {
+        string w = s.substr(i, 10);      // new 10-char string every step
+        if (!seen.insert(w).second) rep.insert(w);
+    }
+    return vector<string>(rep.begin(), rep.end());
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'With 2 bits per letter and a 20-bit window, how do you roll from window i to i + 1?',
@@ -4783,7 +5479,9 @@ public:
       <p>a = "a", b = "aa" → 2. a = "abc", b = "wxyz" → −1.</p>`,
     brute: {
       why: `<p>Keep appending a and calling <code>contains</code> until the string becomes "too long" — without a clear stopping rule this can loop forever, and each contains is O(n·m) worst case. The insight: b can start anywhere inside the first copy of a, so you only ever need q = ⌈|b| / |a|⌉ or q + 1 copies.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int repeatedBrute(String a, String b) {
             StringBuilder sb = new StringBuilder(a);
             for (int k = 1; k <= b.length() / a.length() + 2; k++) {   // safe upper bound
@@ -4791,7 +5489,33 @@ public:
                 sb.append(a);
             }
             return -1;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def repeated_string_match(a, b):
+    sb = a
+    for k in range(1, len(b) // len(a) + 3):    # safe upper bound
+        if b in sb:                             # O(n*m) worst each time
+            return k
+        sb += a
+    return -1` },
+            { lang: 'js', code: `function repeatedStringMatch(a, b) {
+  let sb = a;
+  for (let k = 1; k <= Math.floor(b.length / a.length) + 2; k++) {   // safe upper bound
+    if (sb.includes(b)) return k;                                    // O(n*m) worst each time
+    sb += a;
+  }
+  return -1;
+}` },
+            { lang: 'cpp', code: `int repeatedStringMatch(const string& a, const string& b) {
+    string sb = a;
+    for (int k = 1; k <= (int)(b.size() / a.size()) + 2; k++) {   // safe upper bound
+        if (sb.find(b) != string::npos) return k;                 // O(n*m) worst each time
+        sb += a;
+    }
+    return -1;
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'Why is q + 1 copies (q = ⌈|b|/|a|⌉) always enough if any answer exists?',
@@ -4967,14 +5691,39 @@ public:
       <p>"ababab" → <b>"abab"</b>: prefix ${H.c('b', 'ab')}${H.c('p', 'ab')} (indices 0–3) equals suffix ${H.c('p', 'ab')}${H.c('g', 'ab')} (indices 2–5) — they overlap, which is allowed. "level" → "l". "abc" → "".</p>`,
     brute: {
       why: `<p>Try every length L from n − 1 down to 1 and compare prefix and suffix (<code>startsWith</code> / <code>endsWith</code>): up to n lengths × n characters = O(n<sup>2</sup>) = 10<sup>10</sup> on "aaaa…ab". The wasted work: each length re-compares characters that previous lengths already examined.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         String happyBrute(String s) {
             int n = s.length();
             for (int len = n - 1; len > 0; len--) {
                 if (s.regionMatches(0, s, n - len, len)) return s.substring(0, len); // O(len) compare
             }
             return "";
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def longest_prefix(s):
+    n = len(s)
+    for length in range(n - 1, 0, -1):
+        if s[:length] == s[n - length:]:      # O(len) compare
+            return s[:length]
+    return ""` },
+            { lang: 'js', code: `function longestPrefix(s) {
+  const n = s.length;
+  for (let len = n - 1; len > 0; len--) {
+    if (s.slice(0, len) === s.slice(n - len)) return s.slice(0, len);   // O(len) compare
+  }
+  return "";
+}` },
+            { lang: 'cpp', code: `string longestPrefix(const string& s) {
+    int n = s.size();
+    for (int len = n - 1; len > 0; len--) {
+        if (s.compare(0, len, s, n - len, len) == 0) return s.substr(0, len);   // O(len) compare
+    }
+    return "";
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'Which single number from KMP answers this problem directly?',
@@ -5085,7 +5834,9 @@ public:
       <p>"abcd" → longest palindromic prefix is just "a"; leftover "bcd" reversed = "dcb" → <b>"dcbabcd"</b>.</p>`,
     brute: {
       why: `<p>Try prefix lengths k = n, n − 1, …, and check if s[0..k) is a palindrome (O(k) each): O(n<sup>2</sup>) = 2.5·10<sup>9</sup> for "aaaa…ab"-like inputs. The wasted work: re-checking overlapping prefixes from scratch.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         String shortestBrute(String s) {
             int k = s.length();
             while (k > 0) {
@@ -5096,7 +5847,49 @@ public:
                 k--;
             }
             return new StringBuilder(s.substring(k)).reverse() + s;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def shortest_palindrome(s):
+    k = len(s)
+    while k > 0:
+        l, r = 0, k - 1
+        ok = True
+        while l < r:
+            if s[l] != s[r]:
+                ok = False
+                break
+            l += 1
+            r -= 1
+        if ok:
+            break                      # s[0..k) is the longest palindromic prefix
+        k -= 1
+    return s[k:][::-1] + s` },
+            { lang: 'js', code: `function shortestPalindrome(s) {
+  let k = s.length;
+  while (k > 0) {
+    let l = 0, r = k - 1;
+    let ok = true;
+    while (l < r) if (s[l++] !== s[r--]) { ok = false; break; }
+    if (ok) break;                      // s[0..k) is the longest palindromic prefix
+    k--;
+  }
+  return [...s.slice(k)].reverse().join("") + s;
+}` },
+            { lang: 'cpp', code: `string shortestPalindrome(const string& s) {
+    int k = s.size();
+    while (k > 0) {
+        int l = 0, r = k - 1;
+        bool ok = true;
+        while (l < r) if (s[l++] != s[r--]) { ok = false; break; }
+        if (ok) break;                      // s[0..k) is the longest palindromic prefix
+        k--;
+    }
+    string tail = s.substr(k);
+    reverse(tail.begin(), tail.end());
+    return tail + s;
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'In t = s + "#" + reverse(s), what does lps[last] measure?',
@@ -5210,7 +6003,9 @@ public:
       <p>Score of the suffix starting at i is Z[i] (and n for i = 0). "azbazbzaz" → 9 + 3 + 2 = <b>14</b>.</p>`,
     brute: {
       why: `<p>For each suffix compare it with s character by character: O(n) per suffix → O(n<sup>2</sup>) = 10<sup>10</sup> on "aaaa…a". The wasted work: overlapping comparisons the Z-box reuses.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         long sumScoresBrute(String s) {
             int n = s.length();
             long total = 0;
@@ -5220,7 +6015,39 @@ public:
                 total += k;
             }
             return total;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def sum_scores(s):
+    n = len(s)
+    total = 0
+    for i in range(n):
+        k = 0
+        while i + k < n and s[k] == s[i + k]:    # LCP from scratch
+            k += 1
+        total += k
+    return total` },
+            { lang: 'js', code: `function sumScores(s) {
+  const n = s.length;
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    let k = 0;
+    while (i + k < n && s[k] === s[i + k]) k++;   // LCP from scratch
+    total += k;
+  }
+  return total;
+}` },
+            { lang: 'cpp', code: `long long sumScores(const string& s) {
+    int n = s.size();
+    long long total = 0;
+    for (int i = 0; i < n; i++) {
+        int k = 0;
+        while (i + k < n && s[k] == s[i + k]) k++;   // LCP from scratch
+        total += k;
+    }
+    return total;
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'The score of the suffix starting at index i equals…',
@@ -5338,8 +6165,10 @@ public:
     example: `${H.arr('banana'.split(''), { hl: { 1: 'g', 2: 'g', 3: 'p', 4: 'b', 5: 'b' } })}
       <p>"banana" → <b>"ana"</b>, found at 1 and 3 (they share the middle ${H.c('p', 'a')}). "abcd" → "" (no letter repeats).</p>`,
     brute: {
-      why: `<p>For each length L (n of them), put all substrings of length L in a HashSet&lt;String&gt; — O(n·L) per length → O(n<sup>3</sup>) overall ≈ 2.7·10<sup>13</sup>. Two wastes: trying every L (the answer is monotonic, so binary search works) and hashing whole substrings (rolling hash makes each window O(1)).</p>`,
-      code: `
+      why: `<p>For each length L (n of them), put all substrings of length L in a hash set of strings — O(n·L) per length → O(n<sup>3</sup>) overall ≈ 2.7·10<sup>13</sup>. Two wastes: trying every L (the answer is monotonic, so binary search works) and hashing whole substrings (rolling hash makes each window O(1)).</p>`,
+      code: {
+          lang: 'java',
+          code: `
         String dupBrute(String s) {
             for (int len = s.length() - 1; len > 0; len--) {
                 Set<String> seen = new HashSet<>();
@@ -5348,7 +6177,40 @@ public:
                 }
             }
             return "";
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def longest_dup_substring(s):
+    for length in range(len(s) - 1, 0, -1):
+        seen = set()
+        for i in range(len(s) - length + 1):
+            w = s[i:i + length]
+            if w in seen:
+                return w
+            seen.add(w)
+    return ""` },
+            { lang: 'js', code: `function longestDupSubstring(s) {
+  for (let len = s.length - 1; len > 0; len--) {
+    const seen = new Set();
+    for (let i = 0; i + len <= s.length; i++) {
+      const w = s.slice(i, i + len);
+      if (seen.has(w)) return w;
+      seen.add(w);
+    }
+  }
+  return "";
+}` },
+            { lang: 'cpp', code: `string longestDupSubstring(const string& s) {
+    for (int len = (int)s.size() - 1; len > 0; len--) {
+        unordered_set<string> seen;
+        for (int i = 0; i + len <= (int)s.size(); i++) {
+            string w = s.substr(i, len);
+            if (!seen.insert(w).second) return w;
+        }
+    }
+    return "";
+}` }
+          ]
+        }
     },
     mcq: {
       q: 'Why can we binary search on the length L?',
@@ -5533,13 +6395,13 @@ public:
   // QUIZ
   // =====================================================================
   quiz.push({ q: 'What does this print? <code>String s = "cat"; s.toUpperCase(); System.out.println(s);</code>', options: ['CAT', 'cat', 'Cat', 'Compile error'], answer: 1, explain: 'Strings are immutable. toUpperCase() returns a new String "CAT" that is thrown away because it is not assigned; s still points to "cat".' });
-  quiz.push({ q: 'For a lowercase letter <code>c</code>, what is <code>c - \'a\'</code> when c = \'e\'?', options: ['5', '4', '101', '\'e\''], answer: 1, explain: '\'e\' is 101 and \'a\' is 97 in ASCII/Unicode, so the difference is 4 — the 0-based slot of e in an int[26].' });
+  quiz.push({ q: 'For a lowercase letter <code>c</code>, what is <code>c - \'a\'</code> when c = \'e\'?', options: ['5', '4', '101', '\'e\''], answer: 1, explain: '\'e\' is 101 and \'a\' is 97 in ASCII/Unicode, so the difference is 4 — the 0-based slot of e in a 26-entry count array.' });
   quiz.push({ q: '<code>String a = "hi"; String c = new String("hi");</code> — which is true?', options: ['a == c is true', 'a.equals(c) is true and a == c is false', 'Both are false', 'Both are true'], answer: 1, explain: 'new always creates a separate object, so the references differ (== false), while the letters are the same (equals true).' });
-  quiz.push({ q: 'Building a string of N characters with <code>s += c</code> inside a loop costs…', options: ['O(N)', 'O(N log N)', 'O(N<sup>2</sup>) — each += copies the whole string so far', 'O(1)'], answer: 2, explain: 'Copies of length 1 + 2 + … + N = N(N+1)/2. A StringBuilder makes it O(N) amortized.' });
+  quiz.push({ q: 'Building a string of N characters with <code>s += c</code> inside a loop costs (when each += copies the whole string, as with Java, Python and JavaScript strings)…', options: ['O(N)', 'O(N log N)', 'O(N<sup>2</sup>) — each += copies the whole string so far', 'O(1)'], answer: 2, explain: 'Copies of length 1 + 2 + … + N = N(N+1)/2. A string builder (Java <code>StringBuilder</code>, Python <code>list</code> + <code>join</code>, JavaScript array + <code>join</code>, C++ <code>std::string</code> append) makes it O(N) amortized.' });
   quiz.push({ q: 'How many centers does expand-around-center try for a string of length N?', options: ['N', 'N − 1', '2N − 1 (N letters + N − 1 gaps)', 'N<sup>2</sup>'], answer: 2, explain: 'Odd palindromes are centered on a letter (N choices); even palindromes on the gap between two letters (N − 1 choices).' });
   quiz.push({ q: 'After <code>expand(l, r)</code> stops, the palindrome found has length…', options: ['r − l', 'r − l + 1', 'r − l − 1', 'r + l'], answer: 2, explain: 'The loop exits one step too far on both sides, so the palindrome is s[l+1 .. r−1], whose length is (r − 1) − (l + 1) + 1 = r − l − 1.' });
-  quiz.push({ q: 'In Rabin-Karp, why do we compare characters when the window hash equals the pattern hash?', options: ['To make it faster', 'Because different strings can share a hash (collision)', 'Because Java requires it', 'We never need to'], answer: 1, explain: 'Hashing maps many strings to fewer values, so equal hashes only mean "possibly equal". Verifying (or double hashing) rules out spurious hits.' });
-  quiz.push({ q: 'In Java, <code>(-5) % 7</code> evaluates to…', options: ['2', '-5', '5', '-2'], answer: 1, explain: 'Java\'s % keeps the sign of the dividend. That is why rolling-hash code writes (x % M + M) % M or Math.floorMod after subtracting.' });
+  quiz.push({ q: 'In Rabin-Karp, why do we compare characters when the window hash equals the pattern hash?', options: ['To make it faster', 'Because different strings can share a hash (collision)', 'Because the language requires it', 'We never need to'], answer: 1, explain: 'Hashing maps many strings to fewer values, so equal hashes only mean "possibly equal". Verifying (or double hashing) rules out spurious hits.' });
+  quiz.push({ q: 'In Java, C++ and JavaScript, <code>(-5) % 7</code> evaluates to…', options: ['2', '-5', '5', '-2'], answer: 1, explain: 'In Java, C++ and JavaScript, % keeps the sign of the dividend (Python gives 2). That is why rolling-hash code writes (x % M + M) % M or Java\'s Math.floorMod after subtracting.' });
   quiz.push({ q: 'What is the LPS array of <code>"ababaca"</code>?', options: ['[0,0,1,2,3,0,1]', '[0,1,2,3,4,5,6]', '[0,0,1,2,0,0,1]', '[1,0,1,0,1,0,1]'], answer: 0, explain: 'Borders: "a"(i=2) → 1, "ab" → 2, "aba" → 3, then "c" breaks everything → 0, final "a" → 1.' });
   quiz.push({ q: 'In KMP search, a mismatch happens with j &gt; 0. What do you do?', options: ['i = i − j + 1, j = 0', 'j = lps[j − 1] and keep i', 'j = lps[j] and i++', 'i++ and j++'], answer: 1, explain: 'The longest border of the matched part pat[0..j−1] is lps[j − 1]; those characters are already matched, so continue comparing pat[lps[j−1]] with the same text character. i never moves back.' });
   quiz.push({ q: 'Z-array of <code>"aabxaab"</code> (with Z[0] = 0) is…', options: ['[0,1,0,0,3,1,0]', '[0,1,0,0,2,1,0]', '[0,0,0,0,3,0,0]', '[7,1,0,0,3,1,0]'], answer: 0, explain: 'Z[1] = 1 ("a"), Z[4] = 3 ("aab" matches the prefix), Z[5] = 1 ("a"), others 0.' });
@@ -5551,10 +6413,10 @@ public:
   // =====================================================================
   interview.push({ q: 'Why are Strings immutable in Java, and what does that buy us?', level: 'B', a: `<p>Once created, a String's characters can never change; every "modification" returns a new String. Benefits: (1) <b>safe sharing</b> — literals are pooled and many references can point to one object; (2) <b>thread safety</b> without locks; (3) <b>hash caching</b> — hashCode is computed once and stored, which makes Strings ideal HashMap keys; (4) <b>security</b> — file paths, class names and URLs cannot be altered after validation. The cost: editing in a loop creates garbage and can be O(N<sup>2</sup>), which is why we use StringBuilder or char[] for building.</p>`, followUps: ['What would break if a String used as a HashMap key could change?', 'How do you "edit" a String efficiently?'] });
   interview.push({ q: 'Explain == vs equals for Strings, and when == happens to return true.', level: 'B', a: `<p><code>==</code> compares references (are these the same object?); <code>equals</code> compares the character content. == returns true for two identical <b>literals</b> (both point to the pooled object), for compile-time constant expressions like <code>"he" + "llo"</code>, and after <code>intern()</code>. Strings built at runtime (concatenation with variables, input, substring) are new objects, so == fails even when the letters match. Rule: always use <code>equals</code> (or <code>Objects.equals</code> for null-safety).</p>`, followUps: ['What does intern() do and when is it useful?', 'Is comparing two char values with == okay?'] });
-  interview.push({ q: 'How would you count character frequencies, and when is int[26] better than a HashMap?', level: 'B', a: `<p>If the problem guarantees lowercase a–z, use <code>int[26]</code> and <code>cnt[c - 'a']++</code>: no hashing, no boxing, contiguous memory, O(1) space, and comparing two count arrays costs 26 steps. For full ASCII use <code>int[128]</code>. For arbitrary Unicode or unknown alphabets use <code>HashMap&lt;Character, Integer&gt;</code> (or code points). The array version is typically several times faster and is what interviewers expect when they say "lowercase English letters".</p>`, followUps: ['How do you compare two frequency arrays quickly in a sliding window?', 'What breaks if the input contains uppercase letters?'] });
-  interview.push({ q: 'Why is StringBuilder append amortized O(1)? Prove it.', level: 'I', a: `<p>StringBuilder keeps a backing array with spare capacity. An append writes into the next free cell (O(1)). When full, it allocates roughly double the capacity and copies once. Copy sizes are c, 2c, 4c, …, all ≤ N, and that geometric series sums to less than 2N. Adding the N single writes gives fewer than 3N operations for N appends, so the <b>average</b> cost per append is O(1) even though an individual append can cost O(N). Pre-sizing with <code>new StringBuilder(n)</code> removes the copies entirely.</p>`, followUps: ['What if capacity grew by +10 instead of ×2?', 'Which StringBuilder operations are O(N) and should be avoided in loops?'] });
+  interview.push({ q: 'How would you count character frequencies, and when is a 26-slot array better than a hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>)?', level: 'B', a: `<p>If the problem guarantees lowercase a–z, use a 26-slot count array (<code>int[26]</code>, <code>[0] * 26</code>, <code>new Array(26).fill(0)</code>, <code>int cnt[26]</code>) and <code>cnt[c - 'a']++</code>: no hashing, no boxing, contiguous memory, O(1) space, and comparing two count arrays costs 26 steps. For full ASCII use 128 slots. For arbitrary Unicode or unknown alphabets use a hash map from character to count (or code points). The array version is typically several times faster and is what interviewers expect when they say "lowercase English letters".</p>`, followUps: ['How do you compare two frequency arrays quickly in a sliding window?', 'What breaks if the input contains uppercase letters?'] });
+  interview.push({ q: 'Why is appending to a string builder (Java <code>StringBuilder</code>, C++ <code>std::string</code>, a Python list of pieces) amortized O(1)? Prove it.', level: 'I', a: `<p>StringBuilder keeps a backing array with spare capacity. An append writes into the next free cell (O(1)). When full, it allocates roughly double the capacity and copies once. Copy sizes are c, 2c, 4c, …, all ≤ N, and that geometric series sums to less than 2N. Adding the N single writes gives fewer than 3N operations for N appends, so the <b>average</b> cost per append is O(1) even though an individual append can cost O(N). Pre-sizing with <code>new StringBuilder(n)</code> removes the copies entirely.</p>`, followUps: ['What if capacity grew by +10 instead of ×2?', 'Which StringBuilder operations are O(N) and should be avoided in loops?'] });
   interview.push({ q: 'Walk me through finding the longest palindromic substring. What are the alternatives?', level: 'I', a: `<p>Every palindrome is symmetric around a center — a letter (odd length) or a gap (even length) — so there are 2N − 1 centers. From each, expand l−−, r++ while s[l] == s[r]; length = r − l − 1, start = c − (len − 1)/2. Time O(N<sup>2</sup>), space O(1). Alternatives: brute force O(N<sup>3</sup>); DP table pal[i][j] in O(N<sup>2</sup>) time and space (useful when many palindrome queries follow); hashing + binary search O(N log N); Manacher's algorithm O(N) using a mirror/box idea on "#a#b#…".</p>`, followUps: ['How would you count all palindromic substrings?', 'Explain the idea behind Manacher in two sentences.'] });
-  interview.push({ q: 'Explain the polynomial rolling hash and how Rabin-Karp uses it.', level: 'I', a: `<p>Treat a string as a number in base B: hash = s[0]·B<sup>m−1</sup> + … + s[m−1], all mod a large prime M. Sliding the window right: subtract the outgoing char × B<sup>m−1</sup>, multiply by B, add the incoming char — O(1). Rabin-Karp hashes the pattern and each text window; only on equal hashes does it compare characters (to rule out collisions). Expected O(N + M); worst case O(N·M) if many verifications happen. With prefix hashes, any substring's hash is O(1): pre[r+1] − pre[l]·B<sup>len</sup>.</p>`, followUps: ['Why must letter values start at 1, not 0?', 'How do you handle negative values after the subtraction in Java?'] });
+  interview.push({ q: 'Explain the polynomial rolling hash and how Rabin-Karp uses it.', level: 'I', a: `<p>Treat a string as a number in base B: hash = s[0]·B<sup>m−1</sup> + … + s[m−1], all mod a large prime M. Sliding the window right: subtract the outgoing char × B<sup>m−1</sup>, multiply by B, add the incoming char — O(1). Rabin-Karp hashes the pattern and each text window; only on equal hashes does it compare characters (to rule out collisions). Expected O(N + M); worst case O(N·M) if many verifications happen. With prefix hashes, any substring's hash is O(1): pre[r+1] − pre[l]·B<sup>len</sup>.</p>`, followUps: ['Why must letter values start at 1, not 0?', 'How do you handle negative values after the subtraction (Java, C++ and JavaScript keep the sign of <code>%</code>; Python does not)?'] });
   interview.push({ q: 'How do you reduce hash collisions, and how likely are they?', level: 'A', a: `<p>For a prime modulus M and a random base, two different strings of length L collide with probability ≤ L/M. Across many comparisons the birthday effect matters: with K hashes in a set, collisions become likely around K ≈ √M. Mitigations: (1) verify characters on every hash hit (always correct); (2) <b>double hashing</b> with two independent (B, M) pairs — false positives ≈ 1/(M<sub>1</sub>M<sub>2</sub>); (3) a 61-bit Mersenne prime modulus with 128-bit multiplication; (4) choose the base randomly at runtime so adversaries cannot craft collisions. Avoid relying on overflow mod 2<sup>64</sup> — Thue–Morse strings break it.</p>`, followUps: ['Why is a fixed base dangerous on a public judge or a web service?', 'How would you pack two hashes into one HashMap key?'] });
   interview.push({ q: 'What is the LPS array and how do you build it in O(M)?', level: 'I', a: `<p>lps[i] = length of the longest <b>proper</b> prefix of pat[0..i] that is also a suffix of it. Build with two pointers: i scans the pattern, len is the current border length. If pat[i] == pat[len], len++ and lps[i] = len, i++. On mismatch with len &gt; 0, fall back to the next shorter border len = lps[len − 1] without moving i. On mismatch with len = 0, lps[i] = 0, i++. len increases at most M times and every fallback decreases it, so total work is O(M).</p>`, followUps: ['Compute the LPS of "aabaaab" by hand.', 'Why is the fallback lps[len − 1] and not lps[len]?'] });
   interview.push({ q: 'Prove that KMP search runs in O(N + M).', level: 'A', a: `<p>Each loop iteration either moves the text pointer i forward, or decreases the pattern pointer j via j = lps[j − 1]. i moves forward at most N times. j only increases together with i (at most N increments total), and it never goes below 0, so the total number of decreases is also at most N. Hence the search loop runs at most 2N times; the LPS build by the same argument runs at most 2M times. Total O(N + M), deterministic — unlike Rabin-Karp, no luck is involved.</p>`, followUps: ['Does the text pointer ever move backwards?', 'How would you handle finding overlapping matches?'] });

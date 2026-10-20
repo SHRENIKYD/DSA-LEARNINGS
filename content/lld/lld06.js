@@ -11,7 +11,17 @@
     o = o || {};
     return { type: 'graph', label: label, directed: o.undirected ? false : true, height: o.h || 60, nodes: nodes, edges: edges, hl: o.hl || {}, ehl: o.ehl || {}, tags: o.tags || {} };
   }
-  function CODE(label, code, hl) { return { type: 'code', label: label, lang: 'java', code: code, hl: hl || {} }; }
+  // python / TypeScript / C++ versions of the Java code panes, keyed by the exact Java text (registered where each pane is built)
+  var ALTS = {};
+  function mkAlt(py, ts, cpp, maps) {
+    maps = maps || {};
+    return { python: { code: py, map: maps.python || {} }, js: { lang: 'ts', code: ts, map: maps.ts || {} }, cpp: { code: cpp, map: maps.cpp || {} } };
+  }
+  function CODE(label, code, hl, alt) { return { type: 'code', label: label, lang: 'java', code: code, hl: hl || {}, alt: alt || ALTS[code] }; }
+  function acceptAlt(t) {
+    var snake = t.toLowerCase();
+    return mkAlt('def accept(self, v):\n    return v.visit_' + snake + '(self)', 'accept<R>(v: ExprVisitor<R>): R {\n  return v.visit' + t + '(this);\n}', 'int accept(ExprVisitor& v) const override {\n  return v.visit' + t + '(*this);\n}');
+  }
   function TXT(html, label) { var p = { type: 'text', html: html }; if (label) p.label = label; return p; }
   function VARS(label, vals, hl) { return { type: 'vars', label: label, vals: vals, hl: hl || {} }; }
   function STACK(label, items, hl) { return { type: 'stack', label: label, items: items.slice(), hl: hl || {} }; }
@@ -432,6 +442,27 @@ int main() {
         var edges = [['CL', 'CK', 'setStrategy()'], ['CK', 'DS', 'apply()'], ['NO', 'DS', 'implements'], ['FL', 'DS'], ['PC', 'DS'], ['FE', 'DS']];
         var frames = [];
         var naive = 'double total(String type, double a) {\n  if (type.equals("NONE")) return a;\n  else if (type.equals("FLAT")) return a >= 500 ? a - 100 : a;\n  else if (type.equals("PERCENT")) return a * 0.9;\n  else if (type.equals("FESTIVE")) return a - Math.min(a*0.2, 300);\n  // every new rule = edit THIS method again\n  throw new IllegalArgumentException(type);\n}';
+        ALTS[naive] = mkAlt(`def total(type, a):
+    if type == "NONE": return a
+    elif type == "FLAT": return a - 100 if a >= 500 else a
+    elif type == "PERCENT": return a * 0.9
+    elif type == "FESTIVE": return a - min(a * 0.2, 300)
+    # every new rule = edit THIS method again
+    raise ValueError(type)`, `total(type: string, a: number): number {
+  if (type === "NONE") return a;
+  else if (type === "FLAT") return a >= 500 ? a - 100 : a;
+  else if (type === "PERCENT") return a * 0.9;
+  else if (type === "FESTIVE") return a - Math.min(a * 0.2, 300);
+  // every new rule = edit THIS method again
+  throw new Error(type);
+}`, `double total(const string& type, double a) {
+  if (type == "NONE") return a;
+  else if (type == "FLAT") return a >= 500 ? a - 100 : a;
+  else if (type == "PERCENT") return a * 0.9;
+  else if (type == "FESTIVE") return a - min(a * 0.2, 300.0);
+  // every new rule = edit THIS method again
+  throw invalid_argument(type);
+}`);
         frames.push(F('<b>The naive design</b>: one method with an if/else per rule. Every new discount means re-opening and re-testing this method. ' + H.c('r', 'This is the pain Strategy removes.'),
           [CODE('Naive: if/else ladder inside Checkout', naive, { 2: 'bad', 3: 'bad', 4: 'bad', 5: 'bad', 6: 'bad' })]));
         frames.push(F('<b>The Strategy structure.</b> <code>Checkout</code> only knows the <b>interface</b> «DiscountStrategy». Four small classes implement it. Arrows from the concrete classes mean "implements". The client decides which one to plug in.',
@@ -451,7 +482,7 @@ int main() {
           frames.push(F('Step ' + (i + 1) + 'b: <code>checkout.total(' + amt + ')</code> calls <code>strategy.apply(' + amt + ')</code>. The virtual call lands in <b>' + d.cls + '</b> (' + d.rule + '). Result: <b>₹' + after + '</b>.',
             [G('Runtime call path', nodes, edges, { h: 70, hl: hl2, ehl: eh2 }),
               VARS('Result', { before: amt, after: after, saved: Math.round((amt - after) * 100) / 100 }, { after: 'ok' }),
-              CODE('What runs', 'double total(double a) {\n  double after = strategy.apply(a);\n  return round(after);\n}', { 2: 'ok' })]));
+              CODE('What runs', 'double total(double a) {\n  double after = strategy.apply(a);\n  return round(after);\n}', { 2: 'ok' }, mkAlt('def total(self, a):\n    after = self.strategy.apply(a)\n    return round(after)', 'total(a: number): number {\n  const after = this.strategy.apply(a);\n  return round(after);\n}', 'double total(double a) {\n  double after = strategy->apply(a);\n  return round(after);\n}'))]));
           cur = d.cls;
         });
         frames.push(F('Summary: the <b>same</b> Checkout code produced ' + results.length + ' different answers just by plugging in different strategies. Adding a 5th rule = one new class; Checkout is ' + H.c('g', 'closed for modification, open for extension') + '.',
@@ -546,7 +577,7 @@ cout << "\\n";` }
       statement: `<p>Design a <code>FareCalculator</code> for a ride app. A ride has distance (km) and duration (minutes). Fare types: <b>NORMAL</b> = 50 base + 12/km + 1/min; <b>SURGE</b> = NORMAL × surge multiplier; <b>POOL</b> = 70% of NORMAL. New fare types (e.g. NIGHT, AIRPORT) will be added every month. Changing a fare type at runtime must not change <code>FareCalculator</code> code.</p>`,
       constraints: `Distance 0–500 km, duration 0–600 min, surge multiplier 1.0–5.0. Round fare to 2 decimals.`,
       example: `<p>Ride: 10 km, 20 min. ${H.c('b', 'NORMAL')} = 50 + 120 + 20 = <b>190</b>. ${H.c('b', 'SURGE ×1.5')} = <b>285</b>. ${H.c('b', 'POOL')} = 0.7 × 190 = <b>133</b>. Same ride, three answers, because only the <i>pricing algorithm</i> changed.</p>`,
-      brute: { why: `<p>A single method with <code>if (type == NORMAL) … else if (type == SURGE) …</code>. Each new type edits the same method (breaks Open/Closed), surge needs an extra parameter that NORMAL and POOL ignore, and the method cannot be tested per fare type. After 10 fare types it is a 150-line method everyone is scared to touch.</p>`, code: `class NaiveFareCalculator {
+      brute: { why: `<p>A single method with <code>if (type == NORMAL) … else if (type == SURGE) …</code>. Each new type edits the same method (breaks Open/Closed), surge needs an extra parameter that NORMAL and POOL ignore, and the method cannot be tested per fare type. After 10 fare types it is a 150-line method everyone is scared to touch.</p>`, code: { lang: 'java', code: `class NaiveFareCalculator {
     double fare(String type, double km, double min, double surge) {
         double normal = 50 + 12 * km + 1 * min;
         if (type.equals("NORMAL")) return normal;
@@ -555,7 +586,40 @@ cout << "\\n";` }
         // NIGHT, AIRPORT, RENTAL... every month we edit this method again
         throw new IllegalArgumentException("Unknown fare type " + type);
     }
+}`, alt: [
+                { lang: 'python', code: `
+class NaiveFareCalculator:
+    def fare(self, type, km, minutes, surge):
+        normal = 50 + 12 * km + 1 * minutes
+        if type == "NORMAL": return normal
+        elif type == "SURGE": return normal * surge   # surge param unused by others
+        elif type == "POOL": return normal * 0.7
+        # NIGHT, AIRPORT, RENTAL... every month we edit this method again
+        raise ValueError("Unknown fare type " + type)` },
+                { lang: 'ts', code: `
+class NaiveFareCalculator {
+    fare(type: string, km: number, min: number, surge: number): number {
+        const normal = 50 + 12 * km + 1 * min;
+        if (type === "NORMAL") return normal;
+        else if (type === "SURGE") return normal * surge;   // surge param unused by others
+        else if (type === "POOL") return normal * 0.7;
+        // NIGHT, AIRPORT, RENTAL... every month we edit this method again
+        throw new Error("Unknown fare type " + type);
+    }
 }` },
+                { lang: 'cpp', code: `
+class NaiveFareCalculator {
+public:
+    double fare(const string& type, double km, double min, double surge) {
+        double normal = 50 + 12 * km + 1 * min;
+        if (type == "NORMAL") return normal;
+        else if (type == "SURGE") return normal * surge;   // surge param unused by others
+        else if (type == "POOL") return normal * 0.7;
+        // NIGHT, AIRPORT, RENTAL... every month we edit this method again
+        throw invalid_argument("Unknown fare type " + type);
+    }
+};` }
+              ] } },
       mcq: { q: 'Product says "a new fare type AIRPORT (flat 200 + 15/km) launches next week". With Strategy, what changes?', options: ['Add one class AirportFare implements FareStrategy; FareCalculator untouched', 'Add another else-if in FareCalculator', 'Subclass FareCalculator', 'Change the Ride class'], answer: 0, explain: 'Strategy makes new behaviour an addition, not a modification. The context only knows the interface.' },
       hints: [`<p>Hint 1: What varies is the <b>formula</b>; what stays the same is "take a ride, return a fare, round it". Put the varying part behind an interface.</p>`, `<p>Hint 2: <code>interface FareStrategy { double fare(Ride r); }</code>. SURGE can <b>wrap</b> another strategy (NORMAL) and multiply, so its multiplier lives in its own constructor — no unused parameters.</p>`, `<p>Hint 3: Validate negative distance once in the context. Recipe: Ride record → strategy classes → <code>FareCalculator(FareStrategy)</code> with <code>setStrategy</code> → round in one place.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "NORMAL  190.00\nSURGE   285.00\nPOOL    133.00\nPOOL    67.62\nAIRPORT 350.00\nrejected: negative ride\nrejected: surge 1.0-5.0\n" }] },
@@ -1189,7 +1253,7 @@ for (auto& l : listeners) l("A42", "SHIPPED");` }
       statement: `<p>Build <code>StockMarket</code> where users subscribe to a stock symbol with a rule: "alert me when price goes <b>above X</b>" or "<b>below Y</b>". When <code>updatePrice(symbol, price)</code> is called, every matching subscriber of <b>that symbol only</b> is notified once per crossing (not on every tick while it stays above). Users can unsubscribe. Channels (push/SMS/email) must be pluggable.</p>`,
       constraints: `Up to 10<sup>4</sup> symbols, 10<sup>5</sup> subscriptions. Updates are frequent; subscriptions are rare. Updates for one symbol must not touch subscribers of other symbols.`,
       example: `<p>Asha: TCS above 4000 (push). Ben: TCS below 3500 (SMS).<br>update TCS 3900 → nobody. update TCS 4050 → ${H.c('g', 'Asha alerted')} (crossed above). update TCS 4100 → ${H.c('m', 'nobody')} (still above, no new crossing). update TCS 3400 → ${H.c('g', 'Ben alerted')}.</p>`,
-      brute: { why: `<p>The market keeps one global list and, on every update, loops over <b>all</b> 10<sup>5</sup> subscriptions checking symbol and rule, and calls <code>smsService.send()</code> / <code>emailService.send()</code> directly with an if/else on channel. Wasted work: scanning unrelated symbols; coupling: adding WhatsApp edits the market; bug: alerts fire on every tick above the threshold.</p>`, code: `class NaiveMarket {
+      brute: { why: `<p>The market keeps one global list and, on every update, loops over <b>all</b> 10<sup>5</sup> subscriptions checking symbol and rule, and calls <code>smsService.send()</code> / <code>emailService.send()</code> directly with an if/else on channel. Wasted work: scanning unrelated symbols; coupling: adding WhatsApp edits the market; bug: alerts fire on every tick above the threshold.</p>`, code: { lang: 'java', code: `class NaiveMarket {
     record Sub(String user, String symbol, double above, double below, String channel) {}
     private final List<Sub> subs = new ArrayList<>();
     void add(Sub s) { subs.add(s); }
@@ -1203,7 +1267,65 @@ for (auto& l : listeners) l("A42", "SHIPPED");` }
             else System.out.println("PUSH to " + s.user());       // new channel = edit here
         }
     }
+}`, alt: [
+                { lang: 'python', code: `
+from dataclasses import dataclass
+
+@dataclass
+class Sub:
+    user: str
+    symbol: str
+    above: float
+    below: float
+    channel: str
+
+class NaiveMarket:
+    def __init__(self): self._subs = []
+    def add(self, s): self._subs.append(s)
+    def update_price(self, symbol, price):
+        for s in self._subs:                                     # scans every symbol's subs
+            if s.symbol != symbol: continue
+            hit = price > s.above or price < s.below             # fires on EVERY tick
+            if not hit: continue
+            if s.channel == "SMS": print("SMS to " + s.user)
+            elif s.channel == "EMAIL": print("EMAIL to " + s.user)
+            else: print("PUSH to " + s.user)                    # new channel = edit here` },
+                { lang: 'ts', code: `
+interface Sub { user: string; symbol: string; above: number; below: number; channel: string }
+
+class NaiveMarket {
+    private readonly subs: Sub[] = [];
+    add(s: Sub): void { this.subs.push(s); }
+    updatePrice(symbol: string, price: number): void {
+        for (const s of this.subs) {                              // scans every symbol's subs
+            if (s.symbol !== symbol) continue;
+            const hit = price > s.above || price < s.below;       // fires on EVERY tick
+            if (!hit) continue;
+            if (s.channel === "SMS") console.log("SMS to " + s.user);
+            else if (s.channel === "EMAIL") console.log("EMAIL to " + s.user);
+            else console.log("PUSH to " + s.user);                // new channel = edit here
+        }
+    }
 }` },
+                { lang: 'cpp', code: `
+struct Sub { string user, symbol; double above, below; string channel; };
+
+class NaiveMarket {
+    vector<Sub> subs;
+public:
+    void add(const Sub& s) { subs.push_back(s); }
+    void updatePrice(const string& symbol, double price) {
+        for (auto& s : subs) {                                     // scans every symbol's subs
+            if (s.symbol != symbol) continue;
+            bool hit = price > s.above || price < s.below;         // fires on EVERY tick
+            if (!hit) continue;
+            if (s.channel == "SMS") cout << "SMS to " << s.user << "\\n";
+            else if (s.channel == "EMAIL") cout << "EMAIL to " << s.user << "\\n";
+            else cout << "PUSH to " << s.user << "\\n";            // new channel = edit here
+        }
+    }
+};` }
+              ] } },
       mcq: { q: 'How do you make sure an update to INFY never scans TCS subscribers?', options: ['Map&lt;String symbol, List&lt;Observer&gt;&gt; — one subject list per symbol', 'Sort the global list', 'Use a Set instead of a List', 'Notify everyone and let them filter'], answer: 0, explain: 'Partition observers by topic (symbol). Each update only walks its own list — like per-topic subscriptions in a pub/sub system.' },
       hints: [`<p>Hint 1: Each subscription is an <b>observer</b> with its own rule and its own memory of "was I already triggered?" (edge detection = notify on crossing only).</p>`, `<p>Hint 2: <code>Map&lt;String, List&lt;PriceAlert&gt;&gt;</code> keyed by symbol, values in <code>CopyOnWriteArrayList</code>. Channel is a separate <code>Notifier</code> interface (a strategy) injected into the alert.</p>`, `<p>Hint 3: Rule "above X": fire when <code>prev ≤ X &lt; now</code>. Store <code>lastPrice</code> per symbol. Return a handle from subscribe so the user can unsubscribe. Recipe: subscribe → map.computeIfAbsent(symbol) → add; update → get list → for each: alert.onPrice(prev, now).</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "PUSH asha: TCS is ABOVE 4000.00 (now 4050.00)\nSMS  ben: TCS is BELOW 3500.00 (now 3400.00)\nlistener failed: boom\nlistener failed: boom\nPUSH cy: INFY is ABOVE 1500.00 (now 1600.00)\n" }] },
@@ -2045,7 +2167,7 @@ later.get();` }
       statement: `<p>Implement <code>Bank</code> with accounts and three operations: <b>deposit</b>(acc, amt), <b>withdraw</b>(acc, amt), <b>transfer</b>(from, to, amt). Every <i>successful</i> operation can be undone in reverse order with <code>undoLast()</code>, and <code>history()</code> lists performed operations. A failed operation (insufficient funds) must not change balances and must not enter the history. Adding new operation types (e.g. "add interest") must not change the undo machinery.</p>`,
       constraints: `Amounts are positive longs (paise). Up to 10<sup>5</sup> operations. Undo must be O(1) per operation.`,
       example: `<p>A=100, B=0. transfer(A,B,70) ✔ → A=30,B=70. withdraw(A,50) ${H.c('r', '✘ insufficient')} → no change, not in history. deposit(B,5) ✔ → B=75. undoLast() → B=70. undoLast() → A=100, B=0. history() was [transfer, deposit] before the undos.</p>`,
-      brute: { why: `<p>Keep a list of strings like <code>"TRANSFER A B 70"</code> and in <code>undoLast()</code> parse the string and switch on the operation name to reverse it. Every new operation edits both the "do" switch and the "undo" switch; parsing is fragile; failed operations accidentally get logged because logging happens before the balance check.</p>`, code: `class NaiveBank {
+      brute: { why: `<p>Keep a list of strings like <code>"TRANSFER A B 70"</code> and in <code>undoLast()</code> parse the string and switch on the operation name to reverse it. Every new operation edits both the "do" switch and the "undo" switch; parsing is fragile; failed operations accidentally get logged because logging happens before the balance check.</p>`, code: { lang: 'java', code: `class NaiveBank {
     final Map<String, Long> bal = new HashMap<>();
     final Deque<String> log = new ArrayDeque<>();
     void op(String type, String a, String b, long amt) {
@@ -2061,7 +2183,67 @@ later.get();` }
         else if (p[0].equals("WD")) bal.merge(p[1], amt, Long::sum);
         else if (p[0].equals("TR")) { bal.merge(p[1], amt, Long::sum); bal.merge(p[2], -amt, Long::sum); }
     }
+}`, alt: [
+                { lang: 'python', code: `
+class NaiveBank:
+    def __init__(self):
+        self.bal = {}
+        self.log = []
+    def op(self, type, a, b, amt):
+        self.log.append(f"{type} {a} {b} {amt}")          # logged even if it fails!
+        if type == "DEP": self.bal[a] = self.bal.get(a, 0) + amt
+        elif type == "WD": self.bal[a] = self.bal.get(a, 0) - amt     # no funds check
+        elif type == "TR":
+            self.bal[a] = self.bal.get(a, 0) - amt
+            self.bal[b] = self.bal.get(b, 0) + amt
+    def undo_last(self):
+        p = self.log.pop().split(" ")
+        amt = int(p[3])
+        if p[0] == "DEP": self.bal[p[1]] -= amt           # second switch to maintain
+        elif p[0] == "WD": self.bal[p[1]] += amt
+        elif p[0] == "TR":
+            self.bal[p[1]] += amt
+            self.bal[p[2]] -= amt` },
+                { lang: 'ts', code: `
+class NaiveBank {
+    readonly bal = new Map<string, number>();
+    readonly log: string[] = [];
+    private add(k: string, d: number): void { this.bal.set(k, (this.bal.get(k) ?? 0) + d); }
+    op(type: string, a: string, b: string, amt: number): void {
+        this.log.push(type + " " + a + " " + b + " " + amt);          // logged even if it fails!
+        if (type === "DEP") this.add(a, amt);
+        else if (type === "WD") this.add(a, -amt);                     // no funds check
+        else if (type === "TR") { this.add(a, -amt); this.add(b, amt); }
+    }
+    undoLast(): void {
+        const p = this.log.pop()!.split(" ");
+        const amt = parseInt(p[3]);
+        if (p[0] === "DEP") this.add(p[1], -amt);                      // second switch to maintain
+        else if (p[0] === "WD") this.add(p[1], amt);
+        else if (p[0] === "TR") { this.add(p[1], amt); this.add(p[2], -amt); }
+    }
 }` },
+                { lang: 'cpp', code: `
+class NaiveBank {
+    unordered_map<string, long long> bal;
+    vector<string> log;
+public:
+    void op(const string& type, const string& a, const string& b, long long amt) {
+        log.push_back(type + " " + a + " " + b + " " + to_string(amt));          // logged even if it fails!
+        if (type == "DEP") bal[a] += amt;
+        else if (type == "WD") bal[a] -= amt;                                    // no funds check
+        else if (type == "TR") { bal[a] -= amt; bal[b] += amt; }
+    }
+    void undoLast() {
+        stringstream ss(log.back()); log.pop_back();
+        string t, a, b; long long amt;
+        ss >> t >> a >> b >> amt;
+        if (t == "DEP") bal[a] -= amt;                                           // second switch to maintain
+        else if (t == "WD") bal[a] += amt;
+        else if (t == "TR") { bal[a] += amt; bal[b] -= amt; }
+    }
+};` }
+              ] } },
       mcq: { q: 'withdraw(A, 50) fails because A has only 30. What should the invoker do?', options: ['Not push it onto the undo stack — execute() reports failure first', 'Push it and let undo add 50 back', 'Push it and mark it failed', 'Throw away the entire history'], answer: 0, explain: 'Only successful commands belong in history; undoing a failed withdraw would create money. Have execute() return a boolean (or throw) and push only on success.' },
       hints: [`<p>Hint 1: Each operation becomes an object that knows how to <code>execute()</code> and <code>undo()</code> itself. The bank (invoker) just keeps a stack.</p>`, `<p>Hint 2: <code>interface BankCommand { boolean execute(); void undo(); String describe(); }</code>. Transfer can <b>reuse</b> withdraw + deposit internally, and undo them in reverse order.</p>`, `<p>Hint 3: Push to history only when <code>execute()</code> returns true. Undo on an empty stack returns false. Recipe: Account receiver with deposit/withdraw(returns boolean) → three command classes → Bank.run(cmd) / undoLast().</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "FAILED: withdraw 50 from A\n[transfer 70 A->B, deposit 5 to B] A=30 B=75\nafter undo A=100 B=0\nFAILED: transfer 500 A->B\n[] A=100 B=0\nundo on empty: false\n" }] },
@@ -2897,6 +3079,25 @@ int main() {
         var T = { NEW: { pay: 'PAID', cancel: 'CANCELLED' }, PAID: { ship: 'SHIPPED', cancel: 'CANCELLED' }, SHIPPED: { deliver: 'DELIVERED' }, DELIVERED: {}, CANCELLED: {} };
         var CLS = { NEW: 'NewState', PAID: 'PaidState', SHIPPED: 'ShippedState', DELIVERED: 'DeliveredState', CANCELLED: 'CancelledState' };
         var code = 'class Order {\n  OrderState state = NewState.I;\n  void pay()     { state.pay(this); }\n  void ship()    { state.ship(this); }\n  void deliver() { state.deliver(this); }\n  void cancel()  { state.cancel(this); }\n}';
+        ALTS[code] = mkAlt(`class Order:
+    def __init__(self): self.state = NewState.I
+    def pay(self):     self.state.pay(self)
+    def ship(self):    self.state.ship(self)
+    def deliver(self): self.state.deliver(self)
+    def cancel(self):  self.state.cancel(self)`, `class Order {
+  state: OrderState = NewState.I;
+  pay(): void     { this.state.pay(this); }
+  ship(): void    { this.state.ship(this); }
+  deliver(): void { this.state.deliver(this); }
+  cancel(): void  { this.state.cancel(this); }
+}`, `class Order {
+public:
+  OrderState* state = &NewState::I;
+  void pay()     { state->pay(*this); }
+  void ship()    { state->ship(*this); }
+  void deliver() { state->deliver(*this); }
+  void cancel()  { state->cancel(*this); }
+};`);
         var LINE = { pay: 3, ship: 4, deliver: 5, cancel: 6 };
         var cur = 'NEW', frames = [], audit = [];
         var done = {};
@@ -3017,7 +3218,7 @@ s = s->play();` }
       statement: `<p>A <code>Document</code> is in <b>Draft</b>, <b>Moderation</b> or <b>Published</b>. Method <code>publish(User u)</code>: in Draft → goes to Moderation, <i>but</i> if <code>u</code> is an admin it goes straight to Published. In Moderation → only an admin can publish (→ Published); others get an error. In Published → no-op. Method <code>reject()</code>: Moderation → Draft; elsewhere illegal. Method <code>expire()</code>: Published → Draft. Text can be edited only in Draft. Design so that adding an <b>Archived</b> state later is easy.</p>`,
       constraints: `Single document object, but methods may be called from multiple threads. Illegal actions throw <code>IllegalStateException</code> with a clear message.`,
       example: `<p>Draft --publish(author)--> ${H.c('y', 'Moderation')} --publish(author)--> ${H.c('r', 'error: only admin')} --reject()--> ${H.c('b', 'Draft')} --publish(admin)--> ${H.c('g', 'Published')} --edit("x")--> ${H.c('r', 'error: not editable')}.</p>`,
-      brute: { why: `<p>An enum field plus a <code>switch</code> inside <code>publish</code>, <code>reject</code>, <code>expire</code> and <code>edit</code>. That is 3 states × 4 methods = 12 branches spread over 4 methods. Adding Archived means editing all four switches; a missed <code>default</code> silently allows illegal transitions.</p>`, code: `class NaiveDocument {
+      brute: { why: `<p>An enum field plus a <code>switch</code> inside <code>publish</code>, <code>reject</code>, <code>expire</code> and <code>edit</code>. That is 3 states × 4 methods = 12 branches spread over 4 methods. Adding Archived means editing all four switches; a missed <code>default</code> silently allows illegal transitions.</p>`, code: { lang: 'java', code: `class NaiveDocument {
     enum S { DRAFT, MODERATION, PUBLISHED }
     S s = S.DRAFT; String text = "";
     void publish(boolean admin) {
@@ -3031,7 +3232,64 @@ s = s->play();` }
     void expire() { if (s == S.PUBLISHED) s = S.DRAFT; else throw new IllegalStateException(); }
     void edit(String t) { if (s == S.DRAFT) text = t; else throw new IllegalStateException(); }
     // adding ARCHIVED = touch every method above
+}`, alt: [
+                { lang: 'python', code: `
+from enum import Enum
+
+class NaiveDocument:
+    class S(Enum): DRAFT = 0; MODERATION = 1; PUBLISHED = 2
+    def __init__(self): self.s = NaiveDocument.S.DRAFT; self.text = ""
+    def publish(self, admin):
+        S = NaiveDocument.S
+        if self.s == S.DRAFT: self.s = S.PUBLISHED if admin else S.MODERATION
+        elif self.s == S.MODERATION:
+            if admin: self.s = S.PUBLISHED
+            else: raise RuntimeError("admin only")
+    def reject(self):
+        if self.s == NaiveDocument.S.MODERATION: self.s = NaiveDocument.S.DRAFT
+        else: raise RuntimeError()
+    def expire(self):
+        if self.s == NaiveDocument.S.PUBLISHED: self.s = NaiveDocument.S.DRAFT
+        else: raise RuntimeError()
+    def edit(self, t):
+        if self.s == NaiveDocument.S.DRAFT: self.text = t
+        else: raise RuntimeError()
+    # adding ARCHIVED = touch every method above` },
+                { lang: 'ts', code: `
+class NaiveDocument {
+    static S = { DRAFT: 0, MODERATION: 1, PUBLISHED: 2 } as const;
+    s: number = NaiveDocument.S.DRAFT; text = "";
+    publish(admin: boolean): void {
+        const S = NaiveDocument.S;
+        switch (this.s) {
+            case S.DRAFT: this.s = admin ? S.PUBLISHED : S.MODERATION; break;
+            case S.MODERATION: if (admin) this.s = S.PUBLISHED; else throw new Error("admin only"); break;
+            case S.PUBLISHED: break;
+        }
+    }
+    reject(): void { if (this.s === NaiveDocument.S.MODERATION) this.s = NaiveDocument.S.DRAFT; else throw new Error(); }
+    expire(): void { if (this.s === NaiveDocument.S.PUBLISHED) this.s = NaiveDocument.S.DRAFT; else throw new Error(); }
+    edit(t: string): void { if (this.s === NaiveDocument.S.DRAFT) this.text = t; else throw new Error(); }
+    // adding ARCHIVED = touch every method above
 }` },
+                { lang: 'cpp', code: `
+class NaiveDocument {
+    enum S { DRAFT, MODERATION, PUBLISHED };
+    S s = DRAFT; string text;
+public:
+    void publish(bool admin) {
+        switch (s) {
+            case DRAFT: s = admin ? PUBLISHED : MODERATION; break;
+            case MODERATION: if (admin) s = PUBLISHED; else throw runtime_error("admin only"); break;
+            case PUBLISHED: break;
+        }
+    }
+    void reject() { if (s == MODERATION) s = DRAFT; else throw runtime_error(""); }
+    void expire() { if (s == PUBLISHED) s = DRAFT; else throw runtime_error(""); }
+    void edit(const string& t) { if (s == DRAFT) text = t; else throw runtime_error(""); }
+    // adding ARCHIVED = touch every method above
+};` }
+              ] } },
       mcq: { q: 'In the State pattern, where does the rule "only admins may publish from Moderation" live?', options: ['Inside ModerationState.publish()', 'Inside Document.publish() with an if', 'In the User class', 'In a global validator'], answer: 0, explain: 'All rules of a state live in that state class. Document.publish() just delegates.' },
       hints: [`<p>Hint 1: List the states and, for each, what every method does. That table <i>is</i> your class list.</p>`, `<p>Hint 2: <code>interface DocState</code> with default methods that throw; each state overrides only legal actions. States return or set the next state.</p>`, `<p>Hint 3: <code>edit()</code> is allowed only in Draft → <code>DraftState</code> overrides edit; others inherit the throwing default. Mark Document methods <code>synchronized</code>. Recipe: record User(name, admin) → DocState interface → 3 singletons → Document delegates.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "Moderation\nOnly an admin can publish from Moderation\nDraft\nPublished\nCannot edit in Published\nDraft\nCannot reject in Draft\n" }] },
@@ -3639,6 +3897,30 @@ int main() {
         var nodes = [B('BASE', 'DataImporter (abstract)', 50, 8), B('CSV', 'CsvImporter', 15, 40), B('JSON', 'JsonImporter', 50, 40), B('TR', 'TrustedFeedImporter', 85, 40), B('DB', 'Database', 50, 64)];
         var edges = [['CSV', 'BASE', 'extends'], ['JSON', 'BASE', 'extends'], ['TR', 'BASE', 'extends'], ['BASE', 'DB', 'save()']];
         var code = 'public final int importFile(String f, String c) {\n  open(f);                        // fixed\n  List<Row> rows = parse(c);      // abstract\n  if (shouldValidate())           // hook\n    rows = validate(rows);        // fixed\n  save(rows);                     // fixed\n  afterImport(rows.size());       // hook\n  return rows.size();\n}';
+        ALTS[code] = mkAlt(`def import_file(self, f, c):      # not meant to be overridden
+    self.open(f)                      # fixed
+    rows = self.parse(c)              # abstract
+    if self.should_validate():        # hook
+        rows = self.validate(rows)    # fixed
+    self.save(rows)                   # fixed
+    self.after_import(len(rows))      # hook
+    return len(rows)`, `importFile(f: string, c: string): number {   // no subclass should override this
+  this.open(f);                        // fixed
+  const rows = this.parse(c);          // abstract
+  if (this.shouldValidate())           // hook
+    rows = this.validate(rows);        // fixed
+  this.save(rows);                     // fixed
+  this.afterImport(rows.length);       // hook
+  return rows.length;
+}`, `int importFile(const string& f, const string& c) {   // non-virtual: subclasses cannot override
+  open(f);                        // fixed
+  auto rows = parse(c);           // abstract
+  if (shouldValidate())           // hook
+    rows = validate(rows);        // fixed
+  save(rows);                     // fixed
+  afterImport(rows.size());       // hook
+  return rows.size();
+}`);
         var rowsIn = { csv: ['asha,31', 'ben,-4', 'cy,22'], json: ['{"n":"dee","a":40}', '{"n":"","a":5}'], trusted: ['dee=40', 'eli=29'] }[kind];
         var parsed = { csv: ['asha 31', 'ben -4', 'cy 22'], json: ['dee 40', '(blank) 5'], trusted: ['dee 40', 'eli 29'] }[kind];
         var valid = { csv: ['asha 31', 'cy 22'], json: ['dee 40'], trusted: ['dee 40', 'eli 29'] }[kind];
@@ -3835,7 +4117,7 @@ cout << "] contains 9? " << boolalpha << (ranges::find(squares, 9) != squares.en
       statement: `<p>Export a list of <code>Sale(region, amount)</code> as text in three formats. Every export must: (1) write a header, (2) write one line per sale <b>sorted by amount descending</b>, (3) write a footer with the total, and (4) <b>escape</b> special characters in region names. CSV, HTML table and Markdown table differ only in how header, row and footer look. Make the shared workflow impossible to skip.</p>`,
       constraints: `Up to 10<sup>5</sup> sales. Amounts are non-negative longs. Region names may contain commas, &lt; or |.`,
       example: `<p>Sales: (North, 300), (South, 500). CSV output:<br><code>region,amount</code><br><code>South,500</code><br><code>North,300</code><br><code>TOTAL,800</code><br>Sorted descending, total in the footer — the same <b>order of steps</b> for every format; only the formatting differs.</p>`,
-      brute: { why: `<p>Three independent classes each copy the sort, the loop, the total computation and the escaping. A bug in sorting (e.g. ascending) is fixed in CSV but forgotten in HTML; the Markdown version forgets escaping entirely. The skeleton exists three times.</p>`, code: `class NaiveCsvExport {
+      brute: { why: `<p>Three independent classes each copy the sort, the loop, the total computation and the escaping. A bug in sorting (e.g. ascending) is fixed in CSV but forgotten in HTML; the Markdown version forgets escaping entirely. The skeleton exists three times.</p>`, code: { lang: 'java', code: `class NaiveCsvExport {
     String export(List<long[]> rows, List<String> regions) {
         StringBuilder sb = new StringBuilder("region,amount\\n");
         long total = 0;
@@ -3846,7 +4128,45 @@ cout << "] contains 9? " << boolalpha << (ranges::find(squares, 9) != squares.en
         return sb.append("TOTAL,").append(total).toString();
     }
 }
+// NaiveHtmlExport and NaiveMarkdownExport: the same loop pasted twice more, with different bugs.`, alt: [
+                { lang: 'python', code: `
+class NaiveCsvExport:
+    def export(self, rows, regions):
+        sb = "region,amount\\n"
+        total = 0
+        for i in range(len(rows)):       # forgot to sort!
+            sb += regions[i] + "," + str(rows[i][0]) + "\\n"
+            total += rows[i][0]
+        return sb + "TOTAL," + str(total)
+# NaiveHtmlExport and NaiveMarkdownExport: the same loop pasted twice more, with different bugs.` },
+                { lang: 'ts', code: `
+class NaiveCsvExport {
+    export(rows: number[][], regions: string[]): string {
+        let sb = "region,amount\\n";
+        let total = 0;
+        for (let i = 0; i < rows.length; i++) {       // forgot to sort!
+            sb += regions[i] + "," + rows[i][0] + "\\n";
+            total += rows[i][0];
+        }
+        return sb + "TOTAL," + total;
+    }
+}
 // NaiveHtmlExport and NaiveMarkdownExport: the same loop pasted twice more, with different bugs.` },
+                { lang: 'cpp', code: `
+class NaiveCsvExport {
+public:
+    string exportRows(const vector<vector<long long>>& rows, const vector<string>& regions) {
+        string sb = "region,amount\\n";
+        long long total = 0;
+        for (size_t i = 0; i < rows.size(); i++) {       // forgot to sort!
+            sb += regions[i] + "," + to_string(rows[i][0]) + "\\n";
+            total += rows[i][0];
+        }
+        return sb + "TOTAL," + to_string(total);
+    }
+};
+// NaiveHtmlExport and NaiveMarkdownExport: the same loop pasted twice more, with different bugs.` }
+              ] } },
       mcq: { q: 'Which method of the base exporter should be declared final?', options: ['export() — the template method that fixes the order of steps', 'row() — the formatting of a line', 'escape() — every format escapes differently', 'None; final is bad practice'], answer: 0, explain: 'The template method must be final so subclasses cannot reorder or skip sorting, totals or escaping. Format-specific pieces are the overridable steps.' },
       hints: [`<p>Hint 1: Write down the steps every format performs. What differs? Only header text, row text, footer text and the escape rule.</p>`, `<p>Hint 2: Abstract class <code>ReportExporter</code> with <code>public final String export(List&lt;Sale&gt;)</code> and protected abstract <code>header()</code>, <code>row(region, amount)</code>, <code>footer(total)</code>, plus a hook <code>escape(String)</code>.</p>`, `<p>Hint 3: Sort a <b>copy</b> (don't mutate the caller's list). Recipe: copy+sort → header → for each: row(escape(region), amount) → footer(total). CSV escape quotes fields containing commas; HTML escapes &amp;lt;; Markdown escapes |.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "region,amount\n\"South, East\",500\nNorth,300\nA<B|C,50\nTOTAL,850\n<table><tr><th>region</th><th>amount</th></tr>\n<tr><td>South, East</td><td>500</td></tr>\n<tr><td>North</td><td>300</td></tr>\n<tr><td>A&lt;B|C</td><td>50</td></tr>\n<tr><td>TOTAL</td><td>850</td></tr></table>\n| region | amount |\n|---|---|\n| South, East | 500 |\n| North | 300 |\n| A<B\\|C | 50 |\n| **TOTAL** | 850 |\nregion,amount\n\"say \"\"hi\"\"\",7\nTOTAL,7\nregion,amount\nTOTAL,0\n" }] },
@@ -4633,7 +4953,7 @@ cout << fixed << setprecision(2) << price << "\\n";  // 850.00` }
       statement: `<p>An ATM holds notes of ₹2000, ₹500, ₹200 and ₹100 with limited counts. <code>withdraw(amount)</code> must dispense using the <b>largest notes first</b>, respecting available counts, and return the note breakdown. If the exact amount cannot be made, dispense <b>nothing</b> and report failure. New denominations (₹50) should be addable without editing existing dispensers.</p>`,
       constraints: `Amount 1 – 10<sup>6</sup>. Note counts 0 – 10<sup>4</sup>. Greedy largest-first is the bank's policy (these denominations make greedy correct when stock is unlimited; with limited stock we must check and roll back).`,
       example: `<p>Stock: 2000×1, 500×3, 200×5, 100×2. withdraw(3700) → ${H.c('b', '2000×1')} (1700 left) → ${H.c('b', '500×3')} (200 left) → ${H.c('b', '200×1')} (0 left). Output {2000=1, 500=3, 200=1}. withdraw(50) → ${H.c('r', 'fail')}, nothing dispensed.</p>`,
-      brute: { why: `<p>One method with a hard-coded block per denomination: compute count for 2000, subtract, then 500, then 200, then 100. Adding ₹50 means editing this method; checking stock and rolling back is copy-pasted per block; and stock is decremented before we know the whole amount can be made.</p>`, code: `class NaiveAtm {
+      brute: { why: `<p>One method with a hard-coded block per denomination: compute count for 2000, subtract, then 500, then 200, then 100. Adding ₹50 means editing this method; checking stock and rolling back is copy-pasted per block; and stock is decremented before we know the whole amount can be made.</p>`, code: { lang: 'java', code: `class NaiveAtm {
     int c2000 = 1, c500 = 3, c200 = 5, c100 = 2;
     String withdraw(int amt) {
         int n2000 = Math.min(amt / 2000, c2000); amt -= n2000 * 2000; c2000 -= n2000;   // mutates early!
@@ -4643,7 +4963,43 @@ cout << fixed << setprecision(2) << price << "\\n";  // 850.00` }
         if (amt != 0) return "FAIL (and stock is already wrong!)";
         return n2000 + "x2000 " + n500 + "x500 " + n200 + "x200 " + n100 + "x100";
     }
+}`, alt: [
+                { lang: 'python', code: `
+class NaiveAtm:
+    def __init__(self): self.c2000, self.c500, self.c200, self.c100 = 1, 3, 5, 2
+    def withdraw(self, amt):
+        n2000 = min(amt // 2000, self.c2000); amt -= n2000 * 2000; self.c2000 -= n2000   # mutates early!
+        n500 = min(amt // 500, self.c500);    amt -= n500 * 500;   self.c500 -= n500
+        n200 = min(amt // 200, self.c200);    amt -= n200 * 200;   self.c200 -= n200
+        n100 = min(amt // 100, self.c100);    amt -= n100 * 100;   self.c100 -= n100
+        if amt != 0: return "FAIL (and stock is already wrong!)"
+        return f"{n2000}x2000 {n500}x500 {n200}x200 {n100}x100"` },
+                { lang: 'ts', code: `
+class NaiveAtm {
+    c2000 = 1; c500 = 3; c200 = 5; c100 = 2;
+    withdraw(amt: number): string {
+        const n2000 = Math.min(Math.floor(amt / 2000), this.c2000); amt -= n2000 * 2000; this.c2000 -= n2000;   // mutates early!
+        const n500 = Math.min(Math.floor(amt / 500), this.c500);    amt -= n500 * 500;   this.c500 -= n500;
+        const n200 = Math.min(Math.floor(amt / 200), this.c200);    amt -= n200 * 200;   this.c200 -= n200;
+        const n100 = Math.min(Math.floor(amt / 100), this.c100);    amt -= n100 * 100;   this.c100 -= n100;
+        if (amt !== 0) return "FAIL (and stock is already wrong!)";
+        return n2000 + "x2000 " + n500 + "x500 " + n200 + "x200 " + n100 + "x100";
+    }
 }` },
+                { lang: 'cpp', code: `
+class NaiveAtm {
+    int c2000 = 1, c500 = 3, c200 = 5, c100 = 2;
+public:
+    string withdraw(int amt) {
+        int n2000 = min(amt / 2000, c2000); amt -= n2000 * 2000; c2000 -= n2000;   // mutates early!
+        int n500 = min(amt / 500, c500);    amt -= n500 * 500;   c500 -= n500;
+        int n200 = min(amt / 200, c200);    amt -= n200 * 200;   c200 -= n200;
+        int n100 = min(amt / 100, c100);    amt -= n100 * 100;   c100 -= n100;
+        if (amt != 0) return "FAIL (and stock is already wrong!)";
+        return to_string(n2000) + "x2000 " + to_string(n500) + "x500 " + to_string(n200) + "x200 " + to_string(n100) + "x100";
+    }
+};` }
+              ] } },
       mcq: { q: 'withdraw(50) cannot be made from 100+ notes. When should stock be decremented?', options: ['Only after the whole chain confirms the remainder reached 0 (plan first, commit after)', 'Each handler decrements immediately as it goes', 'Before the chain starts', 'Never; the ATM recounts nightly'], answer: 0, explain: 'Two-phase: handlers build a plan (how many notes each), and only if the remainder is 0 do we commit. Otherwise a failed withdrawal would leak notes.' },
       hints: [`<p>Hint 1: Each denomination is a handler: "take as many of my notes as I can, pass the remainder to the next".</p>`, `<p>Hint 2: Pass a mutable <b>plan</b> (Map denomination → count) along the chain instead of touching stock directly. The last handler (or the ATM) checks remainder == 0.</p>`, `<p>Hint 3: Commit = each handler subtracts its planned count. Keep denominations sorted descending when building the chain. Synchronize withdraw (two customers, one ATM is rare but stock must stay consistent).</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "3700 -> 2000x1 500x3 200x1\n50 -> refused\n9999 -> refused\n1000 -> 200x4 100x2\n0 -> refused\n100 -> refused\n" }] },
@@ -5121,6 +5477,33 @@ int main() {
         var R = function (i) { var c = 2 * i + 2; return c < arr.length && arr[c] !== null ? c : -1; };
         for (var k = 1; k < arr.length; k++) if (arr[k] !== null && arr[Math.floor((k - 1) / 2)] === null) throw new Error('Node at position ' + k + ' has a null parent');
         var code = 'BSTIterator(TreeNode root) { pushLeft(root); }\nvoid pushLeft(TreeNode n) {\n  while (n != null) { stack.push(n); n = n.left; }\n}\nboolean hasNext() { return !stack.isEmpty(); }\nint next() {\n  TreeNode n = stack.pop();\n  pushLeft(n.right);\n  return n.val;\n}';
+        ALTS[code] = mkAlt(`def __init__(self, root): self._push_left(root)
+def _push_left(self, n):
+    while n is not None: self._stack.append(n); n = n.left
+
+def has_next(self): return len(self._stack) > 0
+def next(self):
+    n = self._stack.pop()
+    self._push_left(n.right)
+    return n.val`, `constructor(root: TreeNode | null) { this.pushLeft(root); }
+private pushLeft(n: TreeNode | null): void {
+  while (n !== null) { this.stack.push(n); n = n.left; }
+}
+hasNext(): boolean { return this.stack.length > 0; }
+next(): number {
+  const n = this.stack.pop()!;
+  this.pushLeft(n.right);
+  return n.val;
+}`, `BSTIterator(TreeNode* root) { pushLeft(root); }
+void pushLeft(TreeNode* n) {
+  while (n != nullptr) { stack.push(n); n = n->left; }
+}
+bool hasNext() { return !stack.empty(); }
+int next() {
+  TreeNode* n = stack.top(); stack.pop();
+  pushLeft(n->right);
+  return n->val;
+}`);
         var stack = [], out = [], frames = [], visited = {};
         var snap = function (narr, hlTree, codeHl, extraHlStack) {
           var hs = {}; if (extraHlStack !== undefined) hs[extraHlStack] = 'cur';
@@ -5195,7 +5578,7 @@ cout << "\\n";` }
       statement: `<p>Implement <code>BSTIterator</code> over a binary search tree: constructor takes the root; <code>next()</code> returns the next smallest number; <code>hasNext()</code> says whether one exists. Calls are interleaved arbitrarily. Target: <code>next()</code> and <code>hasNext()</code> in O(1) amortised time and <b>O(h)</b> memory, where h is the tree height.</p>`,
       constraints: `1 ≤ nodes ≤ 10<sup>5</sup>, 0 ≤ val ≤ 10<sup>6</sup>, at most 10<sup>5</sup> calls. <code>next()</code> is only called when <code>hasNext()</code> is true.`,
       example: `<p>Tree [7, 3, 15, null, null, 9, 20]. Calls: next→${H.c('g', '3')}, next→${H.c('g', '7')}, hasNext→true, next→${H.c('g', '9')}, hasNext→true, next→${H.c('g', '15')}, next→${H.c('g', '20')}, hasNext→${H.c('r', 'false')}. Values come out sorted because in-order traversal of a BST is sorted.</p>`,
-      brute: { why: `<p>Do a full in-order traversal in the constructor and store every value in a list; <code>next()</code> returns list[i++]. Simple and O(1) per call, but uses <b>O(N) memory</b> and does O(N) work up front even if the caller only wants the first 3 values. Fails the follow-up "the tree has 10<sup>9</sup> nodes on disk".</p>`, code: `class FlatBSTIterator {
+      brute: { why: `<p>Do a full in-order traversal in the constructor and store every value in a list; <code>next()</code> returns list[i++]. Simple and O(1) per call, but uses <b>O(N) memory</b> and does O(N) work up front even if the caller only wants the first 3 values. Fails the follow-up "the tree has 10<sup>9</sup> nodes on disk".</p>`, code: { lang: 'java', code: `class FlatBSTIterator {
     private final List<Integer> vals = new ArrayList<>();
     private int i = 0;
     FlatBSTIterator(TreeNode root) { inorder(root); }        // O(N) time and memory up front
@@ -5205,7 +5588,46 @@ cout << "\\n";` }
     }
     int next() { return vals.get(i++); }
     boolean hasNext() { return i < vals.size(); }
+}`, alt: [
+                { lang: 'python', code: `
+class FlatBSTIterator:
+    def __init__(self, root):
+        self._vals = []
+        self._i = 0
+        self._inorder(root)        # O(N) time and memory up front
+    def _inorder(self, n):
+        if n is None: return
+        self._inorder(n.left); self._vals.append(n.val); self._inorder(n.right)
+    def next(self):
+        self._i += 1
+        return self._vals[self._i - 1]
+    def has_next(self): return self._i < len(self._vals)` },
+                { lang: 'ts', code: `
+class FlatBSTIterator {
+    private readonly vals: number[] = [];
+    private i = 0;
+    constructor(root: TreeNode | null) { this.inorder(root); }        // O(N) time and memory up front
+    private inorder(n: TreeNode | null): void {
+        if (n === null) return;
+        this.inorder(n.left); this.vals.push(n.val); this.inorder(n.right);
+    }
+    next(): number { return this.vals[this.i++]; }
+    hasNext(): boolean { return this.i < this.vals.length; }
 }` },
+                { lang: 'cpp', code: `
+class FlatBSTIterator {
+    vector<int> vals;
+    int i = 0;
+    void inorder(TreeNode* n) {
+        if (n == nullptr) return;
+        inorder(n->left); vals.push_back(n->val); inorder(n->right);
+    }
+public:
+    FlatBSTIterator(TreeNode* root) { inorder(root); }        // O(N) time and memory up front
+    int next() { return vals[i++]; }
+    bool hasNext() { return i < (int)vals.size(); }
+};` }
+              ] } },
       mcq: { q: 'Why is next() O(1) amortised even though it may push several nodes?', options: ['Every node is pushed once and popped once over the whole iteration, so N calls do O(N) total work', 'Because the stack is small', 'Because the tree is balanced', 'It is actually O(log N) worst case per call, and that is the same'], answer: 0, explain: 'Total pushes = N, total pops = N across all calls. A single call may push h nodes, but averaged over N calls the cost is constant.' },
       hints: [`<p>Hint 1: Simulate the recursive in-order traversal yourself; what the recursion keeps on the call stack, keep on an explicit stack.</p>`, `<p>Hint 2: The smallest unreturned value is always on top of a stack containing the "left spine" of what remains. Helper <code>pushLeft(node)</code>: push node and go left until null.</p>`, `<p>Hint 3: Constructor: pushLeft(root). next(): pop n; pushLeft(n.right); return n.val. hasNext(): !stack.isEmpty(). Use ArrayDeque, not the legacy Stack class.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "3 7 9 15 20\nerror: exhausted\nempty tree hasNext: false\n1 true true 2 3 false\n" }] },
@@ -5851,7 +6273,7 @@ cout << "submit enabled? " << boolalpha << d.submitEnabled << "\\n";` }
       statement: `<p>An airport has <b>R runways</b>. Planes call <code>tower.requestLanding(plane)</code>. If a runway is free, the tower assigns it and tells the plane to land; otherwise the plane is told to <b>hold</b> and is queued (emergency planes go to the front). When a plane calls <code>tower.landed(plane)</code>, its runway is freed and the tower immediately clears the next waiting plane. Planes must never reference each other.</p>`,
       constraints: `1 ≤ R ≤ 10, up to 10<sup>4</sup> planes. FIFO among normal planes; emergencies before all normal planes (FIFO among emergencies).`,
       example: `<p>R = 1. A requests → ${H.c('g', 'A lands on runway 0')}. B requests → ${H.c('y', 'B holds')}. EMERGENCY E requests → ${H.c('y', 'E holds, queued before B')}. A landed → runway 0 freed → ${H.c('g', 'E lands')}. E landed → ${H.c('g', 'B lands')}.</p>`,
-      brute: { why: `<p>Each plane holds a list of all other planes and, before landing, asks each one "are you on the runway?" and "were you waiting before me?". That is O(N) messages per request and N² references overall; emergency priority must be coded in every plane; two planes can both decide the runway is free at the same moment (race).</p>`, code: `class NaivePlane {
+      brute: { why: `<p>Each plane holds a list of all other planes and, before landing, asks each one "are you on the runway?" and "were you waiting before me?". That is O(N) messages per request and N² references overall; emergency priority must be coded in every plane; two planes can both decide the runway is free at the same moment (race).</p>`, code: { lang: 'java', code: `class NaivePlane {
     final String id; boolean onRunway, waiting; final List<NaivePlane> others = new ArrayList<>();
     NaivePlane(String id) { this.id = id; }
     boolean tryLand() {
@@ -5859,7 +6281,41 @@ cout << "submit enabled? " << boolalpha << d.submitEnabled << "\\n";` }
         for (NaivePlane p : others) if (p.waiting) { waiting = true; return false; }    // fairness? priority?
         onRunway = true; waiting = false; return true;     // two planes can do this at once
     }
+}`, alt: [
+                { lang: 'python', code: `
+class NaivePlane:
+    def __init__(self, id):
+        self.id = id
+        self.on_runway = self.waiting = False
+        self.others = []
+    def try_land(self):
+        for p in self.others:
+            if p.on_runway: self.waiting = True; return False   # asks everyone
+        for p in self.others:
+            if p.waiting: self.waiting = True; return False     # fairness? priority?
+        self.on_runway = True; self.waiting = False; return True   # two planes can do this at once` },
+                { lang: 'ts', code: `
+class NaivePlane {
+    onRunway = false; waiting = false; readonly others: NaivePlane[] = [];
+    constructor(readonly id: string) {}
+    tryLand(): boolean {
+        for (const p of this.others) if (p.onRunway) { this.waiting = true; return false; }   // asks everyone
+        for (const p of this.others) if (p.waiting) { this.waiting = true; return false; }    // fairness? priority?
+        this.onRunway = true; this.waiting = false; return true;     // two planes can do this at once
+    }
 }` },
+                { lang: 'cpp', code: `
+class NaivePlane {
+public:
+    string id; bool onRunway = false, waiting = false; vector<NaivePlane*> others;
+    NaivePlane(string id) : id(id) {}
+    bool tryLand() {
+        for (NaivePlane* p : others) if (p->onRunway) { waiting = true; return false; }   // asks everyone
+        for (NaivePlane* p : others) if (p->waiting) { waiting = true; return false; }    // fairness? priority?
+        onRunway = true; waiting = false; return true;     // two planes can do this at once
+    }
+};` }
+              ] } },
       mcq: { q: 'Which object should decide that an emergency plane jumps the queue?', options: ['The tower (mediator) — it owns the queue and runway rules', 'Each plane, by checking the others', 'The runway object', 'The emergency plane itself, by landing anyway'], answer: 0, explain: 'Coordination rules belong to the mediator. Planes only report events (request, landed) and obey instructions.' },
       hints: [`<p>Hint 1: Planes know only the tower. The tower knows runways (free/occupied) and a waiting queue.</p>`, `<p>Hint 2: Two deques (emergency, normal) or a PriorityQueue keyed by (priority, arrival sequence). An array of runway owners, null = free.</p>`, `<p>Hint 3: <code>landed()</code> frees the runway then calls a private <code>dispatchNext()</code>. Make tower methods <code>synchronized</code> so two planes cannot grab the same runway. Recipe: request → free runway? assign : enqueue; landed → free → dispatch.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "A: landing on runway 0\nB: holding pattern\nE: holding pattern\ntower: runway 0 free\nE: landing on runway 0\ntower: runway 0 free\nB: landing on runway 0\ntower: runway 0 free\nerror: A was not on a runway\n" }] },
@@ -6487,7 +6943,7 @@ cout << "bad: " << show(badSnapshot) << "  good: " << show(goodSnapshot) << "\\n
       statement: `<p>A <code>Player</code> has health, position (x, y) and an inventory list. Implement <code>CheckpointManager</code> supporting <code>save(name)</code>, <code>load(name)</code> and <code>list()</code>, with at most <b>3 named slots</b> (saving a 4th evicts the oldest). Loading a missing slot fails safely. The manager must <b>not</b> be able to read or modify the player's fields, and later changes to the player must not affect saved slots.</p>`,
       constraints: `Inventory up to 100 items. Names are unique; saving to an existing name overwrites it (and makes it the newest).`,
       example: `<p>hp=100 at (0,0) inv=[map] → save("start"). Move to (5,2), pick "key", hp=60 → save("door"). hp=0 → load("door") → ${H.c('g', 'hp=60 at (5,2) inv=[map,key]')}. load("start") → ${H.c('g', 'hp=100 at (0,0) inv=[map]')}. load("boss") → ${H.c('r', 'false, nothing changes')}.</p>`,
-      brute: { why: `<p>The manager reads public fields of <code>Player</code> and stores them in parallel maps, then writes them back. Encapsulation is broken (anyone can set hp), every new player field must be added to the manager, and the inventory map stores the <b>same list reference</b> — picking up items after saving corrupts the save.</p>`, code: `class OpenPlayer { public int hp = 100, x, y; public List<String> inv = new ArrayList<>(); }
+      brute: { why: `<p>The manager reads public fields of <code>Player</code> and stores them in parallel maps, then writes them back. Encapsulation is broken (anyone can set hp), every new player field must be added to the manager, and the inventory map stores the <b>same list reference</b> — picking up items after saving corrupts the save.</p>`, code: { lang: 'java', code: `class OpenPlayer { public int hp = 100, x, y; public List<String> inv = new ArrayList<>(); }
 class NaiveCheckpoints {
     final Map<String, int[]> nums = new HashMap<>();
     final Map<String, List<String>> invs = new HashMap<>();
@@ -6499,7 +6955,53 @@ class NaiveCheckpoints {
         int[] v = nums.get(name);                  // NPE if missing
         p.hp = v[0]; p.x = v[1]; p.y = v[2]; p.inv = invs.get(name);
     }
+}`, alt: [
+                { lang: 'python', code: `
+class OpenPlayer:
+    def __init__(self):
+        self.hp, self.x, self.y = 100, 0, 0
+        self.inv = []
+
+class NaiveCheckpoints:
+    def __init__(self):
+        self.nums = {}
+        self.invs = {}
+    def save(self, name, p):
+        self.nums[name] = [p.hp, p.x, p.y]
+        self.invs[name] = p.inv                    # BUG: same list object, not a copy
+    def load(self, name, p):
+        v = self.nums[name]                        # KeyError if missing
+        p.hp, p.x, p.y = v[0], v[1], v[2]; p.inv = self.invs[name]` },
+                { lang: 'ts', code: `
+class OpenPlayer { hp = 100; x = 0; y = 0; inv: string[] = []; }
+class NaiveCheckpoints {
+    readonly nums = new Map<string, number[]>();
+    readonly invs = new Map<string, string[]>();
+    save(name: string, p: OpenPlayer): void {
+        this.nums.set(name, [p.hp, p.x, p.y]);
+        this.invs.set(name, p.inv);                     // BUG: same array object, not a copy
+    }
+    load(name: string, p: OpenPlayer): void {
+        const v = this.nums.get(name)!;                 // TypeError if missing
+        p.hp = v[0]; p.x = v[1]; p.y = v[2]; p.inv = this.invs.get(name)!;
+    }
 }` },
+                { lang: 'cpp', code: `
+struct OpenPlayer { int hp = 100, x = 0, y = 0; shared_ptr<vector<string>> inv = make_shared<vector<string>>(); };
+class NaiveCheckpoints {
+    unordered_map<string, array<int, 3>> nums;
+    unordered_map<string, shared_ptr<vector<string>>> invs;
+public:
+    void save(const string& name, OpenPlayer& p) {
+        nums[name] = {p.hp, p.x, p.y};
+        invs[name] = p.inv;                     // BUG: same list object, not a copy
+    }
+    void load(const string& name, OpenPlayer& p) {
+        auto v = nums.at(name);                 // throws if missing
+        p.hp = v[0]; p.x = v[1]; p.y = v[2]; p.inv = invs.at(name);
+    }
+};` }
+              ] } },
       mcq: { q: 'Where should the code that copies the inventory list live?', options: ['In Player.save() — the originator decides how to snapshot itself', 'In CheckpointManager.save()', 'In the inventory item class', 'Nowhere; references are fine'], answer: 0, explain: 'Only the originator knows its internals and which parts are mutable; it builds a self-contained memento. The caretaker just stores it.' },
       hints: [`<p>Hint 1: Player creates a <code>Player.Memento</code> (nested, private fields) and has <code>restore(Memento)</code>.</p>`, `<p>Hint 2: Caretaker = <code>LinkedHashMap&lt;String, Player.Memento&gt;</code>. Re-inserting a name: remove then put so it becomes newest. Evict the first entry when size &gt; 3.</p>`, `<p>Hint 3: Copy the inventory with <code>List.copyOf</code> on save and copy again on restore (so the player cannot mutate the memento's list). <code>load</code> returns boolean for missing slots.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "hp=60 at (5,2) inv=[map,key]\nhp=100 at (0,0) inv=[map]\nfalse [start, door]\n[door, c1, c2]\nhp=100 at (0,0) inv=[map]\n[c1, c2, door] false\n" }] },
@@ -7271,7 +7773,7 @@ int main() {
           var h = clone(done); h[i] = 'cur';
           calls.push(t + '.accept');
           frames.push(F('Call <code>node.accept(' + VIS + ')</code> on <b>' + v + '</b>. Dispatch #1 (on the element): the runtime type is <b>' + t + '</b>, so <code>' + t + '.accept</code> runs and immediately calls <code>v.visit' + t + '(this)</code> — dispatch #2 (on the visitor) picks <b>' + VIS + '.visit' + t + '</b>.',
-            [{ type: 'tree', label: 'Expression tree', arr: arr, hl: h }, STACK('call stack', calls.slice(), (function () { var x = {}; x[calls.length - 1] = 'cur'; return x; })()), CODE(t + '.accept', 'public <R> R accept(ExprVisitor<R> v) {\n  return v.visit' + t + '(this);\n}', { 2: 'cur' })]));
+            [{ type: 'tree', label: 'Expression tree', arr: arr, hl: h }, STACK('call stack', calls.slice(), (function () { var x = {}; x[calls.length - 1] = 'cur'; return x; })()), CODE(t + '.accept', 'public <R> R accept(ExprVisitor<R> v) {\n  return v.visit' + t + '(this);\n}', { 2: 'cur' }, acceptAlt(t))]));
           var out;
           if (isOp) {
             var a = walk(2 * i + 1, depth + 1), b = walk(2 * i + 2, depth + 1);
@@ -7363,7 +7865,7 @@ fs::remove_all(dir);` }
       statement: `<p>A file system has <code>FileNode(name, sizeBytes)</code> and <code>DirNode(name, children)</code>. Product keeps asking for new operations: <b>total size</b>, <b>find all files with extension X</b>, <b>print an indented tree</b>, and next month "largest file", "count empty directories". Design so each new operation is a new class and the node classes never change. Every operation must handle nested directories of any depth.</p>`,
       constraints: `Up to 10<sup>5</sup> nodes, depth up to 100. The set of node types (file, directory) is stable; operations grow.`,
       example: `<p>root/{ a.txt(100), docs/{ b.md(50), c.txt(25) }, empty/{} }<br>size → ${H.c('g', '175')}; find ".txt" → ${H.c('g', '[root/a.txt, root/docs/c.txt]')}; tree print → root, ··a.txt, ··docs, ····b.md, ····c.txt, ··empty. Three operations, same two node classes.</p>`,
-      brute: { why: `<p>Each operation is a static method with <code>if (n instanceof FileNode) … else if (n instanceof DirNode) …</code> and its own recursion. Five operations = five copies of the type check and traversal; adding a <code>SymlinkNode</code> means hunting through all of them — and forgetting one compiles fine and silently returns wrong results (the <code>else</code> swallows it).</p>`, code: `class NaiveFs {
+      brute: { why: `<p>Each operation is a static function with a type-check ladder (<code>if (n instanceof FileNode) … else if (n instanceof DirNode) …</code>, or <code>isinstance</code> in Python) and its own recursion. Five operations = five copies of the type check and traversal; adding a <code>SymlinkNode</code> means hunting through all of them — and forgetting one compiles fine and silently returns wrong results (the <code>else</code> swallows it).</p>`, code: { lang: 'java', code: `class NaiveFs {
     record FileN(String name, long size) {}
     record DirN(String name, List<Object> kids) {}
     static long size(Object n) {
@@ -7375,7 +7877,66 @@ fs::remove_all(dir);` }
         if (n instanceof FileN f) { if (f.name().endsWith(ext)) out.add(f.name()); }
         else if (n instanceof DirN d) for (Object k : d.kids()) find(k, ext, out);   // traversal copy #2
     }
+}`, alt: [
+                { lang: 'python', code: `
+from dataclasses import dataclass, field
+
+@dataclass
+class FileN:
+    name: str
+    size: int
+
+@dataclass
+class DirN:
+    name: str
+    kids: list = field(default_factory=list)
+
+class NaiveFs:
+    @staticmethod
+    def size(n):
+        if isinstance(n, FileN): return n.size
+        elif isinstance(n, DirN):
+            s = 0
+            for k in n.kids: s += NaiveFs.size(k)
+            return s
+        return 0                                    # silently ignores unknown types
+
+    @staticmethod
+    def find(n, ext, out):
+        if isinstance(n, FileN):
+            if n.name.endswith(ext): out.append(n.name)
+        elif isinstance(n, DirN):
+            for k in n.kids: NaiveFs.find(k, ext, out)   # traversal copy #2` },
+                { lang: 'ts', code: `
+class FileN { constructor(readonly name: string, readonly size: number) {} }
+class DirN { constructor(readonly name: string, readonly kids: (FileN | DirN)[]) {} }
+class NaiveFs {
+    static size(n: unknown): number {
+        if (n instanceof FileN) return n.size;
+        else if (n instanceof DirN) { let s = 0; for (const k of n.kids) s += NaiveFs.size(k); return s; }
+        return 0;                                   // silently ignores unknown types
+    }
+    static find(n: unknown, ext: string, out: string[]): void {
+        if (n instanceof FileN) { if (n.name.endsWith(ext)) out.push(n.name); }
+        else if (n instanceof DirN) for (const k of n.kids) NaiveFs.find(k, ext, out);   // traversal copy #2
+    }
 }` },
+                { lang: 'cpp', code: `
+struct Node { virtual ~Node() = default; };
+struct FileN : Node { string name; long long size; FileN(string n, long long s) : name(n), size(s) {} };
+struct DirN : Node { string name; vector<Node*> kids; DirN(string n) : name(n) {} };
+struct NaiveFs {
+    static long long size(Node* n) {
+        if (auto* f = dynamic_cast<FileN*>(n)) return f->size;
+        else if (auto* d = dynamic_cast<DirN*>(n)) { long long s = 0; for (Node* k : d->kids) s += size(k); return s; }
+        return 0;                                   // silently ignores unknown types
+    }
+    static void find(Node* n, const string& ext, vector<string>& out) {
+        if (auto* f = dynamic_cast<FileN*>(n)) { if (f->name.ends_with(ext)) out.push_back(f->name); }
+        else if (auto* d = dynamic_cast<DirN*>(n)) for (Node* k : d->kids) find(k, ext, out);   // traversal copy #2
+    }
+};` }
+              ] } },
       mcq: { q: 'Next quarter a new node type SymlinkNode is added. What is the cost with the Visitor design?', options: ['Add visitSymlink to the visitor interface; every existing visitor must implement it (the compiler lists them)', 'Nothing changes', 'Only the SymlinkNode class is added', 'All file and dir classes must change'], answer: 0, explain: 'Visitor makes new operations cheap and new element types expensive — but the compiler points to every visitor that must be updated, unlike instanceof chains that fail silently.' },
       hints: [`<p>Hint 1: Nodes are stable, operations grow → Visitor. Nodes get <code>accept(FsVisitor v)</code>; the visitor has <code>visitFile</code> and <code>visitDir</code>.</p>`, `<p>Hint 2: Let the visitor control traversal in <code>visitDir</code> (loop over children calling <code>child.accept(this)</code>), so each visitor can track depth or path, or stop early.</p>`, `<p>Hint 3: Track the current path with a <code>Deque&lt;String&gt;</code> (push on enter dir, pop on exit). Size visitor accumulates a long; find visitor collects paths; print visitor uses depth for indentation.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "175 [root/a.txt, root/docs/c.txt]\nroot/\n  a.txt (100)\n  docs/\n    b.md (50)\n    c.txt (25)\n  empty/\n0 [] [solo.txt]\n" }] },
@@ -8085,7 +8646,7 @@ int main() {
     statement: `<p>An HR screen has a dropdown "Sort by": <b>salary</b> (high → low), <b>name</b> (A → Z), <b>joined</b> (oldest first), <b>dept-then-salary</b> (dept A → Z, then salary high → low). Implement <code>EmployeeSorter.sort(List&lt;Employee&gt;, String key)</code>. More sort options will be added by other teams; they must not edit your sorting code. Unknown keys must fail with a clear message.</p>`,
     constraints: `Up to 10<sup>5</sup> employees. Sorting must be stable and O(N log N). Do not mutate the caller's list.`,
     example: `<p>[(Asha, ENG, 90, 2019), (Ben, OPS, 70, 2017), (Cy, ENG, 95, 2021)]<br>key = "salary" → ${H.c('g', 'Cy, Asha, Ben')}; key = "dept-then-salary" → ${H.c('g', 'Cy, Asha (ENG), Ben (OPS)')}; key = "age" → ${H.c('r', 'invalid-argument error: unknown sort key age')}.</p>`,
-    brute: { why: `<p>A switch on the key with a hand-written bubble sort inside each case: four copies of an O(N²) loop, a new option means editing the switch, and a typo in one comparison only shows up for that option. The sorting <i>algorithm</i> and the <i>ordering rule</i> are welded together.</p>`, code: `class NaiveSorter {
+    brute: { why: `<p>A switch on the key with a hand-written bubble sort inside each case: four copies of an O(N²) loop, a new option means editing the switch, and a typo in one comparison only shows up for that option. The sorting <i>algorithm</i> and the <i>ordering rule</i> are welded together.</p>`, code: { lang: 'java', code: `class NaiveSorter {
     record Emp(String name, String dept, int salary, int joined) {}
     static void sort(List<Emp> a, String key) {
         for (int i = 0; i < a.size(); i++)
@@ -8099,7 +8660,59 @@ int main() {
                 if (swap) { Emp t = a.get(j); a.set(j, a.get(j + 1)); a.set(j + 1, t); }
             }
     }
-}` },
+}`, alt: [
+              { lang: 'python', code: `
+from dataclasses import dataclass
+
+@dataclass
+class Emp:
+    name: str
+    dept: str
+    salary: int
+    joined: int
+
+class NaiveSorter:
+    @staticmethod
+    def sort(a, key):
+        for i in range(len(a)):
+            for j in range(len(a) - i - 1):
+                if key == "salary": swap = a[j].salary < a[j + 1].salary      # rule mixed into the algorithm
+                elif key == "name": swap = a[j].name > a[j + 1].name
+                else: swap = False                                            # unknown keys silently ignored
+                if swap: a[j], a[j + 1] = a[j + 1], a[j]` },
+              { lang: 'ts', code: `
+interface Emp { name: string; dept: string; salary: number; joined: number }
+
+class NaiveSorter {
+    static sort(a: Emp[], key: string): void {
+        for (let i = 0; i < a.length; i++)
+            for (let j = 0; j + 1 < a.length - i; j++) {
+                let swap: boolean;
+                switch (key) {                                  // rule mixed into the algorithm
+                    case "salary": swap = a[j].salary < a[j + 1].salary; break;
+                    case "name": swap = a[j].name > a[j + 1].name; break;
+                    default: swap = false;                      // unknown keys silently ignored
+                }
+                if (swap) { const t = a[j]; a[j] = a[j + 1]; a[j + 1] = t; }
+            }
+    }
+};` },
+              { lang: 'cpp', code: `
+struct Emp { string name, dept; int salary, joined; };
+
+struct NaiveSorter {
+    static void sort(vector<Emp>& a, const string& key) {
+        for (size_t i = 0; i < a.size(); i++)
+            for (size_t j = 0; j + 1 < a.size() - i; j++) {
+                bool swp;
+                if (key == "salary") swp = a[j].salary < a[j + 1].salary;      // rule mixed into the algorithm
+                else if (key == "name") swp = a[j].name > a[j + 1].name;
+                else swp = false;                                              // unknown keys silently ignored
+                if (swp) swap(a[j], a[j + 1]);
+            }
+    }
+};` }
+            ] } },
     mcq: { q: 'In a sort that takes a comparison rule (Collections.sort(list, comparator), sorted(list, key=...), array.sort(compareFn)), which part is the Strategy?', options: ['The Comparator', 'The List', 'The sort algorithm (TimSort)', 'The Employee class'], answer: 0, explain: 'The sorting algorithm is the fixed context; the comparator is the interchangeable rule plugged into it.' },
     hints: [`<p>Hint 1: Separate "how to sort" (library TimSort, stable, O(N log N)) from "what order" (a Comparator).</p>`, `<p>Hint 2: A <code>Map&lt;String, Comparator&lt;Employee&gt;&gt;</code> registry; other teams call <code>register(key, comparator)</code>.</p>`, `<p>Hint 3: Build comparators with <code>Comparator.comparing(...).thenComparing(...)</code> and <code>.reversed()</code>; copy the list before sorting; throw on unknown keys.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "dept-then-salary: Cy Asha Ben\njoined: Ben Asha Cy\nname-desc: Cy Ben Asha\nsalary tie: Asha Dee\ninput untouched: Asha Ben Cy\nerror: unknown sort key age\n" }] },
@@ -8318,7 +8931,7 @@ int main() {
     statement: `<p>A traffic light cycles <b>RED (30s) → GREEN (25s) → YELLOW (5s) → RED</b>. Events: <code>timerExpired()</code> moves to the next colour; <code>pedestrianButton()</code> during GREEN switches immediately to YELLOW (ignored in other states); <code>emergency()</code> from any state goes to <b>FLASHING_RED</b>; <code>resume()</code> from FLASHING_RED goes to RED (ignored elsewhere). Expose <code>color()</code> and <code>duration()</code> of the current state.</p>`,
     constraints: `Single light, events come from one controller thread. Adding a new state (e.g. GREEN_ARROW) should touch only the states that lead to it.`,
     example: `<p>Start RED → timer → ${H.c('g', 'GREEN')} → pedestrian → ${H.c('y', 'YELLOW')} → timer → ${H.c('r', 'RED')} → emergency → ${H.c('r', 'FLASHING_RED')} → timer → stays FLASHING_RED → resume → ${H.c('r', 'RED')}.</p>`,
-    brute: { why: `<p>A colour string plus a switch inside each of the four event methods. 4 states × 4 events = 16 cases spread across 4 methods; a new state means editing all four; an unhandled case silently does nothing or does the wrong thing.</p>`, code: `class NaiveLight {
+    brute: { why: `<p>A colour string plus a switch inside each of the four event methods. 4 states × 4 events = 16 cases spread across 4 methods; a new state means editing all four; an unhandled case silently does nothing or does the wrong thing.</p>`, code: { lang: 'java', code: `class NaiveLight {
     String color = "RED";
     void timerExpired() {
         switch (color) {
@@ -8332,7 +8945,52 @@ int main() {
     void emergency() { color = "FLASHING_RED"; }
     void resume() { if (color.equals("FLASHING_RED")) color = "RED"; }
     // duration()? another switch...
+}`, alt: [
+              { lang: 'python', code: `
+class NaiveLight:
+    def __init__(self): self.color = "RED"
+    def timer_expired(self):
+        match self.color:
+            case "RED": self.color = "GREEN"
+            case "GREEN": self.color = "YELLOW"
+            case "YELLOW": self.color = "RED"
+    def pedestrian_button(self):
+        if self.color == "GREEN": self.color = "YELLOW"
+    def emergency(self): self.color = "FLASHING_RED"
+    def resume(self):
+        if self.color == "FLASHING_RED": self.color = "RED"
+    # duration()? another switch...` },
+              { lang: 'ts', code: `
+class NaiveLight {
+    color = "RED";
+    timerExpired(): void {
+        switch (this.color) {
+            case "RED": this.color = "GREEN"; break;
+            case "GREEN": this.color = "YELLOW"; break;
+            case "YELLOW": this.color = "RED"; break;
+            default: break;
+        }
+    }
+    pedestrianButton(): void { if (this.color === "GREEN") this.color = "YELLOW"; }
+    emergency(): void { this.color = "FLASHING_RED"; }
+    resume(): void { if (this.color === "FLASHING_RED") this.color = "RED"; }
+    // duration()? another switch...
 }` },
+              { lang: 'cpp', code: `
+class NaiveLight {
+    string color = "RED";
+public:
+    void timerExpired() {
+        if (color == "RED") color = "GREEN";
+        else if (color == "GREEN") color = "YELLOW";
+        else if (color == "YELLOW") color = "RED";
+    }
+    void pedestrianButton() { if (color == "GREEN") color = "YELLOW"; }
+    void emergency() { color = "FLASHING_RED"; }
+    void resume() { if (color == "FLASHING_RED") color = "RED"; }
+    // duration()? another switch...
+};` }
+            ] } },
     mcq: { q: 'Which state class should handle pedestrianButton() by changing to YELLOW?', options: ['GREEN only; other states inherit a "do nothing" default', 'Every state, with an if inside', 'The controller, with a switch', 'YELLOW'], answer: 0, explain: 'Only the state where the event matters overrides it. Defaults make other states ignore it safely.' },
     hints: [`<p>Hint 1: Each colour is a state with its own duration and its own reaction to each event.</p>`, `<p>Hint 2: An <code>enum Light</code> with constant-specific bodies is a compact State pattern: each constant overrides <code>onTimer()</code> etc. and returns the next state.</p>`, `<p>Hint 3: Default methods return <code>this</code> (ignore). <code>emergency()</code> is the same for all → implement once in the enum, not per constant.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "RED 30s\nGREEN 25s\nYELLOW 5s\nYELLOW 5s\nRED 30s\nRED 30s\nFLASHING_RED 0s\nFLASHING_RED 0s\nRED 30s\nRED 30s\n" }] },
@@ -8562,14 +9220,48 @@ int main() {
     statement: `<p>Wrap an existing <code>Iterator&lt;Integer&gt;</code> in a <code>PeekingIterator</code> that supports <code>peek()</code> (return the next element without advancing), <code>next()</code> and <code>hasNext()</code>. You may not copy the whole underlying sequence (it may be huge or infinite).</p>`,
     constraints: `Up to 10<sup>6</sup> calls. All operations O(1). <code>next()</code>/<code>peek()</code> on an exhausted iterator throw <code>NoSuchElementException</code>.`,
     example: `<p>Underlying [1, 2, 3]: next → ${H.c('g', '1')}, peek → ${H.c('b', '2')}, next → ${H.c('g', '2')} (same value peek showed), next → ${H.c('g', '3')}, hasNext → ${H.c('r', 'false')}.</p>`,
-    brute: { why: `<p>Drain the whole underlying iterator into a list in the constructor and keep an index. Peek is trivial, but memory becomes O(N), startup O(N), and it never terminates on an infinite stream (e.g. an iterator over a live event feed).</p>`, code: `class CopyingPeekingIterator {
+    brute: { why: `<p>Drain the whole underlying iterator into a list in the constructor and keep an index. Peek is trivial, but memory becomes O(N), startup O(N), and it never terminates on an infinite stream (e.g. an iterator over a live event feed).</p>`, code: { lang: 'java', code: `class CopyingPeekingIterator {
     private final List<Integer> all = new ArrayList<>();
     private int i;
     CopyingPeekingIterator(Iterator<Integer> it) { while (it.hasNext()) all.add(it.next()); }   // O(N), hangs if infinite
     Integer peek() { return all.get(i); }
     Integer next() { return all.get(i++); }
     boolean hasNext() { return i < all.size(); }
+}`, alt: [
+              { lang: 'python', code: `
+class CopyingPeekingIterator:
+    def __init__(self, it):
+        self._all = list(it)        # O(N), hangs if infinite
+        self._i = 0
+    def peek(self): return self._all[self._i]
+    def next(self):
+        self._i += 1
+        return self._all[self._i - 1]
+    def has_next(self): return self._i < len(self._all)` },
+              { lang: 'ts', code: `
+class CopyingPeekingIterator {
+    private readonly all: number[] = [];
+    private i = 0;
+    constructor(it: Iterator<number>) {   // O(N), hangs if infinite
+        for (let r = it.next(); !r.done; r = it.next()) this.all.push(r.value);
+    }
+    peek(): number { return this.all[this.i]; }
+    next(): number { return this.all[this.i++]; }
+    hasNext(): boolean { return this.i < this.all.length; }
 }` },
+              { lang: 'cpp', code: `
+class CopyingPeekingIterator {
+    vector<int> all;
+    size_t i = 0;
+public:
+    CopyingPeekingIterator(function<optional<int>()> next) {   // O(N), hangs if infinite
+        while (auto v = next()) all.push_back(*v);
+    }
+    int peek() { return all[i]; }
+    int next() { return all[i++]; }
+    bool hasNext() { return i < all.size(); }
+};` }
+            ] } },
     mcq: { q: 'What extra state does a lazy PeekingIterator need?', options: ['One cached "next" element plus a flag saying whether it is valid', 'A copy of all remaining elements', 'A stack', 'Nothing; call next() twice'], answer: 0, explain: 'Look ahead by exactly one element and remember it; next() returns the cached value and refills the cache.' },
     hints: [`<p>Hint 1: To peek you must take the element from the underlying iterator early — so remember it.</p>`, `<p>Hint 2: Fields: <code>Integer nextVal</code> and <code>boolean hasPeeked</code> (null can be a valid element, so do not use null as "empty").</p>`, `<p>Hint 3: peek(): if not cached, cache it. next(): if cached, return and clear; else delegate. hasNext(): cached || underlying.hasNext().</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "1 2 2 3 false\npeek: exhausted\nnext: exhausted\nx x x false\nfalse\n" }] },
@@ -8758,7 +9450,7 @@ int main() {
     statement: `<p>A remote has numbered slots. Each slot can be programmed with an action on a <code>Light</code> (brightness 0–100): <b>On</b> (100), <b>Off</b> (0), <b>Dim(level)</b>. <code>press(slot)</code> runs the action; <code>undo()</code> reverts the <b>most recent</b> press, restoring the exact previous brightness (multiple undos go further back). Slots can be re-programmed at runtime. The remote must not know what a light is.</p>`,
     constraints: `Up to 10 slots, history up to 100 presses (drop the oldest beyond that). Pressing an empty slot does nothing and is not recorded.`,
     example: `<p>Slot0=On, Slot1=Dim(30), Slot2=Off. press(0) → 100. press(1) → 30. press(2) → 0. undo → ${H.c('g', '30')}. undo → ${H.c('g', '100')}. undo → ${H.c('g', '0')} (initial). undo → ${H.c('m', 'nothing')}.</p>`,
-    brute: { why: `<p>The remote stores slot numbers in an int array and switches on the button id to call <code>light.on()</code>, <code>light.dim(30)</code>… It remembers only <code>lastButton</code>, so undo is a second switch that guesses the previous brightness (wrong after Dim → Dim) and supports only one level of undo. The remote is welded to the Light class.</p>`, code: `class NaiveRemote {
+    brute: { why: `<p>The remote stores slot numbers in an int array and switches on the button id to call <code>light.on()</code>, <code>light.dim(30)</code>… It remembers only <code>lastButton</code>, so undo is a second switch that guesses the previous brightness (wrong after Dim → Dim) and supports only one level of undo. The remote is welded to the Light class.</p>`, code: { lang: 'java', code: `class NaiveRemote {
     int brightness, lastButton = -1;
     void press(int button) {
         lastButton = button;
@@ -8768,7 +9460,48 @@ int main() {
         switch (lastButton) { case 0 -> brightness = 0; case 1 -> brightness = 100; case 2 -> brightness = 100; default -> { } }
         lastButton = -1;
     }
+}`, alt: [
+              { lang: 'python', code: `
+class NaiveRemote:
+    def __init__(self): self.brightness = 0; self.last_button = -1
+    def press(self, button):
+        self.last_button = button
+        match button:
+            case 0: self.brightness = 100
+            case 1: self.brightness = 30
+            case 2: self.brightness = 0
+    def undo(self):                                 # guesses: wrong after two dims, only one level
+        match self.last_button:
+            case 0: self.brightness = 0
+            case 1: self.brightness = 100
+            case 2: self.brightness = 100
+        self.last_button = -1` },
+              { lang: 'ts', code: `
+class NaiveRemote {
+    brightness = 0; lastButton = -1;
+    press(button: number): void {
+        this.lastButton = button;
+        switch (button) { case 0: this.brightness = 100; break; case 1: this.brightness = 30; break; case 2: this.brightness = 0; break; }
+    }
+    undo(): void {                                 // guesses: wrong after two dims, only one level
+        switch (this.lastButton) { case 0: this.brightness = 0; break; case 1: this.brightness = 100; break; case 2: this.brightness = 100; break; }
+        this.lastButton = -1;
+    }
 }` },
+              { lang: 'cpp', code: `
+class NaiveRemote {
+public:
+    int brightness = 0, lastButton = -1;
+    void press(int button) {
+        lastButton = button;
+        switch (button) { case 0: brightness = 100; break; case 1: brightness = 30; break; case 2: brightness = 0; break; }
+    }
+    void undo() {                                 // guesses: wrong after two dims, only one level
+        switch (lastButton) { case 0: brightness = 0; break; case 1: brightness = 100; break; case 2: brightness = 100; break; }
+        lastButton = -1;
+    }
+};` }
+            ] } },
     mcq: { q: 'Dim(30) is pressed twice in a row, then undo twice. What must each command store to undo correctly?', options: ['The brightness just before it executed', 'The brightness it sets (30)', 'Nothing; Dim undoes to 100', 'The slot number'], answer: 0, explain: 'Undo restores the previous value. Each command instance must capture it at execute time, so every press needs its own command record.' },
     hints: [`<p>Hint 1: Make <code>interface Command { void execute(); void undo(); }</code>. The remote holds <code>Command[] slots</code>.</p>`, `<p>Hint 2: A slot holds a command <i>template</i>; each press must record its own "previous brightness". Either create a fresh command per press (a Supplier in the slot) or let the history store (command, previous value) pairs.</p>`, `<p>Hint 3: A <code>SetBrightness(light, target)</code> command covers On/Off/Dim. Bounded <code>ArrayDeque</code> for history.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "30 100 0\nempty slot recorded: false\nclamped 100\nrestored 0\nhistory kept 100\n" }] },
@@ -9064,14 +9797,41 @@ int main() {
     statement: `<p>Build a <code>Logger</code> with levels <b>DEBUG &lt; INFO &lt; WARN &lt; ERROR</b>. Output goes through a chain of handlers: <code>ConsoleHandler</code> (min DEBUG), <code>FileHandler</code> (min INFO, keeps lines in memory for the test), <code>PagerHandler</code> (min ERROR, pages on-call). Every handler whose minimum level is met writes the message, then passes it on (pipeline semantics). Handlers can be added/reordered by configuration. One failing handler must not stop the others.</p>`,
     constraints: `Up to 10<sup>6</sup> log calls; handlers are shared across threads. Messages below every handler's level should cost almost nothing.`,
     example: `<p>log(DEBUG, "cache miss") → ${H.c('b', 'console only')}. log(WARN, "slow query") → ${H.c('b', 'console + file')}. log(ERROR, "db down") → ${H.c('r', 'console + file + pager')}.</p>`,
-    brute: { why: `<p>A single <code>log()</code> method with <code>if (level &gt;= INFO) writeFile(); if (level == ERROR) page();</code>. Adding a Slack handler or changing thresholds edits the logger; a pager exception aborts the log call; and handlers cannot be configured per environment.</p>`, code: `class NaiveLogger {
+    brute: { why: `<p>A single <code>log()</code> method with <code>if (level &gt;= INFO) writeFile(); if (level == ERROR) page();</code>. Adding a Slack handler or changing thresholds edits the logger; a pager exception aborts the log call; and handlers cannot be configured per environment.</p>`, code: { lang: 'java', code: `class NaiveLogger {
     final List<String> file = new ArrayList<>();
     void log(int level, String msg) {         // 0=DEBUG 1=INFO 2=WARN 3=ERROR
         System.out.println(msg);
         if (level >= 1) file.add(msg);
         if (level >= 3) throw new RuntimeException("pager down");   // breaks everything after it
     }
+}`, alt: [
+              { lang: 'python', code: `
+class NaiveLogger:
+    def __init__(self): self.file = []
+    def log(self, level, msg):         # 0=DEBUG 1=INFO 2=WARN 3=ERROR
+        print(msg)
+        if level >= 1: self.file.append(msg)
+        if level >= 3: raise RuntimeError("pager down")   # breaks everything after it` },
+              { lang: 'ts', code: `
+class NaiveLogger {
+    readonly file: string[] = [];
+    log(level: number, msg: string): void {         // 0=DEBUG 1=INFO 2=WARN 3=ERROR
+        console.log(msg);
+        if (level >= 1) this.file.push(msg);
+        if (level >= 3) throw new Error("pager down");   // breaks everything after it
+    }
 }` },
+              { lang: 'cpp', code: `
+class NaiveLogger {
+public:
+    vector<string> file;
+    void log(int level, const string& msg) {         // 0=DEBUG 1=INFO 2=WARN 3=ERROR
+        cout << msg << "\\n";
+        if (level >= 1) file.push_back(msg);
+        if (level >= 3) throw runtime_error("pager down");   // breaks everything after it
+    }
+};` }
+            ] } },
     mcq: { q: 'In this logger, why does every handler call next even after handling?', options: ['Pipeline semantics: several handlers may each act on the same message', 'Because the first handler cannot write', 'To save memory', 'It is a bug; CoR must stop at the first handler'], answer: 0, explain: 'Chain of Responsibility has two flavours. Approvals stop at the first handler; logging is a filter pipeline where many handlers act.' },
     hints: [`<p>Hint 1: <code>enum Level</code> with ordinal comparison. Abstract <code>LogHandler</code> with <code>minLevel</code>, <code>next</code>, and a final <code>handle()</code>.</p>`, `<p>Hint 2: <code>handle()</code>: if level ≥ min, try { write } catch (RuntimeException) { record failure }; then if next != null, next.handle().</p>`, `<p>Hint 3: Cheap filtering: the Logger can store the lowest min level of the chain and return early. Use a thread-safe list for the file handler.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "[console] DEBUG cache miss\n[console] WARN slow query\n[console] ERROR db down\n[pager] waking on-call: db down\nfile has [WARN slow query, ERROR db down]\nBrokenHandler failed: disk full\n[pager] waking on-call: x\nfile2 has [ERROR x]\nfile2 has [ERROR x]\n" }] },
@@ -9441,7 +10201,7 @@ int main() {
     statement: `<p>Implement an in-process <code>EventBus</code>: <code>subscribe(Class&lt;T&gt; type, Consumer&lt;T&gt; handler)</code> returns a handle to unsubscribe; <code>publish(Object event)</code> delivers the event to every handler subscribed to the event's class <b>or any of its supertypes/interfaces</b> (a handler for <code>OrderEvent</code> also receives <code>OrderShipped</code>). A handler that throws must not prevent delivery to others; return the number of handlers that succeeded.</p>`,
     constraints: `Up to 10<sup>4</sup> subscriptions, many publishes per second from multiple threads; subscriptions change rarely.`,
     example: `<p>subscribe(OrderEvent → audit), subscribe(OrderShipped → sms), subscribe(Object → debugLog). publish(new OrderShipped("A1")) → ${H.c('g', 'audit, sms and debugLog')} all run (3). publish(new UserSignedUp("u7")) → ${H.c('g', 'debugLog only')} (1).</p>`,
-    brute: { why: `<p>One <code>publish(String type, Object payload)</code> with a switch on the type string calling services directly. No compile-time type safety (payload casts), publishers know every consumer, and hierarchy-based subscriptions ("all order events") are impossible without listing every subtype.</p>`, code: `class NaiveBus {
+    brute: { why: `<p>One <code>publish(String type, Object payload)</code> with a switch on the type string calling services directly. No compile-time type safety (payload casts), publishers know every consumer, and hierarchy-based subscriptions ("all order events") are impossible without listing every subtype.</p>`, code: { lang: 'java', code: `class NaiveBus {
     void publish(String type, Object payload) {
         switch (type) {
             case "ORDER_SHIPPED" -> { System.out.println("audit " + payload); System.out.println("sms " + payload); }
@@ -9449,7 +10209,34 @@ int main() {
             default -> System.out.println("unknown " + type);   // every new event edits this
         }
     }
+}`, alt: [
+              { lang: 'python', code: `
+class NaiveBus:
+    def publish(self, type, payload):
+        match type:
+            case "ORDER_SHIPPED": print("audit", payload); print("sms", payload)
+            case "USER_SIGNED_UP": print("welcome", payload)
+            case _: print("unknown", type)   # every new event edits this` },
+              { lang: 'ts', code: `
+class NaiveBus {
+    publish(type: string, payload: unknown): void {
+        switch (type) {
+            case "ORDER_SHIPPED": console.log("audit " + payload); console.log("sms " + payload); break;
+            case "USER_SIGNED_UP": console.log("welcome " + payload); break;
+            default: console.log("unknown " + type);   // every new event edits this
+        }
+    }
 }` },
+              { lang: 'cpp', code: `
+class NaiveBus {
+public:
+    void publish(const string& type, const string& payload) {
+        if (type == "ORDER_SHIPPED") { cout << "audit " << payload << "\\n"; cout << "sms " << payload << "\\n"; }
+        else if (type == "USER_SIGNED_UP") cout << "welcome " << payload << "\\n";
+        else cout << "unknown " << type << "\\n";   // every new event edits this
+    }
+};` }
+            ] } },
     mcq: { q: 'How do you find every handler that should receive an OrderShipped event?', options: ['Walk its class, superclasses and interfaces, and collect the handlers registered for each', 'Only look up OrderShipped.class', 'Call every handler and let it check instanceof', 'Use the event name string'], answer: 0, explain: 'Subscriptions keyed by type; delivery resolves the event type hierarchy (cache it per class for speed).' },
     hints: [`<p>Hint 1: <code>Map&lt;Class&lt;?&gt;, List&lt;Consumer&lt;Object&gt;&gt;&gt;</code> — store handlers wrapped so the bus can call them with an Object after a safe cast.</p>`, `<p>Hint 2: Collect all supertypes with a BFS over <code>getSuperclass()</code> and <code>getInterfaces()</code>; cache the result in a <code>ConcurrentHashMap&lt;Class, List&lt;Class&gt;&gt;</code>.</p>`, `<p>Hint 3: Use <code>CopyOnWriteArrayList</code> for handler lists; wrap each call in try/catch; unsubscribe handle removes the exact wrapper.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "sms: A1 shipped\naudit A1\ndebug OrderShipped\n3 handlers\naudit A2\ndebug OrderShipped\n2 handlers\ndebug UserSignedUp\n1 handlers\nhandler failed: mail down\nwelcome u8\ndebug UserSignedUp\n2 handlers\n" }] },
@@ -9714,14 +10501,53 @@ int main() {
     statement: `<p>Given a nested list such as <code>[[1,1],2,[1,[4,[6]]]]</code>, implement an iterator that returns the integers in order: 1, 1, 2, 1, 4, 6. Elements are <code>NestedInteger</code>s: each is either an integer or a list of NestedIntegers. Lists may be empty at any depth (<code>[[],[[]],3]</code> → 3). Iterate lazily: do not flatten everything in the constructor.</p>`,
     constraints: `Up to 10<sup>5</sup> integers, nesting depth up to 10<sup>4</sup>. <code>hasNext()</code> must be safe to call repeatedly.`,
     example: `<p>[[1,1],2,[1,[4,[6]]]] → ${H.c('g', '1 1 2 1 4 6')}. [[],[[]],3] → ${H.c('g', '3')} — empty lists produce nothing, so hasNext() must <b>skip</b> them before answering.</p>`,
-    brute: { why: `<p>Recursively flatten the whole structure into a list in the constructor. Simple, but O(N) memory and work up front, and a depth-10<sup>4</sup> recursion risks StackOverflowError. Callers who need only the first element still pay for all.</p>`, code: `interface NI { boolean isInteger(); Integer getInteger(); List<NI> getList(); }
+    brute: { why: `<p>Recursively flatten the whole structure into a list in the constructor. Simple, but O(N) memory and work up front, and a depth-10<sup>4</sup> recursion risks StackOverflowError. Callers who need only the first element still pay for all.</p>`, code: { lang: 'java', code: `interface NI { boolean isInteger(); Integer getInteger(); List<NI> getList(); }
 class FlattenAll {
     private final List<Integer> out = new ArrayList<>(); private int i;
     FlattenAll(List<NI> list) { add(list); }
     private void add(List<NI> l) { for (NI x : l) if (x.isInteger()) out.add(x.getInteger()); else add(x.getList()); }  // deep recursion
     boolean hasNext() { return i < out.size(); }
     Integer next() { return out.get(i++); }
+}`, alt: [
+              { lang: 'python', code: `
+class NI:
+    def is_integer(self): raise NotImplementedError
+    def get_integer(self): raise NotImplementedError
+    def get_list(self): raise NotImplementedError
+
+class FlattenAll:
+    def __init__(self, lst):
+        self._out = []
+        self._i = 0
+        self._add(lst)
+    def _add(self, l):
+        for x in l:
+            if x.is_integer(): self._out.append(x.get_integer())
+            else: self._add(x.get_list())      # deep recursion
+    def has_next(self): return self._i < len(self._out)
+    def next(self):
+        self._i += 1
+        return self._out[self._i - 1]` },
+              { lang: 'ts', code: `
+interface NI { isInteger(): boolean; getInteger(): number; getList(): NI[]; }
+class FlattenAll {
+    private readonly out: number[] = []; private i = 0;
+    constructor(list: NI[]) { this.add(list); }
+    private add(l: NI[]): void { for (const x of l) if (x.isInteger()) this.out.push(x.getInteger()); else this.add(x.getList()); }  // deep recursion
+    hasNext(): boolean { return this.i < this.out.length; }
+    next(): number { return this.out[this.i++]; }
 }` },
+              { lang: 'cpp', code: `
+struct NI { virtual bool isInteger() = 0; virtual int getInteger() = 0; virtual vector<NI*> getList() = 0; virtual ~NI() = default; };
+class FlattenAll {
+    vector<int> out; int i = 0;
+    void add(const vector<NI*>& l) { for (NI* x : l) { if (x->isInteger()) out.push_back(x->getInteger()); else add(x->getList()); } }  // deep recursion
+public:
+    FlattenAll(const vector<NI*>& list) { add(list); }
+    bool hasNext() { return i < (int)out.size(); }
+    int next() { return out[i++]; }
+};` }
+            ] } },
     mcq: { q: 'Why must hasNext() do work (not just check a stack is non-empty)?', options: ['Because the stack may hold only empty lists, so we must unpack until an integer is on top', 'Because next() is slow', 'Because the language requires it', 'It must not do work'], answer: 0, explain: 'hasNext() advances past empty lists and unpacks nested lists until an integer is ready (or nothing remains). It must be idempotent, so it only prepares and never consumes the integer.' },
     hints: [`<p>Hint 1: Keep a stack of iterators (one per open list), like a paused DFS.</p>`, `<p>Hint 2: In hasNext(): look at the top iterator; if exhausted pop it; if its next element is a list, push that list's iterator; if it is an integer, cache it and return true.</p>`, `<p>Hint 3: Use a cached <code>Integer nextVal</code> to make hasNext idempotent; next() calls hasNext(), returns and clears the cache.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "1 1 2 1 4 6\n3\nfalse false\nerror: exhausted\ndeep 42\n" }] },
@@ -10008,14 +10834,50 @@ int main() {
     statement: `<p>A <code>MediaPlayer</code> plays one track of length L seconds. States: <b>Stopped</b>, <b>Playing</b>, <b>Paused</b>. <code>play()</code>: Stopped → Playing from 0; Paused → Playing from the saved position; Playing → no-op. <code>pause()</code>: Playing → Paused; otherwise no-op. <code>stop()</code>: any → Stopped, position 0. <code>tick(s)</code>: only in Playing, advances the position; reaching L moves to Stopped (track ended) and fires an <code>onFinished</code> callback. Return a status line after each action.</p>`,
     constraints: `L ≤ 10<sup>4</sup> s, up to 10<sup>5</sup> actions. Adding a <b>Buffering</b> state later must not require editing unrelated states.`,
     example: `<p>L=10. play → Playing@0. tick 4 → Playing@4. pause → Paused@4. tick 3 → ${H.c('m', 'Paused@4 (time frozen)')}. play → Playing@4. tick 7 → ${H.c('g', 'Stopped@0, finished fired')}.</p>`,
-    brute: { why: `<p>Two booleans <code>playing</code> and <code>paused</code> and if/else in every method. Invalid combinations (both true) become possible, <code>tick</code> must remember to check both flags, and Buffering would add a third boolean and 8 combinations.</p>`, code: `class NaivePlayer {
+    brute: { why: `<p>Two booleans <code>playing</code> and <code>paused</code> and if/else in every method. Invalid combinations (both true) become possible, <code>tick</code> must remember to check both flags, and Buffering would add a third boolean and 8 combinations.</p>`, code: { lang: 'java', code: `class NaivePlayer {
     boolean playing, paused; int pos; final int len;
     NaivePlayer(int len) { this.len = len; }
     void play() { if (paused) { paused = false; playing = true; } else if (!playing) { pos = 0; playing = true; } }
     void pause() { if (playing) { playing = false; paused = true; } }
     void stop() { playing = false; paused = false; pos = 0; }
     void tick(int s) { if (playing && !paused) { pos += s; if (pos >= len) stop(); } }   // flags can drift
+}`, alt: [
+              { lang: 'python', code: `
+class NaivePlayer:
+    def __init__(self, length):
+        self.playing = self.paused = False
+        self.pos = 0
+        self.len = length
+    def play(self):
+        if self.paused: self.paused = False; self.playing = True
+        elif not self.playing: self.pos = 0; self.playing = True
+    def pause(self):
+        if self.playing: self.playing = False; self.paused = True
+    def stop(self): self.playing = False; self.paused = False; self.pos = 0
+    def tick(self, s):
+        if self.playing and not self.paused:     # flags can drift
+            self.pos += s
+            if self.pos >= self.len: self.stop()` },
+              { lang: 'ts', code: `
+class NaivePlayer {
+    playing = false; paused = false; pos = 0;
+    constructor(readonly len: number) {}
+    play(): void { if (this.paused) { this.paused = false; this.playing = true; } else if (!this.playing) { this.pos = 0; this.playing = true; } }
+    pause(): void { if (this.playing) { this.playing = false; this.paused = true; } }
+    stop(): void { this.playing = false; this.paused = false; this.pos = 0; }
+    tick(s: number): void { if (this.playing && !this.paused) { this.pos += s; if (this.pos >= this.len) this.stop(); } }   // flags can drift
 }` },
+              { lang: 'cpp', code: `
+class NaivePlayer {
+    bool playing = false, paused = false; int pos = 0; const int len;
+public:
+    NaivePlayer(int len) : len(len) {}
+    void play() { if (paused) { paused = false; playing = true; } else if (!playing) { pos = 0; playing = true; } }
+    void pause() { if (playing) { playing = false; paused = true; } }
+    void stop() { playing = false; paused = false; pos = 0; }
+    void tick(int s) { if (playing && !paused) { pos += s; if (pos >= len) stop(); } }   // flags can drift
+};` }
+            ] } },
     mcq: { q: 'Where does "time does not advance while paused" live in the State design?', options: ['PausedState.tick() is a no-op (inherited default)', 'In MediaPlayer.tick() with an if', 'In the UI', 'In the track object'], answer: 0, explain: 'Each state defines its own reaction; Paused simply does not override tick, so the default does nothing.' },
     hints: [`<p>Hint 1: Context = player (position, length, callback). States = Stopped, Playing, Paused.</p>`, `<p>Hint 2: <code>interface PlayerState</code> with default no-op methods returning <code>this</code>; each state overrides only its meaningful events and returns the next state.</p>`, `<p>Hint 3: Playing.tick: pos += s; if pos ≥ len → pos = 0, fire callback, return Stopped. Keep the state singletons stateless; data stays in the context.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "Playing@0\nPlaying@4\nPaused@4\nPaused@4\nPlaying@4\nPlaying@4\nfinished!\nStopped@0\nStopped@0\nStopped@0\nPlaying@0\nPlaying@2\nStopped@0\n" }] },
@@ -10320,7 +11182,7 @@ int main() {
     statement: `<p>A cart contains <code>Book(price, grams)</code>, <code>Electronics(price, grams, fragile)</code> and <code>Grocery(price, grams, perishable)</code>. Implement two operations as visitors: <b>tax</b> (books 0%, electronics 18%, grocery 5%) and <b>shipping</b> (₹10 per 500 g or part thereof; +₹50 if fragile; +₹30 if perishable). Finance will later add "loyalty points" and "import duty" — the item classes must not change for that.</p>`,
     constraints: `Up to 10<sup>4</sup> items. Money in paise (long) to avoid floating-point errors. Item types are stable.`,
     example: `<p>Book(50000, 400) + Electronics(200000, 1200, fragile) + Grocery(10000, 900, perishable).<br>Tax = 0 + 36000 + 500 = ${H.c('g', '36500 paise')}. Shipping = 1000 + (3000 + 5000) + (2000 + 3000) = ${H.c('g', '14000 paise')} (1200 g → 3 blocks of 500 g; 900 g → 2 blocks).</p>`,
-    brute: { why: `<p>Each operation is a method with <code>if (item instanceof Book) … else if (item instanceof Electronics) …</code>. Tax, shipping, points and duty each repeat the same ladder; adding a new item type compiles fine even when one ladder forgets it.</p>`, code: `class NaiveCart {
+    brute: { why: `<p>Each operation is a method with a type-check ladder (<code>if (item instanceof Book) … else if (item instanceof Electronics) …</code>, or <code>isinstance</code> in Python). Tax, shipping, points and duty each repeat the same ladder; adding a new item type compiles fine even when one ladder forgets it.</p>`, code: { lang: 'java', code: `class NaiveCart {
     record Item(String kind, long price, int grams) {}
     long tax(List<Item> items) {
         long t = 0;
@@ -10331,7 +11193,54 @@ int main() {
         }
         return t;   // shipping(), points(), duty() repeat this ladder...
     }
+}`, alt: [
+              { lang: 'python', code: `
+from dataclasses import dataclass
+
+@dataclass
+class Item:
+    kind: str
+    price: int
+    grams: int
+
+class NaiveCart:
+    def tax(self, items):
+        t = 0
+        for i in items:
+            if i.kind == "BOOK": t += 0
+            elif i.kind == "ELEC": t += i.price * 18 // 100
+            elif i.kind == "GROCERY": t += i.price * 5 // 100
+        return t   # shipping(), points(), duty() repeat this ladder...` },
+              { lang: 'ts', code: `
+interface Item { kind: string; price: number; grams: number }
+
+class NaiveCart {
+    tax(items: Item[]): number {
+        let t = 0;
+        for (const i of items) {
+            if (i.kind === "BOOK") t += 0;
+            else if (i.kind === "ELEC") t += Math.floor(i.price * 18 / 100);
+            else if (i.kind === "GROCERY") t += Math.floor(i.price * 5 / 100);
+        }
+        return t;   // shipping(), points(), duty() repeat this ladder...
+    }
 }` },
+              { lang: 'cpp', code: `
+struct Item { string kind; long long price; int grams; };
+
+class NaiveCart {
+public:
+    long long tax(const vector<Item>& items) {
+        long long t = 0;
+        for (auto& i : items) {
+            if (i.kind == "BOOK") t += 0;
+            else if (i.kind == "ELEC") t += i.price * 18 / 100;
+            else if (i.kind == "GROCERY") t += i.price * 5 / 100;
+        }
+        return t;   // shipping(), points(), duty() repeat this ladder...
+    }
+};` }
+            ] } },
     mcq: { q: 'Finance adds "loyalty points" next sprint. With Visitor, what do you write?', options: ['One new class LoyaltyVisitor; item classes untouched', 'A points() method in each item class', 'A new instanceof ladder', 'A new item type'], answer: 0, explain: 'New operations over stable types are exactly what Visitor makes cheap.' },
     hints: [`<p>Hint 1: <code>interface CartItem { &lt;R&gt; R accept(CartVisitor&lt;R&gt; v); }</code> and a visitor with <code>visitBook</code>, <code>visitElectronics</code>, <code>visitGrocery</code>.</p>`, `<p>Hint 2: Each visitor returns the amount for one item; the cart sums <code>item.accept(visitor)</code> over all items.</p>`, `<p>Hint 3: Blocks of 500 g "or part thereof" = <code>(grams + 499) / 500</code>. Keep all money in long paise.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "tax=36500 shipping=14000\ntax=9 shipping=4000\ntax=0 shipping=0\n" }] },
@@ -10612,7 +11521,7 @@ int main() {
     statement: `<p>Every payment method follows: <b>validate amount</b> → <b>fraud check</b> (optional per method) → <b>debit</b> (method-specific) → <b>apply fee</b> (method-specific, default 0) → <b>write receipt</b>. Card: 2% fee, always fraud-checked (reject amounts &gt; ₹1,00,000). UPI: no fee, fraud check only above ₹2,000. Wallet: no fraud check, fails if wallet balance is insufficient. The order of steps must be enforced for all methods, including ones added later.</p>`,
     constraints: `Amounts in paise (long) &gt; 0. Fraud and debit failures must return a failed result, never throw to the caller.`,
     example: `<p>Card ₹500 → ${H.c('g', 'OK, fee ₹10')}. UPI ₹1,500 → ${H.c('g', 'OK, fraud check skipped')}. Card ₹2,00,000 → ${H.c('r', 'FRAUD_REJECTED')}. Wallet ₹900 with balance ₹800 → ${H.c('r', 'DEBIT_FAILED')}.</p>`,
-    brute: { why: `<p>Three classes each implementing the full flow. One forgets amount validation, another writes the receipt before the debit succeeds, and a compliance change ("log every fraud decision") must be applied three times. The <i>order of steps</i> is a business rule but nobody enforces it.</p>`, code: `class NaiveCardPayment {
+    brute: { why: `<p>Three classes each implementing the full flow. One forgets amount validation, another writes the receipt before the debit succeeds, and a compliance change ("log every fraud decision") must be applied three times. The <i>order of steps</i> is a business rule but nobody enforces it.</p>`, code: { lang: 'java', code: `class NaiveCardPayment {
     String pay(long amt) {
         String receipt = "receipt " + amt;              // written BEFORE debit: wrong order
         if (amt > 10_000_000) return "FRAUD_REJECTED";
@@ -10620,7 +11529,37 @@ int main() {
         return receipt + " fee " + amt * 2 / 100;       // forgot to validate amt > 0
     }
 }
+// NaiveUpiPayment, NaiveWalletPayment: same flow pasted with different mistakes.`, alt: [
+              { lang: 'python', code: `
+class NaiveCardPayment:
+    def pay(self, amt):
+        receipt = f"receipt {amt}"              # written BEFORE debit: wrong order
+        if amt > 10_000_000: return "FRAUD_REJECTED"
+        print("debit card", amt)
+        return f"{receipt} fee {amt * 2 // 100}"       # forgot to validate amt > 0
+# NaiveUpiPayment, NaiveWalletPayment: same flow pasted with different mistakes.` },
+              { lang: 'ts', code: `
+class NaiveCardPayment {
+    pay(amt: number): string {
+        const receipt = "receipt " + amt;              // written BEFORE debit: wrong order
+        if (amt > 10_000_000) return "FRAUD_REJECTED";
+        console.log("debit card " + amt);
+        return receipt + " fee " + Math.floor(amt * 2 / 100);       // forgot to validate amt > 0
+    }
+}
 // NaiveUpiPayment, NaiveWalletPayment: same flow pasted with different mistakes.` },
+              { lang: 'cpp', code: `
+class NaiveCardPayment {
+public:
+    string pay(long long amt) {
+        string receipt = "receipt " + to_string(amt);              // written BEFORE debit: wrong order
+        if (amt > 10000000) return "FRAUD_REJECTED";
+        cout << "debit card " << amt << "\\n";
+        return receipt + " fee " + to_string(amt * 2 / 100);       // forgot to validate amt > 0
+    }
+};
+// NaiveUpiPayment, NaiveWalletPayment: same flow pasted with different mistakes.` }
+            ] } },
     mcq: { q: 'UPI wants to skip fraud checks for small amounts. How should it express that?', options: ['Override a hook like needsFraudCheck(amount) that the template calls', 'Override the whole pay() method', 'Add an if in the base class for UPI', 'Catch the fraud exception'], answer: 0, explain: 'Hooks let subclasses switch optional steps on/off while the base keeps the order and the mandatory steps.' },
     hints: [`<p>Hint 1: <code>public final PaymentResult pay(long amount)</code> in an abstract <code>PaymentProcessor</code>.</p>`, `<p>Hint 2: Abstract: <code>debit(amount)</code> returning boolean. Hooks: <code>needsFraudCheck(amount)</code> (default true), <code>fee(amount)</code> (default 0).</p>`, `<p>Hint 3: Shared private steps: validate, fraudCheck (limit rule), receipt. Return a record <code>PaymentResult(status, fee)</code> with an enum status.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "receipt: 50000 fee 1000\ncard 50000: OK fee 1000\nreceipt: 150000 fee 0\nupi 150000: OK fee 0\nupi 20000000: FRAUD_REJECTED fee 0\ncard 20000000: FRAUD_REJECTED fee 0\nwallet 90000: DEBIT_FAILED fee 0\nreceipt: 50000 fee 0\nwallet 50000: OK fee 0\nwallet 50000: DEBIT_FAILED fee 0\ncard 0: INVALID_AMOUNT fee 0\nflaky 1000: DEBIT_FAILED fee 0\n" }] },
@@ -10955,7 +11894,7 @@ int main() {
     statement: `<p>Implement an in-memory store with <code>set(k, v)</code>, <code>get(k)</code> (null if missing), <code>delete(k)</code>, <code>begin()</code>, <code>rollback()</code> and <code>commit()</code>. Transactions <b>nest</b>: rollback undoes only the innermost open transaction; commit merges the innermost into its parent (or makes changes permanent if it is the outermost). rollback/commit with no open transaction return false. <code>begin()</code> must be O(1) — copying the whole map is not allowed.</p>`,
     constraints: `Up to 10<sup>6</sup> keys and 10<sup>5</sup> operations; nesting depth up to 10<sup>3</sup>. get/set/delete O(1) average.`,
     example: `<p>set a=10 · begin · set a=20 · begin · delete a · get a → ${H.c('m', 'null')} · rollback · get a → ${H.c('g', '20')} · commit · get a → ${H.c('g', '20')} · rollback → ${H.c('r', 'false (no open txn)')}.</p>`,
-    brute: { why: `<p>On <code>begin()</code> push a <b>full copy</b> of the map (a full memento); rollback pops and restores it. Correct and simple, but begin is O(N): with 10<sup>6</sup> keys and frequent short transactions, you copy millions of entries to change one. Memory explodes with nesting.</p>`, code: `class CopyingStore {
+    brute: { why: `<p>On <code>begin()</code> push a <b>full copy</b> of the map (a full memento); rollback pops and restores it. Correct and simple, but begin is O(N): with 10<sup>6</sup> keys and frequent short transactions, you copy millions of entries to change one. Memory explodes with nesting.</p>`, code: { lang: 'java', code: `class CopyingStore {
     private Map<String, String> data = new HashMap<>();
     private final Deque<Map<String, String>> snapshots = new ArrayDeque<>();
     void set(String k, String v) { data.put(k, v); }
@@ -10963,7 +11902,43 @@ int main() {
     void begin() { snapshots.push(new HashMap<>(data)); }          // O(N) every time
     boolean rollback() { if (snapshots.isEmpty()) return false; data = snapshots.pop(); return true; }
     boolean commit() { if (snapshots.isEmpty()) return false; snapshots.pop(); return true; }
+}`, alt: [
+              { lang: 'python', code: `
+class CopyingStore:
+    def __init__(self):
+        self._data = {}
+        self._snapshots = []
+    def set(self, k, v): self._data[k] = v
+    def get(self, k): return self._data.get(k)
+    def begin(self): self._snapshots.append(dict(self._data))          # O(N) every time
+    def rollback(self):
+        if not self._snapshots: return False
+        self._data = self._snapshots.pop(); return True
+    def commit(self):
+        if not self._snapshots: return False
+        self._snapshots.pop(); return True` },
+              { lang: 'ts', code: `
+class CopyingStore {
+    private data = new Map<string, string>();
+    private readonly snapshots: Map<string, string>[] = [];
+    set(k: string, v: string): void { this.data.set(k, v); }
+    get(k: string): string | undefined { return this.data.get(k); }
+    begin(): void { this.snapshots.push(new Map(this.data)); }          // O(N) every time
+    rollback(): boolean { if (this.snapshots.length === 0) return false; this.data = this.snapshots.pop()!; return true; }
+    commit(): boolean { if (this.snapshots.length === 0) return false; this.snapshots.pop(); return true; }
 }` },
+              { lang: 'cpp', code: `
+class CopyingStore {
+    unordered_map<string, string> data;
+    vector<unordered_map<string, string>> snapshots;
+public:
+    void set(const string& k, const string& v) { data[k] = v; }
+    optional<string> get(const string& k) { auto it = data.find(k); return it == data.end() ? nullopt : optional<string>(it->second); }
+    void begin() { snapshots.push_back(data); }          // O(N) every time
+    bool rollback() { if (snapshots.empty()) return false; data = snapshots.back(); snapshots.pop_back(); return true; }
+    bool commit() { if (snapshots.empty()) return false; snapshots.pop_back(); return true; }
+};` }
+            ] } },
     mcq: { q: 'Inside one transaction, key a is set three times. What should the undo log keep for a?', options: ['Only its value before the FIRST change in this transaction', 'All three old values', 'Only the latest value', 'Nothing; rollback re-reads the database'], answer: 0, explain: 'Rollback must restore the state at begin(); the first old value is all that is needed. Recording it once per key per transaction keeps the log O(keys touched).' },
     hints: [`<p>Hint 1: A <b>delta memento</b>: each transaction keeps a <code>Map&lt;key, oldValue&gt;</code> recorded the first time it touches a key. A sentinel marks "key did not exist".</p>`, `<p>Hint 2: rollback: for each entry, restore the old value (or remove the key if the sentinel). commit: merge the child log into the parent with <code>putIfAbsent</code> (the parent's older value wins); if outermost, just drop it.</p>`, `<p>Hint 3: Use <code>Optional</code> or a private static final Object ABSENT as the sentinel. Stack of logs = <code>Deque&lt;Map&lt;String,Object&gt;&gt;</code>.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "null 1\n20 null\n20 false\n20\nfalse\nnull null\n5\n" }] },
@@ -11222,7 +12197,7 @@ int main() {
     statement: `<p>Build a <code>Server</code> where middlewares are registered with an <b>order number</b> (lower runs first, ties by registration order). Each middleware receives the request and a <code>next</code> function; it may modify the request, short-circuit with its own response, call next and then modify the response (add headers). Required middlewares: <b>ErrorBoundary</b> (outermost; converts any exception into 500), <b>Auth</b> (401 without a token), <b>RateLimit</b> (429 after N requests per client), <b>Timing</b> (adds an <code>X-Time-Us</code> header). The final handler routes to an endpoint.</p>`,
     constraints: `Up to 20 middlewares; requests from many threads; middlewares must be stateless or thread-safe. Build the chain once, not per request.`,
     example: `<p>No token → ${H.c('r', '401')} (endpoint never runs). Token, 3rd request with limit 2 → ${H.c('r', '429')}. Token, endpoint throws → ${H.c('r', '500 from ErrorBoundary')}. Normal → ${H.c('g', '200 with X-Time-Us header')}.</p>`,
-    brute: { why: `<p>One giant <code>handle()</code> with sequential if-blocks: try { if (!token) return 401; if (rate…) return 429; long t = …; resp = route(); resp.header(…) } catch … Every new concern edits it; ordering is implicit in code position; post-processing (headers) and short-circuits interleave confusingly; nothing can be reused in another service.</p>`, code: `class NaiveServer {
+    brute: { why: `<p>One giant <code>handle()</code> with sequential if-blocks: try { if (!token) return 401; if (rate…) return 429; long t = …; resp = route(); resp.header(…) } catch … Every new concern edits it; ordering is implicit in code position; post-processing (headers) and short-circuits interleave confusingly; nothing can be reused in another service.</p>`, code: { lang: 'java', code: `class NaiveServer {
     final Map<String, Integer> hits = new HashMap<>();
     String handle(String token, String client, String path) {
         try {
@@ -11234,7 +12209,55 @@ int main() {
             return body + " X-Time-Us=" + (System.nanoTime() - t0) / 1000;
         } catch (RuntimeException e) { return "500"; }
     }
+}`, alt: [
+              { lang: 'python', code: `
+import time
+
+class NaiveServer:
+    def __init__(self): self.hits = {}
+    def handle(self, token, client, path):
+        try:
+            if token is None: return "401"
+            self.hits[client] = self.hits.get(client, 0) + 1
+            if self.hits[client] > 2: return "429"   # not thread-safe either
+            t0 = time.perf_counter()
+            if path == "/boom": raise RuntimeError("bug")
+            body = "200 " + path
+            return body + " X-Time-Us=" + str(int((time.perf_counter() - t0) * 1e6))
+        except RuntimeError:
+            return "500"` },
+              { lang: 'ts', code: `
+class NaiveServer {
+    readonly hits = new Map<string, number>();
+    handle(token: string | null, client: string, path: string): string {
+        try {
+            if (token === null) return "401";
+            const n = (this.hits.get(client) ?? 0) + 1;
+            this.hits.set(client, n);
+            if (n > 2) return "429";   // not safe under concurrent requests either
+            const t0 = performance.now();
+            if (path === "/boom") throw new Error("bug");
+            const body = "200 " + path;
+            return body + " X-Time-Us=" + Math.floor((performance.now() - t0) * 1000);
+        } catch (e) { return "500"; }
+    }
 }` },
+              { lang: 'cpp', code: `
+class NaiveServer {
+    unordered_map<string, int> hits;
+public:
+    string handle(const string* token, const string& client, const string& path) {
+        try {
+            if (token == nullptr) return "401";
+            if (++hits[client] > 2) return "429";   // not thread-safe either
+            auto t0 = chrono::steady_clock::now();
+            if (path == "/boom") throw runtime_error("bug");
+            string body = "200 " + path;
+            return body + " X-Time-Us=" + to_string(chrono::duration_cast<chrono::microseconds>(chrono::steady_clock::now() - t0).count());
+        } catch (const runtime_error&) { return "500"; }
+    }
+};` }
+            ] } },
     mcq: { q: 'Why must ErrorBoundary be the OUTERMOST middleware?', options: ['So exceptions thrown by any inner middleware or the endpoint propagate up into its try/catch', 'Because it is the fastest', 'So it runs after the response is sent', 'Order does not matter'], answer: 0, explain: 'In the onion model, a middleware can only catch exceptions from what runs inside its next() call. Outermost = wraps everything.' },
     hints: [`<p>Hint 1: <code>interface Middleware { Response handle(Request r, Function&lt;Request, Response&gt; next); }</code>. Store (order, seq, middleware) and sort once.</p>`, `<p>Hint 2: Pre-compose the chain into a single <code>Function&lt;Request, Response&gt;</code> by folding from the innermost: <code>f = r -&gt; m.handle(r, inner)</code>.</p>`, `<p>Hint 3: Responses with headers: an immutable record with a <code>withHeader</code> method. RateLimit uses <code>ConcurrentHashMap.merge</code>. Mark the chain "built" and rebuild if a middleware is added later.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "401 login headers=[X-Time-Us]\n200 ok /a headers=[X-Time-Us]\n500 error: endpoint bug headers=[]\n200 ok /a headers=[X-Time-Us]\n429 slow down headers=[X-Time-Us]\n200 /CAB headers=[]\n" }] },
@@ -11581,7 +12604,7 @@ int main() {
     statement: `<p>Services publish domain events (e.g. <code>ORDER_SHIPPED</code>, <code>PAYMENT_FAILED</code>). Users subscribe to event types. Each user has an ordered list of preferred channels (e.g. PUSH → SMS → EMAIL). When an event is published, every subscribed user must be notified through the <b>first channel that succeeds</b> (a channel may fail: no device token, SMS gateway down). Record a delivery log (user, event, channel or FAILED). New channels (WhatsApp) and new event types must be addable without modifying the dispatcher.</p>`,
     constraints: `Up to 10<sup>5</sup> users, 50 event types. Publishing for one type must not scan users of other types. Channel implementations may throw; treat that as failure.`,
     example: `<p>Asha subscribes ORDER_SHIPPED with [PUSH, SMS]; Ben with [SMS, EMAIL]. SMS gateway is down. publish(ORDER_SHIPPED) → Asha: ${H.c('g', 'PUSH ok')}; Ben: SMS ${H.c('r', 'fails')} → ${H.c('g', 'EMAIL ok')}. If all channels fail → log ${H.c('r', 'FAILED')} for retry later.</p>`,
-    brute: { why: `<p>A dispatcher with a switch over event types and, inside, nested if/else per user preference: <code>if (pref == "PUSH") { if (!push(u)) { if (second == "SMS") … } }</code>. Fallback depth is hard-coded, channels are concrete calls, all users are scanned for each event, and adding WhatsApp touches every branch.</p>`, code: `class NaiveDispatcher {
+    brute: { why: `<p>A dispatcher with a switch over event types and, inside, nested if/else per user preference: <code>if (pref == "PUSH") { if (!push(u)) { if (second == "SMS") … } }</code>. Fallback depth is hard-coded, channels are concrete calls, all users are scanned for each event, and adding WhatsApp touches every branch.</p>`, code: { lang: 'java', code: `class NaiveDispatcher {
     record U(String name, String type, String first, String second) {}
     final List<U> users = new ArrayList<>();
     boolean send(String channel, U u) { return !channel.equals("SMS"); }           // pretend SMS is down
@@ -11593,7 +12616,54 @@ int main() {
             // fallback depth fixed at 2, WhatsApp = more branches
         }
     }
+}`, alt: [
+              { lang: 'python', code: `
+class U:
+    def __init__(self, name, type, first, second): self.name, self.type, self.first, self.second = name, type, first, second
+
+class NaiveDispatcher:
+    def __init__(self): self.users = []
+    def send(self, channel, u): return channel != "SMS"           # pretend SMS is down
+    def publish(self, type):
+        for u in self.users:                                       # scans everyone
+            if u.type != type: continue
+            if u.first == "PUSH":
+                if not self.send("PUSH", u) and u.second == "EMAIL": self.send("EMAIL", u)
+            elif u.first == "SMS":
+                if not self.send("SMS", u) and u.second == "EMAIL": self.send("EMAIL", u)
+            # fallback depth fixed at 2, WhatsApp = more branches` },
+              { lang: 'ts', code: `
+interface U { name: string; type: string; first: string; second: string }
+
+class NaiveDispatcher {
+    readonly users: U[] = [];
+    send(channel: string, u: U): boolean { return channel !== "SMS"; }           // pretend SMS is down
+    publish(type: string): void {
+        for (const u of this.users) {                                            // scans everyone
+            if (u.type !== type) continue;
+            if (u.first === "PUSH") { if (!this.send("PUSH", u) && u.second === "EMAIL") this.send("EMAIL", u); }
+            else if (u.first === "SMS") { if (!this.send("SMS", u) && u.second === "EMAIL") this.send("EMAIL", u); }
+            // fallback depth fixed at 2, WhatsApp = more branches
+        }
+    }
 }` },
+              { lang: 'cpp', code: `
+struct U { string name, type, first, second; };
+
+class NaiveDispatcher {
+public:
+    vector<U> users;
+    bool send(const string& channel, const U& u) { return channel != "SMS"; }           // pretend SMS is down
+    void publish(const string& type) {
+        for (auto& u : users) {                                                          // scans everyone
+            if (u.type != type) continue;
+            if (u.first == "PUSH") { if (!send("PUSH", u) && u.second == "EMAIL") send("EMAIL", u); }
+            else if (u.first == "SMS") { if (!send("SMS", u) && u.second == "EMAIL") send("EMAIL", u); }
+            // fallback depth fixed at 2, WhatsApp = more branches
+        }
+    }
+};` }
+            ] } },
     mcq: { q: 'Which pattern decides "try PUSH, then SMS, then EMAIL until one works"?', options: ['Chain of Responsibility built per user from their preference list', 'Observer', 'Visitor', 'Memento'], answer: 0, explain: 'Each channel handler either succeeds (stops) or passes to the next. Observer decides WHO hears the event; Strategy encapsulates HOW each channel sends; the chain decides WHICH channel ends up delivering.' },
     hints: [`<p>Hint 1: Three questions, three patterns: who receives (Observer, keyed by event type), how a channel sends (Strategy: <code>Channel.send(user, msg)</code>), which channel wins (Chain: try in order until success).</p>`, `<p>Hint 2: Registry <code>Map&lt;String, Channel&gt;</code> lets new channels plug in by name. Subscriptions: <code>Map&lt;EventType, List&lt;Subscription&gt;&gt;</code> where a subscription holds the user and their ordered channel names.</p>`, `<p>Hint 3: The fallback loop catches exceptions per channel; log the winning channel or FAILED. Use concurrent collections; deliver asynchronously in production (mention it).</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "push  -> asha [ORDER_SHIPPED] A1 is on the way\nSMS threw for ben: gateway down\nemail -> ben [ORDER_SHIPPED] A1 is on the way\nSMS threw for cy: gateway down\nemail -> ben [PAYMENT_FAILED] card declined\nemail -> dan [PAYMENT_FAILED] card declined\nasha ORDER_SHIPPED PUSH\nben ORDER_SHIPPED EMAIL\ncy ORDER_SHIPPED FAILED\nben PAYMENT_FAILED EMAIL\ndan PAYMENT_FAILED EMAIL\n" }] },
@@ -11869,7 +12939,7 @@ int main() {
     statement: `<p>Cells are named like <code>A1</code>. <code>setValue(cell, number)</code> stores a number; <code>setSum(cell, refs...)</code> makes the cell a formula equal to the sum of the referenced cells (missing cells count as 0). Whenever a cell changes, every cell that depends on it (directly or indirectly) must update automatically — each dependent recomputed <b>exactly once</b>, after all of its inputs. A formula that would create a cycle (A1 = B1, B1 = A1) must be rejected and leave the sheet unchanged.</p>`,
     constraints: `Up to 10<sup>4</sup> cells, each formula up to 50 refs. Recalculation after a change must touch only affected cells.`,
     example: `<p>A1=2, A2=3, B1=SUM(A1,A2) → 5, C1=SUM(B1,A1) → 7. setValue(A1, 10) → ${H.c('g', 'B1=13, then C1=23')} (C1 recomputed once, after B1). setSum(A1, C1) → ${H.c('r', 'rejected: cycle A1 → C1 → A1')}.</p>`,
-    brute: { why: `<p>On every change, recompute <b>every</b> formula cell, repeating passes until nothing changes. That wastes work on unrelated cells, recomputes some cells many times, may show inconsistent intermediate values ("glitches") to listeners, and loops forever on a cycle.</p>`, code: `class NaiveSheet {
+    brute: { why: `<p>On every change, recompute <b>every</b> formula cell, repeating passes until nothing changes. That wastes work on unrelated cells, recomputes some cells many times, may show inconsistent intermediate values ("glitches") to listeners, and loops forever on a cycle.</p>`, code: { lang: 'java', code: `class NaiveSheet {
     final Map<String, Double> val = new HashMap<>();
     final Map<String, List<String>> formula = new HashMap<>();
     void recalcAll() {
@@ -11883,7 +12953,56 @@ int main() {
             }
         }
     }
+}`, alt: [
+              { lang: 'python', code: `
+class NaiveSheet:
+    def __init__(self):
+        self.val = {}
+        self.formula = {}
+    def recalc_all(self):
+        changed = True
+        while changed:                                   # infinite loop if there is a cycle
+            changed = False
+            for key, refs in self.formula.items():       # touches every formula, every pass
+                s = 0.0
+                for r in refs: s += self.val.get(r, 0.0)
+                if self.val.get(key) != s:
+                    self.val[key] = s
+                    changed = True` },
+              { lang: 'ts', code: `
+class NaiveSheet {
+    readonly val = new Map<string, number>();
+    readonly formula = new Map<string, string[]>();
+    recalcAll(): void {
+        let changed = true;
+        while (changed) {                                   // infinite loop if there is a cycle
+            changed = false;
+            for (const [key, refs] of this.formula) {       // touches every formula, every pass
+                let s = 0;
+                for (const r of refs) s += this.val.get(r) ?? 0;
+                if (this.val.get(key) !== s) { this.val.set(key, s); changed = true; }
+            }
+        }
+    }
 }` },
+              { lang: 'cpp', code: `
+class NaiveSheet {
+public:
+    unordered_map<string, double> val;
+    unordered_map<string, vector<string>> formula;
+    void recalcAll() {
+        bool changed = true;
+        while (changed) {                                   // infinite loop if there is a cycle
+            changed = false;
+            for (auto& [key, refs] : formula) {             // touches every formula, every pass
+                double s = 0;
+                for (auto& r : refs) s += val.count(r) ? val[r] : 0.0;
+                if (!val.count(key) || val[key] != s) { val[key] = s; changed = true; }
+            }
+        }
+    }
+};` }
+            ] } },
     mcq: { q: 'C1 depends on B1 and A1; B1 depends on A1. A1 changes. Why recompute in topological order?', options: ['So C1 is computed once, after B1 has its new value (no glitch, no double work)', 'Because alphabetical order is required', 'To detect cycles', 'It does not matter'], answer: 0, explain: 'Naive observer push would update C1 when A1 changes (with stale B1) and again when B1 changes. Topological order over the affected subgraph computes each cell once with fresh inputs.' },
     hints: [`<p>Hint 1: Each cell keeps its <b>inputs</b> (refs) and its <b>observers</b> (dependents). Changing a cell notifies its dependents — Observer — but do it in a batch.</p>`, `<p>Hint 2: On change: collect all affected cells by DFS/BFS over dependents; then Kahn's topological sort restricted to that set (in-degree = number of affected inputs); recompute in that order.</p>`, `<p>Hint 3: Cycle check before installing a formula: DFS from each ref along <i>inputs</i>; if you reach the target cell, reject. When replacing a formula, remove the cell from its old inputs' dependent sets.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "set A1 = 10:\nrecompute B1 = 13.00\nrecompute C1 = 23.00\nB1=13.00 C1=23.00\ncycle accepted? false\nA1 still 10.00\nset A1 = 1:\nrecompute B1 = 4.00\nrecompute B2 = 1.00\nrecompute C1 = 5.00\nrecompute D1 = 5.00\nself-reference accepted? false\nB2 still 1.00\nE1=0.00\nrecompute E1 = 4.00\nE1=4.00\n" }] },
@@ -12324,7 +13443,7 @@ int main() {
     { q: 'Strategy and State have the same class diagram. What is the key difference?', options: ['In State, the state objects themselves trigger transitions to the next state; in Strategy the client chooses', 'State uses inheritance, Strategy uses interfaces', 'Strategy cannot be changed at runtime', 'State has no context object'], answer: 0, explain: 'Who switches the object is the tell: client-driven = Strategy; self-driven transitions = State.' },
     { q: 'In a text editor, after undoing two steps the user types a new character. What happens to the redo stack?', options: ['It is cleared', 'It is kept so redo still works', 'Its top element is executed', 'It is merged into the undo stack'], answer: 0, explain: 'The new action creates a new history branch; old redo entries refer to a future that no longer exists and could corrupt the document.' },
     { q: 'An observer throws an exception while being notified. What should a robust subject do?', options: ['Catch it per observer, log it, and continue notifying the others', 'Stop notifying and rethrow', 'Unsubscribe every observer', 'Retry forever'], answer: 0, explain: 'Failure isolation: one broken listener must not prevent delivery to the rest.' },
-    { q: 'Why is the template method usually declared <code>final</code>?', options: ['So subclasses cannot change the order of steps or skip mandatory ones', 'For performance', 'Because abstract methods require it', 'To allow multiple inheritance'], answer: 0, explain: 'The template method is the guarantee of the algorithm skeleton; overriding it would defeat the pattern.' },
+    { q: 'Why is the template method usually declared <code>final</code> (non-virtual in C++)?', options: ['So subclasses cannot change the order of steps or skip mandatory ones', 'For performance', 'Because abstract methods require it', 'To allow multiple inheritance'], answer: 0, explain: 'The template method is the guarantee of the algorithm skeleton; overriding it would defeat the pattern.' },
     { q: 'An expense of ₹9,99,999 passes TeamLead, Manager, Director and CFO without anyone approving. Which design element prevents it from silently disappearing?', options: ['A terminal default handler / explicit "unhandled" result at the end of the chain', 'A larger limit for the CFO', 'Making the chain circular', 'Observer notifications'], answer: 0, explain: 'Chain of Responsibility does not guarantee handling; you must define what happens at the end of the chain.' },
     { q: 'A BST iterator using an explicit stack has which complexity per next() call?', options: ['O(1) amortised, O(h) memory', 'O(N) per call', 'O(log N) memory always, O(N) time', 'O(1) worst case, O(N) memory'], answer: 0, explain: 'Each node is pushed and popped exactly once over the whole traversal; the stack holds at most one root-to-leaf path.' },
     { q: 'Ten UI widgets each enable/disable others based on their values. What pattern reduces their N×N coupling?', options: ['Mediator (a dialog object coordinating the widgets)', 'Iterator', 'Template Method', 'Memento'], answer: 0, explain: 'Colleagues talk only to the mediator, which holds the interaction rules in one place.' },

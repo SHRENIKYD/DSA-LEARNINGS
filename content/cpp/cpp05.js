@@ -277,6 +277,9 @@
           `<p>Hint 2: keep a stack of live objects. Push on construction, pop on destruction. The function parameter is pushed at the call and popped at the return.</p>`,
           `<p>Hint 3: at the closing brace pop the rest in reverse. Careful: after <code>c = a;</code> the object <code>c</code> has id <code>"a"</code>, so its destructor prints <code>dtor a</code>. Fix: change <code>show(Noisy n)</code> to <code>show(const Noisy&amp; n)</code>.</p>`
         ],
+        tests: { io: true, cases: [
+          { stdin: "", stdout: "ctor a\ncopy-ctor a'\nctor c\ncopy-assign c = a\nshow a\ndtor a\ndtor a'\ndtor a" }
+        ] },
         solution: {
           approach: `<p>Trace births and deaths with a stack. Output of the original:</p>
             <pre>ctor a
@@ -566,12 +569,24 @@ dtor a</pre>
           `<p>Hint 2: for assignment, build the new block <b>first</b> into a local pointer, copy into it, then <code>delete[]</code> the old block and adopt the new one.</p>`,
           `<p>Hint 3: handle <code>n == 0</code> (still allocate <code>new int[0]</code> or use nullptr consistently), return <code>*this</code>, and optionally guard <code>if (this == &amp;o)</code> as a fast path. Even simpler: copy-and-swap.</p>`
         ],
+        tests: { sig: 'int[] -> long[]', fn: 'ia',
+          harness: { cpp: "vector<long long> ia(vector<int> vals) { size_t n = vals.size(); IntArray a(n); for (size_t i = 0; i < n; ++i) a[i] = vals[i];\n  IntArray b = a; if (n) b[0] = 999; IntArray c(1); c = a; if (n) c[n - 1] = -999; IntArray& ref = a; a = ref;\n  vector<long long> r = {(long long)a.size(), (long long)b.size(), (long long)c.size()}; for (size_t i = 0; i < n; ++i) r.push_back(a[i]); for (size_t i = 0; i < n; ++i) r.push_back(b[i]); for (size_t i = 0; i < n; ++i) r.push_back(c[i]); return r; }" }, cases: [
+          [[[1,2,3]], [3,3,3,1,2,3,999,2,3,1,2,-999]],
+          [[[7]], [1,1,1,7,999,-999]],
+          [[[]], [0,0,0]],
+          [[[5,5,5,5]], [4,4,4,5,5,5,5,999,5,5,5,5,5,5,-999]],
+          [[[-1,0,1]], [3,3,3,-1,0,1,999,0,1,-1,0,-999]],
+          [[[2147483647,-2147483648]], [2,2,2,2147483647,-2147483648,999,-2147483648,2147483647,-999]],
+          [[[3,1]], [2,2,2,3,1,999,1,3,-999]],
+          [[{"$range":[0,300000]}], {"$concat":[[300000,300000,300000],{"$range":[0,300000]},[999],{"$range":[1,300000]},{"$range":[0,299999]},[-999]]}]
+        ] },
         solution: {
           approach: `<p>Write the <b>Rule of Three</b>: destructor (already there), deep copy constructor, deep copy assignment. The assignment uses "allocate-copy-then-release", which is both self-assignment safe and strongly exception safe. Alternative: copy-and-swap (take the parameter by value, swap members) gives the same guarantees in 3 lines.</p>`,
           code: R`
             #include <algorithm>
             #include <cstddef>
             #include <utility>
+            #include <iostream>
             class IntArray {
                 int* data;
                 std::size_t n;
@@ -608,6 +623,7 @@ dtor a</pre>
                 a = a;              // self-assignment is harmless
                 std::cout << a[0] << ' ' << b[0] << '\n';   // 7 9
             }
+
           `,
           alt: [R`
             // Same class using copy-and-swap for assignment (strong guarantee, self-assignment safe).
@@ -966,6 +982,17 @@ dtor a</pre>
           `<p>Hint 2: <code>std::exchange(o.d_, nullptr)</code> returns the old value and sets the new one in one step. Mark both moves <code>noexcept</code> — they only shuffle pointers.</p>`,
           `<p>Hint 3: move assignment must free <i>this</i> object's old block first (or swap so the source frees it) and must survive <code>x = std::move(x)</code>. Finish with <code>static_assert(std::is_nothrow_move_constructible_v&lt;Buffer&gt;)</code>.</p>`
         ],
+        tests: { sig: 'int int -> long[]', fn: 'bf',
+          harness: { cpp: "vector<long long> bf(int n, int m) { Buffer a(n); Buffer b = std::move(a); vector<Buffer> v; for (int i = 0; i < m; ++i) v.emplace_back(n + i); long long tot = 0; for (auto& x : v) tot += x.size();\n  Buffer c(b); Buffer d(3); d = std::move(b); Buffer e(5); e = c; Buffer& rr = e; e = std::move(rr); vector<Buffer> w = v; return {(long long)a.size(), (long long)c.size(), (long long)d.size(), (long long)v.size(), tot, (long long)w.size(), w.empty() ? 0 : (long long)w.back().size()}; }" }, cases: [
+          [[1000,100], [0,1000,1000,100,104950,100,1099]],
+          [[0,0], [0,0,0,0,0,0,0]],
+          [[1,1], [0,1,1,1,1,1,1]],
+          [[5,0], [0,5,5,0,0,0,0]],
+          [[0,10], [0,0,0,10,45,10,9]],
+          [[10,3], [0,10,10,3,33,3,12]],
+          [[100000,20], [0,100000,100000,20,2000190,20,100019]],
+          [[7,1000], [0,7,7,1000,506500,1000,1006]]
+        ] },
         solution: {
           approach: `<p>Add the two move members. The move constructor <b>steals</b> (<code>std::exchange</code>) and leaves the source as an empty buffer. Move assignment <b>swaps</b> with the source: the source now owns our old block and frees it when it dies; self-move is harmless because swapping with yourself is a no-op. Both are <code>noexcept</code>, so <code>std::vector</code> will move during reallocation.</p>`,
           code: R`
@@ -1009,6 +1036,7 @@ dtor a</pre>
                 for (int i = 0; i < 100; ++i) v.emplace_back(1000);   // reallocations MOVE
                 std::cout << a.size() << ' ' << b.size() << ' ' << v.size() << '\n';   // 0 1000 100
             }
+
           `,
           dry: { head: ['Statement', 'a.d_ / a.n_', 'b.d_ / b.n_', 'Allocations so far'], rows: [
             ['<code>Buffer a(1000)</code>', '0xA0 / 1000', '—', '1'],
@@ -1267,6 +1295,19 @@ dtor a</pre>
           `<p>Hint 2: each derived class stores only its own fields and overrides <code>area() const override</code>.</p>`,
           `<p>Hint 3: store <code>std::unique_ptr&lt;Shape&gt;</code> in the vector (not <code>Shape</code> by value — that slices). <code>totalArea</code> just sums <code>s-&gt;area()</code>.</p>`
         ],
+        tests: { sig: 'string[] double[] double[] -> double', fn: 'ta', cmp: 'float',
+          harness: { cpp: "double ta(vector<string> kinds, vector<double> a, vector<double> b) { vector<unique_ptr<Shape>> v; for (size_t i = 0; i < kinds.size(); ++i) { if (kinds[i] == \"C\") v.push_back(make_unique<Circle>(a[i])); else if (kinds[i] == \"R\") v.push_back(make_unique<Rect>(a[i], b[i])); else v.push_back(make_unique<Triangle>(a[i], b[i])); } return totalArea(v); }" }, cases: [
+          [[["C","R","T"],[1,2,4],[0,3,5]], 19.14159],
+          [[[],[],[]], 0],
+          [[["C"],[0],[0]], 0],
+          [[["R"],[1000000],[1000000]], 1000000000000],
+          [[["T"],[3],[0]], 0],
+          [[["C","C"],[0.5,2.5],[0,0]], 20.420334999999998],
+          [[["R","T","R","T"],[1.5,2,3,4],[2,2,0.5,0.25]], 7],
+          [[["C"],[1000],[0]], 3141589.9999999995],
+          [[{"$rep":"R","n":100000},{"$rep":2,"n":100000},{"$rep":3,"n":100000}], 600000],
+          [[{"$rep":"T","n":100000},{"$rep":4,"n":100000},{"$rep":5,"n":100000}], 1000000]
+        ] },
         solution: {
           approach: `<p>Classic runtime polymorphism: an interface-like base with a pure or default virtual <code>area()</code>, one class per shape, heterogeneous container of owning base pointers. New shapes are added by writing a new class; <code>totalArea</code> never changes.</p>`,
           code: R`
@@ -1297,6 +1338,7 @@ dtor a</pre>
                 for (const auto& s : shapes) sum += s->area();   // dynamic dispatch, no switch
                 return sum;
             }
+
             int main() {
                 std::vector<std::unique_ptr<Shape>> v;
                 v.push_back(std::make_unique<Circle>(1));
@@ -1573,6 +1615,19 @@ dtor a</pre>
           `<p>Hint 2: make <code>write</code> a <code>protected</code> or <code>private</code> pure virtual; make <code>info</code>/<code>error</code> public and non-virtual; give the base a virtual destructor.</p>`,
           `<p>Hint 3: <code>Service</code> stores <code>Logger&amp;</code>. Tests construct a <code>MemoryLogger</code> and inspect its <code>lines</code>. Mark leaf classes <code>final</code>.</p>`
         ],
+        tests: { sig: 'int string[] -> string[]', fn: 'lg',
+          harness: { cpp: "vector<string> lg(int minLevel, vector<string> ops) { static_assert(std::is_abstract_v<Logger>); static_assert(std::has_virtual_destructor_v<Logger>); MemoryLogger m(static_cast<Level>(minLevel)); Service s(m);\n  for (auto& op : ops) { if (op == \"run\") s.run(); else if (op.rfind(\"info:\", 0) == 0) m.info(op.substr(5)); else if (op.rfind(\"error:\", 0) == 0) m.error(op.substr(6)); }\n  { unique_ptr<Logger> p = make_unique<MemoryLogger>(Level::Info); p->info(\"x\"); } return m.lines; }" }, cases: [
+          [[1,["run"]], ["ERROR boom"]],
+          [[0,["run"]], ["INFO starting","ERROR boom"]],
+          [[1,[]], []],
+          [[0,["info:a","error:b","info:c"]], ["INFO a","ERROR b","INFO c"]],
+          [[1,["info:a","error:b","info:c"]], ["ERROR b"]],
+          [[1,["run","run","error:z"]], ["ERROR boom","ERROR boom","ERROR z"]],
+          [[0,["info:"]], ["INFO "]],
+          [[1,["info:","error:"]], ["ERROR "]],
+          [[0,["run","info:hello world","error:oops!"]], ["INFO starting","ERROR boom","INFO hello world","ERROR oops!"]],
+          [[1,{"$rep":"run","n":2000}], ["ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom","ERROR boom"]]
+        ] },
         solution: {
           approach: `<p>Abstract base = policy + contract. It stores the minimum level, exposes non-virtual <code>info</code>/<code>error</code> that filter and format, and calls the private pure virtual <code>write</code>. Each concrete logger implements only <code>write</code>. <code>Service</code> depends on <code>Logger&amp;</code> (dependency injection).</p>`,
           code: R`
@@ -1631,6 +1686,7 @@ dtor a</pre>
                 ConsoleLogger c(Level::Info);
                 Service(c).run();                                          // INFO starting / ERROR boom
             }
+
           `,
           dry: { head: ['Call', 'log() level check (min = Error)', 'write() dispatched to', 'm.lines'], rows: [
             ['<code>info("starting")</code>', H.c('r', 'Info &lt; Error → return'), '—', '[]'],
@@ -1852,6 +1908,9 @@ dtor a</pre>
           `<p>Hint 2: a non-virtual destructor is chosen at compile time from the static type. Which destructor does that select?</p>`,
           `<p>Hint 3: make the base destructor virtual. Then the deletion dispatches through the vptr to ImageFilter's deleting destructor, which runs ~ImageFilter, ~vector, ~Plugin in that order. Add <code>override</code> on the derived destructor for clarity.</p>`
         ],
+        tests: { io: true, cases: [
+          { stdin: "", stdout: "~ImageFilter\n~Plugin" }
+        ] },
         solution: {
           approach: `<p>One-line fix: <code>virtual ~Plugin()</code>. Since <code>Plugin</code> already has a virtual function, this adds no per-object cost. Then turn on <code>-Wall -Wnon-virtual-dtor</code> so the compiler catches the next one.</p>`,
           code: R`
@@ -2122,6 +2181,18 @@ dtor a</pre>
           `<p>Hint 2: add a pure virtual <code>clone() const</code> returning <code>std::unique_ptr&lt;Animal&gt;</code>; each class returns <code>std::make_unique&lt;Self&gt;(*this)</code>.</p>`,
           `<p>Hint 3: write <code>Zoo(const Zoo&amp; o)</code> that reserves and pushes <code>a-&gt;clone()</code> for each element; implement copy assignment with copy-and-swap; default the moves (they are cheap and noexcept).</p>`
         ],
+        tests: { sig: 'int int string -> string[]', fn: 'zoo',
+          harness: { cpp: "vector<string> zoo(int nd, int nc, string breed) { Zoo z; for (int i = 0; i < nd; ++i) z.add(make_unique<Dog>()); for (int i = 0; i < nc; ++i) z.add(make_unique<Cat>());\n  Zoo z2 = z; if (nd) static_cast<Dog&>(z2.at(0)).breed = breed; Zoo z3; z3 = z2; if (nd) static_cast<Dog&>(z3.at(nd - 1)).breed = breed + \"3\"; if (nc) static_cast<Cat&>(z3.at(nd)).lives = 1;\n  vector<string> r; int n = nd + nc; for (int i = 0; i < n; ++i) r.push_back(z.at(i).sound()); r.push_back(\"|\"); for (int i = 0; i < n; ++i) r.push_back(z2.at(i).sound()); r.push_back(\"|\"); for (int i = 0; i < n; ++i) r.push_back(z3.at(i).sound()); return r; }" }, cases: [
+          [[1,1,"Pug"], ["Lab: Woof","Meow x9","|","Pug: Woof","Meow x9","|","Pug3: Woof","Meow x1"]],
+          [[0,0,"x"], ["|","|"]],
+          [[2,0,"Pug"], ["Lab: Woof","Lab: Woof","|","Pug: Woof","Lab: Woof","|","Pug: Woof","Pug3: Woof"]],
+          [[0,3,"x"], ["Meow x9","Meow x9","Meow x9","|","Meow x9","Meow x9","Meow x9","|","Meow x1","Meow x9","Meow x9"]],
+          [[1,0,"Husky"], ["Lab: Woof","|","Husky: Woof","|","Husky3: Woof"]],
+          [[3,2,"Pug"], ["Lab: Woof","Lab: Woof","Lab: Woof","Meow x9","Meow x9","|","Pug: Woof","Lab: Woof","Lab: Woof","Meow x9","Meow x9","|","Pug: Woof","Lab: Woof","Pug3: Woof","Meow x1","Meow x9"]],
+          [[0,1,""], ["Meow x9","|","Meow x9","|","Meow x1"]],
+          [[5,5,"Lab"], ["Lab: Woof","Lab: Woof","Lab: Woof","Lab: Woof","Lab: Woof","Meow x9","Meow x9","Meow x9","Meow x9","Meow x9","|","Lab: Woof","Lab: Woof","Lab: Woof","Lab: Woof","Lab: Woof","Meow x9","Meow x9","Meow x9","Meow x9","Meow x9","|","Lab: Woof","Lab: Woof","Lab: Woof","Lab: Woof","Lab3: Woof","Meow x1","Meow x9","Meow x9","Meow x9","Meow x9"]],
+          [[5000,5000,"Pug"], {"$concat":[{"$rep":"Lab: Woof","n":5000},{"$rep":"Meow x9","n":5000},["|","Pug: Woof"],{"$rep":"Lab: Woof","n":4999},{"$rep":"Meow x9","n":5000},["|","Pug: Woof"],{"$rep":"Lab: Woof","n":4998},["Pug3: Woof","Meow x1"],{"$rep":"Meow x9","n":4999}]}]
+        ] },
         solution: {
           approach: `<p>Polymorphic storage via <code>unique_ptr&lt;Animal&gt;</code> fixes slicing. Deep copy requires asking each object to copy itself (<code>clone</code>), because only the object knows its dynamic type. Zoo follows the Rule of Five: custom copy ctor/assignment (cloning), defaulted noexcept moves, defaulted destructor.</p>`,
           code: R`
@@ -2173,6 +2244,7 @@ dtor a</pre>
                 z.show();                                              // Lab: Woof / Meow x9
                 z2.show();                                             // Pug: Woof / Meow x9
             }
+
           `,
           dry: { head: ['Step', 'z.animals_', 'z2.animals_', 'Note'], rows: [
             ['add Dog, add Cat', '[Dog@A, Cat@B]', '—', 'objects whole on heap'],
@@ -2456,6 +2528,33 @@ dtor a</pre>
           `<p>Hint 2: implement <code>+=</code>, <code>-=</code>, <code>*=</code>, <code>/=</code> as members; implement <code>+ - * /</code> as <b>hidden friends</b> taking the left operand by value. A non-explicit constructor <code>Fraction(long long n, long long d = 1)</code> lets <code>1 + f</code> convert the 1.</p>`,
           `<p>Hint 3: ordering: write <code>std::strong_ordering operator&lt;=&gt;</code> using cross-multiplication <code>n * o.d &lt;=&gt; o.n * d</code>. Printing: <code>n</code> alone when <code>d == 1</code>.</p>`
         ],
+        tests: { sig: 'long long long long char -> string', fn: 'fr',
+          harness: { cpp: "string fr(long long a, long long b, long long c, long long d, char op) { try { Fraction x(a, b), y(c, d); ostringstream os;\n  switch (op) { case '+': os << x + y; break; case '-': os << x - y; break; case '*': os << x * y; break; case '/': os << x / y; break; case 'n': os << -x; break; case 'i': os << (int(c) + x); break; case 'j': os << (x + int(c)); break;\n    case '<': os << (x < y) << (x <= y) << (x > y) << (x >= y) << (x == y) << (x != y); break; case 'a': { Fraction z = x; z += y; z -= Fraction(1); z *= Fraction(2); z /= Fraction(3); os << z; break; } default: os << x; }\n  return os.str(); } catch (const invalid_argument&) { return \"invalid\"; } }" }, cases: [
+          [[1,2,1,3,"+"], "5/6"],
+          [[2,-4,1,1,"p"], "-1/2"],
+          [[1,2,2,4,"<"], "010110"],
+          [[1,2,1,3,"-"], "1/6"],
+          [[1,2,1,3,"*"], "1/6"],
+          [[1,2,1,3,"/"], "3/2"],
+          [[1,2,1,1,"i"], "3/2"],
+          [[1,2,1,1,"j"], "3/2"],
+          [[3,4,0,1,"n"], "-3/4"],
+          [[0,3,1,1,"n"], "0"],
+          [[1,0,1,1,"+"], "invalid"],
+          [[1,1,1,0,"+"], "invalid"],
+          [[1,2,0,1,"/"], "invalid"],
+          [[-1,3,-2,5,"<"], "001101"],
+          [[2,3,2,3,"<"], "010110"],
+          [[1,3,1,2,"<"], "110001"],
+          [[1000000000,1,1000000000,1,"*"], "1000000000000000000"],
+          [[999999999,1000000000,1,1000000000,"+"], "1"],
+          [[5,7,-5,7,"+"], "0"],
+          [[1,2,3,4,"a"], "1/6"],
+          [[-6,8,6,8,"-"], "-3/2"],
+          [[7,3,0,1,"i"], "7/3"],
+          [[7,3,-2,1,"j"], "1/3"],
+          [[4,6,0,1,"p"], "2/3"]
+        ] },
         solution: {
           approach: `<p>Class invariant: gcd(|n|, d) = 1 and d &gt; 0, established in the constructor and preserved because every operation constructs its result through the constructor. Thanks to the invariant, equal fractions have identical fields, so <code>operator==</code> can be defaulted. Ordering uses exact integer cross-multiplication. Binary operators are hidden friends so implicit conversion from integers works on both sides.</p>`,
           code: R`
@@ -2504,6 +2603,7 @@ dtor a</pre>
                 std::cout << a + b << ' ' << a - b << ' ' << a * b << ' ' << a / b << '\n';   // 5/6 1/6 1/6 3/2
                 std::cout << Fraction(2, -4) << ' ' << (1 + a) << ' ' << (a == Fraction(2, 4)) << ' ' << (b < a) << '\n';   // -1/2 3/2 1 1
             }
+
           `,
           dry: { head: ['Expression', 'Raw result', 'gcd', 'Stored', 'Printed'], rows: [
             ['<code>a + b</code> (1/2 + 1/3)', '(1·3 + 1·2)/(2·3) = 5/6', '1', '5/6', '5/6'],
@@ -2548,6 +2648,9 @@ dtor a</pre>
       `<p>Hint 2: <code>v.reserve(4)</code> prevents reallocation, so the vector never moves existing elements in this scenario.</p>`,
       `<p>Hint 3: <code>push_back(t)</code> copies (t is an lvalue), <code>push_back(Tracker{})</code> moves the temporary, <code>emplace_back()</code> default-constructs in place, <code>Tracker u = v[0]</code> copies, <code>u = std::move(v[1])</code> move-assigns.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "def=3 copy=2 move=1 cassign=0 massign=1 dtor=1\ndef=3 copy=2 move=1 cassign=0 massign=1 dtor=6" }
+    ] },
     solution: {
       approach: `<p>Static counters + a small report function. Print the counters inside a nested scope's end to see destructors too.</p>`,
       code: R`
@@ -2626,6 +2729,16 @@ dtor a</pre>
       `<p>Hint 2: store <code>std::string</code>; take constructor arguments as <code>std::string</code> by value and <code>std::move</code> them into members.</p>`,
       `<p>Hint 3: return <code>const std::string&amp;</code> or <code>std::string_view</code> from the getters; delete the destructor and copy constructor entirely.</p>`
     ],
+    tests: { sig: 'string string string string -> string', fn: 'ct',
+      harness: { cpp: "string ct(string n1, string e1, string n2, string e2) { static_assert(std::is_copy_assignable_v<Contact> && std::is_nothrow_move_constructible_v<Contact>); Contact a(n1, e1), b(n2, e2); b = a; Contact c = std::move(a); return string(b.name()) + \"|\" + string(b.email()) + \"|\" + string(c.name()) + \"|\" + string(c.email()); }" }, cases: [
+      [["Asha","a@x.io","Ben","b@x.io"], "Asha|a@x.io|Asha|a@x.io"],
+      [["","","x","y"], "|||"],
+      [["x","y","",""], "x|y|x|y"],
+      [["Zoë","z@é.org","ß","q"], "Zoë|z@é.org|Zoë|z@é.org"],
+      [["same","same","same","same"], "same|same|same|same"],
+      [["A","B","C","D"], "A|B|A|B"],
+      [[{"$rep":"n","n":1000000},{"$rep":"e","n":1000000},"x","y"], {"$concat":[{"$rep":"n","n":1000000},"|",{"$rep":"e","n":1000000},"|",{"$rep":"n","n":1000000},"|",{"$rep":"e","n":1000000}]}]
+    ] },
     solution: {
       approach: `<p>Replace raw owning pointers with <code>std::string</code>. The compiler now generates a correct destructor, deep copy constructor, deep copy assignment, and cheap noexcept moves. Three bugs vanish: the leak in assignment, the double free, and copies-instead-of-moves.</p>`,
       code: R`
@@ -2643,6 +2756,7 @@ dtor a</pre>
             // No destructor, no copy/move members: Rule of Zero.
         };
         static_assert(std::is_nothrow_move_constructible_v<Contact>);
+
         int main() {
             Contact a("Asha", "a@x.io"), b("Ben", "b@x.io");
             b = a;                                       // deep copy, old strings released correctly
@@ -2688,6 +2802,17 @@ dtor a</pre>
       `<p>Hint 2: <code>auto operator&lt;=&gt;(const Point&amp;) const = default;</code> gives <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code> — exactly what <code>std::set</code> needs (it uses <code>std::less</code>, i.e. <code>&lt;</code>).</p>`,
       `<p>Hint 3: <code>operator&lt;&lt;</code> must be a free function (or hidden friend) taking <code>std::ostream&amp;</code> and returning it.</p>`
     ],
+    tests: { sig: 'int[][] -> string', fn: 'pt',
+      harness: { cpp: "string pt(vector<vector<int>> pts) { set<Point> s; for (auto& p : pts) s.insert(Point{p[0], p[1]}); ostringstream os; bool first = true; for (const Point& p : s) { if (!first) os << ' '; first = false; os << p; }\n  if (pts.size() >= 2) { Point p0{pts[0][0], pts[0][1]}, p1{pts[1][0], pts[1][1]}; os << \" | eq=\" << (p0 == p1) << \" ne=\" << (p0 != p1) << \" lt=\" << (p0 < p1) << \" gt=\" << (p0 > p1) << \" le=\" << (p0 <= p1); } return os.str(); }" }, cases: [
+      [[[[2,1],[1,5],[1,2],[2,1]]], "(1, 2) (1, 5) (2, 1) | eq=0 ne=1 lt=0 gt=1 le=0"],
+      [[[[0,0]]], "(0, 0)"],
+      [[[]], ""],
+      [[[[1,1],[1,1]]], "(1, 1) | eq=1 ne=0 lt=0 gt=0 le=1"],
+      [[[[-1,5],[-1,-5],[-2,100]]], "(-2, 100) (-1, -5) (-1, 5) | eq=0 ne=1 lt=0 gt=1 le=0"],
+      [[[[2147483647,-2147483648],[2147483647,2147483647]]], "(2147483647, -2147483648) (2147483647, 2147483647) | eq=0 ne=1 lt=1 gt=0 le=1"],
+      [[[[3,3],[2,9],[3,1],[2,9],[3,3]]], "(2, 9) (3, 1) (3, 3) | eq=0 ne=1 lt=0 gt=1 le=0"],
+      [[[[5,5],[5,4]]], "(5, 4) (5, 5) | eq=0 ne=1 lt=0 gt=1 le=0"]
+    ] },
     solution: {
       approach: `<p>Two defaulted comparison declarations + one stream operator as a hidden friend. Lexicographic order is exactly "x, then y".</p>`,
       code: R`
@@ -2702,6 +2827,7 @@ dtor a</pre>
                 return os << '(' << p.x << ", " << p.y << ')';
             }
         };
+
         int main() {
             std::set<Point> s{{2, 1}, {1, 5}, {1, 2}, {2, 1}};
             for (const Point& p : s) std::cout << p << ' ';        // (1, 2) (1, 5) (2, 1)
@@ -2750,6 +2876,9 @@ dtor a</pre>
       `<p>Hint 2: <code>Base b = d;</code> slices — b is a genuine Base with Base's vptr.</p>`,
       `<p>Hint 3: name lookup happens before overload resolution and before virtual dispatch. A name declared in Derived hides every same-named function in Base.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "Derived Derived Base\nDerived-tag Base-tag\nDerived::f(int) 1\nBase::f(double) 1.5\nDerived::f(int) 2" }
+    ] },
     solution: {
       approach: `<p>Apply the three rules in order: (1) name lookup in the static type's scope, (2) overload resolution among what was found, (3) if the chosen function is virtual and the call is through a reference/pointer, dispatch on the dynamic type.</p>`,
       code: R`
@@ -2826,6 +2955,24 @@ dtor a</pre>
       `<p>Hint 2: move constructor = <code>std::exchange</code> both members; mark it noexcept.</p>`,
       `<p>Hint 3: one assignment operator taking <code>DynArray other</code> by value + <code>swap(*this, other)</code> covers copy-assign and move-assign.</p>`
     ],
+    tests: { sig: 'string[] string int -> string[]', fn: 'dyn',
+      harness: { cpp: "struct Flaky { int v = 0; static inline int budget = -1; Flaky() = default; Flaky(const Flaky& o) : v(o.v) { tick(); } Flaky& operator=(const Flaky& o) { tick(); v = o.v; return *this; } static void tick() { if (budget == 0) throw runtime_error(\"copy failed\"); if (budget > 0) --budget; } };\nvector<string> dyn(vector<string> vals, string repl, int budget) {\n  if (budget >= 0) { size_t n = vals.size(); DynArray<Flaky> a(n); for (size_t i = 0; i < n; ++i) a[i].v = (int)i + 1; DynArray<Flaky> b(2); b[0].v = 77; b[1].v = 88; Flaky::budget = budget; string status = \"ok\";\n    try { b = a; } catch (const runtime_error&) { status = \"threw\"; } Flaky::budget = -1; vector<string> r = {status, to_string(b.size())}; for (size_t i = 0; i < b.size(); ++i) r.push_back(to_string(b[i].v)); return r; }\n  size_t n = vals.size(); DynArray<string> a(n); for (size_t i = 0; i < n; ++i) a[i] = vals[i]; DynArray<string> b = a; if (n) b[0] = repl; DynArray<string> c = std::move(b); DynArray<string>& ref = a; a = ref;\n  vector<string> r; for (size_t i = 0; i < n; ++i) r.push_back(a[i]); r.push_back(\"|\"); r.push_back(\"b:\" + to_string(b.size())); r.push_back(\"|\"); for (size_t i = 0; i < c.size(); ++i) r.push_back(c[i]); c = a; r.push_back(\"|\"); for (size_t i = 0; i < c.size(); ++i) r.push_back(c[i]); return r; }" }, cases: [
+      [[["x","y"],"Q",-1], ["x","y","|","b:0","|","Q","y","|","x","y"]],
+      [[["a"],"z",-1], ["a","|","b:0","|","z","|","a"]],
+      [[[],"z",-1], ["|","b:0","|","|"]],
+      [[["p","q","r"],"",-1], ["p","q","r","|","b:0","|","","q","r","|","p","q","r"]],
+      [[["x","x"],"x",-1], ["x","x","|","b:0","|","x","x","|","x","x"]],
+      [[["v","v","v"],"r",0], ["threw","2","77","88"]],
+      [[["v","v","v"],"r",2], ["threw","2","77","88"]],
+      [[["v","v","v"],"r",3], ["ok","3","1","2","3"]],
+      [[["v","v","v"],"r",10], ["ok","3","1","2","3"]],
+      [[["v"],"r",0], ["threw","2","77","88"]],
+      [[["v"],"r",1], ["ok","1","1"]],
+      [[["v","v","v","v","v"],"r",4], ["threw","2","77","88"]],
+      [[["v","v","v","v","v"],"r",5], ["ok","5","1","2","3","4","5"]],
+      [[[],"r",0], ["ok","0"]],
+      [[{"$rep":"abc","n":100000},"zzz",-1], {"$concat":[{"$rep":"abc","n":100000},["|","b:0","|","zzz"],{"$rep":"abc","n":99999},["|"],{"$rep":"abc","n":100000}]}]
+    ] },
     solution: {
       approach: `<p>Copy constructor: allocate into a temporary unique_ptr (so an exception during element copy frees the block), then adopt it. Move constructor: steal with <code>std::exchange</code>. Unified assignment: by-value parameter + noexcept swap. Destructor: <code>delete[]</code>.</p>`,
       code: R`
@@ -2876,6 +3023,7 @@ dtor a</pre>
             c = a;                                               // copy-assign via copy-and-swap
             std::cout << a[0] << ' ' << b.size() << ' ' << c[0] << '\n';   // x 0 x
         }
+
       `,
       dry: { head: ['Statement', 'a', 'b', 'c', 'Note'], rows: [
         ['<code>a(2); a[0]="x"</code>', '[x, ""]', '—', '—', ''],
@@ -2910,6 +3058,27 @@ dtor a</pre>
       `<p>Hint 2: provide both <code>operator*(Vec3, double)</code> and <code>operator*(double, Vec3)</code>.</p>`,
       `<p>Hint 3: <code>==</code> on doubles: default it for exact equality, but provide an <code>approxEqual(a, b, eps)</code> for physics comparisons.</p>`
     ],
+    tests: { sig: 'double[] double[] double int -> double[]', fn: 'v3', cmp: 'float',
+      harness: { cpp: "vector<double> v3(vector<double> A, vector<double> B, double k, int op) { Vec3 a{A[0], A[1], A[2]}, b{B[0], B[1], B[2]}; auto L = [](const Vec3& v) { return vector<double>{v.x, v.y, v.z}; };\n  switch (op) { case 0: return L(a + b); case 1: return L(a - b); case 2: return L(-a); case 3: return L(a * k); case 4: return L(k * a); case 5: return L(a / k); case 6: return {dot(a, b)}; case 7: return L(cross(a, b)); case 8: return {length(a)}; case 9: return {a == b ? 1.0 : 0.0};\n    case 10: return {a[0], a[1], a[2]}; case 11: { Vec3 t = a; t += b; t -= Vec3{1, 1, 1}; t *= k; t /= 2; return L(t); }\n    case 12: { Vec3 pos = a, vel = b; const Vec3 g{0, -9.8, 0}; pos += vel * k; vel += g * k; vector<double> r = L(pos); auto q = L(vel); r.insert(r.end(), q.begin(), q.end()); return r; } default: { const Vec3 ca = a; return {ca[2], ca[0]}; } } }" }, cases: [
+      [[[0,10,0],[1,0,0],0.5,12], [0.5,10,0,1,-4.9,0]],
+      [[[1,0,0],[0,1,0],0,7], [0,0,1]],
+      [[[3,4,0],[0,0,0],1,8], [5]],
+      [[[1,2,3],[4,5,6],2,0], [5,7,9]],
+      [[[1,2,3],[4,5,6],2,1], [-3,-3,-3]],
+      [[[1,2,3],[0,0,0],0,2], [-1,-2,-3]],
+      [[[1,-2,3],[0,0,0],2.5,3], [2.5,-5,7.5]],
+      [[[1,-2,3],[0,0,0],2.5,4], [2.5,-5,7.5]],
+      [[[1,2,3],[0,0,0],4,5], [0.25,0.5,0.75]],
+      [[[1,2,3],[4,5,6],0,6], [32]],
+      [[[1,0,0],[1,0,0],0,9], [1]],
+      [[[1,0,0],[1,0,0.0001],0,9], [0]],
+      [[[7,8,9],[0,0,0],0,10], [7,8,9]],
+      [[[1,2,3],[3,2,1],4,11], [6,6,6]],
+      [[[1,2,3],[0,0,0],0,13], [3,1]],
+      [[[0,0,0],[0,0,0],0,8], [0]],
+      [[[1,2,3],[2,4,6],0,7], [0,0,0]],
+      [[[1000000,2000000,3000000],[1000000,1000000,1000000],1000,12], [1001000000,1002000000,1003000000,1000000,990200,1000000]]
+    ] },
     solution: {
       approach: `<p>Canonical operator set: members for compound assignment, unary minus and subscript; hidden friends for symmetric binary operators and streaming; free functions for dot/cross/length. Everything is <code>constexpr</code>-friendly and allocation-free.</p>`,
       code: R`
@@ -2951,6 +3120,7 @@ dtor a</pre>
             vel += gravity * dt;             // (1, -4.9, 0)
             std::cout << pos << ' ' << vel << ' ' << cross(Vec3{1, 0, 0}, Vec3{0, 1, 0}) << ' ' << length(Vec3{3, 4, 0}) << '\n';
         }
+
       `,
       dry: { head: ['Expression', 'Calls', 'Value'], rows: [
         ['<code>vel * dt</code>', 'operator*(Vec3, double)', '(0.5, 0, 0)'],
@@ -2991,6 +3161,16 @@ dtor a</pre>
       `<p>Hint 2: implement <code>std::unique_ptr&lt;Shape&gt; clone() const override</code> in the helper using <code>static_cast&lt;const Derived&amp;&gt;(*this)</code>.</p>`,
       `<p>Hint 3: duplicating the selection: <code>reserve</code>, then <code>push_back(p-&gt;clone())</code> for each element.</p>`
     ],
+    tests: { sig: 'string[] double[] string[] -> string[]', fn: 'cl',
+      harness: { cpp: "vector<string> cl(vector<string> kinds, vector<double> nums, vector<string> strs) { vector<unique_ptr<Shape>> sel; for (size_t i = 0; i < kinds.size(); ++i) { if (kinds[i] == \"C\") sel.push_back(make_unique<Circle>(nums[i])); else sel.push_back(make_unique<Text>(strs[i])); }\n  auto copy = duplicate(sel); vector<string> r; for (size_t i = 0; i < sel.size(); ++i) if (sel[i].get() == copy[i].get()) return {\"same address\"};\n  for (size_t i = 0; i < copy.size(); ++i) if (kinds[i] == \"T\") static_cast<Text&>(*copy[i]).s = \"edited\"; else static_cast<Circle&>(*copy[i]).r += 1;\n  for (auto& p : sel) r.push_back(p->describe()); r.push_back(\"|\"); for (auto& p : copy) r.push_back(p->describe()); return r; }" }, cases: [
+      [[["C","T"],[2,0],["","hi"]], ["Circle r=2.000000","Text \"hi\"","|","Circle r=3.000000","Text \"edited\""]],
+      [[[],[],[]], ["|"]],
+      [[["C"],[0.5],[""]], ["Circle r=0.500000","|","Circle r=1.500000"]],
+      [[["T"],[0],[""]], ["Text \"\"","|","Text \"edited\""]],
+      [[["T","T","C"],[0,0,1.25],["a","b b",""]], ["Text \"a\"","Text \"b b\"","Circle r=1.250000","|","Text \"edited\"","Text \"edited\"","Circle r=2.250000"]],
+      [[["C","C"],[1000000,3],["",""]], ["Circle r=1000000.000000","Circle r=3.000000","|","Circle r=1000001.000000","Circle r=4.000000"]],
+      [[{"$rep":"T","n":100000},{"$rep":0,"n":100000},{"$rep":"w","n":100000}], {"$concat":[{"$rep":"Text \"w\"","n":100000},["|"],{"$rep":"Text \"edited\"","n":100000}]}]
+    ] },
     solution: {
       approach: `<p>Cloneable inherits from Base and implements the virtual <code>clone()</code> by copy-constructing <code>Derived</code>. Concrete classes inherit from <code>Cloneable&lt;Self, Shape&gt;</code> and get a correct clone automatically. Inheriting constructors (<code>using Base::Base</code>) keeps the helper transparent.</p>`,
       code: R`
@@ -3040,6 +3220,7 @@ dtor a</pre>
             for (const auto& p : sel) std::cout << p->describe() << '\n';    // Circle r=2.000000 / Text "hi"
             for (const auto& p : copy) std::cout << p->describe() << '\n';   // Circle r=2.000000 / Text "edited"
         }
+
       `,
       dry: { head: ['Element', 'clone() resolved to', 'Copy constructed', 'Dynamic type of copy'], rows: [
         ['sel[0]', 'Cloneable&lt;Circle, Shape&gt;::clone', 'Circle(const Circle&amp;)', 'Circle'],
@@ -3074,6 +3255,19 @@ dtor a</pre>
       `<p>Hint 2: for C = A·B use loop order i, k, j: <code>double aik = A(i,k); for j: C(i,j) += aik * B(k,j);</code> — B and C are then read row-wise.</p>`,
       `<p>Hint 3: implement <code>*</code> as a hidden friend and <code>*=</code> as <code>*this = *this * o;</code> (the product cannot be done in place).</p>`
     ],
+    tests: { sig: 'double[][] double[][] -> string', fn: 'mm',
+      harness: { cpp: "string mm(vector<vector<double>> A, vector<vector<double>> B) { Matrix a(A.size(), A[0].size()), b(B.size(), B[0].size()); for (size_t i = 0; i < A.size(); ++i) for (size_t j = 0; j < A[0].size(); ++j) a(i, j) = A[i][j]; for (size_t i = 0; i < B.size(); ++i) for (size_t j = 0; j < B[0].size(); ++j) b(i, j) = B[i][j];\n  try { Matrix p = a * b; if (!(p == a * b)) return \"not equal to itself\"; Matrix q = a; q *= b; if (!(q == p)) return \"*= differs\"; ostringstream os; os << p; return os.str(); } catch (const invalid_argument&) { return \"invalid\"; } }" }, cases: [
+      [[[[1,2],[3,4]],[[5,6],[7,8]]], "[19,22]\n[43,50]\n"],
+      [[[[1,2],[3,4]],[[1],[2],[3]]], "invalid"],
+      [[[[2]],[[3.5]]], "[7]\n"],
+      [[[[1,2,3]],[[1],[1],[1]]], "[6]\n"],
+      [[[[1],[2],[3]],[[1,2]]], "[1,2]\n[2,4]\n[3,6]\n"],
+      [[[[0.5,0.5],[0.25,0.75]],[[2,0],[0,2]]], "[1,1]\n[0.5,1.5]\n"],
+      [[[[-1,1],[1,-1]],[[1,1],[1,1]]], "[0,0]\n[0,0]\n"],
+      [[[[1,0],[0,1]],[[9,8],[7,6]]], "[9,8]\n[7,6]\n"],
+      [[[[1,2],[3,4]],[[1,2]]], "invalid"],
+      [[{"$rep":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"n":100},{"$rep":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"n":100}], "[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n[100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100]\n"]
+    ] },
     solution: {
       approach: `<p>Rule of Zero value type over one contiguous vector. <code>operator()</code> provides 2-D indexing; defaulted <code>==</code> compares dimensions and data. Multiplication uses the i-k-j order for sequential memory access and checks dimensions.</p>`,
       code: R`
@@ -3127,6 +3321,7 @@ dtor a</pre>
             std::cout << (A * B == Matrix{{19, 22}, {43, 50}}) << '\n';   // 1
             try { Matrix C(3, 1); A * C; } catch (const std::invalid_argument& e) { std::cout << e.what() << '\n'; }
         }
+
       `,
       dry: { head: ['i', 'k', 'aik', 'row C(i,·) after k'], rows: [
         ['0', '0', '1', '[5, 6]'],
@@ -3162,6 +3357,26 @@ dtor a</pre>
       `<p>Hint 2: make <code>end()</code> hold the first value ≥ hi that the sequence actually reaches: <code>lo + ceil((hi-lo)/step)*step</code>, so <code>==</code> on the current value works.</p>`,
       `<p>Hint 3: provide the iterator type aliases (<code>value_type</code>, <code>difference_type</code>, <code>iterator_concept</code>) so standard algorithms accept it; postfix <code>++</code> returns the old copy.</p>`
     ],
+    tests: { sig: 'int int int -> int[]', fn: 'rg',
+      harness: { cpp: "vector<int> rg(int lo, int hi, int step) { Range r(lo, hi, step); vector<int> out; for (int x : r) out.push_back(x); vector<int> v(r.begin(), r.end()); if (v != out) return {-777}; auto it = r.begin(); if (!out.empty()) { auto old = it++; if (*old != lo || *it != lo + step && out.size() > 1) { if (out.size() > 1) return {-778}; } } return out; }" }, cases: [
+      [[0,10,3], [0,3,6,9]],
+      [[5,8,1], [5,6,7]],
+      [[0,0,1], []],
+      [[5,5,3], []],
+      [[5,2,1], []],
+      [[-5,5,5], [-5,0]],
+      [[-10,-1,4], [-10,-6,-2]],
+      [[0,1,100], [0]],
+      [[0,1,1], [0]],
+      [[3,4,7], [3]],
+      [[-2147483648,-2147483640,3], [-2147483648,-2147483645,-2147483642]],
+      [[2147483640,2147483647,2], [2147483640,2147483642,2147483644,2147483646]],
+      [[0,2147483647,1073741824], [0,1073741824]],
+      [[100,1000,450], [100,550]],
+      [[0,1000000,1], {"$range":[0,1000000]}],
+      [[0,1000000,7], {"$range":[0,1000000,7]}],
+      [[-500000,500000,3], {"$range":[-500000,500000,3]}]
+    ] },
     solution: {
       approach: `<p>A lightweight iterator holding (value, step). <code>end()</code> is pre-computed as the first reachable value at or past <code>hi</code>, so equality comparison on values is exact. C++20 rewrites <code>!=</code> from <code>==</code>.</p>`,
       code: R`
@@ -3173,14 +3388,15 @@ dtor a</pre>
             int lo_, hi_, step_;
         public:
             class iterator {
-                int v_ = 0, step_ = 1;
+                long long v_ = 0;                      // wide: lo + n * step can pass INT_MAX
+                int step_ = 1;
             public:
                 using value_type = int;
                 using difference_type = std::ptrdiff_t;
                 using iterator_concept = std::forward_iterator_tag;
                 iterator() = default;
-                iterator(int v, int s) : v_(v), step_(s) {}
-                int operator*() const { return v_; }
+                iterator(long long v, int s) : v_(v), step_(s) {}
+                int operator*() const { return static_cast<int>(v_); }
                 iterator& operator++() { v_ += step_; return *this; }               // prefix
                 iterator operator++(int) { iterator old = *this; v_ += step_; return old; }   // postfix
                 bool operator==(const iterator& o) const { return v_ == o.v_; }      // != comes for free
@@ -3188,7 +3404,7 @@ dtor a</pre>
             Range(int lo, int hi, int step = 1) : lo_(lo), hi_(hi), step_(step) {}
             iterator begin() const { return {lo_, step_}; }
             iterator end() const {
-                int n = hi_ > lo_ ? (hi_ - lo_ + step_ - 1) / step_ : 0;          // number of elements
+                long long n = hi_ > lo_ ? (static_cast<long long>(hi_) - lo_ + step_ - 1) / step_ : 0;   // number of elements
                 return {lo_ + n * step_, step_};
             }
         };
@@ -3200,6 +3416,7 @@ dtor a</pre>
             std::vector<int> v(r.begin(), r.end());                                 // 5 6 7
             std::cout << "| " << v.size() << '\n';
         }
+
       `,
       dry: { head: ['Iteration', 'it.v_', 'it == end (12)?', 'x printed'], rows: [
         ['1', '0', 'no', '0'],
@@ -3239,6 +3456,9 @@ dtor a</pre>
       `<p>Hint 2: list-initialization (<code>{…}</code>) prefers an <code>initializer_list</code> constructor whenever the elements can convert; empty braces <code>{}</code> use the default constructor instead.</p>`,
       `<p>Hint 3: <code>W i = W(6);</code> is a prvalue initializing a W → guaranteed elision: just <code>W(int)</code>.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "default\nint\nint\ninit-list(1)\ndefault\ninit-list(2)\ncopy\nmove\nint\ndouble" }
+    ] },
     solution: {
       approach: `<p>Classify each line by initialization kind: default, direct, copy, list (direct or copy), value; apply explicit-ness and initializer_list preference; remember elision and the most vexing parse.</p>`,
       code: R`
@@ -3313,6 +3533,18 @@ dtor a</pre>
       `<p>Hint 2: move ctor: <code>p_(std::exchange(o.p_, nullptr))</code>. Move assign: <code>reset(o.release())</code> — automatically self-move safe? Check it: release() nulls o first, then reset deletes our old pointer; for self-move old == new pointer… handle that case.</p>`,
       `<p>Hint 3: converting constructor <code>template &lt;class U&gt; requires std::is_convertible_v&lt;U*, T*&gt; UniquePtr(UniquePtr&lt;U&gt;&amp;&amp; o)</code>; give it access via a friend declaration or use <code>o.release()</code>.</p>`
     ],
+    tests: { sig: 'int int -> long[]', fn: 'up',
+      harness: { cpp: "struct Probe { static inline int live = 0; int v; explicit Probe(int x) : v(x) { ++live; } ~Probe() { --live; } };\nstruct CountDel { int* cnt; void operator()(Probe* p) const { ++*cnt; delete p; } };\nvector<long long> up(int mode, int n) { vector<long long> r; int base = Probe::live;\n  if (mode == 0) { auto a = makeUnique<Probe>(5); auto b = std::move(a); r = {(long long)(bool)a, b->v, Probe::live - base}; b.reset(new Probe(7)); r.push_back(b->v); r.push_back(Probe::live - base); b.reset(); r.push_back((bool)b); r.push_back(Probe::live - base); }\n  else if (mode == 1) { UniquePtr<Base> p = makeUnique<Derived>(); r = {p->id(), (long long)(bool)p}; UniquePtr<Base> q; q = std::move(p); r.push_back((bool)p); r.push_back((bool)q); r.push_back(q->id()); Base* raw = q.release(); r.push_back((bool)q); delete raw; }\n  else if (mode == 2) { int cnt = 0; { UniquePtr<Probe, CountDel> u(new Probe(1), CountDel{&cnt}); r.push_back(cnt); u.reset(new Probe(2)); r.push_back(cnt); r.push_back(Probe::live - base); auto w = std::move(u); r.push_back(cnt); r.push_back((bool)u); r.push_back(w->v); } r.push_back(cnt); r.push_back(Probe::live - base); }\n  else if (mode == 3) { UniquePtr<Probe> a = makeUnique<Probe>(9); UniquePtr<Probe>& ref = a; a = std::move(ref); r = {(long long)(bool)a, a->v, Probe::live - base}; Probe* raw = a.release(); r.push_back(Probe::live - base); a.reset(raw); r.push_back(a->v); }\n  else { vector<UniquePtr<Probe>> v; for (int i = 0; i < n; ++i) v.push_back(makeUnique<Probe>(i)); r.push_back(Probe::live - base); while ((int)v.size() > n / 2) v.pop_back(); r.push_back(Probe::live - base); v.clear(); r.push_back(Probe::live - base); }\n  r.push_back(Probe::live - base); return r; }" }, cases: [
+      [[0,0], [0,5,1,7,1,0,0,0]],
+      [[1,0], [1,1,0,1,1,0,0]],
+      [[2,0], [0,1,1,1,0,2,2,0,0]],
+      [[3,0], [1,9,1,1,9,0]],
+      [[4,10], [10,5,0,0]],
+      [[4,1], [1,0,0,0]],
+      [[4,0], [0,0,0,0]],
+      [[4,7], [7,3,0,0]],
+      [[4,1000], [1000,500,0,0]]
+    ] },
     solution: {
       approach: `<p>RAII handle with move-only semantics. The destructor and <code>reset</code> are the only places that call the deleter. Move assignment is implemented as <code>reset(o.release())</code> guarded against self-move. <code>[[no_unique_address]]</code> makes an empty deleter take no space.</p>`,
       code: R`
@@ -3379,6 +3611,7 @@ dtor a</pre>
             UniquePtr<Base> poly = makeUnique<Derived>();               // converting move
             std::cout << static_cast<bool>(a) << ' ' << *b << ' ' << poly->id() << '\n';   // 0 7 1
         }
+
       `,
       dry: { head: ['Statement', 'a.p_', 'b.p_', 'Heap'], rows: [
         ['<code>a = makeUnique&lt;int&gt;(5)</code>', '0x10', '—', '{0x10: 5}'],
@@ -3417,6 +3650,16 @@ dtor a</pre>
       `<p>Hint 2: <code>struct Circle { Shape base; double r; };</code> — base first, so <code>(Shape*)&amp;circle</code> is valid (standard-layout); inside <code>circle_area</code> cast back with <code>reinterpret_cast&lt;const Circle*&gt;(s)</code>.</p>`,
       `<p>Hint 3: the "constructor" sets <code>c.base.vptr = &amp;CircleVTable</code>; the call site is <code>s-&gt;vptr-&gt;area(s)</code> — exactly what <code>s-&gt;area()</code> compiles to.</p>`
     ],
+    tests: { sig: 'string double[] double[] -> double', fn: 'vt', cmp: 'float',
+      harness: { cpp: "double vt(string kinds, vector<double> a, vector<double> b) { vector<Circle> cs; vector<Rect> rs; cs.reserve(kinds.size()); rs.reserve(kinds.size()); vector<Shape*> sh; for (size_t i = 0; i < kinds.size(); ++i) { if (kinds[i] == 'C') { cs.push_back(makeCircle(a[i])); sh.push_back(&cs.back().base); if (string(sh.back()->vptr->name(sh.back())) != \"circle\") return -1; } else { rs.push_back(makeRect(a[i], b[i])); sh.push_back(&rs.back().base); if (string(sh.back()->vptr->name(sh.back())) != \"rect\") return -2; } }\n  return totalArea(sh.data(), (int)sh.size()); }" }, cases: [
+      [["CR",[1,2],[0,3]], 9.14159],
+      [["",[],[]], 0],
+      [["C",[0],[0]], 0],
+      [["R",[1000000],[1000000]], 1000000000000],
+      [["RRCC",[1,2,3,0.5],[4,5,0,0]], 43.0597075],
+      [["C",[10],[0]], 314.159],
+      [[{"$rep":"R","n":100000},{"$rep":2,"n":100000},{"$rep":0.5,"n":100000}], 100000]
+    ] },
     solution: {
       approach: `<p>Emulate the Itanium-style layout: the base sub-object (holding the vptr) is the first member, each "class" has one constant table, and a call loads the vptr, loads the slot and calls with the object pointer as <code>this</code>. This is how GObject, the Linux kernel's <code>file_operations</code>, and COM work.</p>`,
       code: R`
@@ -3456,6 +3699,7 @@ dtor a</pre>
             for (Shape* s : shapes) std::printf("%s %.5f\n", s->vptr->name(s), s->vptr->area(s));
             std::printf("total %.5f\n", totalArea(shapes, 2));      // total 9.14159
         }
+
       `,
       dry: { head: ['Element', 'vptr →', 'slot area', 'Result', 'Sum'], rows: [
         ['shapes[0]', 'CircleVTable', 'circle_area', '3.14159', '3.14159'],
@@ -3500,6 +3744,34 @@ dtor a</pre>
       `<p>Hint 2: in <code>grow()</code>, construct into the new buffer inside try/catch; on exception destroy the already-built elements in the new buffer, deallocate it, rethrow. Only after success destroy the old elements and swap buffers.</p>`,
       `<p>Hint 3: in <code>push</code>, construct the new element into the <b>new</b> buffer before relocating the old ones (it may alias an existing element: <code>s.push(s.top())</code>).</p>`
     ],
+    tests: { sig: 'int[] int int -> long[]', fn: 'stk',
+      harness: { cpp: "struct Flaky { int v = 0; static inline int budget = -1; Flaky() = default; Flaky(int x) : v(x) {} Flaky(const Flaky& o) : v(o.v) { tick(); } Flaky(Flaky&& o) noexcept(false) : v(o.v) { tick(); } Flaky& operator=(const Flaky&) = default; static void tick() { if (budget == 0) throw runtime_error(\"copy failed\"); if (budget > 0) --budget; } };\nvector<long long> stk(vector<int> vals, int budget, int mode) { vector<long long> r;\n  if (mode == 1) { if (vals.empty()) return {0, 0, 0, 0, 0}; Stack<string> s; for (int v : vals) s.push(to_string(v)); if (!vals.empty()) s.push(s.top()); Stack<string> t = s; s.pop(); r = {(long long)s.size(), (long long)t.size(), vals.empty() ? 0 : stol(t.top())}; Stack<string> u; u = t; u.pop(); r.push_back((long long)u.size()); r.push_back((long long)t.size()); return r; }\n  Stack<Flaky> s; size_t n = vals.size(); for (size_t i = 0; i + 1 < n; ++i) s.push(Flaky(vals[i])); Flaky::budget = -1; bool threw = false; if (n) { Flaky last(vals[n - 1]); Flaky::budget = budget; try { s.push(std::move(last)); } catch (const runtime_error&) { threw = true; } Flaky::budget = -1; }\n  r.push_back(threw ? 1 : 0); r.push_back((long long)s.size()); while (s.size()) { r.push_back(s.top().v); s.pop(); } return r; }" }, cases: [
+      [[[1,2,3],-1,0], [0,3,3,2,1]],
+      [[[1,2,3],0,0], [1,2,2,1]],
+      [[[1,2,3],1,0], [1,2,2,1]],
+      [[[1,2,3],2,0], [1,2,2,1]],
+      [[[1,2,3],3,0], [0,3,3,2,1]],
+      [[[1,2,3,4],0,0], [1,3,3,2,1]],
+      [[[1,2,3,4],1,0], [0,4,4,3,2,1]],
+      [[[1,2,3,4],4,0], [0,4,4,3,2,1]],
+      [[[1,2,3,4],100,0], [0,4,4,3,2,1]],
+      [[[5,6,7,8,9],4,0], [1,4,8,7,6,5]],
+      [[[5,6,7,8,9],5,0], [0,5,9,8,7,6,5]],
+      [[[5],0,0], [1,0]],
+      [[[5],1,0], [0,1,5]],
+      [[[],0,0], [0,0]],
+      [[[1,2],1,0], [1,1,1]],
+      [[[1,2],2,0], [0,2,2,1]],
+      [[[1,2,3,4,5,6,7,8,9],8,0], [1,8,8,7,6,5,4,3,2,1]],
+      [[[1,2,3,4,5,6,7,8,9],9,0], [0,9,9,8,7,6,5,4,3,2,1]],
+      [[[1,2,3,4,5,6,7,8,9],0,0], [1,8,8,7,6,5,4,3,2,1]],
+      [[[1,2,3,4,5,6,7],0,0], [1,6,6,5,4,3,2,1]],
+      [[[1,2,3,4,5,6,7],1,0], [0,7,7,6,5,4,3,2,1]],
+      [[[3,1,2],0,1], [3,4,2,3,4]],
+      [[[],0,1], [0,0,0,0,0]],
+      [[[9],0,1], [1,2,9,1,2]],
+      [[[4,4,4,4,4],0,1], [5,6,4,5,6]]
+    ] },
     solution: {
       approach: `<p>Separate allocation from construction. Growth builds a complete new buffer (relocating with <code>move_if_noexcept</code>) and commits with non-throwing pointer swaps only at the end. The element being pushed is constructed first in the new buffer so that pushing a reference to an existing element is safe. Copy uses the same build-then-commit pattern; moves steal pointers.</p>`,
       code: R`
@@ -3561,6 +3833,7 @@ dtor a</pre>
             s.pop();
             std::cout << s.size() << ' ' << t.size() << ' ' << t.top() << '\n';   // 2 3 beta
         }
+
       `,
       dry: { head: ['Operation', 'n / cap', 'Relocation', 'Note'], rows: [
         ['push "alpha"', '1 / 1', 'grow 0→1', 'construct in new buffer'],
@@ -3599,6 +3872,16 @@ dtor a</pre>
       `<p>Hint 2: <code>template &lt;class T&gt; struct Model final : Concept { T obj; ... double area() const override { return obj.area(); } ... };</code> and a templated constructor <code>AnyShape(T t)</code> that creates a Model&lt;T&gt;.</p>`,
       `<p>Hint 3: copy ctor clones; copy assignment via copy-and-swap; moves are defaulted (unique_ptr moves). Constrain the templated constructor so it does not hijack copying an AnyShape (exclude <code>T = AnyShape</code>).</p>`
     ],
+    tests: { sig: 'string[] double[] -> double[]', fn: 'as', cmp: 'float',
+      harness: { cpp: "vector<double> as(vector<string> kinds, vector<double> a) { vector<AnyShape> v; for (size_t i = 0; i < kinds.size(); ++i) { if (kinds[i] == \"C\") v.push_back(Circle{a[i]}); else v.push_back(Square{a[i]}); } vector<AnyShape> w = v; if (!v.empty()) v[0] = Square{10}; double sw = 0, sv = 0; for (auto& s : w) sw += s.area(); for (auto& s : v) sv += s.area(); vector<AnyShape> m = std::move(w); double sm = 0; for (auto& s : m) sm += s.area(); return {sw, v.empty() ? -1 : v[0].area(), sv, sm}; }" }, cases: [
+      [[["C","S"],[1,2]], [7.14159,100,104,7.14159]],
+      [[[],[]], [0,-1,0,0]],
+      [[["C"],[0]], [0,100,100,0]],
+      [[["S"],[3]], [9,100,100,9]],
+      [[["S","S","C"],[1,2,0.5]], [5.7853975,100,104.7853975,5.7853975]],
+      [[["C","C"],[1000,2]], [3141602.5663599996,100,112.56636000005528,3141602.5663599996]],
+      [[{"$rep":"S","n":100000},{"$rep":2,"n":100000}], [400000,100,400096,400000]]
+    ] },
     solution: {
       approach: `<p>External polymorphism: a hidden abstract <code>Concept</code>, a templated <code>Model&lt;T&gt;</code> adapting any type with <code>area()</code>, and a value-semantic handle owning <code>unique_ptr&lt;Concept&gt;</code>. Copy = clone (deep, type-preserving); move = pointer steal. The same pattern underlies <code>std::function</code> and <code>std::any</code>.</p>`,
       code: R`
@@ -3649,6 +3932,7 @@ dtor a</pre>
             for (const auto& s : w) sum += s.area();
             std::cout << sum << ' ' << v[0].area() << '\n';                 // 7.14159 100
         }
+
       `,
       dry: { head: ['Step', 'v', 'w', 'Mechanism'], rows: [
         ['construct v', '[Model&lt;Circle&gt;, Model&lt;Square&gt;]', '—', 'templated ctor wraps each'],
@@ -3694,6 +3978,16 @@ dtor a</pre>
       `<p>Hint 2: copy ctor: copy pointer, addRef. Move ctor: <code>std::exchange</code>, no count change. Destructor: release if non-null.</p>`,
       `<p>Hint 3: assignment via copy-and-swap: <code>RefPtr&amp; operator=(RefPtr o) noexcept { std::swap(p_, o.p_); return *this; }</code> — the parameter copy does the addRef, its destructor does the release of our old object.</p>`
     ],
+    tests: { sig: 'int int -> int[]', fn: 'rp',
+      harness: { cpp: "struct Counted : RefCounted { static inline int live = 0; Counted() { ++live; } ~Counted() override { --live; } };\nvector<int> rp(int mode, int n) { vector<int> r; int base = Counted::live;\n  if (mode == 0) { RefPtr<Counted> a = make<Counted>(); RefPtr<Counted> b = a; RefPtr<Counted> c = std::move(a); r = {c->count(), (int)(bool)a, (int)(b == c)}; RefPtr<Counted>& rc = c; c = rc; r.push_back(c->count()); b.reset(); r.push_back(c->count()); c = RefPtr<Counted>(); r.push_back(Counted::live - base); }\n  else if (mode == 1) { RefPtr<Counted> p = make<Counted>(); vector<RefPtr<Counted>> v(n, p); r.push_back(p->count()); p = RefPtr<Counted>(); r.push_back(Counted::live - base); r.push_back(n ? v[0]->count() : 0); v.clear(); r.push_back(Counted::live - base); }\n  else if (mode == 2) { RefPtr<Counted> p = make<Counted>(); RefPtr<Counted>& rp2 = p; p = rp2; r = {Counted::live - base, p->count()}; }\n  else { Counted* raw = new Counted; RefPtr<Counted> a(raw); RefPtr<Counted> b(raw); r.push_back(raw->count()); a.reset(); r.push_back(Counted::live - base); r.push_back(raw->count()); b.reset(); r.push_back(Counted::live - base); }\n  r.push_back(Counted::live - base); return r; }" }, cases: [
+      [[0,0], [2,0,1,2,1,0,0]],
+      [[1,5], [6,1,5,0,0]],
+      [[1,1], [2,1,1,0,0]],
+      [[1,0], [1,0,0,0,0]],
+      [[1,1000], [1001,1,1000,0,0]],
+      [[2,0], [1,1,0]],
+      [[3,0], [2,1,1,0,0]]
+    ] },
     solution: {
       approach: `<p>The count lives in the object (no separate control block → one allocation, and a raw <code>T*</code> can be re-wrapped safely). RefPtr is a Rule-of-Five handle: copy increments, move transfers, destruction decrements, and copy-and-swap orders increment-before-decrement. For multi-threading use <code>std::atomic&lt;int&gt;</code> with <code>fetch_add(relaxed)</code> and <code>fetch_sub(acq_rel)</code>.</p>`,
       code: R`
@@ -3749,7 +4043,8 @@ dtor a</pre>
             c = c;                                                    // self-assignment: safe
             b.reset();                                                // 1
             std::cout << c->count() << '\n';                          // 1
-        }                                                             // c dies -> 0 -> ~Texture grass (once)
+        }
+
       `,
       dry: { head: ['Statement', 'a', 'b', 'c', 'refs'], rows: [
         ['<code>a = make("grass")</code>', 'T', '—', '—', '1'],

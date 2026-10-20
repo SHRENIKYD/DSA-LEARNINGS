@@ -9,7 +9,13 @@
     o = o || {};
     return { type: 'graph', label: label, directed: true, height: o.h || 60, nodes: nodes, edges: edges, hl: o.hl || {}, ehl: o.ehl || {}, tags: o.tags || {} };
   }
-  function CODE(label, code, hl) { return { type: 'code', label: label, lang: 'java', code: code, hl: hl || {} }; }
+  // python / TypeScript / C++ versions of the Java code panes, keyed by the exact Java text (filled in near the end of this file)
+  var ALTS = {};
+  function mkAlt(py, ts, cpp, maps) {
+    maps = maps || {};
+    return { python: { code: py, map: maps.python || {} }, js: { lang: 'ts', code: ts, map: maps.ts || {} }, cpp: { code: cpp, map: maps.cpp || {} } };
+  }
+  function CODE(label, code, hl, alt) { return { type: 'code', label: label, lang: 'java', code: code, hl: hl || {}, alt: alt || ALTS[code] }; }
   function TXT(html, label) { var p = { type: 'text', html: html }; if (label) p.label = label; return p; }
   function VARS(label, vals, hl) { return { type: 'vars', label: label, vals: vals, hl: hl || {} }; }
   function F(narr, parts) { return { narr: narr, parts: parts }; }
@@ -463,7 +469,7 @@ int main() {
       statement: `<p>Your app shows weather through the interface <code>WeatherProvider { double celsius(String city); }</code>. The data team bought a US service <code>UsWeatherService</code> with the single method <code>int tempFahrenheit(int zipCode)</code>. You may not edit <code>UsWeatherService</code>. Make the app use it without changing <code>WeatherScreen</code> (the client). A <code>Map&lt;String,Integer&gt;</code> of city → zip is provided.</p>`,
       constraints: `<p>Do not modify <code>UsWeatherService</code> or <code>WeatherScreen</code>. Unknown city → throw <code>IllegalArgumentException</code>. Round to one decimal place for display only.</p>`,
       example: `<p>City <b>"Austin"</b> → zip 73301 → service returns <b>${H.c('y', '86')}</b> °F → adapter returns <b>${H.c('g', '30.0')}</b> °C because (86 − 32) × 5 / 9 = 30.</p>`,
-      brute: { why: `<p>The naive fix edits the client: <code>WeatherScreen</code> gets an <code>if (provider is the US one)</code> branch that looks up the zip and converts units. Now the screen knows about zip codes, Fahrenheit and a vendor class. The next vendor adds another branch — the client grows forever and breaks Open/Closed. Every screen that shows weather duplicates the conversion.</p>`, code: `class UsWeatherService { int tempFahrenheit(int zip) { return 86; } }
+      brute: { why: `<p>The naive fix edits the client: <code>WeatherScreen</code> gets an <code>if (provider is the US one)</code> branch that looks up the zip and converts units. Now the screen knows about zip codes, Fahrenheit and a vendor class. The next vendor adds another branch — the client grows forever and breaks Open/Closed. Every screen that shows weather duplicates the conversion.</p>`, code: { lang: 'java', code: `class UsWeatherService { int tempFahrenheit(int zip) { return 86; } }
 
 class WeatherScreen {
     private final UsWeatherService us = new UsWeatherService();
@@ -476,7 +482,53 @@ class WeatherScreen {
         double c = (us.tempFahrenheit(zip) - 32) * 5.0 / 9.0;
         return city + ": " + Math.round(c * 10) / 10.0 + " C";
     }
+}`, alt: [
+                { lang: 'python', code: `
+class UsWeatherService:
+    def temp_fahrenheit(self, zip): return 86
+
+class WeatherScreen:
+    def __init__(self):
+        self._us = UsWeatherService()
+        self._zips = {"Austin": 73301}
+
+    def render(self, city):
+        # client is now coupled to a vendor class, zip codes AND unit math
+        zip = self._zips.get(city)
+        if zip is None: return "unknown city"
+        c = (self._us.temp_fahrenheit(zip) - 32) * 5.0 / 9.0
+        return f"{city}: {round(c, 1)} C"` },
+                { lang: 'ts', code: `
+class UsWeatherService { tempFahrenheit(zip: number): number { return 86; } }
+
+class WeatherScreen {
+    private readonly us = new UsWeatherService();
+    private readonly zips = new Map<string, number>([["Austin", 73301]]);
+
+    render(city: string): string {
+        // client is now coupled to a vendor class, zip codes AND unit math
+        const zip = this.zips.get(city);
+        if (zip === undefined) return "unknown city";
+        const c = (this.us.tempFahrenheit(zip) - 32) * 5.0 / 9.0;
+        return city + ": " + Math.round(c * 10) / 10 + " C";
+    }
 }` },
+                { lang: 'cpp', code: `
+struct UsWeatherService { int tempFahrenheit(int zip) { return 86; } };
+
+class WeatherScreen {
+    UsWeatherService us;
+    map<string, int> zips = {{"Austin", 73301}};
+public:
+    string render(const string& city) {
+        // client is now coupled to a vendor class, zip codes AND unit math
+        auto it = zips.find(city);
+        if (it == zips.end()) return "unknown city";
+        double c = (us.tempFahrenheit(it->second) - 32) * 5.0 / 9.0;
+        return city + ": " + to_string(round(c * 10) / 10.0) + " C";
+    }
+};` }
+              ] } },
       mcq: { q: 'Which class should hold the Fahrenheit → Celsius formula?', options: ['WeatherScreen, right before printing', 'A new class that implements WeatherProvider and wraps UsWeatherService', 'A subclass of WeatherScreen', 'A static helper called from every screen'], answer: 1, explain: 'The adapter owns all translation (city→zip and °F→°C) so the client stays vendor-free and new vendors become new adapters.' },
       hints: [`<p>Hint 1: The client already depends on an interface — <code>WeatherProvider</code>. You only need a new <i>implementation</i> of it.</p>`, `<p>Hint 2: That implementation holds a <code>UsWeatherService</code> and a city → zip map (composition, an object adapter).</p>`, `<p>Hint 3: Recipe: look up zip (throw if missing) → call <code>tempFahrenheit</code> → convert with (F − 32) × 5 / 9 → return. Keep the screen code untouched; inject the adapter in <code>main</code>.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "Austin: 30.0 C\nBoston: 10.0 C\nUnknown city: Paris\n" }] },
@@ -1169,7 +1221,7 @@ console.log(JSON.stringify(ro)); // [1,2,3] — a view, not a copy; ro.push(4) i
       statement: `<p>You have <code>interface Fetcher { String fetch(String url) throws IOException; }</code> and a concrete <code>HttpFetcher</code> that sometimes throws <code>IOException</code>. Product wants three optional features, enabled per call site in any combination: <b>logging</b> (print url and outcome), <b>retry</b> (up to N attempts), <b>timing</b> (print elapsed ms). Design it so <code>HttpFetcher</code> is never edited and any combination works.</p>`,
       constraints: `<p>1 ≤ N ≤ 5 attempts. Retry only on <code>IOException</code>; rethrow the last one after N failures. No feature may know about another.</p>`,
       example: `<p><code>new Timing(new Logging(new Retry(new HttpFetcher(), 3)))</code> on a fetcher that fails twice then succeeds prints: ${H.c('y', 'GET /a → ok')} then ${H.c('b', 'took 12 ms')}. Logging sees a single success because Retry is <i>inside</i> it and hid the two failures.</p>`,
-      brute: { why: `<p>Subclassing for every combination: <code>LoggingHttpFetcher</code>, <code>RetryingHttpFetcher</code>, <code>LoggingRetryingHttpFetcher</code>, <code>TimedLoggingRetryingHttpFetcher</code>… 3 features → 2<sup>3</sup> = 8 classes, and a 4th feature makes 16. Each class copy-pastes the retry loop, so fixing a retry bug means editing many files. The alternative brute force — boolean flags inside one class — becomes an if-forest that every feature edits.</p>`, code: `class HttpFetcher {
+      brute: { why: `<p>Subclassing for every combination: <code>LoggingHttpFetcher</code>, <code>RetryingHttpFetcher</code>, <code>LoggingRetryingHttpFetcher</code>, <code>TimedLoggingRetryingHttpFetcher</code>… 3 features → 2<sup>3</sup> = 8 classes, and a 4th feature makes 16. Each class copy-pastes the retry loop, so fixing a retry bug means editing many files. The alternative brute force — boolean flags inside one class — becomes an if-forest that every feature edits.</p>`, code: { lang: 'java', code: `class HttpFetcher {
     String fetch(String url) throws IOException { return "body of " + url; }
 }
 
@@ -1190,7 +1242,83 @@ class ConfigurableFetcher extends HttpFetcher {
         }
         throw last;
     }
+}`, alt: [
+                { lang: 'python', code: `
+import time
+
+class HttpFetcher:
+    def fetch(self, url): return "body of " + url
+
+# one flag-driven god class: every new feature edits this method
+class ConfigurableFetcher(HttpFetcher):
+    def __init__(self):
+        self.log = self.retry = self.time = False
+        self.attempts = 3
+
+    def fetch(self, url):
+        t0 = time.perf_counter()
+        last = None
+        tries = self.attempts if self.retry else 1
+        for _ in range(tries):
+            try:
+                r = super().fetch(url)
+                if self.log: print("GET " + url + " ok")
+                if self.time: print(f"{int((time.perf_counter() - t0) * 1000)} ms")
+                return r
+            except IOError as e:
+                last = e
+                if self.log: print("GET " + url + " failed")
+        raise last` },
+                { lang: 'ts', code: `
+class HttpFetcher {
+    fetch(url: string): string { return "body of " + url; }
+}
+
+// one flag-driven god class: every new feature edits this method
+class ConfigurableFetcher extends HttpFetcher {
+    log = false; retry = false; time = false; attempts = 3;
+    override fetch(url: string): string {
+        const t0 = Date.now();
+        let last: unknown = null;
+        const tries = this.retry ? this.attempts : 1;
+        for (let i = 0; i < tries; i++) {
+            try {
+                const r = super.fetch(url);
+                if (this.log) console.log("GET " + url + " ok");
+                if (this.time) console.log((Date.now() - t0) + " ms");
+                return r;
+            } catch (e) { last = e; if (this.log) console.log("GET " + url + " failed"); }
+        }
+        throw last;
+    }
 }` },
+                { lang: 'cpp', code: `
+class HttpFetcher {
+public:
+    virtual ~HttpFetcher() = default;
+    virtual string fetch(const string& url) { return "body of " + url; }
+};
+
+// one flag-driven god class: every new feature edits this method
+class ConfigurableFetcher : public HttpFetcher {
+public:
+    bool log = false, retry = false, time = false; int attempts = 3;
+    string fetch(const string& url) override {
+        auto t0 = chrono::steady_clock::now();
+        exception_ptr last;
+        int tries = retry ? attempts : 1;
+        for (int i = 0; i < tries; i++) {
+            try {
+                string r = HttpFetcher::fetch(url);
+                if (log) cout << "GET " << url << " ok\\n";
+                if (time) cout << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - t0).count() << " ms\\n";
+                return r;
+            } catch (...) { last = current_exception(); if (log) cout << "GET " << url << " failed\\n"; }
+        }
+        rethrow_exception(last);
+    }
+};` }
+              ] } },
       mcq: { q: 'Logging should record EVERY failed attempt, not just the final outcome. Where should the Logging decorator sit?', options: ['Outside Retry: Logging(Retry(http))', 'Inside Retry: Retry(Logging(http))', 'Order does not matter', 'Logging must be merged into Retry'], answer: 1, explain: 'Retry calls whatever it wraps once per attempt. If Logging is inside, each attempt passes through Logging, so every failure is logged.' },
       hints: [`<p>Hint 1: Each feature is "do something, then call the same method on the thing I wrap" — that is the Decorator shape.</p>`, `<p>Hint 2: Create <code>abstract class FetcherDecorator implements Fetcher</code> holding a <code>final Fetcher inner</code>; three concrete subclasses each override <code>fetch</code>.</p>`, `<p>Hint 3: Retry: loop up to N times, catch <code>IOException</code>, remember the last one, rethrow after the loop. Timing: <code>System.nanoTime()</code> before/after in a <code>finally</code> so failures are timed too. Order the layers on purpose.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "GET /a -> timeout\nGET /a -> timeout\nGET /a -> ok\ntook 12 ms\nbody of /a\nGET /b -> timeout\nfailed: timeout\n" }] },
@@ -1978,7 +2106,7 @@ public:
       statement: `<p>Uploading a video requires: <code>Validator.check(file)</code>, <code>Transcoder.toMp4(file)</code>, <code>ThumbnailMaker.make(mp4)</code>, <code>Storage.save(mp4, thumb)</code> (returns a video id), and <code>Notifier.notifyFollowers(userId, id)</code>. Today the web controller, the mobile API and an import script each do these five calls themselves. Design a single entry point <code>upload(userId, file)</code> that returns the video id or throws a clear error.</p>`,
       constraints: `<p>Invalid file → <code>IllegalArgumentException</code> before any expensive work. Subsystems must stay usable directly (an admin tool re-generates thumbnails). Dependencies must be injectable for tests.</p>`,
       example: `<p><code>upload("u7", "cat.mov")</code> → check ${H.c('g', 'ok')} → "cat.mp4" → "cat.jpg" → saved as ${H.c('b', 'vid-1')} → followers notified → returns <b>vid-1</b>. <code>upload("u7", "virus.exe")</code> → ${H.c('r', 'IllegalArgumentException')} and the transcoder is never called.</p>`,
-      brute: { why: `<p>Each caller repeats the five-step sequence. When the transcoder starts needing a "quality" parameter, three places change; the import script forgot validation, so it transcodes junk files and wastes CPU. Callers are coupled to five classes each.</p>`, code: `class Validator { boolean check(String f) { return f.endsWith(".mov") || f.endsWith(".mp4"); } }
+      brute: { why: `<p>Each caller repeats the five-step sequence. When the transcoder starts needing a "quality" parameter, three places change; the import script forgot validation, so it transcodes junk files and wastes CPU. Callers are coupled to five classes each.</p>`, code: { lang: 'java', code: `class Validator { boolean check(String f) { return f.endsWith(".mov") || f.endsWith(".mp4"); } }
 class Transcoder { String toMp4(String f) { return f.replaceAll("[.]mov$", ".mp4"); } }
 class ThumbnailMaker { String make(String mp4) { return mp4.replace(".mp4", ".jpg"); } }
 class Storage { String save(String mp4, String thumb) { return "vid-1"; } }
@@ -1998,7 +2126,80 @@ class ImportScript {         // copy #2 — and it forgot validation
         String mp4 = new Transcoder().toMp4(file);
         return new Storage().save(mp4, new ThumbnailMaker().make(mp4));
     }
+}`, alt: [
+                { lang: 'python', code: `
+import re
+
+class Validator:
+    def check(self, f): return f.endswith(".mov") or f.endswith(".mp4")
+class Transcoder:
+    def to_mp4(self, f): return re.sub(r"[.]mov$", ".mp4", f)
+class ThumbnailMaker:
+    def make(self, mp4): return mp4.replace(".mp4", ".jpg")
+class Storage:
+    def save(self, mp4, thumb): return "vid-1"
+class Notifier:
+    def notify_followers(self, u, id): print(u, "posted", id)
+
+class WebController:        # copy #1 of the workflow
+    def handle(self, user, file):
+        if not Validator().check(file): raise ValueError(file)
+        mp4 = Transcoder().to_mp4(file)
+        id = Storage().save(mp4, ThumbnailMaker().make(mp4))
+        Notifier().notify_followers(user, id)
+        return id
+
+class ImportScript:         # copy #2 — and it forgot validation
+    def run(self, user, file):
+        mp4 = Transcoder().to_mp4(file)
+        return Storage().save(mp4, ThumbnailMaker().make(mp4))` },
+                { lang: 'ts', code: `
+class Validator { check(f: string): boolean { return f.endsWith(".mov") || f.endsWith(".mp4"); } }
+class Transcoder { toMp4(f: string): string { return f.replace(/[.]mov$/, ".mp4"); } }
+class ThumbnailMaker { make(mp4: string): string { return mp4.replace(".mp4", ".jpg"); } }
+class Storage { save(mp4: string, thumb: string): string { return "vid-1"; } }
+class Notifier { notifyFollowers(u: string, id: string): void { console.log(u + " posted " + id); } }
+
+class WebController {        // copy #1 of the workflow
+    handle(user: string, file: string): string {
+        if (!new Validator().check(file)) throw new Error(file);
+        const mp4 = new Transcoder().toMp4(file);
+        const id = new Storage().save(mp4, new ThumbnailMaker().make(mp4));
+        new Notifier().notifyFollowers(user, id);
+        return id;
+    }
+}
+class ImportScript {         // copy #2 — and it forgot validation
+    run(user: string, file: string): string {
+        const mp4 = new Transcoder().toMp4(file);
+        return new Storage().save(mp4, new ThumbnailMaker().make(mp4));
+    }
 }` },
+                { lang: 'cpp', code: `
+struct Validator { bool check(const string& f) { return f.ends_with(".mov") || f.ends_with(".mp4"); } };
+struct Transcoder { string toMp4(string f) { if (f.ends_with(".mov")) f = f.substr(0, f.size() - 4) + ".mp4"; return f; } };
+struct ThumbnailMaker { string make(string mp4) { size_t p = mp4.find(".mp4"); if (p != string::npos) mp4.replace(p, 4, ".jpg"); return mp4; } };
+struct Storage { string save(const string& mp4, const string& thumb) { return "vid-1"; } };
+struct Notifier { void notifyFollowers(const string& u, const string& id) { cout << u << " posted " << id << "\\n"; } };
+
+class WebController {        // copy #1 of the workflow
+public:
+    string handle(const string& user, const string& file) {
+        if (!Validator().check(file)) throw invalid_argument(file);
+        string mp4 = Transcoder().toMp4(file);
+        string id = Storage().save(mp4, ThumbnailMaker().make(mp4));
+        Notifier().notifyFollowers(user, id);
+        return id;
+    }
+};
+class ImportScript {         // copy #2 — and it forgot validation
+public:
+    string run(const string& user, const string& file) {
+        string mp4 = Transcoder().toMp4(file);
+        return Storage().save(mp4, ThumbnailMaker().make(mp4));
+    }
+};` }
+              ] } },
       mcq: { q: 'The admin tool needs only ThumbnailMaker. What should it do once the facade exists?', options: ['Go through the facade and add a regenerateThumbnail() method to it', 'Call ThumbnailMaker directly — a facade does not hide subsystems', 'Copy ThumbnailMaker into the admin tool', 'Make ThumbnailMaker private to the facade'], answer: 1, explain: 'A facade offers a convenient default path; it does not prevent direct use of subsystems. Bloating it with every niche method turns it into a god class.' },
       hints: [`<p>Hint 1: The repeated <i>sequence</i> is the smell. Put the sequence in one class.</p>`, `<p>Hint 2: <code>VideoUploadFacade</code> takes all five subsystems in its constructor (dependency injection) and exposes one method.</p>`, `<p>Hint 3: Validate first and fail fast; then transcode → thumbnail → save → notify. Notification failure should not lose the upload — catch and log it after saving.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "u7 posted vid-1\nvid-1\nUnsupported file: virus.exe\nnotify failed for vid-2: push service down\nvid-2\n" }] },
@@ -2762,7 +2963,7 @@ proxy("USD/INR"); // second call served from cache` },
       statement: `<p><code>interface RateService { double rate(String from, String to); }</code> is implemented by <code>RemoteRateService</code>, which costs money and ~300 ms per call. Build a transparent cache in front of it: a repeated (from, to) pair within <b>ttlMillis</b> must be served without calling the remote service. Callers keep using <code>RateService</code>. Time must be injectable for tests.</p>`,
       constraints: `<p>ttlMillis ≥ 1. Pairs are case-insensitive ("usd","INR" = "USD","INR"). Thread-safe for concurrent readers. Remote failures must not be cached.</p>`,
       example: `<p>ttl = 60 000 ms. t=0 <code>rate(USD,INR)</code> → ${H.c('r', 'remote call')} → 83.2. t=10 s → ${H.c('g', 'cache hit')} 83.2. t=70 s → entry expired → ${H.c('r', 'remote call')} again. Remote calls: 2 instead of 3.</p>`,
-      brute: { why: `<p>Naive approach 1: call the remote API every time — slow and expensive. Naive approach 2: put a static <code>HashMap</code> inside <code>RemoteRateService</code> itself — now the "talk to API" class also does caching (two responsibilities), the cache never expires, it is not thread-safe, and tests cannot control time.</p>`, code: `class RemoteRateService {
+      brute: { why: `<p>Naive approach 1: call the remote API every time — slow and expensive. Naive approach 2: put a shared static map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>) inside <code>RemoteRateService</code> itself — now the "talk to API" class also does caching (two responsibilities), the cache never expires, it is not thread-safe, and tests cannot control time.</p>`, code: { lang: 'java', code: `class RemoteRateService {
     static final Map<String, Double> CACHE = new HashMap<>();   // never expires, not thread-safe
     double rate(String from, String to) {
         return CACHE.computeIfAbsent(from + to, k -> {
@@ -2770,7 +2971,42 @@ proxy("USD/INR"); // second call served from cache` },
             return 83.2;
         });
     }
+}`, alt: [
+                { lang: 'python', code: `
+class RemoteRateService:
+    CACHE = {}   # never expires, not thread-safe
+    def rate(self, frm, to):
+        k = frm + to
+        if k not in RemoteRateService.CACHE:
+            print("paid API call " + k)
+            RemoteRateService.CACHE[k] = 83.2
+        return RemoteRateService.CACHE[k]` },
+                { lang: 'ts', code: `
+class RemoteRateService {
+    static readonly CACHE = new Map<string, number>();   // never expires, shared by every caller
+    rate(from: string, to: string): number {
+        const k = from + to;
+        if (!RemoteRateService.CACHE.has(k)) {
+            console.log("paid API call " + k);
+            RemoteRateService.CACHE.set(k, 83.2);
+        }
+        return RemoteRateService.CACHE.get(k)!;
+    }
 }` },
+                { lang: 'cpp', code: `
+class RemoteRateService {
+    static inline unordered_map<string, double> CACHE;   // never expires, not thread-safe
+public:
+    double rate(const string& from, const string& to) {
+        string k = from + to;
+        if (!CACHE.count(k)) {
+            cout << "paid API call " << k << "\\n";
+            CACHE[k] = 83.2;
+        }
+        return CACHE[k];
+    }
+};` }
+              ] } },
       mcq: { q: 'Why inject a clock function (a LongSupplier in Java, a callable, a lambda) instead of calling the system clock inside the proxy?', options: ['It is faster', 'Tests can move time forward to check expiry without sleeping', 'System.currentTimeMillis() is deprecated', 'The proxy pattern requires it'], answer: 1, explain: 'A fake clock lets a unit test jump 61 seconds instantly and assert the remote service is called again.' },
       hints: [`<p>Hint 1: Same interface, holds the real service, decides whether to forward — that is a caching proxy.</p>`, `<p>Hint 2: Store an immutable entry <code>(value, fetchedAt)</code> in a thread-safe map keyed by the normalised pair (<code>ConcurrentHashMap</code> / <code>dict</code> + lock / <code>Map</code> / <code>unordered_map</code> + mutex).</p>`, `<p>Hint 3: On each call: read entry; if present and <code>now - fetchedAt &lt; ttl</code> return it; otherwise call remote (exceptions propagate, nothing stored) and put a fresh entry.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "83.2\n83.2\n83.2\nremote calls = 2\nrate failed: unknown currency XXX\nrate failed: unknown currency XXX\nremote calls = 4\n" }] },
@@ -3603,7 +3839,7 @@ public:
       statement: `<p>A cart contains <b>products</b> (name, price) and <b>bundles</b>. A bundle has a name, a discount percentage (0–50) and items — which can be products or other bundles. A bundle's price = (sum of its items' prices) × (1 − discount/100). Implement <code>price()</code> for the whole cart and a <code>describe()</code> that prints an indented tree. Prices are in paise (long); round half-up at each bundle.</p>`,
       constraints: `<p>Nesting depth ≤ 10, total items ≤ 10<sup>4</sup>. Discount outside 0–50 → <code>IllegalArgumentException</code>. A bundle cannot contain itself.</p>`,
       example: `<p>"Gaming Combo" (10% off) = Console 30 000 + "Controller Pack" (20% off: 2 × 3 000 = 6 000 → <b>4 800</b>) = 34 800 → × 0.9 = <b>${H.c('g', '31 320')}</b>. Cart = Gaming Combo + Headset 2 000 = <b>${H.c('g', '33 320')}</b>.</p>`,
-      brute: { why: `<p>Keep products and bundles in separate lists, and write pricing with <code>instanceof</code> checks and a hand-written loop per nesting level. It works for one level of bundles; a bundle inside a bundle needs another loop, and every new operation (describe, count items, tax) repeats the same type checks. Adding a "gift card" item type means editing every operation.</p>`, code: `class Product { String name; long price; Product(String n, long p) { name = n; price = p; } }
+      brute: { why: `<p>Keep products and bundles in separate lists, and write pricing with <code>instanceof</code> checks and a hand-written loop per nesting level. It works for one level of bundles; a bundle inside a bundle needs another loop, and every new operation (describe, count items, tax) repeats the same type checks. Adding a "gift card" item type means editing every operation.</p>`, code: { lang: 'java', code: `class Product { String name; long price; Product(String n, long p) { name = n; price = p; } }
 class Bundle { String name; int discount; List<Object> items = new ArrayList<>(); }
 
 class PriceCalculator {
@@ -3622,7 +3858,70 @@ class PriceCalculator {
         }
         return total;
     }
+}`, alt: [
+                { lang: 'python', code: `
+class Product:
+    def __init__(self, n, p): self.name, self.price = n, p
+class Bundle:
+    def __init__(self): self.name = ""; self.discount = 0; self.items = []
+
+class PriceCalculator:
+    def price(self, cart):
+        total = 0
+        for o in cart:
+            if isinstance(o, Product): total += o.price
+            elif isinstance(o, Bundle):
+                sub = 0
+                for inner in o.items:
+                    if isinstance(inner, Product): sub += inner.price
+                    # a bundle inside a bundle? another nested loop... and another...
+                total += sub * (100 - o.discount) // 100
+        return total` },
+                { lang: 'ts', code: `
+class Product { constructor(public name: string, public price: number) {} }
+class Bundle { name = ""; discount = 0; items: (Product | Bundle)[] = []; }
+
+class PriceCalculator {
+    price(cart: (Product | Bundle)[]): number {
+        let total = 0;
+        for (const o of cart) {
+            if (o instanceof Product) total += o.price;
+            else if (o instanceof Bundle) {
+                let sub = 0;
+                for (const inner of o.items) {
+                    if (inner instanceof Product) sub += inner.price;
+                    // a bundle inside a bundle? another nested loop... and another...
+                }
+                total += Math.floor(sub * (100 - o.discount) / 100);
+            }
+        }
+        return total;
+    }
 }` },
+                { lang: 'cpp', code: `
+struct Item { virtual ~Item() = default; };
+struct Product : Item { string name; long long price; Product(string n, long long p) : name(n), price(p) {} };
+struct Bundle : Item { string name; int discount = 0; vector<Item*> items; };
+
+class PriceCalculator {
+public:
+    long long price(const vector<Item*>& cart) {
+        long long total = 0;
+        for (Item* o : cart) {
+            if (auto* p = dynamic_cast<Product*>(o)) total += p->price;
+            else if (auto* b = dynamic_cast<Bundle*>(o)) {
+                long long sub = 0;
+                for (Item* inner : b->items) {
+                    if (auto* p2 = dynamic_cast<Product*>(inner)) sub += p2->price;
+                    // a bundle inside a bundle? another nested loop... and another...
+                }
+                total += sub * (100 - b->discount) / 100;
+            }
+        }
+        return total;
+    }
+};` }
+              ] } },
       mcq: { q: 'What is the type of the list inside Bundle in a clean Composite design?', options: ['List&lt;Product&gt;', 'List&lt;Bundle&gt;', 'List&lt;CartItem&gt; where CartItem is the shared interface', 'List&lt;Object&gt;'], answer: 2, explain: 'Children must be the component type so a bundle can hold products AND bundles, and the bundle just calls price() on each.' },
       hints: [`<p>Hint 1: Products and bundles must answer the same question — <code>price()</code>. Make a shared interface <code>CartItem</code>.</p>`, `<p>Hint 2: <code>Product</code> is the leaf; <code>Bundle</code> is the composite with <code>List&lt;CartItem&gt;</code>. Its <code>price()</code> sums children then applies its own discount.</p>`, `<p>Hint 3: Use long paise and compute <code>(sum * (100 - d) + 50) / 100</code> for half-up rounding. Guard against self-containment in <code>add()</code> by checking whether the new child (if a bundle) contains <code>this</code> anywhere.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "Cart (-0%): 33320\n  Gaming Combo (-10%): 31320\n    Console: 30000\n    Controller Pack (-20%): 4800\n      Controller: 3000\n      Controller: 3000\n  Headset: 2000\nTotal = 33320\ndiscount 0..50\ncycle: Controller Pack\n" }] },
@@ -4491,7 +4790,7 @@ public:
       statement: `<p>A BI tool has report types <b>SalesReport</b> (rows of region + revenue) and <b>InventoryReport</b> (rows of sku + qty), and export formats <b>CSV</b> and <b>Markdown table</b>. Next quarter adds a <b>HeadcountReport</b> and an <b>HTML</b> exporter. Design classes so each new report or format is exactly one new class, and write <code>String export()</code>.</p>`,
       constraints: `<p>Reports decide the title, columns and rows; formats decide only how a title + header + rows are written. No report class may mention CSV/Markdown.</p>`,
       example: `<p><code>new SalesReport(new CsvFormat(), data).export()</code> → ${H.c('b', '"region,revenue / North,1200 / South,900"')}. Same report with <code>new MarkdownFormat()</code> → ${H.c('g', '"| region | revenue |" …')}. 2 reports × 2 formats = 4 behaviours from 4 classes; after next quarter, 9 behaviours from 6.</p>`,
-      brute: { why: `<p>One subclass per pair: <code>CsvSalesReport</code>, <code>MarkdownSalesReport</code>, <code>CsvInventoryReport</code>, <code>MarkdownInventoryReport</code>. Next quarter needs 5 more classes (3 × 3 = 9 total). Formatting code (escaping commas, pipes) is duplicated per report, so a CSV escaping bug must be fixed in every CSV class.</p>`, code: `class CsvSalesReport {
+      brute: { why: `<p>One subclass per pair: <code>CsvSalesReport</code>, <code>MarkdownSalesReport</code>, <code>CsvInventoryReport</code>, <code>MarkdownInventoryReport</code>. Next quarter needs 5 more classes (3 × 3 = 9 total). Formatting code (escaping commas, pipes) is duplicated per report, so a CSV escaping bug must be fixed in every CSV class.</p>`, code: { lang: 'java', code: `class CsvSalesReport {
     String export(Map<String, Integer> revenue) {
         StringBuilder sb = new StringBuilder("region,revenue");
         revenue.forEach((r, v) -> sb.append(" / ").append(r).append(',').append(v));
@@ -4505,7 +4804,55 @@ class MarkdownSalesReport {
         return sb.toString();
     }
 }
+// ...and the same two again for InventoryReport, with copied formatting code`, alt: [
+                { lang: 'python', code: `
+class CsvSalesReport:
+    def export(self, revenue):
+        sb = "region,revenue"
+        for r, v in revenue.items(): sb += f" / {r},{v}"
+        return sb
+
+class MarkdownSalesReport:
+    def export(self, revenue):
+        sb = "| region | revenue |"
+        for r, v in revenue.items(): sb += f" | {r} | {v} |"
+        return sb
+# ...and the same two again for InventoryReport, with copied formatting code` },
+                { lang: 'ts', code: `
+class CsvSalesReport {
+    export(revenue: Map<string, number>): string {
+        let sb = "region,revenue";
+        revenue.forEach((v, r) => { sb += " / " + r + "," + v; });
+        return sb;
+    }
+}
+class MarkdownSalesReport {
+    export(revenue: Map<string, number>): string {
+        let sb = "| region | revenue |";
+        revenue.forEach((v, r) => { sb += " | " + r + " | " + v + " |"; });
+        return sb;
+    }
+}
 // ...and the same two again for InventoryReport, with copied formatting code` },
+                { lang: 'cpp', code: `
+class CsvSalesReport {
+public:
+    string exportReport(const map<string, int>& revenue) {
+        string sb = "region,revenue";
+        for (auto& [r, v] : revenue) sb += " / " + r + "," + to_string(v);
+        return sb;
+    }
+};
+class MarkdownSalesReport {
+public:
+    string exportReport(const map<string, int>& revenue) {
+        string sb = "| region | revenue |";
+        for (auto& [r, v] : revenue) sb += " | " + r + " | " + to_string(v) + " |";
+        return sb;
+    }
+};
+// ...and the same two again for InventoryReport, with copied formatting code` }
+              ] } },
       mcq: { q: 'Which side of the bridge should own "escape commas inside a CSV cell"?', options: ['Every report class', 'The CsvFormat implementor', 'The client', 'A static utility called by reports'], answer: 1, explain: 'Escaping is a property of the output format (the "how"), so it lives in the implementor and every report gets it for free.' },
       hints: [`<p>Hint 1: Two independent axes: <i>what data</i> (report) and <i>how it is written</i> (format). Make each its own hierarchy.</p>`, `<p>Hint 2: Implementor interface <code>Format { String render(String title, List&lt;String&gt; header, List&lt;List&lt;String&gt;&gt; rows); }</code>. Abstraction <code>Report</code> holds a <code>Format</code>.</p>`, `<p>Hint 3: <code>Report.export()</code> is final: it asks subclasses for title/header/rows (template method) and passes them across the bridge. CSV escapes cells containing commas or quotes by quoting and doubling quotes.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "region,revenue / North,1200 / South,900\n## Sales | region | revenue | | North | 1200 | | South | 900 |\nsku,qty / \"SKU-1, large\",4\n## Inventory | sku | qty | | SKU-1, large | 4 |\n" }] },
@@ -5221,7 +5568,7 @@ int main() {
       statement: `<p>Design the in-memory model for an editor document: each character has a <b>style</b> (font family, size, bold, italic, colour). Documents reach 10<sup>6</sup> characters but usually use fewer than 20 distinct styles. Support <code>append(char, font, size, bold, italic, color)</code>, <code>styleAt(i)</code>, and <code>distinctStyles()</code>. Two equal styles must be the <b>same object</b>.</p>`,
       constraints: `<p>N ≤ 10<sup>6</sup> chars. Styles are immutable. The style factory must be thread-safe. Memory per character should be a few bytes, not a full style object.</p>`,
       example: `<p>Append "Hi" in (Arial, 12, bold) and "!" in (Arial, 12, bold) → <code>styleAt(0) == styleAt(2)</code> is ${H.c('g', 'true')} and <code>distinctStyles()</code> = <b>1</b>. Naive: 3 style objects.</p>`,
-      brute: { why: `<p>Each <code>Character</code> object carries its own copy of font name, size, flags and colour: ~16-byte header + fields + a <code>String</code> reference ≈ 40+ bytes per char, plus the boxed char and list overhead — around 60 MB for 1 M characters, and comparing styles requires field-by-field equals. Most of those bytes are the same few styles repeated a million times.</p>`, code: `class StyledChar {
+      brute: { why: `<p>Each <code>Character</code> object carries its own copy of font name, size, flags and colour: an object header + fields + a reference to the font string ≈ 40+ bytes per char on a typical 64-bit runtime, plus list overhead — around 60 MB for 1 M characters, and comparing styles requires field-by-field equality checks. Most of those bytes are the same few styles repeated a million times.</p>`, code: { lang: 'java', code: `class StyledChar {
     final char ch; final String font; final int size; final boolean bold, italic; final int rgb;
     StyledChar(char ch, String font, int size, boolean bold, boolean italic, int rgb) {
         this.ch = ch; this.font = font; this.size = size; this.bold = bold; this.italic = italic; this.rgb = rgb;
@@ -5232,7 +5579,44 @@ class NaiveDocument {
     void append(char c, String font, int size, boolean b, boolean i, int rgb) {
         chars.add(new StyledChar(c, font, size, b, i, rgb));
     }
+}`, alt: [
+                { lang: 'python', code: `
+class StyledChar:
+    def __init__(self, ch, font, size, bold, italic, rgb):
+        self.ch, self.font, self.size = ch, font, size
+        self.bold, self.italic, self.rgb = bold, italic, rgb
+
+class NaiveDocument:
+    def __init__(self): self.chars = []   # one fat object per character
+    def append(self, c, font, size, b, i, rgb):
+        self.chars.append(StyledChar(c, font, size, b, i, rgb))` },
+                { lang: 'ts', code: `
+class StyledChar {
+    constructor(
+        readonly ch: string, readonly font: string, readonly size: number,
+        readonly bold: boolean, readonly italic: boolean, readonly rgb: number,
+    ) {}
+}
+class NaiveDocument {
+    readonly chars: StyledChar[] = [];   // one fat object per character
+    append(c: string, font: string, size: number, b: boolean, i: boolean, rgb: number): void {
+        this.chars.push(new StyledChar(c, font, size, b, i, rgb));
+    }
 }` },
+                { lang: 'cpp', code: `
+struct StyledChar {
+    char ch; string font; int size; bool bold, italic; int rgb;
+    StyledChar(char ch, string font, int size, bool bold, bool italic, int rgb)
+        : ch(ch), font(font), size(size), bold(bold), italic(italic), rgb(rgb) { }
+};
+class NaiveDocument {
+public:
+    vector<StyledChar> chars;   // one fat object per character
+    void append(char c, const string& font, int size, bool b, bool i, int rgb) {
+        chars.emplace_back(c, font, size, b, i, rgb);
+    }
+};` }
+              ] } },
       mcq: { q: 'Which of these belongs in the shared (intrinsic) Style flyweight?', options: ['The character itself', 'Its index in the document', 'Font, size, bold, italic, colour', 'The cursor position'], answer: 2, explain: 'Formatting is identical across many characters; the character and its position are unique per occurrence (extrinsic).' },
       hints: [`<p>Hint 1: Separate "what is repeated" (style) from "what is unique" (the char, its position).</p>`, `<p>Hint 2: An immutable value type with value-based equality (Java <code>record Style(...)</code>, Python frozen dataclass, C++ struct with <code>operator&lt;=&gt;</code>) works as a map key; a thread-safe map from style to style interns them.</p>`, `<p>Hint 3: Store chars in a <code>StringBuilder</code> and a parallel list of style references (or a <code>short[]</code> of style ids). <code>append</code> = intern style → push char + reference.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "true\n1\nfalse\n2\nindex out of range\n" }] },
@@ -5846,7 +6230,7 @@ int main() {
       statement: `<p>Build a small logging library. Callers write <code>Log.get("orders").info("placed {}", id)</code>. Requirements: (1) levels DEBUG &lt; INFO &lt; WARN &lt; ERROR with a minimum level per logger; (2) outputs ("appenders"): console and in-memory (for tests), more later; (3) send one logger to <b>several</b> appenders; (4) optional per-appender features: <b>level filter</b> and <b>prefix with timestamp</b>, combinable. Name the pattern behind each requirement.</p>`,
       constraints: `<p>Adding a new appender or a new appender feature must not edit existing classes. Callers must never see appender classes. Formatting replaces each <code>{}</code> with the next argument.</p>`,
       example: `<p><code>Log.configure("orders", Level.INFO, new Multi(new Console(), new Filtered(new Memory(), Level.WARN)))</code>. Then <code>info("placed {}", 42)</code> → ${H.c('g', 'console prints it')}, memory ${H.c('r', 'ignores it')} (below WARN). <code>error("failed {}", 7)</code> → both receive it.</p>`,
-      brute: { why: `<p>One <code>Logger</code> class with a <code>switch (outputType)</code> for console/file/memory, boolean flags for timestamp and filters, and a list of output names to loop over. Every new output adds a case inside the logger; every feature adds flags checked in every case; tests cannot capture output without editing the class. It is a god class that violates Open/Closed in three directions at once.</p>`, code: `class Logger {
+      brute: { why: `<p>One <code>Logger</code> class with a <code>switch (outputType)</code> for console/file/memory, boolean flags for timestamp and filters, and a list of output names to loop over. Every new output adds a case inside the logger; every feature adds flags checked in every case; tests cannot capture output without editing the class. It is a god class that violates Open/Closed in three directions at once.</p>`, code: { lang: 'java', code: `class Logger {
     String output = "console"; boolean timestamp; int minLevel = 1;
     final List<String> memory = new ArrayList<>();
     void log(int level, String msg) {
@@ -5859,7 +6243,52 @@ int main() {
             default -> throw new IllegalStateException(output);
         }
     }
+}`, alt: [
+                { lang: 'python', code: `
+import time
+
+class Logger:
+    def __init__(self):
+        self.output = "console"; self.timestamp = False; self.min_level = 1
+        self.memory = []
+    def log(self, level, msg):
+        if level < self.min_level: return
+        line = f"{int(time.time() * 1000)} {msg}" if self.timestamp else msg
+        match self.output:
+            case "console": print(line)
+            case "memory": self.memory.append(line)
+            case "both": print(line); self.memory.append(line)
+            case _: raise RuntimeError(self.output)` },
+                { lang: 'ts', code: `
+class Logger {
+    output = "console"; timestamp = false; minLevel = 1;
+    readonly memory: string[] = [];
+    log(level: number, msg: string): void {
+        if (level < this.minLevel) return;
+        const line = this.timestamp ? Date.now() + " " + msg : msg;
+        switch (this.output) {
+            case "console": console.log(line); break;
+            case "memory": this.memory.push(line); break;
+            case "both": console.log(line); this.memory.push(line); break;
+            default: throw new Error(this.output);
+        }
+    }
 }` },
+                { lang: 'cpp', code: `
+class Logger {
+public:
+    string output = "console"; bool timestamp = false; int minLevel = 1;
+    vector<string> memory;
+    void log(int level, const string& msg) {
+        if (level < minLevel) return;
+        string line = timestamp ? to_string(time(nullptr)) + " " + msg : msg;
+        if (output == "console") cout << line << "\\n";
+        else if (output == "memory") memory.push_back(line);
+        else if (output == "both") { cout << line << "\\n"; memory.push_back(line); }
+        else throw runtime_error(output);
+    }
+};` }
+              ] } },
       mcq: { q: '"Send one logger to several appenders, and the logger should not care how many" — which pattern?', options: ['Decorator', 'Composite (an appender that holds a list of appenders)', 'Flyweight', 'Adapter'], answer: 1, explain: 'A MultiAppender implements Appender and forwards each event to all its children — one and many treated alike.' },
       hints: [`<p>Hint 1: Map requirements to forces: simple caller API → Facade; logger vs output vary independently → Bridge (Logger holds an Appender interface); many outputs as one → Composite; optional stackable features → Decorator.</p>`, `<p>Hint 2: <code>interface Appender { void append(Level l, String logger, String msg); }</code>. Console/Memory are concrete; <code>Multi</code> holds a list; <code>Filtered</code> and <code>Timestamped</code> wrap one appender.</p>`, `<p>Hint 3: <code>Log</code> is a static facade with a thread-safe map from name to <code>Logger</code> (<code>ConcurrentHashMap</code> / <code>dict</code> + lock / <code>unordered_map</code> + mutex). <code>Logger.log</code> checks its min level, formats <code>{}</code> placeholders once, then calls its appender. Unconfigured loggers default to INFO + console.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "INFO [orders] placed 42\nERROR [orders] failed 7 of 9\nmemory has 1 line(s)\nERROR 2026-01-01T00:00:00Z failed 7 of 9\nWARN [payments] low stock SKU-1\nINFO [payments] literal {} stays\n" }] },
@@ -6318,7 +6747,7 @@ int main() {
     statement: `<p>A pizza app has bases <b>Thin</b> (₹200) and <b>Pan</b> (₹250), and toppings <b>Cheese</b> (+₹50), <b>Olives</b> (+₹30), <b>Paneer</b> (+₹70). A customer may add any toppings, any number of times ("double cheese"). Return the final <code>price()</code> and <code>description()</code>. First decide which structural pattern fits, then implement it.</p>`,
     constraints: `<p>≤ 10 toppings per pizza. New toppings will be added monthly without editing existing classes.</p>`,
     example: `<p><code>new Paneer(new Cheese(new Cheese(new Thin())))</code> → "Thin, Cheese, Cheese, Paneer" and ₹200 + 50 + 50 + 70 = <b>${H.c('g', '₹370')}</b>.</p>`,
-    brute: { why: `<p>A subclass per combination (<code>ThinCheese</code>, <code>ThinCheeseOlives</code>, …) explodes to 2 × 2<sup>3</sup> = 16 classes without doubles, infinitely many with doubles. A single class with boolean flags (<code>hasCheese</code>) cannot express "double cheese" and must be edited for every new topping.</p>`, code: `class Pizza {
+    brute: { why: `<p>A subclass per combination (<code>ThinCheese</code>, <code>ThinCheeseOlives</code>, …) explodes to 2 × 2<sup>3</sup> = 16 classes without doubles, infinitely many with doubles. A single class with boolean flags (<code>hasCheese</code>) cannot express "double cheese" and must be edited for every new topping.</p>`, code: { lang: 'java', code: `class Pizza {
     String base = "Thin"; boolean cheese, olives, paneer;
     int price() {
         int p = base.equals("Thin") ? 200 : 250;
@@ -6327,7 +6756,42 @@ int main() {
         if (paneer) p += 70;     // new topping = edit this class
         return p;
     }
+}`, alt: [
+              { lang: 'python', code: `
+class Pizza:
+    def __init__(self):
+        self.base = "Thin"
+        self.cheese = self.olives = self.paneer = False
+    def price(self):
+        p = 200 if self.base == "Thin" else 250
+        if self.cheese: p += 50     # double cheese? impossible
+        if self.olives: p += 30
+        if self.paneer: p += 70     # new topping = edit this class
+        return p` },
+              { lang: 'ts', code: `
+class Pizza {
+    base = "Thin"; cheese = false; olives = false; paneer = false;
+    price(): number {
+        let p = this.base === "Thin" ? 200 : 250;
+        if (this.cheese) p += 50;     // double cheese? impossible
+        if (this.olives) p += 30;
+        if (this.paneer) p += 70;     // new topping = edit this class
+        return p;
+    }
 }` },
+              { lang: 'cpp', code: `
+class Pizza {
+public:
+    string base = "Thin"; bool cheese = false, olives = false, paneer = false;
+    int price() {
+        int p = base == "Thin" ? 200 : 250;
+        if (cheese) p += 50;     // double cheese? impossible
+        if (olives) p += 30;
+        if (paneer) p += 70;     // new topping = edit this class
+        return p;
+    }
+};` }
+            ] } },
     mcq: { q: 'Which pattern fits "any combination of optional add-ons, added at runtime"?', options: ['Adapter', 'Decorator', 'Facade', 'Flyweight'], answer: 1, explain: 'Each topping wraps a pizza, keeps the Pizza interface and adds its price — stackable in any combination.' },
     hints: [`<p>Hint 1: "Any combination" + "add more later" = class explosion with inheritance. Wrap instead.</p>`, `<p>Hint 2: <code>interface Pizza { int price(); String description(); }</code>, bases implement it, <code>abstract class Topping implements Pizza</code> holds a <code>Pizza</code>.</p>`, `<p>Hint 3: Each topping returns <code>inner.price() + own</code> and <code>inner.description() + ", Name"</code>. Doubles are just wrapping twice.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "Thin, Cheese, Cheese, Paneer = Rs 370\nPan, Olives = Rs 280\n" }] },
@@ -6506,7 +6970,7 @@ int main() {
     statement: `<p>A drawing app's new code uses <code>interface Shape { double area(); Box bounds(); }</code> where <code>record Box(double x, double y, double w, double h)</code>. A legacy, unmodifiable class <code>LegacyRect</code> stores corners: <code>getX1(), getY1(), getX2(), getY2()</code> — and the corners may be given in any order (x2 &lt; x1 is allowed). Make legacy rectangles usable as <code>Shape</code>s.</p>`,
     constraints: `<p>Do not edit <code>LegacyRect</code>. Coordinates are doubles in [−10<sup>6</sup>, 10<sup>6</sup>].</p>`,
     example: `<p>LegacyRect(5, 8, 1, 2) → bounds = Box(x=${H.c('g', '1')}, y=${H.c('g', '2')}, w=${H.c('g', '4')}, h=${H.c('g', '6')}), area = <b>24</b>. The adapter normalises the corner order.</p>`,
-    brute: { why: `<p>Converting at every call site: each place that draws a legacy rectangle computes <code>Math.min</code>/<code>Math.abs</code> itself. Some call sites forget to normalise reversed corners and get negative widths — the same bug appears in many files.</p>`, code: `class LegacyRect {
+    brute: { why: `<p>Converting at every call site: each place that draws a legacy rectangle computes <code>Math.min</code>/<code>Math.abs</code> itself. Some call sites forget to normalise reversed corners and get negative widths — the same bug appears in many files.</p>`, code: { lang: 'java', code: `class LegacyRect {
     private final double x1, y1, x2, y2;
     LegacyRect(double x1, double y1, double x2, double y2) { this.x1 = x1; this.y1 = y1; this.x2 = x2; this.y2 = y2; }
     double getX1() { return x1; } double getY1() { return y1; } double getX2() { return x2; } double getY2() { return y2; }
@@ -6517,7 +6981,48 @@ class Renderer {
         double h = r.getY2() - r.getY1();
         System.out.println("rect " + w + "x" + h);
     }
+}`, alt: [
+              { lang: 'python', code: `
+class LegacyRect:
+    def __init__(self, x1, y1, x2, y2): self._x1, self._y1, self._x2, self._y2 = x1, y1, x2, y2
+    def get_x1(self): return self._x1
+    def get_y1(self): return self._y1
+    def get_x2(self): return self._x2
+    def get_y2(self): return self._y2
+
+class Renderer:
+    def draw(self, r):
+        w = r.get_x2() - r.get_x1()          # negative when corners are reversed: bug
+        h = r.get_y2() - r.get_y1()
+        print(f"rect {w}x{h}")` },
+              { lang: 'ts', code: `
+class LegacyRect {
+    constructor(private readonly x1: number, private readonly y1: number, private readonly x2: number, private readonly y2: number) {}
+    getX1(): number { return this.x1; } getY1(): number { return this.y1; } getX2(): number { return this.x2; } getY2(): number { return this.y2; }
+}
+class Renderer {
+    draw(r: LegacyRect): void {
+        const w = r.getX2() - r.getX1();          // negative when corners are reversed: bug
+        const h = r.getY2() - r.getY1();
+        console.log("rect " + w + "x" + h);
+    }
 }` },
+              { lang: 'cpp', code: `
+class LegacyRect {
+    double x1, y1, x2, y2;
+public:
+    LegacyRect(double x1, double y1, double x2, double y2) : x1(x1), y1(y1), x2(x2), y2(y2) { }
+    double getX1() const { return x1; } double getY1() const { return y1; } double getX2() const { return x2; } double getY2() const { return y2; }
+};
+class Renderer {
+public:
+    void draw(const LegacyRect& r) {
+        double w = r.getX2() - r.getX1();          // negative when corners are reversed: bug
+        double h = r.getY2() - r.getY1();
+        cout << "rect " << w << "x" << h << "\\n";
+    }
+};` }
+            ] } },
     mcq: { q: 'The legacy class works but has the wrong method names and coordinate model. Which pattern fits?', options: ['Bridge', 'Adapter', 'Proxy', 'Composite'], answer: 1, explain: 'Wrong interface, cannot modify the class → wrap it in an adapter that implements the expected interface.' },
     hints: [`<p>Hint 1: The client expects <code>Shape</code>; the class you have is <code>LegacyRect</code>. One new class should implement <code>Shape</code> and hold a <code>LegacyRect</code>.</p>`, `<p>Hint 2: Normalise once: x = min(x1, x2), w = |x2 − x1| (same for y).</p>`, `<p>Hint 3: area = w × h. Keep the adapter free of drawing logic — it only translates.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "x=1.0 y=2.0 w=4.0 h=6.0 area=24.0\nx=0.0 y=0.0 w=3.0 h=2.0 area=6.0\nx=3.0 y=3.0 w=0.0 h=6.0 area=0.0\n" }] },
@@ -6724,7 +7229,7 @@ int main() {
     statement: `<p>A smart home has <code>Lights</code> (off per room), <code>Thermostat</code> (setTemp), <code>DoorLock</code> (lockAll, returns false if a door is open), <code>Alarm</code> (arm) and <code>Speaker</code> (play). The mobile app, the voice assistant and a wall button all need a "Good Night" action: all lights off, temperature 20 °C, lock doors, arm alarm (only if locking succeeded), play "Good night". Design it so the three callers share one implementation.</p>`,
     constraints: `<p>If any door is open, do not arm the alarm and return a message naming the problem. Each device class must remain usable directly.</p>`,
     example: `<p>All doors closed → ${H.c('g', '"Good night: house secured"')}. Back door open → lights off, thermostat set, ${H.c('r', '"Back door open — alarm NOT armed"')}.</p>`,
-    brute: { why: `<p>Each of the three callers performs the five device calls itself. The voice assistant's copy forgets the "only arm if locked" rule and arms the alarm with a door open — a real safety bug caused by duplicated orchestration.</p>`, code: `class Lights { void allOff() { System.out.println("lights off"); } }
+    brute: { why: `<p>Each of the three callers performs the five device calls itself. The voice assistant's copy forgets the "only arm if locked" rule and arms the alarm with a door open — a real safety bug caused by duplicated orchestration.</p>`, code: { lang: 'java', code: `class Lights { void allOff() { System.out.println("lights off"); } }
 class Alarm { void arm() { System.out.println("alarm armed"); } }
 class DoorLock { boolean lockAll() { return true; } }
 
@@ -6734,7 +7239,46 @@ class VoiceAssistant {
         d.lockAll();     // result ignored...
         a.arm();         // ...so the alarm is armed even with a door open
     }
+}`, alt: [
+              { lang: 'python', code: `
+class Lights:
+    def all_off(self): print("lights off")
+class Alarm:
+    def arm(self): print("alarm armed")
+class DoorLock:
+    def lock_all(self): return True
+
+class VoiceAssistant:
+    def good_night(self, l, d, a):
+        l.all_off()
+        d.lock_all()     # result ignored...
+        a.arm()          # ...so the alarm is armed even with a door open` },
+              { lang: 'ts', code: `
+class Lights { allOff(): void { console.log("lights off"); } }
+class Alarm { arm(): void { console.log("alarm armed"); } }
+class DoorLock { lockAll(): boolean { return true; } }
+
+class VoiceAssistant {
+    goodNight(l: Lights, d: DoorLock, a: Alarm): void {
+        l.allOff();
+        d.lockAll();     // result ignored...
+        a.arm();         // ...so the alarm is armed even with a door open
+    }
 }` },
+              { lang: 'cpp', code: `
+struct Lights { void allOff() { cout << "lights off\\n"; } };
+struct Alarm { void arm() { cout << "alarm armed\\n"; } };
+struct DoorLock { bool lockAll() { return true; } };
+
+class VoiceAssistant {
+public:
+    void goodNight(Lights& l, DoorLock& d, Alarm& a) {
+        l.allOff();
+        d.lockAll();     // result ignored...
+        a.arm();         // ...so the alarm is armed even with a door open
+    }
+};` }
+            ] } },
     mcq: { q: 'Five subsystems, a fixed order, three callers. Which pattern fits?', options: ['Facade', 'Decorator', 'Flyweight', 'Bridge'], answer: 0, explain: 'One simple method over many subsystems, coordinating the order and the conditional rule, is exactly a facade.' },
     hints: [`<p>Hint 1: The duplicated thing is the <i>sequence and its rule</i>. Put it behind one method.</p>`, `<p>Hint 2: <code>HomeFacade(Lights, Thermostat, DoorLock, Alarm, Speaker)</code> with <code>String goodNight()</code>.</p>`, `<p>Hint 3: Use the lock result: arm only on success; otherwise return a warning naming the open door. Keep device classes public for direct use.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "lights off\ntemp 20\nalarm armed\nsay: Good night\nGood night: house secured\nlights off\ntemp 20\nBack door open - alarm NOT armed\n" }] },
@@ -6939,7 +7483,7 @@ int main() {
     statement: `<p>A company has employees (name, salary) and departments (name) that contain employees <i>and</i> sub-departments. Implement <code>headcount()</code> and <code>payroll()</code> that work on a single employee or any department, plus <code>deepest()</code> returning the maximum nesting depth (employee = 0).</p>`,
     constraints: `<p>Up to 10<sup>5</sup> people, depth ≤ 20. Salaries are long rupees. Empty departments count 0 people.</p>`,
     example: `<p>Company{ CEO 100, Eng{ Ana 50, Bo 40, Platform{ Cy 45 } } } → headcount <b>${H.c('g', '4')}</b>, payroll <b>${H.c('g', '235')}</b>, deepest = 3 (Company → Eng → Platform → Cy).</p>`,
-    brute: { why: `<p>Keeping departments and employees in separate typed lists and writing <code>instanceof</code>-driven loops in a <code>PayrollService</code>. Each new question (average salary, list of managers) needs another type-checking recursion, and a third node type (contractor) breaks every one of them.</p>`, code: `class Emp { String name; long salary; }
+    brute: { why: `<p>Keeping departments and employees in separate typed lists and writing <code>instanceof</code>-driven loops in a <code>PayrollService</code>. Each new question (average salary, list of managers) needs another type-checking recursion, and a third node type (contractor) breaks every one of them.</p>`, code: { lang: 'java', code: `class Emp { String name; long salary; }
 class Dept { String name; List<Object> members = new ArrayList<>(); }
 
 class PayrollService {
@@ -6949,7 +7493,46 @@ class PayrollService {
         for (Object m : ((Dept) node).members) sum += payroll(m);   // casts and type checks everywhere
         return sum;
     }
+}`, alt: [
+              { lang: 'python', code: `
+class Emp:
+    def __init__(self): self.name = ""; self.salary = 0
+class Dept:
+    def __init__(self): self.name = ""; self.members = []
+
+class PayrollService:
+    def payroll(self, node):
+        if isinstance(node, Emp): return node.salary
+        total = 0
+        for m in node.members: total += self.payroll(m)   # type checks everywhere
+        return total` },
+              { lang: 'ts', code: `
+class Emp { name = ""; salary = 0; }
+class Dept { name = ""; members: (Emp | Dept)[] = []; }
+
+class PayrollService {
+    payroll(node: Emp | Dept): number {
+        if (node instanceof Emp) return node.salary;
+        let sum = 0;
+        for (const m of (node as Dept).members) sum += this.payroll(m);   // casts and type checks everywhere
+        return sum;
+    }
 }` },
+              { lang: 'cpp', code: `
+struct Node { virtual ~Node() = default; };
+struct Emp : Node { string name; long long salary = 0; };
+struct Dept : Node { string name; vector<Node*> members; };
+
+class PayrollService {
+public:
+    long long payroll(Node* node) {
+        if (auto* e = dynamic_cast<Emp*>(node)) return e->salary;
+        long long sum = 0;
+        for (Node* m : dynamic_cast<Dept*>(node)->members) sum += payroll(m);   // casts and type checks everywhere
+        return sum;
+    }
+};` }
+            ] } },
     mcq: { q: 'Departments contain people AND departments, and the same questions apply to both. Which pattern?', options: ['Composite', 'Proxy', 'Adapter', 'Bridge'], answer: 0, explain: 'A part-whole tree where leaves and groups share one interface is the Composite pattern.' },
     hints: [`<p>Hint 1: Make <code>OrgUnit</code> the shared interface with all three methods.</p>`, `<p>Hint 2: <code>Employee</code> (leaf): headcount 1, payroll = salary, depth 0. <code>Department</code> (composite) aggregates over <code>List&lt;OrgUnit&gt;</code>.</p>`, `<p>Hint 3: Department depth = 1 + max(child depth). An empty department has depth 1 (it is still a level) — decide edge cases like this out loud and document them.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "4 235 3\n0 0 1\n1 100 0\n" }] },
@@ -7155,7 +7738,7 @@ int main() {
     statement: `<p><code>interface Account { long balance(); void deposit(long amt); void withdraw(long amt); }</code> is implemented by <code>RealAccount</code> (pure business logic, no security). Rules: the <b>OWNER</b> may do everything; a <b>TELLER</b> may view balance and deposit; an <b>AUDITOR</b> may only view. Every denied attempt must be recorded in an audit log. <code>RealAccount</code> must stay free of security code.</p>`,
     constraints: `<p>Unauthorised calls throw <code>SecurityException</code> and must not reach the real account. Withdraw more than the balance → <code>IllegalStateException</code> from the real account.</p>`,
     example: `<p>Teller: <code>deposit(500)</code> ${H.c('g', 'ok')}, <code>withdraw(100)</code> ${H.c('r', 'SecurityException')}, audit log = ["TELLER denied withdraw"]. Owner: <code>withdraw(100)</code> ${H.c('g', 'ok')}.</p>`,
-    brute: { why: `<p>Putting <code>if (role != OWNER) throw</code> inside every <code>RealAccount</code> method mixes security with banking logic. Tests for interest calculation now need a user context; adding a new role edits every method; and a second account type duplicates all the checks.</p>`, code: `enum Role { OWNER, TELLER, AUDITOR }
+    brute: { why: `<p>Putting <code>if (role != OWNER) throw</code> inside every <code>RealAccount</code> method mixes security with banking logic. Tests for interest calculation now need a user context; adding a new role edits every method; and a second account type duplicates all the checks.</p>`, code: { lang: 'java', code: `enum Role { OWNER, TELLER, AUDITOR }
 class RealAccount {
     private long balance; Role currentRole = Role.OWNER;      // security leaked into the domain class
     long balance() { return balance; }
@@ -7165,7 +7748,51 @@ class RealAccount {
         if (a > balance) throw new IllegalStateException("insufficient");
         balance -= a;
     }
+}`, alt: [
+              { lang: 'python', code: `
+from enum import Enum
+
+class Role(Enum): OWNER = 1; TELLER = 2; AUDITOR = 3
+
+class RealAccount:
+    def __init__(self):
+        self._balance = 0
+        self.current_role = Role.OWNER      # security leaked into the domain class
+    def balance(self): return self._balance
+    def deposit(self, a):
+        if self.current_role == Role.AUDITOR: raise PermissionError()
+        self._balance += a
+    def withdraw(self, a):
+        if self.current_role != Role.OWNER: raise PermissionError()
+        if a > self._balance: raise RuntimeError("insufficient")
+        self._balance -= a` },
+              { lang: 'ts', code: `
+enum Role { OWNER, TELLER, AUDITOR }
+class RealAccount {
+    private _balance = 0; currentRole = Role.OWNER;      // security leaked into the domain class
+    balance(): number { return this._balance; }
+    deposit(a: number): void { if (this.currentRole === Role.AUDITOR) throw new Error("forbidden"); this._balance += a; }
+    withdraw(a: number): void {
+        if (this.currentRole !== Role.OWNER) throw new Error("forbidden");
+        if (a > this._balance) throw new Error("insufficient");
+        this._balance -= a;
+    }
 }` },
+              { lang: 'cpp', code: `
+enum class Role { OWNER, TELLER, AUDITOR };
+class RealAccount {
+    long long bal = 0;
+public:
+    Role currentRole = Role::OWNER;      // security leaked into the domain class
+    long long balance() { return bal; }
+    void deposit(long long a) { if (currentRole == Role::AUDITOR) throw runtime_error("forbidden"); bal += a; }
+    void withdraw(long long a) {
+        if (currentRole != Role::OWNER) throw runtime_error("forbidden");
+        if (a > bal) throw runtime_error("insufficient");
+        bal -= a;
+    }
+};` }
+            ] } },
     mcq: { q: 'Same interface, same behaviour, but calls must be checked before reaching the real object. Which pattern?', options: ['Decorator', 'Protection Proxy', 'Adapter', 'Facade'], answer: 1, explain: 'Controlling access to an object with an identical interface is the protection proxy — it adds no new feature to the account itself.' },
     hints: [`<p>Hint 1: Create <code>SecuredAccount implements Account</code> holding the real account, the caller's role, and an audit log.</p>`, `<p>Hint 2: Model permissions as data: <code>Map&lt;Role, Set&lt;Op&gt;&gt;</code> so a new role is a config change, not new code.</p>`, `<p>Hint 3: Each method: <code>check(op)</code> → if not allowed, append to audit log and throw; else delegate. Never catch business exceptions from the real account.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "blocked\n400 [TELLER denied withdraw]\n400\nAUDITOR may not DEPOSIT\ninsufficient funds\n[TELLER denied withdraw, AUDITOR denied deposit]\n" }] },
@@ -7518,13 +8145,38 @@ int main() {
     statement: `<p><code>interface GeoApi { String lookup(String clientId, String ip); }</code> calls a paid vendor. Each client may make at most <b>limit</b> calls per <b>windowMillis</b> (fixed window). Excess calls must fail fast with <code>RateLimitedException</code> <i>without</i> reaching the vendor. Callers must keep using <code>GeoApi</code>. Time must be injectable.</p>`,
     constraints: `<p>limit ≥ 1, windowMillis ≥ 1. Many clients, many threads. Each client's window starts at its first call in that window.</p>`,
     example: `<p>limit = 2, window = 1000 ms. Client A at t = 0, 10 → ${H.c('g', 'allowed')}; t = 20 → ${H.c('r', 'rate limited')}; t = 1005 → new window → ${H.c('g', 'allowed')}. Client B at t = 20 → allowed (separate counter).</p>`,
-    brute: { why: `<p>Adding a counter inside the vendor-calling class (or worse, in every caller) mixes throttling with business code, uses a single global counter (one noisy client blocks everyone), and with an unsynchronised map corrupts under concurrency.</p>`, code: `class VendorGeoApi {
+    brute: { why: `<p>Adding a counter inside the vendor-calling class (or worse, in every caller) mixes throttling with business code, uses a single global counter (one noisy client blocks everyone), and with an unsynchronised map corrupts under concurrency.</p>`, code: { lang: 'java', code: `class VendorGeoApi {
     static int callsThisSecond = 0;                 // global, not per client, not thread-safe
     String lookup(String clientId, String ip) {
         if (++callsThisSecond > 2) throw new RuntimeException("limited");
         return "IN";
     }
+}`, alt: [
+              { lang: 'python', code: `
+class VendorGeoApi:
+    calls_this_second = 0                 # global, not per client, not thread-safe
+    def lookup(self, client_id, ip):
+        VendorGeoApi.calls_this_second += 1
+        if VendorGeoApi.calls_this_second > 2: raise RuntimeError("limited")
+        return "IN"` },
+              { lang: 'ts', code: `
+class VendorGeoApi {
+    static callsThisSecond = 0;                 // global, not per client
+    lookup(clientId: string, ip: string): string {
+        if (++VendorGeoApi.callsThisSecond > 2) throw new Error("limited");
+        return "IN";
+    }
 }` },
+              { lang: 'cpp', code: `
+class VendorGeoApi {
+    static inline int callsThisSecond = 0;                 // global, not per client, not thread-safe
+public:
+    string lookup(const string& clientId, const string& ip) {
+        if (++callsThisSecond > 2) throw runtime_error("limited");
+        return "IN";
+    }
+};` }
+            ] } },
     mcq: { q: 'Why make the limiter a proxy instead of a feature of VendorGeoApi?', options: ['Proxies are faster', 'Access control is a separate concern; the vendor class stays focused and the limiter can wrap any GeoApi', 'The language requires it', 'So the vendor is called even when limited'], answer: 1, explain: 'The proxy guards access with the same interface and can be reused in front of any implementation (including a fake in tests).' },
     hints: [`<p>Hint 1: Same interface, decides whether to forward → proxy. Keep one window per client id.</p>`, `<p>Hint 2: A thread-safe map from client id to <code>Window</code> (Java <code>ConcurrentHashMap.compute</code>; a lock around a <code>dict</code> or <code>unordered_map</code> elsewhere) so the read-modify-write of each client's counter is atomic.</p>`, `<p>Hint 3: In <code>compute</code>: if no window or now − start ≥ window → new Window(now, 1); else count + 1. If the resulting count &gt; limit, throw; otherwise delegate.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "IN\nIN\nlimited: A exceeded 2/1000ms\nUS\nIN\nvendor calls = 4\nlimit and window must be >= 1\n" }] },
@@ -7798,11 +8450,31 @@ int main() {
     statement: `<p>A shooter game spawns up to 100 000 bullets. Each bullet type (pistol, laser, rocket…) has a 64 KB sprite, a damage value and a colour; each bullet has its own position, velocity and remaining life. Implement <code>spawn(type, x, y, vx, vy)</code>, <code>tick()</code> (move bullets, remove dead ones) and <code>memoryEstimateBytes()</code>.</p>`,
     constraints: `<p>≤ 16 bullet types, ≤ 10<sup>5</sup> live bullets, tick must be O(live bullets). Bullet types are immutable.</p>`,
     example: `<p>Spawn 3 pistol + 2 laser bullets → <b>${H.c('g', '2')}</b> BulletType objects exist, 5 Bullet contexts. Memory estimate ≈ 2 × 64 KB + 5 × 40 B ≈ <b>131 KB</b> instead of 5 × 64 KB = 320 KB (and 6.4 GB vs 128 KB+4 MB at 100k).</p>`,
-    brute: { why: `<p>Each <code>Bullet</code> owns a copy of its 64 KB sprite. At 100 000 bullets that is 6.4 GB — the game crashes, and even before that, allocating sprites every frame thrashes the garbage collector.</p>`, code: `class Bullet {
+    brute: { why: `<p>Each <code>Bullet</code> owns a copy of its 64 KB sprite. At 100 000 bullets that is 6.4 GB — the game crashes, and even before that, allocating sprites every frame thrashes the garbage collector.</p>`, code: { lang: 'java', code: `class Bullet {
     final byte[] sprite = new byte[64 * 1024];   // copied per bullet!
     final int damage; double x, y, vx, vy; int life = 100;
     Bullet(int damage, double x, double y, double vx, double vy) { this.damage = damage; this.x = x; this.y = y; this.vx = vx; this.vy = vy; }
+}`, alt: [
+              { lang: 'python', code: `
+class Bullet:
+    def __init__(self, damage, x, y, vx, vy):
+        self.sprite = bytearray(64 * 1024)   # copied per bullet!
+        self.damage = damage
+        self.x, self.y, self.vx, self.vy = x, y, vx, vy
+        self.life = 100` },
+              { lang: 'ts', code: `
+class Bullet {
+    readonly sprite = new Uint8Array(64 * 1024);   // copied per bullet!
+    life = 100;
+    constructor(readonly damage: number, public x: number, public y: number, public vx: number, public vy: number) {}
 }` },
+              { lang: 'cpp', code: `
+struct Bullet {
+    vector<unsigned char> sprite = vector<unsigned char>(64 * 1024);   // copied per bullet!
+    int damage; double x, y, vx, vy; int life = 100;
+    Bullet(int damage, double x, double y, double vx, double vy) : damage(damage), x(x), y(y), vx(vx), vy(vy) { }
+};` }
+            ] } },
     mcq: { q: 'Which fields belong in the shared BulletType flyweight?', options: ['x, y', 'vx, vy, life', 'sprite, damage, colour', 'All fields'], answer: 2, explain: 'Sprite, damage and colour are identical for every bullet of a type (intrinsic). Position, velocity and life differ per bullet (extrinsic).' },
     hints: [`<p>Hint 1: Split intrinsic (per type) from extrinsic (per bullet) state.</p>`, `<p>Hint 2: <code>BulletTypeFactory</code> with an atomic get-or-create (<code>computeIfAbsent</code> in Java); <code>Bullet</code> holds a reference to its type plus mutable motion fields.</p>`, `<p>Hint 3: In <code>tick()</code> use an iterator (or swap-remove) to delete dead bullets in O(1) each. Memory estimate = types × sprite + bullets × context size.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "2 types, 5 bullets, ~131272 bytes\ntrue\n2 types, 0 bullets, ~131072 bytes\n" }] },
@@ -8094,7 +8766,7 @@ int main() {
     statement: `<p><code>interface DataStore { void write(String data); String read(); }</code> with a plain <code>MemoryStore</code>. Add stackable features: <b>Compression</b> (run-length encoding with a marker: "aaab" → "3xa1xb" — count, an 'x', then the character, so any character including digits survives), <b>Encryption</b> (simple reversible shift cipher for this exercise), and <b>Checksum</b> (append "#&lt;sum&gt;" on write, verify and strip on read, throw if corrupted). Each feature must transform on write and undo on read, and any subset in any order must round-trip.</p>`,
     constraints: `<p>Any characters (layers will feed each other digits, '#' and 'x'). Length ≤ 10<sup>5</sup>. <code>read()</code> after <code>write(s)</code> must return exactly s for every stacking order — so each layer's decode must invert its encode for <i>every</i> string.</p>`,
     example: `<p><code>new Checksum(new Encryption(new Compression(new MemoryStore())))</code>; write "aaabbb": Checksum appends ${H.c('y', '"#sum"')}, Encryption shifts the letters, Compression run-length encodes, and the store keeps the result. <code>read()</code> undoes them in exact reverse (Compression → Encryption → Checksum) and returns ${H.c('g', '"aaabbb"')}. The outer layer's write runs first and its read runs last.</p>`,
-    brute: { why: `<p>A single <code>SmartStore</code> with flags <code>compress</code>, <code>encrypt</code>, <code>checksum</code> must hard-code one order of operations in write and the exact reverse in read. Supporting a different order or a new transform (Base64) means rewriting both methods; bugs where read's order does not mirror write's corrupt data silently.</p>`, code: `class SmartStore {
+    brute: { why: `<p>A single <code>SmartStore</code> with flags <code>compress</code>, <code>encrypt</code>, <code>checksum</code> must hard-code one order of operations in write and the exact reverse in read. Supporting a different order or a new transform (Base64) means rewriting both methods; bugs where read's order does not mirror write's corrupt data silently.</p>`, code: { lang: 'java', code: `class SmartStore {
     boolean compress, encrypt; String stored = "";
     void write(String s) {
         if (encrypt) s = shift(s, 3);          // fixed order baked in
@@ -8112,7 +8784,63 @@ int main() {
         for (char c : s.toCharArray()) b.append((char) (c + k));
         return b.toString();
     }
+}`, alt: [
+              { lang: 'python', code: `
+class SmartStore:
+    def __init__(self):
+        self.compress = self.encrypt = False
+        self.stored = ""
+    def write(self, s):
+        if self.encrypt: s = self.shift(s, 3)          # fixed order baked in
+        if self.compress: s = s.upper()                # placeholder transform for the flag
+        self.stored = s
+    def read(self):
+        s = self.stored
+        if self.compress: s = s.lower()
+        if self.encrypt: s = self.shift(s, -3)         # must mirror write exactly, by hand
+        return s
+    @staticmethod
+    def shift(s, k):
+        return "".join(chr(ord(c) + k) for c in s)` },
+              { lang: 'ts', code: `
+class SmartStore {
+    compress = false; encrypt = false; stored = "";
+    write(s: string): void {
+        if (this.encrypt) s = SmartStore.shift(s, 3);          // fixed order baked in
+        if (this.compress) s = s.toUpperCase();                // placeholder transform for the flag
+        this.stored = s;
+    }
+    read(): string {
+        let s = this.stored;
+        if (this.compress) s = s.toLowerCase();
+        if (this.encrypt) s = SmartStore.shift(s, -3);         // must mirror write exactly, by hand
+        return s;
+    }
+    static shift(s: string, k: number): string {
+        let b = "";
+        for (const c of s) b += String.fromCharCode(c.charCodeAt(0) + k);
+        return b;
+    }
 }` },
+              { lang: 'cpp', code: `
+class SmartStore {
+    string stored;
+    static string shift(string s, int k) { for (char& c : s) c = (char)(c + k); return s; }
+public:
+    bool compress = false, encrypt = false;
+    void write(string s) {
+        if (encrypt) s = shift(s, 3);          // fixed order baked in
+        if (compress) transform(s.begin(), s.end(), s.begin(), ::toupper);   // placeholder transform for the flag
+        stored = s;
+    }
+    string read() {
+        string s = stored;
+        if (compress) transform(s.begin(), s.end(), s.begin(), ::tolower);
+        if (encrypt) s = shift(s, -3);         // must mirror write exactly, by hand
+        return s;
+    }
+};` }
+            ] } },
     mcq: { q: 'With Encryption(Compression(store)), what does the compressor see on write?', options: ['The original text', 'The encrypted text', 'The checksum', 'Nothing — compression runs on read only'], answer: 1, explain: 'The outer decorator (Encryption) transforms first and passes its output inward, so Compression receives ciphertext — which compresses badly. Order matters.' },
     hints: [`<p>Hint 1: Each feature is a decorator with two halves: transform on the way in (write) and inverse on the way out (read).</p>`, `<p>Hint 2: <code>write(s)</code> → <code>inner.write(encode(s))</code>; <code>read()</code> → <code>decode(inner.read())</code>. Wrapping automatically mirrors the order.</p>`, `<p>Hint 3: RLE decode: read digits up to the 'x' marker into a count, then repeat the single character after the marker (it may itself be a digit or an 'x'). Checksum: sum of chars mod 997; on read split at the last '#', recompute, throw <code>IllegalStateException</code> on mismatch.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "aaabbbCCz 42x#\naaabbbCCz 42x#\naaabbbCCz 42x#\n3xa1xb\ncorrupted\n" }] },
@@ -8533,7 +9261,7 @@ int main() {
     statement: `<p>Support shapes <b>Rect(w, h)</b> and <b>Square(side)</b> and renderers <b>Ascii</b> (draws with '#') and <b>Svg</b> (returns an svg rect element string). Product will add Circle, Line and a PDF renderer later. Each shape must render with each renderer, and adding one shape or renderer must be one class.</p>`,
     constraints: `<p>1 ≤ w, h ≤ 20 for ASCII. Shapes must not contain renderer-specific code; renderers must not know shape classes.</p>`,
     example: `<p><code>new Rect(new AsciiRenderer(), 3, 2).draw()</code> → ${H.c('b', '"### / ###"')}. <code>new Square(new SvgRenderer(), 4).draw()</code> → ${H.c('g', 'rect element with width 4 and height 4')}. 2 shapes × 2 renderers from 4 classes.</p>`,
-    brute: { why: `<p><code>AsciiRect</code>, <code>SvgRect</code>, <code>AsciiSquare</code>, <code>SvgSquare</code>… M × N classes. Adding PDF needs M new classes; adding Circle needs N. ASCII drawing code is duplicated in every Ascii* class.</p>`, code: `class AsciiRect {
+    brute: { why: `<p><code>AsciiRect</code>, <code>SvgRect</code>, <code>AsciiSquare</code>, <code>SvgSquare</code>… M × N classes. Adding PDF needs M new classes; adding Circle needs N. ASCII drawing code is duplicated in every Ascii* class.</p>`, code: { lang: 'java', code: `class AsciiRect {
     final int w, h; AsciiRect(int w, int h) { this.w = w; this.h = h; }
     String draw() { return String.join(" / ", Collections.nCopies(h, "#".repeat(w))); }
 }
@@ -8544,7 +9272,51 @@ class AsciiSquare {
 class SvgRect {
     final int w, h; SvgRect(int w, int h) { this.w = w; this.h = h; }
     String draw() { return "<rect width='" + w + "' height='" + h + "'/>"; }
+}`, alt: [
+              { lang: 'python', code: `
+class AsciiRect:
+    def __init__(self, w, h): self.w, self.h = w, h
+    def draw(self): return " / ".join(["#" * self.w] * self.h)
+
+class AsciiSquare:
+    def __init__(self, s): self.s = s
+    def draw(self): return " / ".join(["#" * self.s] * self.s)   # duplicated
+
+class SvgRect:
+    def __init__(self, w, h): self.w, self.h = w, h
+    def draw(self): return f"<rect width='{self.w}' height='{self.h}'/>"` },
+              { lang: 'ts', code: `
+class AsciiRect {
+    constructor(readonly w: number, readonly h: number) {}
+    draw(): string { return Array(this.h).fill("#".repeat(this.w)).join(" / "); }
+}
+class AsciiSquare {
+    constructor(readonly s: number) {}
+    draw(): string { return Array(this.s).fill("#".repeat(this.s)).join(" / "); }   // duplicated
+}
+class SvgRect {
+    constructor(readonly w: number, readonly h: number) {}
+    draw(): string { return "<rect width='" + this.w + "' height='" + this.h + "'/>"; }
 }` },
+              { lang: 'cpp', code: `
+string joinRows(int rows, int cols) {
+    string out;
+    for (int i = 0; i < rows; i++) out += (i ? " / " : "") + string(cols, '#');
+    return out;
+}
+struct AsciiRect {
+    int w, h; AsciiRect(int w, int h) : w(w), h(h) { }
+    string draw() { return joinRows(h, w); }
+};
+struct AsciiSquare {
+    int s; AsciiSquare(int s) : s(s) { }
+    string draw() { return joinRows(s, s); }   // duplicated
+};
+struct SvgRect {
+    int w, h; SvgRect(int w, int h) : w(w), h(h) { }
+    string draw() { return "<rect width='" + to_string(w) + "' height='" + to_string(h) + "'/>"; }
+};` }
+            ] } },
     mcq: { q: 'Shapes and renderers both grow independently. Which pattern prevents M × N classes?', options: ['Bridge', 'Flyweight', 'Facade', 'Proxy'], answer: 0, explain: 'Bridge separates the abstraction (shape) from the implementor (renderer) and joins them by composition.' },
     hints: [`<p>Hint 1: Two axes → two hierarchies. Which side defines the primitive operations?</p>`, `<p>Hint 2: Implementor: <code>Renderer { String rect(int w, int h); }</code>. Abstraction: <code>abstract class Shape { protected final Renderer r; abstract String draw(); }</code>.</p>`, `<p>Hint 3: <code>Square.draw()</code> reuses the renderer's rect primitive — refined abstractions build on primitives instead of adding renderer methods.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "### / ###\n<rect width='4' height='4'/>\n## / ##\nascii supports 1..20\n" }] },
@@ -8763,13 +9535,38 @@ int main() {
     statement: `<p>Old code uses <code>interface LegacyUserStore { Map&lt;String,String&gt; load(int id); void save(int id, Map&lt;String,String&gt; fields); }</code> (fields "name", "email"). New code uses <code>interface UserRepository { Optional&lt;User&gt; find(long id); void put(User u); }</code> with <code>record User(long id, String name, String email)</code>. During a 6-month migration both kinds of callers must work against <b>one</b> underlying store (the new one). Write the adapter(s).</p>`,
     constraints: `<p>Missing user → <code>load</code> returns an empty map. Unknown legacy field names are rejected with <code>IllegalArgumentException</code>. Ids above <code>Integer.MAX_VALUE</code> are not visible to legacy callers.</p>`,
     example: `<p>New code: <code>put(User(7, "Asha", "a@x.com"))</code>. Old code: <code>load(7)</code> → ${H.c('g', '{name=Asha, email=a@x.com}')}. Old code: <code>save(8, {name: "Ben"})</code> → new code <code>find(8)</code> → ${H.c('g', 'User(8, Ben, null)')}.</p>`,
-    brute: { why: `<p>Running two separate stores and syncing them with a nightly job: data is stale for up to 24 hours, writes on both sides conflict, and the "sync" becomes a second migration project. Or rewriting all old callers at once — a risky big-bang release.</p>`, code: `class NightlySync {
+    brute: { why: `<p>Running two separate stores and syncing them with a nightly job: data is stale for up to 24 hours, writes on both sides conflict, and the "sync" becomes a second migration project. Or rewriting all old callers at once — a risky big-bang release.</p>`, code: { lang: 'java', code: `class NightlySync {
     // copies everything from the old store to the new one once a day
     void run(Map<Integer, Map<String, String>> oldStore, Map<Long, String[]> newStore) {
         oldStore.forEach((id, f) -> newStore.put((long) id, new String[]{f.get("name"), f.get("email")}));
         // writes made to newStore during the day are overwritten tonight: data loss
     }
+}`, alt: [
+              { lang: 'python', code: `
+class NightlySync:
+    # copies everything from the old store to the new one once a day
+    def run(self, old_store, new_store):
+        for id, f in old_store.items():
+            new_store[id] = [f.get("name"), f.get("email")]
+        # writes made to new_store during the day are overwritten tonight: data loss` },
+              { lang: 'ts', code: `
+class NightlySync {
+    // copies everything from the old store to the new one once a day
+    run(oldStore: Map<number, Map<string, string>>, newStore: Map<number, string[]>): void {
+        oldStore.forEach((f, id) => newStore.set(id, [f.get("name")!, f.get("email")!]));
+        // writes made to newStore during the day are overwritten tonight: data loss
+    }
 }` },
+              { lang: 'cpp', code: `
+class NightlySync {
+public:
+    // copies everything from the old store to the new one once a day
+    void run(map<int, map<string, string>>& oldStore, map<long long, array<string, 2>>& newStore) {
+        for (auto& [id, f] : oldStore) newStore[id] = {f["name"], f["email"]};
+        // writes made to newStore during the day are overwritten tonight: data loss
+    }
+};` }
+            ] } },
     mcq: { q: 'Old callers keep calling LegacyUserStore, but data lives in UserRepository. The adapter implements which interface and wraps which?', options: ['Implements UserRepository, wraps LegacyUserStore', 'Implements LegacyUserStore, wraps UserRepository', 'Implements both, wraps nothing', 'Extends User'], answer: 1, explain: 'The target is what the client expects (LegacyUserStore); the adaptee is the real store (UserRepository).' },
     hints: [`<p>Hint 1: Old clients' target = <code>LegacyUserStore</code>; the adaptee = <code>UserRepository</code>.</p>`, `<p>Hint 2: <code>load</code>: find → convert record to map (skip nulls). <code>save</code>: validate keys, merge with existing user if present, then put.</p>`, `<p>Hint 3: Convert int ↔ long carefully; guard ids beyond int range on the legacy side. Keep the conversion in one adapter class so it is deleted in one commit when migration ends.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "{email=a@x.com, name=Asha}\nUser[id=8, name=Ben, email=null]\n{}\nUser[id=8, name=Ben, email=b@x.com]\nunknown field phone\n" }] },
@@ -9068,7 +9865,7 @@ int main() {
     statement: `<p>An <code>Order</code> references a <code>Customer</code>. Loading a customer costs one database query. Build a mini-ORM where <code>order.customer()</code> returns a <b>virtual proxy</b> that knows only the id; the query runs on the first call of any other method, exactly once even if 50 threads call at the same time. <code>id()</code> must never trigger a load. Proxies and real customers with the same id must be <code>equals</code>.</p>`,
     constraints: `<p>Up to 10<sup>4</sup> orders loaded per request; most screens never touch customer details. Loader may throw — the next call must retry (do not cache failures). Count queries so tests can assert them.</p>`,
     example: `<p>Load 3 orders for 2 customers. Render only order ids → ${H.c('g', '0 customer queries')}. Then 50 threads call <code>customer().name()</code> on the same proxy → ${H.c('g', 'exactly 1 query')}. Eager loading would have run ${H.c('r', '2–3 queries up front')} for nothing.</p>`,
-    brute: { why: `<p>(1) Eager loading: every order fetch also loads its customer — wasted queries when the screen never shows customer data. (2) Naive lazy field: <code>if (real == null) real = load()</code> without synchronisation — two threads both see null and both query (double load), and without a memory barrier (<code>volatile</code> in Java) a thread may see a half-constructed object.</p>`, code: `class Customer { final long id; final String name; Customer(long id, String name) { this.id = id; this.name = name; } }
+    brute: { why: `<p>(1) Eager loading: every order fetch also loads its customer — wasted queries when the screen never shows customer data. (2) Naive lazy field: <code>if (real == null) real = load()</code> without synchronisation — two threads both see null and both query (double load), and without a memory barrier (<code>volatile</code> in Java) a thread may see a half-constructed object.</p>`, code: { lang: 'java', code: `class Customer { final long id; final String name; Customer(long id, String name) { this.id = id; this.name = name; } }
 class NaiveLazyCustomer {
     private final long id; private Customer real;           // not volatile, not synchronized
     NaiveLazyCustomer(long id) { this.id = id; }
@@ -9076,7 +9873,40 @@ class NaiveLazyCustomer {
         if (real == null) real = new Customer(id, "loaded-" + id);   // race: may load twice
         return real.name;
     }
+}`, alt: [
+              { lang: 'python', code: `
+class Customer:
+    def __init__(self, id, name): self.id, self.name = id, name
+
+class NaiveLazyCustomer:
+    def __init__(self, id):
+        self._id = id
+        self._real = None           # not locked
+    def name(self):
+        if self._real is None: self._real = Customer(self._id, f"loaded-{self._id}")   # race: may load twice
+        return self._real.name` },
+              { lang: 'ts', code: `
+class Customer { constructor(readonly id: number, readonly name: string) {} }
+class NaiveLazyCustomer {
+    private real: Customer | null = null;           // two async callers can both see null
+    constructor(private readonly id: number) {}
+    name(): string {
+        if (this.real === null) this.real = new Customer(this.id, "loaded-" + this.id);   // race: may load twice
+        return this.real.name;
+    }
 }` },
+              { lang: 'cpp', code: `
+struct Customer { long long id; string name; Customer(long long id, string name) : id(id), name(name) { } };
+class NaiveLazyCustomer {
+    long long id; Customer* real = nullptr;           // not atomic, not locked
+public:
+    NaiveLazyCustomer(long long id) : id(id) { }
+    string name() {
+        if (real == nullptr) real = new Customer(id, "loaded-" + to_string(id));   // race: may load twice
+        return real->name;
+    }
+};` }
+            ] } },
     mcq: { q: 'Why must the proxy\'s id() NOT trigger a load?', options: ['Ids are secret', 'The proxy already knows the id; loading would defeat lazy loading for common operations like equals, hashing and building links', 'The language forbids it', 'Because ids are mutable'], answer: 1, explain: 'Many operations need only the id (map keys, equality, URLs). Loading on id() would turn every such use into a database query.' },
     hints: [`<p>Hint 1: <code>interface Customer { long id(); String name(); String email(); }</code> implemented by <code>RealCustomer</code> (record) and <code>CustomerProxy</code>.</p>`, `<p>Hint 2: Double-checked locking: a <code>volatile RealCustomer real</code> in Java (a lock plus a field in Python, <code>std::call_once</code> in C++); check without lock, then lock, check again, load, assign.</p>`, `<p>Hint 3: If the loader throws, the field stays null so the next call retries. Implement <code>equals/hashCode</code> on <code>id()</code> only, comparing against the <code>Customer</code> interface (not <code>getClass()</code>), so proxies and real objects compare equal.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "1 2 3 | queries so far = 0\ncustomer id 11, queries = 0\nCustomer#10(not loaded)\nqueries after 50 threads = 1\ntrue\ntrue\nfirst call failed: db down\ncust-99\nqueries = 2\n" }] },
@@ -9483,7 +10313,7 @@ int main() {
     statement: `<p>Implement an in-memory file system: <code>mkdirs(path)</code> creates all missing folders; <code>write(path, bytes)</code> creates or replaces a file (parents must exist); <code>size(path)</code> returns a file's size or a folder's total; <code>move(src, dstFolder)</code> moves a file or folder; <code>find(path, suffix)</code> lists file paths under a folder ending with suffix. <code>size()</code> on the root is called very often, so it must be O(1).</p>`,
     constraints: `<p>Paths like "/a/b/c.txt". Up to 10<sup>5</sup> nodes, depth ≤ 100. Moving a folder into itself or its descendant → <code>IllegalArgumentException</code>. Name clash at destination → <code>IllegalStateException</code>.</p>`,
     example: `<p>mkdirs("/docs/old"); write("/docs/a.txt", 5); write("/docs/old/b.txt", 7) → size("/") = ${H.c('g', '12')}. move("/docs/old", "/") → size("/docs") = ${H.c('g', '5')}, size("/old") = 7, root still 12. move("/docs", "/docs") → ${H.c('r', 'IllegalArgumentException')}.</p>`,
-    brute: { why: `<p>Store a flat <code>Map&lt;String path, Long size&gt;</code>. Folder size = scan every key with that prefix: O(N) per <code>size()</code> call. Moving a folder means rewriting every descendant key (O(N)) and prefix bugs appear ("/doc" matches "/docs/..."). There is no real notion of a folder, so empty folders cannot exist.</p>`, code: `class FlatFs {
+    brute: { why: `<p>Store a flat <code>Map&lt;String path, Long size&gt;</code>. Folder size = scan every key with that prefix: O(N) per <code>size()</code> call. Moving a folder means rewriting every descendant key (O(N)) and prefix bugs appear ("/doc" matches "/docs/..."). There is no real notion of a folder, so empty folders cannot exist.</p>`, code: { lang: 'java', code: `class FlatFs {
     final Map<String, Long> files = new HashMap<>();
     long size(String path) {
         long total = 0;
@@ -9499,7 +10329,59 @@ int main() {
         });
         files.putAll(moved);
     }
+}`, alt: [
+              { lang: 'python', code: `
+class FlatFs:
+    def __init__(self): self.files = {}   # path -> size
+    def size(self, path):
+        total = 0
+        for k, v in self.files.items():
+            if k.startswith(path): total += v   # O(N), and "/doc" matches "/docs"
+        return total
+    def move(self, src, dst):
+        moved = {}
+        for k in list(self.files):
+            if k.startswith(src):
+                moved[dst + k[src.rfind("/"):]] = self.files.pop(k)
+        self.files.update(moved)` },
+              { lang: 'ts', code: `
+class FlatFs {
+    readonly files = new Map<string, number>();
+    size(path: string): number {
+        let total = 0;
+        for (const [k, v] of this.files) if (k.startsWith(path)) total += v;  // O(N), and "/doc" matches "/docs"
+        return total;
+    }
+    move(src: string, dst: string): void {
+        const moved = new Map<string, number>();
+        for (const [k, v] of [...this.files]) {
+            if (!k.startsWith(src)) continue;
+            moved.set(dst + k.substring(src.lastIndexOf("/")), v);
+            this.files.delete(k);
+        }
+        for (const [k, v] of moved) this.files.set(k, v);
+    }
 }` },
+              { lang: 'cpp', code: `
+class FlatFs {
+public:
+    unordered_map<string, long long> files;
+    long long size(const string& path) {
+        long long total = 0;
+        for (auto& [k, v] : files) if (k.rfind(path, 0) == 0) total += v;  // O(N), and "/doc" matches "/docs"
+        return total;
+    }
+    void move(const string& src, const string& dst) {
+        unordered_map<string, long long> moved;
+        for (auto it = files.begin(); it != files.end(); ) {
+            if (it->first.rfind(src, 0) != 0) { ++it; continue; }
+            moved[dst + it->first.substr(src.rfind('/'))] = it->second;
+            it = files.erase(it);
+        }
+        files.insert(moved.begin(), moved.end());
+    }
+};` }
+            ] } },
     mcq: { q: 'How can a composite keep size() O(1) while files change?', options: ['Recompute the whole tree on each call', 'Each folder caches its total; a change of Δ bytes is propagated up through parent pointers (O(depth))', 'Store sizes only in the root', 'Use a Flyweight for sizes'], answer: 1, explain: 'Cached aggregates plus upward propagation make reads O(1) and writes/moves O(depth).' },
     hints: [`<p>Hint 1: <code>abstract class FsNode { String name; Folder parent; abstract long size(); }</code>; <code>FileNode</code> leaf and <code>Folder</code> composite with a <code>TreeMap&lt;String, FsNode&gt;</code> of children.</p>`, `<p>Hint 2: Folder caches <code>total</code>. Helper <code>bubble(folder, delta)</code> walks parents adding delta. Write: delta = new − old size. Move: bubble(−size) from old parent, bubble(+size) at new parent.</p>`, `<p>Hint 3: Cycle check for move: walk up from the destination folder to the root; if you meet the source node, reject. Resolve paths by splitting on "/" and walking children; <code>find</code> is a DFS that builds paths.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "12\n5 7 12\n[/docs/a.txt, /old/b.txt]\nblocked: cannot move a folder into itself\n9 16\nname clash\n17\nmissing: /nope\nfile path needed\n" }] },
@@ -10130,7 +11012,7 @@ int main() {
     statement: `<p>Design the core of a notification platform. Message kinds: <b>OTP</b> (6 digits, expires in 5 min) and <b>Marketing</b> (must append an unsubscribe line, blocked between 21:00 and 09:00). Channels: <b>SMS</b> via a vendor SDK <code>VendorSms.push(String msisdn, String body) → int code</code> (0 = ok) and <b>Email</b> via your own client. Cross-cutting: <b>retry</b> transient channel failures up to 3 times, and <b>dedupe</b> (do not send the same text to the same recipient twice within 60 s). State which pattern solves each part and implement it.</p>`,
     constraints: `<p>New message kinds and new channels must be one class each. Vendor code cannot change. Time is injectable. Retry only on transient failures (vendor code 503).</p>`,
     example: `<p>OTP via SMS: vendor returns 503, 503, 0 → ${H.c('g', 'delivered on attempt 3')}. Same OTP again within 60 s → ${H.c('y', 'deduped, not sent')}. Marketing at 22:30 → ${H.c('r', 'blocked by quiet hours')}.</p>`,
-    brute: { why: `<p>A <code>NotificationService.send(kind, channel, to, data)</code> with nested <code>switch</code> over kind and channel, the vendor SDK called inline, a retry loop copy-pasted into each channel branch and a dedupe map checked in some branches but not others. Adding WhatsApp touches every kind branch; adding a kind touches every channel branch.</p>`, code: `class VendorSms { int push(String msisdn, String body) { return 0; } }
+    brute: { why: `<p>A <code>NotificationService.send(kind, channel, to, data)</code> with nested <code>switch</code> over kind and channel, the vendor SDK called inline, a retry loop copy-pasted into each channel branch and a dedupe map checked in some branches but not others. Adding WhatsApp touches every kind branch; adding a kind touches every channel branch.</p>`, code: { lang: 'java', code: `class VendorSms { int push(String msisdn, String body) { return 0; } }
 class NotificationService {
     final VendorSms sms = new VendorSms();
     void send(String kind, String channel, String to, String data) {
@@ -10145,7 +11027,58 @@ class NotificationService {
             default -> throw new IllegalArgumentException(channel);
         }
     }
+}`, alt: [
+              { lang: 'python', code: `
+class VendorSms:
+    def push(self, msisdn, body): return 0
+
+class NotificationService:
+    def __init__(self): self.sms = VendorSms()
+    def send(self, kind, channel, to, data):
+        match kind:
+            case "otp": text = "Your OTP is " + data
+            case "marketing": text = data + " Reply STOP to unsubscribe"
+            case _: raise ValueError(kind)
+        match channel:
+            case "sms":
+                for _ in range(3):                            # retry copy #1
+                    if self.sms.push(to, text) == 0: return
+            case "email": print(f"email {to}: {text}")        # no retry, no dedupe
+            case _: raise ValueError(channel)` },
+              { lang: 'ts', code: `
+class VendorSms { push(msisdn: string, body: string): number { return 0; } }
+class NotificationService {
+    readonly sms = new VendorSms();
+    send(kind: string, channel: string, to: string, data: string): void {
+        let text: string;
+        switch (kind) {
+            case "otp": text = "Your OTP is " + data; break;
+            case "marketing": text = data + " Reply STOP to unsubscribe"; break;
+            default: throw new Error(kind);
+        }
+        switch (channel) {
+            case "sms": for (let i = 0; i < 3; i++) if (this.sms.push(to, text) === 0) return; break;   // retry copy #1
+            case "email": console.log("email " + to + ": " + text); break;               // no retry, no dedupe
+            default: throw new Error(channel);
+        }
+    }
 }` },
+              { lang: 'cpp', code: `
+struct VendorSms { int push(const string& msisdn, const string& body) { return 0; } };
+class NotificationService {
+    VendorSms sms;
+public:
+    void send(const string& kind, const string& channel, const string& to, const string& data) {
+        string text;
+        if (kind == "otp") text = "Your OTP is " + data;
+        else if (kind == "marketing") text = data + " Reply STOP to unsubscribe";
+        else throw invalid_argument(kind);
+        if (channel == "sms") { for (int i = 0; i < 3; i++) if (sms.push(to, text) == 0) return; }   // retry copy #1
+        else if (channel == "email") cout << "email " << to << ": " << text << "\\n";               // no retry, no dedupe
+        else throw invalid_argument(channel);
+    }
+};` }
+            ] } },
     mcq: { q: 'Match the forces: kinds × channels / vendor SDK shape / retry + dedupe. Which mapping is right?', options: ['Composite / Proxy / Flyweight', 'Bridge / Adapter / Decorators on the channel', 'Facade / Bridge / Adapter', 'Decorator / Composite / Bridge'], answer: 1, explain: 'Two axes → Bridge; wrong vendor interface → Adapter; optional stackable behaviour around a channel → Decorators.' },
     hints: [`<p>Hint 1: Bridge: <code>abstract class Message</code> (OTP, Marketing) holds a <code>Channel</code> (deliver(to, text) → throws <code>TransientException</code>).</p>`, `<p>Hint 2: <code>SmsAdapter implements Channel</code> wraps <code>VendorSms</code>, mapping code 0 → ok, 503 → TransientException, others → permanent failure.</p>`, `<p>Hint 3: <code>RetryingChannel</code> and <code>DedupingChannel</code> both implement <code>Channel</code> and wrap one. Order: <code>Dedupe(Retry(SmsAdapter))</code> so a retried message is still one logical send. Quiet hours belong to the Marketing abstraction (a business rule), not to a channel.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "SMS +919800000000: Your OTP is 482913. Valid for 5 minutes.\ndeduped +919800000000\nblocked by quiet hours: a@x.com\nEMAIL a@x.com: Sale! Reply STOP to unsubscribe.\nSMS +919800000000: Your OTP is 482913. Valid for 5 minutes.\ngave up: sms busy\nOTP must be 6 digits\n" }] },
@@ -10671,7 +11604,7 @@ int main() {
     statement: `<p><code>interface ProfileService { String profile(String userId); }</code> is slow (200 ms) and expensive. A celebrity's profile is requested by 10 000 threads at the same moment right after the cache entry expires. Build a caching proxy where: (1) cached values are served within TTL; (2) concurrent misses for the <b>same key</b> share <b>one</b> in-flight call (single-flight); (3) failures are delivered to all waiting callers but <b>not cached</b>; (4) different keys load in parallel.</p>`,
     constraints: `<p>Thread-safe, no global lock. TTL and clock injectable. Up to 10<sup>6</sup> distinct keys (eviction may be omitted but discuss it).</p>`,
     example: `<p>TTL 60 s. 100 threads ask for "virat" at t = 0 → ${H.c('g', '1 backend call')}, all 100 get the same value. t = 30 s → ${H.c('g', 'cache hit')}. t = 61 s → 1 new call. If that call throws, all waiters see the error and the next request ${H.c('y', 'retries')}.</p>`,
-    brute: { why: `<p>A plain check-then-load cache: every thread that misses calls the backend, so an expiring hot key triggers 10 000 simultaneous calls (the thundering herd / cache stampede) and can take the backend down. Wrapping the whole proxy in <code>synchronized</code> fixes the herd but serialises <i>all</i> keys — one slow user blocks everyone.</p>`, code: `class HerdCache {
+    brute: { why: `<p>A plain check-then-load cache: every thread that misses calls the backend, so an expiring hot key triggers 10 000 simultaneous calls (the thundering herd / cache stampede) and can take the backend down. Wrapping the whole proxy in one lock (<code>synchronized</code> in Java) fixes the herd but serialises <i>all</i> keys — one slow user blocks everyone.</p>`, code: { lang: 'java', code: `class HerdCache {
     final Map<String, String> cache = new ConcurrentHashMap<>();
     final java.util.function.Function<String, String> backend;
     HerdCache(java.util.function.Function<String, String> backend) { this.backend = backend; }
@@ -10683,7 +11616,47 @@ int main() {
         }
         return v;
     }
+}`, alt: [
+              { lang: 'python', code: `
+class HerdCache:
+    def __init__(self, backend):
+        self.cache = {}
+        self.backend = backend
+    def get(self, key):
+        v = self.cache.get(key)
+        if v is None:                 # 10 000 threads can all reach here at once
+            v = self.backend(key)     # ...and all call the backend
+            self.cache[key] = v
+        return v` },
+              { lang: 'ts', code: `
+class HerdCache {
+    readonly cache = new Map<string, string>();
+    constructor(private readonly backend: (key: string) => Promise<string>) {}
+    async get(key: string): Promise<string> {
+        let v = this.cache.get(key);
+        if (v === undefined) {           // 10 000 callers can all reach here at once
+            v = await this.backend(key); // ...and all call the backend
+            this.cache.set(key, v);
+        }
+        return v;
+    }
 }` },
+              { lang: 'cpp', code: `
+class HerdCache {
+    unordered_map<string, string> cache;
+    function<string(const string&)> backend;
+public:
+    HerdCache(function<string(const string&)> backend) : backend(backend) { }
+    string get(const string& key) {
+        auto it = cache.find(key);
+        if (it == cache.end()) {         // 10 000 threads can all reach here at once
+            string v = backend(key);     // ...and all call the backend
+            it = cache.emplace(key, v).first;
+        }
+        return it->second;
+    }
+};` }
+            ] } },
     mcq: { q: 'What should the map store so that concurrent callers can wait on the same in-flight load?', options: ['The raw String value', 'A future or promise of the value (Java CompletableFuture), installed atomically in the map', 'A Thread reference', 'A boolean "loading" flag polled in a loop'], answer: 1, explain: 'The first caller atomically installs a future; everyone else finds the same future and joins it — one load, many waiters, no global lock.' },
     hints: [`<p>Hint 1: Store <code>Entry(future, loadedAt)</code> per key in a thread-safe map (Java <code>CompletableFuture</code> in a <code>ConcurrentHashMap</code>; Python <code>concurrent.futures.Future</code>; a TypeScript <code>Promise</code>; C++ <code>std::shared_future</code>).</p>`, `<p>Hint 2: Use <code>compute(key, ...)</code>: keep the existing entry if it is still loading or fresh; otherwise install a new future. Only the thread that installed it runs the backend call (outside the map's lock) and completes it.</p>`, `<p>Hint 3: On failure: <code>completeExceptionally</code> and <code>remove(key, thatEntry)</code> so the next caller retries. Callers do <code>future.join()</code> and unwrap <code>CompletionException</code>. Freshness is measured from completion time.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "backend calls for 100 concurrent misses = 1\nafter expiry = 2\nfailed callers = 20, backend calls = 3\nnot cached: backend error, backend calls = 4\n" }] },
@@ -11045,7 +12018,7 @@ int main() {
     { q: 'Your checkout uses <code>PaymentProcessor.pay(amount)</code>. A new vendor SDK offers <code>chargeCard(cents, currency)</code> and you cannot edit it. Which pattern?', options: ['Decorator', 'Adapter', 'Bridge', 'Composite'], answer: 1, explain: 'The vendor class does the right job with the wrong interface. An adapter implements PaymentProcessor and translates calls to chargeCard.' },
     { q: 'Which statement best separates Decorator from Proxy?', options: ['Decorator changes the interface; Proxy keeps it', 'Decorator adds behaviour and is usually stacked by the client; Proxy controls access to the same behaviour and often manages the real object\'s lifecycle', 'Proxy can only be used over a network', 'There is no difference at all'], answer: 1, explain: 'Both keep the interface and delegate. Intent differs: add features (decorator) vs control access — lazy, cache, permission, remote (proxy).' },
     { q: 'A coffee app has 4 bases and 6 add-ons, and customers may combine add-ons freely. With one subclass per combination (no doubles), how many classes? With decorators?', options: ['24 vs 10', '256 vs 10', '4 × 2<sup>6</sup> = 256 vs 4 + 6 = 10', '10 vs 256'], answer: 2, explain: 'Each base can have any subset of 6 add-ons: 2<sup>6</sup> = 64 subsets × 4 bases = 256 classes. Decorators need one class per base and per add-on: 10.' },
-    { q: 'What makes it safe to share a flyweight object among thousands of contexts?', options: ['It is a singleton', 'It is immutable — it holds only intrinsic state', 'It uses synchronized methods', 'It is stored in a static field'], answer: 1, explain: 'If shared state could change, a change made for one context would leak into all of them. Flyweights hold only immutable intrinsic data; per-context data stays outside.' },
+    { q: 'What makes it safe to share a flyweight object among thousands of contexts?', options: ['It is a singleton', 'It is immutable — it holds only intrinsic state', 'It takes a lock on every method', 'It is stored in a static field'], answer: 1, explain: 'If shared state could change, a change made for one context would leak into all of them. Flyweights hold only immutable intrinsic data; per-context data stays outside.' },
     { q: '<code>Integer a = 1000, b = 1000; System.out.println(a == b);</code> prints (with default JVM settings)…', options: ['true, because of the Integer flyweight cache', 'false, because only -128..127 are cached by default', 'It does not compile', 'It throws NullPointerException'], answer: 1, explain: 'Autoboxing uses Integer.valueOf, which returns cached flyweights only for -128..127 by default. 1000 creates two separate objects, so == compares different references.' },
     { q: 'In the Composite pattern, what is the type of the children collection inside the composite?', options: ['The leaf type', 'The composite type', 'The component interface shared by leaves and composites', 'Object'], answer: 2, explain: 'Children are typed as the component so a composite can hold leaves and other composites, and it can call the same operation on each.' },
     { q: 'You have shapes (Circle, Square) and rendering engines (OpenGL, Vulkan, Metal), and both lists will grow. Which pattern keeps the class count at M + N?', options: ['Facade', 'Bridge', 'Flyweight', 'Proxy'], answer: 1, explain: 'Bridge puts shapes (abstraction) and renderers (implementor) in separate hierarchies joined by a field, so classes add instead of multiply.' },
@@ -11100,6 +12073,115 @@ int main() {
       a: `<p><b>Adapter:</b> each model provider SDK and each tool API is adapted to one internal interface; MCP servers are adapters that expose systems as standard tools. <b>Bridge:</b> features (summariser, classifier, agent) on one side, model providers on the other, so you can route by cost and latency. <b>Decorator:</b> retry-with-backoff, rate limiting, guardrails/PII redaction, tracing and prompt caching wrapped around <code>complete(prompt)</code>. <b>Proxy:</b> an LLM gateway enforcing API keys and budgets, caching, and permission proxies that require human approval before dangerous tool calls. <b>Facade:</b> a few task-level tools for agents instead of 40 raw endpoints. <b>Composite:</b> hierarchical plans and document trees for summarisation. <b>Flyweight:</b> shared prompt prefixes / KV-cache blocks across requests.</p>`,
       followUps: ['Which of these layers must run before the cache, and why (e.g. PII redaction)?', 'How would you test a guardrail decorator?'] }
   );
+  /* ---- python / TypeScript / C++ versions of the Java code panes (same line numbers so hl still matches) ---- */
+  ALTS[ADAPTER_CODE] = mkAlt(`rupees = amount                          # 1 what Checkout gives us
+paise = int(rupees.scaleb(2))            # 2 translate units
+# (a Decimal scaled by 10^2: exact whole paise)
+ref = "ORD-" + str(order_id)             # 4 translate naming
+code = bank.make_transfer(ref, paise, "INR") # 5 call adaptee
+match code:                              # 6 translate the answer
+    case "00": return PaymentResult.SUCCESS
+    case "51": return PaymentResult.DECLINED
+    case _:    return PaymentResult.ERROR`, `const rupees = amount;                   // 1 what Checkout gives us
+const paise = Math.round(rupees * 100);    // 2 translate units
+// (whole paise only: no fractions)
+const ref = "ORD-" + orderId;              // 4 translate naming
+const code = bank.makeTransfer(ref, paise, "INR"); // 5 call adaptee
+switch (code) {                            // 6 translate the answer
+  case "00": return PaymentResult.SUCCESS;
+  case "51": return PaymentResult.DECLINED;
+  default:   return PaymentResult.ERROR; }`, `double rupees = amount;                   // 1 what Checkout gives us
+long long paise = llround(rupees * 100);   // 2 translate units
+// (whole paise only: no fractions)
+string ref = "ORD-" + to_string(orderId);  // 4 translate naming
+string code = bank.makeTransfer(ref, paise, "INR"); // 5 call adaptee
+// 6 translate the answer (a string cannot be switched on: if-chain)
+if (code == "00") return PaymentResult::SUCCESS;
+if (code == "51") return PaymentResult::DECLINED;
+return PaymentResult::ERROR;`);
+  ALTS[FACADE_CODE] = mkAlt(`def place_order(self, item, qty, card):
+    if not self.inventory.in_stock(item, qty): return Receipt.out_of_stock()
+    self.inventory.reserve(item, qty)
+    if not self.payments.charge(card, self.catalog.price(item) * qty):
+        self.inventory.release(item, qty)   # compensate
+        return Receipt.declined()
+    tracking = self.shipping.schedule(item, qty)
+    self.notifier.email("Order placed: " + tracking)
+    return Receipt.ok(tracking)`, `placeOrder(item: string, qty: number, card: string): Receipt {
+  if (!this.inventory.inStock(item, qty)) return Receipt.outOfStock();
+  this.inventory.reserve(item, qty);
+  if (!this.payments.charge(card, this.catalog.price(item) * qty)) {
+    this.inventory.release(item, qty);   // compensate
+    return Receipt.declined(); }
+  const tracking = this.shipping.schedule(item, qty);
+  this.notifier.email("Order placed: " + tracking);
+  return Receipt.ok(tracking); }`, `Receipt placeOrder(const string& item, int qty, const string& card) {
+  if (!inventory.inStock(item, qty)) return Receipt::outOfStock();
+  inventory.reserve(item, qty);
+  if (!payments.charge(card, catalog.price(item) * qty)) {
+    inventory.release(item, qty);   // compensate
+    return Receipt::declined(); }
+  string tracking = shipping.schedule(item, qty);
+  notifier.email("Order placed: " + tracking);
+  return Receipt::ok(tracking); }`);
+  ALTS[PROXY_CODE] = mkAlt(`def display(self, user):
+    if not self.acl.can_view(user, self.name):   # protection proxy
+        raise PermissionError(user)
+    if self.real is None:                        # virtual proxy: lazy
+        self.real = RealImage(self.name)         # slow disk load
+    self.real.display(user)                      # delegate`, `display(user: string): void {
+  if (!this.acl.canView(user, this.name))   // protection proxy
+    throw new Error("forbidden: " + user);
+  if (this.real === null)                   // virtual proxy: lazy
+    this.real = new RealImage(this.name);   // slow disk load
+  this.real.display(user);                  // delegate
+}`, `void display(const string& user) override {
+  if (!acl.canView(user, name))          // protection proxy
+    throw runtime_error(user);
+  if (!real)                             // virtual proxy: lazy
+    real = make_unique<RealImage>(name); // slow disk load
+  real->display(user);                   // delegate
+}`);
+  ALTS[COMP_CODE] = mkAlt(`def size(self):                # in Folder (composite)
+    total = 0
+    for child in self.children:
+        total += child.size()   # same call for file OR folder
+    return total
+
+def size(self): return self.bytes   # in File (leaf)`, `size(): number {                // in Folder (composite)
+  let total = 0;
+  for (const child of this.children)
+    total += child.size();     // same call for file OR folder
+  return total;
+}
+size(): number { return this.bytes; } // in File (leaf)`, `long long size() const override {                // in Folder (composite)
+  long long total = 0;
+  for (const Node* child : children)
+    total += child->size();     // same call for file OR folder
+  return total;
+}
+long long size() const override { return bytes; } // in File (leaf)`);
+  ALTS[FLY_CODE] = mkAlt(`def of(name):                       # static: one TreeType per name
+    if name not in CACHE:           # look in the pool
+        CACHE[name] = TreeType(name, load_texture(name)) # create ONLY if missing
+    return CACHE[name]
+def plant(self, x, y, kind):
+    self.trees.append(Tree(x, y, TreeType.of(kind))) # tiny context object`, `static of(name: string): TreeType {
+  let t = CACHE.get(name);              // look in the pool
+  if (t === undefined) { t = new TreeType(name, loadTexture(name)); CACHE.set(name, t); } // create ONLY if missing
+  return t;
+}
+plant(x: number, y: number, kind: string): void {
+  this.trees.push(new Tree(x, y, TreeType.of(kind))); // tiny context object
+}`, `static TreeType& of(const string& name) {
+  auto it = CACHE.find(name);           // look in the pool
+  if (it == CACHE.end()) it = CACHE.emplace(name, TreeType(name, loadTexture(name))).first; // create ONLY if missing
+  return it->second;
+}
+void plant(int x, int y, const string& kind) {
+  trees.push_back(Tree(x, y, &TreeType::of(kind))); // tiny context object
+}`);
+
   registerModule({
     id: 'lld05',
     title: 'Structural Design Patterns',

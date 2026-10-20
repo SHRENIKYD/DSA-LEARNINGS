@@ -9,7 +9,277 @@
     o = o || {};
     return { type: 'graph', label: label, directed: o.undirected ? false : true, height: o.h || 60, nodes: nodes, edges: edges, hl: o.hl || {}, ehl: o.ehl || {}, tags: o.tags || {} };
   }
-  function CODE(label, code, hl) { return { type: 'code', label: label, lang: 'java', code: code, hl: hl || {} }; }
+  function CODE(label, code, hl, alt) { var p = { type: 'code', label: label, lang: 'java', code: code, hl: hl || {} }; if (alt) p.alt = alt; return p; }
+  var RIDE_REQUESTED_PY = [
+    "class Requested(RideState):",
+    "    def assign(self, r, d): r.transition_to(Assigned(d))",
+    "    def cancel(self, r): r.charge(0); r.transition_to(Cancelled())",
+    "    # arrive/start/end -> default: r.reject(..)"
+  ].join('\n');
+  var RIDE_REQUESTED_TS = [
+    "class Requested implements RideState {",
+    "  assign(r: Ride, d: string): void { r.transitionTo(new Assigned(d)); }",
+    "  cancel(r: Ride): void { r.charge(0); r.transitionTo(new Cancelled()); }",
+    "  // arrive/start/end -> default: r.reject(..)",
+    "}"
+  ].join('\n');
+  var RIDE_REQUESTED_CPP = [
+    "struct Requested : RideState {",
+    "  void assign(Ride& r, const string& d) override { r.transitionTo(make_unique<Assigned>(d)); }",
+    "  void cancel(Ride& r) override { r.charge(0); r.transitionTo(make_unique<Cancelled>()); }",
+    "  // arrive/start/end -> default: r.reject(..)",
+    "};"
+  ].join('\n');
+  var RIDE_ASSIGNED_PY = [
+    "class Assigned(RideState):",
+    "    def arrive(self, r): r.transition_to(Arrived(self.driver))",
+    "    def cancel(self, r): r.charge(25); r.transition_to(Cancelled())",
+    "    # assign/start/end -> default: r.reject(..)"
+  ].join('\n');
+  var RIDE_ASSIGNED_TS = [
+    "class Assigned implements RideState {",
+    "  arrive(r: Ride): void { r.transitionTo(new Arrived(this.driver)); }",
+    "  cancel(r: Ride): void { r.charge(25); r.transitionTo(new Cancelled()); }",
+    "  // assign/start/end -> default: r.reject(..)",
+    "}"
+  ].join('\n');
+  var RIDE_ASSIGNED_CPP = [
+    "struct Assigned : RideState {",
+    "  void arrive(Ride& r) override { r.transitionTo(make_unique<Arrived>(driver)); }",
+    "  void cancel(Ride& r) override { r.charge(25); r.transitionTo(make_unique<Cancelled>()); }",
+    "  // assign/start/end -> default: r.reject(..)",
+    "};"
+  ].join('\n');
+  var RIDE_ARRIVED_PY = [
+    "class Arrived(RideState):",
+    "    def start(self, r):  r.transition_to(InTrip())",
+    "    def cancel(self, r): r.charge(50); r.transition_to(Cancelled())",
+    "    # assign/arrive/end -> default: r.reject(..)"
+  ].join('\n');
+  var RIDE_ARRIVED_TS = [
+    "class Arrived implements RideState {",
+    "  start(r: Ride): void  { r.transitionTo(new InTrip()); }",
+    "  cancel(r: Ride): void { r.charge(50); r.transitionTo(new Cancelled()); }",
+    "  // assign/arrive/end -> default: r.reject(..)",
+    "}"
+  ].join('\n');
+  var RIDE_ARRIVED_CPP = [
+    "struct Arrived : RideState {",
+    "  void start(Ride& r) override  { r.transitionTo(make_unique<InTrip>()); }",
+    "  void cancel(Ride& r) override { r.charge(50); r.transitionTo(make_unique<Cancelled>()); }",
+    "  // assign/arrive/end -> default: r.reject(..)",
+    "};"
+  ].join('\n');
+  var RIDE_INTRIP_PY = [
+    "class InTrip(RideState):",
+    "    def end(self, r, fare): r.transition_to(Completed(fare))",
+    "    # cancel NOT overridden -> rejected mid-ride",
+    "    # assign/arrive/start -> default: r.reject(..)"
+  ].join('\n');
+  var RIDE_INTRIP_TS = [
+    "class InTrip implements RideState {",
+    "  end(r: Ride, fare: number): void { r.transitionTo(new Completed(fare)); }",
+    "  // cancel NOT overridden -> rejected mid-ride",
+    "  // assign/arrive/start -> default: r.reject(..)",
+    "}"
+  ].join('\n');
+  var RIDE_INTRIP_CPP = [
+    "struct InTrip : RideState {",
+    "  void end(Ride& r, int fare) override { r.transitionTo(make_unique<Completed>(fare)); }",
+    "  // cancel NOT overridden -> rejected mid-ride",
+    "  // assign/arrive/start -> default: r.reject(..)",
+    "};"
+  ].join('\n');
+  var RIDE_COMPLETED_PY = [
+    "class Completed(RideState):",
+    "    # terminal: overrides nothing",
+    "    # every event -> default: r.reject(..)",
+    "    pass"
+  ].join('\n');
+  var RIDE_COMPLETED_TS = [
+    "class Completed implements RideState {",
+    "  // terminal: overrides nothing",
+    "  // every event -> default: r.reject(..)",
+    "}"
+  ].join('\n');
+  var RIDE_COMPLETED_CPP = [
+    "struct Completed : RideState {",
+    "  // terminal: overrides nothing",
+    "  // every event -> default: r.reject(..)",
+    "};"
+  ].join('\n');
+  var RIDE_CANCELLED_PY = [
+    "class Cancelled(RideState):",
+    "    # terminal: overrides nothing",
+    "    # every event -> default: r.reject(..)",
+    "    pass"
+  ].join('\n');
+  var RIDE_CANCELLED_TS = [
+    "class Cancelled implements RideState {",
+    "  // terminal: overrides nothing",
+    "  // every event -> default: r.reject(..)",
+    "}"
+  ].join('\n');
+  var RIDE_CANCELLED_CPP = [
+    "struct Cancelled : RideState {",
+    "  // terminal: overrides nothing",
+    "  // every event -> default: r.reject(..)",
+    "};"
+  ].join('\n');
+  var RIDE_ALT = {
+    Requested: { python: { code: RIDE_REQUESTED_PY }, js: { lang: 'ts', code: RIDE_REQUESTED_TS }, cpp: { code: RIDE_REQUESTED_CPP } },
+    Assigned: { python: { code: RIDE_ASSIGNED_PY }, js: { lang: 'ts', code: RIDE_ASSIGNED_TS }, cpp: { code: RIDE_ASSIGNED_CPP } },
+    Arrived: { python: { code: RIDE_ARRIVED_PY }, js: { lang: 'ts', code: RIDE_ARRIVED_TS }, cpp: { code: RIDE_ARRIVED_CPP } },
+    InTrip: { python: { code: RIDE_INTRIP_PY }, js: { lang: 'ts', code: RIDE_INTRIP_TS }, cpp: { code: RIDE_INTRIP_CPP } },
+    Completed: { python: { code: RIDE_COMPLETED_PY }, js: { lang: 'ts', code: RIDE_COMPLETED_TS }, cpp: { code: RIDE_COMPLETED_CPP } },
+    Cancelled: { python: { code: RIDE_CANCELLED_PY }, js: { lang: 'ts', code: RIDE_CANCELLED_TS }, cpp: { code: RIDE_CANCELLED_CPP } }
+  };
+  var LADDER_PY = [
+    "def handle(self, event):",
+    "    if self.state == REQUESTED:",
+    "        if event == \"assign\": self.state = ASSIGNED",
+    "        elif event == \"cancel\": self.fee = 0; self.state = CANCELLED",
+    "        else: self.reject(event)",
+    "    elif self.state == ASSIGNED:",
+    "        if event == \"arrive\": self.state = ARRIVED",
+    "        elif event == \"cancel\": self.fee = 25; self.state = CANCELLED",
+    "        else: self.reject(event)",
+    "    elif self.state == ARRIVED:",
+    "        if event == \"start\": self.state = IN_TRIP",
+    "        elif event == \"cancel\": self.fee = 50; self.state = CANCELLED",
+    "        else: self.reject(event)",
+    "    elif self.state == IN_TRIP:",
+    "        if event == \"end\": self.state = COMPLETED",
+    "        else: self.reject(event)",
+    "    else:",
+    "        self.reject(event)  # COMPLETED or CANCELLED"
+  ].join('\n');
+  var LADDER_TS = [
+    "handle(event: string): void {",
+    "  if (this.state === REQUESTED) {",
+    "    if (event === \"assign\") this.state = ASSIGNED;",
+    "    else if (event === \"cancel\") { this.fee = 0; this.state = CANCELLED; }",
+    "    else this.reject(event);",
+    "  } else if (this.state === ASSIGNED) {",
+    "    if (event === \"arrive\") this.state = ARRIVED;",
+    "    else if (event === \"cancel\") { this.fee = 25; this.state = CANCELLED; }",
+    "    else this.reject(event);",
+    "  } else if (this.state === ARRIVED) {",
+    "    if (event === \"start\") this.state = IN_TRIP;",
+    "    else if (event === \"cancel\") { this.fee = 50; this.state = CANCELLED; }",
+    "    else this.reject(event);",
+    "  } else if (this.state === IN_TRIP) {",
+    "    if (event === \"end\") this.state = COMPLETED;",
+    "    else this.reject(event);",
+    "  } else {",
+    "    this.reject(event); // COMPLETED or CANCELLED",
+    "  }",
+    "}"
+  ].join('\n');
+  var LADDER_CPP = [
+    "void handle(const string& event) {",
+    "  if (state == REQUESTED) {",
+    "    if (event == \"assign\") state = ASSIGNED;",
+    "    else if (event == \"cancel\") { fee = 0; state = CANCELLED; }",
+    "    else reject(event);",
+    "  } else if (state == ASSIGNED) {",
+    "    if (event == \"arrive\") state = ARRIVED;",
+    "    else if (event == \"cancel\") { fee = 25; state = CANCELLED; }",
+    "    else reject(event);",
+    "  } else if (state == ARRIVED) {",
+    "    if (event == \"start\") state = IN_TRIP;",
+    "    else if (event == \"cancel\") { fee = 50; state = CANCELLED; }",
+    "    else reject(event);",
+    "  } else if (state == IN_TRIP) {",
+    "    if (event == \"end\") state = COMPLETED;",
+    "    else reject(event);",
+    "  } else {",
+    "    reject(event); // COMPLETED or CANCELLED",
+    "  }",
+    "}"
+  ].join('\n');
+  var LADDER_ALT = { python: { code: LADDER_PY, map: {} }, js: { lang: 'ts', code: LADDER_TS, map: {} }, cpp: { code: LADDER_CPP, map: {} } };
+  var UNSAFE_PY = [
+    "def buy(self):",
+    "    if self.stock > 0:        # check",
+    "        self.stock = self.stock - 1    # act",
+    "        return True",
+    "    return False"
+  ].join('\n');
+  var UNSAFE_TS = [
+    "buy(): boolean {   // shared by worker threads (or interleaved at an await)",
+    "  if (this.stock > 0) {        // check",
+    "    this.stock = this.stock - 1;    // act",
+    "    return true;",
+    "  }",
+    "  return false;",
+    "}"
+  ].join('\n');
+  var UNSAFE_CPP = [
+    "bool buy() {",
+    "  if (stock > 0) {        // check",
+    "    stock = stock - 1;    // act",
+    "    return true;",
+    "  }",
+    "  return false;",
+    "}"
+  ].join('\n');
+  var UNSAFE_ALT = { python: { code: UNSAFE_PY, map: {} }, js: { lang: 'ts', code: UNSAFE_TS, map: {} }, cpp: { code: UNSAFE_CPP, map: {} } };
+  var LOCK_PY = [
+    "def buy(self):",
+    "    with self.lock:                    # one thread at a time",
+    "        if self.stock > 0:",
+    "            self.stock = self.stock - 1",
+    "            return True",
+    "        return False"
+  ].join('\n');
+  var LOCK_TS = [
+    "async buy(): Promise<boolean> {",
+    "  const release = await this.mutex.acquire();   // one caller at a time",
+    "  try {",
+    "    if (this.stock > 0) {",
+    "      this.stock = this.stock - 1;",
+    "      return true;",
+    "    }",
+    "    return false;",
+    "  } finally { release(); }",
+    "}"
+  ].join('\n');
+  var LOCK_CPP = [
+    "bool buy() {",
+    "  lock_guard<mutex> guard(m);   // one thread at a time",
+    "  if (stock > 0) {",
+    "    stock = stock - 1;",
+    "    return true;",
+    "  }",
+    "  return false;",
+    "}"
+  ].join('\n');
+  var LOCK_ALT = { python: { code: LOCK_PY, map: {"1":2,"2":3,"3":4} }, js: { lang: 'ts', code: LOCK_TS, map: {"1":2,"2":4,"3":5,"6":8} }, cpp: { code: LOCK_CPP, map: {"1":2,"2":3,"3":4,"6":7} } };
+  var CAS_PY = [
+    "def buy(self):",
+    "    cur = self.ref.get()",
+    "    if cur.stock == 0: return False",
+    "    nxt = Slot(cur.state, cur.stock - 1, cur.version + 1)",
+    "    return self.ref.compare_and_set(cur, nxt) or self.buy()  # lost? retry"
+  ].join('\n');
+  var CAS_TS = [
+    "buy(): boolean {",
+    "  const cur = this.ref.get();",
+    "  if (cur.stock === 0) return false;",
+    "  const next = new Slot(cur.state, cur.stock - 1, cur.version + 1);",
+    "  return this.ref.compareAndSet(cur, next) || this.buy(); // lost? retry",
+    "}"
+  ].join('\n');
+  var CAS_CPP = [
+    "bool buy() {",
+    "  auto cur = ref.load();",
+    "  if (cur->stock == 0) return false;",
+    "  auto next = make_shared<Slot>(cur->state, cur->stock - 1, cur->version + 1);",
+    "  return ref.compare_exchange_strong(cur, next) || buy(); // lost? retry",
+    "}"
+  ].join('\n');
+  var CAS_ALT = { python: { code: CAS_PY, map: {} }, js: { lang: 'ts', code: CAS_TS, map: {} }, cpp: { code: CAS_CPP, map: {} } };
   function TXT(html, label) { var p = { type: 'text', html: html }; if (label) p.label = label; return p; }
   function VARS(label, vals, hl) { return { type: 'vars', label: label, vals: vals, hl: hl || {} }; }
   function QUEUE(label, items, hl, front, back) { return { type: 'queue', label: label, items: items.slice(), hl: hl || {}, frontLabel: front || 'front', backLabel: back || 'back' }; }
@@ -78,7 +348,7 @@
       if (lines[i].indexOf('void ' + ev) >= 0) hl[i + 1] = 'ok';
     }
     if (!Object.keys(hl).length) hl[lines.length - 1] = 'bad';
-    return CODE('Method that runs: ' + cls + '.' + ev + '()', body, hl);
+    return CODE('Method that runs: ' + cls + '.' + ev + '()', body, hl, RIDE_ALT[cls]);
   }
 
   topics.push({
@@ -940,7 +1210,7 @@ int main() {
         var blocks = { REQUESTED: { s: 2, inner: [[3, 'assign'], [4, 'cancel']], rej: 5 }, ASSIGNED: { s: 6, inner: [[7, 'arrive'], [8, 'cancel']], rej: 9 }, ARRIVED: { s: 10, inner: [[11, 'start'], [12, 'cancel']], rej: 13 }, IN_TRIP: { s: 14, inner: [[15, 'end']], rej: 16 } };
         var order = ['REQUESTED', 'ASSIGNED', 'ARRIVED', 'IN_TRIP'];
         var cur = 'REQUESTED', total = 0, frames = [];
-        frames.push(F('This is the <b>brute-force</b> design: one <code>handle()</code> method that asks "which state am I in?" and then "which event is this?". It works for 6 states × 5 events, but every question is answered by walking the ladder from the top.', [CODE('Ride.handle() — the if/else ladder', code, {}), VARS('cost so far', { state: cur, conditionsChecked: 0 })]));
+        frames.push(F('This is the <b>brute-force</b> design: one <code>handle()</code> method that asks "which state am I in?" and then "which event is this?". It works for 6 states × 5 events, but every question is answered by walking the ladder from the top.', [CODE('Ride.handle() — the if/else ladder', code, {}, LADDER_ALT), VARS('cost so far', { state: cur, conditionsChecked: 0 })]));
         evs.forEach(function (ev) {
           var hl = {}, checks = 0, next = null;
           for (var k = 0; k < order.length && !next; k++) {
@@ -958,14 +1228,14 @@ int main() {
           if (!next) { hl[17] = 'cur'; hl[18] = 'bad'; next = cur; checks++; }
           total += checks;
           frames.push(F('Event <b>' + ev + '</b> in ' + cur + ': the method checks <b>' + checks + '</b> conditions top-to-bottom (faded = skipped branches) before it finds the right line. ' + (next !== cur ? 'Moves to <b>' + next + '</b>.' : '<span class="c-r">Rejected.</span>') + ' With the State pattern this is <b>one</b> virtual call to the current state object.', [
-            CODE('Ride.handle()', code, hl),
+            CODE('Ride.handle()', code, hl, LADDER_ALT),
             VARS('cost so far', { state: next, conditionsChecked: total, statePatternCalls: frames.length }, { conditionsChecked: 'cur' })
           ]));
           cur = next;
         });
         var addHl = {}; [2, 5, 6, 9, 10, 13, 14, 16, 17].forEach(function (l) { addHl[l] = 'bad'; });
         frames.push(F('<b>Now product asks for a NO_SHOW state</b> (driver waited 5 minutes, rider never came; charge ₹100). In the ladder you must add a new <code>else if (state == NO_SHOW)</code> block, add a <i>timeout</i> branch inside ARRIVED, re-check every <code>else reject</code> line (red), and re-test the whole method. One method, edited by everyone, merge conflicts every sprint. ' + H.c('r', 'That is why the ladder breaks: change is not local.'), [
-          CODE('Lines you must read/edit to add NO_SHOW', code, addHl),
+          CODE('Lines you must read/edit to add NO_SHOW', code, addHl, LADDER_ALT),
           TABLE('Adding a state: ladder vs State pattern', ['', 'if/else ladder', 'State pattern'], [['files touched', '1 giant file', '1 new class + 1 method in Arrived'], ['branches to re-check', 'all S × E', 'only Arrived'], ['compiler help', 'none', 'interface forces method set'], ['merge conflicts', 'frequent', 'rare']])
         ]));
         frames.push(F('Rule of thumb: <b>2–3 states with no behaviour</b> → a small switch or enum table is fine. <b>4+ states, behaviour per state, or "more states coming"</b> → State pattern. Interviewers love hearing you say <i>when</i> each one is right.', [
@@ -1085,7 +1355,7 @@ struct Arrived2 final : RideState2 {
       statement: `<p>Design the lifecycle of a document in a wiki. States: <b>DRAFT</b>, <b>IN_REVIEW</b>, <b>APPROVED</b>, <b>PUBLISHED</b>. Events: <code>submit()</code> (DRAFT → IN_REVIEW), <code>approve(reviewer)</code> (IN_REVIEW → APPROVED, reviewer must not be the author), <code>reject(reason)</code> (IN_REVIEW → DRAFT, keep the reason), <code>publish()</code> (APPROVED → PUBLISHED), <code>edit()</code> (allowed only in DRAFT; editing an APPROVED doc sends it back to DRAFT). Any other event in any state must be rejected with a message, not crash. <b>Follow-up:</b> add an <b>ARCHIVED</b> state reachable only from PUBLISHED, touching as few classes as possible.</p>`,
       constraints: `Single-threaded is fine for the base version. Keep a history log of transitions. Author and reviewer are plain strings.`,
       example: `<p>Author "asha". Events: ${H.c('b', 'submit')} → IN_REVIEW; ${H.c('r', 'approve("asha")')} → rejected (self-approval); ${H.c('b', 'approve("ben")')} → APPROVED; ${H.c('b', 'edit')} → back to DRAFT (approval is void because content changed); ${H.c('b', 'submit, approve("ben"), publish')} → PUBLISHED; ${H.c('r', 'edit')} → rejected (published docs are frozen).</p>`,
-      brute: { why: `<p>A <code>String status</code> field and five methods, each with its own <code>if/else</code> on status. The rule "edit in APPROVED goes back to DRAFT" hides inside <code>edit()</code>; the rule "no self-approval" hides inside <code>approve()</code>. Adding ARCHIVED means editing all five methods (each needs a new branch saying "not allowed"), and a typo like <code>"APPROVD"</code> compiles fine and silently breaks the flow.</p>`, code: `class NaiveDoc {
+      brute: { why: `<p>A <code>String status</code> field and five methods, each with its own <code>if/else</code> on status. The rule "edit in APPROVED goes back to DRAFT" hides inside <code>edit()</code>; the rule "no self-approval" hides inside <code>approve()</code>. Adding ARCHIVED means editing all five methods (each needs a new branch saying "not allowed"), and a typo like <code>"APPROVD"</code> is accepted silently (no compile-time check) and breaks the flow.</p>`, code: { lang: 'java', code: `class NaiveDoc {
     String status = "DRAFT";
     final String author;
     NaiveDoc(String author) { this.author = author; }
@@ -1103,7 +1373,7 @@ struct Arrived2 final : RideState2 {
         else System.out.println("cannot edit in " + status);
     }
     // publish(), reject(), archive() ... the same if/else repeated in every method
-}` },
+}`, alt: [{ lang: 'python', code: "class NaiveDoc:\n    def __init__(self, author):\n        self.status = \"DRAFT\"\n        self.author = author\n\n    def submit(self):\n        if self.status == \"DRAFT\": self.status = \"IN_REVIEW\"\n        else: print(\"cannot submit in\", self.status)\n\n    def approve(self, reviewer):\n        if self.status == \"IN_REVIEW\" and reviewer != self.author: self.status = \"APPROVED\"\n        else: print(\"cannot approve in\", self.status)\n\n    def edit(self):\n        if self.status == \"DRAFT\": print(\"edited\")\n        elif self.status == \"APPROVED\": self.status = \"DRAFT\"\n        else: print(\"cannot edit in\", self.status)\n\n    # publish(), reject(), archive() ... the same if/else repeated in every method\n" }, { lang: 'ts', code: "class NaiveDoc {\n  status = \"DRAFT\";\n  constructor(private readonly author: string) {}\n  submit(): void {\n    if (this.status === \"DRAFT\") this.status = \"IN_REVIEW\";\n    else console.log(\"cannot submit in \" + this.status);\n  }\n  approve(reviewer: string): void {\n    if (this.status === \"IN_REVIEW\" && reviewer !== this.author) this.status = \"APPROVED\";\n    else console.log(\"cannot approve in \" + this.status);\n  }\n  edit(): void {\n    if (this.status === \"DRAFT\") console.log(\"edited\");\n    else if (this.status === \"APPROVED\") this.status = \"DRAFT\";\n    else console.log(\"cannot edit in \" + this.status);\n  }\n  // publish(), reject(), archive() ... the same if/else repeated in every method\n}\n" }, { lang: 'cpp', code: "class NaiveDoc {\npublic:\n    string status = \"DRAFT\";\n    const string author;\n    NaiveDoc(string author) : author(move(author)) {}\n    void submit() {\n        if (status == \"DRAFT\") status = \"IN_REVIEW\";\n        else cout << \"cannot submit in \" << status << endl;\n    }\n    void approve(const string& reviewer) {\n        if (status == \"IN_REVIEW\" && reviewer != author) status = \"APPROVED\";\n        else cout << \"cannot approve in \" << status << endl;\n    }\n    void edit() {\n        if (status == \"DRAFT\") cout << \"edited\" << endl;\n        else if (status == \"APPROVED\") status = \"DRAFT\";\n        else cout << \"cannot edit in \" << status << endl;\n    }\n    // publish(), reject(), archive() ... the same if/else repeated in every method\n};\n" }] } },
       mcq: { q: 'You add ARCHIVED with the State pattern and default-reject methods. Which classes must change?', options: ['The interface (new archive() with default reject), Published (override archive), and a new Archived class', 'Every state class', 'Only the Document context', 'Draft and Published only'], answer: 0, explain: 'A default in the base state (an interface default method, a base-class method) means states that do not allow archive() need no change. Only the state that leads to ARCHIVED overrides it, plus the new class.' },
       hints: [`<p>Hint 1: Draw the state × event table: 4 states × 5 events. Most cells are "reject". Only 6 cells move the document.</p>`, `<p>Hint 2: <code>DocState</code> (an interface or base class) with one default method per event that calls <code>doc.reject(event)</code>. Each concrete state overrides only its allowed events. The guard "reviewer ≠ author" lives in <code>InReview.approve</code>.</p>`, `<p>Hint 3: Keep the reason from reject() in the Document (data), not in a static field. Recipe: Document(context) → transitionTo(next) logs "A → B" → states as stateless singletons except where they need data → default-reject → ARCHIVED = new class + override in Published.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "DRAFT -> IN_REVIEW\nrejected approve (self-approval not allowed) in IN_REVIEW\nIN_REVIEW -> APPROVED\nAPPROVED -> DRAFT\nDRAFT -> IN_REVIEW\nIN_REVIEW -> APPROVED\nAPPROVED -> PUBLISHED\nrejected edit in PUBLISHED\nPUBLISHED -> ARCHIVED\nfinal = ARCHIVED\n" }] },
@@ -2291,7 +2561,7 @@ CarState2 onTick(CarState2 s, const Car2& c) {
       statement: `<p>You have a working elevator car with states IDLE, MOVING_UP, MOVING_DOWN, DOORS_OPEN. Add <b>fire recall</b>: when the building's fire alarm triggers, the car must (1) drop all pending stops, (2) if doors are open, close them as soon as the door is not blocked, (3) travel non-stop to the lobby (floor 0), (4) open doors and stay parked, ignoring every call, until the alarm is reset — then return to IDLE. Implement it without adding <code>if (fire)</code> checks to the existing states.</p>`,
       constraints: `Floors 0–20. Tick-based simulation. Existing states may change only where they must react to the alarm event.`,
       example: `<p>Car at floor 6 moving up to 9. ${H.c('r', 'Alarm!')} Stops {9} cleared → state ${H.c('y', 'FIRE_RECALL')} → moves 6→5→…→0 (ignores a car call for 3 pressed on the way) → ${H.c('b', 'FIRE_PARKED')} with doors open. Hall calls rejected. ${H.c('g', 'Alarm reset')} → IDLE.</p>`,
-      brute: { why: `<p>Add a boolean <code>fireMode</code> and sprinkle checks: in addStop (reject), in IDLE (go to 0), in MOVING_UP (reverse!), in MOVING_DOWN (do not stop), in DOORS_OPEN (close faster). Five places to edit; forgetting one (say MOVING_DOWN still stops at floor 3 for a car call) is a safety bug. And the combination <code>fireMode && maintenance</code> is undefined.</p>`, code: `class FlagCar {
+      brute: { why: `<p>Add a boolean <code>fireMode</code> and sprinkle checks: in addStop (reject), in IDLE (go to 0), in MOVING_UP (reverse!), in MOVING_DOWN (do not stop), in DOORS_OPEN (close faster). Five places to edit; forgetting one (say MOVING_DOWN still stops at floor 3 for a car call) is a safety bug. And the combination <code>fireMode && maintenance</code> is undefined.</p>`, code: { lang: 'java', code: `class FlagCar {
     int floor = 6; boolean fireMode = false, movingUp = true, doorOpen = false;
     java.util.TreeSet<Integer> stops = new java.util.TreeSet<>();
     void tick() {
@@ -2305,7 +2575,7 @@ CarState2 onTick(CarState2 s, const Car2& c) {
         }
         // ... every other branch also needs "if (fireMode)" - one missed check = safety bug
     }
-}` },
+}`, alt: [{ lang: 'python', code: "class FlagCar:\n    def __init__(self):\n        self.floor, self.fire_mode, self.moving_up, self.door_open = 6, False, True, False\n        self.stops = set()\n\n    def tick(self):\n        if self.fire_mode:\n            if self.door_open: self.door_open = False\n            elif self.floor > 0: self.floor -= 1        # easy to forget: what if we were moving up?\n            else: self.door_open = True\n        elif self.moving_up:\n            self.floor += 1\n            if self.floor in self.stops:\n                self.stops.remove(self.floor)\n                self.door_open = True\n        # ... every other branch also needs \"if fire_mode\" - one missed check = safety bug\n" }, { lang: 'ts', code: "class FlagCar {\n  floor = 6; fireMode = false; movingUp = true; doorOpen = false;\n  stops = new Set<number>();\n  tick(): void {\n    if (this.fireMode) {\n      if (this.doorOpen) this.doorOpen = false;\n      else if (this.floor > 0) this.floor--;            // easy to forget: what if we were moving up?\n      else this.doorOpen = true;\n    } else if (this.movingUp) {\n      this.floor++;\n      if (this.stops.delete(this.floor)) this.doorOpen = true;\n    }\n    // ... every other branch also needs \"if (fireMode)\" - one missed check = safety bug\n  }\n}\n" }, { lang: 'cpp', code: "class FlagCar {\npublic:\n    int floor = 6; bool fireMode = false, movingUp = true, doorOpen = false;\n    set<int> stops;\n    void tick() {\n        if (fireMode) {\n            if (doorOpen) doorOpen = false;\n            else if (floor > 0) floor--;            // easy to forget: what if we were moving up?\n            else doorOpen = true;\n        } else if (movingUp) {\n            floor++;\n            if (stops.erase(floor)) doorOpen = true;\n        }\n        // ... every other branch also needs \"if (fireMode)\" - one missed check = safety bug\n    }\n};\n" }] } },
       mcq: { q: 'A passenger presses "3" inside the car during FIRE_RECALL. With the State pattern, where is this handled?', options: ['FIRE_RECALL.acceptsCalls() returns false, so addStop() rejects it — no other code changes', 'MOVING_DOWN must check a fire flag', 'The controller must filter it', 'It cannot be handled'], answer: 0, explain: 'The new states declare their own policy for calls. The context asks the current state; existing states do not know fire mode exists.' },
       hints: [`<p>Hint 1: Fire recall is really <b>two</b> new states: FIRE_RECALL (travelling to the lobby) and FIRE_PARKED (doors open, waiting for reset).</p>`, `<p>Hint 2: The alarm is an <b>outside event</b> that can arrive in any state. Handle it once in the car: <code>onFireAlarm()</code> clears stops and sets the state to FIRE_RECALL — the existing states do not need to know.</p>`, `<p>Hint 3: FIRE_RECALL.onTick: if doors open and not blocked → close; else if floor &gt; 0 → move down; else → FIRE_PARKED. Both new states answer <code>acceptsCalls()</code> with false. Reset: only FIRE_PARKED → IDLE.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "call 3 accepted? false\nFIRE_PARKED at floor 0, door open true\nreset ok? true -> IDLE\nreset again? false\nIDLE at floor 2\n" }] },
@@ -3554,7 +3824,7 @@ public:
       statement: `<p>An elevator is at floor <code>start</code> moving in direction <code>dir</code> (UP or DOWN). Pending requests are given as a list of floors (may contain duplicates). Using the <b>LOOK</b> policy, return the order in which the floors are served and the total floors travelled. Then implement a <code>LookScheduler</code> class that supports <b>online</b> use: <code>addRequest(floor)</code> at any time and <code>nextStop()</code> that returns the next floor to go to (or -1 if idle), updating its direction.</p>`,
       constraints: `0 ≤ floors ≤ 10<sup>6</sup>, up to 10<sup>5</sup> requests; a request at the current floor is served immediately.`,
       example: `<p>start = 5, dir = UP, requests = [8, 2, 6, 1, 4, 6]. Up sweep: ${H.c('g', '6, 8')}; reverse at 8 (last request above); down sweep: ${H.c('b', '4, 2, 1')}. Order = [6, 8, 4, 2, 1]; distance = 1 + 2 + 4 + 2 + 1 = <b>10</b>. The duplicate 6 is served once.</p>`,
-      brute: { why: `<p>Simulate floor by floor: at each floor scan every pending request to see if one is here, and to see if anything remains ahead. That is O(F × N) — 10<sup>6</sup> floors × 10<sup>5</sup> requests = 10<sup>11</sup> steps. All the work spent "checking empty floors" is wasted; a sorted structure can jump straight to the next stop.</p>`, code: `import java.util.*;
+      brute: { why: `<p>Simulate floor by floor: at each floor scan every pending request to see if one is here, and to see if anything remains ahead. That is O(F × N) — 10<sup>6</sup> floors × 10<sup>5</sup> requests = 10<sup>11</sup> steps. All the work spent "checking empty floors" is wasted; a sorted structure can jump straight to the next stop.</p>`, code: { lang: 'java', code: `import java.util.*;
 class BruteLook {
     static List<Integer> order(int start, boolean up, List<Integer> req, int top) {
         List<Integer> pending = new ArrayList<>(new HashSet<>(req)), out = new ArrayList<>();
@@ -3568,7 +3838,7 @@ class BruteLook {
         }
         return out;
     }
-}` },
+}`, alt: [{ lang: 'python', code: "class BruteLook:\n    @staticmethod\n    def order(start, up, req, top):\n        pending, out = list(set(req)), []\n        pos = start\n        while pending:\n            if pos in pending:                                                   # O(N) scan\n                pending.remove(pos); out.append(pos); continue\n            ahead = any((f > pos) if up else (f < pos) for f in pending)        # O(N) scan per floor\n            if not ahead: up = not up; continue\n            pos += 1 if up else -1                                               # one floor at a time\n        return out\n" }, { lang: 'ts', code: "class BruteLook {\n  static order(start: number, up: boolean, req: number[], top: number): number[] {\n    const pending = [...new Set(req)], out: number[] = [];\n    let pos = start;\n    while (pending.length) {\n      const at = pending.indexOf(pos);                                           // O(N) scan\n      if (at >= 0) { pending.splice(at, 1); out.push(pos); continue; }\n      const ahead = pending.some((f) => (up ? f > pos : f < pos));               // O(N) scan per floor\n      if (!ahead) { up = !up; continue; }\n      pos += up ? 1 : -1;                                                        // one floor at a time\n    }\n    return out;\n  }\n}\n" }, { lang: 'cpp', code: "struct BruteLook {\n    static vector<int> order(int start, bool up, const vector<int>& req, int top) {\n        set<int> uniq(req.begin(), req.end());\n        vector<int> pending(uniq.begin(), uniq.end()), out;\n        int pos = start;\n        while (!pending.empty()) {\n            auto it = find(pending.begin(), pending.end(), pos);                  // O(N) scan\n            if (it != pending.end()) { pending.erase(it); out.push_back(pos); continue; }\n            bool ahead = false;\n            for (int f : pending) if (up ? f > pos : f < pos) ahead = true;       // O(N) scan per floor\n            if (!ahead) { up = !up; continue; }\n            pos += up ? 1 : -1;                                                   // one floor at a time\n        }\n        return out;\n    }\n};\n" }] } },
       mcq: { q: 'The car is at 5 going UP, with requests at 3 and 7. A new request for 6 arrives when the car is at 5.5 (between 5 and 6). What does LOOK do?', options: ['Stops at 6, then 7, then reverses to 3', 'Goes to 7 first because it was earlier', 'Reverses to 3 immediately because 3 is closer to 5 than 7', 'Ignores 6 until the next sweep'], answer: 0, explain: 'LOOK serves everything ahead in the current direction in floor order, including late arrivals ahead of the car.' },
       hints: [`<p>Hint 1: LOOK = "everything at or above me in ascending order, then everything below me in descending order" (for UP). Duplicates do not matter — use a set.</p>`, `<p>Hint 2: A sorted set (<code>TreeSet</code> in Java) gives the requests at or above <code>start</code> ascending and those below it descending (<code>tailSet(start, true)</code> and <code>headSet(start, false).descendingSet()</code>; with <code>std::set</code> use <code>lower_bound</code> and iterate; in Python filter a sorted list). For the online version, <code>ceiling(pos)</code> / <code>floor(pos)</code> give the next stop in each direction in O(log N).</p>`, `<p>Hint 3: Online <code>nextStop()</code>: if direction is UP and <code>ceiling(pos)</code> exists → go there; else flip to DOWN and try <code>floor(pos)</code>; if neither, return -1 (idle). Remove the floor when served, update pos.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "[6, 8, 4, 2, 1] distance=10\n6 7 3\n-1\n" }] },
@@ -4764,7 +5034,7 @@ public:
       statement: `<p>A vending machine must return <code>amount</code> rupees of change using its coin box, where <code>denoms[i]</code> has <code>counts[i]</code> coins available. Return the change using the <b>fewest coins</b> as a map denomination → count, or report that it is impossible (so the machine can refuse the sale <i>before</i> dispensing). Explain why greedy is not enough.</p>`,
       constraints: `1 ≤ denominations ≤ 10, 0 ≤ amount ≤ 10<sup>4</sup>, counts ≤ 10<sup>3</sup>.`,
       example: `<p>denoms = [1, 2, 5, 10], counts = [0, 3, 1, 1], amount = 6. Greedy: 5 → remaining 1 → ${H.c('r', 'no ₹1 coin, fails')}. Correct: ${H.c('g', '{2: 3}')} (3 coins). amount = 17 → ${H.c('g', '{10:1, 5:1, 2:1}')}. amount = 3 → ${H.c('r', 'impossible')} (only even coins and a 5/10).</p>`,
-      brute: { why: `<p>Try every combination of counts for every denomination: (c<sub>1</sub>+1) × (c<sub>2</sub>+1) × … combinations — with 4 denominations of 1000 coins each that is 10<sup>12</sup>. Plain greedy is fast but wrong with limited counts (example above).</p>`, code: `import java.util.*;
+      brute: { why: `<p>Try every combination of counts for every denomination: (c<sub>1</sub>+1) × (c<sub>2</sub>+1) × … combinations — with 4 denominations of 1000 coins each that is 10<sup>12</sup>. Plain greedy is fast but wrong with limited counts (example above).</p>`, code: { lang: 'java', code: `import java.util.*;
 class GreedyChange {
     // WRONG with limited coins: 6 with {5:1, 2:3} returns null although 2+2+2 works
     static Map<Integer, Integer> change(int[] denoms, int[] counts, int amount) {
@@ -4775,7 +5045,7 @@ class GreedyChange {
         }
         return amount == 0 ? out : null;
     }
-}` },
+}`, alt: [{ lang: 'python', code: "class GreedyChange:\n    # WRONG with limited coins: 6 with {5:1, 2:3} returns None although 2+2+2 works\n    @staticmethod\n    def change(denoms, counts, amount):\n        out = {}\n        for i in range(len(denoms) - 1, -1, -1):\n            if amount <= 0: break\n            take = min(counts[i], amount // denoms[i])\n            if take > 0:\n                out[denoms[i]] = take\n                amount -= take * denoms[i]\n        return dict(sorted(out.items())) if amount == 0 else None\n" }, { lang: 'ts', code: "class GreedyChange {\n  // WRONG with limited coins: 6 with {5:1, 2:3} returns null although 2+2+2 works\n  static change(denoms: number[], counts: number[], amount: number): Map<number, number> | null {\n    const out = new Map<number, number>();\n    for (let i = denoms.length - 1; i >= 0 && amount > 0; i--) {\n      const take = Math.min(counts[i], Math.floor(amount / denoms[i]));\n      if (take > 0) { out.set(denoms[i], take); amount -= take * denoms[i]; }\n    }\n    return amount === 0 ? out : null;\n  }\n}\n" }, { lang: 'cpp', code: "struct GreedyChange {\n    // WRONG with limited coins: 6 with {5:1, 2:3} returns nullopt although 2+2+2 works\n    static optional<map<int, int>> change(const vector<int>& denoms, const vector<int>& counts, int amount) {\n        map<int, int> out;\n        for (int i = (int)denoms.size() - 1; i >= 0 && amount > 0; i--) {\n            int take = min(counts[i], amount / denoms[i]);\n            if (take > 0) { out[denoms[i]] = take; amount -= take * denoms[i]; }\n        }\n        if (amount == 0) return out;\n        return nullopt;\n    }\n};\n" }] } },
       mcq: { q: 'Coins {1, 3, 4}, unlimited counts, amount 6. What does greedy give vs optimal?', options: ['Greedy 4+1+1 (3 coins), optimal 3+3 (2 coins)', 'Both give 3+3', 'Greedy fails entirely', 'Both give 4+1+1'], answer: 0, explain: 'Greedy is only guaranteed optimal for canonical coin systems with unlimited coins; {1,3,4} is not canonical.' },
       hints: [`<p>Hint 1: This is a <b>bounded</b> knapsack: each denomination can be used at most counts[i] times; minimise the number of coins.</p>`, `<p>Hint 2: <code>dp[a]</code> = fewest coins to make a. Process denominations one by one; for each, use it k = 1..counts[i] times on top of the previous layer (iterate a from high to low or keep a copy of the previous layer).</p>`, `<p>Hint 3: To return the coins, store for each (denomination, amount) how many of that coin were used, then walk back. dp[0] = 0, others = ∞; answer impossible if dp[amount] = ∞.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "{2=3}\n{10=1, 5=1, 2=1}\nnull\n{}\nnull\n" }] },
@@ -6254,7 +6524,7 @@ public:
       statement: `<p>Implement the cash dispenser of an ATM. Cassettes hold notes of ₹2000, ₹500, ₹200 and ₹100 in limited quantities. <code>plan(amount)</code> must return how many notes of each type to dispense, preferring bigger notes, or report that the amount cannot be dispensed — without changing the cassettes. <code>dispense(plan)</code> then removes the notes. Design it so a new denomination (e.g. ₹50) can be added without editing existing handler code.</p>`,
       constraints: `Amount ≤ 50,000 and a multiple of 100 (or 50 once ₹50 is added). Up to 2,000 notes per cassette.`,
       example: `<p>Cassettes: ₹2000×1, ₹500×1, ₹200×3, ₹100×0. Request ₹600. Greedy: ₹500 → remaining ₹100 → ${H.c('r', 'no ₹100 notes, stuck')}. Correct plan: ${H.c('g', '₹200×3')}. Request ₹2700 with ₹2000×2, ₹500×10, ₹200×10, ₹100×10 → ${H.c('g', '₹2000×1 + ₹500×1 + ₹200×1')}.</p>`,
-      brute: { why: `<p>A single method with hard-coded <code>if (amount &gt;= 2000) … if (amount &gt;= 500) …</code> greedy steps. It fails on limited stock (₹600 case), and adding ₹50 means editing the method. Trying all combinations of all counts (2001<sup>4</sup>) is far too slow.</p>`, code: `class HardCodedDispenser {
+      brute: { why: `<p>A single method with hard-coded <code>if (amount &gt;= 2000) … if (amount &gt;= 500) …</code> greedy steps. It fails on limited stock (₹600 case), and adding ₹50 means editing the method. Trying all combinations of all counts (2001<sup>4</sup>) is far too slow.</p>`, code: { lang: 'java', code: `class HardCodedDispenser {
     int n2000, n500, n200, n100;
     HardCodedDispenser(int a, int b, int c, int d) { n2000 = a; n500 = b; n200 = c; n100 = d; }
     // greedy + hard-coded denominations: wrong on limited stock, closed to extension
@@ -6265,7 +6535,7 @@ public:
         int d = Math.min(n100, amount / 100);   amount -= d * 100;
         return amount == 0 ? new int[] {a, b, c, d} : null;   // 600 with {1,1,3,0} -> null (wrong!)
     }
-}` },
+}`, alt: [{ lang: 'python', code: "class HardCodedDispenser:\n    def __init__(self, a, b, c, d):\n        self.n2000, self.n500, self.n200, self.n100 = a, b, c, d\n\n    # greedy + hard-coded denominations: wrong on limited stock, closed to extension\n    def plan(self, amount):\n        a = min(self.n2000, amount // 2000); amount -= a * 2000\n        b = min(self.n500, amount // 500);   amount -= b * 500\n        c = min(self.n200, amount // 200);   amount -= c * 200\n        d = min(self.n100, amount // 100);   amount -= d * 100\n        return [a, b, c, d] if amount == 0 else None   # 600 with {1,1,3,0} -> None (wrong!)\n" }, { lang: 'ts', code: "class HardCodedDispenser {\n  constructor(private n2000: number, private n500: number, private n200: number, private n100: number) {}\n  // greedy + hard-coded denominations: wrong on limited stock, closed to extension\n  plan(amount: number): number[] | null {\n    const a = Math.min(this.n2000, Math.floor(amount / 2000)); amount -= a * 2000;\n    const b = Math.min(this.n500, Math.floor(amount / 500));   amount -= b * 500;\n    const c = Math.min(this.n200, Math.floor(amount / 200));   amount -= c * 200;\n    const d = Math.min(this.n100, Math.floor(amount / 100));   amount -= d * 100;\n    return amount === 0 ? [a, b, c, d] : null;   // 600 with {1,1,3,0} -> null (wrong!)\n  }\n}\n" }, { lang: 'cpp', code: "class HardCodedDispenser {\n    int n2000, n500, n200, n100;\npublic:\n    HardCodedDispenser(int a, int b, int c, int d) : n2000(a), n500(b), n200(c), n100(d) {}\n    // greedy + hard-coded denominations: wrong on limited stock, closed to extension\n    optional<array<int, 4>> plan(int amount) {\n        int a = min(n2000, amount / 2000); amount -= a * 2000;\n        int b = min(n500, amount / 500);   amount -= b * 500;\n        int c = min(n200, amount / 200);   amount -= c * 200;\n        int d = min(n100, amount / 100);   amount -= d * 100;\n        if (amount == 0) return array<int, 4>{a, b, c, d};\n        return nullopt;   // 600 with {1,1,3,0} -> nullopt (wrong!)\n    }\n};\n" }] } },
       mcq: { q: 'Why does the plan step come before calling the bank in a withdrawal?', options: ['So the customer is never charged for an amount the ATM cannot physically dispense', 'Because the bank needs the note breakdown', 'To make the transaction faster', 'It does not matter'], answer: 0, explain: 'Planning is local and side-effect free; if it fails, nothing needs undoing. Debit-then-discover-you-cannot-dispense forces a reversal.' },
       hints: [`<p>Hint 1: Make each denomination a <b>handler</b> that knows its note value, its stock and the next handler. The chain order (big → small) is set up once at construction.</p>`, `<p>Hint 2: Plain "take as many as you can" fails on limited stock. Let each handler try <code>use = max … 0</code> and ask the next handler to solve the remainder; return true on the first success (backtracking). Write into the plan only on success.</p>`, `<p>Hint 3: Keep <code>plan()</code> pure (no stock changes) and a separate <code>commit(plan)</code> that walks the chain subtracting counts. Adding ₹50 = link one more handler.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "plan {200=3}\nplan {2000=1, 500=1, 200=1}\nno plan\nno plan\n{2000=1, 500=1, 200=1, 50=1}\nplan {2000=1, 500=1, 200=1, 50=1}\nplan {500=8, 200=4, 100=1, 50=1}\nno plan\n" }] },
@@ -7188,7 +7458,7 @@ int main() {
         var shared = { stock: 1, state: 'IDLE', version: 0, sold: 0 };
         function snap(narr, who, line, cls, sharedHl) {
           frames.push(F(narr, [
-            CODE('Thread ' + (who || '-') + ' runs (' + mode + ')', codes[mode], line ? one(line, cls || 'cur') : {}),
+            CODE('Thread ' + (who || '-') + ' runs (' + mode + ')', codes[mode], line ? one(line, cls || 'cur') : {}, { unsafe: UNSAFE_ALT, lock: LOCK_ALT, cas: CAS_ALT }[mode]),
             TABLE('Interleaving timeline', ['step', 'Buyer A (keypad)', 'Buyer B (phone app)', 'shared memory'], timeline, timeline.length ? one(timeline.length - 1, cls === 'bad' ? 'bad' : cls === 'ok' ? 'ok' : 'cur') : {}),
             VARS('Shared vending slot (1 can left)', { stock: shared.stock, state: shared.state, version: shared.version, cansSold: shared.sold }, sharedHl || {})
           ]));
@@ -7202,7 +7472,7 @@ int main() {
           shared.stock = -1; shared.sold = 2; row('', 'writes stock = 0 (or −1), charges card'); snap('B: computes <code>stock − 1</code> from <b>its stale read</b> → writes again, charges B\'s card and tells B "enjoy your drink". <span class="c-r">Two sales, one can.</span> Stock is now wrong and B was charged for nothing.', 'B', 3, 'bad', { stock: 'bad', cansSold: 'bad' });
           snap('This is the <b>check-then-act</b> race. It never shows up in a single-threaded demo, which is why interviewers ask "what if two people buy at once?". Rerun with <code>mode=lock</code> or <code>mode=cas</code>.', null, null, 'bad', { cansSold: 'bad' });
         } else if (mode === 'lock') {
-          row('acquires lock', 'waits for lock…'); snap('A enters the <code>synchronized</code> method first and holds the lock. B blocks at the door.', 'A', 1, 'cur');
+          row('acquires lock', 'waits for lock…'); snap('A enters the guarded method first and takes the lock (<code>synchronized</code>, <code>with lock</code>, <code>lock_guard</code>). B blocks at the door.', 'A', 1, 'cur');
           row('reads stock = 1 → passes', 'waiting'); snap('A checks stock = 1 → passes. B cannot read anything yet.', 'A', 2, 'cur');
           shared.stock = 0; shared.sold = 1; shared.state = 'SOLD_OUT'; shared.version = 1;
           row('writes stock = 0, releases lock', 'waiting'); snap('A writes stock = 0, state SOLD_OUT, releases the lock. The check and the act happened as one indivisible step.', 'A', 3, 'ok', { stock: 'ok' });
@@ -7493,7 +7763,7 @@ public:
       statement: `<p>A resource (a vending slot, a cinema seat, a parking spot) moves through states <b>AVAILABLE → HELD → SOLD</b>, with <b>HELD → AVAILABLE</b> on <code>release()</code> or hold expiry. Many threads call <code>hold(user)</code>, <code>confirm(user)</code> and <code>release(user)</code> concurrently. Guarantee: at most one user ever holds/buys it; only the holder may confirm or release; an expired hold can be taken by someone else. Implement it lock-free with an immutable snapshot and <code>compareAndSet</code>, and expose the version for database-style optimistic locking.</p>`,
       constraints: `Up to 10<sup>4</sup> concurrent callers. Hold expires after <code>ttlMillis</code>. No locks in the solution. Time is passed in (for testability).`,
       example: `<p>50 threads call <code>hold</code> at once → ${H.c('g', 'exactly 1 returns true')}, 49 false. Holder confirms → SOLD. A non-holder calling confirm → ${H.c('r', 'false')}. If the holder waits past the TTL, ${H.c('b', 'another user’s hold succeeds')} because the expired HELD counts as AVAILABLE.</p>`,
-      brute: { why: `<p>Plain fields with if-checks: <code>if (state == AVAILABLE) { state = HELD; holder = user; }</code>. Two threads pass the check together, and the second overwrites the holder — both users think they hold the seat. Also <code>state</code> and <code>holder</code> are written separately, so a reader can see HELD with the old holder (torn state).</p>`, code: `class RacySeat {
+      brute: { why: `<p>Plain fields with if-checks: <code>if (state == AVAILABLE) { state = HELD; holder = user; }</code>. Two threads pass the check together, and the second overwrites the holder — both users think they hold the seat. Also <code>state</code> and <code>holder</code> are written separately, so a reader can see HELD with the old holder (torn state).</p>`, code: { lang: 'java', code: `class RacySeat {
     String state = "AVAILABLE", holder = null;
     boolean hold(String user) {
         if (state.equals("AVAILABLE")) {       // check
@@ -7503,7 +7773,7 @@ public:
         }
         return false;
     }
-}` },
+}`, alt: [{ lang: 'python', code: "class RacySeat:\n    def __init__(self):\n        self.state, self.holder = \"AVAILABLE\", None\n\n    def hold(self, user):\n        if self.state == \"AVAILABLE\":       # check\n            self.state = \"HELD\"             # act (not atomic with the check)\n            self.holder = user              # second field: readers can see a torn mix\n            return True\n        return False\n" }, { lang: 'ts', code: "class RacySeat {\n  state = \"AVAILABLE\";\n  holder: string | null = null;\n  hold(user: string): boolean {\n    if (this.state === \"AVAILABLE\") {       // check\n      this.state = \"HELD\";                  // act (not atomic with the check)\n      this.holder = user;                   // second field: readers can see a torn mix\n      return true;\n    }\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class RacySeat {\npublic:\n    string state = \"AVAILABLE\", holder;\n    bool hold(const string& user) {\n        if (state == \"AVAILABLE\") {         // check\n            state = \"HELD\";                 // act (not atomic with the check)\n            holder = user;                  // second field: readers can see a torn mix\n            return true;\n        }\n        return false;\n    }\n};\n" }] } },
       mcq: { q: 'Why must the snapshot passed to compareAndSet be immutable?', options: ['CAS compares references; if you mutate fields in place, the reference never changes and conflicting updates are not detected', 'Immutable objects are faster to allocate', 'A compare-and-set reference only accepts records', 'To avoid garbage collection'], answer: 0, explain: 'compareAndSet checks reference identity. Each transition must publish a new object so a concurrent change is visible as a different reference.' },
       hints: [`<p>Hint 1: Put <b>everything</b> that must be consistent (state, holder, expiry, version) into one immutable snapshot object (a record in Java). A transition = build a new snapshot from the old one.</p>`, `<p>Hint 2: Loop: <code>cur = ref.get()</code>; compute the "effective" state (HELD but expired counts as AVAILABLE); check the guard; build <code>next</code> with <code>version + 1</code>; <code>if (ref.compareAndSet(cur, next)) return true;</code> else retry.</p>`, `<p>Hint 3: Guards: hold needs effective AVAILABLE; confirm/release need state HELD, same holder and not expired. Return false (no retry) when the guard fails on a fresh snapshot. Pass <code>now</code> as a parameter so tests can control time.</p>`],
       tests: { io: true, cases: [{ stdin: '', stdout: "winners=1 state=HELD v1\nholder is a contender: true\nstranger confirm: false\nconfirm after expiry: false\nafter expiry, u_late holds: true\nu_late confirms: true -> SOLD\nhold after sold: false\nrelease after sold: false\n" }] },
@@ -7860,7 +8130,7 @@ int main() {
     statement: `<p>Model a traffic light that cycles <b>RED (30 s) → GREEN (25 s) → YELLOW (5 s) → RED</b>. A <code>tick()</code> is called once per second. A pedestrian button may be pressed at any time: during GREEN it cuts the remaining green time to at most 5 seconds; in RED or YELLOW it does nothing. Print the colour whenever it changes. <b>Add-a-state follow-up:</b> a FLASHING_YELLOW night mode.</p>`,
     constraints: `Durations are fixed per state. No threads needed — the caller drives <code>tick()</code>.`,
     example: `<p>Start RED with 30 s. After 30 ticks → ${H.c('g', 'GREEN')} (25 s). 3 ticks later the button is pressed → remaining green becomes ${H.c('y', '5')} instead of 22. 5 ticks later → ${H.c('y', 'YELLOW')}, 5 more → ${H.c('r', 'RED')}.</p>`,
-    brute: { why: `<p>Integer state codes and a counter inside one <code>tick()</code> with nested <code>if (state == 0) … else if (state == 1)</code>; the button handler repeats the same ladder. Adding FLASHING_YELLOW means editing both ladders, and magic numbers (0/1/2) make it easy to send RED → YELLOW by mistake.</p>`, code: `class NaiveLight {
+    brute: { why: `<p>Integer state codes and a counter inside one <code>tick()</code> with nested <code>if (state == 0) … else if (state == 1)</code>; the button handler repeats the same ladder. Adding FLASHING_YELLOW means editing both ladders, and magic numbers (0/1/2) make it easy to send RED → YELLOW by mistake.</p>`, code: { lang: 'java', code: `class NaiveLight {
     int state = 0, remaining = 30;          // 0 = red, 1 = green, 2 = yellow
     void tick() {
         if (--remaining > 0) return;
@@ -7869,7 +8139,7 @@ int main() {
         else if (state == 2) { state = 0; remaining = 30; }
     }
     void press() { if (state == 1 && remaining > 5) remaining = 5; }   // the ladder again
-}` },
+}`, alt: [{ lang: 'python', code: "class NaiveLight:\n    def __init__(self):\n        self.state, self.remaining = 0, 30          # 0 = red, 1 = green, 2 = yellow\n\n    def tick(self):\n        self.remaining -= 1\n        if self.remaining > 0: return\n        if self.state == 0: self.state, self.remaining = 1, 25\n        elif self.state == 1: self.state, self.remaining = 2, 5\n        elif self.state == 2: self.state, self.remaining = 0, 30\n\n    def press(self):                                 # the ladder again\n        if self.state == 1 and self.remaining > 5: self.remaining = 5\n" }, { lang: 'ts', code: "class NaiveLight {\n  state = 0; remaining = 30;          // 0 = red, 1 = green, 2 = yellow\n  tick(): void {\n    if (--this.remaining > 0) return;\n    if (this.state === 0) { this.state = 1; this.remaining = 25; }\n    else if (this.state === 1) { this.state = 2; this.remaining = 5; }\n    else if (this.state === 2) { this.state = 0; this.remaining = 30; }\n  }\n  press(): void { if (this.state === 1 && this.remaining > 5) this.remaining = 5; }   // the ladder again\n}\n" }, { lang: 'cpp', code: "class NaiveLight {\npublic:\n    int state = 0, remaining = 30;          // 0 = red, 1 = green, 2 = yellow\n    void tick() {\n        if (--remaining > 0) return;\n        if (state == 0) { state = 1; remaining = 25; }\n        else if (state == 1) { state = 2; remaining = 5; }\n        else if (state == 2) { state = 0; remaining = 30; }\n    }\n    void press() { if (state == 1 && remaining > 5) remaining = 5; }   // the ladder again\n};\n" }] } },
     mcq: { q: 'Where should the rule "button shortens GREEN only" live in an enum State design?', options: ['As a method on the state that only GREEN overrides; the others inherit "do nothing"', 'In the TrafficLight.press() method with an if on the colour', 'In a static utility class', 'In every tick() call'], answer: 0, explain: 'Constant-specific methods put the behaviour next to the state it belongs to; the context just delegates.' },
     hints: [`<p>Hint 1: Each colour knows its duration and its successor — that is all a cycle needs. An enum with a duration and a <code>next()</code> method is perfect (a Java enum with a constructor argument and an abstract method, a Python <code>Enum</code> with a lookup table, a C++ <code>enum class</code> with a switch).</p>`, `<p>Hint 2: Give the enum a method <code>int onPedestrian(int remaining)</code> that returns <code>remaining</code> by default; only GREEN overrides it with <code>min(remaining, 5)</code>.</p>`, `<p>Hint 3: The context holds <code>light</code> and <code>remaining</code>. tick(): decrement; when it hits 0, switch to <code>light.next()</code> and reload its duration. Night mode = one more constant whose next() is itself.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "RED -> GREEN\ngreen left after button: 5\nGREEN -> YELLOW\nYELLOW -> RED\nnow RED\nred left after button: 30\nnight FLASHING_YELLOW 1\n" }] },
@@ -8111,13 +8381,13 @@ int main() {
     statement: `<p>A turnstile is <b>LOCKED</b> or <b>UNLOCKED</b>. Events: <code>coin()</code> and <code>push()</code>. LOCKED + coin → UNLOCKED; LOCKED + push → sound alarm, stay LOCKED; UNLOCKED + push → let one person through, LOCKED; UNLOCKED + coin → refund the extra coin, stay UNLOCKED. <b>Follow-up:</b> add <b>BROKEN</b>: any state + <code>fault()</code> → BROKEN (coins refunded, pushes ignored) until <code>repair()</code> → LOCKED.</p>`,
     constraints: `Single-threaded. Count passengers and collected coins.`,
     example: `<p>Events: push → ${H.c('r', 'alarm')}; coin → UNLOCKED; coin → ${H.c('y', 'refund')}; push → passenger 1, LOCKED; fault → BROKEN; coin → ${H.c('y', 'refund')}; repair → LOCKED. Collected = ${H.c('g', '1 coin')}, passengers = 1.</p>`,
-    brute: { why: `<p>A <code>boolean locked</code> plus a later <code>boolean broken</code>: now there are 4 combinations, and code like <code>if (locked) … else …</code> forgets to check <code>broken</code> first — a broken gate that still takes coins. Each new mode doubles the combinations.</p>`, code: `class FlagTurnstile {
+    brute: { why: `<p>A <code>boolean locked</code> plus a later <code>boolean broken</code>: now there are 4 combinations, and code like <code>if (locked) … else …</code> forgets to check <code>broken</code> first — a broken gate that still takes coins. Each new mode doubles the combinations.</p>`, code: { lang: 'java', code: `class FlagTurnstile {
     boolean locked = true, broken = false;
     int coins, passengers;
     void coin() { if (locked) { locked = false; coins++; } else System.out.println("refund"); }   // forgot broken!
     void push() { if (!locked) { passengers++; locked = true; } else System.out.println("alarm"); }
     void fault() { broken = true; }
-}` },
+}`, alt: [{ lang: 'python', code: "class FlagTurnstile:\n    def __init__(self):\n        self.locked, self.broken = True, False\n        self.coins = self.passengers = 0\n\n    def coin(self):                                   # forgot broken!\n        if self.locked: self.locked = False; self.coins += 1\n        else: print(\"refund\")\n\n    def push(self):\n        if not self.locked: self.passengers += 1; self.locked = True\n        else: print(\"alarm\")\n\n    def fault(self): self.broken = True\n" }, { lang: 'ts', code: "class FlagTurnstile {\n  locked = true; broken = false;\n  coins = 0; passengers = 0;\n  coin(): void { if (this.locked) { this.locked = false; this.coins++; } else console.log(\"refund\"); }   // forgot broken!\n  push(): void { if (!this.locked) { this.passengers++; this.locked = true; } else console.log(\"alarm\"); }\n  fault(): void { this.broken = true; }\n}\n" }, { lang: 'cpp', code: "class FlagTurnstile {\npublic:\n    bool locked = true, broken = false;\n    int coins = 0, passengers = 0;\n    void coin() { if (locked) { locked = false; coins++; } else cout << \"refund\" << endl; }   // forgot broken!\n    void push() { if (!locked) { passengers++; locked = true; } else cout << \"alarm\" << endl; }\n    void fault() { broken = true; }\n};\n" }] } },
     mcq: { q: 'After adding BROKEN with default-reject methods, which existing state classes change?', options: ['None — fault() is handled once in the context or by a default in the base state; only Broken is new', 'Locked and Unlocked both', 'Only Unlocked', 'All classes and the interface'], answer: 0, explain: 'An event valid in every state (fault) can be handled once; the new state class handles its own coin/push.' },
     hints: [`<p>Hint 1: Draw the 2 × 2 table (LOCKED/UNLOCKED × coin/push). Every cell has a defined outcome — there are no "impossible" cells here.</p>`, `<p>Hint 2: <code>interface GateState { GateState coin(Turnstile t); GateState push(Turnstile t); }</code> returning the next state keeps the context in charge of the field.</p>`, `<p>Hint 3: fault() is legal from every state → handle it in the context (<code>state = new Broken()</code>). Broken.coin refunds, Broken.push ignores, repair() only works in Broken.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "[LOCKED] ALARM: pay first\n[UNLOCKED] already open, coin refunded\n[BROKEN] out of order, coin refunded\n[BROKEN] repaired\n[LOCKED] nothing to repair\nLOCKED coins=1 passengers=1\n" }] },
@@ -8364,7 +8634,7 @@ int main() {
     statement: `<p>A smart door is <b>OPEN</b>, <b>CLOSED</b> or <b>LOCKED</b>. <code>close()</code>: OPEN → CLOSED. <code>open()</code>: CLOSED → OPEN. <code>lock()</code>: CLOSED → LOCKED (you cannot lock an open door). <code>unlock(code, now)</code>: LOCKED → CLOSED if the code is right. Three wrong codes in a row → <b>LOCKED_OUT</b> for 60 seconds: every unlock attempt is refused until <code>now ≥ lockedUntil</code>, then the door behaves as LOCKED again.</p>`,
     constraints: `Time is passed in as seconds (<code>long now</code>) so it is testable. The wrong-attempt counter resets on success.`,
     example: `<p>close, lock, unlock("0000", t=1) ✗, unlock("1111", t=2) ✗, unlock("2222", t=3) ✗ → ${H.c('r', 'LOCKED_OUT until t=63')}; unlock("4321", t=10) → ${H.c('r', 'refused')}; unlock("4321", t=70) → ${H.c('g', 'CLOSED')}.</p>`,
-    brute: { why: `<p>Fields <code>isOpen</code>, <code>isLocked</code>, <code>failCount</code>, <code>lockedUntil</code> and if-checks in each method. <code>lock()</code> forgets to check <code>isOpen</code> (so an open door reports "locked"), and the lockout check is copy-pasted into unlock only — an attacker can keep calling it because one branch forgot the time check.</p>`, code: `class FlagDoor {
+    brute: { why: `<p>Fields <code>isOpen</code>, <code>isLocked</code>, <code>failCount</code>, <code>lockedUntil</code> and if-checks in each method. <code>lock()</code> forgets to check <code>isOpen</code> (so an open door reports "locked"), and the lockout check is copy-pasted into unlock only — an attacker can keep calling it because one branch forgot the time check.</p>`, code: { lang: 'java', code: `class FlagDoor {
     boolean isOpen = true, isLocked = false;
     int fails; long lockedUntil;
     void lock() { isLocked = true; }                          // bug: can "lock" an open door
@@ -8373,7 +8643,7 @@ int main() {
         if (++fails >= 3) lockedUntil = now + 60;
         return false;
     }
-}` },
+}`, alt: [{ lang: 'python', code: "class FlagDoor:\n    def __init__(self):\n        self.is_open, self.is_locked = True, False\n        self.fails, self.locked_until = 0, 0\n\n    def lock(self): self.is_locked = True                          # bug: can \"lock\" an open door\n\n    def unlock(self, code, now):\n        if code == \"4321\":                                         # bug: ignores lockout time\n            self.is_locked = False; self.fails = 0\n            return True\n        self.fails += 1\n        if self.fails >= 3: self.locked_until = now + 60\n        return False\n" }, { lang: 'ts', code: "class FlagDoor {\n  isOpen = true; isLocked = false;\n  fails = 0; lockedUntil = 0;\n  lock(): void { this.isLocked = true; }                          // bug: can \"lock\" an open door\n  unlock(code: string, now: number): boolean {\n    if (code === \"4321\") { this.isLocked = false; this.fails = 0; return true; }  // bug: ignores lockout time\n    if (++this.fails >= 3) this.lockedUntil = now + 60;\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class FlagDoor {\npublic:\n    bool isOpen = true, isLocked = false;\n    int fails = 0; long long lockedUntil = 0;\n    void lock() { isLocked = true; }                              // bug: can \"lock\" an open door\n    bool unlock(const string& code, long long now) {\n        if (code == \"4321\") { isLocked = false; fails = 0; return true; }  // bug: ignores lockout time\n        if (++fails >= 3) lockedUntil = now + 60;\n        return false;\n    }\n};\n" }] } },
     mcq: { q: 'Is LOCKED_OUT better modelled as a separate state or as a counter inside LOCKED?', options: ['A separate state: it accepts different events (all unlocks refused) and has its own exit condition (time)', 'A counter, because states must not hold data', 'A boolean flag on the door', 'An exception thrown from unlock()'], answer: 0, explain: 'Different allowed behaviour + a distinct exit condition is exactly what makes something a state.' },
     hints: [`<p>Hint 1: Table first: 4 states × 4 events. Most cells are "not allowed"; lock in OPEN is a classic trap.</p>`, `<p>Hint 2: LOCKED_OUT is a state holding <code>lockedUntil</code>. Its unlock() checks time first: before → refuse; after → behave like LOCKED (delegate to a fresh Locked state).</p>`, `<p>Hint 3: Keep the wrong-attempt counter in Locked (per locking session) and reset it on success. Pass <code>now</code> into unlock rather than calling the clock inside.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "[OPEN] cannot lock now\n[LOCKED] wrong code (1/3)\n[LOCKED] wrong code (2/3)\n[LOCKED] 3 wrong codes: locked out for 60 s\n[LOCKED_OUT] locked out for 53 s\n[LOCKED_OUT] wrong code (1/3)\n[CLOSED] not locked\nfinal CLOSED\n" }] },
@@ -8695,7 +8965,7 @@ int main() {
     statement: `<p>An e-commerce order moves through <b>PLACED → PACKED → SHIPPED → DELIVERED</b>. <b>CANCELLED</b> is allowed from PLACED or PACKED only. <b>RETURN_REQUESTED</b> is allowed from DELIVERED only within 7 days of delivery, then <b>RETURNED</b>. Implement <code>Order.moveTo(newStatus, today)</code> that rejects illegal transitions with a clear message and keeps a history. The rules must be readable in one place.</p>`,
     constraints: `Dates as <code>LocalDate</code>. Terminal states: CANCELLED, RETURNED. Support listing the allowed next statuses for the UI.`,
     example: `<p>PLACED → PACKED ✓ → ${H.c('r', 'CANCELLED? allowed')} … or PACKED → SHIPPED ✓ → ${H.c('r', 'CANCELLED ✗ (already shipped)')} → DELIVERED on 1 Mar ✓ → RETURN_REQUESTED on 5 Mar ✓; on 10 Mar ✗ (window closed).</p>`,
-    brute: { why: `<p>A string status and <code>if (status == "PLACED" &amp;&amp; next == "PACKED") …</code> chains spread across controller, service and admin tools. The same rule is implemented three times, slightly differently, and the UI cannot ask "what can I do next?".</p>`, code: `class NaiveOrder {
+    brute: { why: `<p>A string status and <code>if (status == "PLACED" &amp;&amp; next == "PACKED") …</code> chains spread across controller, service and admin tools. The same rule is implemented three times, slightly differently, and the UI cannot ask "what can I do next?".</p>`, code: { lang: 'java', code: `class NaiveOrder {
     String status = "PLACED";
     boolean moveTo(String next) {
         if (status.equals("PLACED") && (next.equals("PACKED") || next.equals("CANCELLED"))) { status = next; return true; }
@@ -8704,7 +8974,7 @@ int main() {
         // return window? typo "DELIVERD"? every caller re-implements part of this
         return false;
     }
-}` },
+}`, alt: [{ lang: 'python', code: "class NaiveOrder:\n    def __init__(self):\n        self.status = \"PLACED\"\n\n    def move_to(self, nxt):\n        if self.status == \"PLACED\" and nxt in (\"PACKED\", \"CANCELLED\"): self.status = nxt; return True\n        if self.status == \"PACKED\" and nxt in (\"SHIPPED\", \"CANCELLED\"): self.status = nxt; return True\n        if self.status == \"SHIPPED\" and nxt == \"DELIVERED\": self.status = nxt; return True\n        # return window? typo \"DELIVERD\"? every caller re-implements part of this\n        return False\n" }, { lang: 'ts', code: "class NaiveOrder {\n  status = \"PLACED\";\n  moveTo(next: string): boolean {\n    if (this.status === \"PLACED\" && (next === \"PACKED\" || next === \"CANCELLED\")) { this.status = next; return true; }\n    if (this.status === \"PACKED\" && (next === \"SHIPPED\" || next === \"CANCELLED\")) { this.status = next; return true; }\n    if (this.status === \"SHIPPED\" && next === \"DELIVERED\") { this.status = next; return true; }\n    // return window? typo \"DELIVERD\"? every caller re-implements part of this\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class NaiveOrder {\npublic:\n    string status = \"PLACED\";\n    bool moveTo(const string& next) {\n        if (status == \"PLACED\" && (next == \"PACKED\" || next == \"CANCELLED\")) { status = next; return true; }\n        if (status == \"PACKED\" && (next == \"SHIPPED\" || next == \"CANCELLED\")) { status = next; return true; }\n        if (status == \"SHIPPED\" && next == \"DELIVERED\") { status = next; return true; }\n        // return window? typo \"DELIVERD\"? every caller re-implements part of this\n        return false;\n    }\n};\n" }] } },
     mcq: { q: 'Why is a map from each status to its set of allowed next statuses (in Java an EnumMap&lt;Status, EnumSet&lt;Status&gt;&gt;) a good fit here?', options: ['States have little behaviour; the rules are pure "from → allowed to" data that the UI can also read', 'It is faster than a switch in all cases', 'Because State classes cannot be used with enums', 'It removes the need for a date check'], answer: 0, explain: 'When states carry almost no behaviour, a transition table is the clearest single source of truth; extra conditions become guards.' },
     hints: [`<p>Hint 1: Separate the <b>structure</b> (which arrows exist) from <b>guards</b> (the 7-day rule). Structure is a map from status to its set of allowed next statuses (an <code>EnumMap</code> of <code>EnumSet</code>s in Java).</p>`, `<p>Hint 2: <code>allowedNext()</code> returns <code>TABLE.get(status)</code> — free UI support. Terminal states map to an empty set.</p>`, `<p>Hint 3: In moveTo: if the arrow is missing → reject; if target is RETURN_REQUESTED, check <code>today ≤ deliveredOn + 7 days</code>; record deliveredOn when entering DELIVERED; append "A → B" to history.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "allowed now: [RETURN_REQUESTED]\nPLACED -> PACKED\nPACKED -> SHIPPED\nREJECTED SHIPPED -> CANCELLED\nSHIPPED -> DELIVERED\nREJECTED return: window closed on 2026-03-09\nDELIVERED -> RETURN_REQUESTED\nRETURN_REQUESTED -> RETURNED\nREJECTED RETURNED -> PACKED\n" }] },
@@ -8965,7 +9235,7 @@ int main() {
     statement: `<p>Build a coffee machine. Recipes: <b>espresso</b> (water 50, beans 18, price 120), <b>latte</b> (water 50, milk 150, beans 18, price 180), <b>cappuccino</b> (water 50, milk 100, beans 18, price 160). States: <b>IDLE</b>, <b>PAID</b> (money inserted), <b>BREWING</b>, <b>NEEDS_REFILL</b> (no drink can be made). Events: <code>pay(amount)</code>, <code>select(drink)</code>, <code>cancel()</code>, <code>refill(ingredient, qty)</code>. Selecting a drink whose ingredients are missing must refuse <i>before</i> charging; when nothing can be brewed, go to NEEDS_REFILL and refund any money.</p>`,
     constraints: `Ingredients in ml/grams as ints. Refill allowed in any state except BREWING. Adding a new drink must not change state classes.`,
     example: `<p>Stock: water 200, milk 120, beans 40. pay 200 → PAID; select latte → ${H.c('r', 'not enough milk (needs 150)')}, stay PAID; select cappuccino → ${H.c('g', 'brew, change 40')} → IDLE. Stock now water 150, milk 20, beans 22. Next espresso possible (beans 22 ≥ 18) → after it beans 4 → ${H.c('y', 'NEEDS_REFILL')}.</p>`,
-    brute: { why: `<p>One <code>makeDrink(name, money)</code> with <code>if (name == "latte") { if (milk &gt;= 150 &amp;&amp; …) }</code> per drink, plus status flags. A new drink copies the whole block; the "check before charging" order is easy to get wrong in one copy; refill during brewing is not prevented.</p>`, code: `class NaiveCoffee {
+    brute: { why: `<p>One <code>makeDrink(name, money)</code> with <code>if (name == "latte") { if (milk &gt;= 150 &amp;&amp; …) }</code> per drink, plus status flags. A new drink copies the whole block; the "check before charging" order is easy to get wrong in one copy; refill during brewing is not prevented.</p>`, code: { lang: 'java', code: `class NaiveCoffee {
     int water = 200, milk = 120, beans = 40;
     String make(String name, int money) {
         if (name.equals("latte")) {
@@ -8978,7 +9248,7 @@ int main() {
         }
         return "unknown";
     }
-}` },
+}`, alt: [{ lang: 'python', code: "class NaiveCoffee:\n    def __init__(self):\n        self.water, self.milk, self.beans = 200, 120, 40\n\n    def make(self, name, money):\n        if name == \"latte\":\n            if money < 180: return \"pay more\"\n            if self.milk < 150: return \"no milk\"            # money handling differs per copy...\n            self.water -= 50; self.milk -= 150; self.beans -= 18\n            return f\"latte, change {money - 180}\"\n        elif name == \"espresso\":\n            if self.beans < 18: return \"no beans\"\n            self.water -= 50; self.beans -= 18\n            return f\"espresso, change {money - 120}\"        # forgot price check!\n        return \"unknown\"\n" }, { lang: 'ts', code: "class NaiveCoffee {\n  water = 200; milk = 120; beans = 40;\n  make(name: string, money: number): string {\n    if (name === \"latte\") {\n      if (money < 180) return \"pay more\";\n      if (this.milk < 150) return \"no milk\";            // money handling differs per copy...\n      this.water -= 50; this.milk -= 150; this.beans -= 18; return \"latte, change \" + (money - 180);\n    } else if (name === \"espresso\") {\n      if (this.beans < 18) return \"no beans\";\n      this.water -= 50; this.beans -= 18; return \"espresso, change \" + (money - 120);   // forgot price check!\n    }\n    return \"unknown\";\n  }\n}\n" }, { lang: 'cpp', code: "class NaiveCoffee {\npublic:\n    int water = 200, milk = 120, beans = 40;\n    string make(const string& name, int money) {\n        if (name == \"latte\") {\n            if (money < 180) return \"pay more\";\n            if (milk < 150) return \"no milk\";            // money handling differs per copy...\n            water -= 50; milk -= 150; beans -= 18; return \"latte, change \" + to_string(money - 180);\n        } else if (name == \"espresso\") {\n            if (beans < 18) return \"no beans\";\n            water -= 50; beans -= 18; return \"espresso, change \" + to_string(money - 120);   // forgot price check!\n        }\n        return \"unknown\";\n    }\n};\n" }] } },
     mcq: { q: 'Where should recipes live so that adding "mocha" needs no state-class changes?', options: ['In data: a map from drink name to a Recipe value object (ingredients + price)', 'One State class per drink', 'In the PAID state as if/else', 'In an enum switch inside BREWING'], answer: 0, explain: 'Drinks are data, states are behaviour. Mixing them makes every new drink a code change across states.' },
     hints: [`<p>Hint 1: States describe the machine's mode (IDLE, PAID, BREWING, NEEDS_REFILL); drinks are <b>data</b> (a Recipe value object: ingredients map + price).</p>`, `<p>Hint 2: PAID.select runs checks in order: known drink → enough money → enough ingredients (Inventory.canMake) → BREWING → consume + change → next state is NEEDS_REFILL if no recipe can be made, else IDLE.</p>`, `<p>Hint 3: Entering NEEDS_REFILL refunds the balance. refill() is accepted in IDLE/PAID/NEEDS_REFILL; in NEEDS_REFILL it re-checks and returns to IDLE if any drink is possible.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "[PAID] not enough milk, pick another\n[BREWING] enjoy your cappuccino, change 40\n[BREWING] enjoy your espresso\nstate NEEDS_REFILL, stock {beans=4, milk=20, water=100}\nafter refill: IDLE\n[IDLE] pay first\n[IDLE] nothing to cancel\n[PAID] unknown drink\n[PAID] insert 70 more\n[PAID] refund 50\nfinal IDLE balance 0\n" }] },
@@ -9483,14 +9753,14 @@ int main() {
     statement: `<p>Implement the bank-side <code>CardAuthService</code> used by every ATM. Each card is <b>ACTIVE</b> or <b>BLOCKED</b>. <code>verifyPin(card, pin)</code>: 3 consecutive wrong PINs (across any ATMs) → BLOCKED; a correct PIN resets the counter. BLOCKED cards fail every call until <code>adminUnblock(card)</code>. <code>authorizeWithdrawal(card, amount, date)</code> enforces a daily limit of ₹25,000 that resets when the date changes, and returns a reason on failure.</p>`,
     constraints: `Up to 10<sup>6</sup> cards; many ATMs call concurrently, so methods must be thread-safe per card.`,
     example: `<p>Wrong PIN at ATM-1, wrong at ATM-2, wrong at ATM-3 → ${H.c('r', 'BLOCKED')} (the counter is per card, not per ATM). Unblock. Withdraw 20,000 on 1 Jun ✓, 6,000 on 1 Jun ${H.c('r', 'DAILY_LIMIT')}, 6,000 on 2 Jun ${H.c('g', '✓ (new day)')}.</p>`,
-    brute: { why: `<p>Counting wrong PINs inside each ATM object: a thief tries 2 PINs at each of 50 ATMs and never gets blocked. Storing "withdrawn today" without the date means the limit never resets (or a midnight job must reset millions of rows).</p>`, code: `class PerAtmCounter {
+    brute: { why: `<p>Counting wrong PINs inside each ATM object: a thief tries 2 PINs at each of 50 ATMs and never gets blocked. Storing "withdrawn today" without the date means the limit never resets (or a midnight job must reset millions of rows).</p>`, code: { lang: 'java', code: `class PerAtmCounter {
     int wrong = 0;                                   // lives in ONE ATM: a thief just walks to the next ATM
     boolean verify(String pin, String real) {
         if (pin.equals(real)) { wrong = 0; return true; }
         wrong++;
         return false;
     }
-}` },
+}`, alt: [{ lang: 'python', code: "class PerAtmCounter:\n    def __init__(self):\n        self.wrong = 0                               # lives in ONE ATM: a thief just walks to the next ATM\n\n    def verify(self, pin, real):\n        if pin == real:\n            self.wrong = 0\n            return True\n        self.wrong += 1\n        return False\n" }, { lang: 'ts', code: "class PerAtmCounter {\n  wrong = 0;                                   // lives in ONE ATM: a thief just walks to the next ATM\n  verify(pin: string, real: string): boolean {\n    if (pin === real) { this.wrong = 0; return true; }\n    this.wrong++;\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class PerAtmCounter {\npublic:\n    int wrong = 0;                                   // lives in ONE ATM: a thief just walks to the next ATM\n    bool verify(const string& pin, const string& real) {\n        if (pin == real) { wrong = 0; return true; }\n        wrong++;\n        return false;\n    }\n};\n" }] } },
     mcq: { q: 'How do you reset the daily limit without a midnight batch job?', options: ['Store (date, amountToday) per card; if the stored date differs from today, treat amountToday as 0', 'Reset all rows at midnight with a cron job', 'Never reset it', 'Keep the limit in the ATM'], answer: 0, explain: 'Lazy reset keyed by date is O(1), has no batch job and no midnight race.' },
     hints: [`<p>Hint 1: The state belongs to the <b>card at the bank</b>: status, failed attempts, and (date, withdrawnToday). Make it a small class per card.</p>`, `<p>Hint 2: Use a thread-safe map from card to CardAccount (<code>ConcurrentHashMap</code> in Java, a dict plus a lock in Python, a mutex-protected map in C++) and lock the CardAccount object so two ATMs updating the same card are serialized, while different cards run in parallel.</p>`, `<p>Hint 3: Lazy reset: if <code>lastDate != date</code>, set withdrawnToday = 0 and lastDate = date before checking. Return an enum result: OK, WRONG_PIN, BLOCKED, DAILY_LIMIT.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "WRONG_PIN WRONG_PIN BLOCKED\ncorrect PIN while blocked: BLOCKED\nOK\nDAILY_LIMIT\nOK\nUNKNOWN_CARD UNKNOWN_CARD\nWRONG_PIN OK WRONG_PIN WRONG_PIN\nOK DAILY_LIMIT\nBLOCKED BLOCKED\n" }] },
@@ -9821,7 +10091,7 @@ int main() {
     statement: `<p>A single car is at floor <code>start</code> moving <code>dir</code>. Requests are <b>car calls</b> (a floor pressed inside) and <b>hall calls</b> (floor + ▲ or ▼). Rules: going up, stop for car calls and ▲ hall calls; going down, stop for car calls and ▼ hall calls; keep moving in the current direction while <i>any</i> request lies ahead; otherwise reverse (a ▼ call at the highest point is served when the car turns there). Return the sequence of stops.</p>`,
     constraints: `Floors 0–100, up to 1000 requests, all known at time 0.`,
     example: `<p>Start 2 going ▲. Car call 8, hall 5▲, hall 5▼, hall 3▼. Up sweep stops at ${H.c('g', '5 (▲ caller), 8 (car)')}. Nothing above 8 → reverse. Down sweep stops at ${H.c('b', '5 (▼ caller), 3 (▼ caller)')}. Stops = [5, 8, 5, 3]. The ▼ caller at 5 was <b>not</b> picked up on the way up.</p>`,
-    brute: { why: `<p>One set of floors ignoring direction: the car stops at 5 on the way up and picks up the person who wants to go down — they ride up to 8 and back, and the floor is then removed from the set so the car never stops at 5 again on the way down. Wrong for passengers, and it looks "optimal" in a distance metric, which is why interviewers use this trap.</p>`, code: `import java.util.*;
+    brute: { why: `<p>One set of floors ignoring direction: the car stops at 5 on the way up and picks up the person who wants to go down — they ride up to 8 and back, and the floor is then removed from the set so the car never stops at 5 again on the way down. Wrong for passengers, and it looks "optimal" in a distance metric, which is why interviewers use this trap.</p>`, code: { lang: 'java', code: `import java.util.*;
 class DirectionBlind {
     static List<Integer> stops(int start, List<Integer> floors) {
         TreeSet<Integer> all = new TreeSet<>(floors);   // loses the direction of each hall call
@@ -9829,7 +10099,7 @@ class DirectionBlind {
         out.addAll(all.headSet(start, false).descendingSet());
         return out;                                     // 5 served once, on the way up: wrong for 5-DOWN
     }
-}` },
+}`, alt: [{ lang: 'python', code: "class DirectionBlind:\n    @staticmethod\n    def stops(start, floors):\n        all_ = sorted(set(floors))                       # loses the direction of each hall call\n        out = [f for f in all_ if f >= start]\n        out += [f for f in reversed(all_) if f < start]\n        return out                                       # 5 served once, on the way up: wrong for 5-DOWN\n" }, { lang: 'ts', code: "class DirectionBlind {\n  static stops(start: number, floors: number[]): number[] {\n    const all = [...new Set(floors)].sort((a, b) => a - b);   // loses the direction of each hall call\n    const out = all.filter((f) => f >= start);\n    out.push(...all.filter((f) => f < start).reverse());\n    return out;                                          // 5 served once, on the way up: wrong for 5-DOWN\n  }\n}\n" }, { lang: 'cpp', code: "struct DirectionBlind {\n    static vector<int> stops(int start, const vector<int>& floors) {\n        set<int> all(floors.begin(), floors.end());      // loses the direction of each hall call\n        vector<int> out(all.lower_bound(start), all.end());\n        for (auto it = make_reverse_iterator(all.lower_bound(start)); it != all.rend(); ++it) out.push_back(*it);\n        return out;                                      // 5 served once, on the way up: wrong for 5-DOWN\n    }\n};\n" }] } },
     mcq: { q: 'The car is at 8 going up; the only remaining request is hall 8▼. What happens?', options: ['Nothing is ahead, so the car reverses to DOWN at 8 and serves the ▼ call right there', 'It ignores the call until the next up sweep', 'It goes to the top floor first', 'It serves it only if a car call exists'], answer: 0, explain: 'With nothing ahead, LOOK reverses; after reversing, the ▼ call at the current floor matches the new direction.' },
     hints: [`<p>Hint 1: Keep three sets: carCalls, upCalls, downCalls. A floor is a stop for direction d if it is in carCalls or in the hall set for d.</p>`, `<p>Hint 2: Simulate floor by floor: serve what matches the current direction at the current floor; if any request in <i>any</i> set lies strictly ahead, move one floor; otherwise flip direction (without moving).</p>`, `<p>Hint 3: The loop terminates because if requests remain but none is ahead in either direction, they are at the current floor and get served after at most one flip.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "[5, 8, 5, 3]\n[]\n[1, 4]\n" }] },
@@ -10030,7 +10300,7 @@ int main() {
     statement: `<p>A washing machine runs <b>FILLING (2 ticks) → WASHING (5) → RINSING (3) → SPINNING (2) → DONE</b>. The door is locked in every running state. <code>pause()</code> moves any running state to <b>PAUSED</b>, remembering where it was and how many ticks were left; <code>resume()</code> returns to exactly that state and time (a <b>history state</b>). The door may open only in IDLE, PAUSED and DONE. <code>start()</code> works only in IDLE with the door closed.</p>`,
     constraints: `Tick-driven. pause() in IDLE/DONE/PAUSED is ignored. Print each transition.`,
     example: `<p>start → FILLING (2) → WASHING; after 2 washing ticks ${H.c('y', 'pause')} → PAUSED (remembers WASHING, 3 left); open door ✓; close; ${H.c('g', 'resume')} → WASHING with 3 ticks left, not 5. Opening the door during RINSING → ${H.c('r', 'refused, door locked')}.</p>`,
-    brute: { why: `<p>A <code>phase</code> int, a <code>paused</code> boolean and a <code>remaining</code> counter. Every method checks <code>paused</code> first — except the one somebody forgets (tick keeps counting while paused, so the wash "finishes" while the door is open). Resume often restarts the phase from the beginning because the remaining time was overwritten.</p>`, code: `class NaiveWasher {
+    brute: { why: `<p>A <code>phase</code> int, a <code>paused</code> boolean and a <code>remaining</code> counter. Every method checks <code>paused</code> first — except the one somebody forgets (tick keeps counting while paused, so the wash "finishes" while the door is open). Resume often restarts the phase from the beginning because the remaining time was overwritten.</p>`, code: { lang: 'java', code: `class NaiveWasher {
     int phase = 0, remaining = 0; boolean paused = false, doorOpen = false;
     int[] durations = {2, 5, 3, 2};
     void tick() {
@@ -10038,7 +10308,7 @@ int main() {
     }
     void pause() { paused = true; }
     void openDoor() { if (paused || phase == 4) doorOpen = true; }
-}` },
+}`, alt: [{ lang: 'python', code: "class NaiveWasher:\n    def __init__(self):\n        self.phase, self.remaining = 0, 0\n        self.paused, self.door_open = False, False\n        self.durations = [2, 5, 3, 2]\n\n    def tick(self):\n        self.remaining -= 1\n        if self.remaining <= 0 and self.phase < 4:   # forgot \"if paused: return\"\n            self.phase += 1\n            self.remaining = self.durations[self.phase] if self.phase < 4 else 0\n\n    def pause(self): self.paused = True\n    def open_door(self):\n        if self.paused or self.phase == 4: self.door_open = True\n" }, { lang: 'ts', code: "class NaiveWasher {\n  phase = 0; remaining = 0; paused = false; doorOpen = false;\n  durations = [2, 5, 3, 2];\n  tick(): void {\n    if (--this.remaining <= 0 && this.phase < 4) { this.phase++; this.remaining = this.phase < 4 ? this.durations[this.phase] : 0; }  // forgot \"if (paused) return\"\n  }\n  pause(): void { this.paused = true; }\n  openDoor(): void { if (this.paused || this.phase === 4) this.doorOpen = true; }\n}\n" }, { lang: 'cpp', code: "class NaiveWasher {\npublic:\n    int phase = 0, remaining = 0; bool paused = false, doorOpen = false;\n    int durations[4] = {2, 5, 3, 2};\n    void tick() {\n        if (--remaining <= 0 && phase < 4) { phase++; remaining = phase < 4 ? durations[phase] : 0; }  // forgot \"if (paused) return\"\n    }\n    void pause() { paused = true; }\n    void openDoor() { if (paused || phase == 4) doorOpen = true; }\n};\n" }] } },
     mcq: { q: 'What exactly must PAUSED remember to implement resume correctly?', options: ['The state it was paused from AND the ticks remaining in it', 'Only the original program', 'Nothing, resume restarts the cycle', 'Only the ticks remaining'], answer: 0, explain: 'A history state stores the interrupted sub-state plus its progress so the machine continues exactly where it stopped.' },
     hints: [`<p>Hint 1: Running phases differ only in name, duration and successor → an enum with (duration, next). PAUSED and IDLE/DONE are special.</p>`, `<p>Hint 2: Keep <code>current</code>, <code>remaining</code>, plus <code>resumeTo</code>/<code>resumeRemaining</code> captured on pause. tick() does nothing unless current is a running phase.</p>`, `<p>Hint 3: Door rule = a method on the enum: <code>doorMayOpen()</code> true for IDLE, PAUSED, DONE. Guard start() with "door closed".</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "IDLE -> FILLING (2 ticks)\nFILLING -> WASHING (5 ticks)\nWASHING -> PAUSED\nPAUSED -> WASHING (3 ticks)\nWASHING -> RINSING (3 ticks)\ndoor locked during RINSING\nRINSING -> SPINNING (2 ticks)\nSPINNING -> DONE\ncannot start (DONE, door closed)\ncannot resume\ncannot start (IDLE, door open)\n" }] },
@@ -10352,14 +10622,14 @@ int main() {
     statement: `<p>Extend a vending machine (IDLE → SELECTED → … ) with card/UPI payment. After <code>select(slot)</code> the user taps <code>payByCard()</code> → <b>AUTHORIZING</b> with a fresh <code>authId</code>. The payment gateway later calls <code>onAuthResult(authId, approved)</code> — possibly <b>twice</b> (retries) or <b>late</b> (after a timeout). Approved → DISPENSING → IDLE; declined → SELECTED; <code>timeout()</code> → IDLE and the auth must be voided. Duplicate or stale callbacks must not dispense twice.</p>`,
     constraints: `Callbacks may arrive on another thread. A callback for an old authId is ignored (and voided if it was an approval).`,
     example: `<p>select A1, payByCard → AUTHORIZING (auth-1). onAuthResult(auth-1, true) → ${H.c('g', 'dispense')}. Duplicate onAuthResult(auth-1, true) → ${H.c('b', 'ignored')}. Next: select B2, payByCard (auth-2), timeout → IDLE; late onAuthResult(auth-2, true) → ${H.c('y', 'void auth-2, nothing dispensed')}.</p>`,
-    brute: { why: `<p>A boolean <code>waitingForCard</code> and a callback that just does <code>if (approved) dispense()</code>. Duplicate callbacks dispense twice; a late approval after a timeout dispenses to whoever is standing there now (or charges a customer who already walked away).</p>`, code: `class NaiveCardVending {
+    brute: { why: `<p>A boolean <code>waitingForCard</code> and a callback that just does <code>if (approved) dispense()</code>. Duplicate callbacks dispense twice; a late approval after a timeout dispenses to whoever is standing there now (or charges a customer who already walked away).</p>`, code: { lang: 'java', code: `class NaiveCardVending {
     boolean waiting; int dispensed;
     void payByCard() { waiting = true; }
     void onAuthResult(boolean approved) {
         if (approved) dispensed++;            // duplicate callback -> dispensed twice; late callback -> free item
         waiting = false;
     }
-}` },
+}`, alt: [{ lang: 'python', code: "class NaiveCardVending:\n    def __init__(self):\n        self.waiting, self.dispensed = False, 0\n\n    def pay_by_card(self): self.waiting = True\n\n    def on_auth_result(self, approved):\n        if approved: self.dispensed += 1     # duplicate callback -> dispensed twice; late callback -> free item\n        self.waiting = False\n" }, { lang: 'ts', code: "class NaiveCardVending {\n  waiting = false; dispensed = 0;\n  payByCard(): void { this.waiting = true; }\n  onAuthResult(approved: boolean): void {\n    if (approved) this.dispensed++;          // duplicate callback -> dispensed twice; late callback -> free item\n    this.waiting = false;\n  }\n}\n" }, { lang: 'cpp', code: "class NaiveCardVending {\npublic:\n    bool waiting = false; int dispensed = 0;\n    void payByCard() { waiting = true; }\n    void onAuthResult(bool approved) {\n        if (approved) dispensed++;           // duplicate callback -> dispensed twice; late callback -> free item\n        waiting = false;\n    }\n};\n" }] } },
     mcq: { q: 'A gateway retries the same approval callback. What makes the second one harmless?', options: ['Accept a callback only if the machine is AUTHORIZING and authId equals the current pending id; then clear the pending id', 'Use a bigger timeout', 'Synchronize the method only', 'Dispense twice and refund later'], answer: 0, explain: 'Matching on the pending authId plus state makes the transition happen once; after it, the id no longer matches.' },
     hints: [`<p>Hint 1: AUTHORIZING is a real state because the machine waits for an outside answer that may never come. Store <code>pendingAuthId</code> when entering it.</p>`, `<p>Hint 2: onAuthResult: if state != AUTHORIZING or authId != pending → stale/duplicate: if approved, call <code>gateway.voidAuth(authId)</code> (unless it was already captured); return.</p>`, `<p>Hint 3: Make every public method take the machine lock (callbacks come from another thread). Track captured ids in a set so you never void a payment you used.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "dispensing A1 (auth-1)\nduplicate auth-1 ignored\npayment timed out\ngateway: void auth-2\nstale auth-2 voided\nselect first\nbusy\ndeclined, try again\nduplicate auth-3 ignored\ndispensing C3 (auth-4)\nitems dispensed: 2\n" }] },
@@ -10700,12 +10970,12 @@ int main() {
     statement: `<p>Design the exit gate of a parking lot. States: <b>WAITING</b> (no car), <b>TICKET_SCANNED</b> (fee computed), <b>PAID</b>, <b>GATE_OPEN</b>. Events: <code>scan(ticketId, now)</code>, <code>lostTicket()</code> (flat fee ₹500), <code>pay(amount)</code>, <code>vehiclePassed()</code>, <code>cancel()</code>. Fee: first hour ₹50, each extra started hour ₹30, free within 10 minutes. A free exit opens the gate immediately. The gate must close only after the vehicle-passed sensor fires. A ticket can be used to exit only once.</p>`,
     constraints: `Times in minutes. Overpayment returns change. Underpayment keeps the state and shows the amount due.`,
     example: `<p>Entry at 0, scan at 130 min → 3 started hours → 50 + 30 + 30 = ${H.c('b', '₹110')}. pay 100 → ${H.c('r', 'due 10')}; pay 20 → ${H.c('g', 'change 10, GATE_OPEN')}; vehiclePassed → WAITING. Scanning the same ticket again → ${H.c('r', 'already used')}.</p>`,
-    brute: { why: `<p>One <code>handle(String event)</code> with nested ifs and booleans <code>paid</code>, <code>gateOpen</code>, <code>scanned</code>. The gate opens on payment but nothing prevents a second car from tailgating while it is open; reusing a ticket is not detected; the lost-ticket path is pasted into the scan branch.</p>`, code: `class NaiveGate {
+    brute: { why: `<p>One <code>handle(String event)</code> with nested ifs and booleans <code>paid</code>, <code>gateOpen</code>, <code>scanned</code>. The gate opens on payment but nothing prevents a second car from tailgating while it is open; reusing a ticket is not detected; the lost-ticket path is pasted into the scan branch.</p>`, code: { lang: 'java', code: `class NaiveGate {
     boolean scanned, paid, open; int due;
     void scan(int minutes) { scanned = true; due = minutes <= 10 ? 0 : 50 + 30 * ((minutes - 1) / 60); }   // ticket reuse not checked
     void pay(int amt) { if (scanned && amt >= due) { paid = true; open = true; } }
     void passed() { open = false; scanned = false; paid = false; }
-}` },
+}`, alt: [{ lang: 'python', code: "class NaiveGate:\n    def __init__(self):\n        self.scanned = self.paid = self.open = False\n        self.due = 0\n\n    def scan(self, minutes):                 # ticket reuse not checked\n        self.scanned = True\n        self.due = 0 if minutes <= 10 else 50 + 30 * ((minutes - 1) // 60)\n\n    def pay(self, amt):\n        if self.scanned and amt >= self.due: self.paid = self.open = True\n\n    def passed(self): self.open = self.scanned = self.paid = False\n" }, { lang: 'ts', code: "class NaiveGate {\n  scanned = false; paid = false; open = false; due = 0;\n  scan(minutes: number): void { this.scanned = true; this.due = minutes <= 10 ? 0 : 50 + 30 * Math.floor((minutes - 1) / 60); }   // ticket reuse not checked\n  pay(amt: number): void { if (this.scanned && amt >= this.due) { this.paid = true; this.open = true; } }\n  passed(): void { this.open = false; this.scanned = false; this.paid = false; }\n}\n" }, { lang: 'cpp', code: "class NaiveGate {\npublic:\n    bool scanned = false, paid = false, open = false; int due = 0;\n    void scan(int minutes) { scanned = true; due = minutes <= 10 ? 0 : 50 + 30 * ((minutes - 1) / 60); }   // ticket reuse not checked\n    void pay(int amt) { if (scanned && amt >= due) { paid = true; open = true; } }\n    void passed() { open = false; scanned = false; paid = false; }\n};\n" }] } },
     mcq: { q: 'The fee for a stay of exactly 60 minutes with this pricing is…', options: ['₹50 (one started hour)', '₹80', '₹0', '₹30'], answer: 0, explain: '60 minutes is one started hour: ceil(60/60) = 1 → ₹50. 61 minutes would be ₹80.' },
     hints: [`<p>Hint 1: Fee logic is a pure function (a Strategy) separate from the gate's state machine: <code>fee(minutes)</code> with ceiling division for started hours.</p>`, `<p>Hint 2: States: WAITING accepts scan/lostTicket; TICKET_SCANNED accepts pay/cancel; GATE_OPEN accepts only vehiclePassed. PAID can be skipped by going straight to GATE_OPEN after full payment.</p>`, `<p>Hint 3: Keep a set of used ticket ids (or mark the ticket record) and reject reuse at scan time. Track <code>due</code> in the context; partial payments reduce it.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "[TICKET_SCANNED] fee Rs 110\n[TICKET_SCANNED] due Rs 10\n[TICKET_SCANNED] change Rs 10\n[GATE_OPEN] gate open\n[WAITING] gate closed\n[WAITING] ticket already used\n[TICKET_SCANNED] fee Rs 0\n[GATE_OPEN] gate open\n[WAITING] gate closed\n[WAITING] unknown ticket\n[WAITING] nothing to pay\n[WAITING] ALERT: sensor without open gate\n[TICKET_SCANNED] lost ticket fee Rs 500\n[TICKET_SCANNED] finish current exit first\n[TICKET_SCANNED] cancelled, collect your money\n[TICKET_SCANNED] lost ticket fee Rs 500\n[GATE_OPEN] gate open\n[WAITING] gate closed\n" }] },
@@ -11066,7 +11336,7 @@ int main() {
     statement: `<p>Implement an elevator system for a building with <b>N cars</b> and floors 0..F. Requirements: hall calls (floor + direction) are assigned by a pluggable <b>DispatchStrategy</b>; car calls go to that car; each car runs a LOOK-style state machine (IDLE, MOVING_UP, MOVING_DOWN, DOORS_OPEN) on <code>tick()</code>; cars in MAINTENANCE get no calls; <code>status()</code> prints every car. The code should be runnable in 60–90 minutes and extensible (new strategy, new state) without rewrites.</p>`,
     constraints: `N ≤ 16, F ≤ 200. Door stays open 1 tick. Ticks are driven by the caller. Deterministic output for tests.`,
     example: `<p>3 cars at 0, 5, 9 (all idle). Car 1 (at 5) goes into maintenance. Hall 7▼ → ${H.c('b', 'car@9')} (distance 2; car@5 would be closest but is out of service). Hall 1▲ → ${H.c('b', 'car@0')}. Hall 4▲ → ${H.c('b', 'car@0')} (cost 4 + 1 stop = 5 vs car@9: 5 + 1 = 6), never the car in maintenance. After enough ticks every request is served and all cars are IDLE.</p>`,
-    brute: { why: `<p>A single <code>Elevator</code> class with a global FIFO queue that every car pops from, booleans for moving/doors, and dispatch by "first free car". Cars cross the building for calls next to another car, a car under maintenance still pops requests, and adding zoning means rewriting the queue logic.</p>`, code: `import java.util.*;
+    brute: { why: `<p>A single <code>Elevator</code> class with a global FIFO queue that every car pops from, booleans for moving/doors, and dispatch by "first free car". Cars cross the building for calls next to another car, a car under maintenance still pops requests, and adding zoning means rewriting the queue logic.</p>`, code: { lang: 'java', code: `import java.util.*;
 class GlobalQueueElevators {
     final Deque<Integer> queue = new ArrayDeque<>();
     final int[] pos;
@@ -11075,7 +11345,7 @@ class GlobalQueueElevators {
     void step() {
         for (int i = 0; i < pos.length && !queue.isEmpty(); i++) pos[i] = queue.poll();   // teleports, FIFO, ignores distance & maintenance
     }
-}` },
+}`, alt: [{ lang: 'python', code: "from collections import deque\n\nclass GlobalQueueElevators:\n    def __init__(self, n):\n        self.queue = deque()\n        self.pos = [0] * n\n\n    def call(self, floor): self.queue.append(floor)\n\n    def step(self):\n        for i in range(len(self.pos)):\n            if not self.queue: break\n            self.pos[i] = self.queue.popleft()      # teleports, FIFO, ignores distance & maintenance\n" }, { lang: 'ts', code: "class GlobalQueueElevators {\n  private queue: number[] = [];\n  private pos: number[];\n  constructor(n: number) { this.pos = new Array<number>(n).fill(0); }\n  call(floor: number): void { this.queue.push(floor); }\n  step(): void {\n    for (let i = 0; i < this.pos.length && this.queue.length > 0; i++) this.pos[i] = this.queue.shift()!;   // teleports, FIFO, ignores distance & maintenance\n  }\n}\n" }, { lang: 'cpp', code: "class GlobalQueueElevators {\n    deque<int> queue;\n    vector<int> pos;\npublic:\n    GlobalQueueElevators(int n) : pos(n, 0) {}\n    void call(int floor) { queue.push_back(floor); }\n    void step() {\n        for (int i = 0; i < (int)pos.size() && !queue.empty(); i++) { pos[i] = queue.front(); queue.pop_front(); }   // teleports, FIFO, ignores distance & maintenance\n    }\n};\n" }] } },
     mcq: { q: 'Which pieces should be swappable Strategies in this design?', options: ['Hall-call dispatch (nearest/zoning) and, optionally, per-car next-stop selection', 'The car states', 'The tick loop', 'The Request value object'], answer: 0, explain: 'What changes by building/time-of-day is the dispatch policy; the car state machine is stable.' },
     hints: [`<p>Hint 1: Classes: <code>Building</code> (owns cars + dispatcher), <code>Car</code> (state machine + sorted stop set + direction), <code>DispatchStrategy</code> (choose car), records for calls. Start with one car working end-to-end.</p>`, `<p>Hint 2: Car.tick by state: IDLE → serve here / pick direction (LOOK); MOVING → move one floor, stop if floor is a stop; DOORS_OPEN → close → IDLE. Cost function: idle → distance; moving toward the caller in the same direction → distance; else distance + 2·F.</p>`, `<p>Hint 3: Make MAINTENANCE return "infinite" cost so the dispatcher skips it. Keep printing in <code>status()</code> only, so tests can assert on state. Run the simulation until all cars are idle.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "7 DOWN -> car2\n1 UP   -> car0\n4 UP   -> car0\nall served after 13 ticks\ncar0@4 IDLE stops=[]\ncar1@5 MAINTENANCE stops=[]\ncar2@0 IDLE stops=[]\nrejected: no car in service\n3 UP   -> car1\n" }] },
@@ -11559,7 +11829,7 @@ int main() {
     statement: `<p>The ATM talks to the bank over a network that can <b>drop requests</b>, <b>drop responses</b> and <b>duplicate messages</b>. Implement <code>withdraw(account, amount)</code> on the ATM side and <code>debit/reverse</code> on the bank side so that, over thousands of random runs, the invariant holds: <b>money dispensed + final balance = initial balance</b>, and the customer is never charged without cash. The ATM retries a request at most 3 times with the same txnId; if it never gets an answer it must reverse.</p>`,
     constraints: `Use a seeded Random for the fake network so runs are reproducible. Bank operations must be idempotent per txnId. Reversal itself may be dropped — keep retrying it (it is safe).`,
     example: `<p>debit(T7) request reaches bank, response dropped → ATM retries debit(T7) → bank sees T7 already applied → ${H.c('b', 'replies approved without charging again')}. If all 3 attempts time out → ATM sends reverse(T7) until acknowledged → ${H.c('g', 'balance restored')}; no cash given.</p>`,
-    brute: { why: `<p>Retry with a <b>new</b> request each time (no txnId): a dropped response + retry = two debits, one dispense. Or give up without reversing: the bank debited, the ATM gave nothing. Both are real-world incidents; you only find them with fault injection.</p>`, code: `class RetryWithoutId {
+    brute: { why: `<p>Retry with a <b>new</b> request each time (no txnId): a dropped response + retry = two debits, one dispense. Or give up without reversing: the bank debited, the ATM gave nothing. Both are real-world incidents; you only find them with fault injection.</p>`, code: { lang: 'java', code: `class RetryWithoutId {
     long balance = 10_000;
     boolean debit(long amt) { balance -= amt; return true; }      // not idempotent
     void withdraw(long amt) {
@@ -11567,7 +11837,7 @@ int main() {
             debit(amt);                                             // response "lost" -> retry -> charged again
         }
     }
-}` },
+}`, alt: [{ lang: 'python', code: "class RetryWithoutId:\n    def __init__(self):\n        self.balance = 10_000\n\n    def debit(self, amt):                            # not idempotent\n        self.balance -= amt\n        return True\n\n    def withdraw(self, amt):\n        for _ in range(3):\n            self.debit(amt)                          # response \"lost\" -> retry -> charged again\n" }, { lang: 'ts', code: "class RetryWithoutId {\n  balance = 10_000;\n  debit(amt: number): boolean { this.balance -= amt; return true; }      // not idempotent\n  withdraw(amt: number): void {\n    for (let i = 0; i < 3; i++) {\n      this.debit(amt);                                                    // response \"lost\" -> retry -> charged again\n    }\n  }\n}\n" }, { lang: 'cpp', code: "class RetryWithoutId {\npublic:\n    long long balance = 10'000;\n    bool debit(long long amt) { balance -= amt; return true; }      // not idempotent\n    void withdraw(long long amt) {\n        for (int i = 0; i < 3; i++) {\n            debit(amt);                                              // response \"lost\" -> retry -> charged again\n        }\n    }\n};\n" }] } },
     mcq: { q: 'The ATM never received any reply to debit(T9). What is the only safe action before showing "transaction failed"?', options: ['Send reverse(T9) (retrying until acknowledged) and do not dispense', 'Dispense anyway, the debit probably worked', 'Retry with a new id T10', 'Do nothing; the bank will notice'], answer: 0, explain: 'Unknown outcome must be resolved to a known one. An idempotent reversal is safe whether or not the debit happened.' },
     hints: [`<p>Hint 1: Bank keeps <code>Map&lt;txnId, status&gt;</code> (DEBITED / REVERSED). debit on a known id returns the stored outcome; reverse on DEBITED restores money; reverse on an unknown id stores a REVERSED tombstone so a late debit is refused.</p>`, `<p>Hint 2: Wrap calls in a fake <code>Network</code> that randomly drops the request (bank never sees it), drops the response (bank applied it), or duplicates the request.</p>`, `<p>Hint 3: ATM: generate txnId once; try debit up to 3 times; approved → dispense; no answer → loop reverse(txnId) until acknowledged. Then check the invariant after 10,000 random runs.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "true true balance 700\nafter reverse 1000, late retry false\ndebit after early reverse: false balance 1000\noverdraw: false\ninvariant violations in 2000 runs: 0\nnaive bank breaks the invariant: true\n" }] },
@@ -12073,7 +12343,7 @@ int main() {
     statement: `<p>A smart vending machine accepts purchases from its keypad <b>and</b> a mobile app at the same time. Implement <code>buy(slot, paidRs)</code> returning a receipt or a refusal, plus <code>restock(slot, qty)</code> and <code>collectCash()</code> from an operator thread. Guarantee under concurrency: never sell more items than stocked, cash in the machine always equals the sum of successful sales, and restocking never interleaves with a half-done sale. Prove it with a stress test.</p>`,
     constraints: `Up to 64 concurrent threads. Per-slot operations should not block other slots longer than necessary, but cash totals must stay consistent.`,
     example: `<p>Slot A1 has 3 items at ₹20. 50 threads try to buy A1 simultaneously → ${H.c('g', 'exactly 3 succeed')}, 47 get "sold out", cash = ₹60. Operator restocks during the burst → still never more sales than total stock.</p>`,
-    brute: { why: `<p>Unsynchronized <code>if (stock &gt; 0) { stock--; cash += price; }</code>. Two threads pass the check together → stock goes negative and more items are "sold" than exist; <code>cash += price</code> is a read-modify-write that loses updates, so cash and sales disagree.</p>`, code: `import java.util.*;
+    brute: { why: `<p>Unsynchronized <code>if (stock &gt; 0) { stock--; cash += price; }</code>. Two threads pass the check together → stock goes negative and more items are "sold" than exist; <code>cash += price</code> is a read-modify-write that loses updates, so cash and sales disagree.</p>`, code: { lang: 'java', code: `import java.util.*;
 class RacyVending {
     final Map<String, Integer> stock = new HashMap<>(Map.of("A1", 3));
     long cash = 0;
@@ -12082,7 +12352,7 @@ class RacyVending {
         if (s > 0) { stock.put(slot, s - 1); cash += price; return true; }   // check-then-act + lost update
         return false;
     }
-}` },
+}`, alt: [{ lang: 'python', code: "class RacyVending:\n    def __init__(self):\n        self.stock = {\"A1\": 3}\n        self.cash = 0\n\n    def buy(self, slot, price):\n        s = self.stock[slot]\n        if s > 0:                                    # check-then-act + lost update\n            self.stock[slot] = s - 1\n            self.cash += price\n            return True\n        return False\n" }, { lang: 'ts', code: "class RacyVending {\n  stock = new Map<string, number>([[\"A1\", 3]]);\n  cash = 0;\n  buy(slot: string, price: number): boolean {\n    const s = this.stock.get(slot)!;\n    if (s > 0) { this.stock.set(slot, s - 1); this.cash += price; return true; }   // check-then-act + lost update\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "class RacyVending {\npublic:\n    unordered_map<string, int> stock{{\"A1\", 3}};\n    long long cash = 0;\n    bool buy(const string& slot, int price) {\n        int s = stock[slot];\n        if (s > 0) { stock[slot] = s - 1; cash += price; return true; }   // check-then-act + lost update\n        return false;\n    }\n};\n" }] } },
     mcq: { q: 'Why is a single lock around buy/restock/collect an acceptable answer here?', options: ['Each operation is microseconds and the invariant spans stock AND cash, so one lock keeps them consistent with negligible contention', 'Locks are always faster than CAS', 'Because the plain map is thread-safe by itself', 'Only one thread can ever call the machine'], answer: 0, explain: 'When an invariant spans several fields and critical sections are tiny, one lock is the simplest correct design.' },
     hints: [`<p>Hint 1: Identify the invariant: <code>cash == Σ sales × price</code> and <code>stock ≥ 0</code>. Anything touching these fields together must be atomic.</p>`, `<p>Hint 2: Use one lock (<code>ReentrantLock</code>, <code>threading.Lock</code>, <code>std::mutex</code>) for buy/restock/collect. Do the slow work (motor, printing) <b>outside</b> the lock after reserving the item.</p>`, `<p>Hint 3: Stress test: a thread pool and a start latch to release all threads together; count successes with an atomic counter; assert successes ≤ total stock and cash == successes × price.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "sold between 3 and 5: true\ncash matches sales: true\nno such slot\ninsufficient\nok, change 5\nsold out\ncash 15 sales 1\nok, change 0\ncollected 30, cash now 0\n" }] },
@@ -12393,7 +12663,7 @@ int main() {
     statement: `<p>Flat state machines explode when one rule applies to many states. Build a small <b>hierarchical state machine (HSM)</b> engine: each state may have a parent; an event is offered to the current state, and if it does not handle it, to its parent, and so on (like exceptions bubbling up). Model an elevator: parent <b>OPERATIONAL</b> with children <b>IDLE</b>, <b>MOVING</b>, <b>DOORS_OPEN</b>; sibling <b>EMERGENCY</b>. <code>FIRE</code> handled once in OPERATIONAL moves any child to EMERGENCY; <code>RESET</code> in EMERGENCY returns to IDLE. Entry/exit actions must run in the right order when leaving nested states.</p>`,
     constraints: `Depth ≤ 4. Unhandled events are logged, not thrown. Transitions between states with a common ancestor must not exit/enter that ancestor.`,
     example: `<p>IDLE + CALL → MOVING (exit IDLE, enter MOVING). MOVING + FIRE: MOVING does not handle FIRE → bubbles to ${H.c('b', 'OPERATIONAL')}, which transitions to EMERGENCY: ${H.c('y', 'exit MOVING, exit OPERATIONAL, enter EMERGENCY')}. EMERGENCY + CALL → ${H.c('r', 'unhandled (ignored)')}. RESET → enter OPERATIONAL, enter IDLE.</p>`,
-    brute: { why: `<p>Flat machine: copy the FIRE transition into IDLE, MOVING and DOORS_OPEN (and into every future child). Forget one and the elevator ignores fire alarms in that state. The number of transitions grows as states × global events.</p>`, code: `class FlatElevator {
+    brute: { why: `<p>Flat machine: copy the FIRE transition into IDLE, MOVING and DOORS_OPEN (and into every future child). Forget one and the elevator ignores fire alarms in that state. The number of transitions grows as states × global events.</p>`, code: { lang: 'java', code: `class FlatElevator {
     String state = "IDLE";
     void on(String e) {
         if (state.equals("IDLE") && e.equals("CALL")) state = "MOVING";
@@ -12402,7 +12672,7 @@ int main() {
         else if (state.equals("MOVING") && e.equals("FIRE")) state = "EMERGENCY";
         // DOORS_OPEN + FIRE forgotten -> alarm ignored while doors are open
     }
-}` },
+}`, alt: [{ lang: 'python', code: "class FlatElevator:\n    def __init__(self):\n        self.state = \"IDLE\"\n\n    def on(self, e):\n        if self.state == \"IDLE\" and e == \"CALL\": self.state = \"MOVING\"\n        elif self.state == \"IDLE\" and e == \"FIRE\": self.state = \"EMERGENCY\"\n        elif self.state == \"MOVING\" and e == \"ARRIVE\": self.state = \"DOORS_OPEN\"\n        elif self.state == \"MOVING\" and e == \"FIRE\": self.state = \"EMERGENCY\"\n        # DOORS_OPEN + FIRE forgotten -> alarm ignored while doors are open\n" }, { lang: 'ts', code: "class FlatElevator {\n  state = \"IDLE\";\n  on(e: string): void {\n    if (this.state === \"IDLE\" && e === \"CALL\") this.state = \"MOVING\";\n    else if (this.state === \"IDLE\" && e === \"FIRE\") this.state = \"EMERGENCY\";\n    else if (this.state === \"MOVING\" && e === \"ARRIVE\") this.state = \"DOORS_OPEN\";\n    else if (this.state === \"MOVING\" && e === \"FIRE\") this.state = \"EMERGENCY\";\n    // DOORS_OPEN + FIRE forgotten -> alarm ignored while doors are open\n  }\n}\n" }, { lang: 'cpp', code: "class FlatElevator {\npublic:\n    string state = \"IDLE\";\n    void on(const string& e) {\n        if (state == \"IDLE\" && e == \"CALL\") state = \"MOVING\";\n        else if (state == \"IDLE\" && e == \"FIRE\") state = \"EMERGENCY\";\n        else if (state == \"MOVING\" && e == \"ARRIVE\") state = \"DOORS_OPEN\";\n        else if (state == \"MOVING\" && e == \"FIRE\") state = \"EMERGENCY\";\n        // DOORS_OPEN + FIRE forgotten -> alarm ignored while doors are open\n    }\n};\n" }] } },
     mcq: { q: 'Leaving MOVING (child of OPERATIONAL) for EMERGENCY (sibling of OPERATIONAL). Which exit/entry order is correct?', options: ['exit MOVING, exit OPERATIONAL, enter EMERGENCY', 'enter EMERGENCY, exit MOVING', 'exit OPERATIONAL only', 'exit MOVING, enter EMERGENCY (OPERATIONAL untouched)'], answer: 0, explain: 'Exit from the innermost state up to (not including) the lowest common ancestor, then enter downward to the target.' },
     hints: [`<p>Hint 1: <code>HState</code> has a name, a parent, and a <code>Map&lt;String, String&gt;</code> of event → target. Dispatch walks from current up the parent chain until some state handles the event.</p>`, `<p>Hint 2: Transition: compute the ancestor chain of source and target; the lowest common ancestor (LCA) is the first shared state. Exit states from current up to the LCA (exclusive), then enter from just below the LCA down to the target.</p>`, `<p>Hint 3: If the target is a composite state (OPERATIONAL), drill into its initial child (IDLE). Log every entry/exit so the test can assert the order.</p>`],
     tests: { io: true, cases: [{ stdin: '', stdout: "exit IDLE\nenter MOVING\n  -> now MOVING\nexit MOVING\nexit OPERATIONAL\nenter EMERGENCY\n  -> now EMERGENCY\nunhandled CALL in EMERGENCY\n  -> now EMERGENCY\nexit EMERGENCY\nenter OPERATIONAL\nenter IDLE\n  -> now IDLE\nexit IDLE\nenter MOVING\n  -> now MOVING\nexit MOVING\nenter DOORS_OPEN\n  -> now DOORS_OPEN\nexit DOORS_OPEN\nexit OPERATIONAL\nenter EMERGENCY\n  -> now EMERGENCY\nexit EMERGENCY\nenter OPERATIONAL\nenter IDLE\n  -> now IDLE\nunhandled RESET in IDLE\n  -> now IDLE\n" }] },
@@ -12723,7 +12993,7 @@ int main() {
     { q: 'Compare FCFS, SSTF, SCAN and LOOK for elevators. Which would you choose?', level: 'A', a: `<p><b>FCFS</b>: fair but zig-zags, huge travel. <b>SSTF</b>: nearest next, low travel but can starve far floors. <b>SCAN</b>: sweep to the end floor then reverse — bounded waiting, wastes trips to empty ends. <b>LOOK</b>: sweep only as far as the last request, then reverse — bounded waiting and less waste. Example: start 5 ▲, requests 8,2,6,1,4 → FCFS 21 floors, SSTF 10, SCAN 12, LOOK 10. I choose <b>LOOK</b> (collective control) per car, because it bounds waiting to about two sweeps and minimises direction reversals; the choice sits behind a <code>SchedulingStrategy</code> so it can change per building.</p>`, followUps: ['Prove LOOK cannot starve a request.', 'What is C-LOOK and when is it fairer?'] },
     { q: 'How do you assign a hall call when there are multiple elevators?', level: 'A', a: `<p>A <b>dispatcher</b> (Strategy) computes a cost per car and picks the minimum. Cost ≈ estimated time to reach the caller <i>going their way</i>: idle car → distance; car moving toward the caller in the same direction → distance; otherwise → finish the current sweep and come back (distance + sweep penalty); plus a load term (stops already assigned × ~10 s each). Cars in maintenance or full return infinite cost. Advanced: re-assign periodically, zoning in up-peak, destination dispatch (group by destination floor to cut stops), energy-aware costs. The car's state machine stays unchanged — only the dispatch strategy evolves.</p>`, followUps: ['Why is "nearest car by distance" not enough?', 'How would you switch to zoning at 9 am?'] },
     { q: 'How do you make sure an ATM never charges a customer for cash that was not dispensed?', level: 'A', a: `<p>Order and idempotency. Validate locally, <b>plan notes before calling the bank</b>, debit with an ATM-generated <b>txnId</b> written to the ATM journal first, dispense only after a confirmed approval, then confirm. If the dispenser jams or the bank's reply never arrives, send <b>reverse(txnId)</b>, retrying until acknowledged; the bank treats repeated debits/reversals with the same id as no-ops and keeps tombstones so a late debit after a reversal is refused. On crash, the ATM replays its journal and resolves every in-flight transaction. Notes that jam go to a sealed reject bin, reconciled against the journal.</p>`, followUps: ['What exactly must the bank store to be idempotent?', 'What if the reversal message itself is lost?'] },
-    { q: 'Where does the "3 wrong PINs → retain card" counter live, and why?', level: 'I', a: `<p>Two places. Locally, in the <b>CARD_INSERTED</b> session state (reset on a new card and on a correct PIN) so the ATM can retain the card immediately. Authoritatively, <b>at the bank per card</b>, counted across all ATMs and channels — otherwise a thief tries two PINs at each of many ATMs. The ATM never verifies the PIN itself; it sends an encrypted PIN block from the encrypting PIN pad. Putting the counter in a long-lived ATM field is a classic bug: the next customer inherits the previous one's failures.</p>`, followUps: ['How do you unblock a card safely?', 'Why is the PIN never a plain String in the ATM software?'] },
+    { q: 'Where does the "3 wrong PINs → retain card" counter live, and why?', level: 'I', a: `<p>Two places. Locally, in the <b>CARD_INSERTED</b> session state (reset on a new card and on a correct PIN) so the ATM can retain the card immediately. Authoritatively, <b>at the bank per card</b>, counted across all ATMs and channels — otherwise a thief tries two PINs at each of many ATMs. The ATM never verifies the PIN itself; it sends an encrypted PIN block from the encrypting PIN pad. Putting the counter in a long-lived ATM field is a classic bug: the next customer inherits the previous one's failures.</p>`, followUps: ['How do you unblock a card safely?', 'Why is the PIN never kept as a plain string in the ATM software?'] },
     { q: 'Explain the check-then-act race in a state machine and three ways to fix it.', level: 'A', a: `<p>Two threads read the same state (e.g. AVAILABLE / stock 1), both pass the guard, and both apply their transition — double sale, double booking. Fixes: (1) <b>Lock</b> the whole fire() (a mutex, <code>synchronized</code>) — simplest; keep slow I/O outside. (2) <b>CAS</b> on an immutable snapshot (state + data + version) via an atomic compare-and-set (<code>AtomicReference.compareAndSet</code> in Java) — lock-free, losers retry on fresh data; the version also prevents ABA. (3) <b>Single-threaded event loop / actor</b> — all events queue to one thread that owns the state; no shared mutation. In a database, the CAS equivalent is optimistic locking: <code>UPDATE … WHERE id = ? AND version = ?</code> and retry on 0 rows.</p>`, followUps: ['Why must the CAS snapshot be immutable?', 'Which would you use for an elevator car and why?'] },
     { q: 'How would you persist a state machine and recover after a crash?', level: 'A', a: `<p>Store the <b>state name + data + version</b> (e.g. ride: status ARRIVED, driverId, version 7), never the state object. Rehydrate via a factory from the stored name. Transitions use optimistic locking. For side effects (charging, dispensing) move to an <b>intermediate state</b> first (DISPENSING / AUTHORIZING), persist it, perform the effect, then fire a completion event — so after a crash you can find "stuck in DISPENSING" rows and reconcile. Publish domain events via a <b>transactional outbox</b> in the same DB transaction. Alternatively event-source: store events, rebuild state by replaying them through the pure transition function.</p>`, followUps: ['What is the outbox pattern solving?', 'Trade-offs of event sourcing for a vending fleet?'] },
     { q: 'Interviewer: "Now add a MAINTENANCE state to your vending machine." What changes?', level: 'I', a: `<p>With default-reject methods on the state interface: (1) one new class <code>Maintenance</code> overriding <code>restock</code> and <code>finishService</code> (and returning coins on insert); (2) <code>service()</code> added to the state interface with a default "not now"; (3) IDLE and SOLD_OUT override <code>service()</code> to enter maintenance; HAS_MONEY keeps the default (finish or cancel the sale first — never open the machine with a customer’s money in escrow). <code>finishService</code> returns SOLD_OUT if the inventory is still empty, else IDLE. No other state changes; the table gains one row and one column, and table-driven tests cover the new cells.</p>`, followUps: ['Why is service() refused in HAS_MONEY?', 'How do you test all the new cells?'] },

@@ -1,6 +1,26 @@
 (function () {
   var topics = [], practice = [], quiz = [], interview = [];
 
+  /* ---------- doubly linked list visualizer: Java is the main code pane (hl uses its line numbers, one statement per line in every language) ---------- */
+  function J(lines) { return lines.join('\n'); }
+  var DLL_ALT = {
+    rm: {
+      python: { code: J(['if node.prev is not None: node.prev.next = node.next', 'else: head = node.next', 'if node.next is not None: node.next.prev = node.prev', 'else: tail = node.prev', 'node.prev = node.next = None']), map: {} },
+      js: { code: J(['if (node.prev !== null) node.prev.next = node.next;', 'else head = node.next;', 'if (node.next !== null) node.next.prev = node.prev;', 'else tail = node.prev;', 'node.prev = node.next = null;']), map: {} },
+      cpp: { code: J(['if (node->prev != nullptr) node->prev->next = node->next;', 'else head = node->next;', 'if (node->next != nullptr) node->next->prev = node->prev;', 'else tail = node->prev;', 'node->prev = node->next = nullptr;']), map: {} }
+    },
+    ins: {
+      python: { code: J(['node = DNode(x)', 'node.prev = at; node.next = at.next', 'if at.next is not None: at.next.prev = node', 'else: tail = node', 'at.next = node']), map: {} },
+      js: { code: J(['const node = new DNode(x);', 'node.prev = at; node.next = at.next;', 'if (at.next !== null) at.next.prev = node;', 'else tail = node;', 'at.next = node;']), map: {} },
+      cpp: { code: J(['DNode* node = new DNode(x);', 'node->prev = at; node->next = at->next;', 'if (at->next != nullptr) at->next->prev = node;', 'else tail = node;', 'at->next = node;']), map: {} }
+    },
+    af: {
+      python: { code: J(['node = DNode(x)', 'node.next = head', 'if head is not None: head.prev = node', 'else: tail = node', 'head = node']), map: {} },
+      js: { code: J(['const node = new DNode(x);', 'node.next = head;', 'if (head !== null) head.prev = node;', 'else tail = node;', 'head = node;']), map: {} },
+      cpp: { code: J(['DNode* node = new DNode(x);', 'node->next = head;', 'if (head != nullptr) head->prev = node;', 'else tail = node;', 'head = node;']), map: {} }
+    }
+  };
+
   // ---------- small local helpers (prose + visualizers) ----------
   // chain([1,2,3], {1:'y'}) → "1 → 2 → 3 → null" with colored cells
   function chain(vals, hl, tail) {
@@ -871,7 +891,9 @@ ListNode* removeAll(ListNode* head, int target) {
 <p>Edge case: <code>[1]</code>, n = 1 → output is the empty list (we removed the head itself). Another: <code>[1,2]</code>, n = 2 → output <code>[2]</code>.</p>`,
       brute: {
         why: `<p>First pass: count the length L. Second pass: walk to node number L − n − 1 and unlink the next one. It works in O(N), but it walks the list <b>twice</b>, and removing the head (n == L) needs its own <code>if</code>. The interviewer usually asks: "can you do it in one pass without special cases?"</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 ListNode removeNthFromEnd(ListNode head, int n) {
     int len = 0;
     for (ListNode c = head; c != null; c = c.next) len++;   // pass 1: count
@@ -880,7 +902,32 @@ ListNode removeNthFromEnd(ListNode head, int n) {
     for (int i = 1; i < len - n; i++) c = c.next;           // pass 2: stop before the victim
     c.next = c.next.next;
     return head;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def delete_node(node):
+    while node.next.next is not None:     # shift every later value one step left
+        node.val = node.next.val
+        node = node.next
+    node.val = node.next.val              # copy the last value
+    node.next = None                      # drop the (now duplicate) tail` },
+            { lang: 'js', code: `function deleteNode(node) {
+  while (node.next.next !== null) {      // shift every later value one step left
+    node.val = node.next.val;
+    node = node.next;
+  }
+  node.val = node.next.val;              // copy the last value
+  node.next = null;                      // drop the (now duplicate) tail
+}` },
+            { lang: 'cpp', code: `void deleteNode(ListNode* node) {
+    while (node->next->next != nullptr) {   // shift every later value one step left
+        node->val = node->next->val;
+        node = node->next;
+    }
+    node->val = node->next->val;            // copy the last value
+    node->next = nullptr;                   // drop the (now duplicate) tail
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Both pointers start at the dummy. How far ahead should <code>fast</code> go before both move together, so that <code>slow</code> ends just before the victim when <code>fast</code> becomes null?',
@@ -1056,14 +1103,50 @@ ${H.table(['Loop condition', 'odd 1..5', 'even 1..6', 'Typical use'], [
 ${chain([1, 2, 3, 4, 5, 6], { 2: 'b', 3: 'p' })}<p>Output: node ${H.c('p', '4')}. There are two middles (${H.c('b', '3')} and ${H.c('p', '4')}); the problem wants the second.</p>`,
       brute: {
         why: `<p>Walk once to count N, then walk again N/2 steps. It is O(N) but needs <b>two passes</b>. Another naive idea: copy every node into an ArrayList and return <code>list.get(N/2)</code> — one pass but <b>O(N) extra memory</b> just to find one node.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 ListNode middleNode(ListNode head) {
     int n = 0;
     for (ListNode c = head; c != null; c = c.next) n++;   // pass 1: count
     ListNode c = head;
     for (int i = 0; i < n / 2; i++) c = c.next;          // pass 2: walk n/2 steps
     return c;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def remove_nth_from_end(head, n):
+    length = 0
+    c = head
+    while c is not None:
+        length += 1                       # pass 1: count
+        c = c.next
+    if n == length:
+        return head.next                  # removing the head: special case
+    c = head
+    for _ in range(1, length - n):
+        c = c.next                        # pass 2: stop before the victim
+    c.next = c.next.next
+    return head` },
+            { lang: 'js', code: `function removeNthFromEnd(head, n) {
+  let len = 0;
+  for (let c = head; c !== null; c = c.next) len++;   // pass 1: count
+  if (n === len) return head.next;                    // removing the head: special case
+  let c = head;
+  for (let i = 1; i < len - n; i++) c = c.next;       // pass 2: stop before the victim
+  c.next = c.next.next;
+  return head;
+}` },
+            { lang: 'cpp', code: `ListNode* removeNthFromEnd(ListNode* head, int n) {
+    int len = 0;
+    for (ListNode* c = head; c != nullptr; c = c->next) len++;   // pass 1: count
+    if (n == len) return head->next;                             // removing the head: special case
+    ListNode* c = head;
+    for (int i = 1; i < len - n; i++) c = c->next;               // pass 2: stop before the victim
+    c->next = c->next->next;
+    return head;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'List 1 → 2 → 3 → 4 (even). With <code>while (fast != null &amp;&amp; fast.next != null)</code>, where does slow stop?',
@@ -1231,14 +1314,43 @@ ${H.table(['Who', 'distance walked when they meet'], [
 <p><code>[1, 2]</code>, pos = -1 → output <b>null</b> (1 → 2 → null, no loop).</p>`,
       brute: {
         why: `<p>Walk the list and store every <b>node</b> in a HashSet. The first node that is already in the set is the cycle start; reaching null means no cycle. It is O(N) time, but needs <b>O(N) extra memory</b> — the follow-up explicitly asks for O(1).</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 ListNode detectCycle(ListNode head) {
     Set<ListNode> seen = new HashSet<>();
     for (ListNode c = head; c != null; c = c.next) {
         if (!seen.add(c)) return c;   // seen before → this is where the loop begins
     }
     return null;                      // reached the end → no loop
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def middle_node(head):
+    n = 0
+    c = head
+    while c is not None:
+        n += 1                            # pass 1: count
+        c = c.next
+    c = head
+    for _ in range(n // 2):
+        c = c.next                        # pass 2: walk n/2 steps
+    return c` },
+            { lang: 'js', code: `function middleNode(head) {
+  let n = 0;
+  for (let c = head; c !== null; c = c.next) n++;   // pass 1: count
+  let c = head;
+  for (let i = 0; i < Math.floor(n / 2); i++) c = c.next;   // pass 2: walk n/2 steps
+  return c;
+}` },
+            { lang: 'cpp', code: `ListNode* middleNode(ListNode* head) {
+    int n = 0;
+    for (ListNode* c = head; c != nullptr; c = c->next) n++;   // pass 1: count
+    ListNode* c = head;
+    for (int i = 0; i < n / 2; i++) c = c->next;               // pass 2: walk n/2 steps
+    return c;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Slow and fast have just met inside the loop. What is the next step to find the cycle start?',
@@ -1563,13 +1675,42 @@ ListNode* reverseRecursive(ListNode* head) {
       example: `${chain([1, 2, 3, 4, 5])}<p>Output:</p>${chain([5, 4, 3, 2, 1], { 0: 'p' })}<p>Every arrow is flipped; the old tail ${H.c('p', '5')} becomes the head. Empty list → empty list. One node → the same node.</p>`,
       brute: {
         why: `<p>Push every value onto a stack (or ArrayList), then walk the list again and overwrite values in popped order. It works in O(N) time but uses <b>O(N) extra memory</b> and changes values instead of links — interviewers want the links rewired in place.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 ListNode reverseList(ListNode head) {
     Deque<Integer> stack = new ArrayDeque<>();
     for (ListNode c = head; c != null; c = c.next) stack.push(c.val);   // remember values
     for (ListNode c = head; c != null; c = c.next) c.val = stack.pop(); // write them back reversed
     return head;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def detect_cycle(head):
+    seen = set()
+    c = head
+    while c is not None:
+        if c in seen:
+            return c                      # seen before -> this is where the loop begins
+        seen.add(c)
+        c = c.next
+    return None                           # reached the end -> no loop` },
+            { lang: 'js', code: `function detectCycle(head) {
+  const seen = new Set();
+  for (let c = head; c !== null; c = c.next) {
+    if (seen.has(c)) return c;      // seen before -> this is where the loop begins
+    seen.add(c);
+  }
+  return null;                      // reached the end -> no loop
+}` },
+            { lang: 'cpp', code: `ListNode* detectCycle(ListNode* head) {
+    unordered_set<ListNode*> seen;
+    for (ListNode* c = head; c != nullptr; c = c->next) {
+        if (!seen.insert(c).second) return c;   // seen before -> this is where the loop begins
+    }
+    return nullptr;                             // reached the end -> no loop
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Inside the loop, what MUST happen before <code>curr.next = prev</code>?',
@@ -1803,7 +1944,9 @@ ${H.table(['group', 'kth', 'after reversing + hooking', 'groupPrev moves to'], [
 <p>Same list with k = 3 → ${H.c('g', '3 → 2 → 1')} → 4 → 5 (only one full group; 4, 5 stay).</p>`,
       brute: {
         why: `<p>Copy all values into an array, reverse each full block of k inside the array, then write the values back into the nodes. Easy, but it uses <b>O(N) extra memory</b> and changes <b>values</b> — both forbidden by the problem.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 ListNode reverseKGroup(ListNode head, int k) {
     List<Integer> vals = new ArrayList<>();
     for (ListNode c = head; c != null; c = c.next) vals.add(c.val);
@@ -1816,7 +1959,33 @@ ListNode reverseKGroup(ListNode head, int k) {
     int idx = 0;
     for (ListNode c = head; c != null; c = c.next) c.val = vals.get(idx++);
     return head;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def reverse_list(head):
+    stack = []
+    c = head
+    while c is not None:
+        stack.append(c.val)               # remember values
+        c = c.next
+    c = head
+    while c is not None:
+        c.val = stack.pop()               # write them back reversed
+        c = c.next
+    return head` },
+            { lang: 'js', code: `function reverseList(head) {
+  const stack = [];
+  for (let c = head; c !== null; c = c.next) stack.push(c.val);    // remember values
+  for (let c = head; c !== null; c = c.next) c.val = stack.pop();  // write them back reversed
+  return head;
+}` },
+            { lang: 'cpp', code: `ListNode* reverseList(ListNode* head) {
+    stack<int> st;
+    for (ListNode* c = head; c != nullptr; c = c->next) st.push(c->val);              // remember values
+    for (ListNode* c = head; c != nullptr; c = c->next) { c->val = st.top(); st.pop(); }  // write them back reversed
+    return head;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'When reversing one group, why start <code>prev = groupNext</code> instead of <code>prev = null</code>?',
@@ -2097,7 +2266,9 @@ ListNode* mergeRecursive(ListNode* l1, ListNode* l2) {
 <p>Colors show which list each node came from. <code>[] + []</code> → <code>[]</code>; <code>[] + [0]</code> → <code>[0]</code>.</p>`,
       brute: {
         why: `<p>Dump all values from both lists into an ArrayList, sort it (O((N+M) log(N+M))), and build brand-new nodes. It ignores the fact that both lists are <b>already sorted</b> (wasted sorting work) and allocates N+M new nodes instead of reusing them.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 ListNode mergeTwoLists(ListNode list1, ListNode list2) {
     List<Integer> all = new ArrayList<>();
     for (ListNode c = list1; c != null; c = c.next) all.add(c.val);
@@ -2106,7 +2277,52 @@ ListNode mergeTwoLists(ListNode list1, ListNode list2) {
     ListNode dummy = new ListNode(0), tail = dummy;
     for (int v : all) { tail.next = new ListNode(v); tail = tail.next; }
     return dummy.next;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def reverse_k_group(head, k):
+    vals = []
+    c = head
+    while c is not None:
+        vals.append(c.val)
+        c = c.next
+    for start in range(0, len(vals) - k + 1, k):
+        # reverse vals[start .. start+k-1]
+        i, j = start, start + k - 1
+        while i < j:
+            vals[i], vals[j] = vals[j], vals[i]
+            i += 1
+            j -= 1
+    c = head
+    for v in vals:
+        c.val = v
+        c = c.next
+    return head` },
+            { lang: 'js', code: `function reverseKGroup(head, k) {
+  const vals = [];
+  for (let c = head; c !== null; c = c.next) vals.push(c.val);
+  for (let start = 0; start + k <= vals.length; start += k) {
+    // reverse vals[start .. start+k-1]
+    for (let i = start, j = start + k - 1; i < j; i++, j--) {
+      [vals[i], vals[j]] = [vals[j], vals[i]];
+    }
+  }
+  let idx = 0;
+  for (let c = head; c !== null; c = c.next) c.val = vals[idx++];
+  return head;
+}` },
+            { lang: 'cpp', code: `ListNode* reverseKGroup(ListNode* head, int k) {
+    vector<int> vals;
+    for (ListNode* c = head; c != nullptr; c = c->next) vals.push_back(c->val);
+    for (int start = 0; start + k <= (int)vals.size(); start += k) {
+        // reverse vals[start .. start+k-1]
+        for (int i = start, j = start + k - 1; i < j; i++, j--) swap(vals[i], vals[j]);
+    }
+    int idx = 0;
+    for (ListNode* c = head; c != nullptr; c = c->next) c->val = vals[idx++];
+    return head;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'l1 has run out, and l2 still has 5 → 7 → 9. What is the best way to finish?',
@@ -2769,7 +2985,9 @@ c.get(2);       // 99</code></pre>`
       example: `<p>capacity = 2: put(1,1), put(2,2), get(1) → ${H.c('g', '1')}, put(3,3) ${H.c('r', '(evicts 2)')}, get(2) → ${H.c('r', '-1')}, put(4,4) ${H.c('r', '(evicts 1)')}, get(1) → -1, get(3) → 3, get(4) → 4.</p><p>Key 2 is evicted (not 1) because <code>get(1)</code> made 1 more recent than 2.</p>`,
       brute: {
         why: `<p>Keep values in a HashMap and a "last used" timestamp per key. get/put are O(1), but eviction <b>scans every key</b> for the smallest timestamp: O(capacity) per eviction → up to 2·10<sup>5</sup> × 3000 = 6·10<sup>8</sup> steps. The wasted work is re-finding the oldest key from scratch every time.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 class LRUCache {
     private final int capacity;
     private final Map<Integer, Integer> vals = new HashMap<>();
@@ -2797,7 +3015,47 @@ class LRUCache {
         vals.put(key, value);
         lastUsed.put(key, clock++);
     }
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def merge_two_lists(list1, list2):
+    all_vals = []
+    c = list1
+    while c is not None:
+        all_vals.append(c.val)
+        c = c.next
+    c = list2
+    while c is not None:
+        all_vals.append(c.val)
+        c = c.next
+    all_vals.sort()                       # re-sorting what was already sorted
+    dummy = ListNode(0)
+    tail = dummy
+    for v in all_vals:
+        tail.next = ListNode(v)
+        tail = tail.next
+    return dummy.next` },
+            { lang: 'js', code: `function mergeTwoLists(list1, list2) {
+  const all = [];
+  for (let c = list1; c !== null; c = c.next) all.push(c.val);
+  for (let c = list2; c !== null; c = c.next) all.push(c.val);
+  all.sort((a, b) => a - b);                    // re-sorting what was already sorted
+  const dummy = new ListNode(0);
+  let tail = dummy;
+  for (const v of all) { tail.next = new ListNode(v); tail = tail.next; }
+  return dummy.next;
+}` },
+            { lang: 'cpp', code: `ListNode* mergeTwoLists(ListNode* list1, ListNode* list2) {
+    vector<int> all;
+    for (ListNode* c = list1; c != nullptr; c = c->next) all.push_back(c->val);
+    for (ListNode* c = list2; c != nullptr; c = c->next) all.push_back(c->val);
+    sort(all.begin(), all.end());                    // re-sorting what was already sorted
+    ListNode* dummy = new ListNode(0);
+    ListNode* tail = dummy;
+    for (int v : all) { tail->next = new ListNode(v); tail = tail->next; }
+    return dummy->next;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'You need O(1) "find key", O(1) "move this key to most-recent" and O(1) "remove the oldest". Which combination works?',
@@ -3180,7 +3438,7 @@ public:
           }
           var parts = [mk(fw, 'forward walk: head → … via next', 'head'), mk(bw, 'backward walk: tail → … via prev', 'tail'),
             { type: 'vars', vals: { head: head >= 0 ? nodes[head].v : 'null', tail: tail >= 0 ? nodes[tail].v : 'null', size: fw.length } }];
-          if (codeTxt) parts.push({ type: 'code', label: 'code', lang: 'java', code: codeTxt, hl: line ? obj(line, 'cur') : {} });
+          if (codeTxt) parts.push({ type: 'code', label: 'code', lang: 'java', code: codeTxt, hl: line ? obj(line, 'cur') : {}, alt: ALT_OF[codeTxt] });
           return parts;
         }
         function find(v) { var ids = walk(head, 'next'); for (var i = 0; i < ids.length; i++) if (nodes[ids[i]].v === v) return ids[i]; return -1; }
@@ -3188,6 +3446,7 @@ public:
         var RM = 'if (node.prev != null) node.prev.next = node.next;\nelse head = node.next;\nif (node.next != null) node.next.prev = node.prev;\nelse tail = node.prev;\nnode.prev = node.next = null;';
         var INS = 'DNode node = new DNode(x);\nnode.prev = at; node.next = at.next;\nif (at.next != null) at.next.prev = node;\nelse tail = node;\nat.next = node;';
         var AF = 'DNode node = new DNode(x);\nnode.next = head;\nif (head != null) head.prev = node;\nelse tail = node;\nhead = node;';
+        var ALT_OF = {}; ALT_OF[RM] = DLL_ALT.rm; ALT_OF[INS] = DLL_ALT.ins; ALT_OF[AF] = DLL_ALT.af;
         function remove(id, label) {
           var nd = nodes[id];
           frames.push({ narr: label + ': we already <b>hold</b> node ' + nd.v + ' (e.g. a HashMap gave it to us). No walking needed — it knows both neighbours: prev = ' + (nd.prev >= 0 ? nodes[nd.prev].v : 'null') + ', next = ' + (nd.next >= 0 ? nodes[nd.next].v : 'null') + '.', parts: views(id, 'cur', RM, 0) });
@@ -3436,7 +3695,9 @@ ListNode* build(const vector<int>& a) {
       example: `${chain([4, 5, 1, 9], { 1: 'r' })}<p>node = ${H.c('r', '5')} → output ${H.c('g', '4 → 1 → 9')}. We cannot reach 4 (no head, no prev pointer), so we cannot change 4.next. Instead we make node <b>become</b> its successor: copy 1 into it, then skip the old 1.</p>`,
       brute: {
         why: `<p>Shift every later value one step to the left (node gets 1, next gets 9, …), then cut off the last node. It produces the right list, but it touches every node after <code>node</code> — <b>O(N)</b> — when only the immediate neighbour matters.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 void deleteNode(ListNode node) {
     while (node.next.next != null) {      // shift every later value one step left
         node.val = node.next.val;
@@ -3444,7 +3705,94 @@ void deleteNode(ListNode node) {
     }
     node.val = node.next.val;            // copy the last value
     node.next = null;                    // drop the (now duplicate) tail
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `class LRUCache:
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.vals = {}
+        self.last_used = {}
+        self.clock = 0
+
+    def get(self, key):
+        if key not in self.vals:
+            return -1
+        self.last_used[key] = self.clock
+        self.clock += 1
+        return self.vals[key]
+
+    def put(self, key, value):
+        if key not in self.vals and len(self.vals) == self.capacity:
+            victim = -1
+            oldest = float("inf")
+            for k, t in self.last_used.items():     # O(N) scan
+                if t < oldest:
+                    oldest = t
+                    victim = k
+            del self.vals[victim]
+            del self.last_used[victim]
+        self.vals[key] = value
+        self.last_used[key] = self.clock
+        self.clock += 1` },
+            { lang: 'js', code: `class LRUCache {
+  constructor(capacity) {
+    this.capacity = capacity;
+    this.vals = new Map();
+    this.lastUsed = new Map();
+    this.clock = 0;
+  }
+
+  get(key) {
+    if (!this.vals.has(key)) return -1;
+    this.lastUsed.set(key, this.clock++);
+    return this.vals.get(key);
+  }
+
+  put(key, value) {
+    if (!this.vals.has(key) && this.vals.size === this.capacity) {
+      let victim = -1;
+      let oldest = Infinity;
+      for (const [k, t] of this.lastUsed) {         // O(N) scan
+        if (t < oldest) { oldest = t; victim = k; }
+      }
+      this.vals.delete(victim);
+      this.lastUsed.delete(victim);
+    }
+    this.vals.set(key, value);
+    this.lastUsed.set(key, this.clock++);
+  }
+}` },
+            { lang: 'cpp', code: `class LRUCache {
+    int capacity;
+    unordered_map<int, int> vals;
+    unordered_map<int, long long> lastUsed;
+    long long tick = 0;
+
+public:
+    LRUCache(int capacity) : capacity(capacity) {}
+
+    int get(int key) {
+        if (!vals.count(key)) return -1;
+        lastUsed[key] = tick++;
+        return vals[key];
+    }
+
+    void put(int key, int value) {
+        if (!vals.count(key) && (int)vals.size() == capacity) {
+            int victim = -1;
+            long long oldest = LLONG_MAX;
+            for (auto& e : lastUsed) {              // O(N) scan
+                if (e.second < oldest) { oldest = e.second; victim = e.first; }
+            }
+            vals.erase(victim);
+            lastUsed.erase(victim);
+        }
+        vals[key] = value;
+        lastUsed[key] = tick++;
+    }
+};` }
+          ]
+        }
       },
       mcq: {
         q: 'You hold node X (not the tail) but not the node before it. How can X "disappear" from the list in O(1)?',
@@ -4158,14 +4506,45 @@ ${H.table(['approach', 'time (N total nodes)', 'extra space'], [
     example: `${chain([7, 7, 1, 7, 2], { 0: 'r', 1: 'r', 3: 'r' })}<p>val = 7 → ${H.c('g', '1 → 2')}. The first two 7s are the head and then the new head — exactly the case a dummy node handles. <code>[7, 7]</code> → empty list.</p>`,
     brute: {
       why: `<p>Build a brand-new list, copying every value that is not <code>val</code>. Correct and O(N) time, but it allocates up to N new nodes (O(N) extra memory) when we could just re-link the existing ones.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 ListNode removeElements(ListNode head, int val) {
     ListNode dummy = new ListNode(0), tail = dummy;
     for (ListNode c = head; c != null; c = c.next) {
         if (c.val != val) { tail.next = new ListNode(c.val); tail = tail.next; }   // copies
     }
     return dummy.next;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def remove_elements(head, val):
+    dummy = ListNode(0)
+    tail = dummy
+    c = head
+    while c is not None:
+        if c.val != val:
+            tail.next = ListNode(c.val)   # copies
+            tail = tail.next
+        c = c.next
+    return dummy.next` },
+            { lang: 'js', code: `function removeElements(head, val) {
+  const dummy = new ListNode(0);
+  let tail = dummy;
+  for (let c = head; c !== null; c = c.next) {
+    if (c.val !== val) { tail.next = new ListNode(c.val); tail = tail.next; }   // copies
+  }
+  return dummy.next;
+}` },
+            { lang: 'cpp', code: `ListNode* removeElements(ListNode* head, int val) {
+    ListNode* dummy = new ListNode(0);
+    ListNode* tail = dummy;
+    for (ListNode* c = head; c != nullptr; c = c->next) {
+        if (c->val != val) { tail->next = new ListNode(c->val); tail = tail->next; }   // copies
+    }
+    return dummy->next;
+}` }
+          ]
+        }
     },
     mcq: { q: 'After skipping a matching node with <code>prev.next = prev.next.next</code>, what should <code>prev</code> do?', options: ['Move forward one node', 'Stay where it is', 'Jump to the head', 'Move forward two nodes'], answer: 1, explain: 'The new prev.next might also match (e.g. 7 → 7). Only advance prev when you did not delete.' },
     hints: [
@@ -4258,7 +4637,9 @@ public:
     example: `${chain([1, 1, 2, 3, 3], { 1: 'r', 4: 'r' })}<p>Output ${H.c('g', '1 → 2 → 3')}. Because the list is sorted, equal values are always <b>neighbours</b>, so we only compare each node with the next one.</p>`,
     brute: {
       why: `<p>Keep a HashSet of values seen so far and unlink any node whose value is already in the set. Works even for unsorted lists, but uses O(N) memory and ignores the fact that the list is sorted.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 ListNode deleteDuplicates(ListNode head) {
     Set<Integer> seen = new HashSet<>();
     ListNode dummy = new ListNode(0, head), prev = dummy;
@@ -4267,7 +4648,41 @@ ListNode deleteDuplicates(ListNode head) {
         else prev = prev.next;
     }
     return dummy.next;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def delete_duplicates(head):
+    seen = set()
+    dummy = ListNode(0, head)
+    prev = dummy
+    while prev.next is not None:
+        if prev.next.val in seen:
+            prev.next = prev.next.next    # already seen: drop
+        else:
+            seen.add(prev.next.val)
+            prev = prev.next
+    return dummy.next` },
+            { lang: 'js', code: `function deleteDuplicates(head) {
+  const seen = new Set();
+  const dummy = new ListNode(0, head);
+  let prev = dummy;
+  while (prev.next !== null) {
+    if (seen.has(prev.next.val)) prev.next = prev.next.next;   // already seen: drop
+    else { seen.add(prev.next.val); prev = prev.next; }
+  }
+  return dummy.next;
+}` },
+            { lang: 'cpp', code: `ListNode* deleteDuplicates(ListNode* head) {
+    unordered_set<int> seen;
+    ListNode* dummy = new ListNode(0, head);
+    ListNode* prev = dummy;
+    while (prev->next != nullptr) {
+        if (!seen.insert(prev->next->val).second) prev->next = prev->next->next;   // already seen: drop
+        else prev = prev->next;
+    }
+    return dummy->next;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Why is no dummy node needed here?', options: ['Because the list is short', 'Because the head is never deleted — we always keep the first copy', 'Because duplicates are rare', 'A dummy is required'], answer: 1, explain: 'We keep the first node of every run of equal values, so the head always survives and never needs a predecessor.' },
     hints: [
@@ -4352,13 +4767,42 @@ public:
     example: `<p>A: ${H.c('b', '4 → 1')} → ${H.c('p', '8 → 4 → 5')}<br>B: ${H.c('y', '5 → 6 → 1')} → ${H.c('p', '8 → 4 → 5')}</p><p>Output: node ${H.c('p', '8')}. Careful: B also has a node with value 1, but it is a <b>different node</b> — intersection is about identity, not equal values.</p>`,
     brute: {
       why: `<p>Put every node of A into a HashSet, then walk B and return the first node found in the set. O(m + n) time but O(m) memory.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 ListNode getIntersectionNode(ListNode headA, ListNode headB) {
     Set<ListNode> inA = new HashSet<>();
     for (ListNode a = headA; a != null; a = a.next) inA.add(a);
     for (ListNode b = headB; b != null; b = b.next) if (inA.contains(b)) return b;
     return null;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def get_intersection_node(head_a, head_b):
+    in_a = set()
+    a = head_a
+    while a is not None:
+        in_a.add(a)
+        a = a.next
+    b = head_b
+    while b is not None:
+        if b in in_a:
+            return b
+        b = b.next
+    return None` },
+            { lang: 'js', code: `function getIntersectionNode(headA, headB) {
+  const inA = new Set();
+  for (let a = headA; a !== null; a = a.next) inA.add(a);
+  for (let b = headB; b !== null; b = b.next) if (inA.has(b)) return b;
+  return null;
+}` },
+            { lang: 'cpp', code: `ListNode* getIntersectionNode(ListNode* headA, ListNode* headB) {
+    unordered_set<ListNode*> inA;
+    for (ListNode* a = headA; a != nullptr; a = a->next) inA.insert(a);
+    for (ListNode* b = headB; b != nullptr; b = b->next) if (inA.count(b)) return b;
+    return nullptr;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Pointer a walks A then switches to B; pointer b walks B then switches to A. Why do they meet at the intersection?', options: ['They walk at different speeds', 'Both walk exactly lenA + lenB − (shared part) steps before reaching it', 'The lists are sorted', 'They do not always meet'], answer: 1, explain: 'a covers A-only + shared + B-only; b covers B-only + shared + A-only. Same total, so they arrive at the shared start together (or both reach null together if there is none).' },
     hints: [
@@ -4448,14 +4892,46 @@ ListNode* getIntersectionNode(ListNode* headA, ListNode* headB) {
     example: `${chain([1, 2, 2, 1], { 0: 'b', 3: 'b', 1: 'y', 2: 'y' })}<p>→ ${H.c('g', 'true')}: outer pair 1/1 matches, inner pair 2/2 matches. <code>1 → 2</code> → ${H.c('r', 'false')}.</p>`,
     brute: {
       why: `<p>Copy all values into an ArrayList and compare from both ends with two indices. O(N) time but O(N) memory — the follow-up forbids it.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 boolean isPalindrome(ListNode head) {
     List<Integer> vals = new ArrayList<>();
     for (ListNode c = head; c != null; c = c.next) vals.add(c.val);
     for (int i = 0, j = vals.size() - 1; i < j; i++, j--)
         if (!vals.get(i).equals(vals.get(j))) return false;
     return true;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def is_palindrome(head):
+    vals = []
+    c = head
+    while c is not None:
+        vals.append(c.val)
+        c = c.next
+    i, j = 0, len(vals) - 1
+    while i < j:
+        if vals[i] != vals[j]:
+            return False
+        i += 1
+        j -= 1
+    return True` },
+            { lang: 'js', code: `function isPalindrome(head) {
+  const vals = [];
+  for (let c = head; c !== null; c = c.next) vals.push(c.val);
+  for (let i = 0, j = vals.length - 1; i < j; i++, j--)
+    if (vals[i] !== vals[j]) return false;
+  return true;
+}` },
+            { lang: 'cpp', code: `bool isPalindrome(ListNode* head) {
+    vector<int> vals;
+    for (ListNode* c = head; c != nullptr; c = c->next) vals.push_back(c->val);
+    for (int i = 0, j = (int)vals.size() - 1; i < j; i++, j--)
+        if (vals[i] != vals[j]) return false;
+    return true;
+}` }
+          ]
+        }
     },
     mcq: { q: 'For O(1) space, which two building blocks do you combine?', options: ['Sorting + binary search', 'Find the middle + reverse the second half', 'HashMap + counting', 'Recursion + memoization'], answer: 1, explain: 'Reverse the second half in place; now you can walk from the head and from the reversed half at the same time and compare.' },
     hints: [
@@ -4610,7 +5086,9 @@ private:
     example: `<p>${H.c('b', '2 → 4 → 3')} (342) + ${H.c('y', '5 → 6 → 4')} (465) = ${H.c('g', '7 → 0 → 8')} (807).</p><p>Digit by digit: 2+5 = 7; 4+6 = 10 → write 0, carry 1; 3+4+1 = 8. <code>9 → 9</code> + <code>1</code> → <code>0 → 0 → 1</code> (the final carry creates a new node).</p>`,
     brute: {
       why: `<p>Convert both lists to <code>long</code>, add, convert back. It breaks on 100-digit numbers: a long holds only about 19 digits, so it <b>overflows</b>. (BigInteger works but hides the actual skill.)</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 ListNode addTwoNumbers(ListNode l1, ListNode l2) {
     long a = 0, b = 0, p = 1;
     for (ListNode c = l1; c != null; c = c.next, p *= 10) a += c.val * p;   // overflows past ~19 digits
@@ -4620,7 +5098,56 @@ ListNode addTwoNumbers(ListNode l1, ListNode l2) {
     ListNode dummy = new ListNode(0), tail = dummy;
     do { tail.next = new ListNode((int) (s % 10)); tail = tail.next; s /= 10; } while (s > 0);
     return dummy.next;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def add_two_numbers(l1, l2):
+    a = b = 0
+    p = 1
+    c = l1
+    while c is not None:
+        a += c.val * p                    # Python ints never overflow, but this skips the carry logic
+        p *= 10
+        c = c.next
+    p = 1
+    c = l2
+    while c is not None:
+        b += c.val * p
+        p *= 10
+        c = c.next
+    s = a + b
+    dummy = ListNode(0)
+    tail = dummy
+    while True:
+        tail.next = ListNode(s % 10)
+        tail = tail.next
+        s //= 10
+        if s == 0:
+            break
+    return dummy.next` },
+            { lang: 'js', code: `function addTwoNumbers(l1, l2) {
+  let a = 0, b = 0, p = 1;
+  for (let c = l1; c !== null; c = c.next, p *= 10) a += c.val * p;   // loses precision past ~15 digits
+  p = 1;
+  for (let c = l2; c !== null; c = c.next, p *= 10) b += c.val * p;
+  let s = a + b;
+  const dummy = new ListNode(0);
+  let tail = dummy;
+  do { tail.next = new ListNode(s % 10); tail = tail.next; s = Math.floor(s / 10); } while (s > 0);
+  return dummy.next;
+}` },
+            { lang: 'cpp', code: `ListNode* addTwoNumbers(ListNode* l1, ListNode* l2) {
+    long long a = 0, b = 0, p = 1;
+    for (ListNode* c = l1; c != nullptr; c = c->next, p *= 10) a += c->val * p;   // overflows past ~19 digits
+    p = 1;
+    for (ListNode* c = l2; c != nullptr; c = c->next, p *= 10) b += c->val * p;
+    long long s = a + b;
+    ListNode* dummy = new ListNode(0);
+    ListNode* tail = dummy;
+    do { tail->next = new ListNode((int)(s % 10)); tail = tail->next; s /= 10; } while (s > 0);
+    return dummy->next;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Both lists are exhausted but carry = 1. What now?', options: ['Ignore it', 'Append a new node with value 1', 'Add 1 to the head', 'Throw an exception'], answer: 1, explain: '99 + 1 = 100: the extra carry becomes a new most-significant digit, i.e. a new last node.' },
     hints: [
@@ -4725,7 +5252,9 @@ public:
     example: `${chain([2, 1, 3, 5, 6, 4, 7], { 0: 'b', 2: 'b', 4: 'b', 6: 'b', 1: 'y', 3: 'y', 5: 'y' })}<p>→ ${H.c('b', '2 → 3 → 6 → 7')} → ${H.c('y', '1 → 5 → 4')}. Positions 1, 3, 5, 7 first, then 2, 4, 6.</p>`,
     brute: {
       why: `<p>Copy odd-position values into one ArrayList and even-position values into another, then rewrite the node values in order. O(N) extra memory and it changes values rather than re-linking nodes.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 ListNode oddEvenList(ListNode head) {
     List<Integer> odd = new ArrayList<>(), even = new ArrayList<>();
     int pos = 1;
@@ -4734,7 +5263,42 @@ ListNode oddEvenList(ListNode head) {
     int i = 0;
     for (ListNode c = head; c != null; c = c.next) c.val = odd.get(i++);
     return head;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def odd_even_list(head):
+    odd, even = [], []
+    pos = 1
+    c = head
+    while c is not None:
+        (odd if pos % 2 == 1 else even).append(c.val)
+        c = c.next
+        pos += 1
+    odd.extend(even)
+    c = head
+    for v in odd:
+        c.val = v
+        c = c.next
+    return head` },
+            { lang: 'js', code: `function oddEvenList(head) {
+  const odd = [], even = [];
+  let pos = 1;
+  for (let c = head; c !== null; c = c.next, pos++) (pos % 2 === 1 ? odd : even).push(c.val);
+  odd.push(...even);
+  let i = 0;
+  for (let c = head; c !== null; c = c.next) c.val = odd[i++];
+  return head;
+}` },
+            { lang: 'cpp', code: `ListNode* oddEvenList(ListNode* head) {
+    vector<int> odd, even;
+    int pos = 1;
+    for (ListNode* c = head; c != nullptr; c = c->next, pos++) (pos % 2 == 1 ? odd : even).push_back(c->val);
+    odd.insert(odd.end(), even.begin(), even.end());
+    int i = 0;
+    for (ListNode* c = head; c != nullptr; c = c->next) c->val = odd[i++];
+    return head;
+}` }
+          ]
+        }
     },
     mcq: { q: 'What must you save before the loop so you can glue the two groups at the end?', options: ['The tail of the list', 'The head of the even list (head.next)', 'The middle node', 'The length'], answer: 1, explain: 'The odd chain starts at head; the even chain starts at head.next. After weaving, odd.next = evenHead connects them.' },
     hints: [
@@ -4833,13 +5397,36 @@ public:
     example: `${chain([1, 2, 3, 4])}<p>→ ${H.c('g', '2 → 1 → 4 → 3')}. <code>[1, 2, 3]</code> → <code>2 → 1 → 3</code> (the lonely last node stays).</p>`,
     brute: {
       why: `<p>Swap the <b>values</b> of each pair. It produces the right sequence in O(N), but the problem forbids changing values — imagine nodes carrying large payloads or being referenced elsewhere.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 ListNode swapPairs(ListNode head) {
     for (ListNode c = head; c != null && c.next != null; c = c.next.next) {
         int t = c.val; c.val = c.next.val; c.next.val = t;   // swaps values, not nodes
     }
     return head;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def swap_pairs(head):
+    c = head
+    while c is not None and c.next is not None:
+        c.val, c.next.val = c.next.val, c.val    # swaps values, not nodes
+        c = c.next.next
+    return head` },
+            { lang: 'js', code: `function swapPairs(head) {
+  for (let c = head; c !== null && c.next !== null; c = c.next.next) {
+    const t = c.val; c.val = c.next.val; c.next.val = t;   // swaps values, not nodes
+  }
+  return head;
+}` },
+            { lang: 'cpp', code: `ListNode* swapPairs(ListNode* head) {
+    for (ListNode* c = head; c != nullptr && c->next != nullptr; c = c->next->next) {
+        int t = c->val; c->val = c->next->val; c->next->val = t;   // swaps values, not nodes
+    }
+    return head;
+}` }
+          ]
+        }
     },
     mcq: { q: 'With prev → a → b → rest, which assignment order swaps a and b safely?', options: ['a.next = b; b.next = rest; prev.next = a', 'prev.next = b; a.next = b.next; b.next = a', 'b.next = a; prev.next = b; a.next = b.next', 'prev.next = a.next; b.next = prev'], answer: 1, explain: 'prev.next = b first, then a.next = b.next (= rest, still intact), then b.next = a. Option C sets b.next = a before reading b.next, losing rest.' },
     hints: [
@@ -4929,7 +5516,9 @@ public:
     example: `${chain([1, 2, 3, 4, 5], { 1: 'y', 2: 'y', 3: 'y' })}<p>left = 2, right = 4 → ${H.c('m', '1')} → ${H.c('g', '4 → 3 → 2')} → ${H.c('m', '5')}. With left = 1 the head changes — use a dummy.</p>`,
     brute: {
       why: `<p>Copy values into an array, reverse the sub-array [left−1, right−1], write the values back. O(N) time but O(N) memory and it swaps values instead of links.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 ListNode reverseBetween(ListNode head, int left, int right) {
     List<Integer> vals = new ArrayList<>();
     for (ListNode c = head; c != null; c = c.next) vals.add(c.val);
@@ -4937,7 +5526,39 @@ ListNode reverseBetween(ListNode head, int left, int right) {
     int i = 0;
     for (ListNode c = head; c != null; c = c.next) c.val = vals.get(i++);
     return head;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def reverse_between(head, left, right):
+    vals = []
+    c = head
+    while c is not None:
+        vals.append(c.val)
+        c = c.next
+    vals[left - 1:right] = vals[left - 1:right][::-1]    # reverse the middle part
+    c = head
+    for v in vals:
+        c.val = v
+        c = c.next
+    return head` },
+            { lang: 'js', code: `function reverseBetween(head, left, right) {
+  const vals = [];
+  for (let c = head; c !== null; c = c.next) vals.push(c.val);
+  const mid = vals.slice(left - 1, right).reverse();    // reverse the middle part
+  vals.splice(left - 1, right - left + 1, ...mid);
+  let i = 0;
+  for (let c = head; c !== null; c = c.next) c.val = vals[i++];
+  return head;
+}` },
+            { lang: 'cpp', code: `ListNode* reverseBetween(ListNode* head, int left, int right) {
+    vector<int> vals;
+    for (ListNode* c = head; c != nullptr; c = c->next) vals.push_back(c->val);
+    reverse(vals.begin() + (left - 1), vals.begin() + right);   // reverse the middle part
+    int i = 0;
+    for (ListNode* c = head; c != nullptr; c = c->next) c->val = vals[i++];
+    return head;
+}` }
+          ]
+        }
     },
     mcq: { q: 'In the "head insertion" method, <code>pre</code> sits before position left and <code>curr = pre.next</code> stays fixed. What does each step do?', options: ['Swaps curr with its neighbour values', 'Moves the node after curr to the front of the sublist (right after pre)', 'Reverses the whole list', 'Moves curr to the end'], answer: 1, explain: 'Take move = curr.next, unlink it, insert it after pre. After right − left steps the sublist is reversed and curr has drifted to the end of it.' },
     hints: [
@@ -5035,7 +5656,9 @@ public:
     example: `${chain([1, 2, 3, 4, 5], { 0: 'b', 1: 'b', 2: 'b', 3: 'y', 4: 'y' })}<p>→ ${H.c('g', '1 → 5 → 2 → 4 → 3')}: take one from the front, one from the back, alternately.</p>`,
     brute: {
       why: `<p>Store all nodes in an ArrayList, then use two indices i (front) and j (back) to relink. O(N) time but O(N) extra memory for the array of references.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 void reorderList(ListNode head) {
     List<ListNode> nodes = new ArrayList<>();
     for (ListNode c = head; c != null; c = c.next) nodes.add(c);
@@ -5048,7 +5671,51 @@ void reorderList(ListNode head) {
         j--;
     }
     nodes.get(i).next = null;               // new tail
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def reorder_list(head):
+    nodes = []
+    c = head
+    while c is not None:
+        nodes.append(c)
+        c = c.next
+    i, j = 0, len(nodes) - 1
+    while i < j:
+        nodes[i].next = nodes[j]          # front -> back
+        i += 1
+        if i == j:
+            break
+        nodes[j].next = nodes[i]          # back -> next front
+        j -= 1
+    nodes[i].next = None                  # new tail` },
+            { lang: 'js', code: `function reorderList(head) {
+  const nodes = [];
+  for (let c = head; c !== null; c = c.next) nodes.push(c);
+  let i = 0, j = nodes.length - 1;
+  while (i < j) {
+    nodes[i].next = nodes[j];   // front -> back
+    i++;
+    if (i === j) break;
+    nodes[j].next = nodes[i];   // back -> next front
+    j--;
+  }
+  nodes[i].next = null;         // new tail
+}` },
+            { lang: 'cpp', code: `void reorderList(ListNode* head) {
+    vector<ListNode*> nodes;
+    for (ListNode* c = head; c != nullptr; c = c->next) nodes.push_back(c);
+    int i = 0, j = (int)nodes.size() - 1;
+    while (i < j) {
+        nodes[i]->next = nodes[j];   // front -> back
+        i++;
+        if (i == j) break;
+        nodes[j]->next = nodes[i];   // back -> next front
+        j--;
+    }
+    nodes[i]->next = nullptr;        // new tail
+}` }
+          ]
+        }
     },
     mcq: { q: 'Which three known steps solve Reorder List in O(1) space?', options: ['Sort, dedupe, merge', 'Find middle, reverse second half, interleave the halves', 'Reverse whole list, then merge with itself', 'Use a stack of all nodes'], answer: 1, explain: 'The back half read backwards is just the reversed second half; then alternate nodes from the two halves.' },
     hints: [
@@ -5186,7 +5853,9 @@ private:
     example: `${chain([1, 2, 3, 3, 4, 4, 5], { 2: 'r', 3: 'r', 4: 'r', 5: 'r' })}<p>→ ${H.c('g', '1 → 2 → 5')}. <code>1 → 1 → 1 → 2 → 3</code> → <code>2 → 3</code> (the head itself disappears — dummy!).</p>`,
     brute: {
       why: `<p>Count every value in a HashMap, then rebuild with only count-1 values. Two passes and O(N) memory; it also ignores the sortedness that lets us detect runs locally.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 ListNode deleteDuplicates(ListNode head) {
     Map<Integer, Integer> cnt = new HashMap<>();
     for (ListNode c = head; c != null; c = c.next) cnt.merge(c.val, 1, Integer::sum);
@@ -5196,7 +5865,46 @@ ListNode deleteDuplicates(ListNode head) {
         else prev = prev.next;
     }
     return dummy.next;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def delete_duplicates(head):
+    cnt = {}
+    c = head
+    while c is not None:
+        cnt[c.val] = cnt.get(c.val, 0) + 1
+        c = c.next
+    dummy = ListNode(0, head)
+    prev = dummy
+    while prev.next is not None:
+        if cnt[prev.next.val] > 1:
+            prev.next = prev.next.next
+        else:
+            prev = prev.next
+    return dummy.next` },
+            { lang: 'js', code: `function deleteDuplicates(head) {
+  const cnt = new Map();
+  for (let c = head; c !== null; c = c.next) cnt.set(c.val, (cnt.get(c.val) || 0) + 1);
+  const dummy = new ListNode(0, head);
+  let prev = dummy;
+  while (prev.next !== null) {
+    if (cnt.get(prev.next.val) > 1) prev.next = prev.next.next;
+    else prev = prev.next;
+  }
+  return dummy.next;
+}` },
+            { lang: 'cpp', code: `ListNode* deleteDuplicates(ListNode* head) {
+    unordered_map<int, int> cnt;
+    for (ListNode* c = head; c != nullptr; c = c->next) cnt[c->val]++;
+    ListNode* dummy = new ListNode(0, head);
+    ListNode* prev = dummy;
+    while (prev->next != nullptr) {
+        if (cnt[prev->next->val] > 1) prev->next = prev->next->next;
+        else prev = prev->next;
+    }
+    return dummy->next;
+}` }
+          ]
+        }
     },
     mcq: { q: 'You are on a run 3 → 3 → 3. Where should <code>prev.next</code> point after handling it?', options: ['The first 3', 'The last 3', 'The first node after the run', 'null'], answer: 2, explain: 'Every node of the run must vanish, so prev (the last kept node) links straight to the node after the run; prev itself does not move yet.' },
     hints: [
@@ -5306,7 +6014,9 @@ public:
     example: `${chain([4, 2, 1, 3])}<p>→ ${H.c('g', '1 → 2 → 3 → 4')}. Split [4, 2] [1, 3] → sort each → [2, 4] [1, 3] → merge → 1, 2, 3, 4.</p>`,
     brute: {
       why: `<p>Copy values into an array, <code>Arrays.sort</code>, write back. O(N log N) time but O(N) memory, and it is not really sorting the list. Insertion sort on the list itself is O(1) memory but O(N²) time — too slow for 5·10<sup>4</sup>.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 ListNode sortList(ListNode head) {
     List<Integer> vals = new ArrayList<>();
     for (ListNode c = head; c != null; c = c.next) vals.add(c.val);
@@ -5314,9 +6024,40 @@ ListNode sortList(ListNode head) {
     int i = 0;
     for (ListNode c = head; c != null; c = c.next) c.val = vals.get(i++);
     return head;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def sort_list(head):
+    vals = []
+    c = head
+    while c is not None:
+        vals.append(c.val)
+        c = c.next
+    vals.sort()
+    c = head
+    for v in vals:
+        c.val = v
+        c = c.next
+    return head` },
+            { lang: 'js', code: `function sortList(head) {
+  const vals = [];
+  for (let c = head; c !== null; c = c.next) vals.push(c.val);
+  vals.sort((a, b) => a - b);
+  let i = 0;
+  for (let c = head; c !== null; c = c.next) c.val = vals[i++];
+  return head;
+}` },
+            { lang: 'cpp', code: `ListNode* sortList(ListNode* head) {
+    vector<int> vals;
+    for (ListNode* c = head; c != nullptr; c = c->next) vals.push_back(c->val);
+    sort(vals.begin(), vals.end());
+    int i = 0;
+    for (ListNode* c = head; c != nullptr; c = c->next) c->val = vals[i++];
+    return head;
+}` }
+          ]
+        }
     },
-    mcq: { q: 'Why is merge sort (not quicksort or heapsort) the natural choice for linked lists?', options: ['It needs random access', 'Splitting and merging only need sequential walks and relinking — no indexing or extra buffer', 'It is always faster', 'Java requires it'], answer: 1, explain: 'Heapsort needs random access; quicksort\'s partitioning is awkward and degrades on bad pivots. Merging lists is in place, so merge sort fits perfectly.' },
+    mcq: { q: 'Why is merge sort (not quicksort or heapsort) the natural choice for linked lists?', options: ['It needs random access', 'Splitting and merging only need sequential walks and relinking — no indexing or extra buffer', 'It is always faster', 'The language requires it'], answer: 1, explain: 'Heapsort needs random access; quicksort\'s partitioning is awkward and degrades on bad pivots. Merging lists is in place, so merge sort fits perfectly.' },
     hints: [
       `<p>You already know how to cut a list in half (first-middle) and how to merge two sorted lists. Combine them recursively.</p>`,
       `<p>Base case: 0 or 1 node. Otherwise split at the <b>first</b> middle (so 2 nodes split into 1 + 1), sort both halves, merge.</p>`,
@@ -5457,7 +6198,9 @@ private:
     example: `<p>Original: ${H.c('b', '7')} → ${H.c('b', '13')} → 11 → 10 → 1, with random: 7→null, 13→7, 11→1, 10→11, 1→7.</p><p>Output: a new list ${H.c('g', "7' → 13' → 11' → 10' → 1'")} with randoms 13'→7', 11'→1', … The hard part: when we create 13', the copy 7' must already be findable.</p>`,
     brute: {
       why: `<p>Copy the nodes into an ArrayList, then for every random pointer walk the original list from the head to find its <b>index</b>, and point to the copy at that index. Each lookup is O(N) → <b>O(N²)</b>.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 class Node { int val; Node next, random; Node(int val) { this.val = val; } }
 
 class Solution {
@@ -5474,7 +6217,74 @@ class Solution {
         }
         return copies.isEmpty() ? null : copies.get(0);
     }
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `class Node:
+    def __init__(self, val, next=None, random=None):
+        self.val = val
+        self.next = next
+        self.random = random
+
+
+def copy_random_list(head):
+    copies = []
+    c = head
+    while c is not None:
+        copies.append(Node(c.val))
+        c = c.next
+    for i in range(len(copies) - 1):
+        copies[i].next = copies[i + 1]
+    i = 0
+    c = head
+    while c is not None:
+        if c.random is not None:
+            j = 0
+            d = head
+            while d is not c.random:      # O(N) search for the index
+                d = d.next
+                j += 1
+            copies[i].random = copies[j]
+        c = c.next
+        i += 1
+    return copies[0] if copies else None` },
+            { lang: 'js', code: `class Node {
+  constructor(val, next = null, random = null) { this.val = val; this.next = next; this.random = random; }
+}
+
+function copyRandomList(head) {
+  const copies = [];
+  for (let c = head; c !== null; c = c.next) copies.push(new Node(c.val));
+  for (let i = 0; i + 1 < copies.length; i++) copies[i].next = copies[i + 1];
+  let i = 0;
+  for (let c = head; c !== null; c = c.next, i++) {
+    if (c.random === null) continue;
+    let j = 0;
+    for (let d = head; d !== c.random; d = d.next) j++;   // O(N) search for the index
+    copies[i].random = copies[j];
+  }
+  return copies.length === 0 ? null : copies[0];
+}` },
+            { lang: 'cpp', code: `struct Node {
+    int val;
+    Node *next, *random;
+    Node(int v) : val(v), next(nullptr), random(nullptr) {}
+};
+
+Node* copyRandomList(Node* head) {
+    vector<Node*> copies;
+    for (Node* c = head; c != nullptr; c = c->next) copies.push_back(new Node(c->val));
+    for (int i = 0; i + 1 < (int)copies.size(); i++) copies[i]->next = copies[i + 1];
+    int i = 0;
+    for (Node* c = head; c != nullptr; c = c->next, i++) {
+        if (c->random == nullptr) continue;
+        int j = 0;
+        for (Node* d = head; d != c->random; d = d->next) j++;   // O(N) search for the index
+        copies[i]->random = copies[j];
+    }
+    return copies.empty() ? nullptr : copies[0];
+}` }
+          ]
+        }
     },
     mcq: { q: 'After weaving copies in (A → A\' → B → B\' → …), how do you set <code>A\'.random</code>?', options: ['A\'.random = A.random', 'A\'.random = A.random.next', 'A\'.random = A.next.random', 'A\'.random = A.random.random'], answer: 1, explain: 'Every original X is immediately followed by its copy X\'. So the copy of A.random is A.random.next (when A.random is not null).' },
     hints: [
@@ -5606,12 +6416,37 @@ Node* copyRandomList(Node* head) {
     example: `${H.arr([1, 3, 4, 2, 2], { hl: { 3: 'y', 4: 'y' } })}<p>→ ${H.c('g', '2')}. Read it as a linked list: index → nums[index]: 0 → 1 → 3 → 2 → 4 → ${H.c('p', '2')} → 4 → … Two indices (3 and 4) both point to 2, so 2 is where the cycle starts — the duplicate.</p>`,
     brute: {
       why: `<p>A HashSet of seen values returns the first repeat in O(N) time but O(N) memory. Sorting a copy also costs O(N) memory, and sorting in place modifies the array — both forbidden.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 int findDuplicate(int[] nums) {
     Set<Integer> seen = new HashSet<>();
     for (int x : nums) if (!seen.add(x)) return x;
     return -1;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def find_duplicate(nums):
+    seen = set()
+    for x in nums:
+        if x in seen:
+            return x
+        seen.add(x)
+    return -1` },
+            { lang: 'js', code: `function findDuplicate(nums) {
+  const seen = new Set();
+  for (const x of nums) {
+    if (seen.has(x)) return x;
+    seen.add(x);
+  }
+  return -1;
+}` },
+            { lang: 'cpp', code: `int findDuplicate(vector<int>& nums) {
+    unordered_set<int> seen;
+    for (int x : nums) if (!seen.insert(x).second) return x;
+    return -1;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Why must the sequence 0 → nums[0] → nums[nums[0]] → … contain a cycle?', options: ['Because the array is sorted', 'n + 1 indices map into only n values 1..n, and index 0 is never a target, so the walk must eventually repeat', 'Because nums contains 0', 'It does not always'], answer: 1, explain: 'Every step lands on an index in 1..n — a finite set — so the walk repeats. The node with two incoming arrows (two indices holding the same value) is the cycle entrance.' },
     hints: [
@@ -5712,7 +6547,9 @@ public:
     example: `<p>${H.c('b', '1 → 4 → 5')}, ${H.c('y', '1 → 3 → 4')}, ${H.c('p', '2 → 6')} → ${H.c('g', '1 → 1 → 2 → 3 → 4 → 4 → 5 → 6')}.</p><p>At every step the smallest remaining value is one of the k <b>fronts</b> — a min-heap of the fronts gives it in O(log k).</p>`,
     brute: {
       why: `<p>Merge the lists one by one into an accumulator. The accumulator grows, so early nodes get re-walked by every later merge: total O(N·k). With k = 10<sup>4</sup> lists that is far too slow.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 ListNode mergeKLists(ListNode[] lists) {
     ListNode acc = null;
     for (ListNode l : lists) acc = mergeTwo(acc, l);   // acc keeps growing: O(N*k) total
@@ -5727,7 +6564,62 @@ ListNode mergeTwo(ListNode a, ListNode b) {
     }
     t.next = (a != null) ? a : b;
     return dummy.next;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def merge_k_lists(lists):
+    acc = None
+    for l in lists:
+        acc = merge_two(acc, l)           # acc keeps growing: O(N*k) total
+    return acc
+
+
+def merge_two(a, b):
+    dummy = ListNode(0)
+    t = dummy
+    while a is not None and b is not None:
+        if a.val <= b.val:
+            t.next = a
+            a = a.next
+        else:
+            t.next = b
+            b = b.next
+        t = t.next
+    t.next = a if a is not None else b
+    return dummy.next` },
+            { lang: 'js', code: `function mergeKLists(lists) {
+  let acc = null;
+  for (const l of lists) acc = mergeTwo(acc, l);   // acc keeps growing: O(N*k) total
+  return acc;
+}
+
+function mergeTwo(a, b) {
+  const dummy = new ListNode(0);
+  let t = dummy;
+  while (a !== null && b !== null) {
+    if (a.val <= b.val) { t.next = a; a = a.next; } else { t.next = b; b = b.next; }
+    t = t.next;
+  }
+  t.next = (a !== null) ? a : b;
+  return dummy.next;
+}` },
+            { lang: 'cpp', code: `ListNode* mergeTwo(ListNode* a, ListNode* b) {
+    ListNode* dummy = new ListNode(0);
+    ListNode* t = dummy;
+    while (a != nullptr && b != nullptr) {
+        if (a->val <= b->val) { t->next = a; a = a->next; } else { t->next = b; b = b->next; }
+        t = t->next;
+    }
+    t->next = (a != nullptr) ? a : b;
+    return dummy->next;
+}
+
+ListNode* mergeKLists(vector<ListNode*>& lists) {
+    ListNode* acc = nullptr;
+    for (ListNode* l : lists) acc = mergeTwo(acc, l);   // acc keeps growing: O(N*k) total
+    return acc;
+}` }
+          ]
+        }
     },
     mcq: { q: 'What does the min-heap hold at any moment?', options: ['All N nodes', 'At most k nodes: the current front of each non-empty list', 'Only the k smallest values overall', 'The list heads in their original order'], answer: 1, explain: 'Each list contributes only its current front; after popping a node we push its next. So the heap has ≤ k entries, and each push/pop is O(log k).' },
     hints: [
@@ -5863,7 +6755,9 @@ public:
     example: `<p>capacity 2: put(1,1), put(2,2), get(1) → 1 (count: 1→2, 2→1), put(3,3) → ${H.c('r', 'evicts 2')} (lowest count), get(2) → -1, get(3) → 3 (count 2), put(4,4) → keys 1 and 3 both have count 2; 1 was used less recently → ${H.c('r', 'evicts 1')}. get(1) → -1, get(3) → 3, get(4) → 4.</p>`,
     brute: {
       why: `<p>Store value, count and last-used time per key; on eviction scan every key for the smallest (count, time). get/put are O(1) but each eviction is <b>O(capacity)</b> → up to 2·10<sup>9</sup> steps in the worst case.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 class LFUCache {
     private final int capacity;
     private long clock = 0;
@@ -5891,7 +6785,99 @@ class LFUCache {
         }
         data.put(key, new long[]{value, 1, clock++});
     }
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `class LFUCache:
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.clock = 0
+        self.data = {}                    # key -> [value, count, last_used]
+
+    def get(self, key):
+        d = self.data.get(key)
+        if d is None:
+            return -1
+        d[1] += 1
+        d[2] = self.clock
+        self.clock += 1
+        return d[0]
+
+    def put(self, key, value):
+        d = self.data.get(key)
+        if d is not None:
+            d[0] = value
+            d[1] += 1
+            d[2] = self.clock
+            self.clock += 1
+            return
+        if len(self.data) == self.capacity:
+            victim, best = -1, None
+            for k, v in self.data.items():              # O(N) scan
+                if best is None or v[1] < best[1] or (v[1] == best[1] and v[2] < best[2]):
+                    best, victim = v, k
+            del self.data[victim]
+        self.data[key] = [value, 1, self.clock]
+        self.clock += 1` },
+            { lang: 'js', code: `class LFUCache {
+  constructor(capacity) {
+    this.capacity = capacity;
+    this.clock = 0;
+    this.data = new Map();                 // key -> [value, count, lastUsed]
+  }
+
+  get(key) {
+    const d = this.data.get(key);
+    if (d === undefined) return -1;
+    d[1]++; d[2] = this.clock++;
+    return d[0];
+  }
+
+  put(key, value) {
+    const d = this.data.get(key);
+    if (d !== undefined) { d[0] = value; d[1]++; d[2] = this.clock++; return; }
+    if (this.data.size === this.capacity) {
+      let victim = -1, best = null;
+      for (const [k, v] of this.data) {                // O(N) scan
+        if (best === null || v[1] < best[1] || (v[1] === best[1] && v[2] < best[2])) { best = v; victim = k; }
+      }
+      this.data.delete(victim);
+    }
+    this.data.set(key, [value, 1, this.clock++]);
+  }
+}` },
+            { lang: 'cpp', code: `class LFUCache {
+    int capacity;
+    long long tick = 0;
+    unordered_map<int, array<long long, 3>> data;   // key -> {value, count, lastUsed}
+
+public:
+    LFUCache(int capacity) : capacity(capacity) {}
+
+    int get(int key) {
+        auto it = data.find(key);
+        if (it == data.end()) return -1;
+        auto& d = it->second;
+        d[1]++; d[2] = tick++;
+        return (int)d[0];
+    }
+
+    void put(int key, int value) {
+        auto it = data.find(key);
+        if (it != data.end()) { auto& d = it->second; d[0] = value; d[1]++; d[2] = tick++; return; }
+        if ((int)data.size() == capacity) {
+            int victim = -1;
+            const array<long long, 3>* best = nullptr;
+            for (auto& e : data) {                       // O(N) scan
+                const auto& v = e.second;
+                if (best == nullptr || v[1] < (*best)[1] || (v[1] == (*best)[1] && v[2] < (*best)[2])) { best = &v; victim = e.first; }
+            }
+            data.erase(victim);
+        }
+        data[key] = {value, 1, tick++};
+    }
+};` }
+          ]
+        }
     },
     mcq: { q: 'How can eviction find "lowest count, then least recent" in O(1)?', options: ['Sort keys on every call', 'Keep a bucket (recency-ordered list) per count plus the current minimum count', 'A TreeMap of counts only', 'A single LRU list'], answer: 1, explain: 'Bucket[c] is an LRU-ordered list of keys with count c. minFreq tells which bucket to evict from, and its oldest key is the victim. Counts only increase by 1, so minFreq is easy to maintain.' },
     hints: [
@@ -6119,7 +7105,9 @@ public:
     example: `<p>addText("leetcode") → <code>leetcode|</code>; deleteText(4) → ${H.c('g', '4')} (<code>leet|</code>); addText("practice") → <code>leetpractice|</code>; cursorRight(3) → ${H.c('g', '"etpractice"')} (already at the end); cursorLeft(8) → ${H.c('g', '"leet"')} (<code>leet|practice</code>); deleteText(10) → ${H.c('g', '4')} (only 4 chars on the left); cursorLeft(2) → ${H.c('g', '""')}; cursorRight(6) → ${H.c('g', '"practi"')}.</p>`,
     brute: {
       why: `<p>One StringBuilder plus an integer cursor. <code>insert</code> and <code>delete</code> in the middle shift every character to the right of the cursor: <b>O(total length)</b> per call, even when k is tiny. Up to 2·10<sup>4</sup> × 8·10<sup>5</sup> character moves in the worst case.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 class TextEditor {
     private final StringBuilder sb = new StringBuilder();
     private int cursor = 0;
@@ -6136,7 +7124,84 @@ class TextEditor {
     public String cursorLeft(int k) { cursor = Math.max(0, cursor - k); return sb.substring(Math.max(0, cursor - 10), cursor); }
 
     public String cursorRight(int k) { cursor = Math.min(sb.length(), cursor + k); return sb.substring(Math.max(0, cursor - 10), cursor); }
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `class TextEditor:
+    def __init__(self):
+        self.sb = ""
+        self.cursor = 0
+
+    def addText(self, text):
+        self.sb = self.sb[:self.cursor] + text + self.sb[self.cursor:]    # shifts the right part
+        self.cursor += len(text)
+
+    def deleteText(self, k):
+        d = min(k, self.cursor)
+        self.sb = self.sb[:self.cursor - d] + self.sb[self.cursor:]        # shifts again
+        self.cursor -= d
+        return d
+
+    def cursorLeft(self, k):
+        self.cursor = max(0, self.cursor - k)
+        return self.sb[max(0, self.cursor - 10):self.cursor]
+
+    def cursorRight(self, k):
+        self.cursor = min(len(self.sb), self.cursor + k)
+        return self.sb[max(0, self.cursor - 10):self.cursor]` },
+            { lang: 'js', code: `class TextEditor {
+  constructor() {
+    this.sb = "";
+    this.cursor = 0;
+  }
+
+  addText(text) {
+    this.sb = this.sb.slice(0, this.cursor) + text + this.sb.slice(this.cursor);   // shifts the right part
+    this.cursor += text.length;
+  }
+
+  deleteText(k) {
+    const d = Math.min(k, this.cursor);
+    this.sb = this.sb.slice(0, this.cursor - d) + this.sb.slice(this.cursor);       // shifts again
+    this.cursor -= d;
+    return d;
+  }
+
+  cursorLeft(k) {
+    this.cursor = Math.max(0, this.cursor - k);
+    return this.sb.slice(Math.max(0, this.cursor - 10), this.cursor);
+  }
+
+  cursorRight(k) {
+    this.cursor = Math.min(this.sb.length, this.cursor + k);
+    return this.sb.slice(Math.max(0, this.cursor - 10), this.cursor);
+  }
+}` },
+            { lang: 'cpp', code: `class TextEditor {
+    string sb;
+    int cursor = 0;
+
+public:
+    void addText(string text) { sb.insert(cursor, text); cursor += text.size(); }   // shifts the right part
+
+    int deleteText(int k) {
+        int d = min(k, cursor);
+        sb.erase(cursor - d, d);                                                      // shifts again
+        cursor -= d;
+        return d;
+    }
+
+    string cursorLeft(int k) {
+        cursor = max(0, cursor - k);
+        return sb.substr(max(0, cursor - 10), cursor - max(0, cursor - 10));
+    }
+
+    string cursorRight(int k) {
+        cursor = min((int)sb.size(), cursor + k);
+        return sb.substr(max(0, cursor - 10), cursor - max(0, cursor - 10));
+    }
+};` }
+          ]
+        }
     },
     mcq: { q: 'Represent the cursor as "it sits right after node <code>cur</code>". What should <code>cur</code> be when the cursor is at the very start of the text?', options: ['null', 'A sentinel node placed before the first character', 'The first character', 'The last character'], answer: 1, explain: 'A sentinel gives the "start of text" position a real node, so inserting at the start and stopping on deletes need no null checks — the dummy-node trick again.' },
     hints: [
@@ -6349,12 +7414,12 @@ public:
     { q: 'What problem does a dummy (sentinel) node before the head solve?', options: ['It makes the list sorted', 'Every real node, including the head, now has a predecessor, so head insert/delete need no special case', 'It speeds up traversal', 'It prevents cycles'], answer: 1, explain: 'Most edits change prev.next. The dummy is the head\'s prev; at the end you return dummy.next, which may be a new head.' },
     { q: 'Remove the 2nd node from the end of D → 1 → 2 → 3 → 4 → 5 with fast and slow starting at the dummy D. How many steps does fast take alone before both move together?', options: ['1', '2', '3', '5'], answer: 2, explain: 'n + 1 = 3. Then when fast becomes null, slow is on 3 — just before the victim 4.' },
     { q: 'List 1 → 2 → 3 → 4 → 5 → 6 with <code>while (fast != null &amp;&amp; fast.next != null)</code>, both starting at head. Where does slow stop?', options: ['3', '4', '5', '6'], answer: 1, explain: 'Rounds: (2, 3), (3, 5), (4, null). The even length has two middles; this condition returns the second one, 4.' },
-    { q: 'In Floyd\'s cycle detection, why compare <code>slow == fast</code> instead of <code>slow.val == fast.val</code>?', options: ['It is faster', 'Different nodes may hold equal values; only the same node proves the pointers met', 'Values can be null', 'Java forbids comparing ints'], answer: 1, explain: 'A list like 1 → 2 → 1 → null has repeated values but no cycle. Identity comparison is what matters.' },
+    { q: 'In Floyd\'s cycle detection, why compare <code>slow == fast</code> instead of <code>slow.val == fast.val</code>?', options: ['It is faster', 'Different nodes may hold equal values; only the same node proves the pointers met', 'Values can be null', 'The language forbids comparing ints'], answer: 1, explain: 'A list like 1 → 2 → 1 → null has repeated values but no cycle. Identity comparison is what matters.' },
     { q: 'Why does Floyd use speeds 1 and 2 rather than 1 and 3?', options: ['Speed 3 is slower', 'With a speed difference of 1 the gap shrinks by exactly 1 per round, so the pointers cannot jump over each other', 'Speed 3 uses more memory', 'There is no reason'], answer: 1, explain: 'With difference 2, an odd gap on an even-length loop stays odd forever — they could circle without ever meeting.' },
     { q: 'At the end of the iterative reversal loop, which variable holds the new head?', options: ['head', 'curr', 'prev', 'next'], answer: 2, explain: 'curr is null (we walked off the end); prev is the last node processed, i.e. the old tail = new head. Returning head returns the new tail.' },
     { q: 'Reverse 1 → 2 → 3 → 4 → 5 → 6 → 7 in groups of k = 3 (leave a short tail as is). Result?', options: ['3 → 2 → 1 → 6 → 5 → 4 → 7', '7 → 6 → 5 → 4 → 3 → 2 → 1', '3 → 2 → 1 → 4 → 5 → 6 → 7', '1 → 2 → 3 → 6 → 5 → 4 → 7'], answer: 0, explain: 'Two full groups [1 2 3] and [4 5 6] are reversed; the single leftover 7 stays.' },
     { q: 'Merging sorted lists of lengths N and M by splicing nodes uses how much extra space?', options: ['O(1)', 'O(N + M)', 'O(log(N + M))', 'O(N · M)'], answer: 0, explain: 'Only a dummy node and a few pointers; existing nodes are re-hooked. (The recursive version uses O(N + M) stack.)' },
-    { q: 'In an LRU cache built from HashMap + doubly linked list, why does each node store its <b>key</b>?', options: ['To sort the list', 'When the LRU node is evicted from the list, we need its key to remove it from the map', 'To compute hash codes faster', 'It is not needed'], answer: 1, explain: 'Eviction starts from tail.prev (a node). Without the key stored inside, you could not find which map entry to delete.' },
+    { q: 'In an LRU cache built from a hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>) + doubly linked list, why does each node store its <b>key</b>?', options: ['To sort the list', 'When the LRU node is evicted from the list, we need its key to remove it from the map', 'To compute hash codes faster', 'It is not needed'], answer: 1, explain: 'Eviction starts from tail.prev (a node). Without the key stored inside, you could not find which map entry to delete.' },
     { q: 'Which Java constructor turns a LinkedHashMap into an LRU-ordered map?', options: ['new LinkedHashMap&lt;&gt;(16, 0.75f, false)', 'new LinkedHashMap&lt;&gt;(16, 0.75f, true)', 'new LinkedHashMap&lt;&gt;()', 'new TreeMap&lt;&gt;()'], answer: 1, explain: 'The third argument accessOrder = true moves an entry to the end on every get/put. Override removeEldestEntry to evict when size() &gt; capacity.' }
   );
 
@@ -6406,7 +7471,7 @@ public:
     },
     {
       q: 'Design an LRU cache with O(1) get and put.', level: 'A',
-      a: `<p>Combine a <b>HashMap&lt;key, Node&gt;</b> with a <b>doubly linked list</b> ordered by recency, with head and tail sentinels (head side = most recent). get: look up the node; if present, unlink it and add it after head, return its value. put: if the key exists, update and move to front; otherwise, if full, evict <code>tail.prev</code> — unlink it and remove its <b>key</b> from the map (that is why nodes store keys) — then create the node, add to front, put into the map.</p>
+      a: `<p>Combine a <b>hash map from key to node</b> (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>) with a <b>doubly linked list</b> ordered by recency, with head and tail sentinels (head side = most recent). get: look up the node; if present, unlink it and add it after head, return its value. put: if the key exists, update and move to front; otherwise, if full, evict <code>tail.prev</code> — unlink it and remove its <b>key</b> from the map (that is why nodes store keys) — then create the node, add to front, put into the map.</p>
 <p>Each call = one hash operation + a constant number of pointer writes → O(1) average; space O(capacity). In Java, <code>LinkedHashMap(16, 0.75f, true)</code> with <code>removeEldestEntry</code> gives the same in a few lines; in Python, <code>OrderedDict</code> with <code>move_to_end</code>/<code>popitem(last=False)</code>; in JS, a <code>Map</code> (delete + set moves a key to the end, <code>keys().next()</code> is the oldest); in C++, a <code>std::list</code> plus an <code>unordered_map</code> of iterators, using <code>splice</code> to move a node to the front.</p>`,
       followUps: ['What is the bug if you check capacity before checking whether the key exists?', 'How would you add TTL expiry?', 'How does LFU differ?']
     },
@@ -6442,8 +7507,8 @@ public:
     },
     {
       q: 'Your linked-list code hangs or crashes on hidden tests. How do you debug pointer bugs systematically?', level: 'E',
-      a: `<p>A hang almost always means you created a <b>cycle</b> (e.g. forgot <code>head.next = null</code> in recursive reversal, or <code>ge.next = null</code> in partition) and something is printing or walking forever. A NullPointerException means you dereferenced <code>.next</code> without checking — usually on empty, one-node or two-node lists.</p>
-<p>Process: (1) dry-run on paper with boxes and arrows for 0, 1, 2, 3 nodes and the boundaries (head, tail, k = n); (2) add a safe printer that stops after, say, 2N steps and reports "cycle detected"; (3) assert invariants (DLL: <code>n.next.prev == n</code>; LRU: map size equals list size); (4) write a brute-force reference (copy to ArrayList, do the operation there) and compare on all small inputs or random inputs. AI assistants are good at generating those harnesses quickly; you still decide which invariants matter.</p>`,
+      a: `<p>A hang almost always means you created a <b>cycle</b> (e.g. forgot <code>head.next = null</code> in recursive reversal, or <code>ge.next = null</code> in partition) and something is printing or walking forever. A null-pointer failure (Java NullPointerException, Python AttributeError on None, JavaScript TypeError, C++ crash) means you dereferenced <code>.next</code> without checking — usually on empty, one-node or two-node lists.</p>
+<p>Process: (1) dry-run on paper with boxes and arrows for 0, 1, 2, 3 nodes and the boundaries (head, tail, k = n); (2) add a safe printer that stops after, say, 2N steps and reports "cycle detected"; (3) assert invariants (DLL: <code>n.next.prev == n</code>; LRU: map size equals list size); (4) write a brute-force reference (copy to a plain array or list, do the operation there) and compare on all small inputs or random inputs. AI assistants are good at generating those harnesses quickly; you still decide which invariants matter.</p>`,
       followUps: ['Write a printer that detects cycles with Floyd before printing.', 'Which three inputs would you always test first for any list problem?']
     }
   );

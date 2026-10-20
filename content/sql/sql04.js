@@ -497,6 +497,15 @@ ORDER BY o.amount DESC;` }
         `<p>Hint 2: Use <code>INNER JOIN … ON</code> for the link, and a <b>WHERE</b> for the "paid" filter (a property of the order, not of the relationship).</p>`,
         `<p>Hint 3: NULL or orphan customer ids drop out automatically with an inner join. Recipe: FROM orders o → JOIN customers c ON c.customer_id = o.customer_id → WHERE o.status = 'paid' → ORDER BY o.amount DESC.</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['order_id', 'name', 'city', 'amount'], rows: [[101, 'Asha', 'Pune', 250], [102, 'Asha', 'Pune', 80], [108, 'Dev', 'Mumbai', 75], [104, 'Chen', 'Pune', 40]] },
+        { setup: 'UPDATE orders SET status = \'paid\';', cols: ['order_id', 'name', 'city', 'amount'], rows: [[107, 'Chen', 'Pune', 300], [101, 'Asha', 'Pune', 250], [103, 'Ben', 'Delhi', 120], [102, 'Asha', 'Pune', 80], [108, 'Dev', 'Mumbai', 75], [104, 'Chen', 'Pune', 40]] },
+        { setup: 'UPDATE orders SET status = \'pending\';', rows: [] },
+        { setup: 'UPDATE customers SET city = NULL WHERE customer_id = 1;', cols: ['order_id', 'name', 'city', 'amount'], rows: [[101, 'Asha', null, 250], [102, 'Asha', null, 80], [108, 'Dev', 'Mumbai', 75], [104, 'Chen', 'Pune', 40]] },
+        { setup: 'INSERT INTO orders VALUES (109, 5, \'2026-03-20\', \'paid\', 500);INSERT INTO orders VALUES (110, 6, \'2026-03-21\', \'paid\', 10);INSERT INTO orders VALUES (111, NULL, \'2026-03-22\', \'paid\', 700);INSERT INTO orders VALUES (112, 77, \'2026-03-23\', \'paid\', 800);', cols: ['order_id', 'name', 'city', 'amount'], rows: [[109, 'Eli', null, 500], [101, 'Asha', 'Pune', 250], [102, 'Asha', 'Pune', 80], [108, 'Dev', 'Mumbai', 75], [104, 'Chen', 'Pune', 40], [110, 'Fay', 'Delhi', 10]] },
+        { setup: 'DELETE FROM customers;', rows: [] },
+        { setup: 'DELETE FROM orders;', rows: [] }
+      ] },
       solution: {
         approach: `<p>Inner join orders to customers on the foreign key, then filter on status. Because each order points to at most one customer (customer_id is the customers primary key), the join cannot multiply rows: result ≤ number of paid orders.</p>`,
         code: { lang: 'sql', db: 'shop', code: `
@@ -646,6 +655,15 @@ ORDER BY total_amount DESC, c.name;` }
         `<p>Hint 2: Count a column from the <b>right</b> table that is never NULL in a real match (<code>o.order_id</code>); aggregate functions skip NULLs.</p>`,
         `<p>Hint 3: Wrap the SUM in <code>COALESCE(…, 0)</code>. Group by the customer's primary key (names might repeat). Recipe: FROM customers LEFT JOIN orders → GROUP BY id → COUNT(o.order_id), COALESCE(SUM(o.amount),0) → ORDER BY.</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['name', 'orders', 'total_amount'], rows: [['Chen', 2, 340], ['Asha', 2, 330], ['Ben', 1, 120], ['Dev', 1, 75], ['Eli', 0, 0], ['Fay', 0, 0]] },
+        { setup: 'DELETE FROM orders;', cols: ['name', 'orders', 'total_amount'], rows: [['Asha', 0, 0], ['Ben', 0, 0], ['Chen', 0, 0], ['Dev', 0, 0], ['Eli', 0, 0], ['Fay', 0, 0]] },
+        { setup: 'UPDATE orders SET amount = NULL WHERE customer_id = 1;', cols: ['name', 'orders', 'total_amount'], rows: [['Chen', 2, 340], ['Ben', 1, 120], ['Dev', 1, 75], ['Asha', 2, 0], ['Eli', 0, 0], ['Fay', 0, 0]] },
+        { setup: 'INSERT INTO orders VALUES (109, 5, \'2026-03-20\', \'cancelled\', 10);INSERT INTO orders VALUES (110, 6, \'2026-03-21\', \'pending\', 0);', cols: ['name', 'orders', 'total_amount'], rows: [['Chen', 2, 340], ['Asha', 2, 330], ['Ben', 1, 120], ['Dev', 1, 75], ['Eli', 1, 10], ['Fay', 1, 0]] },
+        { setup: 'UPDATE orders SET customer_id = 5;', cols: ['name', 'orders', 'total_amount'], rows: [['Eli', 8, 1024], ['Asha', 0, 0], ['Ben', 0, 0], ['Chen', 0, 0], ['Dev', 0, 0], ['Fay', 0, 0]] },
+        { setup: 'DELETE FROM customers WHERE customer_id IN (1, 2);', cols: ['name', 'orders', 'total_amount'], rows: [['Chen', 2, 340], ['Dev', 1, 75], ['Eli', 0, 0], ['Fay', 0, 0]] },
+        { setup: 'DELETE FROM customers;', rows: [] }
+      ] },
       solution: {
         approach: `<p>Preserve customers with a LEFT JOIN, aggregate per customer, count only real orders, and replace the NULL sum with 0. Grouping by <code>customer_id</code> (not just name) keeps two customers with the same name separate.</p>`,
         code: { lang: 'sql', db: 'shop', code: `
@@ -819,6 +837,15 @@ WHERE o.order_id IS NULL;` }
         `<p>Hint 2: On a right-only row, <code>c.customer_id</code> is NULL; distinguish guest vs orphan by checking whether <code>o.customer_id</code> itself is NULL.</p>`,
         `<p>Hint 3: Compute the label with CASE, then filter on it (wrap in a CTE, or repeat the condition). Recipe: FULL JOIN → CASE (c NULL &amp; o.cust NULL → guest; c NULL → orphan; o NULL → no orders; else ok) → keep issue ≠ 'ok'.</p>`
       ],
+      tests: { engine: 'sqlite', cmp: 'set', cases: [
+        { cols: ['customer_id', 'name', 'order_id', 'issue'], rows: [[5, 'Eli', null, 'no orders'], [6, 'Fay', null, 'no orders'], [null, null, 105, 'guest order'], [9, null, 106, 'orphan order']] },
+        { setup: 'DELETE FROM orders;', cols: ['customer_id', 'name', 'order_id', 'issue'], rows: [[1, 'Asha', null, 'no orders'], [2, 'Ben', null, 'no orders'], [3, 'Chen', null, 'no orders'], [4, 'Dev', null, 'no orders'], [5, 'Eli', null, 'no orders'], [6, 'Fay', null, 'no orders']] },
+        { setup: 'DELETE FROM customers;', cols: ['customer_id', 'name', 'order_id', 'issue'], rows: [[1, null, 101, 'orphan order'], [1, null, 102, 'orphan order'], [2, null, 103, 'orphan order'], [3, null, 104, 'orphan order'], [null, null, 105, 'guest order'], [9, null, 106, 'orphan order'], [3, null, 107, 'orphan order'], [4, null, 108, 'orphan order']] },
+        { setup: 'INSERT INTO orders VALUES (109, 5, \'2026-03-20\', \'paid\', 1);INSERT INTO orders VALUES (110, 6, \'2026-03-21\', \'paid\', 1);', cols: ['customer_id', 'name', 'order_id', 'issue'], rows: [[null, null, 105, 'guest order'], [9, null, 106, 'orphan order']] },
+        { setup: 'INSERT INTO orders VALUES (109, 9, \'2026-03-20\', \'paid\', 1);INSERT INTO orders VALUES (110, NULL, \'2026-03-21\', \'paid\', 1);', cols: ['customer_id', 'name', 'order_id', 'issue'], rows: [[5, 'Eli', null, 'no orders'], [6, 'Fay', null, 'no orders'], [null, null, 105, 'guest order'], [9, null, 106, 'orphan order'], [9, null, 109, 'orphan order'], [null, null, 110, 'guest order']] },
+        { setup: 'UPDATE orders SET customer_id = NULL WHERE customer_id = 1;', cols: ['customer_id', 'name', 'order_id', 'issue'], rows: [[1, 'Asha', null, 'no orders'], [5, 'Eli', null, 'no orders'], [6, 'Fay', null, 'no orders'], [null, null, 101, 'guest order'], [null, null, 102, 'guest order'], [null, null, 105, 'guest order'], [9, null, 106, 'orphan order']] },
+        { setup: 'UPDATE orders SET customer_id = 5 WHERE order_id = 106; DELETE FROM orders WHERE order_id = 105;', cols: ['customer_id', 'name', 'order_id', 'issue'], rows: [[6, 'Fay', null, 'no orders']] }
+      ] },
       solution: {
         approach: `<p>FULL OUTER JOIN keeps unmatched rows from both tables. A CASE on which side is NULL (and whether the order's own key is NULL) labels each row; a CTE lets us filter on the label cleanly.</p>`,
         code: { lang: 'sql', db: 'shop', code: `
@@ -1011,6 +1038,15 @@ ORDER BY student, course;` }
         `<p>Hint 2: <code>students CROSS JOIN courses</code> gives the 20-pair scaffold; then LEFT JOIN enrollments on <b>both</b> student_id and course_id.</p>`,
         `<p>Hint 3: Status: CASE WHEN e.student_id IS NULL THEN '-' ELSE COALESCE(e.grade, 'enrolled') END. Test e.student_id (join column), not e.grade, to detect "not enrolled".</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['student', 'course', 'status'], rows: [['Aanya', 'Databases', 'A'], ['Aanya', 'Algorithms', 'B'], ['Aanya', 'Statistics', 'A'], ['Aanya', 'Poetry', '-'], ['Bilal', 'Databases', 'C'], ['Bilal', 'Algorithms', 'enrolled'], ['Bilal', 'Statistics', '-'], ['Bilal', 'Poetry', '-'], ['Chitra', 'Databases', 'B'], ['Chitra', 'Algorithms', '-'], ['Chitra', 'Statistics', 'B'], ['Chitra', 'Poetry', '-'], ['Dhruv', 'Databases', '-'], ['Dhruv', 'Algorithms', 'A'], ['Dhruv', 'Statistics', '-'], ['Dhruv', 'Poetry', '-'], ['Esha', 'Databases', '-'], ['Esha', 'Algorithms', '-'], ['Esha', 'Statistics', '-'], ['Esha', 'Poetry', '-']] },
+        { setup: 'INSERT INTO students VALUES (6, \'Farah\', 2028);', cols: ['student', 'course', 'status'], rows: [['Aanya', 'Databases', 'A'], ['Aanya', 'Algorithms', 'B'], ['Aanya', 'Statistics', 'A'], ['Aanya', 'Poetry', '-'], ['Bilal', 'Databases', 'C'], ['Bilal', 'Algorithms', 'enrolled'], ['Bilal', 'Statistics', '-'], ['Bilal', 'Poetry', '-'], ['Chitra', 'Databases', 'B'], ['Chitra', 'Algorithms', '-'], ['Chitra', 'Statistics', 'B'], ['Chitra', 'Poetry', '-'], ['Dhruv', 'Databases', '-'], ['Dhruv', 'Algorithms', 'A'], ['Dhruv', 'Statistics', '-'], ['Dhruv', 'Poetry', '-'], ['Esha', 'Databases', '-'], ['Esha', 'Algorithms', '-'], ['Esha', 'Statistics', '-'], ['Esha', 'Poetry', '-'], ['Farah', 'Databases', 'B'], ['Farah', 'Algorithms', '-'], ['Farah', 'Statistics', '-'], ['Farah', 'Poetry', '-']] },
+        { setup: 'DELETE FROM enrollments;', cols: ['student', 'course', 'status'], rows: [['Aanya', 'Databases', '-'], ['Aanya', 'Algorithms', '-'], ['Aanya', 'Statistics', '-'], ['Aanya', 'Poetry', '-'], ['Bilal', 'Databases', '-'], ['Bilal', 'Algorithms', '-'], ['Bilal', 'Statistics', '-'], ['Bilal', 'Poetry', '-'], ['Chitra', 'Databases', '-'], ['Chitra', 'Algorithms', '-'], ['Chitra', 'Statistics', '-'], ['Chitra', 'Poetry', '-'], ['Dhruv', 'Databases', '-'], ['Dhruv', 'Algorithms', '-'], ['Dhruv', 'Statistics', '-'], ['Dhruv', 'Poetry', '-'], ['Esha', 'Databases', '-'], ['Esha', 'Algorithms', '-'], ['Esha', 'Statistics', '-'], ['Esha', 'Poetry', '-']] },
+        { setup: 'INSERT INTO courses VALUES (\'C5\', \'Optics\', \'Physics\'); INSERT INTO enrollments VALUES (5, \'C5\', \'A\');', cols: ['student', 'course', 'status'], rows: [['Aanya', 'Databases', 'A'], ['Aanya', 'Algorithms', 'B'], ['Aanya', 'Statistics', 'A'], ['Aanya', 'Poetry', '-'], ['Aanya', 'Optics', '-'], ['Bilal', 'Databases', 'C'], ['Bilal', 'Algorithms', 'enrolled'], ['Bilal', 'Statistics', '-'], ['Bilal', 'Poetry', '-'], ['Bilal', 'Optics', '-'], ['Chitra', 'Databases', 'B'], ['Chitra', 'Algorithms', '-'], ['Chitra', 'Statistics', 'B'], ['Chitra', 'Poetry', '-'], ['Chitra', 'Optics', '-'], ['Dhruv', 'Databases', '-'], ['Dhruv', 'Algorithms', 'A'], ['Dhruv', 'Statistics', '-'], ['Dhruv', 'Poetry', '-'], ['Dhruv', 'Optics', '-'], ['Esha', 'Databases', '-'], ['Esha', 'Algorithms', '-'], ['Esha', 'Statistics', '-'], ['Esha', 'Poetry', '-'], ['Esha', 'Optics', 'A']] },
+        { setup: 'DELETE FROM students WHERE student_id IN (1, 2, 3, 4);', cols: ['student', 'course', 'status'], rows: [['Esha', 'Databases', '-'], ['Esha', 'Algorithms', '-'], ['Esha', 'Statistics', '-'], ['Esha', 'Poetry', '-']] },
+        { setup: 'UPDATE enrollments SET grade = NULL;', cols: ['student', 'course', 'status'], rows: [['Aanya', 'Databases', 'enrolled'], ['Aanya', 'Algorithms', 'enrolled'], ['Aanya', 'Statistics', 'enrolled'], ['Aanya', 'Poetry', '-'], ['Bilal', 'Databases', 'enrolled'], ['Bilal', 'Algorithms', 'enrolled'], ['Bilal', 'Statistics', '-'], ['Bilal', 'Poetry', '-'], ['Chitra', 'Databases', 'enrolled'], ['Chitra', 'Algorithms', '-'], ['Chitra', 'Statistics', 'enrolled'], ['Chitra', 'Poetry', '-'], ['Dhruv', 'Databases', '-'], ['Dhruv', 'Algorithms', 'enrolled'], ['Dhruv', 'Statistics', '-'], ['Dhruv', 'Poetry', '-'], ['Esha', 'Databases', '-'], ['Esha', 'Algorithms', '-'], ['Esha', 'Statistics', '-'], ['Esha', 'Poetry', '-']] },
+        { setup: 'INSERT INTO enrollments VALUES (5, NULL, \'F\'), (NULL, \'C1\', \'F\');', cols: ['student', 'course', 'status'], rows: [['Aanya', 'Databases', 'A'], ['Aanya', 'Algorithms', 'B'], ['Aanya', 'Statistics', 'A'], ['Aanya', 'Poetry', '-'], ['Bilal', 'Databases', 'C'], ['Bilal', 'Algorithms', 'enrolled'], ['Bilal', 'Statistics', '-'], ['Bilal', 'Poetry', '-'], ['Chitra', 'Databases', 'B'], ['Chitra', 'Algorithms', '-'], ['Chitra', 'Statistics', 'B'], ['Chitra', 'Poetry', '-'], ['Dhruv', 'Databases', '-'], ['Dhruv', 'Algorithms', 'A'], ['Dhruv', 'Statistics', '-'], ['Dhruv', 'Poetry', '-'], ['Esha', 'Databases', '-'], ['Esha', 'Algorithms', '-'], ['Esha', 'Statistics', '-'], ['Esha', 'Poetry', '-']] }
+      ] },
       solution: {
         approach: `<p>Scaffold + decorate: the cross join enumerates every (student, course) pair; a LEFT JOIN on the two-column key attaches the enrollment if one exists; CASE turns the three possible states into labels. Orphan enrollments never match a scaffold row, so they add nothing.</p>`,
         code: { lang: 'sql', db: 'school', code: `
@@ -1176,6 +1212,14 @@ ORDER BY e.emp_id;` }
         `<p>Hint 2: "Every employee" → LEFT self join, so the CEO and Neha survive with <code>m.name = NULL</code>.</p>`,
         `<p>Hint 3: Use CASE: e.manager_id IS NULL → '— (top)'; m.emp_id IS NULL → 'unknown (left company)'; else m.name.</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['employee', 'manager'], rows: [['Meera', '— (top)'], ['Arjun', 'Meera'], ['Priya', 'Meera'], ['Kabir', 'Arjun'], ['Sara', 'Arjun'], ['Rohan', 'Priya'], ['Tara', 'Priya'], ['Vikram', 'Meera'], ['Neha', 'unknown (left company)'], ['Ishaan', 'Arjun']] },
+        { setup: 'DELETE FROM employees WHERE emp_id = 2;', cols: ['employee', 'manager'], rows: [['Meera', '— (top)'], ['Priya', 'Meera'], ['Kabir', 'unknown (left company)'], ['Sara', 'unknown (left company)'], ['Rohan', 'Priya'], ['Tara', 'Priya'], ['Vikram', 'Meera'], ['Neha', 'unknown (left company)'], ['Ishaan', 'unknown (left company)']] },
+        { setup: 'UPDATE employees SET manager_id = NULL;', cols: ['employee', 'manager'], rows: [['Meera', '— (top)'], ['Arjun', '— (top)'], ['Priya', '— (top)'], ['Kabir', '— (top)'], ['Sara', '— (top)'], ['Rohan', '— (top)'], ['Tara', '— (top)'], ['Vikram', '— (top)'], ['Neha', '— (top)'], ['Ishaan', '— (top)']] },
+        { setup: 'UPDATE employees SET manager_id = 99 WHERE emp_id IN (2, 3);', cols: ['employee', 'manager'], rows: [['Meera', '— (top)'], ['Arjun', 'unknown (left company)'], ['Priya', 'unknown (left company)'], ['Kabir', 'Arjun'], ['Sara', 'Arjun'], ['Rohan', 'Priya'], ['Tara', 'Priya'], ['Vikram', 'Meera'], ['Neha', 'unknown (left company)'], ['Ishaan', 'Arjun']] },
+        { setup: 'UPDATE employees SET manager_id = 10 WHERE emp_id = 1;', cols: ['employee', 'manager'], rows: [['Meera', 'Ishaan'], ['Arjun', 'Meera'], ['Priya', 'Meera'], ['Kabir', 'Arjun'], ['Sara', 'Arjun'], ['Rohan', 'Priya'], ['Tara', 'Priya'], ['Vikram', 'Meera'], ['Neha', 'unknown (left company)'], ['Ishaan', 'Arjun']] },
+        { setup: 'DELETE FROM employees WHERE emp_id > 1;', cols: ['employee', 'manager'], rows: [['Meera', '— (top)']] }
+      ] },
       solution: {
         approach: `<p>LEFT self join on <code>m.emp_id = e.manager_id</code> keeps every employee. Two different reasons produce a NULL manager name, and the employee's own <code>manager_id</code> distinguishes them.</p>`,
         code: { lang: 'sql', db: 'company', code: `
@@ -1390,6 +1434,14 @@ ORDER BY paid_revenue DESC, c.name;` }
         `<p>Hint 2: Put <code>AND o.status = 'paid'</code> inside the ON clause; then non-paid orders cannot match but the customer survives NULL-filled.</p>`,
         `<p>Hint 3: COUNT(o.order_id) and COALESCE(SUM(o.amount), 0) turn the NULL rows into zeros. Alternative: conditional aggregation SUM(CASE WHEN o.status='paid' THEN o.amount ELSE 0 END) with the plain key-only join.</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['name', 'paid_orders', 'paid_revenue'], rows: [['Asha', 2, 330], ['Dev', 1, 75], ['Chen', 1, 40], ['Ben', 0, 0], ['Eli', 0, 0], ['Fay', 0, 0]] },
+        { setup: 'UPDATE orders SET status = \'paid\';', cols: ['name', 'paid_orders', 'paid_revenue'], rows: [['Chen', 2, 340], ['Asha', 2, 330], ['Ben', 1, 120], ['Dev', 1, 75], ['Eli', 0, 0], ['Fay', 0, 0]] },
+        { setup: 'UPDATE orders SET status = \'cancelled\';', cols: ['name', 'paid_orders', 'paid_revenue'], rows: [['Asha', 0, 0], ['Ben', 0, 0], ['Chen', 0, 0], ['Dev', 0, 0], ['Eli', 0, 0], ['Fay', 0, 0]] },
+        { setup: 'DELETE FROM orders;', cols: ['name', 'paid_orders', 'paid_revenue'], rows: [['Asha', 0, 0], ['Ben', 0, 0], ['Chen', 0, 0], ['Dev', 0, 0], ['Eli', 0, 0], ['Fay', 0, 0]] },
+        { setup: 'INSERT INTO orders VALUES (109, 5, \'2026-03-20\', \'paid\', 15);INSERT INTO orders VALUES (110, 6, \'2026-03-21\', \'paid\', 20);INSERT INTO orders VALUES (111, 6, \'2026-03-22\', \'cancelled\', 999);', cols: ['name', 'paid_orders', 'paid_revenue'], rows: [['Asha', 2, 330], ['Dev', 1, 75], ['Chen', 1, 40], ['Fay', 1, 20], ['Eli', 1, 15], ['Ben', 0, 0]] },
+        { setup: 'UPDATE orders SET amount = NULL WHERE status = \'paid\';', cols: ['name', 'paid_orders', 'paid_revenue'], rows: [['Asha', 2, 0], ['Ben', 0, 0], ['Chen', 1, 0], ['Dev', 1, 0], ['Eli', 0, 0], ['Fay', 0, 0]] }
+      ] },
       solution: {
         approach: `<p>Keep customers with LEFT JOIN, restrict matches to paid orders <b>inside ON</b>, then aggregate. An equally valid approach joins on the key only and uses conditional aggregation, which never removes rows.</p>`,
         code: { lang: 'sql', db: 'shop', code: `
@@ -1582,6 +1634,15 @@ WHERE course_id NOT IN (SELECT course_id FROM enrollments);` }
         `<p>Hint 2: Write it as <code>WHERE NOT EXISTS (SELECT 1 FROM enrollments e WHERE e.course_id = c.course_id)</code> — a correlated subquery.</p>`,
         `<p>Hint 3: If you must use NOT IN, add <code>WHERE course_id IS NOT NULL</code> inside the subquery. LEFT JOIN enrollments … WHERE e.course_id IS NULL also works (test the join column).</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['course_id', 'title'], rows: [['C4', 'Poetry']] },
+        { setup: 'DELETE FROM enrollments WHERE course_id IS NULL;', cols: ['course_id', 'title'], rows: [['C4', 'Poetry']] },
+        { setup: 'DELETE FROM enrollments;', cols: ['course_id', 'title'], rows: [['C1', 'Databases'], ['C2', 'Algorithms'], ['C3', 'Statistics'], ['C4', 'Poetry']] },
+        { setup: 'INSERT INTO enrollments VALUES (5, \'C4\', NULL);', rows: [] },
+        { setup: 'INSERT INTO courses VALUES (\'C0\', \'Art\', \'Arts\'), (\'C9\', \'Zoology\', \'Bio\');', cols: ['course_id', 'title'], rows: [['C0', 'Art'], ['C4', 'Poetry'], ['C9', 'Zoology']] },
+        { setup: 'DELETE FROM enrollments WHERE course_id <> \'C1\' OR course_id IS NULL;', cols: ['course_id', 'title'], rows: [['C2', 'Algorithms'], ['C3', 'Statistics'], ['C4', 'Poetry']] },
+        { setup: 'DELETE FROM enrollments; INSERT INTO enrollments VALUES (6, \'C4\', \'A\'), (1, NULL, NULL), (2, NULL, \'B\');', cols: ['course_id', 'title'], rows: [['C1', 'Databases'], ['C2', 'Algorithms'], ['C3', 'Statistics']] }
+      ] },
       solution: {
         approach: `<p>NOT EXISTS is the NULL-safe anti-join: a course is kept when no enrollment row satisfies <code>e.course_id = c.course_id</code>. The NULL enrollment never satisfies that equality, so it is ignored rather than poisoning the result.</p>`,
         code: { lang: 'sql', db: 'school', code: `
@@ -1787,6 +1848,16 @@ ORDER BY o.order_id, product;` }
         `<p>Hint 2: Make each parent optional with LEFT JOIN — including customers, which hangs off orders.</p>`,
         `<p>Hint 3: COALESCE(c.name, 'guest/unknown'), COALESCE(p.name, 'unknown product'), COALESCE(p.category, 'uncategorised'); line_total = qty × unit_price from the line itself.</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['order_id', 'customer', 'product', 'category', 'line_total'], rows: [[101, 'Asha', 'Keyboard', 'Electronics', 200], [101, 'Asha', 'Mouse', 'Electronics', 50], [102, 'Asha', 'Desk Lamp', 'Home', 80], [103, 'Ben', 'Desk Lamp', 'Home', 80], [103, 'Ben', 'Pen Set', 'Stationery', 40], [104, 'Chen', 'Pen Set', 'Stationery', 40], [105, 'guest/unknown', 'Mouse', 'Electronics', 25], [105, 'guest/unknown', 'unknown product', 'uncategorised', 74], [106, 'guest/unknown', 'Pen Set', 'Stationery', 60], [107, 'Chen', 'Monitor', 'Electronics', 300], [108, 'Dev', 'Mouse', 'Electronics', 75]] },
+        { setup: 'INSERT INTO order_items VALUES (999, 1, 1, 220);', cols: ['order_id', 'customer', 'product', 'category', 'line_total'], rows: [[101, 'Asha', 'Keyboard', 'Electronics', 200], [101, 'Asha', 'Mouse', 'Electronics', 50], [102, 'Asha', 'Desk Lamp', 'Home', 80], [103, 'Ben', 'Desk Lamp', 'Home', 80], [103, 'Ben', 'Pen Set', 'Stationery', 40], [104, 'Chen', 'Pen Set', 'Stationery', 40], [105, 'guest/unknown', 'Mouse', 'Electronics', 25], [105, 'guest/unknown', 'unknown product', 'uncategorised', 74], [106, 'guest/unknown', 'Pen Set', 'Stationery', 60], [107, 'Chen', 'Monitor', 'Electronics', 300], [108, 'Dev', 'Mouse', 'Electronics', 75], [999, 'guest/unknown', 'Keyboard', 'Electronics', 220]] },
+        { setup: 'INSERT INTO order_items VALUES (101, 6, 1, 99);', cols: ['order_id', 'customer', 'product', 'category', 'line_total'], rows: [[101, 'Asha', 'Keyboard', 'Electronics', 200], [101, 'Asha', 'Mouse', 'Electronics', 50], [101, 'Asha', 'Mystery Box', 'uncategorised', 99], [102, 'Asha', 'Desk Lamp', 'Home', 80], [103, 'Ben', 'Desk Lamp', 'Home', 80], [103, 'Ben', 'Pen Set', 'Stationery', 40], [104, 'Chen', 'Pen Set', 'Stationery', 40], [105, 'guest/unknown', 'Mouse', 'Electronics', 25], [105, 'guest/unknown', 'unknown product', 'uncategorised', 74], [106, 'guest/unknown', 'Pen Set', 'Stationery', 60], [107, 'Chen', 'Monitor', 'Electronics', 300], [108, 'Dev', 'Mouse', 'Electronics', 75]] },
+        { setup: 'INSERT INTO order_items VALUES (108, NULL, 2, 10);', cols: ['order_id', 'customer', 'product', 'category', 'line_total'], rows: [[101, 'Asha', 'Keyboard', 'Electronics', 200], [101, 'Asha', 'Mouse', 'Electronics', 50], [102, 'Asha', 'Desk Lamp', 'Home', 80], [103, 'Ben', 'Desk Lamp', 'Home', 80], [103, 'Ben', 'Pen Set', 'Stationery', 40], [104, 'Chen', 'Pen Set', 'Stationery', 40], [105, 'guest/unknown', 'Mouse', 'Electronics', 25], [105, 'guest/unknown', 'unknown product', 'uncategorised', 74], [106, 'guest/unknown', 'Pen Set', 'Stationery', 60], [107, 'Chen', 'Monitor', 'Electronics', 300], [108, 'Dev', 'Mouse', 'Electronics', 75], [108, 'Dev', 'unknown product', 'uncategorised', 20]] },
+        { setup: 'DELETE FROM order_items;', rows: [] },
+        { setup: 'DELETE FROM customers WHERE customer_id = 1;', cols: ['order_id', 'customer', 'product', 'category', 'line_total'], rows: [[101, 'guest/unknown', 'Keyboard', 'Electronics', 200], [101, 'guest/unknown', 'Mouse', 'Electronics', 50], [102, 'guest/unknown', 'Desk Lamp', 'Home', 80], [103, 'Ben', 'Desk Lamp', 'Home', 80], [103, 'Ben', 'Pen Set', 'Stationery', 40], [104, 'Chen', 'Pen Set', 'Stationery', 40], [105, 'guest/unknown', 'Mouse', 'Electronics', 25], [105, 'guest/unknown', 'unknown product', 'uncategorised', 74], [106, 'guest/unknown', 'Pen Set', 'Stationery', 60], [107, 'Chen', 'Monitor', 'Electronics', 300], [108, 'Dev', 'Mouse', 'Electronics', 75]] },
+        { setup: 'DELETE FROM products WHERE product_id = 1; DELETE FROM orders WHERE order_id = 103;', cols: ['order_id', 'customer', 'product', 'category', 'line_total'], rows: [[101, 'Asha', 'Mouse', 'Electronics', 50], [101, 'Asha', 'unknown product', 'uncategorised', 200], [102, 'Asha', 'Desk Lamp', 'Home', 80], [103, 'guest/unknown', 'Desk Lamp', 'Home', 80], [103, 'guest/unknown', 'Pen Set', 'Stationery', 40], [104, 'Chen', 'Pen Set', 'Stationery', 40], [105, 'guest/unknown', 'Mouse', 'Electronics', 25], [105, 'guest/unknown', 'unknown product', 'uncategorised', 74], [106, 'guest/unknown', 'Pen Set', 'Stationery', 60], [107, 'Chen', 'Monitor', 'Electronics', 300], [108, 'Dev', 'Mouse', 'Electronics', 75]] },
+        { setup: 'INSERT INTO order_items VALUES (108, 7, 4, 15);INSERT INTO order_items VALUES (104, 5, 1, 300);', cols: ['order_id', 'customer', 'product', 'category', 'line_total'], rows: [[101, 'Asha', 'Keyboard', 'Electronics', 200], [101, 'Asha', 'Mouse', 'Electronics', 50], [102, 'Asha', 'Desk Lamp', 'Home', 80], [103, 'Ben', 'Desk Lamp', 'Home', 80], [103, 'Ben', 'Pen Set', 'Stationery', 40], [104, 'Chen', 'Monitor', 'Electronics', 300], [104, 'Chen', 'Pen Set', 'Stationery', 40], [105, 'guest/unknown', 'Mouse', 'Electronics', 25], [105, 'guest/unknown', 'unknown product', 'uncategorised', 74], [106, 'guest/unknown', 'Pen Set', 'Stationery', 60], [107, 'Chen', 'Monitor', 'Electronics', 300], [108, 'Dev', 'Mouse', 'Electronics', 75], [108, 'Dev', 'Plant Pot', 'Home', 60]] }
+      ] },
       solution: {
         approach: `<p>Start at the grain (order_items) and LEFT JOIN each parent. Because every edge is many-to-one, the row count stays exactly 11 — a perfect self-check. COALESCE turns missing parents into readable labels.</p>`,
         code: { lang: 'sql', db: 'shop', code: `
@@ -2001,6 +2072,14 @@ ORDER BY d.dept_id;` }
         `<p>Hint 2: Quick fix for <b>counts only</b>: COUNT(DISTINCT e.emp_id) and COUNT(DISTINCT p.project_id) — primary keys are unique, so DISTINCT removes exactly the duplicates.</p>`,
         `<p>Hint 3: Robust fix: aggregate each branch to one row per dept_id in a CTE, then LEFT JOIN both CTEs to departments and COALESCE to 0. This also works for SUMs.</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['dept_name', 'employees', 'projects'], rows: [['Engineering', 4, 2], ['Sales', 3, 1], ['HR', 1, 1], ['Legal', 0, 1]] },
+        { setup: 'DELETE FROM projects;', cols: ['dept_name', 'employees', 'projects'], rows: [['Engineering', 4, 0], ['Sales', 3, 0], ['HR', 1, 0], ['Legal', 0, 0]] },
+        { setup: 'DELETE FROM employees;', cols: ['dept_name', 'employees', 'projects'], rows: [['Engineering', 0, 2], ['Sales', 0, 1], ['HR', 0, 1], ['Legal', 0, 1]] },
+        { setup: 'INSERT INTO projects VALUES (6, \'P6\', 40), (7, \'P7\', 40), (8, \'P8\', 40); INSERT INTO employees VALUES (11, \'N1\', 40, 1, 1, \'2024-01-01\'), (12, \'N2\', 40, 1, 1, \'2024-01-01\');', cols: ['dept_name', 'employees', 'projects'], rows: [['Engineering', 4, 2], ['Sales', 3, 1], ['HR', 1, 1], ['Legal', 2, 4]] },
+        { setup: 'INSERT INTO departments VALUES (50, \'Ops\', \'Goa\');', cols: ['dept_name', 'employees', 'projects'], rows: [['Engineering', 4, 2], ['Sales', 3, 1], ['HR', 1, 1], ['Legal', 0, 1], ['Ops', 1, 0]] },
+        { setup: 'UPDATE employees SET dept_id = 30; UPDATE projects SET dept_id = 30 WHERE project_id < 4;', cols: ['dept_name', 'employees', 'projects'], rows: [['Engineering', 0, 0], ['Sales', 0, 0], ['HR', 10, 4], ['Legal', 0, 1]] }
+      ] },
       solution: {
         approach: `<p>Pre-aggregate each branch to the department grain, then join 1:1 so nothing multiplies. COALESCE gives 0 for departments missing from a branch (Legal has no employees).</p>`,
         code: { lang: 'sql', db: 'company', code: `
@@ -2047,6 +2126,14 @@ JOIN departments d ON d.dept_id = e.dept_id
 ORDER BY e.emp_id;` } },
     mcq: { q: 'Which join keeps all 10 employees?', options: ['employees LEFT JOIN departments', 'employees INNER JOIN departments', 'departments LEFT JOIN employees', 'employees CROSS JOIN departments'], answer: 0, explain: 'LEFT JOIN from employees preserves every employee. departments LEFT JOIN employees would preserve departments (and drop Vikram/Ishaan), CROSS JOIN gives 40 rows.' },
     hints: [`<p>Hint 1: Which table must not lose rows? The one after "every": employees. Put it first.</p>`, `<p>Hint 2: Use LEFT JOIN departments ON d.dept_id = e.dept_id; missing departments become NULL automatically.</p>`, `<p>Hint 3: Do not add any WHERE on department columns, or the NULL-filled rows disappear again. ORDER BY e.emp_id.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['name', 'dept_name', 'location'], rows: [['Meera', 'Engineering', 'Bengaluru'], ['Arjun', 'Engineering', 'Bengaluru'], ['Priya', 'Sales', 'Mumbai'], ['Kabir', 'Engineering', 'Bengaluru'], ['Sara', 'Engineering', 'Bengaluru'], ['Rohan', 'Sales', 'Mumbai'], ['Tara', 'Sales', 'Mumbai'], ['Vikram', null, null], ['Neha', 'HR', 'Pune'], ['Ishaan', null, null]] },
+      { setup: 'DELETE FROM departments;', cols: ['name', 'dept_name', 'location'], rows: [['Meera', null, null], ['Arjun', null, null], ['Priya', null, null], ['Kabir', null, null], ['Sara', null, null], ['Rohan', null, null], ['Tara', null, null], ['Vikram', null, null], ['Neha', null, null], ['Ishaan', null, null]] },
+      { setup: 'DELETE FROM employees;', rows: [] },
+      { setup: 'UPDATE employees SET dept_id = NULL;', cols: ['name', 'dept_name', 'location'], rows: [['Meera', null, null], ['Arjun', null, null], ['Priya', null, null], ['Kabir', null, null], ['Sara', null, null], ['Rohan', null, null], ['Tara', null, null], ['Vikram', null, null], ['Neha', null, null], ['Ishaan', null, null]] },
+      { setup: 'UPDATE departments SET location = NULL WHERE dept_id = 10;', cols: ['name', 'dept_name', 'location'], rows: [['Meera', 'Engineering', null], ['Arjun', 'Engineering', null], ['Priya', 'Sales', 'Mumbai'], ['Kabir', 'Engineering', null], ['Sara', 'Engineering', null], ['Rohan', 'Sales', 'Mumbai'], ['Tara', 'Sales', 'Mumbai'], ['Vikram', null, null], ['Neha', 'HR', 'Pune'], ['Ishaan', null, null]] },
+      { setup: 'UPDATE employees SET dept_id = 40 WHERE emp_id IN (8, 10);', cols: ['name', 'dept_name', 'location'], rows: [['Meera', 'Engineering', 'Bengaluru'], ['Arjun', 'Engineering', 'Bengaluru'], ['Priya', 'Sales', 'Mumbai'], ['Kabir', 'Engineering', 'Bengaluru'], ['Sara', 'Engineering', 'Bengaluru'], ['Rohan', 'Sales', 'Mumbai'], ['Tara', 'Sales', 'Mumbai'], ['Vikram', 'Legal', 'Delhi'], ['Neha', 'HR', 'Pune'], ['Ishaan', 'Legal', 'Delhi']] }
+    ] },
     solution: { approach: `<p>LEFT JOIN from the preserved table on the foreign key. Because dept_id is the departments primary key, each employee matches at most one department, so the output has exactly 10 rows.</p>`, code: { lang: 'sql', db: 'company', code: `
 SELECT e.name, d.dept_name, d.location
 FROM employees AS e
@@ -2066,6 +2153,14 @@ SELECT name FROM customers
 WHERE customer_id NOT IN (SELECT customer_id FROM orders);` } },
     mcq: { q: 'Which construct is NULL-safe for "has no matching row"?', options: ['NOT EXISTS (correlated subquery)', 'NOT IN (subquery on a nullable column)', '&lt;&gt; ALL (subquery on a nullable column)', 'INNER JOIN'], answer: 0, explain: 'NOT EXISTS only asks whether a row with a TRUE condition exists; NULL comparisons are simply non-matches. NOT IN and &lt;&gt; ALL are both poisoned by a NULL.' },
     hints: [`<p>Hint 1: "Never ordered" = an anti-join: keep a customer when no order row matches them.</p>`, `<p>Hint 2: WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id).</p>`, `<p>Hint 3: Alternatives: LEFT JOIN orders … WHERE o.order_id IS NULL, or NOT IN with a WHERE customer_id IS NOT NULL filter inside the subquery.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['name'], rows: [['Eli'], ['Fay']] },
+      { setup: 'DELETE FROM orders;', cols: ['name'], rows: [['Asha'], ['Ben'], ['Chen'], ['Dev'], ['Eli'], ['Fay']] },
+      { setup: 'UPDATE orders SET customer_id = NULL;', cols: ['name'], rows: [['Asha'], ['Ben'], ['Chen'], ['Dev'], ['Eli'], ['Fay']] },
+      { setup: 'INSERT INTO orders VALUES (109, 5, \'2026-03-20\', \'cancelled\', 1);', cols: ['name'], rows: [['Fay']] },
+      { setup: 'UPDATE orders SET customer_id = 1;', cols: ['name'], rows: [['Ben'], ['Chen'], ['Dev'], ['Eli'], ['Fay']] },
+      { setup: 'DELETE FROM customers;', rows: [] }
+    ] },
     solution: { approach: `<p>Correlated NOT EXISTS: for each customer, probe orders for a match; keep the customer if none exists. NULL customer_ids never match and therefore cannot interfere.</p>`, code: { lang: 'sql', db: 'shop', code: `
 SELECT c.name
 FROM customers AS c
@@ -2093,6 +2188,15 @@ UNION
 SELECT color FROM colors;` } },
     mcq: { q: 'How many rows does <code>sizes CROSS JOIN colors</code> return?', options: ['6', '5', '3', '2'], answer: 0, explain: 'Cartesian product: 3 × 2 = 6.' },
     hints: [`<p>Hint 1: You need every size paired with every color — a Cartesian product.</p>`, `<p>Hint 2: FROM sizes CROSS JOIN colors; build the code with || and UPPER().</p>`, `<p>Hint 3: Size order S, M, L is not alphabetical — sort with CASE size WHEN 'S' THEN 1 WHEN 'M' THEN 2 ELSE 3 END.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['size', 'color', 'code'], rows: [['S', 'Blue', 'TEE-S-BLUE'], ['M', 'Blue', 'TEE-M-BLUE'], ['L', 'Blue', 'TEE-L-BLUE'], ['S', 'Red', 'TEE-S-RED'], ['M', 'Red', 'TEE-M-RED'], ['L', 'Red', 'TEE-L-RED']] },
+      { setup: 'DELETE FROM colors WHERE color = \'Red\';', cols: ['size', 'color', 'code'], rows: [['S', 'Blue', 'TEE-S-BLUE'], ['M', 'Blue', 'TEE-M-BLUE'], ['L', 'Blue', 'TEE-L-BLUE']] },
+      { setup: 'INSERT INTO colors VALUES (\'Green\');', cols: ['size', 'color', 'code'], rows: [['S', 'Blue', 'TEE-S-BLUE'], ['M', 'Blue', 'TEE-M-BLUE'], ['L', 'Blue', 'TEE-L-BLUE'], ['S', 'Green', 'TEE-S-GREEN'], ['M', 'Green', 'TEE-M-GREEN'], ['L', 'Green', 'TEE-L-GREEN'], ['S', 'Red', 'TEE-S-RED'], ['M', 'Red', 'TEE-M-RED'], ['L', 'Red', 'TEE-L-RED']] },
+      { setup: 'DELETE FROM sizes WHERE size = \'M\';', cols: ['size', 'color', 'code'], rows: [['S', 'Blue', 'TEE-S-BLUE'], ['L', 'Blue', 'TEE-L-BLUE'], ['S', 'Red', 'TEE-S-RED'], ['L', 'Red', 'TEE-L-RED']] },
+      { setup: 'DELETE FROM sizes;', rows: [] },
+      { setup: 'INSERT INTO colors VALUES (\'Navy blue\'); DELETE FROM sizes WHERE size = \'S\';', cols: ['size', 'color', 'code'], rows: [['M', 'Blue', 'TEE-M-BLUE'], ['L', 'Blue', 'TEE-L-BLUE'], ['M', 'Navy blue', 'TEE-M-NAVY BLUE'], ['L', 'Navy blue', 'TEE-L-NAVY BLUE'], ['M', 'Red', 'TEE-M-RED'], ['L', 'Red', 'TEE-L-RED']] },
+      { setup: 'DELETE FROM colors;', rows: [] }
+    ] },
     solution: { approach: `<p>CROSS JOIN produces all 6 pairs; string concatenation builds the SKU code; a CASE expression gives the natural size order.</p>`, code: { lang: 'sql', db: 'shop', code: `
 SELECT s.size, c.color,
        'TEE-' || s.size || '-' || UPPER(c.color) AS code
@@ -2116,6 +2220,15 @@ GROUP BY p.product_id, p.name
 ORDER BY units_sold DESC, p.name;` } },
     mcq: { q: 'Why use <code>COALESCE(SUM(i.qty), 0)</code>?', options: ['SUM over only NULLs is NULL, not 0', 'SUM ignores zeros', 'COALESCE makes the query faster', 'SQLite requires it'], answer: 0, explain: 'Unsold products have one NULL-filled row; SUM of NULLs is NULL, so COALESCE converts it to 0.' },
     hints: [`<p>Hint 1: "Every product" → start FROM products and LEFT JOIN order_items.</p>`, `<p>Hint 2: GROUP BY product and SUM(i.qty).</p>`, `<p>Hint 3: COALESCE the sum to 0; product 99 has no products row, so it never appears when products is the preserved side.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['name', 'units_sold'], rows: [['Pen Set', 7], ['Mouse', 6], ['Desk Lamp', 2], ['Keyboard', 1], ['Monitor', 1], ['Mystery Box', 0], ['Plant Pot', 0]] },
+      { setup: 'DELETE FROM order_items;', cols: ['name', 'units_sold'], rows: [['Desk Lamp', 0], ['Keyboard', 0], ['Monitor', 0], ['Mouse', 0], ['Mystery Box', 0], ['Pen Set', 0], ['Plant Pot', 0]] },
+      { setup: 'INSERT INTO order_items VALUES (108, 6, 10, 99);', cols: ['name', 'units_sold'], rows: [['Mystery Box', 10], ['Pen Set', 7], ['Mouse', 6], ['Desk Lamp', 2], ['Keyboard', 1], ['Monitor', 1], ['Plant Pot', 0]] },
+      { setup: 'INSERT INTO order_items VALUES (108, 99, 100, 1);INSERT INTO order_items VALUES (108, NULL, 100, 1);', cols: ['name', 'units_sold'], rows: [['Pen Set', 7], ['Mouse', 6], ['Desk Lamp', 2], ['Keyboard', 1], ['Monitor', 1], ['Mystery Box', 0], ['Plant Pot', 0]] },
+      { setup: 'DELETE FROM products WHERE product_id IN (2, 4);', cols: ['name', 'units_sold'], rows: [['Desk Lamp', 2], ['Keyboard', 1], ['Monitor', 1], ['Mystery Box', 0], ['Plant Pot', 0]] },
+      { setup: 'INSERT INTO order_items VALUES (101, 1, 4, 200);INSERT INTO order_items VALUES (102, 7, 1, 15);', cols: ['name', 'units_sold'], rows: [['Pen Set', 7], ['Mouse', 6], ['Keyboard', 5], ['Desk Lamp', 2], ['Monitor', 1], ['Plant Pot', 1], ['Mystery Box', 0]] },
+      { setup: 'INSERT INTO products VALUES (8, \'Aardvark Toy\', \'Toys\', 5);', cols: ['name', 'units_sold'], rows: [['Pen Set', 7], ['Mouse', 6], ['Desk Lamp', 2], ['Keyboard', 1], ['Monitor', 1], ['Aardvark Toy', 0], ['Mystery Box', 0], ['Plant Pot', 0]] }
+    ] },
     solution: { approach: `<p>Preserve products, attach lines, aggregate quantities, convert NULL sums to 0.</p>`, code: { lang: 'sql', db: 'shop', code: `
 SELECT p.name, COALESCE(SUM(i.qty), 0) AS units_sold
 FROM products p
@@ -2138,6 +2251,15 @@ JOIN employees m ON e.emp_id = m.manager_id
 WHERE e.salary > m.salary;` } },
     mcq: { q: 'Should this self join be INNER or LEFT?', options: ['INNER — rows without a manager cannot satisfy the salary comparison anyway', 'LEFT — to keep the CEO', 'FULL — to keep managers too', 'CROSS — to compare everyone'], answer: 0, explain: 'The WHERE e.salary &gt; m.salary would reject NULL-filled rows anyway, so LEFT adds nothing; INNER states the intent.' },
     hints: [`<p>Hint 1: Two roles of one table: e (employee) and m (manager).</p>`, `<p>Hint 2: ON m.emp_id = e.manager_id — "the manager is the row whose id is my manager_id".</p>`, `<p>Hint 3: WHERE e.salary &gt; m.salary; strict inequality so equal salaries are excluded.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['employee', 'salary', 'manager', 'manager_salary'], rows: [['Kabir', 190000, 'Arjun', 180000], ['Tara', 175000, 'Priya', 170000]] },
+      { setup: 'UPDATE employees SET salary = 180000 WHERE emp_id = 4;', cols: ['employee', 'salary', 'manager', 'manager_salary'], rows: [['Tara', 175000, 'Priya', 170000]] },
+      { setup: 'UPDATE employees SET salary = NULL WHERE emp_id IN (2, 7);', rows: [] },
+      { setup: 'UPDATE employees SET salary = 1 WHERE emp_id = 1;', cols: ['employee', 'salary', 'manager', 'manager_salary'], rows: [['Kabir', 190000, 'Arjun', 180000], ['Arjun', 180000, 'Meera', 1], ['Tara', 175000, 'Priya', 170000], ['Priya', 170000, 'Meera', 1], ['Vikram', 110000, 'Meera', 1]] },
+      { setup: 'UPDATE employees SET salary = 100;', rows: [] },
+      { setup: 'UPDATE employees SET manager_id = NULL;', rows: [] },
+      { setup: 'UPDATE employees SET manager_id = 99, salary = 999999 WHERE emp_id = 9;', cols: ['employee', 'salary', 'manager', 'manager_salary'], rows: [['Kabir', 190000, 'Arjun', 180000], ['Tara', 175000, 'Priya', 170000]] }
+    ] },
     solution: { approach: `<p>Self join each employee to their manager row, then filter on the salary comparison.</p>`, code: { lang: 'sql', db: 'company', code: `
 SELECT e.name AS employee, e.salary,
        m.name AS manager,  m.salary AS manager_salary
@@ -2160,6 +2282,16 @@ JOIN weather y ON y.id = t.id - 1
 WHERE t.temperature > y.temperature;` } },
     mcq: { q: 'In SQLite, which expression gives the day before <code>t.record_date</code>?', options: ['DATE(t.record_date, \'-1 day\')', 't.record_date - 1', 'DATEADD(day, -1, t.record_date)', 't.record_date - INTERVAL 1 DAY'], answer: 0, explain: 'SQLite uses date modifiers. Subtracting 1 from a text date yields a number. DATEADD is SQL Server, INTERVAL is MySQL/PostgreSQL syntax.' },
     hints: [`<p>Hint 1: Compare each row with another row of the same table → self join (roles: today, yesterday).</p>`, `<p>Hint 2: Join on the date, not the id: y.record_date = DATE(t.record_date, '-1 day').</p>`, `<p>Hint 3: Inner join automatically drops days whose yesterday is missing; then filter t.temperature &gt; y.temperature.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['id'], rows: [[2], [7]] },
+      { setup: 'INSERT INTO weather VALUES (8, \'2026-01-04\', 15);', cols: ['id'], rows: [[2], [4], [7]] },
+      { setup: 'INSERT INTO weather VALUES (8, \'2026-01-31\', 10);INSERT INTO weather VALUES (9, \'2026-02-01\', 11);INSERT INTO weather VALUES (10, \'2026-02-02\', 5);', cols: ['id'], rows: [[2], [7], [9]] },
+      { setup: 'INSERT INTO weather VALUES (8, \'2024-02-28\', 1);INSERT INTO weather VALUES (9, \'2024-02-29\', 2);INSERT INTO weather VALUES (10, \'2024-03-01\', 3);', cols: ['id'], rows: [[2], [7], [9], [10]] },
+      { setup: 'DELETE FROM weather;', rows: [] },
+      { setup: 'UPDATE weather SET temperature = NULL WHERE id IN (1, 6);', rows: [] },
+      { setup: 'INSERT INTO weather VALUES (8, \'2025-12-31\', 1);INSERT INTO weather VALUES (9, \'2026-01-09\', 36);', cols: ['id'], rows: [[1], [2], [7], [9]] },
+      { setup: 'UPDATE weather SET temperature = 20;', rows: [] }
+    ] },
     solution: { approach: `<p>Self join "today" to "yesterday" using real date arithmetic, then compare temperatures. Missing days produce no partner and drop out.</p>`, code: { lang: 'sql', db: 'weather', code: `
 SELECT t.id
 FROM weather AS t                                   -- today
@@ -2192,6 +2324,15 @@ GROUP BY p.project_id, p.name, d.dept_name
 ORDER BY total_hours DESC, project;` } },
     mcq: { q: 'Why not join employees in this query?', options: ['No employee column is needed, and an inner join to employees would drop the orphan assignment row', 'Employees is too big', 'It would create a cross join', 'SQLite cannot join 4 tables'], answer: 0, explain: 'Every extra join can change row counts. Join only the tables the answer needs.' },
     hints: [`<p>Hint 1: Preserve projects; departments is a many-to-one lookup; assignments is the optional one-to-many side.</p>`, `<p>Hint 2: LEFT JOIN assignments, count a.project_id (not *), SUM hours with COALESCE.</p>`, `<p>Hint 3: Group by project id and name plus the department name.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['project', 'dept_name', 'assignments', 'total_hours'], rows: [['Search', 'Engineering', 3, 55], ['Payments', 'Engineering', 2, 50], ['CRM', 'Sales', 3, 45], ['Hiring Portal', 'HR', 1, 20], ['Compliance', 'Legal', 0, 0]] },
+      { setup: 'DELETE FROM assignments;', cols: ['project', 'dept_name', 'assignments', 'total_hours'], rows: [['CRM', 'Sales', 0, 0], ['Compliance', 'Legal', 0, 0], ['Hiring Portal', 'HR', 0, 0], ['Payments', 'Engineering', 0, 0], ['Search', 'Engineering', 0, 0]] },
+      { setup: 'DELETE FROM projects;', rows: [] },
+      { setup: 'DELETE FROM departments WHERE dept_id = 10;', cols: ['project', 'dept_name', 'assignments', 'total_hours'], rows: [['Search', null, 3, 55], ['Payments', null, 2, 50], ['CRM', 'Sales', 3, 45], ['Hiring Portal', 'HR', 1, 20], ['Compliance', 'Legal', 0, 0]] },
+      { setup: 'UPDATE projects SET dept_id = NULL WHERE project_id = 3;', cols: ['project', 'dept_name', 'assignments', 'total_hours'], rows: [['Search', 'Engineering', 3, 55], ['Payments', 'Engineering', 2, 50], ['CRM', null, 3, 45], ['Hiring Portal', 'HR', 1, 20], ['Compliance', 'Legal', 0, 0]] },
+      { setup: 'UPDATE assignments SET hours = NULL WHERE emp_id = 4;', cols: ['project', 'dept_name', 'assignments', 'total_hours'], rows: [['CRM', 'Sales', 3, 45], ['Payments', 'Engineering', 2, 40], ['Search', 'Engineering', 3, 25], ['Hiring Portal', 'HR', 1, 20], ['Compliance', 'Legal', 0, 0]] },
+      { setup: 'INSERT INTO assignments VALUES (1, 5, 8), (2, 5, 7);', cols: ['project', 'dept_name', 'assignments', 'total_hours'], rows: [['Search', 'Engineering', 3, 55], ['Payments', 'Engineering', 2, 50], ['CRM', 'Sales', 3, 45], ['Hiring Portal', 'HR', 1, 20], ['Compliance', 'Legal', 2, 15]] }
+    ] },
     solution: { approach: `<p>Projects LEFT JOIN departments (lookup) LEFT JOIN assignments (facts), then aggregate per project. Only one one-to-many branch exists, so no double counting.</p>`, code: { lang: 'sql', db: 'company', code: `
 SELECT p.name                     AS project,
        d.dept_name,
@@ -2217,6 +2358,16 @@ LEFT JOIN order_items i ON i.product_id = p.product_id
 WHERE i.product_id IS NULL;` } },
     mcq: { q: 'Which join sees problems on both sides at once?', options: ['FULL OUTER JOIN', 'LEFT JOIN', 'INNER JOIN', 'CROSS JOIN'], answer: 0, explain: 'FULL keeps unmatched rows from both tables, so both kinds of orphan appear with NULLs on the other side.' },
     hints: [`<p>Hint 1: Problems exist in both tables → FULL OUTER JOIN products and order_items on product_id.</p>`, `<p>Hint 2: Keep rows where p.product_id IS NULL or i.product_id IS NULL.</p>`, `<p>Hint 3: COALESCE the id; label with CASE; DISTINCT/GROUP BY so a missing product sold on several lines appears once.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['product_id', 'name', 'problem'], rows: [[6, 'Mystery Box', 'never sold'], [7, 'Plant Pot', 'never sold'], [99, 'order 105', 'missing product']] },
+      { setup: 'INSERT INTO order_items VALUES (101, 6, 1, 99);', cols: ['product_id', 'name', 'problem'], rows: [[7, 'Plant Pot', 'never sold'], [99, 'order 105', 'missing product']] },
+      { setup: 'INSERT INTO order_items VALUES (108, 99, 1, 74);INSERT INTO order_items VALUES (101, 99, 1, 74);', cols: ['product_id', 'name', 'problem'], rows: [[6, 'Mystery Box', 'never sold'], [7, 'Plant Pot', 'never sold'], [99, 'order 101', 'missing product']] },
+      { setup: 'INSERT INTO order_items VALUES (108, 98, 1, 5);', cols: ['product_id', 'name', 'problem'], rows: [[6, 'Mystery Box', 'never sold'], [7, 'Plant Pot', 'never sold'], [98, 'order 108', 'missing product'], [99, 'order 105', 'missing product']] },
+      { setup: 'DELETE FROM order_items;', cols: ['product_id', 'name', 'problem'], rows: [[1, 'Keyboard', 'never sold'], [2, 'Mouse', 'never sold'], [3, 'Desk Lamp', 'never sold'], [4, 'Pen Set', 'never sold'], [5, 'Monitor', 'never sold'], [6, 'Mystery Box', 'never sold'], [7, 'Plant Pot', 'never sold']] },
+      { setup: 'INSERT INTO products VALUES (8, \'Gadget\', \'Home\', 10);', cols: ['product_id', 'name', 'problem'], rows: [[6, 'Mystery Box', 'never sold'], [7, 'Plant Pot', 'never sold'], [8, 'Gadget', 'never sold'], [99, 'order 105', 'missing product']] },
+      { setup: 'DELETE FROM order_items WHERE product_id = 99;', cols: ['product_id', 'name', 'problem'], rows: [[6, 'Mystery Box', 'never sold'], [7, 'Plant Pot', 'never sold']] },
+      { setup: 'INSERT INTO order_items VALUES (500, 99, 1, 1);INSERT INTO order_items VALUES (7, 99, 1, 1);', cols: ['product_id', 'name', 'problem'], rows: [[6, 'Mystery Box', 'never sold'], [7, 'Plant Pot', 'never sold'], [99, 'order 7', 'missing product']] }
+    ] },
     solution: { approach: `<p>FULL OUTER JOIN, keep only one-sided rows, label by which side is missing.</p>`, code: { lang: 'sql', db: 'shop', code: `
 SELECT COALESCE(p.product_id, i.product_id)                   AS product_id,
        COALESCE(p.name, 'order ' || MIN(i.order_id))           AS name,
@@ -2243,6 +2394,15 @@ GROUP BY g.grade
 ORDER BY g.grade;` } },
     mcq: { q: 'Which physical join algorithm can evaluate <code>ON e.salary BETWEEN g.min_sal AND g.max_sal</code> in every engine?', options: ['Nested loop', 'Hash join', 'Neither', 'Only merge join'], answer: 0, explain: 'Hash joins need equality. Nested loop (optionally with an index range scan) handles any predicate; some engines also use merge-style range joins.' },
     hints: [`<p>Hint 1: The ON condition can be any boolean expression — use BETWEEN.</p>`, `<p>Hint 2: "Every grade" → grades LEFT JOIN employees.</p>`, `<p>Hint 3: COUNT(e.emp_id), ROUND(AVG(e.salary)) — AVG over no rows is NULL, which is what the spec wants.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['grade', 'headcount', 'avg_salary'], rows: [['A', 3, 90000], ['B', 2, 115000], ['C', 4, 178750], ['D', 1, 250000]] },
+      { setup: 'UPDATE employees SET salary = 99999 WHERE emp_id = 6; UPDATE employees SET salary = 100000 WHERE emp_id = 8; UPDATE employees SET salary = 149999 WHERE emp_id = 5; UPDATE employees SET salary = 150000 WHERE emp_id = 3; UPDATE employees SET salary = 199999 WHERE emp_id = 2; UPDATE employees SET salary = 200000 WHERE emp_id = 4;', cols: ['grade', 'headcount', 'avg_salary'], rows: [['A', 3, 93333], ['B', 2, 125000], ['C', 3, 175000], ['D', 2, 225000]] },
+      { setup: 'UPDATE employees SET salary = NULL;', cols: ['grade', 'headcount', 'avg_salary'], rows: [['A', 0, null], ['B', 0, null], ['C', 0, null], ['D', 0, null]] },
+      { setup: 'DELETE FROM employees;', cols: ['grade', 'headcount', 'avg_salary'], rows: [['A', 0, null], ['B', 0, null], ['C', 0, null], ['D', 0, null]] },
+      { setup: 'UPDATE employees SET salary = 50000;', cols: ['grade', 'headcount', 'avg_salary'], rows: [['A', 10, 50000], ['B', 0, null], ['C', 0, null], ['D', 0, null]] },
+      { setup: 'UPDATE employees SET salary = 1000000 WHERE emp_id = 1;', cols: ['grade', 'headcount', 'avg_salary'], rows: [['A', 3, 90000], ['B', 2, 115000], ['C', 4, 178750], ['D', 1, 1000000]] },
+      { setup: 'UPDATE employees SET salary = 0 WHERE emp_id IN (6, 9, 10);', cols: ['grade', 'headcount', 'avg_salary'], rows: [['A', 3, 0], ['B', 2, 115000], ['C', 4, 178750], ['D', 1, 250000]] }
+    ] },
     solution: { approach: `<p>Non-equi LEFT JOIN from grades to employees on the range, then aggregate per grade.</p>`, code: { lang: 'sql', db: 'company', code: `
 SELECT g.grade,
        COUNT(e.emp_id)         AS headcount,
@@ -2266,6 +2426,15 @@ FROM customers a
 JOIN customers b ON b.city = a.city;` } },
     mcq: { q: 'Why does Eli (city NULL) never pair with anyone, not even himself?', options: ['NULL = NULL is UNKNOWN, so the ON condition is never TRUE', 'Self joins skip NULL rows', 'Because of a.customer_id &lt; b.customer_id', 'SQLite removes NULL rows before joining'], answer: 0, explain: 'Equality with NULL is UNKNOWN, and joins keep only TRUE pairs.' },
     hints: [`<p>Hint 1: Pairs from one table → self join with roles a and b.</p>`, `<p>Hint 2: ON b.city = a.city AND a.customer_id &lt; b.customer_id.</p>`, `<p>Hint 3: The &lt; removes both self-pairs and mirror duplicates; NULL cities drop out automatically.</p>`],
+    tests: { engine: 'sqlite', cmp: 'set', cases: [
+      { cols: ['city', 'customer_1', 'customer_2'], rows: [['Pune', 'Asha', 'Chen'], ['Delhi', 'Ben', 'Fay']] },
+      { setup: 'INSERT INTO customers VALUES (7, \'Gus\', NULL, NULL);', cols: ['city', 'customer_1', 'customer_2'], rows: [['Pune', 'Asha', 'Chen'], ['Delhi', 'Ben', 'Fay']] },
+      { setup: 'INSERT INTO customers VALUES (7, \'Gus\', \'Pune\', NULL);INSERT INTO customers VALUES (8, \'Hal\', \'Pune\', 1);', cols: ['city', 'customer_1', 'customer_2'], rows: [['Pune', 'Asha', 'Chen'], ['Pune', 'Asha', 'Gus'], ['Pune', 'Asha', 'Hal'], ['Delhi', 'Ben', 'Fay'], ['Pune', 'Chen', 'Gus'], ['Pune', 'Chen', 'Hal'], ['Pune', 'Gus', 'Hal']] },
+      { setup: 'UPDATE customers SET city = \'Pune\';', cols: ['city', 'customer_1', 'customer_2'], rows: [['Pune', 'Asha', 'Ben'], ['Pune', 'Asha', 'Chen'], ['Pune', 'Asha', 'Dev'], ['Pune', 'Asha', 'Eli'], ['Pune', 'Asha', 'Fay'], ['Pune', 'Ben', 'Chen'], ['Pune', 'Ben', 'Dev'], ['Pune', 'Ben', 'Eli'], ['Pune', 'Ben', 'Fay'], ['Pune', 'Chen', 'Dev'], ['Pune', 'Chen', 'Eli'], ['Pune', 'Chen', 'Fay'], ['Pune', 'Dev', 'Eli'], ['Pune', 'Dev', 'Fay'], ['Pune', 'Eli', 'Fay']] },
+      { setup: 'UPDATE customers SET city = NULL;', rows: [] },
+      { setup: 'UPDATE customers SET city = name;', rows: [] },
+      { setup: 'INSERT INTO customers VALUES (7, \'Chen\', \'Pune\', NULL);', cols: ['city', 'customer_1', 'customer_2'], rows: [['Pune', 'Asha', 'Chen'], ['Pune', 'Asha', 'Chen'], ['Delhi', 'Ben', 'Fay'], ['Pune', 'Chen', 'Chen']] }
+    ] },
     solution: { approach: `<p>Self join on city with an ordering guard so each unordered pair appears once.</p>`, code: { lang: 'sql', db: 'shop', code: `
 SELECT a.city, a.name AS customer_1, b.name AS customer_2
 FROM customers a
@@ -2294,6 +2463,15 @@ GROUP BY c.customer_id, c.name
 ORDER BY balance DESC, c.name;` } },
     mcq: { q: 'What is the safest way to combine orders with payments when an order can have many payments?', options: ['Aggregate payments to one row per order first, then join', 'Use SUM(DISTINCT o.amount)', 'Use SELECT DISTINCT', 'Use an INNER JOIN instead of LEFT'], answer: 0, explain: 'Pre-aggregation makes the join one-to-one. SUM(DISTINCT) breaks when two orders have equal amounts; DISTINCT and INNER do not address the multiplication.' },
     hints: [`<p>Hint 1: Find the one-to-many edge that multiplies rows: orders → payments.</p>`, `<p>Hint 2: CTE <code>paid</code>: SELECT order_id, SUM(amount) FROM payments GROUP BY order_id. Then orders LEFT JOIN paid is 1:1.</p>`, `<p>Hint 3: Aggregate per customer in a second CTE (excluding cancelled orders), then customers LEFT JOIN that CTE and COALESCE everything to 0.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['name', 'billed', 'paid', 'balance'], rows: [['Chen', 340, 40, 300], ['Dev', 75, 70, 5], ['Asha', 330, 330, 0], ['Ben', 0, 0, 0], ['Eli', 0, 0, 0], ['Fay', 0, 0, 0]] },
+      { setup: 'INSERT INTO payments VALUES (10, 103, 120, \'2026-04-01\');', cols: ['name', 'billed', 'paid', 'balance'], rows: [['Chen', 340, 40, 300], ['Dev', 75, 70, 5], ['Asha', 330, 330, 0], ['Ben', 0, 0, 0], ['Eli', 0, 0, 0], ['Fay', 0, 0, 0]] },
+      { setup: 'INSERT INTO payments VALUES (10, 107, 100, \'2026-04-01\');INSERT INTO payments VALUES (11, 107, 100, \'2026-04-01\');', cols: ['name', 'billed', 'paid', 'balance'], rows: [['Chen', 340, 240, 100], ['Dev', 75, 70, 5], ['Asha', 330, 330, 0], ['Ben', 0, 0, 0], ['Eli', 0, 0, 0], ['Fay', 0, 0, 0]] },
+      { setup: 'INSERT INTO payments VALUES (10, 108, 50, \'2026-04-01\');', cols: ['name', 'billed', 'paid', 'balance'], rows: [['Chen', 340, 40, 300], ['Asha', 330, 330, 0], ['Ben', 0, 0, 0], ['Eli', 0, 0, 0], ['Fay', 0, 0, 0], ['Dev', 75, 120, -45]] },
+      { setup: 'DELETE FROM payments;', cols: ['name', 'billed', 'paid', 'balance'], rows: [['Chen', 340, 0, 340], ['Asha', 330, 0, 330], ['Dev', 75, 0, 75], ['Ben', 0, 0, 0], ['Eli', 0, 0, 0], ['Fay', 0, 0, 0]] },
+      { setup: 'DELETE FROM orders;', cols: ['name', 'billed', 'paid', 'balance'], rows: [['Asha', 0, 0, 0], ['Ben', 0, 0, 0], ['Chen', 0, 0, 0], ['Dev', 0, 0, 0], ['Eli', 0, 0, 0], ['Fay', 0, 0, 0]] },
+      { setup: 'INSERT INTO orders VALUES (109, 5, \'2026-04-01\', \'paid\', 40);INSERT INTO payments VALUES (10, 109, 10, \'2026-04-01\');INSERT INTO payments VALUES (11, 109, 10, \'2026-04-01\');INSERT INTO payments VALUES (12, 109, 10, \'2026-04-01\');', cols: ['name', 'billed', 'paid', 'balance'], rows: [['Chen', 340, 40, 300], ['Eli', 40, 30, 10], ['Dev', 75, 70, 5], ['Asha', 330, 330, 0], ['Ben', 0, 0, 0], ['Fay', 0, 0, 0]] }
+    ] },
     solution: { approach: `<p>Reduce payments to order grain, attach them to non-cancelled orders (1:1), aggregate to customer grain, and finally LEFT JOIN customers so everyone appears. Every join is at matching grain, so nothing is double counted.</p>`, code: { lang: 'sql', db: 'shop', code: `
 WITH paid AS (                                   -- grain: order
   SELECT order_id, SUM(amount) AS paid
@@ -2334,6 +2512,15 @@ WHERE s.name <> 'Chitra'
                       WHERE s2.name = 'Chitra');` } },
     mcq: { q: '"Student S took all of Chitra\'s courses" is logically equivalent to…', options: ['There is no course of Chitra\'s that S did not take', 'S took at least one of Chitra\'s courses', 'S took more courses than Chitra', 'S and Chitra share a course'], answer: 0, explain: 'Universal quantification becomes a double negation: NOT EXISTS (course of Chitra AND NOT EXISTS (S took it)).' },
     hints: [`<p>Hint 1: Rephrase: "there does not exist a course of Chitra's that this student has not taken".</p>`, `<p>Hint 2: Outer NOT EXISTS over Chitra's enrollments; inner NOT EXISTS checking the student's enrollment for that course.</p>`, `<p>Hint 3: Exclude Chitra herself; ignore NULL course_ids. Counting alternative: COUNT(DISTINCT matched course) = COUNT(DISTINCT Chitra's courses) via HAVING.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['name'], rows: [['Aanya']] },
+      { setup: 'INSERT INTO enrollments VALUES (2, \'C3\', \'B\');', cols: ['name'], rows: [['Aanya'], ['Bilal']] },
+      { setup: 'INSERT INTO enrollments VALUES (3, \'C2\', \'A\');', cols: ['name'], rows: [['Aanya']] },
+      { setup: 'INSERT INTO enrollments VALUES (5, \'C1\', \'A\'), (5, \'C3\', \'A\'), (3, NULL, NULL);', cols: ['name'], rows: [['Aanya'], ['Esha']] },
+      { setup: 'INSERT INTO enrollments VALUES (2, \'C1\', \'A\'), (2, \'C1\', \'B\');', cols: ['name'], rows: [['Aanya']] },
+      { setup: 'DELETE FROM enrollments WHERE student_id = 1 AND course_id = \'C3\';', rows: [] },
+      { setup: 'INSERT INTO enrollments VALUES (2, \'C3\', NULL), (4, \'C1\', NULL), (4, \'C3\', NULL);', cols: ['name'], rows: [['Aanya'], ['Bilal'], ['Dhruv']] }
+    ] },
     solution: { approach: `<p>Relational division with a double NOT EXISTS. For each candidate, search for a counter-example course; if none exists, the student covers all of Chitra's courses. (If Chitra had no courses, every student would qualify — "vacuous truth", worth mentioning in an interview.)</p>`, code: { lang: 'sql', db: 'school', code: `
 SELECT s.name
 FROM students s
@@ -2378,6 +2565,14 @@ JOIN customers d2 ON d2.referred_by = d1.customer_id
 GROUP BY r.customer_id, r.name;` } },
     mcq: { q: 'After <code>r JOIN d1 LEFT JOIN d2</code>, Asha has one row per (direct, second-level) pair. How should "direct" be counted?', options: ['COUNT(DISTINCT d1.customer_id)', 'COUNT(*)', 'COUNT(d2.customer_id)', 'SUM(d1.customer_id)'], answer: 0, explain: 'The second join fans out each direct referral by its own referrals. Counting distinct direct ids undoes the fan-out.' },
     hints: [`<p>Hint 1: Three roles of one table: r (referrer), d1 (direct), d2 (second level).</p>`, `<p>Hint 2: r JOIN d1 (must have ≥ 1 referral) then LEFT JOIN d2 (optional).</p>`, `<p>Hint 3: COUNT(DISTINCT d1.customer_id) and COUNT(DISTINCT d2.customer_id); network is their sum. Deeper levels → recursive CTE.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['referrer', 'direct', 'second_level', 'network'], rows: [['Asha', 2, 2, 4], ['Ben', 1, 0, 1], ['Chen', 1, 0, 1]] },
+      { setup: 'INSERT INTO customers VALUES (7, \'Gus\', \'Pune\', 4);', cols: ['referrer', 'direct', 'second_level', 'network'], rows: [['Asha', 2, 2, 4], ['Ben', 1, 1, 2], ['Chen', 1, 0, 1], ['Dev', 1, 0, 1]] },
+      { setup: 'INSERT INTO customers VALUES (7, \'Gus\', \'Pune\', 1);INSERT INTO customers VALUES (8, \'Hal\', \'Pune\', 2);INSERT INTO customers VALUES (9, \'Ian\', \'Pune\', 2);INSERT INTO customers VALUES (10, \'Jo\', \'Pune\', 7);', cols: ['referrer', 'direct', 'second_level', 'network'], rows: [['Asha', 3, 5, 8], ['Ben', 3, 0, 3], ['Chen', 1, 0, 1], ['Gus', 1, 0, 1]] },
+      { setup: 'UPDATE customers SET referred_by = NULL;', rows: [] },
+      { setup: 'UPDATE customers SET referred_by = 1 WHERE customer_id <> 1;', cols: ['referrer', 'direct', 'second_level', 'network'], rows: [['Asha', 5, 0, 5]] },
+      { setup: 'UPDATE customers SET referred_by = 99 WHERE customer_id = 6;', cols: ['referrer', 'direct', 'second_level', 'network'], rows: [['Asha', 2, 1, 3], ['Ben', 1, 0, 1]] }
+    ] },
     solution: { approach: `<p>Chain two self joins, keep the second optional, and count distinct ids per level to neutralise the fan-out created by the second join.</p>`, code: { lang: 'sql', db: 'shop', code: `
 SELECT r.name                              AS referrer,
        COUNT(DISTINCT d1.customer_id)      AS direct,
@@ -2403,6 +2598,15 @@ JOIN order_items b ON b.order_id = a.order_id AND b.product_id <> a.product_id
 GROUP BY a.product_id, b.product_id;` } },
     mcq: { q: 'Which ON condition lists each unordered product pair exactly once per order?', options: ['b.order_id = a.order_id AND a.product_id &lt; b.product_id', 'b.order_id = a.order_id AND a.product_id &lt;&gt; b.product_id', 'b.order_id = a.order_id', 'a.product_id = b.product_id'], answer: 0, explain: 'The strict ordering removes self-pairs and mirror pairs, exactly like the round-robin trick.' },
     hints: [`<p>Hint 1: A pair of lines from the same order = self join of order_items on order_id.</p>`, `<p>Hint 2: Add a.product_id &lt; b.product_id; inner join products twice (p1, p2) for names — that also drops non-existent products.</p>`, `<p>Hint 3: COUNT(DISTINCT a.order_id) per pair; ORDER BY orders_together DESC, names.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['product_a', 'product_b', 'orders_together'], rows: [['Desk Lamp', 'Pen Set', 1], ['Keyboard', 'Mouse', 1]] },
+      { setup: 'INSERT INTO order_items VALUES (108, 1, 1, 220);', cols: ['product_a', 'product_b', 'orders_together'], rows: [['Keyboard', 'Mouse', 2], ['Desk Lamp', 'Pen Set', 1]] },
+      { setup: 'INSERT INTO order_items VALUES (101, 1, 1, 200);INSERT INTO order_items VALUES (101, 2, 1, 25);', cols: ['product_a', 'product_b', 'orders_together'], rows: [['Desk Lamp', 'Pen Set', 1], ['Keyboard', 'Mouse', 1]] },
+      { setup: 'INSERT INTO order_items VALUES (107, 1, 1, 1);INSERT INTO order_items VALUES (107, 2, 1, 1);INSERT INTO order_items VALUES (107, 3, 1, 1);', cols: ['product_a', 'product_b', 'orders_together'], rows: [['Keyboard', 'Mouse', 2], ['Desk Lamp', 'Monitor', 1], ['Desk Lamp', 'Pen Set', 1], ['Keyboard', 'Desk Lamp', 1], ['Keyboard', 'Monitor', 1], ['Mouse', 'Desk Lamp', 1], ['Mouse', 'Monitor', 1]] },
+      { setup: 'DELETE FROM order_items;', rows: [] },
+      { setup: 'INSERT INTO order_items VALUES (103, 1, 1, 1);INSERT INTO order_items VALUES (104, 3, 1, 1);INSERT INTO order_items VALUES (104, 4, 1, 1);', cols: ['product_a', 'product_b', 'orders_together'], rows: [['Desk Lamp', 'Pen Set', 2], ['Keyboard', 'Desk Lamp', 1], ['Keyboard', 'Mouse', 1], ['Keyboard', 'Pen Set', 1]] },
+      { setup: 'INSERT INTO order_items VALUES (105, 99, 1, 1);INSERT INTO order_items VALUES (105, 98, 1, 1);INSERT INTO order_items VALUES (105, 3, 2, 1);', cols: ['product_a', 'product_b', 'orders_together'], rows: [['Desk Lamp', 'Pen Set', 1], ['Keyboard', 'Mouse', 1], ['Mouse', 'Desk Lamp', 1]] }
+    ] },
     solution: { approach: `<p>Self join the bridge table (order_items) on order_id with an ordering guard, join products twice in two roles, group by pair and count distinct orders.</p>`, code: { lang: 'sql', db: 'shop', code: `
 SELECT p1.name                     AS product_a,
        p2.name                     AS product_b,

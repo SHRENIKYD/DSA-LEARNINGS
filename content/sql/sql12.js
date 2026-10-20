@@ -240,6 +240,53 @@ SELECT * FROM accounts;`, 'Naive: no transaction') },
         `<p>Hint 2: Decide "is there enough money?" <b>once</b>, at the start, and make every change conditional on that decision (a guard in the WHERE clause).</p>`,
         `<p>Hint 3: In an app you would check "rows affected" and ROLLBACK. In pure SQL, store the decision in a temp table and add <code>AND (SELECT ok FROM t_ok)</code> to each write.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { rows: [
+            [1800]
+          ] },
+        { after: 'SELECT id, owner, balance FROM accounts ORDER BY id', rows: [
+            [1, 'Asha', 300],
+            [2, 'Ben', 500],
+            [3, 'Chen', 1000]
+          ] },
+        { after: 'SELECT from_id, to_id, amount, note FROM ledger', rows: [
+            [1, 2, 200, 'guarded transfer']
+          ] },
+        { setup: 'UPDATE accounts SET balance = 199 WHERE id = 1', after: 'SELECT id, owner, balance FROM accounts ORDER BY id', rows: [
+            [1, 'Asha', 199],
+            [2, 'Ben', 300],
+            [3, 'Chen', 1000]
+          ] },
+        { setup: 'UPDATE accounts SET balance = 199 WHERE id = 1', after: 'SELECT count(*) FROM ledger', rows: [
+            [0]
+          ] },
+        { setup: 'UPDATE accounts SET balance = 200 WHERE id = 1', after: 'SELECT id, owner, balance FROM accounts ORDER BY id', rows: [
+            [1, 'Asha', 0],
+            [2, 'Ben', 500],
+            [3, 'Chen', 1000]
+          ] },
+        { setup: 'UPDATE accounts SET balance = 200 WHERE id = 1', rows: [
+            [1500]
+          ] },
+        { setup: 'UPDATE accounts SET balance = 100 WHERE id = 1', rows: [
+            [1400]
+          ] },
+        { setup: 'DELETE FROM accounts WHERE id = 1', after: 'SELECT id, owner, balance FROM accounts ORDER BY id', rows: [
+            [2, 'Ben', 300],
+            [3, 'Chen', 1000]
+          ] },
+        { setup: 'DELETE FROM accounts WHERE id = 1', after: 'SELECT count(*) FROM ledger', rows: [
+            [0]
+          ] },
+        { setup: 'INSERT INTO ledger VALUES (7,3,1,5,\'old\')', after: 'SELECT id, from_id, to_id, amount, note FROM ledger ORDER BY id', rows: [
+            [7, 3, 1, 5, 'old'],
+            [8, 1, 2, 200, 'guarded transfer']
+          ] },
+        { after: 'SELECT count(*) FROM sqlite_temp_master', rows: [
+            [0]
+          ] },
+        { after: 'BEGIN; COMMIT', rows: [] }
+      ] },
       solution: {
         approach: `<p>Open one transaction. Compute the guard once (<code>balance &gt;= 200</code>) into a temp table. Every write checks the guard, so either all three writes apply or none do. In application code the equivalent is: <code>UPDATE … WHERE id = 1 AND balance &gt;= 200</code>, check that exactly 1 row changed, otherwise ROLLBACK.</p>`,
         code: bank(`BEGIN;
@@ -426,12 +473,33 @@ SELECT balance FROM accounts WHERE id = 3;`, 'Naive per-row audit') },
         `<p>Hint 2: Under MVCC, a single statement always reads one snapshot. A REPEATABLE READ transaction reuses one snapshot for all its statements.</p>`,
         `<p>Hint 3: Recipe: (a) push the math into SQL: <code>SELECT SUM(balance)</code>; or (b) <code>BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY</code> → all SELECTs → COMMIT. MVCC means transfers keep running.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { rows: [
+            [3, 1800]
+          ] },
+        { setup: 'INSERT INTO accounts (id, owner, balance) VALUES (4, \'Dara\', 250)', rows: [
+            [4, 2050]
+          ] },
+        { setup: 'DELETE FROM accounts', rows: [
+            [0, null]
+          ] },
+        { setup: 'UPDATE accounts SET balance = 0', rows: [
+            [3, 0]
+          ] },
+        { setup: 'UPDATE accounts SET balance = balance - 100 WHERE id = 1; UPDATE accounts SET balance = balance + 100 WHERE id = 2', rows: [
+            [3, 1800]
+          ] },
+        { setup: 'UPDATE accounts SET balance = 1000000000', rows: [
+            [3, 3000000000]
+          ] },
+        { setup: 'DELETE FROM accounts WHERE id = 2', rows: [
+            [2, 1500]
+          ] },
+        { after: 'BEGIN; COMMIT', rows: [] }
+      ] },
       solution: {
         approach: `<p>The anomaly is <b>read skew</b> (A5A). Fix it by reading from a single snapshot. Easiest: do the aggregation in one statement. If the audit needs many queries (per-branch totals, cross-checks with the ledger), run them all in one <code>REPEATABLE READ READ ONLY</code> transaction (Postgres can even use <code>SERIALIZABLE READ ONLY DEFERRABLE</code> for a guaranteed-safe snapshot). With MVCC this never blocks transfers.</p>`,
-        code: bank(`-- Fix A: one statement = one consistent snapshot, even under READ COMMITTED.
-SELECT COUNT(*) AS accounts, SUM(balance) AS total_money FROM accounts;
-
--- Fix B (Postgres, many queries, one snapshot):
+        code: bank(`-- Fix B (Postgres, many queries, one snapshot):
 --   BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
 --   SELECT SUM(balance) FROM accounts;
 --   SELECT SUM(amount) FROM ledger;
@@ -440,7 +508,10 @@ SELECT COUNT(*) AS accounts, SUM(balance) AS total_money FROM accounts;
 BEGIN;
 SELECT SUM(balance) AS total_money FROM accounts;
 SELECT COUNT(*) AS ledger_rows FROM ledger;
-COMMIT;`, 'Consistent audit (▶ Run)'),
+COMMIT;
+
+-- Fix A (the answer): one statement = one consistent snapshot, even under READ COMMITTED.
+SELECT COUNT(*) AS accounts, SUM(balance) AS total_money FROM accounts;`, 'Consistent audit (▶ Run)'),
         alt: [pg(`BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SELECT id, balance FROM accounts ORDER BY id;   -- snapshot taken here
 SELECT SUM(amount) FROM ledger;                  -- same snapshot
@@ -647,6 +718,43 @@ SELECT stock FROM products WHERE sku = 'TSHIRT';`, 'Naive check-then-act') },
         `<p>Hint 2: <code>UPDATE … SET stock = stock - :qty WHERE sku = :sku AND stock &gt;= :qty</code> — then "rows affected = 1" means success, 0 means sold out.</p>`,
         `<p>Hint 3: Put the decrement and the order INSERT in one transaction; insert the order only if the decrement changed a row. Keep the payment call outside (reserve → pay → confirm, or release on failure).</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { rows: [
+            ['Asha', 2]
+          ] },
+        { after: 'SELECT sku, stock, version FROM products WHERE sku = \'TSHIRT\'', rows: [
+            ['TSHIRT', 1, 2]
+          ] },
+        { setup: 'UPDATE products SET stock = 4 WHERE sku = \'TSHIRT\'', after: 'SELECT customer, qty FROM orders ORDER BY id', rows: [
+            ['Asha', 2],
+            ['Ben', 2]
+          ] },
+        { setup: 'UPDATE products SET stock = 4 WHERE sku = \'TSHIRT\'', after: 'SELECT sku, stock, version FROM products WHERE sku = \'TSHIRT\'', rows: [
+            ['TSHIRT', 0, 3]
+          ] },
+        { setup: 'UPDATE products SET stock = 1 WHERE sku = \'TSHIRT\'', after: 'SELECT count(*) FROM orders', rows: [
+            [0]
+          ] },
+        { setup: 'UPDATE products SET stock = 1 WHERE sku = \'TSHIRT\'', after: 'SELECT stock, version FROM products WHERE sku = \'TSHIRT\'', rows: [
+            [1, 1]
+          ] },
+        { setup: 'UPDATE products SET stock = 2 WHERE sku = \'TSHIRT\'', after: 'SELECT customer, qty FROM orders ORDER BY id', rows: [
+            ['Asha', 2]
+          ] },
+        { setup: 'UPDATE products SET stock = 2 WHERE sku = \'TSHIRT\'', after: 'SELECT stock FROM products WHERE sku = \'TSHIRT\'', rows: [
+            [0]
+          ] },
+        { setup: 'UPDATE products SET stock = 0 WHERE sku = \'TSHIRT\'', after: 'SELECT count(*) FROM orders', rows: [
+            [0]
+          ] },
+        { setup: 'UPDATE products SET stock = 100 WHERE sku = \'TSHIRT\'', after: 'SELECT stock, version FROM products WHERE sku = \'TSHIRT\'', rows: [
+            [96, 3]
+          ] },
+        { after: 'SELECT sku, stock, version FROM products WHERE sku = \'MUG\'', rows: [
+            ['MUG', 10, 1]
+          ] },
+        { after: 'BEGIN; COMMIT', rows: [] }
+      ] },
       solution: {
         approach: `<p>Turn check-then-act into one <b>conditional atomic UPDATE</b>. The row lock taken by the UPDATE serializes concurrent buyers; Postgres/MySQL re-evaluate <code>stock &gt;= qty</code> against the newest committed version after waiting, so the second buyer's UPDATE matches 0 rows. Insert the order only when the decrement succeeded, all in one transaction. The <code>CHECK (stock &gt;= 0)</code> is a safety net.</p>`,
         code: bank(`-- Request A: Asha buys 2
@@ -832,6 +940,7 @@ COMMIT;                                                                 -- team 
         `<p>Hint 2: Lost update is solved by atomic SQL at any level. Read skew needs one snapshot. Write skew needs locks on what you read or SERIALIZABLE.</p>`,
         `<p>Hint 3: Write the four headers: RC + <code>n = n + 1</code>; <code>REPEATABLE READ READ ONLY</code>; <code>SERIALIZABLE</code> (or RC + <code>FOR UPDATE</code> on the admin rows); RC (or a replica / cache).</p>`
       ],
+      tests: { skip: 'the answer is a set of parameterised ($1) PostgreSQL transaction headers over tables (videos, members, a ledger with account_id/day) that are not in the lab database, and the point is isolation behaviour between sessions' },
       solution: {
         approach: `<p>(1) READ COMMITTED + atomic increment. (2) REPEATABLE READ READ ONLY — one snapshot, never blocks writers, never fails with serialization errors because it writes nothing. (3) SERIALIZABLE with retry, or READ COMMITTED + <code>SELECT … FOR UPDATE</code> on all admin rows of the team (lock what you read). (4) READ COMMITTED (or read replica / cache) — a single statement is already consistent.</p>`,
         code: pg(`-- 1. View counter
@@ -1047,11 +1156,43 @@ UPDATE jobs SET status = 'running', worker = 'w2' WHERE id = 1;    -- job 1 run 
         `<p>Hint 2: Lock the row while reading it (<code>FOR UPDATE</code>), and tell the database to skip rows that other workers already locked.</p>`,
         `<p>Hint 3: Recipe: BEGIN → <code>SELECT … WHERE status='queued' ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED</code> → UPDATE status → COMMIT. Or fold it into one <code>UPDATE … WHERE id = (SELECT … FOR UPDATE SKIP LOCKED) RETURNING *</code>.</p>`
       ],
+      tests: { engine: 'postgres', db: 'bank', cmp: 'exact', cases: [
+        { rows: [
+            [1, 'send-email:1']
+          ] },
+        { setup: 'UPDATE jobs SET status = \'running\', worker = \'w0\' WHERE id = 1', rows: [
+            [2, 'resize-img:7']
+          ] },
+        { setup: 'UPDATE jobs SET status = \'done\' WHERE id IN (1, 3)', rows: [
+            [2, 'resize-img:7']
+          ] },
+        { setup: 'UPDATE jobs SET status = \'done\' WHERE id <= 3', rows: [
+            [4, 'charge-card:9']
+          ] },
+        { setup: 'DELETE FROM jobs WHERE id = 1', rows: [
+            [2, 'resize-img:7']
+          ] },
+        { setup: 'UPDATE jobs SET status = \'running\', worker = \'w0\'', rows: [] },
+        { setup: 'DELETE FROM jobs', rows: [] },
+        { setup: 'UPDATE jobs SET status = \'done\'', after: 'SELECT count(*) FROM jobs WHERE status = \'running\'', rows: [
+            [0]
+          ] },
+        { after: 'SELECT id, status, worker FROM jobs ORDER BY id', rows: [
+            [1, 'running', 'w1'],
+            [2, 'queued', null],
+            [3, 'queued', null],
+            [4, 'queued', null],
+            [5, 'queued', null]
+          ] },
+        { setup: 'INSERT INTO jobs (id, payload) VALUES (0, \'first\')', rows: [
+            [0, 'first']
+          ] }
+      ] },
       solution: {
         approach: `<p>Use a <b>locking read that skips locked rows</b>. Each worker locks a different queued row, marks it running and commits quickly. If a worker crashes before commit, its lock vanishes and the job stays queued. In SQLite (single writer) a single <code>UPDATE … WHERE id = (SELECT …)</code> is already atomic.</p>`,
-        code: pg(`-- One statement per claim (PostgreSQL)
+        code: pg(`-- One statement per claim (PostgreSQL); 'w1' stands for the calling worker's id
 UPDATE jobs
-SET status = 'running', worker = $1
+SET status = 'running', worker = 'w1'
 WHERE id = (
   SELECT id FROM jobs
   WHERE status = 'queued'
@@ -1248,6 +1389,60 @@ SELECT id, owner, balance FROM tuples WHERE xmax = 0 ORDER BY id;`, 'Naive: xmax
         `<p>Hint 2: Cross join snapshots × txns, keep committed rows with xid &lt; snap_xmax, and exclude (name, xid) pairs present in snapshot_xip with NOT EXISTS.</p>`,
         `<p>Hint 3: Join tuples on "xmin in the visible set for that snapshot" and anti-join on "xmax in the visible set for that snapshot". Order by snapshot, id.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { setup: '', rows: [
+            ['now', 1, 'Asha', 400, '(0,3)'],
+            ['now', 2, 'Ben', 300, '(0,2)'],
+            ['now', 3, 'Chen', 1000, '(0,4)'],
+            ['old_report', 1, 'Asha', 400, '(0,3)'],
+            ['old_report', 2, 'Ben', 300, '(0,2)']
+          ] },
+        { setup: 'UPDATE txns SET status = \'committed\' WHERE xid = 107', rows: [
+            ['now', 1, 'Asha', 400, '(0,3)'],
+            ['now', 3, 'Chen', 1000, '(0,4)'],
+            ['old_report', 1, 'Asha', 400, '(0,3)'],
+            ['old_report', 2, 'Ben', 300, '(0,2)']
+          ] },
+        { setup: 'INSERT INTO snapshots VALUES (\'mid\', 100, 106)', rows: [
+            ['mid', 1, 'Asha', 400, '(0,3)'],
+            ['mid', 2, 'Ben', 300, '(0,2)'],
+            ['now', 1, 'Asha', 400, '(0,3)'],
+            ['now', 2, 'Ben', 300, '(0,2)'],
+            ['now', 3, 'Chen', 1000, '(0,4)'],
+            ['old_report', 1, 'Asha', 400, '(0,3)'],
+            ['old_report', 2, 'Ben', 300, '(0,2)']
+          ] },
+        { setup: 'INSERT INTO snapshot_xip VALUES (\'now\', 108)', rows: [
+            ['now', 1, 'Asha', 400, '(0,3)'],
+            ['now', 2, 'Ben', 300, '(0,2)'],
+            ['old_report', 1, 'Asha', 400, '(0,3)'],
+            ['old_report', 2, 'Ben', 300, '(0,2)']
+          ] },
+        { setup: 'UPDATE txns SET status = \'aborted\' WHERE xid = 105', rows: [
+            ['now', 1, 'Asha', 500, '(0,1)'],
+            ['now', 2, 'Ben', 300, '(0,2)'],
+            ['now', 3, 'Chen', 1000, '(0,4)'],
+            ['old_report', 1, 'Asha', 500, '(0,1)'],
+            ['old_report', 2, 'Ben', 300, '(0,2)']
+          ] },
+        { setup: 'DELETE FROM snapshot_xip WHERE name = \'old_report\'; UPDATE snapshots SET snap_xmax = 200 WHERE name = \'old_report\'', rows: [
+            ['now', 1, 'Asha', 400, '(0,3)'],
+            ['now', 2, 'Ben', 300, '(0,2)'],
+            ['now', 3, 'Chen', 1000, '(0,4)'],
+            ['old_report', 1, 'Asha', 400, '(0,3)'],
+            ['old_report', 2, 'Ben', 300, '(0,2)'],
+            ['old_report', 3, 'Chen', 1000, '(0,4)']
+          ] },
+        { setup: 'DELETE FROM snapshot_xip; DELETE FROM snapshots', rows: [] },
+        { setup: 'DELETE FROM tuples', rows: [] },
+        { setup: 'UPDATE txns SET status = \'committed\' WHERE xid = 110', rows: [
+            ['now', 1, 'Asha', 400, '(0,3)'],
+            ['now', 2, 'Ben', 300, '(0,2)'],
+            ['now', 3, 'Chen', 1000, '(0,4)'],
+            ['old_report', 1, 'Asha', 400, '(0,3)'],
+            ['old_report', 2, 'Ben', 300, '(0,2)']
+          ] }
+      ] },
       solution: {
         approach: `<p>Materialize "visible transactions per snapshot" once, then apply the two-part rule with a semi-join on xmin and an anti-join on xmax, both correlated on the snapshot name.</p>`,
         code: mv(`WITH vis AS (                       -- (snapshot, xid) pairs whose effects the snapshot sees
@@ -1273,7 +1468,7 @@ ORDER BY s.name, tp.id;`, 'Visibility for every snapshot (▶ Run)'),
      ===================================================================== */
   var DL_SQL = `-- Build the wait-for graph (waiter -> holder) and find every cycle with a recursive CTE.
 WITH RECURSIVE edges AS (
-  SELECT DISTINCT w.txn AS waiter, h.txn AS holder, w.resource
+  SELECT DISTINCT w.txn AS waiter, h.txn AS holder
   FROM lock_waits w
   JOIN locks_held h ON h.resource = w.resource AND h.txn <> w.txn
   WHERE NOT (w.mode = 'S' AND h.mode = 'S')          -- only conflicting modes create a wait
@@ -1528,6 +1723,39 @@ SELECT a.waiter, a.holder FROM edges a JOIN edges b ON a.waiter = b.holder AND a
         `<p>Hint 2: A recursive CTE <code>walk(start, cur, path)</code> extends paths along edges; a cycle is found when <code>cur = start</code>.</p>`,
         `<p>Hint 3: Stop extending when back at start; forbid revisiting inner nodes with <code>instr(path, '/'||node||'/') = 0</code>; output each cycle once by requiring start = the smallest txn on the path.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { rows: [
+            ['/T1/T2/T3/T1/', 3]
+          ], set: true },
+        { setup: 'DELETE FROM lock_waits', rows: [] },
+        { setup: 'INSERT INTO locks_held VALUES (\'T7\',\'r7\',\'X\'),(\'T8\',\'r8\',\'X\');INSERT INTO lock_waits VALUES (\'T7\',\'r8\',\'X\',\'11:00:00\'),(\'T8\',\'r7\',\'X\',\'11:00:01\');', rows: [
+            ['/T1/T2/T3/T1/', 3],
+            ['/T7/T8/T7/', 2]
+          ], set: true },
+        { setup: 'INSERT INTO locks_held VALUES (\'T9\',\'r1\',\'X\'),(\'T10\',\'r2\',\'X\');INSERT INTO lock_waits VALUES (\'T9\',\'r2\',\'X\',\'11:00:00\'),(\'T10\',\'r1\',\'X\',\'11:00:01\');', rows: [
+            ['/T1/T2/T3/T1/', 3],
+            ['/T10/T9/T10/', 2]
+          ], set: true },
+        { setup: 'INSERT INTO lock_waits VALUES (\'T5\',\'products:MUG\',\'X\',\'11:00:00\');', rows: [
+            ['/T1/T2/T3/T1/', 3],
+            ['/T4/T5/T4/', 2]
+          ], set: true },
+        { setup: 'INSERT INTO locks_held VALUES (\'T9\',\'r9\',\'X\');INSERT INTO lock_waits VALUES (\'T9\',\'accounts:1\',\'X\',\'11:00:00\'),(\'T1\',\'r9\',\'X\',\'11:00:01\');', rows: [
+            ['/T1/T2/T3/T1/', 3],
+            ['/T1/T9/T1/', 2]
+          ], set: true },
+        { setup: 'INSERT INTO locks_held VALUES (\'T7\',\'r7\',\'S\'),(\'T8\',\'r8\',\'S\');INSERT INTO lock_waits VALUES (\'T7\',\'r8\',\'S\',\'11:00:00\'),(\'T8\',\'r7\',\'S\',\'11:00:01\');', rows: [
+            ['/T1/T2/T3/T1/', 3]
+          ], set: true },
+        { setup: 'INSERT INTO locks_held VALUES (\'T7\',\'r7\',\'S\'),(\'T8\',\'r8\',\'X\');INSERT INTO lock_waits VALUES (\'T7\',\'r8\',\'S\',\'11:00:00\'),(\'T8\',\'r7\',\'X\',\'11:00:01\');', rows: [
+            ['/T1/T2/T3/T1/', 3],
+            ['/T7/T8/T7/', 2]
+          ], set: true },
+        { setup: 'INSERT INTO locks_held VALUES (\'T2\',\'r1\',\'X\');INSERT INTO lock_waits VALUES (\'T1\',\'r1\',\'S\',\'11:00:00\');', rows: [
+            ['/T1/T2/T3/T1/', 3]
+          ], set: true },
+        { setup: 'DELETE FROM locks_held', rows: [] }
+      ] },
       solution: {
         approach: `<p>Graph cycle detection in SQL: derive edges, walk paths with a recursive CTE carrying the visited path as a delimited string, detect return to the start, and de-duplicate rotations by keeping only the walk that starts at the cycle's smallest member.</p>`,
         code: lk(DL_SQL, 'Recursive-CTE deadlock detector (▶ Run)'),
@@ -1550,6 +1778,32 @@ SELECT a.waiter, a.holder FROM edges a JOIN edges b ON a.waiter = b.holder AND a
 SELECT balance FROM accounts WHERE id = 1;            -- may return the uncommitted 100`, 'READ UNCOMMITTED') },
     mcq: { q: 'Reading another transaction\'s uncommitted change is called…', options: ['Dirty read', 'Phantom read', 'Write skew', 'Lost update'], answer: 0, explain: 'Dirty read (P1): seeing uncommitted data. Prevented by READ COMMITTED.' },
     hints: [`<p>Hint 1: Ask the first checklist question: did T1 read something that was <b>not committed</b> at that moment?</p>`, `<p>Hint 2: The weakest level that only shows committed data is READ COMMITTED.</p>`, `<p>Hint 3: Replay it: T2 begins, updates, rolls back; T1 reads after that (or from the last committed version) and sees 500.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          [1, 'Asha', 500]
+        ] },
+      { setup: 'UPDATE accounts SET balance = 800 WHERE id = 1', rows: [
+          [1, 'Asha', 800]
+        ] },
+      { setup: 'UPDATE accounts SET balance = 0 WHERE id = 1', rows: [
+          [1, 'Asha', 0]
+        ] },
+      { setup: 'DELETE FROM accounts WHERE id = 1', after: 'SELECT count(*) FROM accounts WHERE id = 1', rows: [
+          [0]
+        ] },
+      { after: 'SELECT id, balance, version FROM accounts ORDER BY id', rows: [
+          [1, 500, 1],
+          [2, 300, 1],
+          [3, 1000, 1]
+        ] },
+      { after: 'SELECT count(*) FROM ledger', rows: [
+          [0]
+        ] },
+      { setup: 'UPDATE accounts SET version = 9 WHERE id = 1', after: 'SELECT version FROM accounts WHERE id = 1', rows: [
+          [9]
+        ] },
+      { after: 'BEGIN; COMMIT', rows: [] }
+    ] },
     solution: {
       approach: `<p><b>Dirty read.</b> Prevented from READ COMMITTED upwards (the default in Postgres, Oracle, SQL Server; MySQL defaults to RR). Under MVCC T1 would read the last committed version (500) without waiting.</p>`,
       code: bank(`-- T2's work, then rollback: the committed value never changed.
@@ -1574,6 +1828,30 @@ UPDATE counters SET value = 8 WHERE name = 'likes:post42';      -- request B: A'
 SELECT value FROM counters WHERE name = 'likes:post42';`, 'Naive read-modify-write') },
     mcq: { q: 'Which statement is safe at READ COMMITTED?', options: ['UPDATE counters SET value = value + 1 WHERE name = ?', 'UPDATE counters SET value = :computed WHERE name = ?', 'SELECT value then INSERT', 'SELECT … FOR SHARE then UPDATE value = :computed'], answer: 0, explain: 'The increment is computed by the database on the latest row version while holding the row lock.' },
     hints: [`<p>Hint 1: The bug is that the "+1" happens outside the database using a stale number.</p>`, `<p>Hint 2: Let the UPDATE compute the new value from the current row: <code>value = value + 1</code>.</p>`, `<p>Hint 3: Two concurrent UPDATEs serialize on the row lock; the second re-reads the newest value after waiting.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          ['likes:post42', 9]
+        ] },
+      { setup: 'UPDATE counters SET value = 0 WHERE name = \'likes:post42\'', rows: [
+          ['likes:post42', 2]
+        ] },
+      { setup: 'UPDATE counters SET value = 2147483647 WHERE name = \'likes:post42\'', rows: [
+          ['likes:post42', 2147483649]
+        ] },
+      { setup: 'UPDATE counters SET value = -5 WHERE name = \'likes:post42\'', rows: [
+          ['likes:post42', -3]
+        ] },
+      { after: 'SELECT name, value FROM counters WHERE name = \'page_views\'', rows: [
+          ['page_views', 41]
+        ] },
+      { setup: 'DELETE FROM counters WHERE name = \'likes:post42\'', rows: [] },
+      { setup: 'INSERT INTO counters VALUES (\'likes:post43\', 100)', after: 'SELECT name, value FROM counters WHERE name = \'likes:post43\'', rows: [
+          ['likes:post43', 100]
+        ] },
+      { after: 'SELECT count(*) FROM counters', rows: [
+          [2]
+        ] }
+    ] },
     solution: {
       approach: `<p>Use an <b>atomic increment</b>. The row lock serializes concurrent likes and each UPDATE applies +1 to the newest committed version. For extremely hot counters, shard into N rows and SUM them, or buffer in Redis.</p>`,
       code: bank(`UPDATE counters SET value = value + 1 WHERE name = 'likes:post42';   -- request A
@@ -1595,6 +1873,33 @@ INSERT INTO ledger (from_id, to_id, amount, note) VALUES (3, 1, 25, 'row 3');
 SELECT COUNT(*) FROM ledger;`, 'Autocommit per row') },
     mcq: { q: 'What does ROLLBACK TO SAVEPOINT s do?', options: ['Undoes work after s, keeps the transaction open', 'Ends the transaction', 'Undoes everything since BEGIN', 'Commits work before s'], answer: 0, explain: 'It rewinds to the bookmark; the outer transaction continues.' },
     hints: [`<p>Hint 1: Put a SAVEPOINT before each row so you can undo just that row.</p>`, `<p>Hint 2: To keep the demo error-free, guard the bad row: <code>INSERT … SELECT … WHERE amount &gt; 0</code>, or roll back to the savepoint when validation fails.</p>`, `<p>Hint 3: BEGIN → SAVEPOINT r1 → insert → RELEASE … → SAVEPOINT r2 → (invalid) ROLLBACK TO r2 → … → COMMIT.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          [1, 1, 2, 50, 'row 1'],
+          [2, 3, 1, 25, 'row 3']
+        ] },
+      { setup: 'INSERT INTO ledger VALUES (10,2,3,5,\'old\')', rows: [
+          [10, 2, 3, 5, 'old'],
+          [11, 1, 2, 50, 'row 1'],
+          [12, 3, 1, 25, 'row 3']
+        ] },
+      { setup: 'INSERT INTO ledger VALUES (1,2,3,5,\'old\')', rows: [
+          [1, 2, 3, 5, 'old'],
+          [2, 1, 2, 50, 'row 1'],
+          [3, 3, 1, 25, 'row 3']
+        ] },
+      { after: 'SELECT count(*), sum(amount) FROM ledger', rows: [
+          [2, 75]
+        ] },
+      { after: 'SELECT count(*) FROM ledger WHERE amount <= 0', rows: [
+          [0]
+        ] },
+      { setup: 'INSERT INTO ledger VALUES (500,2,3,5,\'old\')', after: 'SELECT max(id) FROM ledger', rows: [
+          [502]
+        ] },
+      { after: 'INSERT INTO ledger (from_id, to_id, amount) VALUES (2, 3, 0)', error: 'CHECK' },
+      { after: 'BEGIN; COMMIT', rows: [] }
+    ] },
     solution: {
       approach: `<p>One transaction, one savepoint per row. When a row fails validation (in the app: when the INSERT raises), <code>ROLLBACK TO</code> its savepoint, log it, continue. A single COMMIT at the end — one fsync, all-or-nothing for the batch as a whole.</p>`,
       code: bank(`BEGIN;
@@ -1618,7 +1923,7 @@ SELECT id, from_id, to_id, amount, note FROM ledger ORDER BY id;`, 'Savepoint pe
     title: 'Load 1,000 Rows in One Transaction',
     level: 'Easy', tags: ['durability', 'fsync', 'batching'], companies: ['Atlassian', 'Datadog'],
     statement: `<p>A script inserts 1,000 ledger rows with autocommit and takes forever on a real disk. Rewrite it so all rows go in with <b>one</b> commit, generating the rows in SQL.</p>`,
-    constraints: `<p>SQLite. Amounts 1..1000, alternating between accounts 1→2.</p>`,
+    constraints: `<p>SQLite. Amounts 1..1000, every row from account 1 to account 2.</p>`,
     example: `<p>Result: ${H.c('g', '1000 rows, SUM(amount) = 500500')}, one fsync.</p>`,
     brute: { why: `<p>Each autocommitted INSERT waits for its own fsync (≈ms each) → 1,000 fsyncs. Same data, 100–1000× slower.</p>`, code: bank(`INSERT INTO ledger (from_id, to_id, amount, note) VALUES (1, 2, 1, 'auto');
 INSERT INTO ledger (from_id, to_id, amount, note) VALUES (1, 2, 2, 'auto');
@@ -1626,6 +1931,27 @@ INSERT INTO ledger (from_id, to_id, amount, note) VALUES (1, 2, 3, 'auto');
 SELECT COUNT(*) FROM ledger;   -- imagine 1000 of these, each its own transaction`, 'Autocommit per INSERT') },
     mcq: { q: 'Why is one transaction faster than 1,000 autocommits?', options: ['Only one COMMIT has to wait for fsync of the log', 'Transactions skip constraints', 'Indexes are disabled inside transactions', 'Rows are not written to disk'], answer: 0, explain: 'Durability costs one log flush per commit; batching amortises it.' },
     hints: [`<p>Hint 1: The cost is per COMMIT, not per row.</p>`, `<p>Hint 2: Wrap everything in BEGIN … COMMIT; generate rows with a recursive CTE <code>WITH RECURSIVE n(i) AS (…)</code>.</p>`, `<p>Hint 3: <code>INSERT INTO ledger (…) SELECT 1, 2, i, 'bulk' FROM n;</code> — one statement, one transaction.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          [1000, 500500]
+        ] },
+      { setup: 'INSERT INTO ledger VALUES (5000,3,1,1,\'old\'),(5001,3,1,2,\'old\'),(5002,3,1,3,\'old\')', rows: [
+          [1003, 500506]
+        ] },
+      { after: 'SELECT min(amount), max(amount), count(DISTINCT amount) FROM ledger', rows: [
+          [1, 1000, 1000]
+        ] },
+      { after: 'SELECT count(*) FROM ledger WHERE from_id = 1 AND to_id = 2 AND note = \'bulk\'', rows: [
+          [1000]
+        ] },
+      { after: 'SELECT count(*) FROM ledger WHERE amount % 2 = 0', rows: [
+          [500]
+        ] },
+      { setup: 'INSERT INTO ledger VALUES (1,3,1,10,\'old\')', after: 'SELECT id FROM ledger ORDER BY id DESC LIMIT 1', rows: [
+          [1001]
+        ] },
+      { after: 'BEGIN; COMMIT', rows: [] }
+    ] },
     solution: {
       approach: `<p>Batch the inserts in one transaction (and here, one statement). For millions of rows, commit in chunks of 10k–100k to bound transaction size and lock/undo growth.</p>`,
       code: bank(`BEGIN;
@@ -1654,6 +1980,33 @@ UPDATE pages SET body = 'Hello from Ben' WHERE id = 1;    -- Asha's edit gone
 SELECT * FROM pages;`, 'Last writer wins') },
     mcq: { q: 'An optimistic UPDATE … WHERE version = 1 affects 0 rows. What happened?', options: ['Someone saved first; reload, merge and retry', 'The row was locked', 'The database crashed', 'The transaction is still running'], answer: 0, explain: 'Version moved on: a concurrent writer won. Re-read and retry or ask the user to merge.' },
     hints: [`<p>Hint 1: Store a <code>version</code> integer that increases on every successful save.</p>`, `<p>Hint 2: Save with <code>UPDATE … SET body = :new, version = version + 1 WHERE id = :id AND version = :loaded</code>.</p>`, `<p>Hint 3: Check rows affected (<code>changes()</code> in SQLite): 1 = saved, 0 = conflict.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          [1, 'Hello from Asha', 2]
+        ] },
+      { after: 'UPDATE pages SET body = \'Hello from Ben\', version = version + 1 WHERE id = 1 AND version = 1; SELECT changes()', rows: [
+          [0]
+        ] },
+      { after: 'UPDATE pages SET body = \'Hello from Ben\', version = version + 1 WHERE id = 1 AND version = 2; SELECT changes(), version FROM pages', rows: [
+          [1, 3]
+        ] },
+      { after: 'UPDATE pages SET body = \'Hello from Ben\', version = version + 1 WHERE id = 1 AND version = 2; UPDATE pages SET body = \'Hello from Cy\', version = version + 1 WHERE id = 1 AND version = 2; SELECT body, version FROM pages', rows: [
+          ['Hello from Ben', 3]
+        ] },
+      { after: 'UPDATE pages SET body = \'Hello from Ben\', version = version + 1 WHERE id = 1 AND version = 2; UPDATE pages SET body = \'Hello from Cy\', version = version + 1 WHERE id = 1 AND version = 3; SELECT body, version FROM pages', rows: [
+          ['Hello from Cy', 4]
+        ] },
+      { after: 'UPDATE pages SET body = \'x\', version = version + 1 WHERE id = 9 AND version = 1; SELECT changes()', rows: [
+          [0]
+        ] },
+      { after: 'SELECT count(*) FROM pages', rows: [
+          [1]
+        ] },
+      { after: 'INSERT INTO pages VALUES (1, \'dup\', 1)', error: 'UNIQUE|PRIMARY' },
+      { after: 'UPDATE pages SET body = \'bare\' WHERE id = 1; SELECT version FROM pages', rows: [
+          [2]
+        ] }
+    ] },
     solution: {
       approach: `<p>Compare-and-set on a version column. Nothing is locked during think-time; conflicts are detected at save. Same idea as HTTP <code>ETag</code> + <code>If-Match</code> (412 Precondition Failed) and JPA <code>@Version</code>.</p>`,
       code: bank(`CREATE TABLE pages (id INTEGER PRIMARY KEY, body TEXT NOT NULL, version INTEGER NOT NULL);
@@ -1680,6 +2033,45 @@ INSERT INTO signups VALUES (1, 'Dara');                      -- 4 people, 3 seat
 SELECT COUNT(*) FROM signups WHERE event_id = 1;`, 'Count then insert') },
     mcq: { q: 'Why doesn\'t SELECT COUNT(*) … FOR UPDATE fix this in PostgreSQL?', options: ['FOR UPDATE locks existing rows, not rows that are about to be inserted', 'FOR UPDATE is not allowed with WHERE', 'It locks the whole database', 'It makes COUNT return 0'], answer: 0, explain: 'The conflict is about a new row (a phantom). Lock a row that already exists — the event row — or use SERIALIZABLE.' },
     hints: [`<p>Hint 1: Find an existing row both transactions must touch: the <b>event</b> row.</p>`, `<p>Hint 2: Keep a <code>seats_taken</code> counter on <code>events</code> with <code>CHECK (seats_taken &lt;= capacity)</code> and increment it conditionally.</p>`, `<p>Hint 3: In one transaction: <code>UPDATE events SET seats_taken = seats_taken + 1 WHERE id = 1 AND seats_taken &lt; capacity</code>; insert the signup only if 1 row changed.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          ['Asha'],
+          ['Ben'],
+          ['Chen']
+        ] },
+      { after: 'SELECT name, capacity, seats_taken FROM events', rows: [
+          ['SQL Workshop', 3, 3]
+        ] },
+      { setup: 'UPDATE events SET capacity = 2 WHERE id = 1', rows: [
+          ['Asha'],
+          ['Ben']
+        ] },
+      { setup: 'UPDATE events SET capacity = 2 WHERE id = 1', after: 'SELECT name, capacity, seats_taken FROM events', rows: [
+          ['SQL Workshop', 2, 2]
+        ] },
+      { setup: 'UPDATE events SET capacity = 4 WHERE id = 1', rows: [
+          ['Asha'],
+          ['Ben'],
+          ['Chen'],
+          ['Dara']
+        ] },
+      { setup: 'UPDATE events SET capacity = 4 WHERE id = 1', after: 'SELECT name, capacity, seats_taken FROM events', rows: [
+          ['SQL Workshop', 4, 4]
+        ] },
+      { setup: 'DELETE FROM signups; UPDATE events SET seats_taken = 0', rows: [
+          ['Chen'],
+          ['Dara']
+        ] },
+      { setup: 'DELETE FROM signups; UPDATE events SET seats_taken = 2, capacity = 2', after: 'SELECT count(*) FROM signups', rows: [
+          [0]
+        ] },
+      { setup: 'INSERT INTO signups VALUES (1, \'Chen\')', error: 'UNIQUE|PRIMARY' },
+      { setup: 'UPDATE events SET capacity = 3, seats_taken = 0; DELETE FROM signups WHERE person = \'Ben\'', rows: [
+          ['Asha'],
+          ['Chen'],
+          ['Dara']
+        ] }
+    ] },
     solution: {
       approach: `<p><b>Materialize the conflict</b> on the parent row: the conditional UPDATE of <code>events</code> serializes all signups for that event (row lock) and re-checks capacity on the latest version. The signup INSERT happens only if the seat was granted. Alternatives: <code>SELECT … FROM events WHERE id = 1 FOR UPDATE</code> then count, or SERIALIZABLE + retry.</p>`,
       code: bank(`-- Chen
@@ -1716,11 +2108,12 @@ UPDATE accounts SET balance = balance + $amt WHERE id = $to;
 COMMIT;`, 'Direction-dependent order') },
     mcq: { q: 'Which change guarantees no deadlock between any two transfers?', options: ['Lock both rows in ascending id order before updating', 'Use READ UNCOMMITTED', 'Add an index on balance', 'Increase deadlock_timeout'], answer: 0, explain: 'A global lock order makes wait-for cycles impossible.' },
     hints: [`<p>Hint 1: A deadlock needs a cycle; a cycle needs two transactions to lock the same rows in different orders.</p>`, `<p>Hint 2: Make the order independent of direction: always lock <code>min(from, to)</code> first.</p>`, `<p>Hint 3: <code>SELECT id FROM accounts WHERE id IN (:from, :to) ORDER BY id FOR UPDATE</code>, then both UPDATEs; or one UPDATE touching both rows with CASE.</p>`],
+    tests: { skip: 'a deadlock needs two concurrent sessions locking rows in opposite orders, and the PostgreSQL transaction uses application placeholders ($from, $to, $amt); one script cannot show the cycle disappearing' },
     solution: {
       approach: `<p>Impose a <b>global lock order</b>: lock both rows sorted by id at the start of the transaction. Alternatively do the transfer as one statement (one lock acquisition sequence chosen by the engine). Keep a retry wrapper for 40P01 anyway — other code paths may still deadlock.</p>`,
       code: pg(`BEGIN;
 SELECT id FROM accounts WHERE id IN ($from, $to) ORDER BY id FOR UPDATE;   -- always low id first
-UPDATE accounts SET balance = balance - $amt WHERE id = $from AND balance >= $amt;
+UPDATE accounts SET balance = balance - $amt WHERE id = $from AND balance >= $amt;   -- 0 rows = insufficient funds: the app must ROLLBACK here
 UPDATE accounts SET balance = balance + $amt WHERE id = $to;
 COMMIT;`, 'Ordered locking (PostgreSQL)'),
       alt: [bank(`-- Same transfer as ONE statement (atomic, single lock sequence).
@@ -1744,6 +2137,29 @@ UPDATE products SET stock = 7 WHERE sku = 'MUG';  -- computed 10 - 3 from the st
 COMMIT;                                          -- final 7, one order lost`, 'Stale read, blind write') },
     mcq: { q: 'Which InnoDB read sees the latest committed row and locks it?', options: ['SELECT … FOR UPDATE', 'Plain SELECT in REPEATABLE READ', 'SELECT … LOCK IN SHARE MODE on a snapshot', 'SELECT SQL_NO_CACHE'], answer: 0, explain: 'Locking reads are "current reads": newest committed version plus an X lock.' },
     hints: [`<p>Hint 1: In InnoDB RR, plain reads use the snapshot, but writes and locking reads use the <b>current</b> row.</p>`, `<p>Hint 2: Fix A: compute in SQL — <code>SET stock = stock - 3 WHERE stock &gt;= 3</code>.</p>`, `<p>Hint 3: Fix B: <code>SELECT … FOR UPDATE</code> so the read is current and locked until commit.</p>`],
+    tests: { engine: 'postgres', db: 'bank', cmp: 'exact', cases: [
+      { after: 'SELECT sku, stock, version FROM products WHERE sku = \'MUG\'', rows: [
+          ['MUG', 7, 1]
+        ] },
+      { setup: 'UPDATE products SET stock = 3 WHERE sku = \'MUG\'', after: 'SELECT sku, stock, version FROM products WHERE sku = \'MUG\'', rows: [
+          ['MUG', 7, 1]
+        ] },
+      { setup: 'UPDATE products SET stock = 20 WHERE sku = \'MUG\'', after: 'SELECT sku, stock, version FROM products WHERE sku = \'MUG\'', rows: [
+          ['MUG', 7, 1]
+        ] },
+      { after: 'SELECT sku, stock FROM products WHERE sku = \'TSHIRT\'', rows: [
+          ['TSHIRT', 3]
+        ] },
+      { after: 'SELECT count(*) FROM products', rows: [
+          [2]
+        ] },
+      { setup: 'UPDATE products SET version = 4 WHERE sku = \'MUG\'', after: 'SELECT version FROM products WHERE sku = \'MUG\'', rows: [
+          [4]
+        ] },
+      { after: 'SELECT count(*) FROM orders', rows: [
+          [0]
+        ] }
+    ] },
     solution: {
       approach: `<p>Snapshot reads + blind writes = lost update in InnoDB RR. Fix with an <b>atomic conditional UPDATE</b> (preferred) or a <b>locking read</b> (<code>FOR UPDATE</code>) before computing in the app. Optimistic version columns also work.</p>`,
       code: my(`-- Fix A: atomic
@@ -1774,6 +2190,27 @@ INSERT INTO payments (idem_key, amount) VALUES ('k-123', 499);
 SELECT COUNT(*) AS charges FROM payments;   -- 2`, 'Check-then-insert') },
     mcq: { q: 'What makes concurrent duplicates impossible?', options: ['A UNIQUE constraint on idem_key, with insert-or-ignore / ON CONFLICT', 'A SELECT before the INSERT', 'Retrying faster', 'READ COMMITTED'], answer: 0, explain: 'The unique index is checked atomically by the engine; the second insert conflicts.' },
     hints: [`<p>Hint 1: Let a constraint decide — two transactions cannot both insert the same unique key.</p>`, `<p>Hint 2: <code>INSERT OR IGNORE</code> (SQLite) / <code>ON CONFLICT DO NOTHING</code> (Postgres) / <code>INSERT IGNORE</code> (MySQL), then check rows affected.</p>`, `<p>Hint 3: 1 row = first attempt, perform the charge; 0 rows = duplicate, return the stored response.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          ['k-123', 499, 'charged']
+        ] },
+      { after: 'INSERT OR IGNORE INTO payments (idem_key, amount, status) VALUES (\'k-124\', 10, \'charged\'); SELECT idem_key, amount FROM payments ORDER BY id', rows: [
+          ['k-123', 499],
+          ['k-124', 10]
+        ] },
+      { after: 'INSERT OR IGNORE INTO payments (idem_key, amount, status) VALUES (\'k-123\', 999, \'failed\'); SELECT amount, status FROM payments', rows: [
+          [499, 'charged']
+        ] },
+      { after: 'SELECT count(*) FROM payments', rows: [
+          [1]
+        ] },
+      { after: 'INSERT INTO payments (idem_key, amount, status) VALUES (\'k-123\', 499, \'charged\')', error: 'UNIQUE' },
+      { after: 'INSERT INTO payments (idem_key, amount, status) VALUES (NULL, 499, \'charged\')', error: 'NOT NULL' },
+      { after: 'INSERT OR IGNORE INTO payments (idem_key, amount, status) VALUES (\'K-123\', 5, \'x\'); SELECT count(*) FROM payments', rows: [
+          [2]
+        ] },
+      { after: 'BEGIN; COMMIT', rows: [] }
+    ] },
     solution: {
       approach: `<p>Store the idempotency key with a <b>UNIQUE</b> constraint in the same transaction as the business write. The first request wins; retries hit the conflict and read the stored result. Call the external payment provider with the same key too, so retries are idempotent end-to-end.</p>`,
       code: bank(`CREATE TABLE payments (id INTEGER PRIMARY KEY, idem_key TEXT NOT NULL UNIQUE, amount INTEGER NOT NULL, status TEXT NOT NULL);
@@ -1795,12 +2232,35 @@ SELECT idem_key, amount, status FROM payments;`, 'Idempotency key (▶ Run)'),
     brute: { why: `<p>Running DDL with no timeout lets the ALTER sit in the lock queue; Postgres grants locks roughly in queue order, so all later readers wait behind the pending ACCESS EXCLUSIVE request.</p>`, code: pg(`ALTER TABLE orders ADD COLUMN note text;   -- waits forever behind the long query, blocking everyone queued after it`, 'Unbounded DDL') },
     mcq: { q: 'Why do simple SELECTs block in this incident?', options: ['They queue behind the waiting ALTER\'s ACCESS EXCLUSIVE request', 'ALTER already rewrote the table', 'SELECT needs an exclusive lock', 'Autovacuum is running'], answer: 0, explain: 'A pending conflicting request ahead of them in the queue blocks new compatible requests too.' },
     hints: [`<p>Hint 1: Draw the queue: holder (analytics, ACCESS SHARE) → waiter (ALTER, ACCESS EXCLUSIVE) → new readers (ACCESS SHARE, conflict with the waiter).</p>`, `<p>Hint 2: Bound how long the ALTER may wait: <code>SET lock_timeout = '3s'</code>, and retry with backoff.</p>`, `<p>Hint 3: Also: kill/avoid long transactions before deploys, use <code>statement_timeout</code> for analytics, and prefer metadata-only DDL (adding a nullable column is instant in PG 11+).</p>`],
+    tests: { engine: 'postgres', db: 'bank', cmp: 'exact', cases: [
+      { after: 'SELECT column_name, data_type FROM information_schema.columns WHERE table_name = \'orders\' AND column_name = \'note\'', rows: [
+          ['note', 'text']
+        ] },
+      { setup: 'INSERT INTO orders VALUES (1,\'MUG\',2,\'Asha\'),(2,\'TSHIRT\',1,\'Ben\')', after: 'SELECT count(*), count(note) FROM orders', rows: [
+          [2, 0]
+        ] },
+      { setup: 'INSERT INTO orders VALUES (1,\'MUG\',2,\'Asha\')', after: 'SELECT id, sku, qty, customer, note FROM orders', rows: [
+          [1, 'MUG', 2, 'Asha', null]
+        ] },
+      { setup: 'ALTER TABLE orders ADD COLUMN note text', after: 'SELECT count(*) FROM information_schema.columns WHERE table_name = \'orders\' AND column_name = \'note\'', rows: [
+          [1]
+        ] },
+      { after: 'SELECT current_setting(\'lock_timeout\')', rows: [
+          ['0']
+        ] },
+      { after: 'SELECT current_setting(\'statement_timeout\')', rows: [
+          ['15s']
+        ] },
+      { after: 'SELECT count(*) FROM information_schema.columns WHERE table_name = \'orders\'', rows: [
+          [5]
+        ] }
+    ] },
     solution: {
       approach: `<p>Make DDL <b>fail fast</b>: <code>lock_timeout</code> of a few seconds, then retry in a loop. Combine with operational hygiene: cap analytics with <code>statement_timeout</code> or move it to a replica, and use concurrent variants (<code>CREATE INDEX CONCURRENTLY</code>, <code>ADD CONSTRAINT … NOT VALID</code> + <code>VALIDATE</code>).</p>`,
       code: pg(`-- Migration step (retry this block up to N times with backoff if it hits lock_timeout)
 SET lock_timeout = '3s';
 SET statement_timeout = '15s';
-ALTER TABLE orders ADD COLUMN note text;          -- metadata-only, instant once the lock is granted
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS note text;   -- metadata-only, instant once the lock is granted; safe to retry
 RESET lock_timeout;
 
 -- Long-running analytics should not pin locks for minutes:
@@ -1826,6 +2286,7 @@ UPDATE doctors SET on_call = 0 WHERE name = 'Bob';
 SELECT COUNT(*) AS on_call_now FROM doctors WHERE shift_id = 1234 AND on_call = 1;  -- 0`, 'Interleaved check-then-write') },
     mcq: { q: 'Which is NOT a valid fix for this write skew in PostgreSQL?', options: ['Switch from READ COMMITTED to REPEATABLE READ', 'SELECT … FOR UPDATE on all on-call rows of the shift before counting', 'SERIALIZABLE with a retry loop', 'Lock a shifts row (materialize the conflict) before counting'], answer: 0, explain: 'Postgres REPEATABLE READ is snapshot isolation, which allows write skew.' },
     hints: [`<p>Hint 1: The two transactions read the same set but write different rows — what makes them conflict? Nothing yet. You must create a conflict.</p>`, `<p>Hint 2: Option A: lock every row the decision reads (<code>FOR UPDATE</code>), so the second transaction waits and then re-counts. Option B: SERIALIZABLE (SSI) detects the rw-cycle.</p>`, `<p>Hint 3: Option C: add a <code>shifts</code> row and <code>SELECT … FROM shifts WHERE id = :s FOR UPDATE</code> first — one lock per shift serializes all changes to it. Always wrap in a retry loop.</p>`],
+    tests: { skip: 'write skew needs two concurrent sessions (the fixes are FOR UPDATE blocking and SERIALIZABLE aborts between sessions) and the PostgreSQL transactions use application placeholders ($1, $2)' },
     solution: {
       approach: `<p><b>Write skew</b>: an invariant over a <i>set</i> of rows with disjoint writes. Make the transactions conflict: (A) <code>FOR UPDATE</code> on the doctors rows being counted (READ COMMITTED: the waiter re-reads and counts 1; REPEATABLE READ: the waiter gets 40001 and retries); (B) SERIALIZABLE + retry; (C) lock a guard row per shift. In SQLite, the database-wide single writer already serializes the guarded UPDATE.</p>`,
       code: pg(`-- Fix A: lock what you read (READ COMMITTED)
@@ -1866,6 +2327,57 @@ INSERT INTO room_slots VALUES ('Everest', '2026-10-20 11:00 (Chen)', 'Chen');
 SELECT * FROM room_slots;     -- two bookings for 11:00 (keys differ because ranges are free text)`, 'Check-then-insert') },
     mcq: { q: 'Why does a PRIMARY KEY on (room, slot) fix concurrency here?', options: ['Two concurrent inserts of the same slot conflict on the unique index; one fails', 'It locks the whole table', 'It makes reads repeatable', 'It disables MVCC'], answer: 0, explain: 'Uniqueness is enforced atomically by the index, even for rows that did not exist before.' },
     hints: [`<p>Hint 1: Turn "no overlap" into "no two rows with the same key": split time into fixed slots and give each (room, slot) a unique key.</p>`, `<p>Hint 2: Book all slots of a request in one transaction; if any slot insert conflicts, roll back the whole booking.</p>`, `<p>Hint 3: For arbitrary ranges in Postgres: <code>EXCLUDE USING gist (room WITH =, during WITH &amp;&amp;)</code> — the database rejects overlapping ranges atomically (error 23P01).</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          ['Everest', '2026-10-20 10:00', 'Asha'],
+          ['Everest', '2026-10-20 11:00', 'Chen'],
+          ['Everest', '2026-10-20 11:30', 'Chen']
+        ] },
+      { setup: 'DELETE FROM room_slots; ', rows: [
+          ['Everest', '2026-10-20 09:30', 'Ben'],
+          ['Everest', '2026-10-20 10:00', 'Ben'],
+          ['Everest', '2026-10-20 11:00', 'Chen'],
+          ['Everest', '2026-10-20 11:30', 'Chen']
+        ] },
+      { setup: 'INSERT INTO room_slots VALUES (\'Everest\',\'2026-10-20 09:30\',\'Dan\')', rows: [
+          ['Everest', '2026-10-20 09:30', 'Dan'],
+          ['Everest', '2026-10-20 10:00', 'Asha'],
+          ['Everest', '2026-10-20 11:00', 'Chen'],
+          ['Everest', '2026-10-20 11:30', 'Chen']
+        ] },
+      { setup: 'INSERT INTO room_slots VALUES (\'Everest\',\'2026-10-20 11:30\',\'Eve\')', rows: [
+          ['Everest', '2026-10-20 10:00', 'Asha'],
+          ['Everest', '2026-10-20 11:30', 'Eve']
+        ] },
+      { setup: 'INSERT INTO room_slots VALUES (\'K2\',\'2026-10-20 09:30\',\'Zed\')', rows: [
+          ['K2', '2026-10-20 09:30', 'Zed'],
+          ['Everest', '2026-10-20 10:00', 'Asha'],
+          ['Everest', '2026-10-20 11:00', 'Chen'],
+          ['Everest', '2026-10-20 11:30', 'Chen']
+        ] },
+      { setup: 'DELETE FROM room_slots; INSERT INTO room_slots VALUES (\'K2\',\'2026-10-20 10:00\',\'Zed\')', rows: [
+          ['Everest', '2026-10-20 09:30', 'Ben'],
+          ['K2', '2026-10-20 10:00', 'Zed'],
+          ['Everest', '2026-10-20 10:00', 'Ben'],
+          ['Everest', '2026-10-20 11:00', 'Chen'],
+          ['Everest', '2026-10-20 11:30', 'Chen']
+        ], set: true },
+      { setup: 'INSERT INTO room_slots VALUES (\'Everest\',\'2026-10-20 11:00\',\'Fay\')', rows: [
+          ['Everest', '2026-10-20 10:00', 'Asha'],
+          ['Everest', '2026-10-20 11:00', 'Fay']
+        ] },
+      { setup: 'INSERT INTO room_slots VALUES (\'K2\',\'2026-10-20 11:00\',\'Fay\'),(\'K2\',\'2026-10-20 11:30\',\'Gus\')', rows: [
+          ['Everest', '2026-10-20 10:00', 'Asha'],
+          ['K2', '2026-10-20 11:00', 'Fay'],
+          ['Everest', '2026-10-20 11:00', 'Chen'],
+          ['K2', '2026-10-20 11:30', 'Gus'],
+          ['Everest', '2026-10-20 11:30', 'Chen']
+        ] },
+      { after: 'SELECT count(*) FROM room_slots', rows: [
+          [3]
+        ] },
+      { after: 'BEGIN; COMMIT', rows: [] }
+    ] },
     solution: {
       approach: `<p><b>Materialize the conflict</b> as unique slot rows, or let a <b>constraint</b> enforce non-overlap. Both move the invariant into the storage engine, where concurrent inserts are checked atomically. In app code: try the insert, catch the unique/exclusion violation, show "room taken".</p>`,
       code: bank(`-- (a) Slot table: book all slots or none (one transaction, guard on any taken slot).
@@ -1913,10 +2425,40 @@ SELECT DISTINCT a.txn AS src, b.txn AS dst FROM sched a JOIN sched b
 ON a.item = b.item AND a.step < b.step AND a.txn <> b.txn AND a.op = 'W' AND b.op = 'W';`, 'Write-write only (incomplete)') },
     mcq: { q: 'Which pair is NOT a conflict?', options: ['R1(A) and R2(A)', 'R1(A) and W2(A)', 'W1(A) and R2(A)', 'W1(A) and W2(A)'], answer: 0, explain: 'Two reads never conflict; swapping them changes nothing.' },
     hints: [`<p>Hint 1: Self-join the schedule: same item, different txn, earlier step first, at least one W → edge (earlier txn → later txn).</p>`, `<p>Hint 2: A schedule is conflict-serializable iff the precedence graph is acyclic.</p>`, `<p>Hint 3: Reuse the recursive-CTE cycle walk from the deadlock detector over these edges; if any walk returns to its start → not serializable.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          ['T1->T2, T2->T1', 'NOT conflict-serializable (cycle)']
+        ] },
+      { after: 'DELETE FROM sched; INSERT INTO sched VALUES (1,\'T1\',\'R\',\'A\'),(2,\'T1\',\'W\',\'A\'),(3,\'T2\',\'R\',\'A\'),(4,\'T2\',\'W\',\'A\'); SELECT * FROM schedule_check', rows: [
+          ['T1->T2', 'conflict-serializable']
+        ] },
+      { after: 'DELETE FROM sched; INSERT INTO sched VALUES (1,\'T1\',\'R\',\'A\'),(2,\'T2\',\'R\',\'A\'); SELECT * FROM schedule_check', rows: [
+          [null, 'conflict-serializable']
+        ] },
+      { after: 'DELETE FROM sched; INSERT INTO sched VALUES (1,\'T1\',\'W\',\'A\'),(2,\'T2\',\'W\',\'B\'),(3,\'T3\',\'W\',\'C\'); SELECT * FROM schedule_check', rows: [
+          [null, 'conflict-serializable']
+        ] },
+      { after: 'DELETE FROM sched; INSERT INTO sched VALUES (1,\'T1\',\'R\',\'A\'),(2,\'T2\',\'W\',\'A\'),(3,\'T2\',\'R\',\'B\'),(4,\'T3\',\'W\',\'B\'),(5,\'T3\',\'R\',\'C\'),(6,\'T1\',\'W\',\'C\'); SELECT * FROM schedule_check', rows: [
+          ['T1->T2, T2->T3, T3->T1', 'NOT conflict-serializable (cycle)']
+        ] },
+      { after: 'DELETE FROM sched; INSERT INTO sched VALUES (1,\'T1\',\'W\',\'A\'),(2,\'T2\',\'R\',\'A\'),(3,\'T2\',\'W\',\'B\'),(4,\'T3\',\'R\',\'B\'); SELECT * FROM schedule_check', rows: [
+          ['T1->T2, T2->T3', 'conflict-serializable']
+        ] },
+      { after: 'DELETE FROM sched; INSERT INTO sched VALUES (1,\'T1\',\'W\',\'A\'),(2,\'T2\',\'W\',\'A\'),(3,\'T1\',\'W\',\'B\'),(4,\'T2\',\'W\',\'B\'); SELECT * FROM schedule_check', rows: [
+          ['T1->T2', 'conflict-serializable']
+        ] },
+      { after: 'DELETE FROM sched; INSERT INTO sched VALUES (1,\'T1\',\'R\',\'A\'),(2,\'T2\',\'W\',\'A\'),(3,\'T1\',\'R\',\'B\'),(4,\'T2\',\'W\',\'B\'),(5,\'T1\',\'W\',\'C\'); SELECT * FROM schedule_check', rows: [
+          ['T1->T2', 'conflict-serializable']
+        ] },
+      { after: 'SELECT count(*) FROM sched', rows: [
+          [6]
+        ] }
+    ] },
     solution: {
       approach: `<p>Build conflict edges with a self-join, then search for cycles with a recursive CTE. No cycle → serializable, and a topological order of the graph is an equivalent serial order.</p>`,
       code: bank(`CREATE TEMP TABLE sched (step INTEGER PRIMARY KEY, txn TEXT, op TEXT CHECK (op IN ('R','W')), item TEXT);
 INSERT INTO sched VALUES (1,'T1','R','A'),(2,'T2','R','A'),(3,'T1','W','A'),(4,'T2','W','A'),(5,'T1','R','B'),(6,'T2','W','B');
+CREATE TEMP VIEW schedule_check AS
 WITH RECURSIVE edges AS (
   SELECT DISTINCT a.txn AS src, b.txn AS dst
   FROM sched a JOIN sched b
@@ -1931,9 +2473,12 @@ walk(start, cur, path, depth) AS (
   WHERE w.cur <> w.start AND w.depth < 20
     AND (e.dst = w.start OR instr(w.path, '/' || e.dst || '/') = 0)
 )
-SELECT (SELECT group_concat(src || '->' || dst, ', ') FROM edges) AS precedence_edges,
+SELECT (SELECT group_concat(src || '->' || dst, ', ') FROM (SELECT src, dst FROM edges ORDER BY src, dst)) AS precedence_edges,
        CASE WHEN EXISTS (SELECT 1 FROM walk WHERE cur = start)
-            THEN 'NOT conflict-serializable (cycle)' ELSE 'conflict-serializable' END AS verdict;`, 'Precedence-graph test (▶ Run)'),
+            THEN 'NOT conflict-serializable (cycle)' ELSE 'conflict-serializable' END AS verdict;
+
+-- Edit sched and run this again to test another schedule
+SELECT * FROM schedule_check;`, 'Precedence-graph test (▶ Run)'),
       complexity: `<p>Edges: O(n²) pairs per item in the self-join; cycle search ~O(V·E) for small graphs. Real schedulers never build this graph — 2PL/SSI guarantee acyclicity by construction.</p>`,
       followUps: ['Change W2(A) to happen after R1(B) only — is it serializable now?', 'What is view-serializability and why is testing it NP-complete?']
     }
@@ -1948,6 +2493,72 @@ SELECT (SELECT group_concat(src || '->' || dst, ', ') FROM edges) AS precedence_
 SELECT ctid, owner, CASE WHEN xmax <> 0 THEN 'dead?' ELSE 'live' END AS naive FROM tuples ORDER BY ctid;`, 'Naive xmax check') },
     mcq: { q: 'What usually holds back the xmin horizon in production?', options: ['A long-running or idle-in-transaction session (or a replica with hot_standby_feedback)', 'Too many indexes', 'A large shared_buffers', 'Using UUID primary keys'], answer: 0, explain: 'Any open snapshot keeps every version it might need, so VACUUM cannot remove them.' },
     hints: [`<p>Hint 1: Compute, per snapshot, the set of xids it treats as committed (as in the visibility problem).</p>`, `<p>Hint 2: A tuple is visible to snapshot S if xmin ∈ vis(S) and xmax ∉ vis(S). Pinned = deleter committed AND visible to some S.</p>`, `<p>Hint 3: Removable = creator aborted, or (deleter committed AND visible to no snapshot). Use CASE with EXISTS subqueries and group_concat of the pinning snapshot names.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          ['(0,1)', 'Asha', 500, 100, 105, 'removable'],
+          ['(0,2)', 'Ben', 300, 100, 107, 'live'],
+          ['(0,3)', 'Asha', 400, 105, 110, 'live'],
+          ['(0,4)', 'Chen', 1000, 108, 0, 'live'],
+          ['(0,5)', 'Asha', 350, 110, 0, 'live'],
+          ['(0,6)', 'Dara', 70, 100, 108, 'pinned by old_report']
+        ] },
+      { setup: 'UPDATE txns SET status = \'aborted\' WHERE xid = 100', rows: [
+          ['(0,1)', 'Asha', 500, 100, 105, 'removable (creator aborted)'],
+          ['(0,2)', 'Ben', 300, 100, 107, 'removable (creator aborted)'],
+          ['(0,3)', 'Asha', 400, 105, 110, 'live'],
+          ['(0,4)', 'Chen', 1000, 108, 0, 'live'],
+          ['(0,5)', 'Asha', 350, 110, 0, 'live'],
+          ['(0,6)', 'Dara', 70, 100, 108, 'removable (creator aborted)']
+        ] },
+      { setup: 'INSERT INTO snapshots VALUES (\'ancient\', 90, 101)', rows: [
+          ['(0,1)', 'Asha', 500, 100, 105, 'pinned by ancient'],
+          ['(0,2)', 'Ben', 300, 100, 107, 'live'],
+          ['(0,3)', 'Asha', 400, 105, 110, 'live'],
+          ['(0,4)', 'Chen', 1000, 108, 0, 'live'],
+          ['(0,5)', 'Asha', 350, 110, 0, 'live'],
+          ['(0,6)', 'Dara', 70, 100, 108, 'pinned by ancient,old_report']
+        ] },
+      { setup: 'UPDATE txns SET status = \'aborted\' WHERE xid = 108', rows: [
+          ['(0,1)', 'Asha', 500, 100, 105, 'removable'],
+          ['(0,2)', 'Ben', 300, 100, 107, 'live'],
+          ['(0,3)', 'Asha', 400, 105, 110, 'live'],
+          ['(0,4)', 'Chen', 1000, 108, 0, 'removable (creator aborted)'],
+          ['(0,5)', 'Asha', 350, 110, 0, 'live'],
+          ['(0,6)', 'Dara', 70, 100, 108, 'live']
+        ] },
+      { setup: 'UPDATE txns SET status = \'committed\' WHERE xid = 110', rows: [
+          ['(0,1)', 'Asha', 500, 100, 105, 'removable'],
+          ['(0,2)', 'Ben', 300, 100, 107, 'live'],
+          ['(0,3)', 'Asha', 400, 105, 110, 'pinned by now,old_report'],
+          ['(0,4)', 'Chen', 1000, 108, 0, 'live'],
+          ['(0,5)', 'Asha', 350, 110, 0, 'live'],
+          ['(0,6)', 'Dara', 70, 100, 108, 'pinned by old_report']
+        ] },
+      { setup: 'DELETE FROM snapshot_xip; DELETE FROM snapshots', rows: [
+          ['(0,1)', 'Asha', 500, 100, 105, 'removable'],
+          ['(0,2)', 'Ben', 300, 100, 107, 'live'],
+          ['(0,3)', 'Asha', 400, 105, 110, 'live'],
+          ['(0,4)', 'Chen', 1000, 108, 0, 'live'],
+          ['(0,5)', 'Asha', 350, 110, 0, 'live'],
+          ['(0,6)', 'Dara', 70, 100, 108, 'removable']
+        ] },
+      { setup: 'UPDATE txns SET status = \'committed\' WHERE xid = 107', rows: [
+          ['(0,1)', 'Asha', 500, 100, 105, 'removable'],
+          ['(0,2)', 'Ben', 300, 100, 107, 'pinned by old_report'],
+          ['(0,3)', 'Asha', 400, 105, 110, 'live'],
+          ['(0,4)', 'Chen', 1000, 108, 0, 'live'],
+          ['(0,5)', 'Asha', 350, 110, 0, 'live'],
+          ['(0,6)', 'Dara', 70, 100, 108, 'pinned by old_report']
+        ] },
+      { setup: 'UPDATE tuples SET xmax = 0 WHERE ctid IN (\'(0,1)\', \'(0,2)\')', rows: [
+          ['(0,1)', 'Asha', 500, 100, 0, 'live'],
+          ['(0,2)', 'Ben', 300, 100, 0, 'live'],
+          ['(0,3)', 'Asha', 400, 105, 110, 'live'],
+          ['(0,4)', 'Chen', 1000, 108, 0, 'live'],
+          ['(0,5)', 'Asha', 350, 110, 0, 'live'],
+          ['(0,6)', 'Dara', 70, 100, 108, 'pinned by old_report']
+        ] }
+    ] },
     solution: {
       approach: `<p>Reuse the visibility rule to see which snapshots still need each tuple. A dead tuple (committed deleter) is removable only when no snapshot can see it; otherwise it is pinned by the listed snapshots — the exact reason VACUUM reports "dead row versions cannot be removed yet".</p>`,
       code: mv(`INSERT INTO tuples VALUES ('(0,6)', 4, 'Dara', 70, 100, 108);
@@ -1966,7 +2577,7 @@ SELECT tp.ctid, tp.owner, tp.balance, tp.xmin, tp.xmax,
   CASE
     WHEN cr.status = 'aborted' THEN 'removable (creator aborted)'
     WHEN dl.status = 'committed' AND NOT EXISTS (SELECT 1 FROM seen WHERE seen.ctid = tp.ctid) THEN 'removable'
-    WHEN dl.status = 'committed' THEN 'pinned by ' || (SELECT group_concat(name) FROM seen WHERE seen.ctid = tp.ctid)
+    WHEN dl.status = 'committed' THEN 'pinned by ' || (SELECT group_concat(name) FROM (SELECT name FROM seen WHERE seen.ctid = tp.ctid ORDER BY name))
     ELSE 'live'
   END AS vacuum_status
 FROM tuples tp

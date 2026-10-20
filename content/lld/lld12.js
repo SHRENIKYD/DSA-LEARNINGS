@@ -11,7 +11,283 @@
   }
   function F(narr, parts) { return { narr: narr, parts: parts }; }
   function TXT(html, label) { var p = { type: 'text', html: html }; if (label) p.label = label; return p; }
-  function CODE(label, code, hl) { return { type: 'code', label: label, lang: 'java', code: code, hl: hl || {} }; }
+  function CODE(label, code, hl, alt) { var p = { type: 'code', label: label, lang: 'java', code: code, hl: hl || {} }; if (!alt && typeof ALT_BY_CODE !== 'undefined') alt = ALT_BY_CODE[code]; if (alt) p.alt = alt; return p; }
+  var GETLOGGER_PY = [
+    "def get_logger(self, name):",
+    "    dot = name.rfind(\".\")",
+    "    parent = self.root if dot < 0 else self.get_logger(name[:dot])",
+    "    if name not in self.loggers: self.loggers[name] = Logger(name, parent)",
+    "    return self.loggers[name]"
+  ].join('\n');
+  var GETLOGGER_TS = [
+    "getLogger(name: string): Logger {",
+    "  const dot = name.lastIndexOf(\".\");",
+    "  const parent = dot < 0 ? this.root : this.getLogger(name.slice(0, dot));",
+    "  if (!this.loggers.has(name)) this.loggers.set(name, new Logger(name, parent));",
+    "  return this.loggers.get(name)!;",
+    "}"
+  ].join('\n');
+  var GETLOGGER_CPP = [
+    "Logger& getLogger(const string& name) {",
+    "  size_t dot = name.rfind('.');",
+    "  Logger* parent = dot == string::npos ? &root : &getLogger(name.substr(0, dot));",
+    "  auto it = loggers.try_emplace(name, name, parent).first;",
+    "  return it->second; }"
+  ].join('\n');
+  var GETLOGGER_ALT = { python: { code: GETLOGGER_PY, map: {} }, js: { lang: 'ts', code: GETLOGGER_TS, map: {} }, cpp: { code: GETLOGGER_CPP, map: {} } };
+  var LOG_PY = [
+    "def log(self, lv, p, *a):",
+    "    if not self.is_enabled(lv): return   # cheap exit",
+    "    self.dispatch(LogMessage(lv, self.name, fill(p, a), now(), current_thread(), MDC.snapshot()))"
+  ].join('\n');
+  var LOG_TS = [
+    "log(lv: LogLevel, p: string, ...a: unknown[]): void {",
+    "  if (!this.isEnabled(lv)) return;   // cheap exit",
+    "  this.dispatch(new LogMessage(lv, this.name, fill(p, a), now(), threadId(), MDC.snapshot()));",
+    "}"
+  ].join('\n');
+  var LOG_CPP = [
+    "template <class... A> void log(LogLevel lv, const string& p, A... a) {",
+    "  if (!isEnabled(lv)) return;   // cheap exit",
+    "  dispatch(LogMessage(lv, name, fill(p, a...), now(), this_thread::get_id(), MDC::snapshot()));",
+    "}"
+  ].join('\n');
+  var LOG_ALT = { python: { code: LOG_PY, map: {} }, js: { lang: 'ts', code: LOG_TS, map: {} }, cpp: { code: LOG_CPP, map: {} } };
+  var HANDLE_PY = [
+    "def handle(self, m):",
+    "    if m.level >= self.min_level: self.write(m)",
+    "    if self.next is not None: self.next.handle(m)"
+  ].join('\n');
+  var HANDLE_TS = [
+    "handle(m: LogMessage): void {",
+    "  if (m.level >= this.minLevel) this.write(m);",
+    "  if (this.next !== null) this.next.handle(m);",
+    "}"
+  ].join('\n');
+  var HANDLE_CPP = [
+    "void handle(const LogMessage& m) {",
+    "  if (m.level >= minLevel) write(m);",
+    "  if (next != nullptr) next->handle(m);",
+    "}"
+  ].join('\n');
+  var HANDLE_ALT = { python: { code: HANDLE_PY, map: {} }, js: { lang: 'ts', code: HANDLE_TS, map: {} }, cpp: { code: HANDLE_CPP, map: {} } };
+  var CHOOSE_PY = [
+    "def choose(self, key, n):",
+    "    if key is None: return next(self.rr) % n",
+    "    return stable_hash(key) % n"
+  ].join('\n');
+  var CHOOSE_TS = [
+    "choose(key: string | null, n: number): number {",
+    "  if (key === null) return mod(this.rr++, n);",
+    "  return mod(stableHash(key), n);",
+    "}"
+  ].join('\n');
+  var CHOOSE_CPP = [
+    "int choose(const optional<string>& key, int n) {",
+    "  if (!key) return floorMod(rr++, n);",
+    "  return floorMod(hash<string>{}(*key), n);",
+    "}"
+  ].join('\n');
+  var CHOOSE_ALT = { python: { code: CHOOSE_PY, map: {} }, js: { lang: 'ts', code: CHOOSE_TS, map: {} }, cpp: { code: CHOOSE_CPP, map: {} } };
+  var APPEND_PY = [
+    "def append(self, key, value):",
+    "    with self.lock:",
+    "        offset = self.start_offset + len(self.log)",
+    "        self.log.append(StoredMessage(offset, key, value, now()))",
+    "        return offset"
+  ].join('\n');
+  var APPEND_TS = [
+    "append(key: string | null, value: string): number {   // runs to completion: no other caller interleaves",
+    "  const offset = this.startOffset + this.log.length;",
+    "  this.log.push(new StoredMessage(offset, key, value, now()));",
+    "  return offset;",
+    "}"
+  ].join('\n');
+  var APPEND_CPP = [
+    "long long append(const optional<string>& key, const string& value) {",
+    "  lock_guard<mutex> g(m);",
+    "  long long offset = startOffset + log.size();",
+    "  log.push_back(StoredMessage{offset, key, value, now()});",
+    "  return offset;",
+    "}"
+  ].join('\n');
+  var APPEND_ALT = { python: { code: APPEND_PY, map: {"2":3,"3":4} }, js: { lang: 'ts', code: APPEND_TS, map: {} }, cpp: { code: APPEND_CPP, map: {"2":3,"3":4} } };
+  var BATCH_PY = [
+    "batch = p.read(position, max)",
+    "if batch:",
+    "    position = last_offset + 1   # local only!"
+  ].join('\n');
+  var BATCH_TS = [
+    "const batch = p.read(position, max);",
+    "if (batch.length > 0)",
+    "  position = lastOffset + 1;   // local only!"
+  ].join('\n');
+  var BATCH_CPP = [
+    "auto batch = p.read(position, max);",
+    "if (!batch.empty())",
+    "  position = lastOffset + 1;   // local only!"
+  ].join('\n');
+  var BATCH_ALT = { python: { code: BATCH_PY, map: {} }, js: { lang: 'ts', code: BATCH_TS, map: {} }, cpp: { code: BATCH_CPP, map: {} } };
+  var BISHOP_PY = [
+    "class Bishop(Piece):",
+    "    def pseudo_legal_moves(self, b, f):",
+    "        return self.slide(b, f, DIAGONAL)"
+  ].join('\n');
+  var BISHOP_TS = [
+    "class Bishop extends Piece {",
+    "  pseudoLegalMoves(b: Board, f: Position): Move[] {",
+    "    return this.slide(b, f, DIAGONAL);",
+    "  }",
+    "}"
+  ].join('\n');
+  var BISHOP_CPP = [
+    "struct Bishop : Piece {",
+    "  vector<Move> pseudoLegalMoves(const Board& b, Position f) const override {",
+    "    return slide(b, f, DIAGONAL);",
+    "  }",
+    "};"
+  ].join('\n');
+  var BISHOP_ALT = { python: { code: BISHOP_PY, map: {} }, js: { lang: 'ts', code: BISHOP_TS, map: {} }, cpp: { code: BISHOP_CPP, map: {} } };
+  var LEGAL_PY = [
+    "for m in piece.pseudo_legal_moves(b, frm):",
+    "    nxt = b.copy()",
+    "    nxt.apply(m)",
+    "    if not nxt.is_attacked(nxt.king_of(side), enemy): legal.append(m)"
+  ].join('\n');
+  var LEGAL_TS = [
+    "for (const m of piece.pseudoLegalMoves(b, from)) {",
+    "  const next = b.copy();",
+    "  next.apply(m);",
+    "  if (!next.isAttacked(next.kingOf(side), enemy)) legal.push(m);",
+    "}"
+  ].join('\n');
+  var LEGAL_CPP = [
+    "for (const Move& m : piece->pseudoLegalMoves(b, from)) {",
+    "  Board next = b;",
+    "  next.apply(m);",
+    "  if (!next.isAttacked(next.kingOf(side), enemy)) legal.push_back(m);",
+    "}"
+  ].join('\n');
+  var LEGAL_ALT = { python: { code: LEGAL_PY, map: {} }, js: { lang: 'ts', code: LEGAL_TS, map: {} }, cpp: { code: LEGAL_CPP, map: {} } };
+  var SLIDE_PY = [
+    "for p in ray(frm, d):          # frm + d, frm + 2d, ... while on the board",
+    "    if empty(p): add(p); continue",
+    "    if enemy(p): add(p)         # capture",
+    "    break                       # blocked"
+  ].join('\n');
+  var SLIDE_TS = [
+    "for (const p of ray(from, d)) {   // from + d, from + 2d, ... while on the board",
+    "  if (empty(p)) { add(p); continue; }",
+    "  if (enemy(p)) add(p);   // capture",
+    "  break;                  // blocked",
+    "}"
+  ].join('\n');
+  var SLIDE_CPP = [
+    "for (Position p = from + d; p.onBoard(); p = p + d) {",
+    "  if (empty(p)) { add(p); continue; }",
+    "  if (enemy(p)) add(p);   // capture",
+    "  break;                  // blocked",
+    "}"
+  ].join('\n');
+  var SLIDE_ALT = { python: { code: SLIDE_PY, map: {} }, js: { lang: 'ts', code: SLIDE_TS, map: {} }, cpp: { code: SLIDE_CPP, map: {} } };
+  var STAGE2_PY = [
+    "nxt = board.copy()",
+    "nxt.apply(move)",
+    "if nxt.is_attacked(nxt.king_of(side), enemy):",
+    "    reject(move)   # leaves own king in check"
+  ].join('\n');
+  var STAGE2_TS = [
+    "const next = board.copy();",
+    "next.apply(move);",
+    "if (next.isAttacked(next.kingOf(side), enemy))",
+    "  reject(move);   // leaves own king in check"
+  ].join('\n');
+  var STAGE2_CPP = [
+    "Board next = board;",
+    "next.apply(move);",
+    "if (next.isAttacked(next.kingOf(side), enemy))",
+    "  reject(move);   // leaves own king in check"
+  ].join('\n');
+  var STAGE2_ALT = { python: { code: STAGE2_PY, map: {} }, js: { lang: 'ts', code: STAGE2_TS, map: {} }, cpp: { code: STAGE2_CPP, map: {} } };
+  var JUMP_PY = [
+    "for dr, dc in deltas:",
+    "    p = frm.plus(dr, dc)",
+    "    if p.on_board() and (empty(p) or enemy(p)): add(p)"
+  ].join('\n');
+  var JUMP_TS = [
+    "for (const [dr, dc] of deltas) {",
+    "  const p = from.plus(dr, dc);",
+    "  if (p.onBoard() && (empty(p) || enemy(p))) add(p);",
+    "}"
+  ].join('\n');
+  var JUMP_CPP = [
+    "for (auto [dr, dc] : deltas) {",
+    "  Position p = from.plus(dr, dc);",
+    "  if (p.onBoard() && (empty(p) || enemy(p))) add(p);",
+    "}"
+  ].join('\n');
+  var JUMP_ALT = { python: { code: JUMP_PY, map: {} }, js: { lang: 'ts', code: JUMP_TS, map: {} }, cpp: { code: JUMP_CPP, map: {} } };
+  var UNDO_PY = [
+    "def _record_undo(self, key):",
+    "    if self.tx_stack:",
+    "        self.tx_stack[-1].setdefault(key,",
+    "            self.data.get(key))   # None = \"key was absent\""
+  ].join('\n');
+  var UNDO_TS = [
+    "private recordUndo(key: string): void {",
+    "  if (this.txStack.length > 0)",
+    "    setIfAbsent(this.txStack[this.txStack.length - 1], key,",
+    "        this.data.get(key) ?? null);   // null = \"key was absent\"",
+    "}"
+  ].join('\n');
+  var UNDO_CPP = [
+    "void recordUndo(const string& key) {",
+    "  if (!txStack.empty())",
+    "    txStack.back().try_emplace(key,",
+    "        data.count(key) ? optional<Entry>(data.at(key)) : nullopt);",
+    "}"
+  ].join('\n');
+  var UNDO_ALT = { python: { code: UNDO_PY, map: {} }, js: { lang: 'ts', code: UNDO_TS, map: {} }, cpp: { code: UNDO_CPP, map: {} } };
+  var WRITE_PY = [
+    "def _write_raw(self, key, e):",
+    "    old = self.data.get(key)",
+    "    if e is None: self.data.pop(key, None)",
+    "    else: self.data[key] = e",
+    "    if old is not None: self._decrement(old.value)",
+    "    if e is not None: self._increment(e.value)"
+  ].join('\n');
+  var WRITE_TS = [
+    "private writeRaw(key: string, e: Entry | null): void {",
+    "  const old = this.data.get(key);",
+    "  if (e === null) this.data.delete(key); else this.data.set(key, e);",
+    "  if (old !== undefined) this.decrement(old.value);",
+    "  if (e !== null) this.increment(e.value);",
+    "}"
+  ].join('\n');
+  var WRITE_CPP = [
+    "void writeRaw(const string& key, const optional<Entry>& e) {",
+    "  auto it = data.find(key);",
+    "  optional<Entry> old = it == data.end() ? nullopt : optional<Entry>(it->second);",
+    "  if (e) data[key] = *e; else data.erase(key);",
+    "  if (old) decrement(old->value);",
+    "  if (e) increment(e->value);",
+    "}"
+  ].join('\n');
+  var WRITE_ALT = { python: { code: WRITE_PY, map: {"2":3,"3":5,"4":6} }, js: { lang: 'ts', code: WRITE_TS, map: {"2":3,"3":4,"4":5} }, cpp: { code: WRITE_CPP, map: {"2":4,"3":5,"4":6} } };
+  var ALT_BY_CODE = {};
+  ALT_BY_CODE["Logger getLogger(String name) {\n  int dot = name.lastIndexOf('.');\n  Logger parent = dot < 0 ? root : getLogger(name.substring(0, dot));\n  return loggers.computeIfAbsent(name, n -> new Logger(n, parent));\n}"] = GETLOGGER_ALT;
+  ALT_BY_CODE["void log(LogLevel lv, String p, Object... a) {\n  if (!isEnabled(lv)) return;   // cheap exit\n  dispatch(new LogMessage(lv, name, fill(p, a), now, thread, MDC.snapshot()));\n}"] = LOG_ALT;
+  ALT_BY_CODE["final void handle(LogMessage m) {\n  if (m.level().atLeast(minLevel)) write(m);\n  if (next != null) next.handle(m);\n}"] = HANDLE_ALT;
+  ALT_BY_CODE["int choose(String key, int n) {\n  if (key == null) return floorMod(rr.getAndIncrement(), n);\n  return floorMod(key.hashCode(), n);\n}"] = CHOOSE_ALT;
+  ALT_BY_CODE["synchronized long append(String key, String value) {\n  long offset = startOffset + log.size();\n  log.add(new StoredMessage(offset, key, value, now));\n  return offset;\n}"] = APPEND_ALT;
+  ALT_BY_CODE["List<StoredMessage> batch = p.read(position, max);\nif (!batch.isEmpty())\n  position = lastOffset + 1;   // local only!"] = BATCH_ALT;
+  ALT_BY_CODE["class Bishop extends Piece {\n  List<Move> pseudoLegalMoves(Board b, Position f) {\n    return slide(b, f, DIAGONAL);\n  }\n}"] = BISHOP_ALT;
+  ALT_BY_CODE["for (Move m : piece.pseudoLegalMoves(b, from)) {\n  Board next = b.copy();\n  next.apply(m);\n  if (!next.isAttacked(next.kingOf(side), enemy)) legal.add(m);\n}"] = LEGAL_ALT;
+  ALT_BY_CODE["for (p = from + d; p.onBoard(); p = p + d) {\n  if (empty(p)) { add(p); continue; }\n  if (enemy(p)) add(p);   // capture\n  break;                  // blocked\n}"] = SLIDE_ALT;
+  ALT_BY_CODE["Board next = board.copy();\nnext.apply(move);\nif (next.isAttacked(next.kingOf(side), enemy))\n  reject(move);   // leaves own king in check"] = STAGE2_ALT;
+  ALT_BY_CODE["for (int[] d : deltas) {\n  Position p = from.plus(d[0], d[1]);\n  if (p.onBoard() && (empty(p) || enemy(p))) add(p);\n}"] = JUMP_ALT;
+  ALT_BY_CODE["private void recordUndo(String key) {\n  if (!txStack.isEmpty())\n    txStack.peek().putIfAbsent(key,\n        Optional.ofNullable(data.get(key)));\n}"] = UNDO_ALT;
+  ALT_BY_CODE["private void writeRaw(String key, Entry e) {\n  Entry old = e == null ? data.remove(key) : data.put(key, e);\n  if (old != null) decrement(old.value());\n  if (e != null) increment(e.value());\n}"] = WRITE_ALT;
   function VARS(label, vals, hl) { return { type: 'vars', label: label, vals: vals, hl: hl || {} }; }
   function MAP(label, entries, hl) { return { type: 'map', label: label, entries: entries.map(function (e) { return [String(e[0]), String(e[1])]; }), hl: hl || {} }; }
   function STACK(label, items, hl) { return { type: 'stack', label: label, items: items.slice(), hl: hl || {} }; }
@@ -1670,7 +1946,7 @@ ${H.table(['Call', 'Console', 'File', 'Alert'], [['debug("a")', H.c('m', 'droppe
 <p>DEBUG never reaches the chain because the logger itself is INFO.</p>`,
       brute: {
         why: `<p>The naive version is one static method full of <code>if</code>s on level strings and boolean flags. Every new sink or rule edits that same method (Open/Closed broken), string comparison of levels is fragile ("Info" vs "INFO"), there is one global level, and the message string is built before we know if it is needed.</p>`,
-        code: String.raw`
+        code: { lang: 'java', code: String.raw`
 class NaiveLogger {
     static String level = "INFO";
     static boolean toConsole = true, toFile = true, toAlert = true;
@@ -1691,7 +1967,7 @@ class NaiveLogger {
         log("DEBUG", "a"); log("INFO", "b"); log("ERROR", "c");
         System.out.println("file=" + file + " alerts=" + alerts);
     }
-}`
+}`, alt: [{ lang: 'python', code: "# fragile string ladder: every new level = edit log()\nlevel = \"INFO\"\nto_console = to_file = to_alert = True\nfile, alerts = [], []\n\ndef log(lvl, msg):\n    if lvl == \"DEBUG\" and level != \"DEBUG\": return\n    if lvl == \"INFO\" and level in (\"WARN\", \"ERROR\"): return\n    if lvl == \"WARN\" and level == \"ERROR\": return\n    line = f\"[{lvl}] {msg}\"\n    if to_console: print(line)\n    if to_file and lvl != \"DEBUG\": file.append(line)\n    if to_alert and lvl == \"ERROR\": alerts.append(line)   # new sink? edit this function again\n\nif __name__ == \"__main__\":\n    log(\"DEBUG\", \"a\"); log(\"INFO\", \"b\"); log(\"ERROR\", \"c\")\n    print(f\"file={file} alerts={alerts}\")\n" }, { lang: 'ts', code: "class NaiveLogger {\n  static level = \"INFO\";\n  static toConsole = true; static toFile = true; static toAlert = true;\n  static file: string[] = []; static alerts: string[] = [];\n\n  static log(lvl: string, msg: string): void {\n    // fragile string ladder: every new level = edit here\n    if (lvl === \"DEBUG\" && NaiveLogger.level !== \"DEBUG\") return;\n    if (lvl === \"INFO\" && (NaiveLogger.level === \"WARN\" || NaiveLogger.level === \"ERROR\")) return;\n    if (lvl === \"WARN\" && NaiveLogger.level === \"ERROR\") return;\n    const line = \"[\" + lvl + \"] \" + msg;\n    if (NaiveLogger.toConsole) console.log(line);\n    if (NaiveLogger.toFile && lvl !== \"DEBUG\") NaiveLogger.file.push(line);\n    if (NaiveLogger.toAlert && lvl === \"ERROR\") NaiveLogger.alerts.push(line);   // new sink? edit this method again\n  }\n}\n\nNaiveLogger.log(\"DEBUG\", \"a\"); NaiveLogger.log(\"INFO\", \"b\"); NaiveLogger.log(\"ERROR\", \"c\");\nconsole.log(\"file=\" + JSON.stringify(NaiveLogger.file) + \" alerts=\" + JSON.stringify(NaiveLogger.alerts));\n" }, { lang: 'cpp', code: "struct NaiveLogger {\n    static inline string level = \"INFO\";\n    static inline bool toConsole = true, toFile = true, toAlert = true;\n    static inline vector<string> file, alerts;\n\n    static void log(const string& lvl, const string& msg) {\n        // fragile string ladder: every new level = edit here\n        if (lvl == \"DEBUG\" && level != \"DEBUG\") return;\n        if (lvl == \"INFO\" && (level == \"WARN\" || level == \"ERROR\")) return;\n        if (lvl == \"WARN\" && level == \"ERROR\") return;\n        string line = \"[\" + lvl + \"] \" + msg;\n        if (toConsole) cout << line << endl;\n        if (toFile && lvl != \"DEBUG\") file.push_back(line);\n        if (toAlert && lvl == \"ERROR\") alerts.push_back(line);   // new sink? edit this method again\n    }\n};\n\nint main() {\n    NaiveLogger::log(\"DEBUG\", \"a\"); NaiveLogger::log(\"INFO\", \"b\"); NaiveLogger::log(\"ERROR\", \"c\");\n    cout << \"file=\" << NaiveLogger::file.size() << \" alerts=\" << NaiveLogger::alerts.size() << endl;\n}\n" }] }
       },
       mcq: { q: 'Product asks: "send WARN and above to a new Kafka topic." In the good design, what changes?', options: ['Add a KafkaSink class and link it into the chain via config', 'Edit Logger.log() to add a Kafka branch', 'Add a boolean toKafka flag to every logger', 'Subclass Logger as KafkaLogger'], answer: 0, explain: 'A new sink is a new class implementing the sink interface, linked into the chain. Nothing existing is edited — Open/Closed.' },
       hints: [
@@ -3357,7 +3633,7 @@ ${H.table(['Time', 'A sees', 'B sees'], [['t1', 'm1 m2 m3', 'm1'], ['t2', '—',
 <p>Each subscriber has its own offset; the topic stores each message once.</p>`,
       brute: {
         why: `<p>Calling every subscriber directly inside <code>publish()</code> means the publisher waits for the slowest subscriber, one exception stops delivery to the rest, and nothing is stored, so replay is impossible. Copying into one queue per subscriber fixes speed but multiplies memory and still cannot replay.</p>`,
-        code: String.raw`
+        code: { lang: 'java', code: String.raw`
 interface Sub { String id(); void consume(String msg); }
 
 class NaiveBus {
@@ -3378,7 +3654,7 @@ class NaiveBus {
         bus.publish("orders", "m2");
         System.out.println("publisher spent ~" + (System.nanoTime() - t) / 1_000_000 + " ms waiting for slow B");
     }
-}`
+}`, alt: [{ lang: 'python', code: "import time\n\nclass NaiveBus:\n    def __init__(self): self.subs = {}\n    def subscribe(self, topic, s): self.subs.setdefault(topic, []).append(s)\n    def publish(self, topic, msg):\n        for s in self.subs.get(topic, []):\n            s.consume(msg)              # publisher blocked by slow subscribers; an exception stops the loop\n                                        # message not stored anywhere: no replay possible\n\nclass A:\n    id = \"A\"\n    def consume(self, m): print(\"A got\", m)\n\nclass B:\n    id = \"B\"\n    def consume(self, m): time.sleep(0.02)\n\nif __name__ == \"__main__\":\n    bus = NaiveBus()\n    bus.subscribe(\"orders\", A())\n    t = time.perf_counter()\n    bus.subscribe(\"orders\", B())\n    bus.publish(\"orders\", \"m1\")\n    bus.publish(\"orders\", \"m2\")\n    print(f\"publisher spent ~{int((time.perf_counter() - t) * 1000)} ms waiting for slow B\")\n" }, { lang: 'ts', code: "interface Sub { id: string; consume(msg: string): void }\n\nclass NaiveBus {\n  private subs = new Map<string, Sub[]>();\n  subscribe(topic: string, s: Sub): void {\n    if (!this.subs.has(topic)) this.subs.set(topic, []);\n    this.subs.get(topic)!.push(s);\n  }\n  publish(topic: string, msg: string): void {\n    for (const s of this.subs.get(topic) ?? [])\n      s.consume(msg);              // publisher blocked by slow subscribers; an exception stops the loop\n  }                                // message not stored anywhere: no replay possible\n}\n\nconst sleepMs = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);\nconst bus = new NaiveBus();\nbus.subscribe(\"orders\", { id: \"A\", consume: (m) => console.log(\"A got \" + m) });\nconst t = Date.now();\nbus.subscribe(\"orders\", { id: \"B\", consume: () => sleepMs(20) });\nbus.publish(\"orders\", \"m1\");\nbus.publish(\"orders\", \"m2\");\nconsole.log(\"publisher spent ~\" + (Date.now() - t) + \" ms waiting for slow B\");\n" }, { lang: 'cpp', code: "struct Sub { virtual string id() = 0; virtual void consume(const string& msg) = 0; virtual ~Sub() = default; };\n\nclass NaiveBus {\n    unordered_map<string, vector<Sub*>> subs;\npublic:\n    void subscribe(const string& topic, Sub* s) { subs[topic].push_back(s); }\n    void publish(const string& topic, const string& msg) {\n        for (Sub* s : subs[topic])\n            s->consume(msg);             // publisher blocked by slow subscribers; an exception stops the loop\n    }                                    // message not stored anywhere: no replay possible\n};\n\nstruct A : Sub { string id() override { return \"A\"; } void consume(const string& m) override { cout << \"A got \" << m << endl; } };\nstruct B : Sub { string id() override { return \"B\"; } void consume(const string&) override { this_thread::sleep_for(chrono::milliseconds(20)); } };\n\nint main() {\n    NaiveBus bus; A a; B b;\n    bus.subscribe(\"orders\", &a);\n    auto t = chrono::steady_clock::now();\n    bus.subscribe(\"orders\", &b);\n    bus.publish(\"orders\", \"m1\");\n    bus.publish(\"orders\", \"m2\");\n    cout << \"publisher spent ~\" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - t).count() << \" ms waiting for slow B\" << endl;\n}\n" }] }
       },
       mcq: { q: 'Subscriber B is 100× slower than A. In the log + offset design, what happens?', options: ['B\'s offset falls behind (lag grows); A and the publisher are unaffected', 'The publisher blocks until B catches up', 'A must wait for B to keep order', 'Messages are dropped for B'], answer: 0, explain: 'Each subscriber reads from the shared log at its own offset on its own thread. Slowness shows up as lag, not as back-pressure on others (until retention deletes data B has not read).' },
       hints: [
@@ -5662,7 +5938,7 @@ ${H.table(['Move', 'Stage 1', 'Stage 2 (simulate)', 'Verdict'], [
       example: `<p>Start position, White to move:</p>${H.table(['Move', 'Answer', 'Why'], [['e2→e4', H.c('g', 'true'), 'double step from start rank, both squares empty'], ['e2→e5', H.c('r', 'false'), 'pawn cannot move 3'], ['f1→c4', H.c('r', 'false'), 'bishop path blocked by e2 pawn'], ['g1→f3', H.c('g', 'true'), 'knight jumps over pieces']])}`,
       brute: {
         why: `<p>The naive validator checks only the <b>shape</b> of the move (rook: same row or column; bishop: |dr| = |dc|). It ignores blocking pieces and the king. So it accepts a rook jumping over pieces and a pinned piece moving away — exactly the bugs interviewers test. All rules sit in one switch, so a new piece edits the same method.</p>`,
-        code: String.raw`
+        code: { lang: 'java', code: String.raw`
 class NaiveChess {
     // row 0 = rank 1
     static boolean shapeOnly(char piece, int fr, int fc, int tr, int tc) {
@@ -5682,7 +5958,7 @@ class NaiveChess {
         // A pinned piece moving away would also be accepted: no king check at all.
         System.out.println("Bishop shape c1-h6 accepted? " + shapeOnly('B', 0, 2, 5, 7));
     }
-}`
+}`, alt: [{ lang: 'python', code: "class NaiveChess:\n    # row 0 = rank 1\n    @staticmethod\n    def shape_only(piece, fr, fc, tr, tc):\n        dr, dc = abs(tr - fr), abs(tc - fc)\n        p = piece.upper()\n        if p == \"R\": return fr == tr or fc == tc            # no path check!\n        if p == \"B\": return dr == dc\n        if p == \"Q\": return fr == tr or fc == tc or dr == dc\n        if p == \"N\": return dr * dc == 2\n        if p == \"K\": return dr <= 1 and dc <= 1\n        return tc == fc and tr == fr + 1                    # pawn, white only, no captures\n\nif __name__ == \"__main__\":\n    # White rook a1 \"moves\" to a8 straight through its own pawn on a2: accepted. Wrong.\n    print(\"Ra1-a8 through a2 pawn accepted?\", NaiveChess.shape_only(\"R\", 0, 0, 7, 0))\n    # A pinned piece moving away would also be accepted: no king check at all.\n    print(\"Bishop shape c1-h6 accepted?\", NaiveChess.shape_only(\"B\", 0, 2, 5, 7))\n" }, { lang: 'ts', code: "class NaiveChess {\n  // row 0 = rank 1\n  static shapeOnly(piece: string, fr: number, fc: number, tr: number, tc: number): boolean {\n    const dr = Math.abs(tr - fr), dc = Math.abs(tc - fc);\n    switch (piece.toUpperCase()) {\n      case \"R\": return fr === tr || fc === tc;          // no path check!\n      case \"B\": return dr === dc;\n      case \"Q\": return fr === tr || fc === tc || dr === dc;\n      case \"N\": return dr * dc === 2;\n      case \"K\": return dr <= 1 && dc <= 1;\n      default:  return tc === fc && tr === fr + 1;      // pawn, white only, no captures\n    }\n  }\n}\n// White rook a1 \"moves\" to a8 straight through its own pawn on a2: accepted. Wrong.\nconsole.log(\"Ra1-a8 through a2 pawn accepted? \" + NaiveChess.shapeOnly(\"R\", 0, 0, 7, 0));\n// A pinned piece moving away would also be accepted: no king check at all.\nconsole.log(\"Bishop shape c1-h6 accepted? \" + NaiveChess.shapeOnly(\"B\", 0, 2, 5, 7));\n" }, { lang: 'cpp', code: "struct NaiveChess {\n    // row 0 = rank 1\n    static bool shapeOnly(char piece, int fr, int fc, int tr, int tc) {\n        int dr = abs(tr - fr), dc = abs(tc - fc);\n        switch (toupper(piece)) {\n            case 'R': return fr == tr || fc == tc;          // no path check!\n            case 'B': return dr == dc;\n            case 'Q': return fr == tr || fc == tc || dr == dc;\n            case 'N': return dr * dc == 2;\n            case 'K': return dr <= 1 && dc <= 1;\n            default:  return tc == fc && tr == fr + 1;      // pawn, white only, no captures\n        }\n    }\n};\n\nint main() {\n    // White rook a1 \"moves\" to a8 straight through its own pawn on a2: accepted. Wrong.\n    cout << \"Ra1-a8 through a2 pawn accepted? \" << boolalpha << NaiveChess::shapeOnly('R', 0, 0, 7, 0) << endl;\n    // A pinned piece moving away would also be accepted: no king check at all.\n    cout << \"Bishop shape c1-h6 accepted? \" << NaiveChess::shapeOnly('B', 0, 2, 5, 7) << endl;\n}\n" }] }
       },
       mcq: { q: 'Your king is in check from a bishop. Which approach correctly finds ALL legal replies (block, capture, king move)?', options: ['Simulate every pseudo-legal move on a copy and keep those where the king is not attacked', 'Only generate king moves', 'Only generate captures of the checking piece', 'Generate moves normally; check is handled at the end of the game'], answer: 0, explain: 'Copy-make + isAttacked covers blocks, captures and king moves uniformly, including double checks where only king moves work.' },
       hints: [
@@ -7229,7 +7505,7 @@ int main() {
       example: `<p>Input: <code>SET a 10, SET b 10, NUMEQUALTO 10, BEGIN, SET a 20, NUMEQUALTO 10, ROLLBACK, NUMEQUALTO 10, GET a, ROLLBACK, END</code></p><p>Output: ${H.c('g', '2')}, ${H.c('g', '1')} (a moved to 20), ${H.c('g', '2')} (rolled back), ${H.c('g', '10')}, ${H.c('r', 'NO TRANSACTION')}.</p>`,
       brute: {
         why: `<p>The snapshot approach copies the entire map on every BEGIN and counts values by scanning. With 10<sup>5</sup> keys and many BEGINs this is O(n) per BEGIN and per NUMEQUALTO — up to 10<sup>10</sup> work and huge memory for nested transactions.</p>`,
-        code: String.raw`
+        code: { lang: 'java', code: String.raw`
 class SnapshotDb {
     private Map<String, String> data = new HashMap<>();
     private final Deque<Map<String, String>> snapshots = new ArrayDeque<>();
@@ -7254,7 +7530,7 @@ class SnapshotDb {
     public static void main(String[] args) {
         System.out.println(new SnapshotDb().run(List.of("SET a 10", "BEGIN", "SET a 20", "ROLLBACK", "GET a")));  // [10]
     }
-}`
+}`, alt: [{ lang: 'python', code: "class SnapshotDb:\n    def __init__(self):\n        self.data = {}\n        self.snapshots = []\n\n    def run(self, cmds):\n        out = []\n        for line in cmds:\n            t = line.split(\" \")\n            if t[0] == \"SET\": self.data[t[1]] = t[2]\n            elif t[0] == \"UNSET\": self.data.pop(t[1], None)\n            elif t[0] == \"GET\": out.append(self.data.get(t[1], \"NULL\"))\n            elif t[0] == \"NUMEQUALTO\": out.append(str(sum(1 for v in self.data.values() if v == t[1])))   # O(n) scan\n            elif t[0] == \"BEGIN\": self.snapshots.append(dict(self.data))                                  # O(n) copy\n            elif t[0] == \"ROLLBACK\":\n                if not self.snapshots: out.append(\"NO TRANSACTION\")\n                else: self.data = self.snapshots.pop()\n            elif t[0] == \"COMMIT\":\n                if not self.snapshots: out.append(\"NO TRANSACTION\")\n                else: self.snapshots.clear()\n        return out\n\nif __name__ == \"__main__\":\n    print(SnapshotDb().run([\"SET a 10\", \"BEGIN\", \"SET a 20\", \"ROLLBACK\", \"GET a\"]))  # ['10']\n" }, { lang: 'ts', code: "class SnapshotDb {\n  private data = new Map<string, string>();\n  private snapshots: Map<string, string>[] = [];\n\n  run(cmds: string[]): string[] {\n    const out: string[] = [];\n    for (const line of cmds) {\n      const t = line.split(\" \");\n      switch (t[0]) {\n        case \"SET\": this.data.set(t[1], t[2]); break;\n        case \"UNSET\": this.data.delete(t[1]); break;\n        case \"GET\": out.push(this.data.get(t[1]) ?? \"NULL\"); break;\n        case \"NUMEQUALTO\": out.push(String([...this.data.values()].filter((v) => v === t[1]).length)); break;   // O(n) scan\n        case \"BEGIN\": this.snapshots.push(new Map(this.data)); break;                                            // O(n) copy\n        case \"ROLLBACK\": { const s = this.snapshots.pop(); if (!s) out.push(\"NO TRANSACTION\"); else this.data = s; break; }\n        case \"COMMIT\": if (this.snapshots.length === 0) out.push(\"NO TRANSACTION\"); else this.snapshots = []; break;\n      }\n    }\n    return out;\n  }\n}\n\nconsole.log(new SnapshotDb().run([\"SET a 10\", \"BEGIN\", \"SET a 20\", \"ROLLBACK\", \"GET a\"]));  // [ '10' ]\n" }, { lang: 'cpp', code: "class SnapshotDb {\n    map<string, string> data;\n    vector<map<string, string>> snapshots;\npublic:\n    vector<string> run(const vector<string>& cmds) {\n        vector<string> out;\n        for (const string& line : cmds) {\n            istringstream in(line);\n            vector<string> t; string w;\n            while (in >> w) t.push_back(w);\n            if (t[0] == \"SET\") data[t[1]] = t[2];\n            else if (t[0] == \"UNSET\") data.erase(t[1]);\n            else if (t[0] == \"GET\") out.push_back(data.count(t[1]) ? data[t[1]] : \"NULL\");\n            else if (t[0] == \"NUMEQUALTO\") out.push_back(to_string(count_if(data.begin(), data.end(), [&](auto& kv) { return kv.second == t[1]; })));   // O(n) scan\n            else if (t[0] == \"BEGIN\") snapshots.push_back(data);                                                                                      // O(n) copy\n            else if (t[0] == \"ROLLBACK\") { if (snapshots.empty()) out.push_back(\"NO TRANSACTION\"); else { data = snapshots.back(); snapshots.pop_back(); } }\n            else if (t[0] == \"COMMIT\") { if (snapshots.empty()) out.push_back(\"NO TRANSACTION\"); else snapshots.clear(); }\n        }\n        return out;\n    }\n};\n\nint main() {\n    for (auto& s : SnapshotDb().run({\"SET a 10\", \"BEGIN\", \"SET a 20\", \"ROLLBACK\", \"GET a\"})) cout << s << endl;   // 10\n}\n" }] }
       },
       mcq: { q: 'With the undo-log design, what does ROLLBACK cost?', options: ['O(number of keys the innermost transaction changed)', 'O(total keys in the database)', 'O(1) always', 'O(depth of the transaction stack × n)'], answer: 0, explain: 'Each open transaction remembers only the keys it touched (old value saved once). Rollback writes exactly those back.' },
       hints: [
@@ -7549,7 +7825,7 @@ int main() {
     example: `${H.table(['Query', 'Effective level', 'Answer'], [['com.shop.db.pool, DEBUG', 'DEBUG (from com.shop.db)', H.c('g', 'true')], ['com.shop.cart, INFO', 'WARN (from com.shop)', H.c('r', 'false')], ['com.shopx, INFO', 'INFO (root — com.shopx is NOT a child of com.shop)', H.c('g', 'true')]])}`,
     brute: {
       why: `<p>Scanning every config entry with <code>startsWith</code> is O(C) per query (10<sup>10</sup> total here) and has a boundary bug: <code>"com.shopx".startsWith("com.shop")</code> is true, so it wrongly inherits WARN.</p>`,
-      code: String.raw`
+      code: { lang: 'java', code: String.raw`
 class LevelScan {
     static final List<String> ORDER = List.of("DEBUG", "INFO", "WARN", "ERROR");
     static boolean shouldLog(Map<String, String> cfg, String logger, String level) {
@@ -7562,7 +7838,7 @@ class LevelScan {
         Map<String, String> cfg = Map.of("root", "INFO", "com.shop", "WARN", "com.shop.db", "DEBUG");
         System.out.println(shouldLog(cfg, "com.shopx", "INFO"));         // false: boundary bug (should be true)
     }
-}`
+}`, alt: [{ lang: 'python', code: "class LevelScan:\n    ORDER = [\"DEBUG\", \"INFO\", \"WARN\", \"ERROR\"]\n\n    @staticmethod\n    def should_log(cfg, logger, level):\n        best, best_len = \"root\", -1\n        for name in cfg:                                          # O(C) per query\n            if name != \"root\" and logger.startswith(name) and len(name) > best_len: best, best_len = name, len(name)\n        return LevelScan.ORDER.index(level) >= LevelScan.ORDER.index(cfg[best])\n\nif __name__ == \"__main__\":\n    cfg = {\"root\": \"INFO\", \"com.shop\": \"WARN\", \"com.shop.db\": \"DEBUG\"}\n    print(LevelScan.should_log(cfg, \"com.shopx\", \"INFO\"))         # False: boundary bug (should be True)\n" }, { lang: 'ts', code: "class LevelScan {\n  static ORDER = [\"DEBUG\", \"INFO\", \"WARN\", \"ERROR\"];\n  static shouldLog(cfg: Map<string, string>, logger: string, level: string): boolean {\n    let best = \"root\", bestLen = -1;\n    for (const name of cfg.keys())                                // O(C) per query\n      if (name !== \"root\" && logger.startsWith(name) && name.length > bestLen) { best = name; bestLen = name.length; }\n    return LevelScan.ORDER.indexOf(level) >= LevelScan.ORDER.indexOf(cfg.get(best)!);\n  }\n}\nconst cfg = new Map([[\"root\", \"INFO\"], [\"com.shop\", \"WARN\"], [\"com.shop.db\", \"DEBUG\"]]);\nconsole.log(LevelScan.shouldLog(cfg, \"com.shopx\", \"INFO\"));       // false: boundary bug (should be true)\n" }, { lang: 'cpp', code: "struct LevelScan {\n    static bool shouldLog(const map<string, string>& cfg, const string& logger, const string& level) {\n        static const vector<string> ORDER = {\"DEBUG\", \"INFO\", \"WARN\", \"ERROR\"};\n        string best = \"root\"; int bestLen = -1;\n        for (auto& [name, lvl] : cfg)                                 // O(C) per query\n            if (name != \"root\" && logger.rfind(name, 0) == 0 && (int)name.size() > bestLen) { best = name; bestLen = name.size(); }\n        auto idx = [&](const string& l) { return find(ORDER.begin(), ORDER.end(), l) - ORDER.begin(); };\n        return idx(level) >= idx(cfg.at(best));\n    }\n};\n\nint main() {\n    map<string, string> cfg = {{\"root\", \"INFO\"}, {\"com.shop\", \"WARN\"}, {\"com.shop.db\", \"DEBUG\"}};\n    cout << boolalpha << LevelScan::shouldLog(cfg, \"com.shopx\", \"INFO\") << endl;   // false: boundary bug (should be true)\n}\n" }] }
     },
     mcq: { q: 'Which lookup sequence finds the effective level of <code>a.b.c</code>?', options: ['a.b.c → a.b → a → root, stop at the first configured one', 'root → a → a.b → a.b.c, take the last configured', 'Only a.b.c, else root', 'Any config key that is a substring of a.b.c'], answer: 0, explain: 'Climbing from the most specific name and stopping at the first hit gives the closest ancestor in O(depth) hash lookups. Option 2 also works but always walks the full depth.' },
     hints: [
@@ -7719,14 +7995,14 @@ int main() {
     example: `<p>n = 3, keys <code>u1, null, u1, null, null</code> → u1 always the same partition; nulls go 0, 1, 2. Key <code>"polygenelubricants"</code> has hash −2<sup>31</sup> (<code>Integer.MIN_VALUE</code>): ${H.c('r', 'taking the absolute value first still gives a negative number')}, ${H.c('g', 'a floor-mod gives 1')}.</p>`,
     brute: {
       why: `<p><code>abs(hash) % n</code> looks right, but the absolute value of the minimum 32-bit int is still negative (<code>Math.abs(Integer.MIN_VALUE)</code> overflows), so one-in-four-billion keys produce a negative partition and crash the producer in production. Also, <code>%</code> keeps the sign of its left operand in Java, C++ and JavaScript (not in Python). A random choice for null keys also loses even spread guarantees.</p>`,
-      code: String.raw`
+      code: { lang: 'java', code: String.raw`
 class AbsPartitioner {
     static int partitionFor(String key, int n) { return Math.abs(key.hashCode()) % n; }
     public static void main(String[] args) {
         System.out.println("polygenelubricants".hashCode());               // -2147483648
         System.out.println(partitionFor("polygenelubricants", 3));         // negative -> invalid partition!
     }
-}`
+}`, alt: [{ lang: 'python', code: "import math\n\nclass AbsPartitioner:\n    @staticmethod\n    def string_hash(s):                                       # Java's String.hashCode(): signed 32-bit\n        h = 0\n        for ch in s: h = (31 * h + ord(ch)) & 0xFFFFFFFF\n        return h - (1 << 32) if h >= (1 << 31) else h\n\n    @staticmethod\n    def partition_for(key, n):\n        a = abs(AbsPartitioner.string_hash(key))\n        if a >= (1 << 31): a -= 1 << 32                       # a 32-bit abs() overflows for the minimum int\n        return int(math.fmod(a, n))                           # fmod keeps the sign, like % in Java/C++/JS\n\nif __name__ == \"__main__\":\n    print(AbsPartitioner.string_hash(\"polygenelubricants\"))   # -2147483648\n    print(AbsPartitioner.partition_for(\"polygenelubricants\", 3))   # negative -> invalid partition!\n" }, { lang: 'ts', code: "class AbsPartitioner {\n  static stringHash(s: string): number {                      // Java's String.hashCode(): signed 32-bit\n    let h = 0;\n    for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;\n    return h;\n  }\n  static partitionFor(key: string, n: number): number { return (Math.abs(AbsPartitioner.stringHash(key)) | 0) % n; }\n}\nconsole.log(AbsPartitioner.stringHash(\"polygenelubricants\"));          // -2147483648\nconsole.log(AbsPartitioner.partitionFor(\"polygenelubricants\", 3));     // negative -> invalid partition!\n" }, { lang: 'cpp', code: "struct AbsPartitioner {\n    static int stringHash(const string& s) {                  // Java's String.hashCode(): signed 32-bit\n        uint32_t h = 0;\n        for (char ch : s) h = 31 * h + (unsigned char)ch;\n        return (int)h;\n    }\n    static int partitionFor(const string& key, int n) { return abs(stringHash(key)) % n; }\n};\n\nint main() {\n    cout << AbsPartitioner::stringHash(\"polygenelubricants\") << endl;          // -2147483648\n    cout << AbsPartitioner::partitionFor(\"polygenelubricants\", 3) << endl;     // abs(INT_MIN) overflows: negative -> invalid partition!\n}\n" }] }
     },
     mcq: { q: 'Why does every message with key "order-42" land in the same partition?', options: ['The partition is a pure function of the key hash and the partition count', 'The broker remembers which partition each key used', 'Round-robin is applied per key', 'Consumers request it'], answer: 0, explain: 'hash(key) mod n is deterministic — as long as n does not change. That is why adding partitions reshuffles keys.' },
     hints: [
@@ -7862,7 +8138,7 @@ int main() {
     example: `<p>${H.c('b', 'b1')} → ${H.chips(['a3', 'c3', 'd2'], { hl: { a3: 'g', c3: 'g', d2: 'g' } })} (the other 5 L-jumps fall off the board). Corner a1 → 2 squares; centre d4 → 8 squares. Min moves a1 → h8 = 6.</p>`,
     brute: {
       why: `<p>Testing all 64 squares with <code>|dr|·|dc| == 2</code> works but does 8× more checks than needed and does not extend to the follow-up. For min-moves, trying all move sequences recursively explodes exponentially (8<sup>d</sup>).</p>`,
-      code: String.raw`
+      code: { lang: 'java', code: String.raw`
 class KnightScan {
     static List<String> moves(String s) {
         int r = s.charAt(1) - '1', c = s.charAt(0) - 'a';
@@ -7873,7 +8149,7 @@ class KnightScan {
         return out;
     }
     public static void main(String[] args) { System.out.println(moves("b1")); }
-}`
+}`, alt: [{ lang: 'python', code: "class KnightScan:\n    @staticmethod\n    def moves(s):\n        r, c = int(s[1]) - 1, ord(s[0]) - ord(\"a\")\n        out = []\n        for rr in range(8):\n            for cc in range(8):                                    # scan all 64\n                if abs(rr - r) * abs(cc - c) == 2: out.append(chr(ord(\"a\") + cc) + str(rr + 1))\n        return sorted(out)\n\nif __name__ == \"__main__\":\n    print(KnightScan.moves(\"b1\"))\n" }, { lang: 'ts', code: "class KnightScan {\n  static moves(s: string): string[] {\n    const r = s.charCodeAt(1) - 49, c = s.charCodeAt(0) - 97;\n    const out: string[] = [];\n    for (let rr = 0; rr < 8; rr++) for (let cc = 0; cc < 8; cc++)       // scan all 64\n      if (Math.abs(rr - r) * Math.abs(cc - c) === 2) out.push(String.fromCharCode(97 + cc) + (rr + 1));\n    return out.sort();\n  }\n}\nconsole.log(KnightScan.moves(\"b1\"));\n" }, { lang: 'cpp', code: "struct KnightScan {\n    static vector<string> moves(const string& s) {\n        int r = s[1] - '1', c = s[0] - 'a';\n        vector<string> out;\n        for (int rr = 0; rr < 8; rr++) for (int cc = 0; cc < 8; cc++)       // scan all 64\n            if (abs(rr - r) * abs(cc - c) == 2) out.push_back(string(1, 'a' + cc) + to_string(rr + 1));\n        sort(out.begin(), out.end());\n        return out;\n    }\n};\n\nint main() { for (auto& m : KnightScan::moves(\"b1\")) cout << m << \" \"; cout << endl; }\n" }] }
     },
     mcq: { q: 'Why is <code>|dr| × |dc| == 2</code> exactly the knight\'s move?', options: ['The only positive integer factorisations of 2 are 1×2 and 2×1', 'It also allows 2×2', 'It counts diagonal moves', 'It requires the path to be empty'], answer: 0, explain: '|dr|·|dc| = 2 forces one delta to be 1 and the other 2 — the L shape. Knights jump, so no path check.' },
     hints: [
@@ -8047,7 +8323,7 @@ int main() {
     example: `${H.table(['time', 'op', 'result'], [['0', 'put(a, 1, 1000)', 'ok'], ['500', 'get(a)', H.c('g', '1')], ['1000', 'get(a)', H.c('r', 'null (expired at exactly 1000)')], ['1000', 'size()', '0']])}`,
     brute: {
       why: `<p>Purging by scanning the whole map on every call is O(n) per operation, and using <code>System.currentTimeMillis()</code> directly forces tests to <code>sleep</code> — slow and flaky.</p>`,
-      code: String.raw`
+      code: { lang: 'java', code: String.raw`
 class ScanCache {
     private final Map<String, long[]> exp = new HashMap<>();        // key -> {expireAt}
     private final Map<String, String> vals = new HashMap<>();
@@ -8062,7 +8338,7 @@ class ScanCache {
         c.put("a", "1", 1000);
         System.out.println(c.get("a"));                               // to test expiry we would have to sleep 1 s
     }
-}`
+}`, alt: [{ lang: 'python', code: "import time\n\nclass ScanCache:\n    def __init__(self):\n        self.exp = {}                                              # key -> expire_at\n        self.vals = {}\n\n    def _purge(self):                                              # O(n) on EVERY call\n        now = time.time() * 1000\n        for k in [k for k, e in self.exp.items() if now >= e]:\n            del self.exp[k]; del self.vals[k]\n\n    def put(self, k, v, ttl):\n        self._purge(); self.vals[k] = v; self.exp[k] = time.time() * 1000 + ttl\n\n    def get(self, k):\n        self._purge(); return self.vals.get(k)\n\nif __name__ == \"__main__\":\n    c = ScanCache()\n    c.put(\"a\", \"1\", 1000)\n    print(c.get(\"a\"))                                              # to test expiry we would have to sleep 1 s\n" }, { lang: 'ts', code: "class ScanCache {\n  private exp = new Map<string, number>();                         // key -> expireAt\n  private vals = new Map<string, string>();\n  private purge(): void {                                          // O(n) on EVERY call\n    const now = Date.now();\n    for (const [k, e] of [...this.exp]) if (now >= e) { this.exp.delete(k); this.vals.delete(k); }\n  }\n  put(k: string, v: string, ttl: number): void { this.purge(); this.vals.set(k, v); this.exp.set(k, Date.now() + ttl); }\n  get(k: string): string | undefined { this.purge(); return this.vals.get(k); }\n}\nconst c = new ScanCache();\nc.put(\"a\", \"1\", 1000);\nconsole.log(c.get(\"a\"));                                           // to test expiry we would have to sleep 1 s\n" }, { lang: 'cpp', code: "class ScanCache {\n    unordered_map<string, long long> exp;                          // key -> expireAt\n    unordered_map<string, string> vals;\n    static long long nowMs() { return chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count(); }\n    void purge() {                                                 // O(n) on EVERY call\n        long long now = nowMs();\n        for (auto it = exp.begin(); it != exp.end();) {\n            if (now >= it->second) { vals.erase(it->first); it = exp.erase(it); } else ++it;\n        }\n    }\npublic:\n    void put(const string& k, const string& v, long long ttl) { purge(); vals[k] = v; exp[k] = nowMs() + ttl; }\n    string get(const string& k) { purge(); auto it = vals.find(k); return it == vals.end() ? \"null\" : it->second; }\n};\n\nint main() {\n    ScanCache c;\n    c.put(\"a\", \"1\", 1000);\n    cout << c.get(\"a\") << endl;                                    // to test expiry we would have to sleep 1 s\n}\n" }] }
     },
     mcq: { q: 'Why store <code>expireAt = now + ttl</code> instead of <code>ttl</code>?', options: ['Checking becomes one comparison and does not drift as time passes', 'It uses less memory', 'The language requires it', 'It makes keys never expire'], answer: 0, explain: 'An absolute deadline is compared directly with the current time; a relative TTL would need its start time stored anyway.' },
     hints: [
@@ -8361,8 +8637,8 @@ int main() {
     constraints: `<p>Pattern length ≤ 10<sup>4</sup>, arguments may contain any characters including <code>$</code> and <code>\\</code>. Must be O(length).</p>`,
     example: `${H.table(['Pattern / args', 'Output'], [['"user {} paid {}" / asha, $5', 'user asha paid $5'], ['"set \\\\{} to {}" / x', 'set {} to x'], ['"a {} b {}" / 1', 'a 1 b {}'], ['"failed {}" / 42, IOException("disk")', 'failed 42 | exception: IOException: disk']])}`,
     brute: {
-      why: `<p>Looping <code>replaceFirst("\\{\\}", arg)</code> treats the pattern as a regex and the <b>replacement</b> as a template too: an argument like <code>$5</code> throws (it is read as "insert regex group 5"), and <code>\\</code> is eaten. Each call also rescans the whole string → O(length × args).</p>`,
-      code: String.raw`
+      why: `<p>Looping a regex replace (<code>replaceFirst</code> / <code>re.sub</code> / <code>replace</code> / <code>regex_replace</code>) treats the pattern as a regex and the <b>replacement</b> as a template too: an argument like <code>$5</code> throws in Java (read as "insert regex group 5"), <code>\\5</code> throws in Python, <code>$&amp;</code> re-inserts the match in JavaScript and C++, and backslashes are eaten. Each call also rescans the whole string → O(length × args).</p>`,
+      code: { lang: 'java', code: String.raw`
 class RegexFormat {
     static String format(String p, Object... args) {
         for (Object a : args) p = p.replaceFirst("\\{\\}", String.valueOf(a));   // regex replacement!
@@ -8373,7 +8649,7 @@ class RegexFormat {
         try { System.out.println(format("user {} paid {}", "asha", "$5")); }
         catch (RuntimeException e) { System.out.println("crash: " + e); }   // "No group 5"
     }
-}`
+}`, alt: [{ lang: 'python', code: "import re\n\nclass RegexFormat:\n    @staticmethod\n    def format(p, *args):\n        for a in args:\n            p = re.sub(r\"\\{\\}\", str(a), p, count=1)          # regex replacement!\n        return p\n\nif __name__ == \"__main__\":\n    print(RegexFormat.format(\"user {} paid {}\", \"asha\", \"5\"))\n    try: print(RegexFormat.format(\"user {} paid {}\", \"asha\", r\"\\5\"))\n    except Exception as e: print(\"crash:\", e)                 # \"invalid group reference 5\"\n" }, { lang: 'ts', code: "class RegexFormat {\n  static format(p: string, ...args: unknown[]): string {\n    for (const a of args) p = p.replace(/\\{\\}/, String(a));    // regex replacement!\n    return p;\n  }\n}\nconsole.log(RegexFormat.format(\"user {} paid {}\", \"asha\", \"5\"));\nconsole.log(RegexFormat.format(\"user {} paid {}\", \"asha\", \"$&\"));   // \"$&\" is a template: inserts the matched \"{}\" again\n" }, { lang: 'cpp', code: "struct RegexFormat {\n    static string format(string p, const vector<string>& args) {\n        for (const string& a : args)\n            p = regex_replace(p, regex(\"\\\\{\\\\}\"), a, regex_constants::format_first_only);   // regex replacement!\n        return p;\n    }\n};\n\nint main() {\n    cout << RegexFormat::format(\"user {} paid {}\", {\"asha\", \"5\"}) << endl;\n    cout << RegexFormat::format(\"user {} paid {}\", {\"asha\", \"$&\"}) << endl;   // \"$&\" is a template: inserts the matched \"{}\" again\n}\n" }] }
     },
     mcq: { q: 'Why do logging APIs prefer <code>log.debug("x={}", x)</code> over <code>log.debug("x=" + x)</code>?', options: ['Formatting happens only if DEBUG is enabled', 'It is shorter to type', 'The language requires it', 'It makes logs JSON'], answer: 0, explain: 'With concatenation the string is built before the call even if the line is then dropped; with placeholders the work happens after the level check.' },
     hints: [
@@ -8548,7 +8824,7 @@ int main() {
     example: `<p>maxLines = 2, maxBackups = 2, append L1..L7:</p>${H.kv([['app.log', '[L7]'], ['app.log.1', '[L5, L6]'], ['app.log.2', '[L3, L4]']], { label: 'files' })}<p>[L1, L2] was deleted at the third rotation.</p>`,
     brute: {
       why: `<p>One ever-growing file fills the disk; "rotating" by clearing the file loses all history. Renaming by copying every backup\'s content on each rotation costs O(maxBackups × maxLines) per rotation.</p>`,
-      code: String.raw`
+      code: { lang: 'java', code: String.raw`
 class TruncatingAppender {
     final List<String> file = new ArrayList<>();
     final int maxLines;
@@ -8562,7 +8838,7 @@ class TruncatingAppender {
         for (int i = 1; i <= 7; i++) a.append("L" + i);
         System.out.println(a.file);                           // [L7] — L1..L6 gone forever
     }
-}`
+}`, alt: [{ lang: 'python', code: "class TruncatingAppender:\n    def __init__(self, max_lines):\n        self.file = []\n        self.max_lines = max_lines\n\n    def append(self, line):\n        if len(self.file) >= self.max_lines: self.file.clear()   # \"rotation\" = lose everything\n        self.file.append(line)\n\nif __name__ == \"__main__\":\n    a = TruncatingAppender(2)\n    for i in range(1, 8): a.append(f\"L{i}\")\n    print(a.file)                                               # ['L7'] - L1..L6 gone forever\n" }, { lang: 'ts', code: "class TruncatingAppender {\n  file: string[] = [];\n  constructor(private maxLines: number) {}\n  append(line: string): void {\n    if (this.file.length >= this.maxLines) this.file = [];     // \"rotation\" = lose everything\n    this.file.push(line);\n  }\n}\nconst a = new TruncatingAppender(2);\nfor (let i = 1; i <= 7; i++) a.append(\"L\" + i);\nconsole.log(a.file);                                            // [ 'L7' ] - L1..L6 gone forever\n" }, { lang: 'cpp', code: "class TruncatingAppender {\n    int maxLines;\npublic:\n    vector<string> file;\n    TruncatingAppender(int maxLines) : maxLines(maxLines) {}\n    void append(const string& line) {\n        if ((int)file.size() >= maxLines) file.clear();         // \"rotation\" = lose everything\n        file.push_back(line);\n    }\n};\n\nint main() {\n    TruncatingAppender a(2);\n    for (int i = 1; i <= 7; i++) a.append(\"L\" + to_string(i));\n    for (auto& l : a.file) cout << l << \" \";                    // L7 - L1..L6 gone forever\n    cout << endl;\n}\n" }] }
     },
     mcq: { q: 'Which structure makes "shift .1→.2→.3 and drop the oldest" O(1)?', options: ['A Deque of backups: addFirst the current file, pollLast when too many', 'An array copied on every rotation', 'A hash map keyed by file name rebuilt each time', 'A TreeMap sorted by size'], answer: 0, explain: 'The rotated files are a sliding window of the most recent K; a Deque gives O(1) push-front and pop-back. Names are derived from position when listing.' },
     hints: [
@@ -8756,7 +9032,7 @@ int main() {
     example: `<p>Consumers [c1, c2, c3], P = 7:</p>${H.table(['Strategy', 'c1', 'c2', 'c3'], [['range', '0, 1, 2', '3, 4', '5, 6'], ['round-robin', '0, 3, 6', '1, 4', '2, 5']])}`,
     brute: {
       why: `<p>Letting every consumer read every partition means each message is processed C times (duplicate charges, duplicate emails). Assigning randomly can leave partitions unowned (lost messages) or doubly owned.</p>`,
-      code: String.raw`
+      code: { lang: 'java', code: String.raw`
 class EveryoneReadsAll {
     public static void main(String[] args) {
         List<String> consumers = List.of("c1", "c2", "c3");
@@ -8764,7 +9040,7 @@ class EveryoneReadsAll {
         for (String c : consumers) for (int p = 0; p < partitions; p++) processed++;   // each reads all
         System.out.println("each message processed " + processed / partitions + " times");  // 3
     }
-}`
+}`, alt: [{ lang: 'python', code: "if __name__ == \"__main__\":\n    consumers = [\"c1\", \"c2\", \"c3\"]\n    partitions, processed = 7, 0\n    for c in consumers:\n        for p in range(partitions): processed += 1             # each reads all\n    print(f\"each message processed {processed // partitions} times\")   # 3\n" }, { lang: 'ts', code: "const consumers = [\"c1\", \"c2\", \"c3\"];\nconst partitions = 7;\nlet processed = 0;\nfor (const c of consumers) for (let p = 0; p < partitions; p++) processed++;   // each reads all\nconsole.log(\"each message processed \" + Math.floor(processed / partitions) + \" times\");   // 3\n" }, { lang: 'cpp', code: "int main() {\n    vector<string> consumers = {\"c1\", \"c2\", \"c3\"};\n    int partitions = 7, processed = 0;\n    for (auto& c : consumers) for (int p = 0; p < partitions; p++) processed++;   // each reads all\n    cout << \"each message processed \" << processed / partitions << \" times\" << endl;   // 3\n}\n" }] }
     },
     mcq: { q: 'Group has 3 consumers and the topic has 2 partitions. What happens?', options: ['One consumer is idle', 'Partitions are split into halves', 'Two consumers share a partition and both get every message', 'The group refuses to start'], answer: 0, explain: 'Inside a group a partition has exactly one owner, so partitions cap the parallelism.' },
     hints: [
@@ -8935,7 +9211,7 @@ int main() {
     example: `${H.table(['partition', 'end', 'committed', 'position', 'lag', 'redelivered'], [['P0', '120', '100', '110', '20', H.c('r', '10')], ['P1', '50', '50', '50', '0', '0'], ['P2', '80', '30', '75', '50', H.c('r', '45')]])}<p>Total lag 70, total re-delivered 55 → the consumer must be idempotent.</p>`,
     brute: {
       why: `<p>Simulating message by message (walk from committed to end, counting) costs O(total lag) — billions of steps on a busy cluster — when the answer is plain subtraction per partition.</p>`,
-      code: String.raw`
+      code: { lang: 'java', code: String.raw`
 class LagSimulate {
     public static void main(String[] args) {
         long[] end = {120, 50, 80}, committed = {100, 50, 30};
@@ -8944,7 +9220,7 @@ class LagSimulate {
             for (long off = committed[p]; off < end[p]; off++) lag++;     // O(messages), not O(partitions)
         System.out.println("total lag " + lag);
     }
-}`
+}`, alt: [{ lang: 'python', code: "if __name__ == \"__main__\":\n    end, committed = [120, 50, 80], [100, 50, 30]\n    lag = 0\n    for p in range(len(end)):\n        for off in range(committed[p], end[p]): lag += 1      # O(messages), not O(partitions)\n    print(\"total lag\", lag)\n" }, { lang: 'ts', code: "const end = [120, 50, 80], committed = [100, 50, 30];\nlet lag = 0;\nfor (let p = 0; p < end.length; p++)\n  for (let off = committed[p]; off < end[p]; off++) lag++;     // O(messages), not O(partitions)\nconsole.log(\"total lag \" + lag);\n" }, { lang: 'cpp', code: "int main() {\n    long long end[] = {120, 50, 80}, committed[] = {100, 50, 30};\n    long long lag = 0;\n    for (int p = 0; p < 3; p++)\n        for (long long off = committed[p]; off < end[p]; off++) lag++;     // O(messages), not O(partitions)\n    cout << \"total lag \" << lag << endl;\n}\n" }] }
     },
     mcq: { q: 'Lag on one partition keeps growing while the others stay near 0. Most likely cause?', options: ['A hot key or a slow/poison message on that partition', 'The broker is down', 'Too many partitions overall', 'Auto-commit is disabled everywhere'], answer: 0, explain: 'Per-partition skew points to that partition: a hot key sending most traffic there, or one message that keeps failing and blocking progress.' },
     hints: [
@@ -9097,7 +9373,7 @@ int main() {
     example: `<p>White Ke1, Black Re8 and Nd3: ${H.chips(['e8', 'd3'], { hl: { e8: 'r', d3: 'r' } })} → double check (only a king move can answer it). Put a white pawn on e4 and the rook no longer attacks: ${H.chips(['d3'], { hl: { d3: 'r' } })}.</p>`,
     brute: {
       why: `<p>Generating every enemy move with a full move generator and checking if any lands on the king works, but builds lists for all 16 pieces (including irrelevant ones) — often 10× slower than looking outward from the king, and easy to get wrong for pawns (pawn moves ≠ pawn attacks).</p>`,
-      code: String.raw`
+      code: { lang: 'java', code: String.raw`
 class CheckByAllMoves {
     // simplified brute: test every enemy rook/queen in a straight line with a path walk
     static boolean rookAttacks(char[][] b, int r, int c, int kr, int kc) {
@@ -9115,7 +9391,7 @@ class CheckByAllMoves {
             if (b[r][c] == 'r' && rookAttacks(b, r, c, 0, 4)) found++;
         System.out.println("rook attackers: " + found);
     }
-}`
+}`, alt: [{ lang: 'python', code: "class CheckByAllMoves:\n    # simplified brute: test every enemy rook/queen in a straight line with a path walk\n    @staticmethod\n    def rook_attacks(b, r, c, kr, kc):\n        if r != kr and c != kc: return False\n        sr = (kr > r) - (kr < r)\n        sc = (kc > c) - (kc < c)\n        i, j = r + sr, c + sc\n        while i != kr or j != kc:\n            if b[i][j] != \".\": return False\n            i += sr; j += sc\n        return True\n\nif __name__ == \"__main__\":\n    b = [[\".\"] * 8 for _ in range(8)]\n    b[0][4] = \"K\"; b[7][4] = \"r\"\n    found = 0\n    for r in range(8):\n        for c in range(8):                                     # scans all 64 squares\n            if b[r][c] == \"r\" and CheckByAllMoves.rook_attacks(b, r, c, 0, 4): found += 1\n    print(\"rook attackers:\", found)\n" }, { lang: 'ts', code: "class CheckByAllMoves {\n  // simplified brute: test every enemy rook/queen in a straight line with a path walk\n  static rookAttacks(b: string[][], r: number, c: number, kr: number, kc: number): boolean {\n    if (r !== kr && c !== kc) return false;\n    const sr = Math.sign(kr - r), sc = Math.sign(kc - c);\n    for (let i = r + sr, j = c + sc; i !== kr || j !== kc; i += sr, j += sc) if (b[i][j] !== \".\") return false;\n    return true;\n  }\n}\nconst b: string[][] = Array.from({ length: 8 }, () => new Array<string>(8).fill(\".\"));\nb[0][4] = \"K\"; b[7][4] = \"r\";\nlet found = 0;\nfor (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++)          // scans all 64 squares\n  if (b[r][c] === \"r\" && CheckByAllMoves.rookAttacks(b, r, c, 0, 4)) found++;\nconsole.log(\"rook attackers: \" + found);\n" }, { lang: 'cpp', code: "struct CheckByAllMoves {\n    // simplified brute: test every enemy rook/queen in a straight line with a path walk\n    static bool rookAttacks(const vector<vector<char>>& b, int r, int c, int kr, int kc) {\n        if (r != kr && c != kc) return false;\n        int sr = (kr > r) - (kr < r), sc = (kc > c) - (kc < c);\n        for (int i = r + sr, j = c + sc; i != kr || j != kc; i += sr, j += sc) if (b[i][j] != '.') return false;\n        return true;\n    }\n};\n\nint main() {\n    vector<vector<char>> b(8, vector<char>(8, '.'));\n    b[0][4] = 'K'; b[7][4] = 'r';\n    int found = 0;\n    for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++)         // scans all 64 squares\n        if (b[r][c] == 'r' && CheckByAllMoves::rookAttacks(b, r, c, 0, 4)) found++;\n    cout << \"rook attackers: \" << found << endl;\n}\n" }] }
     },
     mcq: { q: 'Why look outward FROM the king instead of from every enemy piece?', options: ['Only 8 rays + 8 knight squares + 2 pawn squares can contain an attacker', 'Enemy pieces cannot be iterated', 'It handles castling', 'It is required for en passant'], answer: 0, explain: 'A "super-piece" placed on the king square reveals all attackers: slide like a queen and see who is at the end of each ray, jump like a knight, and check the two pawn-capture squares.' },
     hints: [
@@ -9375,7 +9651,7 @@ int main() {
     example: `<p>window 1000 ms. t=0 "disk full", t=10 "disk full", t=20 "disk full", t=30 "ok" →</p>${H.table(['Output'], [['disk full'], [H.c('y', 'last message repeated 2 times')], ['ok']])}`,
     brute: {
       why: `<p>Remembering every message ever seen in a Set and dropping repeats forever leaks memory and hides real recurring problems ("disk full" an hour later is never logged again).</p>`,
-      code: String.raw`
+      code: { lang: 'java', code: String.raw`
 class ForeverDedupe {
     private final Set<String> seen = new HashSet<>();      // grows forever
     final List<String> out = new ArrayList<>();
@@ -9385,7 +9661,7 @@ class ForeverDedupe {
         d.append("disk full"); d.append("ok"); d.append("disk full");   // an hour later: silently dropped!
         System.out.println(d.out);                                         // [disk full, ok]
     }
-}`
+}`, alt: [{ lang: 'python', code: "class ForeverDedupe:\n    def __init__(self):\n        self.seen = set()                                      # grows forever\n        self.out = []\n\n    def append(self, m):\n        if m not in self.seen:\n            self.seen.add(m); self.out.append(m)\n\nif __name__ == \"__main__\":\n    d = ForeverDedupe()\n    d.append(\"disk full\"); d.append(\"ok\"); d.append(\"disk full\")   # an hour later: silently dropped!\n    print(d.out)                                               # ['disk full', 'ok']\n" }, { lang: 'ts', code: "class ForeverDedupe {\n  private seen = new Set<string>();                            // grows forever\n  out: string[] = [];\n  append(m: string): void { if (!this.seen.has(m)) { this.seen.add(m); this.out.push(m); } }\n}\nconst d = new ForeverDedupe();\nd.append(\"disk full\"); d.append(\"ok\"); d.append(\"disk full\");   // an hour later: silently dropped!\nconsole.log(d.out);                                            // [ 'disk full', 'ok' ]\n" }, { lang: 'cpp', code: "class ForeverDedupe {\n    unordered_set<string> seen;                                // grows forever\npublic:\n    vector<string> out;\n    void append(const string& m) { if (seen.insert(m).second) out.push_back(m); }\n};\n\nint main() {\n    ForeverDedupe d;\n    d.append(\"disk full\"); d.append(\"ok\"); d.append(\"disk full\");   // an hour later: silently dropped!\n    for (auto& m : d.out) cout << m << \" | \";                  // disk full | ok\n    cout << endl;\n}\n" }] }
     },
     mcq: { q: 'Which pattern lets you add de-duplication to ANY appender without editing it?', options: ['Decorator', 'Singleton', 'Builder', 'Visitor'], answer: 0, explain: 'The de-duplicator implements the same Appender interface and wraps another Appender, adding behaviour before delegating.' },
     hints: [
@@ -9618,7 +9894,7 @@ int main() {
     example: `${H.table(['Position', 'To move', 'Answer'], [['White Kh1, Pg2, Ph2; Black Kg8, Ra1', 'White', H.c('r', 'CHECKMATE')], ['White Kh1; Black Kf2, Qg3', 'White', H.c('y', 'STALEMATE')], ['Same back-rank, plus a White rook on d2', 'White', 'CHECK']])}<p>In the last line the rook can step to d1 and <b>block</b> the attack, so it is only check — a king-only test would wrongly say mate.</p>`,
     brute: {
       why: `<p>A common shortcut: "in check and the king has no safe square → checkmate". It ignores the other pieces, which can <b>capture the checker</b> or <b>block</b> the line. It also calls every no-safe-square position without check "stalemate" even when other pieces can move.</p>`,
-      code: String.raw`
+      code: { lang: 'java', code: String.raw`
 class KingOnlyMate {
     // brute: decide using only king moves (wrong whenever another piece can block or capture)
     public static void main(String[] args) {
@@ -9626,7 +9902,7 @@ class KingOnlyMate {
         int kingSafeSquares = 0;
         System.out.println(inCheck && kingSafeSquares == 0 ? "CHECKMATE (wrong: Rd2-d1 blocks)" : "CHECK");
     }
-}`
+}`, alt: [{ lang: 'python', code: "# brute: decide using only king moves (wrong whenever another piece can block or capture)\nif __name__ == \"__main__\":\n    in_check = True          # white Kh1, pawns g2 h2, black Ra1, but a WHITE ROOK on d2 can block on d1\n    king_safe_squares = 0\n    print(\"CHECKMATE (wrong: Rd2-d1 blocks)\" if in_check and king_safe_squares == 0 else \"CHECK\")\n" }, { lang: 'ts', code: "// brute: decide using only king moves (wrong whenever another piece can block or capture)\nconst inCheck = true;          // white Kh1, pawns g2 h2, black Ra1, but a WHITE ROOK on d2 can block on d1\nconst kingSafeSquares = 0;\nconsole.log(inCheck && kingSafeSquares === 0 ? \"CHECKMATE (wrong: Rd2-d1 blocks)\" : \"CHECK\");\n" }, { lang: 'cpp', code: "// brute: decide using only king moves (wrong whenever another piece can block or capture)\nint main() {\n    bool inCheck = true;          // white Kh1, pawns g2 h2, black Ra1, but a WHITE ROOK on d2 can block on d1\n    int kingSafeSquares = 0;\n    cout << (inCheck && kingSafeSquares == 0 ? \"CHECKMATE (wrong: Rd2-d1 blocks)\" : \"CHECK\") << endl;\n}\n" }] }
     },
     mcq: { q: 'Your king is attacked by two pieces at once (double check). Which replies can be legal?', options: ['Only king moves', 'Blocking either line', 'Capturing one attacker with another piece', 'Any move'], answer: 0, explain: 'One block or capture removes at most one attacker; the other still checks. The simulate-and-test approach finds this automatically.' },
     hints: [
@@ -10035,7 +10311,7 @@ int main() {
     example: `${H.table(['offset', 'key', 'value', 'kept?'], [['0', 'u1', 'Delhi', H.c('r', 'no (newer at 3)')], ['1', 'u2', 'Pune', H.c('r', 'no (tombstone at 4)')], ['2', 'u3', 'Goa', H.c('g', 'yes')], ['3', 'u1', 'Mumbai', H.c('g', 'yes')], ['4', 'u2', 'null', H.c('r', 'tombstone: key removed')]])}<p>Result: [2 u3 Goa, 3 u1 Mumbai]. Offsets 2 and 3 keep their numbers — consumers\' bookmarks stay valid; there are simply gaps.</p>`,
     brute: {
       why: `<p>For each record, scanning the rest of the log for a newer record with the same key is O(n²): 10<sup>12</sup> comparisons for a million-record partition. Renumbering offsets after compaction would also break every consumer\'s committed offset.</p>`,
-      code: String.raw`
+      code: { lang: 'java', code: String.raw`
 record Rec(long offset, String key, String value) { }
 
 class QuadraticCompaction {
@@ -10052,7 +10328,7 @@ class QuadraticCompaction {
         System.out.println(compact(List.of(new Rec(0, "u1", "Delhi"), new Rec(1, "u2", "Pune"), new Rec(2, "u3", "Goa"),
                                            new Rec(3, "u1", "Mumbai"), new Rec(4, "u2", null))));
     }
-}`
+}`, alt: [{ lang: 'python', code: "from collections import namedtuple\nRec = namedtuple(\"Rec\", \"offset key value\")\n\nclass QuadraticCompaction:\n    @staticmethod\n    def compact(log):\n        out = []\n        for i in range(len(log)):\n            newer = False\n            for j in range(i + 1, len(log)):\n                if log[j].key == log[i].key: newer = True; break      # O(n^2)\n            if not newer and log[i].value is not None: out.append(log[i])\n        return out\n\nif __name__ == \"__main__\":\n    print(QuadraticCompaction.compact([Rec(0, \"u1\", \"Delhi\"), Rec(1, \"u2\", \"Pune\"), Rec(2, \"u3\", \"Goa\"),\n                                       Rec(3, \"u1\", \"Mumbai\"), Rec(4, \"u2\", None)]))\n" }, { lang: 'ts', code: "interface Rec { offset: number; key: string; value: string | null }\n\nclass QuadraticCompaction {\n  static compact(log: Rec[]): Rec[] {\n    const out: Rec[] = [];\n    for (let i = 0; i < log.length; i++) {\n      let newer = false;\n      for (let j = i + 1; j < log.length; j++) if (log[j].key === log[i].key) { newer = true; break; }   // O(n^2)\n      if (!newer && log[i].value !== null) out.push(log[i]);\n    }\n    return out;\n  }\n}\nconsole.log(QuadraticCompaction.compact([\n  { offset: 0, key: \"u1\", value: \"Delhi\" }, { offset: 1, key: \"u2\", value: \"Pune\" }, { offset: 2, key: \"u3\", value: \"Goa\" },\n  { offset: 3, key: \"u1\", value: \"Mumbai\" }, { offset: 4, key: \"u2\", value: null }]));\n" }, { lang: 'cpp', code: "struct Rec { long long offset; string key; optional<string> value; };\n\nstruct QuadraticCompaction {\n    static vector<Rec> compact(const vector<Rec>& log) {\n        vector<Rec> out;\n        for (size_t i = 0; i < log.size(); i++) {\n            bool newer = false;\n            for (size_t j = i + 1; j < log.size(); j++) if (log[j].key == log[i].key) { newer = true; break; }   // O(n^2)\n            if (!newer && log[i].value.has_value()) out.push_back(log[i]);\n        }\n        return out;\n    }\n};\n\nint main() {\n    vector<Rec> log = {{0, \"u1\", \"Delhi\"}, {1, \"u2\", \"Pune\"}, {2, \"u3\", \"Goa\"}, {3, \"u1\", \"Mumbai\"}, {4, \"u2\", nullopt}};\n    for (auto& r : QuadraticCompaction::compact(log)) cout << r.offset << \" \" << r.key << \" \" << *r.value << endl;\n}\n" }] }
     },
     mcq: { q: 'Why does Kafka keep tombstones for a while (delete.retention.ms) instead of removing them at once?', options: ['So slow consumers still see that the key was deleted', 'To save disk space', 'Because offsets must be contiguous', 'Tombstones are never removed'], answer: 0, explain: 'A consumer rebuilding state from the topic must observe the delete; if the tombstone vanished before it read it, the consumer would keep the old value forever.' },
     hints: [
@@ -10204,7 +10480,7 @@ int main() {
     example: `<p>base = 100 ms, maxAttempts = 3; m2 always fails, m3 fails once:</p>${H.table(['time', 'event'], [['0', 'm1 ok'], ['0', 'm2 fail #1 → retry at 100'], ['0', 'm3 fail #1 → retry at 100'], ['100', 'm2 fail #2 → retry at 300'], ['100', 'm3 ok'], ['300', H.c('r', 'm2 fail #3 → DLQ')]])}`,
     brute: {
       why: `<p>Retrying in place (<code>while (!ok) retry()</code>) blocks the whole partition behind one poison message — every later message waits forever (or until a human intervenes). Sleeping between retries also stalls the thread. The brute below caps itself at 1000 attempts just so the demo ends.</p>`,
-      code: String.raw`
+      code: { lang: 'java', code: String.raw`
 class RetryInPlace {
     public static void main(String[] args) {
         List<String> msgs = List.of("m1", "poison", "m3");
@@ -10217,7 +10493,7 @@ class RetryInPlace {
         }
         System.out.println(done);
     }
-}`
+}`, alt: [{ lang: 'python', code: "if __name__ == \"__main__\":\n    msgs = [\"m1\", \"poison\", \"m3\"]\n    done = []\n    for m in msgs:\n        attempts = 0\n        while m == \"poison\" and attempts < 1000: attempts += 1   # in real code: forever, blocking m3\n        if m != \"poison\": done.append(m)\n        else: print(f\"stuck on poison for {attempts} attempts; m3 waited the whole time\")\n    print(done)\n" }, { lang: 'ts', code: "const msgs = [\"m1\", \"poison\", \"m3\"];\nconst done: string[] = [];\nfor (const m of msgs) {\n  let attempts = 0;\n  while (m === \"poison\" && attempts < 1000) attempts++;         // in real code: forever, blocking m3\n  if (m !== \"poison\") done.push(m);\n  else console.log(\"stuck on poison for \" + attempts + \" attempts; m3 waited the whole time\");\n}\nconsole.log(done);\n" }, { lang: 'cpp', code: "int main() {\n    vector<string> msgs = {\"m1\", \"poison\", \"m3\"};\n    vector<string> done;\n    for (const string& m : msgs) {\n        int attempts = 0;\n        while (m == \"poison\" && attempts < 1000) attempts++;    // in real code: forever, blocking m3\n        if (m != \"poison\") done.push_back(m);\n        else cout << \"stuck on poison for \" << attempts << \" attempts; m3 waited the whole time\" << endl;\n    }\n    for (auto& m : done) cout << m << \" \";\n    cout << endl;\n}\n" }] }
     },
     mcq: { q: 'Why add random jitter to the backoff delay in production?', options: ['To stop many consumers retrying at the same instant and overloading the dependency', 'To make retries faster', 'Because exponential backoff overflows', 'To guarantee ordering'], answer: 0, explain: 'Without jitter, failures that happened together retry together ("thundering herd"). Jitter spreads the retries out.' },
     hints: [
@@ -10444,7 +10720,7 @@ int main() {
     example: `<p>Sink takes ~10 µs per line, 8 producers log 80,000 lines in a ~60 ms burst. The sink can only absorb a few thousand lines in that time, so ${H.c('g', 'a few thousand are written')} and ${H.c('y', 'the rest are dropped and counted')} — written + dropped is exactly 80,000 (the split depends on timing). Callers never wait for the sink.</p>`,
     brute: {
       why: `<p>Writing synchronously on the caller thread makes every request pay the sink\'s latency (a slow disk slows every user). The other naive fix — an <b>unbounded</b> queue with a non-daemon <code>while(true) take()</code> thread — can run out of memory under bursts and keeps the process from ever exiting.</p>`,
-      code: String.raw`
+      code: { lang: 'java', code: String.raw`
 class SyncLogger {
     static void slowSink(String line) {
         long end = System.nanoTime() + 20_000;            // ~20 microseconds of "disk" work
@@ -10455,7 +10731,7 @@ class SyncLogger {
         for (int i = 0; i < 2000; i++) slowSink("line " + i);      // caller waits for every write
         System.out.println("caller spent " + (System.nanoTime() - t) / 1_000_000 + " ms just logging");
     }
-}`
+}`, alt: [{ lang: 'python', code: "import time\n\nclass SyncLogger:\n    @staticmethod\n    def slow_sink(line):\n        end = time.perf_counter_ns() + 20_000                    # ~20 microseconds of \"disk\" work\n        while time.perf_counter_ns() < end: pass\n\nif __name__ == \"__main__\":\n    t = time.perf_counter_ns()\n    for i in range(2000): SyncLogger.slow_sink(f\"line {i}\")      # caller waits for every write\n    print(f\"caller spent {(time.perf_counter_ns() - t) // 1_000_000} ms just logging\")\n" }, { lang: 'ts', code: "class SyncLogger {\n  static slowSink(line: string): void {\n    const end = process.hrtime.bigint() + 20_000n;               // ~20 microseconds of \"disk\" work\n    while (process.hrtime.bigint() < end) { }\n  }\n}\nconst t = process.hrtime.bigint();\nfor (let i = 0; i < 2000; i++) SyncLogger.slowSink(\"line \" + i);   // caller waits for every write\nconsole.log(\"caller spent \" + Number((process.hrtime.bigint() - t) / 1_000_000n) + \" ms just logging\");\n" }, { lang: 'cpp', code: "struct SyncLogger {\n    static void slowSink(const string& line) {\n        auto end = chrono::steady_clock::now() + chrono::microseconds(20);   // ~20 microseconds of \"disk\" work\n        while (chrono::steady_clock::now() < end) { this_thread::yield(); }\n    }\n};\n\nint main() {\n    auto t = chrono::steady_clock::now();\n    for (int i = 0; i < 2000; i++) SyncLogger::slowSink(\"line \" + to_string(i));      // caller waits for every write\n    cout << \"caller spent \" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - t).count() << \" ms just logging\" << endl;\n}\n" }] }
     },
     mcq: { q: 'Why must the async writer thread be stopped with a "poison pill" placed in the queue rather than just interrupting it?', options: ['Messages queued before the pill are still written first, so nothing accepted is lost', 'Threads can never be interrupted', 'The pill is faster', 'It prevents dropping'], answer: 0, explain: 'The pill travels through the FIFO behind every accepted line, so the writer flushes them and then exits. A join with timeout guards against a stuck sink.' },
     hints: [
@@ -10799,7 +11075,7 @@ int main() {
     example: `<p>counter = 5. Sessions A and B both read 5 and set 6. A commits first → ${H.c('g', 'OK, counter = 6')}. B commits → ${H.c('r', 'CONFLICT')} (its read of version 1 is stale); B retries: reads 6, sets 7 → ${H.c('g', 'OK')}. Final 7, not 6 — no lost update.</p>`,
     brute: {
       why: `<p>Applying each session\'s writes directly to the shared map (no versions) causes <b>lost updates</b>: both sessions read 5 and write 6, so one increment disappears. Using one global lock for the whole session duration fixes it but serialises all clients, even ones touching different keys.</p>`,
-      code: String.raw`
+      code: { lang: 'java', code: String.raw`
 class LostUpdate {
     public static void main(String[] args) {
         Map<String, Integer> store = new HashMap<>(Map.of("counter", 5));
@@ -10809,7 +11085,7 @@ class LostUpdate {
         store.put("counter", b + 1);         // B writes 6 -> A's increment lost
         System.out.println("counter = " + store.get("counter") + " (expected 7)");
     }
-}`
+}`, alt: [{ lang: 'python', code: "if __name__ == \"__main__\":\n    store = {\"counter\": 5}\n    a = store[\"counter\"]        # session A reads 5\n    b = store[\"counter\"]        # session B reads 5\n    store[\"counter\"] = a + 1    # A writes 6\n    store[\"counter\"] = b + 1    # B writes 6 -> A's increment lost\n    print(f\"counter = {store['counter']} (expected 7)\")\n" }, { lang: 'ts', code: "const store = new Map<string, number>([[\"counter\", 5]]);\nconst a = store.get(\"counter\")!;        // session A reads 5\nconst b = store.get(\"counter\")!;        // session B reads 5\nstore.set(\"counter\", a + 1);            // A writes 6\nstore.set(\"counter\", b + 1);            // B writes 6 -> A's increment lost\nconsole.log(\"counter = \" + store.get(\"counter\") + \" (expected 7)\");\n" }, { lang: 'cpp', code: "int main() {\n    unordered_map<string, int> store = {{\"counter\", 5}};\n    int a = store[\"counter\"];        // session A reads 5\n    int b = store[\"counter\"];        // session B reads 5\n    store[\"counter\"] = a + 1;        // A writes 6\n    store[\"counter\"] = b + 1;        // B writes 6 -> A's increment lost\n    cout << \"counter = \" << store[\"counter\"] << \" (expected 7)\" << endl;\n}\n" }] }
     },
     mcq: { q: 'Session A only WRITES key x (never reads it); B commits a change to x before A commits. Under the rule "fail if a key you READ changed", what happens to A?', options: ['A commits; its write simply overwrites (last writer wins on blind writes)', 'A always fails', 'A deadlocks', 'A sees B\'s value'], answer: 0, explain: 'Validation covers the read set. Blind writes do not depend on the old value, so overwriting is serializable. If you want write-write conflicts detected too, add written keys to the validation set (as snapshot isolation does).' },
     hints: [

@@ -22,16 +22,22 @@ function topics() {
   vm.createContext(ctx);
   for (const f of ['src/helpers.js', 'src/tracks.js', 'src/engine.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f });
   const out = [];
-  for (const t of ctx.TRACKS) for (const pm of t.modules) {
+  ctx.TRACKS.forEach((t, ti) => t.modules.forEach((pm, mi) => {
     const f = path.join(root, 'content', t.id, pm.id + '.js');
-    if (!fs.existsSync(f)) continue;
+    if (!fs.existsSync(f)) return;
     ctx.MODULES.length = 0;
     vm.runInContext(fs.readFileSync(f, 'utf8'), ctx, { filename: f });
     const m = ctx.MODULES[0];
-    if (!m) continue;
-    (m.topics || []).forEach((tp, i) => out.push({ id: pm.id + '-t' + i, title: strip(tp.title), query: ((QUERY_PREFIX[t.id] || '') + ' ' + strip(tp.title)).trim().slice(0, 120) }));
-  }
+    if (!m) return;
+    (m.topics || []).forEach((tp, i) => out.push({ id: pm.id + '-t' + i, title: strip(tp.title), query: ((QUERY_PREFIX[t.id] || '') + ' ' + strip(tp.title)).trim().slice(0, 120), track: ti, module: mi, topic: i }));
+  }));
   return out;
+}
+
+// Search order: every module's first topic before any second topic, and within each round the modules of all tracks
+// interleaved (module 1 of every track, then module 2 of every track...), so each day's quota reaches every track.
+function searchOrder(list) {
+  return list.slice().sort((a, b) => a.topic - b.topic || a.module - b.module || a.track - b.track);
 }
 
 // Scores the candidates for one topic and returns the best one, or null when none qualifies.
@@ -94,7 +100,7 @@ async function main() {
     return;
   }
 
-  const todo = all.filter((t) => !db.videos[t.id]).slice(0, max);
+  const todo = searchOrder(all.filter((t) => !db.videos[t.id])).slice(0, max);
   let found = 0, none = 0;
   for (const t of todo) {
     try {
@@ -115,4 +121,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
-module.exports = { pick, seconds, words };
+module.exports = { pick, seconds, words, searchOrder, topics };

@@ -668,7 +668,7 @@ print("3000 random operations agree with brute force")` }],
         <p>sumRange(0, 2) → ${H.c('g', '9')} (1 + 3 + 5). update(1, 2) → nums = [1, 2, 5]. sumRange(0, 2) → ${H.c('g', '8')}. The second answer differs because the update changed the middle element; a structure that cached the first answer without repairing it would wrongly print 9 again.</p>`,
       brute: {
         why: `<p>Store the array; <code>update</code> is O(1), <code>sumRange</code> loops in O(N). Worst case: 3·10<sup>4</sup> queries × 3·10<sup>4</sup> elements = 9·10<sup>8</sup> additions — too slow. A prefix-sum array flips the problem: O(1) queries but O(N) updates. The waste: every query re-adds the same untouched chunks of the array again and again.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           class NumArrayBrute {
               private final int[] a;
               NumArrayBrute(int[] nums) { a = nums.clone(); }
@@ -678,7 +678,40 @@ print("3000 random operations agree with brute force")` }],
                   for (int i = left; i <= right; i++) s += a[i];
                   return s;
               }
-          }`
+          }`, alt: [
+          { lang: 'python', code: `class NumArrayBrute:
+    def __init__(self, nums):
+        self.a = list(nums)
+
+    def update(self, index, val):
+        self.a[index] = val                        # O(1)
+
+    def sumRange(self, left, right):               # O(N) per call
+        s = 0
+        for i in range(left, right + 1):
+            s += self.a[i]
+        return s` },
+          { lang: 'js', code: `class NumArrayBrute {
+  constructor(nums) { this.a = [...nums]; }
+  update(index, val) { this.a[index] = val; }         // O(1)
+  sumRange(left, right) {                             // O(N) per call
+    let s = 0;
+    for (let i = left; i <= right; i++) s += this.a[i];
+    return s;
+  }
+}` },
+          { lang: 'cpp', code: `class NumArrayBrute {
+    vector<int> a;
+public:
+    NumArrayBrute(vector<int>& nums) : a(nums) {}
+    void update(int index, int val) { a[index] = val; }          // O(1)
+    int sumRange(int left, int right) {                          // O(N) per call
+        int s = 0;
+        for (int i = left; i <= right; i++) s += a[i];
+        return s;
+    }
+};` }
+        ] }
       },
       mcq: {
         q: 'You need both update and sumRange fast. Which pair of costs can a segment tree give you?',
@@ -1522,7 +1555,7 @@ print("3000 random range-adds / range-sums match brute force")` }],
         <p>Output ${H.c('g', '[34, 72]')}. After the first two adds the array is [2,12,12,12,10,10,10,0], so sum[2..4] = 12+12+10 = 34. After +1 on [4,7] it becomes [2,12,12,12,11,11,11,1] and the total is 72.</p>`,
       brute: {
         why: `<p>Keep the array and loop over [l, r] for both commands: up to 10<sup>5</sup> elements × 10<sup>5</sup> commands = 10<sup>10</sup> steps. The waste: an add on [0, 99 999] rewrites 10<sup>5</sup> cells even if the next query only looks at their total.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           long[] bruteHorrible(int n, int[][] cmds) {
               long[] a = new long[n];
               List<Long> out = new ArrayList<>();
@@ -1533,7 +1566,38 @@ print("3000 random range-adds / range-sums match brute force")` }],
               long[] res = new long[out.size()];
               for (int i = 0; i < res.length; i++) res[i] = out.get(i);
               return res;
-          }`
+          }`, alt: [
+          { lang: 'python', code: `def horrible(n, cmds):
+    a = [0] * n
+    out = []
+    for c in cmds:
+        if c[0] == 0:
+            for i in range(c[1], c[2] + 1):
+                a[i] += c[3]                       # O(N) add
+        else:
+            s = 0
+            for i in range(c[1], c[2] + 1):
+                s += a[i]                          # O(N) sum
+            out.append(s)
+    return out` },
+          { lang: 'js', code: `function horrible(n, cmds) {
+  const a = new Array(n).fill(0);
+  const out = [];
+  for (const c of cmds) {
+    if (c[0] === 0) for (let i = c[1]; i <= c[2]; i++) a[i] += c[3];   // O(N) add
+    else { let s = 0; for (let i = c[1]; i <= c[2]; i++) s += a[i]; out.push(s); } // O(N) sum
+  }
+  return out;
+}` },
+          { lang: 'cpp', code: `vector<long long> horrible(int n, vector<vector<int>>& cmds) {
+    vector<long long> a(n, 0), out;
+    for (auto& c : cmds) {
+        if (c[0] == 0) for (int i = c[1]; i <= c[2]; i++) a[i] += c[3];   // O(N) add
+        else { long long s = 0; for (int i = c[1]; i <= c[2]; i++) s += a[i]; out.push_back(s); } // O(N) sum
+    }
+    return out;
+}` }
+        ] }
       },
       mcq: {
         q: 'A node covering [4, 7] (sum 40) is fully inside an "add 3" update. What do you do?',
@@ -2294,7 +2358,7 @@ print("3rd smallest now =", counts.kth(3))  # 2 5 7 9 -> 7` }],
         <p>Right of 5 the smaller ones are ${H.c('g', '2 and 1')} → 2. Right of 2: only 1 → 1. Right of 6: only 1 → 1. Nothing is right of 1 → 0.</p>`,
       brute: {
         why: `<p>For each i scan everything to its right: N(N−1)/2 ≈ 5·10<sup>9</sup> comparisons for N = 10<sup>5</sup>. The waste: each scan re-counts the same suffix from scratch instead of keeping a running "how many of each value have I seen".</p>`,
-        code: `
+        code: { lang: 'java', code: `
           List<Integer> countSmallerBrute(int[] nums) {
               List<Integer> res = new ArrayList<>();
               for (int i = 0; i < nums.length; i++) {
@@ -2303,7 +2367,35 @@ print("3rd smallest now =", counts.kth(3))  # 2 5 7 9 -> 7` }],
                   res.add(c);
               }
               return res;
-          }`
+          }`, alt: [
+          { lang: 'python', code: `def count_smaller(nums):
+    res = []
+    for i in range(len(nums)):
+        c = 0
+        for j in range(i + 1, len(nums)):
+            if nums[j] < nums[i]:
+                c += 1
+        res.append(c)
+    return res` },
+          { lang: 'js', code: `function countSmaller(nums) {
+  const res = [];
+  for (let i = 0; i < nums.length; i++) {
+    let c = 0;
+    for (let j = i + 1; j < nums.length; j++) if (nums[j] < nums[i]) c++;
+    res.push(c);
+  }
+  return res;
+}` },
+          { lang: 'cpp', code: `vector<int> countSmaller(vector<int>& nums) {
+    vector<int> res;
+    for (int i = 0; i < (int)nums.size(); i++) {
+        int c = 0;
+        for (int j = i + 1; j < (int)nums.size(); j++) if (nums[j] < nums[i]) c++;
+        res.push_back(c);
+    }
+    return res;
+}` }
+        ] }
       },
       mcq: {
         q: 'Walking from right to left with a BIT of counts indexed by value, what do you ask before inserting nums[i] = v?',
@@ -2896,7 +2988,7 @@ print("2000 random max queries match brute force")` }],
       example: `${H.arr([8, 2, 4, 7], { label: 'nums', hl: { 1: 'g', 2: 'g' } })}<p>limit = 4 → output ${H.c('g', '2')}. [2, 4] has max − min = 2 ≤ 4 (and [4, 7] has 3 ≤ 4). Both windows of length 3 fail: [8, 2, 4] has max − min = 6 and [2, 4, 7] has 5, both &gt; 4.</p>`,
       brute: {
         why: `<p>Try every subarray and compute its max and min while extending the right end: O(N²) = 10<sup>10</sup> for N = 10<sup>5</sup>. The waste: when [l, r] fails, every longer window starting at l fails too, but brute force keeps checking them.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int longestBrute(int[] nums, int limit) {
               int best = 0;
               for (int l = 0; l < nums.length; l++) {
@@ -2909,7 +3001,45 @@ print("2000 random max queries match brute force")` }],
                   }
               }
               return best;
-          }`
+          }`, alt: [
+          { lang: 'python', code: `def longest_subarray(nums, limit):
+    best = 0
+    for l in range(len(nums)):
+        mx = mn = nums[l]
+        for r in range(l, len(nums)):
+            mx = max(mx, nums[r])
+            mn = min(mn, nums[r])
+            if mx - mn > limit:
+                break                              # longer windows from l only get worse
+            best = max(best, r - l + 1)
+    return best` },
+          { lang: 'js', code: `function longestSubarray(nums, limit) {
+  let best = 0;
+  for (let l = 0; l < nums.length; l++) {
+    let mx = nums[l], mn = nums[l];
+    for (let r = l; r < nums.length; r++) {
+      mx = Math.max(mx, nums[r]);
+      mn = Math.min(mn, nums[r]);
+      if (mx - mn > limit) break;                  // longer windows from l only get worse
+      best = Math.max(best, r - l + 1);
+    }
+  }
+  return best;
+}` },
+          { lang: 'cpp', code: `int longestSubarray(vector<int>& nums, int limit) {
+    int best = 0;
+    for (int l = 0; l < (int)nums.size(); l++) {
+        int mx = nums[l], mn = nums[l];
+        for (int r = l; r < (int)nums.size(); r++) {
+            mx = max(mx, nums[r]);
+            mn = min(mn, nums[r]);
+            if (mx - mn > limit) break;            // longer windows from l only get worse
+            best = max(best, r - l + 1);
+        }
+    }
+    return best;
+}` }
+        ] }
       },
       mcq: {
         q: 'Inside a two-pointer loop you need max(nums[l..r]) and min(nums[l..r]) many times, and nums never changes. Which tool gives each answer in O(1)?',
@@ -3464,7 +3594,7 @@ print("3000 random range-add / range-sum ops match, block size", sd.B)` }],
         <p>Ops: [2,1,7,5], [1,3,0], [2,1,7,5] → output ${H.c('g', '[4, 5]')}. In a[1..7] = [1,4,8,2,7,3,6] the values ≤ 5 are 1, 4, 2, 3 → 4. After a[3] = 0 the 8 becomes 0 → 5.</p>`,
       brute: {
         why: `<p>Loop over [l, r] for every query: O(N) each, up to 5·10<sup>4</sup> × 5·10<sup>4</sup> = 2.5·10<sup>9</sup>. Updates are O(1). The waste: the same middle elements are compared against x over and over, although a sorted summary of them would answer "how many ≤ x" with one binary search.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           List<Integer> bruteCount(int[] a0, int[][] ops) {
               int[] a = a0.clone();
               List<Integer> out = new ArrayList<>();
@@ -3477,7 +3607,46 @@ print("3000 random range-add / range-sum ops match, block size", sd.B)` }],
                   }
               }
               return out;
-          }`
+          }`, alt: [
+          { lang: 'python', code: `def process(a0, ops):
+    a = list(a0)
+    out = []
+    for op in ops:
+        if op[0] == 1:
+            a[op[1]] = op[2]
+        else:
+            c = 0
+            for j in range(op[1], op[2] + 1):
+                if a[j] <= op[3]:
+                    c += 1
+            out.append(c)
+    return out` },
+          { lang: 'js', code: `function process(a0, ops) {
+  const a = [...a0];
+  const out = [];
+  for (const op of ops) {
+    if (op[0] === 1) a[op[1]] = op[2];
+    else {
+      let c = 0;
+      for (let j = op[1]; j <= op[2]; j++) if (a[j] <= op[3]) c++;
+      out.push(c);
+    }
+  }
+  return out;
+}` },
+          { lang: 'cpp', code: `vector<int> process(vector<int> a, vector<vector<int>>& ops) {
+    vector<int> out;
+    for (auto& op : ops) {
+        if (op[0] == 1) a[op[1]] = op[2];
+        else {
+            int c = 0;
+            for (int j = op[1]; j <= op[2]; j++) if (a[j] <= op[3]) c++;
+            out.push_back(c);
+        }
+    }
+    return out;
+}` }
+        ] }
       },
       mcq: {
         q: 'Why is a plain segment tree awkward here, while √N blocks are easy?',
@@ -4095,8 +4264,8 @@ print("pointer moves with Mo:", moves, "| elements a naive scan touches:", naive
       constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i] ≤ 10<sup>9</sup>`,
       example: `${H.arr([3, 2, 3, 1, 2], { label: 'a' })}<p>Queries [0,2], [1,3], [2,4], [0,4] → ${H.c('g', '[2, 3, 3, 3]')}. [3,2,3] has {2,3}; [2,3,1] has {1,2,3}; [3,1,2] has {1,2,3}; the whole array has {1,2,3}.</p>`,
       brute: {
-        why: `<p>For each query build a HashSet of a[l..r]: O(length) each → up to 2·10<sup>5</sup> × 2·10<sup>5</sup> = 4·10<sup>10</sup>. The waste: consecutive queries overlap heavily, yet every set is rebuilt from scratch.</p>`,
-        code: `
+        why: `<p>For each query build a hash set (<code>HashSet</code> / <code>set</code> / <code>Set</code> / <code>unordered_set</code>) of a[l..r]: O(length) each → up to 2·10<sup>5</sup> × 2·10<sup>5</sup> = 4·10<sup>10</sup>. The waste: consecutive queries overlap heavily, yet every set is rebuilt from scratch.</p>`,
+        code: { lang: 'java', code: `
           int[] bruteDistinct(int[] a, int[][] qs) {
               int[] ans = new int[qs.length];
               for (int i = 0; i < qs.length; i++) {
@@ -4105,7 +4274,34 @@ print("pointer moves with Mo:", moves, "| elements a naive scan touches:", naive
                   ans[i] = seen.size();
               }
               return ans;
-          }`
+          }`, alt: [
+          { lang: 'python', code: `def distinct_queries(a, qs):
+    ans = []
+    for l, r in qs:
+        seen = set()
+        for j in range(l, r + 1):
+            seen.add(a[j])
+        ans.append(len(seen))
+    return ans` },
+          { lang: 'js', code: `function distinctQueries(a, qs) {
+  const ans = new Array(qs.length);
+  for (let i = 0; i < qs.length; i++) {
+    const seen = new Set();
+    for (let j = qs[i][0]; j <= qs[i][1]; j++) seen.add(a[j]);
+    ans[i] = seen.size;
+  }
+  return ans;
+}` },
+          { lang: 'cpp', code: `vector<int> distinctQueries(vector<int>& a, vector<vector<int>>& qs) {
+    vector<int> ans(qs.size());
+    for (int i = 0; i < (int)qs.size(); i++) {
+        unordered_set<int> seen;
+        for (int j = qs[i][0]; j <= qs[i][1]; j++) seen.insert(a[j]);
+        ans[i] = seen.size();
+    }
+    return ans;
+}` }
+        ] }
       },
       mcq: {
         q: 'Which property of "distinct count" makes Mo\'s algorithm work?',
@@ -4812,7 +5008,7 @@ for upd, q, online in cases:
         <p>query(1, 2, 4) → ${H.c('g', '1')} (arr[1..2] = [33, 4]). query(0, 11, 33) → ${H.c('g', '2')} (positions 1 and 7).</p>`,
       brute: {
         why: `<p>Scan arr[left..right] and count: O(N) per query, 10<sup>5</sup> × 10<sup>5</sup> = 10<sup>10</sup>. A segment tree of hash maps would answer in O(log N) but needs O(N log N) map entries — heavy and slow. The waste in brute force: we look at every element, although only the positions of <i>one</i> value matter.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           class RangeFreqQueryBrute {
               private final int[] a;
               RangeFreqQueryBrute(int[] arr) { a = arr.clone(); }
@@ -4821,7 +5017,36 @@ for upd, q, online in cases:
                   for (int i = left; i <= right; i++) if (a[i] == value) c++;
                   return c;
               }
-          }`
+          }`, alt: [
+          { lang: 'python', code: `class RangeFreqQueryBrute:
+    def __init__(self, arr):
+        self.a = list(arr)
+
+    def query(self, left, right, value):
+        c = 0
+        for i in range(left, right + 1):
+            if self.a[i] == value:
+                c += 1
+        return c` },
+          { lang: 'js', code: `class RangeFreqQueryBrute {
+  constructor(arr) { this.a = [...arr]; }
+  query(left, right, value) {
+    let c = 0;
+    for (let i = left; i <= right; i++) if (this.a[i] === value) c++;
+    return c;
+  }
+}` },
+          { lang: 'cpp', code: `class RangeFreqQueryBrute {
+    vector<int> a;
+public:
+    RangeFreqQueryBrute(vector<int>& arr) : a(arr) {}
+    int query(int left, int right, int value) {
+        int c = 0;
+        for (int i = left; i <= right; i++) if (a[i] == value) c++;
+        return c;
+    }
+};` }
+        ] }
       },
       mcq: {
         q: 'The array is static and each query asks about ONE value. What is the lightest correct structure?',
@@ -4960,7 +5185,7 @@ public:
       <p>sumRange(0, 2) → ${H.c('g', '1')}, sumRange(2, 5) → ${H.c('g', '−1')} (3 − 5 + 2 − 1), sumRange(0, 5) → ${H.c('g', '−3')}. With prefix sums pre = [0, −2, −2, 1, −4, −2, −3], sumRange(2, 5) = pre[6] − pre[2] = −3 − (−2) = −1.</p>`,
     brute: {
       why: `<p>Loop from left to right on every call: O(N) per call, 10<sup>8</sup> in the worst case. It works here but wastes time re-adding the same elements. Because the array is static, a segment tree or Fenwick would also be overkill — prefix sums give O(1).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         class NumArrayBrute {
             private final int[] a;
             NumArrayBrute(int[] nums) { a = nums.clone(); }
@@ -4969,7 +5194,35 @@ public:
                 for (int i = left; i <= right; i++) s += a[i];
                 return s;
             }
-        }`
+        }`, alt: [
+          { lang: 'python', code: `class NumArrayBrute:
+    def __init__(self, nums):
+        self.a = list(nums)
+
+    def sumRange(self, left, right):
+        s = 0
+        for i in range(left, right + 1):
+            s += self.a[i]
+        return s` },
+          { lang: 'js', code: `class NumArrayBrute {
+  constructor(nums) { this.a = [...nums]; }
+  sumRange(left, right) {
+    let s = 0;
+    for (let i = left; i <= right; i++) s += this.a[i];
+    return s;
+  }
+}` },
+          { lang: 'cpp', code: `class NumArrayBrute {
+    vector<int> a;
+public:
+    NumArrayBrute(vector<int>& nums) : a(nums) {}
+    int sumRange(int left, int right) {
+        int s = 0;
+        for (int i = left; i <= right; i++) s += a[i];
+        return s;
+    }
+};` }
+        ] }
     },
     mcq: {
       q: 'The array never changes. Which structure is the simplest with O(1) queries?',
@@ -5070,13 +5323,32 @@ public:
       <p>After [1,3,+2]: [0,2,2,2,0]; after [2,4,+3]: [0,2,5,5,3]; after [0,2,−2]: ${H.c('g', '[−2,0,3,5,3]')}.</p>`,
     brute: {
       why: `<p>Apply each update element by element: up to 10<sup>4</sup> × 10<sup>5</sup> = 10<sup>9</sup> additions. The waste: we only need the final array, so there is no reason to keep it correct after every single update.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[] bruteRangeAddition(int length, int[][] updates) {
             int[] a = new int[length];
             for (int[] u : updates)
                 for (int i = u[0]; i <= u[1]; i++) a[i] += u[2];
             return a;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def get_modified_array(length, updates):
+    a = [0] * length
+    for l, r, inc in updates:
+        for i in range(l, r + 1):
+            a[i] += inc
+    return a` },
+          { lang: 'js', code: `function getModifiedArray(length, updates) {
+  const a = new Array(length).fill(0);
+  for (const u of updates)
+    for (let i = u[0]; i <= u[1]; i++) a[i] += u[2];
+  return a;
+}` },
+          { lang: 'cpp', code: `vector<int> getModifiedArray(int length, vector<vector<int>>& updates) {
+    vector<int> a(length, 0);
+    for (auto& u : updates)
+        for (int i = u[0]; i <= u[1]; i++) a[i] += u[2];
+    return a;
+}` }
+        ] }
     },
     mcq: {
       q: 'In a difference array d, how do you record "add v to [l, r]"?',
@@ -5184,7 +5456,7 @@ public:
       <p>Queries [1,3], [4,5], [0,7], [2,2] → ${H.c('g', '[2, 1, 1, 4]')}. For [1,3]: len 3, k = 1, windows [1,2] (min 2) and [2,3] (min 4) → 2.</p>`,
     brute: {
       why: `<p>Scan each range: O(N) per query → 4·10<sup>10</sup>. The waste: the same windows are scanned again and again although the array never changes, so their minima could be precomputed once.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[] bruteRmq(int[] a, int[][] qs) {
             int[] res = new int[qs.length];
             for (int i = 0; i < qs.length; i++) {
@@ -5193,7 +5465,34 @@ public:
                 res[i] = m;
             }
             return res;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def range_min(a, qs):
+    res = []
+    for l, r in qs:
+        m = float('inf')
+        for j in range(l, r + 1):
+            m = min(m, a[j])
+        res.append(m)
+    return res` },
+          { lang: 'js', code: `function rangeMin(a, qs) {
+  const res = new Array(qs.length);
+  for (let i = 0; i < qs.length; i++) {
+    let m = Infinity;
+    for (let j = qs[i][0]; j <= qs[i][1]; j++) m = Math.min(m, a[j]);
+    res[i] = m;
+  }
+  return res;
+}` },
+          { lang: 'cpp', code: `vector<int> rangeMin(vector<int>& a, vector<vector<int>>& qs) {
+    vector<int> res(qs.size());
+    for (int i = 0; i < (int)qs.size(); i++) {
+        int m = INT_MAX;
+        for (int j = qs[i][0]; j <= qs[i][1]; j++) m = min(m, a[j]);
+        res[i] = m;
+    }
+    return res;
+}` }
+        ] }
     },
     mcq: {
       q: 'For the query [3, 9] (length 7), which two sparse-table cells answer it?',
@@ -5318,7 +5617,7 @@ public:
       <p>Ops [2,0,3], [2,4,5], [1,2,1], [2,0,3] → ${H.c('g', '[14, 2, 11]')}. After setting a[2] = 1 the first four sum to 3 + 2 + 1 + 5 = 11.</p>`,
     brute: {
       why: `<p>Loop over [l, r] for each sum: O(N) → 4·10<sup>10</sup> worst case. Prefix sums would make sums O(1) but every set would cost O(N). The waste: one changed element forces rescanning or rebuilding everything.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         long[] bruteDynamic(int[] a0, int[][] ops) {
             long[] a = new long[a0.length];
             for (int i = 0; i < a0.length; i++) a[i] = a0[i];
@@ -5330,7 +5629,37 @@ public:
             long[] res = new long[out.size()];
             for (int i = 0; i < res.length; i++) res[i] = out.get(i);
             return res;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def process(a0, ops):
+    a = list(a0)
+    out = []
+    for op in ops:
+        if op[0] == 1:
+            a[op[1]] = op[2]
+        else:
+            s = 0
+            for i in range(op[1], op[2] + 1):
+                s += a[i]
+            out.append(s)
+    return out` },
+          { lang: 'js', code: `function process(a0, ops) {
+  const a = [...a0];
+  const out = [];
+  for (const op of ops) {
+    if (op[0] === 1) a[op[1]] = op[2];
+    else { let s = 0; for (let i = op[1]; i <= op[2]; i++) s += a[i]; out.push(s); }
+  }
+  return out;
+}` },
+          { lang: 'cpp', code: `vector<long long> process(vector<int> a0, vector<vector<int>>& ops) {
+    vector<long long> a(a0.begin(), a0.end()), out;
+    for (auto& op : ops) {
+        if (op[0] == 1) a[op[1]] = op[2];
+        else { long long s = 0; for (int i = op[1]; i <= op[2]; i++) s += a[i]; out.push_back(s); }
+    }
+    return out;
+}` }
+        ] }
     },
     mcq: {
       q: 'A Fenwick tree supports "add delta at i". How do you implement "set a[k] = u"?',
@@ -5491,14 +5820,36 @@ public:
     example: `${H.arr([8, 4, 2, 1], { label: 'a' })}<p>Output ${H.c('g', '6')}: every pair is inverted (4·3/2). For [3, 1, 2] the answer is ${H.c('g', '2')}: (3,1) and (3,2).</p>`,
     brute: {
       why: `<p>Check all pairs: N(N−1)/2 ≈ 2·10<sup>10</sup> comparisons. The waste: for each new element we recount all earlier elements instead of keeping a running "how many seen values are greater than v".</p>`,
-      code: `
+      code: { lang: 'java', code: `
         long bruteInversions(int[] a) {
             long c = 0;
             for (int i = 0; i < a.length; i++)
                 for (int j = i + 1; j < a.length; j++)
                     if (a[i] > a[j]) c++;
             return c;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def count_inversions(a):
+    c = 0
+    for i in range(len(a)):
+        for j in range(i + 1, len(a)):
+            if a[i] > a[j]:
+                c += 1
+    return c` },
+          { lang: 'js', code: `function countInversions(a) {
+  let c = 0;
+  for (let i = 0; i < a.length; i++)
+    for (let j = i + 1; j < a.length; j++)
+      if (a[i] > a[j]) c++;
+  return c;
+}` },
+          { lang: 'cpp', code: `long long countInversions(vector<int>& a) {
+    long long c = 0;
+    for (int i = 0; i < (int)a.size(); i++)
+        for (int j = i + 1; j < (int)a.size(); j++)
+            if (a[i] > a[j]) c++;
+    return c;
+}` }
+        ] }
     },
     mcq: {
       q: 'Scanning left to right with a BIT of value counts, how many earlier elements are strictly greater than the current value with rank r?',
@@ -5626,7 +5977,7 @@ public:
       <p>Ops [2,3], [1,1,4,1], [2,3], [2,4] → ${H.c('g', '[5, 6, 2]')}. The add raises a[1..4] by 1, so a[3] becomes 6 and a[4] becomes 2.</p>`,
     brute: {
       why: `<p>Apply every add element by element: O(N) per add → 4·10<sup>10</sup> worst case. A difference array makes adds O(1) but then reading a[k] costs an O(N) prefix sum. The waste is on one side or the other.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         long[] bruteRangePoint(int[] a0, int[][] ops) {
             long[] a = new long[a0.length];
             for (int i = 0; i < a0.length; i++) a[i] = a0[i];
@@ -5638,7 +5989,35 @@ public:
             long[] res = new long[out.size()];
             for (int i = 0; i < res.length; i++) res[i] = out.get(i);
             return res;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def process(a0, ops):
+    a = list(a0)
+    out = []
+    for op in ops:
+        if op[0] == 1:
+            for i in range(op[1], op[2] + 1):
+                a[i] += op[3]
+        else:
+            out.append(a[op[1]])
+    return out` },
+          { lang: 'js', code: `function process(a0, ops) {
+  const a = [...a0];
+  const out = [];
+  for (const op of ops) {
+    if (op[0] === 1) for (let i = op[1]; i <= op[2]; i++) a[i] += op[3];
+    else out.push(a[op[1]]);
+  }
+  return out;
+}` },
+          { lang: 'cpp', code: `vector<long long> process(vector<int> a0, vector<vector<int>>& ops) {
+    vector<long long> a(a0.begin(), a0.end()), out;
+    for (auto& op : ops) {
+        if (op[0] == 1) for (int i = op[1]; i <= op[2]; i++) a[i] += op[3];
+        else out.push_back(a[op[1]]);
+    }
+    return out;
+}` }
+        ] }
     },
     mcq: {
       q: 'You keep a Fenwick tree over the difference array d. What is a[k]?',
@@ -5773,7 +6152,7 @@ public:
       <p>sumRegion(2,1,4,3) → ${H.c('g', '8')}; update(3,2,2); sumRegion(2,1,4,3) → ${H.c('g', '10')} (the 0 at (3,2) became 2).</p>`,
     brute: {
       why: `<p>Loop over the rectangle: up to 200 × 200 = 4·10<sup>4</sup> per query, 2·10<sup>8</sup> for 5000 calls — borderline. 2D prefix sums make queries O(1) but updates O(rows·cols). A 2D Fenwick tree balances both at O(log R · log C).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         class NumMatrixBrute {
             private final int[][] m;
             NumMatrixBrute(int[][] matrix) { m = new int[matrix.length][]; for (int i = 0; i < m.length; i++) m[i] = matrix[i].clone(); }
@@ -5783,7 +6162,41 @@ public:
                 for (int r = r1; r <= r2; r++) for (int c = c1; c <= c2; c++) s += m[r][c];
                 return s;
             }
-        }`
+        }`, alt: [
+          { lang: 'python', code: `class NumMatrixBrute:
+    def __init__(self, matrix):
+        self.m = [row[:] for row in matrix]
+
+    def update(self, r, c, val):
+        self.m[r][c] = val
+
+    def sumRegion(self, r1, c1, r2, c2):
+        s = 0
+        for r in range(r1, r2 + 1):
+            for c in range(c1, c2 + 1):
+                s += self.m[r][c]
+        return s` },
+          { lang: 'js', code: `class NumMatrixBrute {
+  constructor(matrix) { this.m = matrix.map((row) => [...row]); }
+  update(r, c, val) { this.m[r][c] = val; }
+  sumRegion(r1, c1, r2, c2) {
+    let s = 0;
+    for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) s += this.m[r][c];
+    return s;
+  }
+}` },
+          { lang: 'cpp', code: `class NumMatrixBrute {
+    vector<vector<int>> m;
+public:
+    NumMatrixBrute(vector<vector<int>>& matrix) : m(matrix) {}
+    void update(int r, int c, int val) { m[r][c] = val; }
+    int sumRegion(int r1, int c1, int r2, int c2) {
+        int s = 0;
+        for (int r = r1; r <= r2; r++) for (int c = c1; c <= c2; c++) s += m[r][c];
+        return s;
+    }
+};` }
+        ] }
     },
     mcq: {
       q: 'With a 2D prefix function P(r, c) = sum of the rectangle (0,0)..(r,c), the region sum is…',
@@ -5963,7 +6376,7 @@ public:
       <p>Ops [2,0,3], [2,4,5], [1,1,6], [2,0,3] → ${H.c('g', '[2, 1, 3]')}. After a[1] = 6, the first four are 3, 6, 4, 5 → min 3.</p>`,
     brute: {
       why: `<p>Scan [l, r] per query: O(N) → 4·10<sup>10</sup>. A sparse table answers in O(1) but each set forces an O(N log N) rebuild. A Fenwick tree cannot "un-min" a prefix. The waste: recomputing minima of unchanged blocks.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[] bruteDynMin(int[] a0, int[][] ops) {
             int[] a = a0.clone();
             List<Integer> out = new ArrayList<>();
@@ -5974,7 +6387,37 @@ public:
             int[] res = new int[out.size()];
             for (int i = 0; i < res.length; i++) res[i] = out.get(i);
             return res;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def process(a0, ops):
+    a = list(a0)
+    out = []
+    for op in ops:
+        if op[0] == 1:
+            a[op[1]] = op[2]
+        else:
+            m = float('inf')
+            for i in range(op[1], op[2] + 1):
+                m = min(m, a[i])
+            out.append(m)
+    return out` },
+          { lang: 'js', code: `function process(a0, ops) {
+  const a = [...a0];
+  const out = [];
+  for (const op of ops) {
+    if (op[0] === 1) a[op[1]] = op[2];
+    else { let m = Infinity; for (let i = op[1]; i <= op[2]; i++) m = Math.min(m, a[i]); out.push(m); }
+  }
+  return out;
+}` },
+          { lang: 'cpp', code: `vector<int> process(vector<int> a, vector<vector<int>>& ops) {
+    vector<int> out;
+    for (auto& op : ops) {
+        if (op[0] == 1) a[op[1]] = op[2];
+        else { int m = INT_MAX; for (int i = op[1]; i <= op[2]; i++) m = min(m, a[i]); out.push_back(m); }
+    }
+    return out;
+}` }
+        ] }
     },
     mcq: {
       q: 'Why can\'t a Fenwick tree answer min(a[l..r]) with arbitrary updates?',
@@ -6126,7 +6569,7 @@ public:
       <p>Groups [4, 4, 7, 1, 1] → ${H.c('g', '[3, 5, 0, 1, 1]')}. The first 4 goes to hotel 3 (now 0 rooms), the next 4 to hotel 5 (now 1), nobody has 7, then two groups of 1 both fit in hotel 1 (3 → 2 → 1).</p>`,
     brute: {
       why: `<p>Scan from hotel 1 for each group: O(N) per group → 4·10<sup>10</sup>. Binary search on "max of prefix" with a range-max tree would be O(log² N). The waste: we revisit many hotels that are too small, although one stored maximum per block tells us immediately whether a whole block can be skipped.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[] bruteHotels(int[] h0, int[] groups) {
             int[] h = h0.clone();
             int[] res = new int[groups.length];
@@ -6135,7 +6578,35 @@ public:
                     if (h[i] >= groups[j]) { h[i] -= groups[j]; res[j] = i + 1; break; }
             }
             return res;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def assign(h0, groups):
+    h = list(h0)
+    res = [0] * len(groups)
+    for j in range(len(groups)):
+        for i in range(len(h)):
+            if h[i] >= groups[j]:
+                h[i] -= groups[j]
+                res[j] = i + 1
+                break
+    return res` },
+          { lang: 'js', code: `function assign(h0, groups) {
+  const h = [...h0];
+  const res = new Array(groups.length).fill(0);
+  for (let j = 0; j < groups.length; j++) {
+    for (let i = 0; i < h.length; i++)
+      if (h[i] >= groups[j]) { h[i] -= groups[j]; res[j] = i + 1; break; }
+  }
+  return res;
+}` },
+          { lang: 'cpp', code: `vector<int> assign(vector<int> h, vector<int>& groups) {
+    vector<int> res(groups.size(), 0);
+    for (int j = 0; j < (int)groups.size(); j++) {
+        for (int i = 0; i < (int)h.size(); i++)
+            if (h[i] >= groups[j]) { h[i] -= groups[j]; res[j] = i + 1; break; }
+    }
+    return res;
+}` }
+        ] }
     },
     mcq: {
       q: 'Each node stores the max of its range. At a node whose left child has max ≥ g, where do you go?',
@@ -6290,14 +6761,35 @@ public:
       <p>Positions [3, 1, 3, 1, 1] → ${H.c('g', '[1, 2, 2, 6, 4]')}. Remove 3rd (1) → [2,6,4,2]; 1st (2) → [6,4,2]; 3rd (2) → [6,4]; 1st (6) → [4]; 1st (4).</p>`,
     brute: {
       why: `<p>A dynamic-array removal (<code>ArrayList</code> / <code>list</code> / <code>Array</code> / <code>vector</code>) shifts everything after it: O(N) per removal, O(N²) = 4·10<sup>10</sup> worst case. The waste: physically moving elements, when we only need to know "which original index is the p-th still alive".</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[] bruteRemovals(int[] list, int[] positions) {
             List<Integer> cur = new ArrayList<>();
             for (int v : list) cur.add(v);
             int[] out = new int[positions.length];
             for (int i = 0; i < positions.length; i++) out[i] = cur.remove(positions[i] - 1);  // O(N) shift
             return out;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def removals(lst, positions):
+    cur = list(lst)
+    out = []
+    for p in positions:
+        out.append(cur.pop(p - 1))                 # O(N) shift
+    return out` },
+          { lang: 'js', code: `function removals(list, positions) {
+  const cur = [...list];
+  const out = [];
+  for (const p of positions) out.push(cur.splice(p - 1, 1)[0]);   // O(N) shift
+  return out;
+}` },
+          { lang: 'cpp', code: `vector<int> removals(vector<int>& list, vector<int>& positions) {
+    vector<int> cur = list, out;
+    for (int p : positions) {
+        out.push_back(cur[p - 1]);
+        cur.erase(cur.begin() + (p - 1));          // O(N) shift
+    }
+    return out;
+}` }
+        ] }
     },
     mcq: {
       q: 'Keep a Fenwick tree with 1 for every alive index. The p-th alive element is at…',
@@ -6444,7 +6936,7 @@ public:
       <p>Updates [1,6], [2,1], [1,−2] → ${H.c('g', '[9, 13, 6]')}. After the first update [1, 6, −3, 5, −1]: best is 1 + 6 − 3 + 5 = 9. After the second: [1, 6, 1, 5, −1] → 13. After the third: [1, −2, 1, 5, −1] → 6 (just 1 + 5).</p>`,
     brute: {
       why: `<p>Run Kadane's algorithm after every update: O(N) each → 4·10<sup>10</sup>. The waste: one element changed, yet we recompute the best subarray of the untouched parts from scratch.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         long[] bruteMaxSub(int[] a0, int[][] ups) {
             long[] a = new long[a0.length];
             for (int i = 0; i < a0.length; i++) a[i] = a0[i];
@@ -6456,7 +6948,40 @@ public:
                 res[j] = best;
             }
             return res;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def process(a0, ups):
+    a = list(a0)
+    res = []
+    for idx, val in ups:
+        a[idx] = val
+        best = cur = 0
+        for v in a:                                # Kadane
+            cur = max(0, cur + v)
+            best = max(best, cur)
+        res.append(best)
+    return res` },
+          { lang: 'js', code: `function process(a0, ups) {
+  const a = [...a0];
+  const res = [];
+  for (const [idx, val] of ups) {
+    a[idx] = val;
+    let best = 0, cur = 0;
+    for (const v of a) { cur = Math.max(0, cur + v); best = Math.max(best, cur); }   // Kadane
+    res.push(best);
+  }
+  return res;
+}` },
+          { lang: 'cpp', code: `vector<long long> process(vector<int> a0, vector<vector<int>>& ups) {
+    vector<long long> a(a0.begin(), a0.end()), res;
+    for (auto& u : ups) {
+        a[u[0]] = u[1];
+        long long best = 0, cur = 0;
+        for (long long v : a) { cur = max(0LL, cur + v); best = max(best, cur); }   // Kadane
+        res.push_back(best);
+    }
+    return res;
+}` }
+        ] }
     },
     mcq: {
       q: 'Merging left L and right R, which formula gives the best subarray of the combined range?',
@@ -6655,7 +7180,7 @@ public:
       <p>Ops [3,2,4], [1,1,3,2], [3,2,4], [2,1,3,5], [3,2,4] → ${H.c('g', '[7, 11, 15]')}. 1 + 1 + 5 = 7; after +2 on [1,3]: [2,5,3,3,5,3] → 3 + 3 + 5 = 11; after setting [1,3] to 5: [2,5,5,5,5,3] → 15.</p>`,
     brute: {
       why: `<p>Loop over [l, r] for every operation: O(N) each → 4·10<sup>10</sup>. The waste: assignments and adds on huge ranges touch every element, although the sums of whole blocks could be updated in O(1).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         long[] bruteAddAssign(int[] a0, int[][] ops) {
             long[] a = new long[a0.length];
             for (int i = 0; i < a0.length; i++) a[i] = a0[i];
@@ -6668,7 +7193,43 @@ public:
             long[] res = new long[out.size()];
             for (int i = 0; i < res.length; i++) res[i] = out.get(i);
             return res;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def process(a0, ops):
+    a = list(a0)
+    out = []
+    for op in ops:
+        if op[0] == 1:
+            for i in range(op[1], op[2] + 1):
+                a[i] += op[3]
+        elif op[0] == 2:
+            for i in range(op[1], op[2] + 1):
+                a[i] = op[3]
+        else:
+            s = 0
+            for i in range(op[1], op[2] + 1):
+                s += a[i]
+            out.append(s)
+    return out` },
+          { lang: 'js', code: `function process(a0, ops) {
+  const a = [...a0];
+  const out = [];
+  for (const op of ops) {
+    if (op[0] === 1) for (let i = op[1]; i <= op[2]; i++) a[i] += op[3];
+    else if (op[0] === 2) for (let i = op[1]; i <= op[2]; i++) a[i] = op[3];
+    else { let s = 0; for (let i = op[1]; i <= op[2]; i++) s += a[i]; out.push(s); }
+  }
+  return out;
+}` },
+          { lang: 'cpp', code: `vector<long long> process(vector<int> a0, vector<vector<int>>& ops) {
+    vector<long long> a(a0.begin(), a0.end()), out;
+    for (auto& op : ops) {
+        if (op[0] == 1) for (int i = op[1]; i <= op[2]; i++) a[i] += op[3];
+        else if (op[0] == 2) for (int i = op[1]; i <= op[2]; i++) a[i] = op[3];
+        else { long long s = 0; for (int i = op[1]; i <= op[2]; i++) s += a[i]; out.push_back(s); }
+    }
+    return out;
+}` }
+        ] }
     },
     mcq: {
       q: 'A node already has the tag "set to 4, then add 3". A new "add 2" arrives for the whole node. The new tag is…',
@@ -6992,7 +7553,7 @@ public:
       <p>lower = −2, upper = 2 → ${H.c('g', '3')}: [0,0] sums to −2, [2,2] to −1, and [0,2] to 2. Prefix sums P = [0, −2, 3, 2]; we need pairs i &lt; j with −2 ≤ P[j] − P[i] ≤ 2.</p>`,
     brute: {
       why: `<p>Every (i, j) pair with a running sum: N²/2 = 5·10<sup>9</sup>. The waste: for each right end j we test every earlier prefix individually instead of asking "how many earlier prefixes lie in the window [P[j] − upper, P[j] − lower]" — a counting query.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         long bruteCountRangeSum(int[] nums, int lower, int upper) {
             long c = 0;
             for (int i = 0; i < nums.length; i++) {
@@ -7003,7 +7564,39 @@ public:
                 }
             }
             return c;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def count_range_sum(nums, lower, upper):
+    c = 0
+    for i in range(len(nums)):
+        s = 0
+        for j in range(i, len(nums)):
+            s += nums[j]
+            if lower <= s <= upper:
+                c += 1
+    return c` },
+          { lang: 'js', code: `function countRangeSum(nums, lower, upper) {
+  let c = 0;
+  for (let i = 0; i < nums.length; i++) {
+    let s = 0;
+    for (let j = i; j < nums.length; j++) {
+      s += nums[j];
+      if (s >= lower && s <= upper) c++;
+    }
+  }
+  return c;
+}` },
+          { lang: 'cpp', code: `long long countRangeSum(vector<int>& nums, int lower, int upper) {
+    long long c = 0;
+    for (int i = 0; i < (int)nums.size(); i++) {
+        long long s = 0;
+        for (int j = i; j < (int)nums.size(); j++) {
+            s += nums[j];
+            if (s >= lower && s <= upper) c++;
+        }
+    }
+    return c;
+}` }
+        ] }
     },
     mcq: {
       q: 'Subarray (i, j] has sum P[j] − P[i]. For a fixed j, which earlier prefixes P[i] count?',
@@ -7175,7 +7768,7 @@ public:
       <p>Query [1, 6] covers [1, 2, 2, 1, 3, 1]: K₁ = 3, K₂ = 2, K₃ = 1 → 9·1 + 4·2 + 1·3 = ${H.c('g', '20')}. For a = [1, 2, 1], queries [0,1] → ${H.c('g', '3')} and [0,2] → ${H.c('g', '6')} (4·1 + 1·2).</p>`,
     brute: {
       why: `<p>Count frequencies for each query separately: O(length) each → 4·10<sup>10</sup>. The answer is not mergeable from halves cheaply (the K² terms interact), so segment trees do not help. The waste: neighbouring queries share most of their elements.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         long[] brutePower(int[] a, int[][] qs) {
             long[] res = new long[qs.length];
             for (int i = 0; i < qs.length; i++) {
@@ -7186,7 +7779,41 @@ public:
                 res[i] = p;
             }
             return res;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def powers(a, qs):
+    res = []
+    for l, r in qs:
+        cnt = {}
+        for j in range(l, r + 1):
+            cnt[a[j]] = cnt.get(a[j], 0) + 1
+        p = 0
+        for value, k in cnt.items():
+            p += k * k * value
+        res.append(p)
+    return res` },
+          { lang: 'js', code: `function powers(a, qs) {
+  const res = new Array(qs.length);
+  for (let i = 0; i < qs.length; i++) {
+    const cnt = new Map();
+    for (let j = qs[i][0]; j <= qs[i][1]; j++) cnt.set(a[j], (cnt.get(a[j]) || 0) + 1);
+    let p = 0;
+    for (const [value, k] of cnt) p += k * k * value;
+    res[i] = p;
+  }
+  return res;
+}` },
+          { lang: 'cpp', code: `vector<long long> powers(vector<int>& a, vector<vector<int>>& qs) {
+    vector<long long> res(qs.size());
+    for (int i = 0; i < (int)qs.size(); i++) {
+        unordered_map<int, long long> cnt;
+        for (int j = qs[i][0]; j <= qs[i][1]; j++) cnt[a[j]]++;
+        long long p = 0;
+        for (auto& e : cnt) p += e.second * e.second * e.first;
+        res[i] = p;
+    }
+    return res;
+}` }
+        ] }
     },
     mcq: {
       q: 'Value x currently appears c times in the window. You add one more x. How does the power change?',

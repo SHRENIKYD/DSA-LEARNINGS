@@ -315,14 +315,34 @@ map<long long, int> primeFactors(long long n) {
           <p>Why 9? The factors are 1, 2, 3, 4, 6, 9, 12, 18, 36. Six pairs would give 10, but ${H.c('p', '6 × 6')} uses the same number twice, so it counts once.</p>`,
         brute: {
           why: `<p>Test every i from 1 to N and count those with <code>N % i == 0</code>. For N = 10<sup>12</sup> that is 10<sup>12</sup> divisions — roughly 15+ minutes. The wasted work: every test above √N just rediscovers a partner we could have gotten for free from a small i.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             long countFactorsBrute(long n) {
                 long count = 0;
                 for (long i = 1; i <= n; i++) {   // try every possible divisor
                     if (n % i == 0) count++;
                 }
                 return count;
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def count_factors(n):
+    count = 0
+    for i in range(1, n + 1):      # try every possible divisor
+        if n % i == 0:
+            count += 1
+    return count` }, { lang: 'js', code: String.raw`
+function countFactors(n) {
+  let count = 0;
+  for (let i = 1; i <= n; i++) {   // try every possible divisor
+    if (n % i === 0) count++;
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+long long countFactors(long long n) {
+    long long count = 0;
+    for (long long i = 1; i <= n; i++) {   // try every possible divisor
+        if (n % i == 0) count++;
+    }
+    return count;
+}` }] }
         },
         mcq: {
           q: `You are counting factors of N = 49. The loop reaches i = 7 and 49 % 7 == 0. How much should you add to the count?`,
@@ -665,14 +685,35 @@ long long nextPrime(long long n) {
         example: `<p><code>N = 97</code> → ${H.c('g', 'true')} (tried 2, 3, 5, 7, 9 — none divide; 10 × 10 = 100 &gt; 97).<br><code>N = 91</code> → ${H.c('r', 'false')} because ${H.c('r', '91 = 7 × 13')}.<br><code>N = 1</code> → ${H.c('r', 'false')} (1 is not prime by definition).</p>`,
         brute: {
           why: `<p>Try every i from 2 to N − 1. For a prime near 10<sup>12</sup> that is 10<sup>12</sup> divisions — far too slow. All the tries above √N are wasted: if a big divisor existed, its small partner would have been found earlier.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             boolean isPrimeBrute(long n) {
                 if (n < 2) return false;
                 for (long i = 2; i < n; i++) {    // every possible divisor
                     if (n % i == 0) return false;
                 }
                 return true;
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def is_prime(n):
+    if n < 2:
+        return False
+    for i in range(2, n):          # every possible divisor
+        if n % i == 0:
+            return False
+    return True` }, { lang: 'js', code: String.raw`
+function isPrime(n) {
+  if (n < 2) return false;
+  for (let i = 2; i < n; i++) {    // every possible divisor
+    if (n % i === 0) return false;
+  }
+  return true;
+}` }, { lang: 'cpp', code: String.raw`
+bool isPrime(long long n) {
+    if (n < 2) return false;
+    for (long long i = 2; i < n; i++) {    // every possible divisor
+        if (n % i == 0) return false;
+    }
+    return true;
+}` }] }
         },
         mcq: {
           q: `To check whether N = 121 is prime, what is the largest i you must try?`,
@@ -1081,7 +1122,7 @@ vector<int> divisorCounts(int n) {
         example: `<p><code>N = 30</code> → <b>10</b></p>${H.arr([2, 3, 5, 7, 11, 13, 17, 19, 23, 29], { label: 'primes ≤ 30', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g', 4: 'g', 5: 'g', 6: 'g', 7: 'g', 8: 'g', 9: 'g' } })}<p>Ten numbers survive the crossing-out, so the answer is 10. (<code>N = 1</code> → 0, <code>N = 2</code> → 1.)</p>`,
         brute: {
           why: `<p>Call <code>isPrime(i)</code> for every i ≤ N. Each test costs up to √i, so the total is about N√N ≈ 10<sup>7</sup> × 3·10<sup>3</sup> = 3·10<sup>10</sup> → TLE. Wasted work: we keep dividing by the same small numbers over and over, for every i separately.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int countPrimesBrute(int n) {
                 int count = 0;
                 for (int x = 2; x <= n; x++) {
@@ -1092,7 +1133,42 @@ vector<int> divisorCounts(int n) {
                     if (prime) count++;
                 }
                 return count;
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def count_primes(n):
+    count = 0
+    for x in range(2, n + 1):
+        prime = True
+        i = 2
+        while i * i <= x:          # trial division for each x
+            if x % i == 0:
+                prime = False
+                break
+            i += 1
+        if prime:
+            count += 1
+    return count` }, { lang: 'js', code: String.raw`
+function countPrimes(n) {
+  let count = 0;
+  for (let x = 2; x <= n; x++) {
+    let prime = true;
+    for (let i = 2; i * i <= x; i++) {   // trial division for each x
+      if (x % i === 0) { prime = false; break; }
+    }
+    if (prime) count++;
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+int countPrimes(int n) {
+    int count = 0;
+    for (int x = 2; x <= n; x++) {
+        bool prime = true;
+        for (int i = 2; (long long) i * i <= x; i++) {   // trial division for each x
+            if (x % i == 0) { prime = false; break; }
+        }
+        if (prime) count++;
+    }
+    return count;
+}` }] }
         },
         mcq: {
           q: `While sieving, p = 5 is found prime. Which number should the inner loop cross out <b>first</b>?`,
@@ -1452,7 +1528,7 @@ string simplify(long long num, long long den) {
           <p>Output: <b>GCD = 6, LCM = 180</b>. 6 is the biggest number dividing 12, 18 and 30; 180 is the smallest number all three divide.</p>`,
         brute: {
           why: `<p>GCD brute: try d = min(A) down to 1 and check every element → O(min(A) · N) = 10<sup>9</sup> × 10<sup>5</sup>. LCM brute: try max(A), 2·max(A), 3·max(A) … until all divide it — the LCM can be astronomically far away. Wasted work: we search blindly instead of using the remainder trick.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             long gcdBrute(long[] a) {
                 long mn = Long.MAX_VALUE;
                 for (long x : a) mn = Math.min(mn, x);
@@ -1462,7 +1538,29 @@ string simplify(long long num, long long den) {
                     if (ok) return d;
                 }
                 return 1;
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def gcd_and_lcm(arr):
+    mn = min(arr)
+    for d in range(mn, 0, -1):          # try every candidate from the top
+        if all(x % d == 0 for x in arr):
+            return d
+    return 1` }, { lang: 'js', code: String.raw`
+function gcdAndLcm(arr) {
+  const mn = Math.min(...arr);
+  for (let d = mn; d >= 1; d--) {       // try every candidate from the top
+    if (arr.every((x) => x % d === 0)) return d;
+  }
+  return 1;
+}` }, { lang: 'cpp', code: String.raw`
+long long gcdAndLcm(vector<long long>& arr) {
+    long long mn = *min_element(arr.begin(), arr.end());
+    for (long long d = mn; d >= 1; d--) {          // try every candidate from the top
+        bool ok = true;
+        for (long long x : arr) if (x % d != 0) { ok = false; break; }
+        if (ok) return d;
+    }
+    return 1;
+}` }] }
         },
         mcq: {
           q: `Running LCM so far is 10<sup>9</sup> and the next element is 10<sup>9</sup> − 1 (gcd 1). Which line is safe in Java <code>long</code>?`,
@@ -1798,7 +1896,7 @@ int bigMod(const string& digits, int m) {
           <p>Grouped by the <b>right</b> element: ${H.c('y', '2')}·(1) + ${H.c('y', '3')}·(1+2) + ${H.c('y', '4')}·(1+2+3) = 2 + 9 + 24 = ${H.c('p', '35')} — each element multiplies the ${H.c('b', 'sum of everything before it')}.</p>`,
         brute: {
           why: `<p>Two nested loops over all pairs: N(N−1)/2 ≈ 5 × 10<sup>9</sup> multiplications for N = 10<sup>5</sup> → TLE. The wasted work: for every j we re-add A[0] + … + A[j−1] one product at a time, although that sum only grew by one element since the last j.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             long sumPairsBrute(long[] a) {
                 final long MOD = 1_000_000_007L;
                 long ans = 0;
@@ -1808,7 +1906,34 @@ int bigMod(const string& digits, int m) {
                     }
                 }
                 return ans;
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def sum_pair_products(a):
+    MOD = 1_000_000_007
+    ans = 0
+    for i in range(len(a)):
+        for j in range(i + 1, len(a)):
+            ans = (ans + (a[i] % MOD) * (a[j] % MOD)) % MOD    # every pair, one by one
+    return ans` }, { lang: 'js', code: String.raw`
+function sumPairProducts(a) {
+  const MOD = 1000000007n;                 // residue products pass 2^53, so BigInt
+  let ans = 0n;
+  for (let i = 0; i < a.length; i++) {
+    for (let j = i + 1; j < a.length; j++) {
+      ans = (ans + (BigInt(a[i]) % MOD) * (BigInt(a[j]) % MOD)) % MOD;   // every pair, one by one
+    }
+  }
+  return ans;
+}` }, { lang: 'cpp', code: String.raw`
+long long sumPairProducts(vector<long long>& a) {
+    const long long MOD = 1000000007LL;
+    long long ans = 0;
+    for (int i = 0; i < (int) a.size(); i++) {
+        for (int j = i + 1; j < (int) a.size(); j++) {
+            ans = (ans + (a[i] % MOD) * (a[j] % MOD)) % MOD;   // every pair, one by one
+        }
+    }
+    return ans;
+}` }] }
         },
         mcq: {
           q: `Both <code>A[j] % MOD</code> and <code>pre</code> are below 10<sup>9</sup> + 7. How big can their product get, and what type must hold it?`,
@@ -2167,7 +2292,7 @@ long long fib(long long n, long long m) {       // F(0) = 0, F(1) = 1
         example: `<p><code>a = 3, b = 13</code> → <b>1594323</b></p>${H.bits(13, 4, { label: 'b', hl: { 0: 'g', 2: 'g', 3: 'g' } })}<p>13 = ${H.c('g', '8 + 4 + 1')} so 3<sup>13</sup> = 3<sup>8</sup> × 3<sup>4</sup> × 3<sup>1</sup> = 6561 × 81 × 3 = ${H.c('p', '1594323')} (smaller than the modulus, so it stays as is).<br><code>a = 2, b = 10</code> → 1024.</p>`,
         brute: {
           why: `<p>Multiply result by a, b times. For b = 10<sup>18</sup> that is 10<sup>18</sup> multiplications — thousands of years. Wasted work: we recompute the same partial powers again and again instead of doubling what we already have.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             long powerBrute(long a, long b) {
                 final long MOD = 1_000_000_007L;
                 long res = 1;
@@ -2175,7 +2300,29 @@ long long fib(long long n, long long m) {       // F(0) = 0, F(1) = 1
                     res = res * (a % MOD) % MOD;   // one multiplication per unit of b
                 }
                 return res;
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def power(a, b):
+    MOD = 1_000_000_007
+    res = 1
+    for _ in range(b):
+        res = res * (a % MOD) % MOD     # one multiplication per unit of b
+    return res` }, { lang: 'js', code: String.raw`
+function power(a, b) {
+  const MOD = 1000000007n;              // residue products pass 2^53, so BigInt
+  let res = 1n;
+  for (let i = 0n; i < BigInt(b); i++) {
+    res = res * (BigInt(a) % MOD) % MOD;   // one multiplication per unit of b
+  }
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+long long power(long long a, long long b) {
+    const long long MOD = 1000000007LL;
+    long long res = 1;
+    for (long long i = 0; i < b; i++) {
+        res = res * (a % MOD) % MOD;   // one multiplication per unit of b
+    }
+    return res;
+}` }] }
         },
         mcq: {
           q: `About how many loop rounds does binary exponentiation take for b = 10<sup>18</sup>?`,
@@ -2663,7 +2810,7 @@ vector<long long> pascalRow(int k) {
           ${H.table(['query', 'formula', 'answer'], [['(5, 2)', '5! / (2! 3!) = 120 / 12', H.c('g', '10')], ['(10, 3)', '10 × 9 × 8 / 6', H.c('g', '120')], ['(4, 7)', 'cannot pick 7 of 4', H.c('r', '0')]])}`,
         brute: {
           why: `<p>For each query multiply the r factors (n − i) and divide by (i + 1) via a modular inverse each time: O(r log p) per query → 10<sup>5</sup> × 10<sup>6</sup> × 30 ≈ 3 × 10<sup>12</sup> operations. The wasted work: every query rebuilds the same factorials from scratch.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             class Brute {
                 static final long MOD = 1_000_000_007L;
                 static long power(long a, long e) {
@@ -2680,7 +2827,65 @@ vector<long long> pascalRow(int k) {
                     }
                     return res;
                 }
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+MOD = 1_000_000_007
+
+def power(a, e):
+    r, a = 1, a % MOD
+    while e > 0:
+        if e & 1:
+            r = r * a % MOD
+        a = a * a % MOD
+        e >>= 1
+    return r
+
+def ncr(n, r):
+    if r < 0 or r > n:
+        return 0
+    res = 1
+    for i in range(r):
+        res = res * (n - i) % MOD                  # multiply the next top factor
+        res = res * power(i + 1, MOD - 2) % MOD    # "divide" by i + 1 (one inverse per step!)
+    return res` }, { lang: 'js', code: String.raw`
+const MOD = 1000000007n;
+
+function power(a, e) {
+  let r = 1n;
+  a = BigInt(a) % MOD;
+  e = BigInt(e);
+  while (e > 0n) { if (e & 1n) r = r * a % MOD; a = a * a % MOD; e >>= 1n; }
+  return r;
+}
+
+function nCr(n, r) {
+  if (r < 0 || r > n) return 0n;
+  let res = 1n;
+  for (let i = 0; i < r; i++) {
+    res = res * BigInt(n - i) % MOD;                  // multiply the next top factor
+    res = res * power(i + 1, MOD - 2n) % MOD;         // "divide" by i + 1 (one inverse per step!)
+  }
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+    static constexpr long long MOD = 1'000'000'007LL;
+
+    long long power(long long a, long long e) {
+        long long r = 1; a %= MOD;
+        while (e > 0) { if (e & 1) r = r * a % MOD; a = a * a % MOD; e >>= 1; }
+        return r;
+    }
+
+public:
+    long long nCr(int n, int r) {
+        if (r < 0 || r > n) return 0;
+        long long res = 1;
+        for (int i = 0; i < r; i++) {
+            res = res * (n - i) % MOD;                 // multiply the next top factor
+            res = res * power(i + 1, MOD - 2) % MOD;   // "divide" by i + 1 (one inverse per step!)
+        }
+        return res;
+    }
+};` }] }
         },
         mcq: {
           q: `You have fact[] up to 10<sup>6</sup>. What is the cheapest way to get all invFact[] values?`,
@@ -3116,7 +3321,7 @@ int findMinDifference(const vector<string>& timePoints) {
           <p>Output <b>[1, 2]</b>: ${H.c('g', '1 + 4 = 5')}, divisible by 5. Prefix sums 0, 3, 4, 8 → remainders 0, 3, 4, ${H.c('r', '3')} — the repeated remainder 3 (after A[0] and after A[2]) marks the subarray between them, A[1..2]. If several subarrays work, any one is accepted.</p>`,
         brute: {
           why: `<p>Try every (l, r) and keep a running sum: N(N+1)/2 ≈ 5 × 10<sup>9</sup> subarrays for N = 10<sup>5</sup> → TLE. The waste: we never use the fact that only the <b>remainder</b> of a prefix matters, and there are only N remainders.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int[] bruteDivisible(int[] a) {
                 int n = a.length;
                 for (int l = 0; l < n; l++) {
@@ -3127,7 +3332,38 @@ int findMinDifference(const vector<string>& timePoints) {
                     }
                 }
                 return new int[]{-1, -1};                           // never happens (pigeonhole)
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def divisible_subarray(a):
+    n = len(a)
+    for l in range(n):
+        total = 0
+        for r in range(l, n):
+            total += a[r]
+            if total % n == 0:
+                return [l, r]            # found one
+    return [-1, -1]                      # never happens (pigeonhole)` }, { lang: 'js', code: String.raw`
+function divisibleSubarray(a) {
+  const n = a.length;
+  for (let l = 0; l < n; l++) {
+    let sum = 0;
+    for (let r = l; r < n; r++) {
+      sum += a[r];
+      if (sum % n === 0) return [l, r];   // found one
+    }
+  }
+  return [-1, -1];                        // never happens (pigeonhole)
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> divisibleSubarray(vector<int>& a) {
+    int n = a.size();
+    for (int l = 0; l < n; l++) {
+        long long sum = 0;
+        for (int r = l; r < n; r++) {
+            sum += a[r];
+            if (sum % n == 0) return {l, r};   // found one
+        }
+    }
+    return {-1, -1};                           // never happens (pigeonhole)
+}` }] }
         },
         mcq: {
           q: `For N = 6 numbers, how many prefix sums (including the empty prefix) are there, and how many possible remainders mod 6?`,
@@ -3239,13 +3475,33 @@ public:
     example: `<p><code>num = 28</code> → ${H.c('g', 'true')}: 1 + 2 + 4 + 7 + 14 = 28. <code>num = 7</code> → ${H.c('r', 'false')}: only divisor 1. <code>num = 1</code> → ${H.c('r', 'false')}: no proper divisors, sum 0.</p>`,
     brute: {
       why: `<p>Test every i from 1 to num − 1: 10<sup>8</sup> divisions per call. Wasted work: every divisor above √num is the partner of one below it.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         boolean checkPerfectBrute(int num) {
             if (num <= 1) return false;
             long sum = 0;
             for (int i = 1; i < num; i++) if (num % i == 0) sum += i;   // every candidate divisor
             return sum == num;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def check_perfect_number(num):
+    if num <= 1:
+        return False
+    total = 0
+    for i in range(1, num):                # every candidate divisor
+        if num % i == 0:
+            total += i
+    return total == num` }, { lang: 'js', code: String.raw`
+function checkPerfectNumber(num) {
+  if (num <= 1) return false;
+  let sum = 0;
+  for (let i = 1; i < num; i++) if (num % i === 0) sum += i;   // every candidate divisor
+  return sum === num;
+}` }, { lang: 'cpp', code: String.raw`
+bool checkPerfectNumber(int num) {
+    if (num <= 1) return false;
+    long long sum = 0;
+    for (int i = 1; i < num; i++) if (num % i == 0) sum += i;   // every candidate divisor
+    return sum == num;
+}` }] }
     },
     mcq: { q: `Walking i up to √28, which pairs (i, 28 / i) contribute to the sum?`, options: [`(1, 28), (2, 14), (4, 7) — but exclude 28 itself`, `Only (2, 14)`, `(1, 28), (2, 14), (4, 7), (7, 4)`, `All i from 1 to 28`], answer: 0, explain: `Pairs with i ≤ √28 ≈ 5.29 are (1, 28), (2, 14), (4, 7). The number itself is excluded, so the sum is 1 + 2 + 14 + 4 + 7 = 28.` },
     hints: [
@@ -3327,7 +3583,7 @@ public:
     example: `<p><code>"ABABAB", "ABAB"</code> → ${H.c('g', '"AB"')}: lengths 6 and 4, gcd(6, 4) = 2, and "AB" × 3 / "AB" × 2 rebuild both. <code>"LEET", "CODE"</code> → ${H.c('r', '""')}.</p>`,
     brute: {
       why: `<p>Try every candidate length from min(len) down to 1, rebuild both strings by repetition and compare: O(min(n, m) × (n + m)). Wasted work: the only length that can be the <i>longest</i> answer is gcd(n, m).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         String gcdOfStringsBrute(String s1, String s2) {
             for (int len = Math.min(s1.length(), s2.length()); len >= 1; len--) {
                 if (s1.length() % len != 0 || s2.length() % len != 0) continue;
@@ -3335,7 +3591,32 @@ public:
                 if (base.repeat(s1.length() / len).equals(s1) && base.repeat(s2.length() / len).equals(s2)) return base;
             }
             return "";
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def gcd_of_strings(s1, s2):
+    for length in range(min(len(s1), len(s2)), 0, -1):
+        if len(s1) % length != 0 or len(s2) % length != 0:
+            continue
+        base = s1[:length]
+        if base * (len(s1) // length) == s1 and base * (len(s2) // length) == s2:
+            return base
+    return ""` }, { lang: 'js', code: String.raw`
+function gcdOfStrings(s1, s2) {
+  for (let len = Math.min(s1.length, s2.length); len >= 1; len--) {
+    if (s1.length % len !== 0 || s2.length % len !== 0) continue;
+    const base = s1.slice(0, len);
+    if (base.repeat(s1.length / len) === s1 && base.repeat(s2.length / len) === s2) return base;
+  }
+  return '';
+}` }, { lang: 'cpp', code: String.raw`
+string gcdOfStrings(string s1, string s2) {
+    auto repeat = [](const string& b, int times) { string r; for (int i = 0; i < times; i++) r += b; return r; };
+    for (int len = min(s1.size(), s2.size()); len >= 1; len--) {
+        if (s1.size() % len != 0 || s2.size() % len != 0) continue;
+        string base = s1.substr(0, len);
+        if (repeat(base, s1.size() / len) == s1 && repeat(base, s2.size() / len) == s2) return base;
+    }
+    return "";
+}` }] }
     },
     mcq: { q: `If <code>str1 + str2</code> equals <code>str2 + str1</code>, what is the answer's length?`, options: [`min(len1, len2)`, `gcd(len1, len2)`, `lcm(len1, len2)`, `1`], answer: 1, explain: `Equal concatenations mean both strings are repetitions of one common block; the longest common block has length gcd(len1, len2), exactly like cutting two ribbons into the longest equal pieces.` },
     hints: [
@@ -3396,7 +3677,7 @@ public:
     example: `<p><code>n = 60</code> = 2² × 3 × 5 → ${H.c('g', 'true')}. <code>n = 14</code> = 2 × ${H.c('r', '7')} → ${H.c('r', 'false')}. <code>n = 0</code> or negative → false.</p>`,
     brute: {
       why: `<p>Fully factorize n with trial division up to √n (≈ 46,341 steps) and reject any prime factor above 5. Wasted work: we only care about 2, 3 and 5 — just strip them out and see what is left.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         boolean isUglyBrute(int n) {
             if (n <= 0) return false;
             for (long i = 2; i * i <= n; i++) {
@@ -3406,7 +3687,38 @@ public:
                 }
             }
             return n <= 5;                       // leftover is 1 or a single prime
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def is_ugly(n):
+    if n <= 0:
+        return False
+    i = 2
+    while i * i <= n:
+        while n % i == 0:
+            if i > 5:
+                return False     # found a prime factor bigger than 5
+            n //= i
+        i += 1
+    return n <= 5                # leftover is 1 or a single prime` }, { lang: 'js', code: String.raw`
+function isUgly(n) {
+  if (n <= 0) return false;
+  for (let i = 2; i * i <= n; i++) {
+    while (n % i === 0) {
+      if (i > 5) return false;     // found a prime factor bigger than 5
+      n /= i;
+    }
+  }
+  return n <= 5;                   // leftover is 1 or a single prime
+}` }, { lang: 'cpp', code: String.raw`
+bool isUgly(int n) {
+    if (n <= 0) return false;
+    for (long long i = 2; i * i <= n; i++) {
+        while (n % i == 0) {
+            if (i > 5) return false;     // found a prime factor bigger than 5
+            n /= i;
+        }
+    }
+    return n <= 5;                       // leftover is 1 or a single prime
+}` }] }
     },
     mcq: { q: `After dividing out every 2, 3 and 5 from n, what must remain for n to be ugly?`, options: [`0`, `1`, `Any prime`, `A multiple of 7`], answer: 1, explain: `If only 2s, 3s and 5s made up n, removing them all leaves exactly 1. Anything else left over is a product of other primes.` },
     hints: [
@@ -3471,8 +3783,8 @@ public:
     constraints: `1 ≤ numRows ≤ 30`,
     example: `<p><code>numRows = 5</code> → [[1], [1, 1], [1, 2, 1], [1, 3, 3, 1], [1, 4, ${H.c('g', '6')}, 4, 1]]: ${H.c('g', '6')} = 3 + 3. Row i, position j is C(i, j).</p>`,
     brute: {
-      why: `<p>Compute each entry as i! / (j! (i − j)!) from scratch: O(n) per entry → O(n³), and 29! overflows <code>long</code>, so you need <code>BigInteger</code>. Wasted work: each entry is already the sum of two entries you just computed.</p>`,
-      code: `
+      why: `<p>Compute each entry as i! / (j! (i − j)!) from scratch: O(n) per entry → O(n³), and 29! overflows a 64-bit integer, so you need a big-number type (<code>BigInteger</code>, Python <code>int</code>, <code>BigInt</code>; in C++ a 128-bit <code>__int128</code> just about holds it). Wasted work: each entry is already the sum of two entries you just computed.</p>`,
+      code: { lang: 'java', code: `
         List<List<Integer>> generateBrute(int numRows) {
             List<List<Integer>> rows = new ArrayList<>();
             for (int i = 0; i < numRows; i++) {
@@ -3490,7 +3802,46 @@ public:
             BigInteger f = BigInteger.ONE;
             for (int k = 2; k <= n; k++) f = f.multiply(BigInteger.valueOf(k));
             return f;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+from math import factorial
+
+def generate(num_rows):
+    rows = []
+    for i in range(num_rows):
+        row = []
+        for j in range(i + 1):
+            row.append(factorial(i) // (factorial(j) * factorial(i - j)))   # n! / (r! (n-r)!)
+        rows.append(row)
+    return rows` }, { lang: 'js', code: String.raw`
+function generate(numRows) {
+  const rows = [];
+  for (let i = 0; i < numRows; i++) {
+    const row = [];
+    for (let j = 0; j <= i; j++) {
+      row.push(Number(fact(i) / (fact(j) * fact(i - j))));   // n! / (r! (n-r)!)
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+function fact(n) {
+  let f = 1n;
+  for (let k = 2n; k <= BigInt(n); k++) f *= k;
+  return f;
+}` }, { lang: 'cpp', code: String.raw`
+vector<vector<int>> generate(int numRows) {
+    auto fact = [](int n) { __int128 f = 1; for (int k = 2; k <= n; k++) f *= k; return f; };   // 29! fits in 128 bits
+    vector<vector<int>> rows;
+    for (int i = 0; i < numRows; i++) {
+        vector<int> row;
+        for (int j = 0; j <= i; j++) {
+            row.push_back((int) (fact(i) / (fact(j) * fact(i - j))));   // n! / (r! (n-r)!)
+        }
+        rows.push_back(row);
+    }
+    return rows;
+}` }] }
     },
     mcq: { q: `Row 6 of the triangle (starting from row 0) sums to…`, options: [`6`, `36`, `64`, `720`], answer: 2, explain: `Row n sums to 2<sup>n</sup> because every subset of n items is counted once: 2<sup>6</sup> = 64 (1 + 6 + 15 + 20 + 15 + 6 + 1).` },
     hints: [
@@ -3568,13 +3919,31 @@ public:
     example: `<p><code>x = 2.0, n = 10</code> → 1024.0. <code>x = 2.0, n = −2</code> → 1 / 2² = ${H.c('g', '0.25')}. <code>x = 1.0, n = −2147483648</code> → 1.0 (and a naive <code>-n</code> overflows here!).</p>`,
     brute: {
       why: `<p>Multiply |n| times: up to 2.1 × 10<sup>9</sup> multiplications → TLE. Wasted work: x<sup>8</sup> can be built from x<sup>4</sup> with one squaring instead of four multiplications.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         double myPowBrute(double x, int n) {
             long e = Math.abs((long) n);
             double r = 1.0;
             for (long i = 0; i < e; i++) r *= x;   // one multiply per unit of the exponent
             return n < 0 ? 1 / r : r;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def my_pow(x, n):
+    e = abs(n)
+    r = 1.0
+    for _ in range(e):          # one multiply per unit of the exponent
+        r *= x
+    return 1 / r if n < 0 else r` }, { lang: 'js', code: String.raw`
+function myPow(x, n) {
+  const e = Math.abs(n);
+  let r = 1.0;
+  for (let i = 0; i < e; i++) r *= x;   // one multiply per unit of the exponent
+  return n < 0 ? 1 / r : r;
+}` }, { lang: 'cpp', code: String.raw`
+double myPow(double x, int n) {
+    long long e = llabs((long long) n);
+    double r = 1.0;
+    for (long long i = 0; i < e; i++) r *= x;   // one multiply per unit of the exponent
+    return n < 0 ? 1 / r : r;
+}` }] }
     },
     mcq: { q: `Why convert n to <code>long</code> before negating it?`, options: [`Doubles need longs`, `−(−2<sup>31</sup>) = 2<sup>31</sup> does not fit in an int and wraps back to −2<sup>31</sup>`, `To make the loop faster`, `It is not necessary`], answer: 1, explain: `int ranges from −2<sup>31</sup> to 2<sup>31</sup> − 1, so negating Integer.MIN_VALUE overflows to itself. Widening to long first gives the correct positive exponent.` },
     hints: [
@@ -3655,13 +4024,31 @@ public:
     example: `<p><code>n = 1</code> → 5 ("0", "2", "4", "6", "8"). <code>n = 4</code> → 5 × 4 × 5 × 4 = ${H.c('g', '400')}. <code>n = 50</code> → 5<sup>25</sup> × 4<sup>25</sup> mod p = 564908303.</p>`,
     brute: {
       why: `<p>Multiply 5 or 4 for each of the n positions: 10<sup>15</sup> multiplications. Wasted work: the same factor repeats ⌈n/2⌉ and ⌊n/2⌋ times — that's two powers.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int countGoodBrute(long n) {
             final long MOD = 1_000_000_007L;
             long ans = 1;
             for (long i = 0; i < n; i++) ans = ans * (i % 2 == 0 ? 5 : 4) % MOD;   // one position at a time
             return (int) ans;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def count_good_numbers(n):
+    MOD = 1_000_000_007
+    ans = 1
+    for i in range(n):
+        ans = ans * (5 if i % 2 == 0 else 4) % MOD    # one position at a time
+    return ans` }, { lang: 'js', code: String.raw`
+function countGoodNumbers(n) {
+  const MOD = 1000000007n;
+  let ans = 1n;
+  for (let i = 0; i < Number(n); i++) ans = ans * (i % 2 === 0 ? 5n : 4n) % MOD;   // one position at a time
+  return Number(ans);
+}` }, { lang: 'cpp', code: String.raw`
+int countGoodNumbers(long long n) {
+    const long long MOD = 1000000007LL;
+    long long ans = 1;
+    for (long long i = 0; i < n; i++) ans = ans * (i % 2 == 0 ? 5 : 4) % MOD;   // one position at a time
+    return (int) ans;
+}` }] }
     },
     mcq: { q: `For n = 7, how many even indices and odd indices are there?`, options: [`3 even, 4 odd`, `4 even (0, 2, 4, 6), 3 odd`, `3.5 each`, `7 even`], answer: 1, explain: `Indices 0..6: even ones are 0, 2, 4, 6 → ⌈7/2⌉ = 4; odd ones are 1, 3, 5 → ⌊7/2⌋ = 3. Answer = 5<sup>4</sup> × 4<sup>3</sup>.` },
     hints: [
@@ -3743,8 +4130,8 @@ public:
     constraints: `1 ≤ a ≤ 2<sup>31</sup> − 1, 1 ≤ b.length ≤ 2000, 0 ≤ b[i] ≤ 9, no leading zeros`,
     example: `<p><code>a = 2, b = [1, 0]</code> → 2<sup>10</sup> = ${H.c('g', '1024')}. <code>a = 2, b = [3]</code> → 8. <code>a = 1, b = [4,3,3,8,5,2]</code> → 1.</p>`,
     brute: {
-      why: `<p>Turn b into a <code>BigInteger</code> and multiply b times: b can have 2000 digits — more multiplications than atoms in the universe. Wasted work: we never use the decimal structure of b.</p>`,
-      code: `
+      why: `<p>Turn b into a big number (<code>BigInteger</code> / Python <code>int</code> / <code>BigInt</code>; in C++ a digit array decremented by hand) and multiply b times: b can have 2000 digits — more multiplications than atoms in the universe. Wasted work: we never use the decimal structure of b.</p>`,
+      code: { lang: 'java', code: `
         int superPowBrute(int a, int[] b) {
             StringBuilder sb = new StringBuilder();
             for (int d : b) sb.append(d);
@@ -3755,7 +4142,35 @@ public:
                 e = e.subtract(BigInteger.ONE);
             }
             return (int) r;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def super_pow(a, b):
+    e = int("".join(map(str, b)))      # a huge number: up to 2000 digits
+    r = 1
+    while e > 0:                       # one multiplication per unit of b
+        r = r * (a % 1337) % 1337
+        e -= 1
+    return r` }, { lang: 'js', code: String.raw`
+function superPow(a, b) {
+  let e = BigInt(b.join(''));            // a huge number: up to 2000 digits
+  let r = 1;
+  while (e > 0n) {                       // one multiplication per unit of b
+    r = r * (a % 1337) % 1337;
+    e -= 1n;
+  }
+  return r;
+}` }, { lang: 'cpp', code: String.raw`
+int superPow(int a, vector<int>& b) {
+    vector<int> e = b;                   // a huge number as a digit array: up to 2000 digits
+    long long r = 1;
+    while (true) {
+        int i = (int) e.size() - 1;      // e -= 1 on the digit array
+        while (i >= 0 && e[i] == 0) e[i--] = 9;
+        if (i < 0) break;                // e was zero: done
+        e[i]--;
+        r = r * (a % 1337) % 1337;       // one multiplication per unit of b
+    }
+    return (int) r;
+}` }] }
     },
     mcq: { q: `If b = [1, 2, 3] means 123, which identity lets you process digits left to right?`, options: [`a<sup>123</sup> = a<sup>1</sup> + a<sup>2</sup> + a<sup>3</sup>`, `a<sup>123</sup> = (a<sup>12</sup>)<sup>10</sup> × a<sup>3</sup>`, `a<sup>123</sup> = a<sup>12</sup> × 10 × a<sup>3</sup>`, `a<sup>123</sup> = (a<sup>3</sup>)<sup>12</sup>`], answer: 1, explain: `123 = 12 × 10 + 3, so a<sup>123</sup> = a<sup>12×10</sup> × a<sup>3</sup> = (a<sup>12</sup>)<sup>10</sup> × a<sup>3</sup>. Like reading a number digit by digit (Horner), but in the exponent.` },
     hints: [
@@ -3839,7 +4254,7 @@ public:
     example: `<p><code>x = 3, y = 5, target = 4</code> → ${H.c('g', 'true')} (gcd 1 divides 4, and 4 ≤ 8). <code>x = 2, y = 6, target = 5</code> → ${H.c('r', 'false')}: gcd(2, 6) = 2 and 5 is odd — every reachable amount is even.</p>`,
     brute: {
       why: `<p>BFS over all states (a, b) with 0 ≤ a ≤ x, 0 ≤ b ≤ y: up to 10<sup>12</sup> states → too much time and memory. Wasted work: the reachable totals are exactly the multiples of gcd(x, y) up to x + y, which Bézout tells us directly.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         boolean canMeasureBFS(int x, int y, int target) {
             Deque<int[]> q = new ArrayDeque<>();
             Set<Long> seen = new HashSet<>();
@@ -3857,7 +4272,53 @@ public:
                 }
             }
             return false;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+from collections import deque
+
+def can_measure_water(x, y, target):
+    q = deque([(0, 0)])
+    seen = {(0, 0)}
+    while q:
+        a, b = q.popleft()
+        if a + b == target:
+            return True
+        pour_ab, pour_ba = min(a, y - b), min(b, x - a)
+        for nx in ((x, b), (a, y), (0, b), (a, 0), (a - pour_ab, b + pour_ab), (a + pour_ba, b - pour_ba)):
+            if nx not in seen:           # remember every pair (a, b)
+                seen.add(nx)
+                q.append(nx)
+    return False` }, { lang: 'js', code: String.raw`
+function canMeasureWater(x, y, target) {
+  const q = [[0, 0]];
+  const seen = new Set(['0,0']);
+  for (let head = 0; head < q.length; head++) {
+    const [a, b] = q[head];
+    if (a + b === target) return true;
+    const pourAB = Math.min(a, y - b), pourBA = Math.min(b, x - a);
+    for (const nx of [[x, b], [a, y], [0, b], [a, 0], [a - pourAB, b + pourAB], [a + pourBA, b - pourBA]]) {
+      const key = nx[0] + ',' + nx[1];     // remember every pair (a, b)
+      if (!seen.has(key)) { seen.add(key); q.push(nx); }
+    }
+  }
+  return false;
+}` }, { lang: 'cpp', code: String.raw`
+bool canMeasureWater(int x, int y, int target) {
+    queue<pair<int, int>> q;
+    set<pair<int, int>> seen;
+    q.push({0, 0});
+    seen.insert({0, 0});
+    while (!q.empty()) {
+        auto [a, b] = q.front();
+        q.pop();
+        if (a + b == target) return true;
+        int pourAB = min(a, y - b), pourBA = min(b, x - a);
+        pair<int, int> next[6] = {{x, b}, {a, y}, {0, b}, {a, 0}, {a - pourAB, b + pourAB}, {a + pourBA, b - pourBA}};
+        for (auto nx : next) {
+            if (seen.insert(nx).second) q.push(nx);   // remember every pair (a, b)
+        }
+    }
+    return false;
+}` }] }
     },
     mcq: { q: `With jugs of 6 and 10 litres, which totals are reachable?`, options: [`Every amount 0..16`, `Multiples of 2 up to 16`, `Only 6, 10 and 16`, `Multiples of 6 or 10`], answer: 1, explain: `gcd(6, 10) = 2. Every fill/pour keeps totals as combinations 6p + 10q, which are multiples of 2, and Bézout guarantees every multiple of 2 within capacity is reachable.` },
     hints: [
@@ -3917,7 +4378,7 @@ public:
     example: `${H.arr([4, 5, 0, -2, -3, 1], { label: 'nums, k = 5' })}<p>Output <b>7</b>: [4, 5, 0, −2, −3, 1], [5], [5, 0], [5, 0, −2, −3], [0], [0, −2, −3], [−2, −3]. Prefix remainders 0 | 4, 4, 4, 2, 4, 0 → remainder 4 appears 4 times (C(4, 2) = 6 pairs) and remainder 0 appears twice (1 pair) → ${H.c('g', '7')}.</p>`,
     brute: {
       why: `<p>All O(N²) subarrays with a running sum: 4.5 × 10<sup>8</sup> checks — slow. Wasted work: a subarray sum is a difference of two prefix sums, and only their <b>remainders</b> matter.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int subarraysDivByKBrute(int[] nums, int k) {
             int count = 0;
             for (int i = 0; i < nums.length; i++) {
@@ -3928,7 +4389,38 @@ public:
                 }
             }
             return count;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def subarrays_div_by_k(nums, k):
+    count = 0
+    for i in range(len(nums)):
+        total = 0
+        for j in range(i, len(nums)):
+            total += nums[j]
+            if total % k == 0:
+                count += 1
+    return count` }, { lang: 'js', code: String.raw`
+function subarraysDivByK(nums, k) {
+  let count = 0;
+  for (let i = 0; i < nums.length; i++) {
+    let sum = 0;
+    for (let j = i; j < nums.length; j++) {
+      sum += nums[j];
+      if (sum % k === 0) count++;   // -10 % 5 is -0 here, and -0 === 0 is true
+    }
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+int subarraysDivByK(vector<int>& nums, int k) {
+    int count = 0;
+    for (int i = 0; i < (int) nums.size(); i++) {
+        int sum = 0;
+        for (int j = i; j < (int) nums.size(); j++) {
+            sum += nums[j];
+            if (sum % k == 0) count++;   // -10 % 5 == 0 is fine; only non-zero remainders keep a sign
+        }
+    }
+    return count;
+}` }] }
     },
     mcq: { q: `In Java, C++ or JS, prefix = −1 and k = 5. Which index should you use in the remainder count array?`, options: [`−1 (crash)`, `(−1 % 5 + 5) % 5 = 4`, `1`, `0`], answer: 1, explain: `Java, C++ and JS % keep the sign, so −1 % 5 = −1 (Python already gives 4). Normalising gives 4, which is correct: −1 and 4 differ by 5, so they are the same remainder class.` },
     hints: [
@@ -4008,7 +4500,7 @@ public:
     example: `<p><code>left = 10, right = 19</code> → primes 11, 13, 17, 19 → gaps 2, 4, 2 → ${H.c('g', '[11, 13]')} (first of the tied pairs). <code>left = 4, right = 6</code> → only 5 → [−1, −1].</p>`,
     brute: {
       why: `<p>Trial-divide every number in [left, right]: about 10<sup>6</sup> × 10<sup>3</sup> = 10<sup>9</sup> divisions in the worst case. Wasted work: the same small divisors are retried for every number — a sieve shares that work.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[] closestPrimesBrute(int left, int right) {
             int prev = -1;
             int[] best = {-1, -1};
@@ -4020,7 +4512,48 @@ public:
                 prev = x;
             }
             return best;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def closest_primes(left, right):
+    prev = -1
+    best = [-1, -1]
+    for x in range(max(left, 2), right + 1):
+        prime = True
+        i = 2
+        while i * i <= x:
+            if x % i == 0:
+                prime = False
+                break
+            i += 1
+        if not prime:
+            continue
+        if prev != -1 and (best[0] == -1 or x - prev < best[1] - best[0]):
+            best = [prev, x]
+        prev = x
+    return best` }, { lang: 'js', code: String.raw`
+function closestPrimes(left, right) {
+  let prev = -1;
+  let best = [-1, -1];
+  for (let x = Math.max(left, 2); x <= right; x++) {
+    let prime = true;
+    for (let i = 2; i * i <= x; i++) if (x % i === 0) { prime = false; break; }
+    if (!prime) continue;
+    if (prev !== -1 && (best[0] === -1 || x - prev < best[1] - best[0])) best = [prev, x];
+    prev = x;
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> closestPrimes(int left, int right) {
+    int prev = -1;
+    vector<int> best = {-1, -1};
+    for (int x = max(left, 2); x <= right; x++) {
+        bool prime = true;
+        for (int i = 2; (long long) i * i <= x; i++) if (x % i == 0) { prime = false; break; }
+        if (!prime) continue;
+        if (prev != -1 && (best[0] == -1 || x - prev < best[1] - best[0])) { best[0] = prev; best[1] = x; }
+        prev = x;
+    }
+    return best;
+}` }] }
     },
     mcq: { q: `Once you find two primes with gap 2, can a later pair (further right) ever beat them?`, options: [`Yes, gap 1 pairs are common`, `No — the only gap-1 pair is (2, 3), which would already have appeared first`, `Yes, gap 0`, `Only if right &gt; 10<sup>6</sup>`], answer: 1, explain: `Apart from 2 and 3, all primes are odd, so consecutive primes differ by at least 2. Ties go to the smaller num1, so you can stop at the first gap-2 pair.` },
     hints: [
@@ -4135,11 +4668,23 @@ public:
     example: `<p><code>m = 3, n = 7</code> → every path is 6 R's and 2 D's in some order → C(8, 2) = ${H.c('g', '28')}. <code>m = 3, n = 2</code> → C(3, 1) = 3 (RDD, DRD, DDR).</p>`,
     brute: {
       why: `<p>Recursively explore both moves from every cell: the call tree has C(m + n − 2, m − 1) leaves — the answer itself, up to 2 × 10<sup>9</sup> calls. Wasted work: the same cells are recomputed again and again (DP would fix it; combinatorics skips it entirely).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int pathsBrute(int r, int c) {             // paths from (0,0) to (r,c)
             if (r == 0 || c == 0) return 1;        // a single straight line
             return pathsBrute(r - 1, c) + pathsBrute(r, c - 1);
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def unique_paths(m, n):           # paths from the top-left corner of an m x n grid to its bottom-right
+    if m == 1 or n == 1:
+        return 1                  # a single straight line
+    return unique_paths(m - 1, n) + unique_paths(m, n - 1)` }, { lang: 'js', code: String.raw`
+function uniquePaths(m, n) {      // paths from the top-left corner of an m x n grid to its bottom-right
+  if (m === 1 || n === 1) return 1;        // a single straight line
+  return uniquePaths(m - 1, n) + uniquePaths(m, n - 1);
+}` }, { lang: 'cpp', code: String.raw`
+int uniquePaths(int m, int n) {   // paths from the top-left corner of an m x n grid to its bottom-right
+    if (m == 1 || n == 1) return 1;        // a single straight line
+    return uniquePaths(m - 1, n) + uniquePaths(m, n - 1);
+}` }] }
     },
     mcq: { q: `For an m × n grid, how many moves does every path make, and how many of them are "down"?`, options: [`m + n moves, m down`, `m + n − 2 moves, m − 1 down`, `m × n moves`, `max(m, n) moves`], answer: 1, explain: `You must go down m − 1 rows and right n − 1 columns: (m − 1) + (n − 1) moves, choose which m − 1 are downs → C(m + n − 2, m − 1).` },
     hints: [
@@ -4202,8 +4747,8 @@ public:
     constraints: `1 ≤ nums.length ≤ 10<sup>4</sup>, 2 ≤ nums[i] ≤ 1000`,
     example: `<p><code>[2, 4, 3, 7, 10, 6]</code> → primes {2, 3, 5, 7} → ${H.c('g', '4')}. (Product = 10080 = 2<sup>5</sup> × 3<sup>2</sup> × 5 × 7.) <code>[2, 4, 8, 16]</code> → {2} → 1.</p>`,
     brute: {
-      why: `<p>Build the full product with BigInteger (up to 30,000 digits!) and trial-divide it — every division on a 30,000-digit number is slow. Wasted work: the primes of a product are just the union of the primes of each element.</p>`,
-      code: `
+      why: `<p>Build the full product with a big-number type (<code>BigInteger</code> / Python <code>int</code> / <code>BigInt</code>; in C++ a hand-rolled digit vector) (up to 30,000 digits!) and trial-divide it — every division on a 30,000-digit number is slow. Wasted work: the primes of a product are just the union of the primes of each element.</p>`,
+      code: { lang: 'java', code: `
         int distinctPrimeFactorsBrute(int[] nums) {
             BigInteger prod = BigInteger.ONE;
             for (int x : nums) prod = prod.multiply(BigInteger.valueOf(x));   // enormous number
@@ -4216,7 +4761,52 @@ public:
                 }
             }
             return count;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def distinct_prime_factors(nums):
+    prod = 1
+    for x in nums:
+        prod *= x                        # enormous number
+    count = 0
+    for p in range(2, 1001):             # all prime factors are <= 1000 here
+        if prod % p == 0:
+            count += 1
+            while prod % p == 0:
+                prod //= p
+    return count` }, { lang: 'js', code: String.raw`
+function distinctPrimeFactors(nums) {
+  let prod = 1n;
+  for (const x of nums) prod *= BigInt(x);       // enormous number
+  let count = 0;
+  for (let p = 2n; p <= 1000n; p++) {            // all prime factors are <= 1000 here
+    if (prod % p === 0n) {
+      count++;
+      while (prod % p === 0n) prod /= p;
+    }
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+int distinctPrimeFactors(vector<int>& nums) {
+    vector<int> prod = {1};                      // enormous number: decimal digits, least significant first
+    for (int x : nums) {
+        long long carry = 0;
+        for (int& d : prod) { long long cur = (long long) d * x + carry; d = cur % 10; carry = cur / 10; }
+        while (carry) { prod.push_back(carry % 10); carry /= 10; }
+    }
+    auto mod = [&](int p) { long long r = 0; for (int i = (int) prod.size() - 1; i >= 0; i--) r = (r * 10 + prod[i]) % p; return r; };
+    auto divide = [&](int p) {
+        long long r = 0;
+        for (int i = (int) prod.size() - 1; i >= 0; i--) { r = r * 10 + prod[i]; prod[i] = r / p; r %= p; }
+        while (prod.size() > 1 && prod.back() == 0) prod.pop_back();
+    };
+    int count = 0;
+    for (int p = 2; p <= 1000; p++) {            // all prime factors are <= 1000 here
+        if (mod(p) == 0) {
+            count++;
+            while (mod(p) == 0) divide(p);
+        }
+    }
+    return count;
+}` }] }
     },
     mcq: { q: `Why is the set of prime factors of a × b equal to (primes of a) ∪ (primes of b)?`, options: [`Because of the pigeonhole principle`, `If a prime divides a product it must divide one of the factors (Euclid's lemma), and unique factorization`, `It isn't — the product can have new primes`, `Because gcd(a, b) = 1`], answer: 1, explain: `Multiplying never creates new primes: a × b's factorization is just a's and b's factorizations combined. And any prime dividing a × b divides a or b (Euclid's lemma).` },
     hints: [
@@ -4309,7 +4899,7 @@ public:
     example: `<p><code>L = 10, R = 30</code> → [11, 13, 17, 19, 23, 29]. <code>L = 1, R = 10</code> → [2, 3, 5, 7] (1 is not prime). <code>L = 10<sup>12</sup>, R = 10<sup>12</sup> + 100</code> → ${H.c('g', '[1000000000039, 1000000000061, 1000000000063, 1000000000091]')}.</p>`,
     brute: {
       why: `<p>Trial-divide each of the 10<sup>6</sup> numbers up to √R = 10<sup>6</sup>: about 10<sup>12</sup> divisions. A normal sieve needs a 10<sup>12</sup>-entry array. Wasted work: every number is tested against the same small primes separately instead of letting each prime cross out its multiples in the window.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         List<Long> primesBrute(long L, long R) {
             List<Long> res = new ArrayList<>();
             for (long x = Math.max(L, 2); x <= R; x++) {
@@ -4318,7 +4908,38 @@ public:
                 if (prime) res.add(x);
             }
             return res;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def primes_in_range(L, R):
+    res = []
+    for x in range(max(L, 2), R + 1):
+        prime = True
+        i = 2
+        while i <= x // i:
+            if x % i == 0:
+                prime = False
+                break
+            i += 1
+        if prime:
+            res.append(x)
+    return res` }, { lang: 'js', code: String.raw`
+function primesInRange(L, R) {
+  const res = [];
+  for (let x = Math.max(L, 2); x <= R; x++) {
+    let prime = true;
+    for (let i = 2; i <= x / i; i++) if (x % i === 0) { prime = false; break; }
+    if (prime) res.push(x);
+  }
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+vector<long long> primesInRange(long long L, long long R) {
+    vector<long long> res;
+    for (long long x = max(L, 2LL); x <= R; x++) {
+        bool prime = true;
+        for (long long i = 2; i <= x / i; i++) if (x % i == 0) { prime = false; break; }
+        if (prime) res.push_back(x);
+    }
+    return res;
+}` }] }
     },
     mcq: { q: `In the window [L, R], where should prime p start crossing out?`, options: [`At L`, `At p`, `At max(p × p, the first multiple of p that is ≥ L)`, `At 2p`], answer: 2, explain: `Multiples below p² were handled by smaller primes, and p itself must not be crossed if it lies inside the window. ⌈L/p⌉ × p is the first multiple ≥ L.` },
     hints: [
@@ -4440,7 +5061,7 @@ public:
     example: `<p><code>n = 4, a = 2, b = 3</code> → magical numbers 2, 3, 4, ${H.c('g', '6')} → 6. <code>n = 5, a = 2, b = 4</code> → 2, 4, 6, 8, ${H.c('g', '10')} (4, 8 are multiples of both, counted once).</p>`,
     brute: {
       why: `<p>Merge the two multiple sequences like two sorted lists, n steps: up to 10<sup>9</sup> iterations — too slow. Wasted work: we can <b>count</b> magical numbers ≤ x in O(1) with inclusion–exclusion and binary search for the smallest x with count ≥ n.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int nthMagicalBrute(int n, int a, int b) {
             long x = 0, y = 0, cur = 0;        // how many multiples of a and b used so far
             for (int i = 0; i < n; i++) {
@@ -4450,7 +5071,37 @@ public:
                 if (nb == cur) y++;             // shared multiple counted once
             }
             return (int) (cur % 1_000_000_007L);
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def nth_magical_number(n, a, b):
+    x = y = cur = 0                      # how many multiples of a and b used so far
+    for _ in range(n):
+        na, nb = (x + 1) * a, (y + 1) * b
+        cur = min(na, nb)
+        if na == cur:
+            x += 1
+        if nb == cur:
+            y += 1                       # shared multiple counted once
+    return cur % 1_000_000_007` }, { lang: 'js', code: String.raw`
+function nthMagicalNumber(n, a, b) {
+  let x = 0, y = 0, cur = 0;             // how many multiples of a and b used so far
+  for (let i = 0; i < n; i++) {
+    const na = (x + 1) * a, nb = (y + 1) * b;
+    cur = Math.min(na, nb);
+    if (na === cur) x++;
+    if (nb === cur) y++;                 // shared multiple counted once
+  }
+  return cur % 1000000007;
+}` }, { lang: 'cpp', code: String.raw`
+int nthMagicalNumber(int n, int a, int b) {
+    long long x = 0, y = 0, cur = 0;     // how many multiples of a and b used so far
+    for (int i = 0; i < n; i++) {
+        long long na = (x + 1) * a, nb = (y + 1) * b;
+        cur = min(na, nb);
+        if (na == cur) x++;
+        if (nb == cur) y++;              // shared multiple counted once
+    }
+    return (int) (cur % 1000000007LL);
+}` }] }
     },
     mcq: { q: `How many magical numbers are ≤ 12 for a = 2, b = 3?`, options: [`10`, `8`, `6`, `4`], answer: 1, explain: `⌊12/2⌋ + ⌊12/3⌋ − ⌊12/lcm(2,3)⌋ = 6 + 4 − 2 = 8 (2, 3, 4, 6, 8, 9, 10, 12). Multiples of 6 were counted twice, so subtract them once.` },
     hints: [
@@ -4536,8 +5187,8 @@ public:
     constraints: `1 ≤ s.length ≤ 10<sup>5</sup>`,
     example: `<p><code>s = "too hot"</code> → "too" has 3! / 2! = 3 arrangements (too, oto, oot); "hot" has 3! = 6 → 3 × 6 = ${H.c('g', '18')}. <code>s = "aa"</code> → 1.</p>`,
     brute: {
-      why: `<p>Generate every permutation of each word into a HashSet: a 20-letter word already has 20! ≈ 2.4 × 10<sup>18</sup> orders. Wasted work: the count has a closed form — the multinomial coefficient len! / Π(count<sub>c</sub>!).</p>`,
-      code: `
+      why: `<p>Generate every permutation of each word into a hash set (<code>HashSet</code> / <code>set</code> / <code>Set</code> / <code>unordered_set</code>): a 20-letter word already has 20! ≈ 2.4 × 10<sup>18</sup> orders. Wasted work: the count has a closed form — the multinomial coefficient len! / Π(count<sub>c</sub>!).</p>`,
+      code: { lang: 'java', code: `
         long countAnagramsBrute(String s) {
             long ans = 1;
             for (String w : s.split(" ")) {
@@ -4555,7 +5206,61 @@ public:
                 permute(c, i + 1, out);                         // explore
                 t = c[i]; c[i] = c[j]; c[j] = t;               // un-choose
             }
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def count_anagrams(s):
+    ans = 1
+    for w in s.split(" "):
+        perms = set()
+        permute(list(w), 0, perms)                    # every ordering, deduplicated
+        ans = ans * len(perms) % 1_000_000_007
+    return ans
+
+def permute(c, i, out):
+    if i == len(c):
+        out.add("".join(c))
+        return
+    for j in range(i, len(c)):
+        c[i], c[j] = c[j], c[i]                       # choose
+        permute(c, i + 1, out)                        # explore
+        c[i], c[j] = c[j], c[i]                       # un-choose` }, { lang: 'js', code: String.raw`
+function countAnagrams(s) {
+  let ans = 1;
+  for (const w of s.split(' ')) {
+    const perms = new Set();
+    permute(w.split(''), 0, perms);                   // every ordering, deduplicated
+    ans = ans * perms.size % 1000000007;
+  }
+  return ans;
+}
+
+function permute(c, i, out) {
+  if (i === c.length) { out.add(c.join('')); return; }
+  for (let j = i; j < c.length; j++) {
+    [c[i], c[j]] = [c[j], c[i]];                      // choose
+    permute(c, i + 1, out);                           // explore
+    [c[i], c[j]] = [c[j], c[i]];                      // un-choose
+  }
+}` }, { lang: 'cpp', code: String.raw`
+void permute(string& c, int i, unordered_set<string>& out) {
+    if (i == (int) c.size()) { out.insert(c); return; }
+    for (int j = i; j < (int) c.size(); j++) {
+        swap(c[i], c[j]);                             // choose
+        permute(c, i + 1, out);                       // explore
+        swap(c[i], c[j]);                             // un-choose
+    }
+}
+
+long long countAnagrams(string s) {
+    long long ans = 1;
+    istringstream in(s);
+    string w;
+    while (in >> w) {
+        unordered_set<string> perms;
+        permute(w, 0, perms);                         // every ordering, deduplicated
+        ans = ans * perms.size() % 1000000007LL;
+    }
+    return ans;
+}` }] }
     },
     mcq: { q: `How many distinct arrangements does "level" have?`, options: [`120`, `30`, `60`, `20`], answer: 1, explain: `5 letters: l ×2, e ×2, v ×1 → 5! / (2! × 2! × 1!) = 120 / 4 = 30.` },
     hints: [
@@ -4689,7 +5394,7 @@ public:
     example: `<p><code>[6, 10, 3]</code> → GCDs: 6, 10, 3, gcd(6,10) = 2, gcd(6,3) = 3, gcd(10,3) = 1, gcd(6,10,3) = 1 → {1, 2, 3, 6, 10} → ${H.c('g', '5')}.</p>`,
     brute: {
       why: `<p>Enumerate all 2<sup>N</sup> − 1 subsequences — impossible beyond N ≈ 25. Wasted work: there are only max(nums) possible GCD values; test each candidate g directly.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteGCDs(int[] nums) {
             int n = nums.length;                     // only feasible for n <= 20
             Set<Integer> gcds = new HashSet<>();
@@ -4701,7 +5406,40 @@ public:
             return gcds.size();
         }
 
-        int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }`
+        int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }`, alt: [{ lang: 'python', code: String.raw`
+from math import gcd
+
+def count_different_subsequence_gcds(nums):
+    n = len(nums)                                    # only feasible for n <= 20
+    gcds = set()
+    for mask in range(1, 1 << n):
+        g = 0
+        for i in range(n):
+            if mask >> i & 1:
+                g = gcd(g, nums[i])
+        gcds.add(g)
+    return len(gcds)` }, { lang: 'js', code: String.raw`
+function countDifferentSubsequenceGCDs(nums) {
+  const n = nums.length;                             // only feasible for n <= 20
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  const gcds = new Set();
+  for (let mask = 1; mask < (1 << n); mask++) {
+    let g = 0;
+    for (let i = 0; i < n; i++) if ((mask >> i & 1) === 1) g = gcd(g, nums[i]);
+    gcds.add(g);
+  }
+  return gcds.size;
+}` }, { lang: 'cpp', code: String.raw`
+int countDifferentSubsequenceGCDs(vector<int>& nums) {
+    int n = nums.size();                             // only feasible for n <= 20
+    set<int> gcds;
+    for (int mask = 1; mask < (1 << n); mask++) {
+        int g = 0;
+        for (int i = 0; i < n; i++) if ((mask >> i & 1) == 1) g = __gcd(g, nums[i]);
+        gcds.insert(g);
+    }
+    return gcds.size();
+}` }] }
     },
     mcq: { q: `For a candidate g, which elements could belong to a subsequence whose GCD is exactly g?`, options: [`Any element`, `Only multiples of g — and g is achievable iff the gcd of ALL present multiples of g equals g`, `Only elements equal to g`, `Only primes`], answer: 1, explain: `Every element of such a subsequence is a multiple of g. Taking more multiples can only lower (or keep) the gcd, so using all of them gives the smallest possible gcd; g is achievable exactly when that equals g.` },
     hints: [
@@ -4815,14 +5553,35 @@ public:
     example: `<p><code>nums = [1, 2, 3, 4, 5], k = 2</code> → ${H.c('g', '7')}: a product is even unless both factors are odd; 10 pairs total minus 3 odd–odd pairs (1·3, 1·5, 3·5).</p>`,
     brute: {
       why: `<p>Check all N(N − 1)/2 ≈ 5 × 10<sup>9</sup> pairs → TLE (and the product needs <code>long</code>). Wasted work: for divisibility by k, only gcd(x, k) matters, and k has at most 128 divisors below 10<sup>5</sup>.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         long countPairsBrute(int[] nums, int k) {
             long pairs = 0;
             for (int i = 0; i < nums.length; i++)
                 for (int j = i + 1; j < nums.length; j++)
                     if ((long) nums[i] * nums[j] % k == 0) pairs++;
             return pairs;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def count_pairs(nums, k):
+    pairs = 0
+    for i in range(len(nums)):
+        for j in range(i + 1, len(nums)):
+            if nums[i] * nums[j] % k == 0:
+                pairs += 1
+    return pairs` }, { lang: 'js', code: String.raw`
+function countPairs(nums, k) {
+  let pairs = 0;
+  for (let i = 0; i < nums.length; i++)
+    for (let j = i + 1; j < nums.length; j++)
+      if (nums[i] * nums[j] % k === 0) pairs++;   // product up to 10^10: still exact in a double
+  return pairs;
+}` }, { lang: 'cpp', code: String.raw`
+long long countPairs(vector<int>& nums, int k) {
+    long long pairs = 0;
+    for (int i = 0; i < (int) nums.size(); i++)
+        for (int j = i + 1; j < (int) nums.size(); j++)
+            if ((long long) nums[i] * nums[j] % k == 0) pairs++;
+    return pairs;
+}` }] }
     },
     mcq: { q: `k = 12, x = 8, y = 9. gcd(x, 12) = 4, gcd(y, 12) = 3. Is x × y divisible by 12?`, options: [`No`, `Yes — 4 × 3 = 12 is divisible by 12, and that test is exact`, `Only if x + y is`, `Can't tell from the gcds`], answer: 1, explain: `k divides x·y exactly when k divides gcd(x,k)·gcd(y,k): per prime, min(eₓ, e_k) + min(e_y, e_k) ≥ e_k ⇔ eₓ + e_y ≥ e_k. 72 = 6 × 12 ✓.` },
     hints: [
@@ -4903,20 +5662,20 @@ public:
   // =====================================================================
   quiz.push(
     { q: `How many divisors does 36 have?`, options: [`8`, `9`, `10`, `12`], answer: 1, explain: `Pairs (1,36), (2,18), (3,12), (4,9) give 8, and (6,6) adds just one more → 9. Perfect squares always have an odd number of divisors.` },
-    { q: `Which loop condition is the safest for trial division with <code>long n</code> up to 9 × 10<sup>18</sup>?`, options: [`<code>i &lt;= Math.sqrt(n)</code>`, `<code>i * i &lt;= n</code>`, `<code>i &lt;= n / i</code>`, `<code>i &lt; n / 2</code>`], answer: 2, explain: `<code>i * i</code> can overflow near Long.MAX_VALUE and <code>Math.sqrt</code> on a double can round wrongly above 2<sup>53</sup>. <code>i &lt;= n / i</code> never overflows.` },
+    { q: `Which loop condition is the safest for trial division with a 64-bit <code>n</code> (Java <code>long</code>, C++ <code>long long</code>) up to 9 × 10<sup>18</sup>?`, options: [`<code>i &lt;= Math.sqrt(n)</code>`, `<code>i * i &lt;= n</code>`, `<code>i &lt;= n / i</code>`, `<code>i &lt; n / 2</code>`], answer: 2, explain: `<code>i * i</code> can overflow near the largest 64-bit value and a floating-point square root (<code>Math.sqrt</code> / <code>sqrt</code> on a double) can round wrongly above 2<sup>53</sup>. <code>i &lt;= n / i</code> never overflows.` },
     { q: `In the Sieve of Eratosthenes, why does the inner loop for prime p start at p × p?`, options: [`Because p × p is always prime`, `Smaller multiples k·p (k &lt; p) were already crossed out by the smaller prime factors of k`, `To save memory`, `It must start at 2p, p × p is a bug`], answer: 1, explain: `Any multiple k·p with k &lt; p has a prime factor smaller than p, so it was crossed out earlier. Starting at 2p is still correct, just slower.` },
     { q: `What is the time complexity of the classic sieve up to N?`, options: [`O(N)`, `O(N log log N)`, `O(N √N)`, `O(N log N)`], answer: 1, explain: `Prime p does N/p work; summing N/p over primes gives N × (ln ln N + small constant).` },
     { q: `gcd(48, 18) with Euclid's algorithm takes which sequence of pairs?`, options: [`(48,18) → (30,18) → (12,18) → …`, `(48,18) → (18,12) → (12,6) → (6,0)`, `(48,18) → (24,9) → (8,3) → (1,0)`, `(48,18) → (18,6) → (6,0)`], answer: 1, explain: `48 % 18 = 12, 18 % 12 = 6, 12 % 6 = 0 → gcd = 6. The first option is the slower subtraction version.` },
-    { q: `Which LCM expression avoids unnecessary overflow in Java?`, options: [`<code>a * b / gcd(a, b)</code>`, `<code>a / gcd(a, b) * b</code>`, `<code>(a + b) / gcd(a, b)</code>`, `<code>gcd(a, b) * a * b</code>`], answer: 1, explain: `Dividing first keeps the intermediate value equal to the final LCM; computing a × b first can overflow even when the LCM fits.` },
-    { q: `In Java, what does <code>(3 - 7) % 5</code> evaluate to?`, options: [`1`, `−4`, `4`, `−1`], answer: 1, explain: `Java's remainder takes the sign of the dividend: −4 % 5 = −4. Use <code>((x % m) + m) % m</code> or <code>Math.floorMod</code> to get 1.` },
-    { q: `MOD = 10<sup>9</sup> + 7 and a, b are already reduced. Which is correct?`, options: [`<code>int c = a * b % MOD;</code> with int a, b`, `<code>long c = (long) a * b % MOD;</code>`, `<code>long c = (long) (a * b) % MOD;</code>`, `<code>int c = (a % MOD) / (b % MOD);</code>`], answer: 1, explain: `The product reaches ~10<sup>18</sup>, so it must be computed in long: cast <b>before</b> multiplying. Option C casts after the int multiplication has already overflowed.` },
+    { q: `Which LCM expression avoids unnecessary overflow in Java or C++?`, options: [`<code>a * b / gcd(a, b)</code>`, `<code>a / gcd(a, b) * b</code>`, `<code>(a + b) / gcd(a, b)</code>`, `<code>gcd(a, b) * a * b</code>`], answer: 1, explain: `Dividing first keeps the intermediate value equal to the final LCM; computing a × b first can overflow even when the LCM fits.` },
+    { q: `In Java, C++ or JavaScript, what does <code>(3 - 7) % 5</code> evaluate to?`, options: [`1`, `−4`, `4`, `−1`], answer: 1, explain: `The remainder takes the sign of the dividend in Java, C++ and JavaScript: −4 % 5 = −4. Use <code>((x % m) + m) % m</code> (or <code>Math.floorMod</code> in Java) to get 1; Python's <code>%</code> already returns 1.` },
+    { q: `MOD = 10<sup>9</sup> + 7 and a, b are already reduced 32-bit ints. Which is correct? (Java shown; in C++ read <code>long</code> as <code>long long</code>.)`, options: [`<code>int c = a * b % MOD;</code> with int a, b`, `<code>long c = (long) a * b % MOD;</code>`, `<code>long c = (long) (a * b) % MOD;</code>`, `<code>int c = (a % MOD) / (b % MOD);</code>`], answer: 1, explain: `The product reaches ~10<sup>18</sup>, so it must be computed in long: cast <b>before</b> multiplying. Option C casts after the int multiplication has already overflowed.` },
     { q: `How many loop rounds does binary exponentiation need for exponent b = 1,000,000?`, options: [`About 10`, `About 20`, `About 1000`, `About 1,000,000`], answer: 1, explain: `One round per bit: 2<sup>20</sup> ≈ 1.05 × 10<sup>6</sup>, so 10<sup>6</sup> has 20 bits.` },
     { q: `Under a prime modulus p, the modular inverse of a (a not divisible by p) is…`, options: [`a<sup>p</sup> mod p`, `a<sup>p−2</sup> mod p`, `(p − a) mod p`, `p / a`], answer: 1, explain: `Fermat's little theorem: a<sup>p−1</sup> ≡ 1, so a × a<sup>p−2</sup> ≡ 1, i.e. a<sup>p−2</sup> is the inverse.` },
     { q: `C(10, 3) equals…`, options: [`30`, `120`, `720`, `1000`], answer: 1, explain: `10 × 9 × 8 / (3 × 2 × 1) = 720 / 6 = 120. (720 is the ordered count — order doesn't matter for C.)` },
     { q: `The modulus is 10<sup>9</sup> (not prime) and n ≤ 2000. The safest way to compute C(n, r) mod 10<sup>9</sup> is…`, options: [`fact[n] × inverse(fact[r]) × inverse(fact[n−r]) with Fermat`, `Pascal's rule table using only additions`, `Floating-point factorials`, `It is impossible`], answer: 1, explain: `Fermat inverses need a prime modulus (and 2 or 5 have no inverse mod 10<sup>9</sup>). Pascal's rule uses only additions, so it works for any modulus; 2000² entries is small.` },
     { q: `An array has 101 integers, each between 1 and 100. What can you conclude for sure?`, options: [`It is sorted`, `Some value appears at least twice`, `Every value appears`, `The sum is 5050`], answer: 1, explain: `101 pigeons (positions) into 100 boxes (possible values) → at least one box gets two. Pigeonhole guarantees a duplicate, not which one.` },
     { q: `50 students are split into 7 teams. The largest team has at least how many students?`, options: [`7`, `8`, `9`, `50`], answer: 1, explain: `Generalised pigeonhole: ⌈50 / 7⌉ = ⌈7.14⌉ = 8. If every team had ≤ 7, there would be ≤ 49 students.` },
-    { q: `A question says "return the maximum number of ways, modulo 10<sup>9</sup>+7". What is the trap?`, options: [`Taking mod at all`, `Comparing values after reducing them — the max must be decided on true values (or logs / BigInteger)`, `Using long`, `There is no trap`], answer: 1, explain: `Residues lose their order: 10<sup>9</sup>+8 becomes 1. Compare true magnitudes (often via logarithms or exact big numbers), then reduce the winner.` }
+    { q: `A question says "return the maximum number of ways, modulo 10<sup>9</sup>+7". What is the trap?`, options: [`Taking mod at all`, `Comparing values after reducing them — the max must be decided on true values (or logs / a big-number type)`, `Using long`, `There is no trap`], answer: 1, explain: `Residues lose their order: 10<sup>9</sup>+8 becomes 1. Compare true magnitudes (often via logarithms or exact big numbers such as BigInteger, Python int or BigInt), then reduce the winner.` }
   );
 
   // =====================================================================
@@ -4933,7 +5692,7 @@ public:
       q: `When would you use trial division, a sieve, a segmented sieve, or Miller–Rabin?`,
       level: 'I',
       a: `<p>It depends on <b>how many</b> numbers and <b>how big</b>. One or a few numbers ≤ 10<sup>12</sup>: trial division, O(√N) ≈ 10<sup>6</sup> each. Many queries with values ≤ 10<sup>7</sup>: a sieve once in O(N log log N), then O(1) lookups (SPF sieve if I also need factorizations). Values up to 10<sup>12</sup> but only in a window of length ≤ 10<sup>6</sup>: segmented sieve with base primes up to √R. Many numbers up to 10<sup>18</sup>: Miller–Rabin with the 12 fixed bases (deterministic for 64-bit), using 128-bit safe multiplication.</p>`,
-      followUps: ['What is the memory of a boolean sieve for N = 10<sup>8</sup> in Java?', 'Why does Fermat\'s test fail on Carmichael numbers?']
+      followUps: ['What is the memory of a boolean sieve for N = 10<sup>8</sup> (Java boolean[], C++ vector&lt;bool&gt;, Python bytearray)?', 'Why does Fermat\'s test fail on Carmichael numbers?']
     },
     {
       q: `Explain the time complexity of the Sieve of Eratosthenes.`,
@@ -4954,15 +5713,15 @@ public:
       followUps: ['What breaks if the modulus is composite?', 'How do you multiply two residues when the modulus is ~10<sup>18</sup>?']
     },
     {
-      q: `Walk me through the modular arithmetic rules and the bugs you watch for in Java.`,
+      q: `Walk me through the modular arithmetic rules and the bugs you watch for in Java, C++, JavaScript and Python.`,
       level: 'B',
-      a: `<p>(a + b) mod m = ((a mod m) + (b mod m)) mod m; (a × b) mod m = ((a mod m) × (b mod m)) mod m; subtraction needs ((a − b) mod m + m) mod m because Java's % keeps the dividend's sign. Division is <b>not</b> distributive — use the modular inverse when it exists (gcd(b, m) = 1). Bugs I watch for: multiplying two ints before casting to long, multiplying three residues without reducing in between, negative remainders in prefix differences or circular indices, comparing or taking max of residues, and using Fermat's inverse with a non-prime modulus.</p>`,
+      a: `<p>(a + b) mod m = ((a mod m) + (b mod m)) mod m; (a × b) mod m = ((a mod m) × (b mod m)) mod m; subtraction needs ((a − b) mod m + m) mod m because % keeps the dividend's sign in Java, C++ and JavaScript (Python's % is already non-negative). Division is <b>not</b> distributive — use the modular inverse when it exists (gcd(b, m) = 1). Bugs I watch for: multiplying two 32-bit ints before widening to 64 bits (Python never overflows; JavaScript needs BigInt past 2<sup>53</sup>), multiplying three residues without reducing in between, negative remainders in prefix differences or circular indices, comparing or taking max of residues, and using Fermat's inverse with a non-prime modulus.</p>`,
       followUps: ['Why can\'t you take Math.max of modded DP values?', 'What does Math.floorMod do differently from %?']
     },
     {
       q: `Implement a<sup>b</sup> mod m. What is the complexity and what are the edge cases?`,
       level: 'B',
-      a: `<p>Binary exponentiation: result = 1 % m, base = a mod m; while b &gt; 0, if the low bit of b is 1 multiply result by base (mod m), square base (mod m), shift b right. Each round consumes one bit, so it is <b>O(log b)</b> — 60 rounds for b = 10<sup>18</sup>. Edge cases: b = 0 → 1 (and 1 % m handles m = 1), a = 0 → 0 for b &gt; 0, negative a → normalise first, a ≥ m → reduce first, and m above ~3 × 10<sup>9</sup> → base × base overflows a long, so use a 128-bit or BigInteger multiply.</p>`,
+      a: `<p>Binary exponentiation: result = 1 % m, base = a mod m; while b &gt; 0, if the low bit of b is 1 multiply result by base (mod m), square base (mod m), shift b right. Each round consumes one bit, so it is <b>O(log b)</b> — 60 rounds for b = 10<sup>18</sup>. Edge cases: b = 0 → 1 (and 1 % m handles m = 1), a = 0 → 0 for b &gt; 0, negative a → normalise first, a ≥ m → reduce first, and m above ~3 × 10<sup>9</sup> → base × base overflows a long, so use a 128-bit multiply (<code>__int128</code> in C++, <code>BigInteger</code> in Java, <code>BigInt</code> in JavaScript; Python needs nothing).</p>`,
       followUps: ['Why is pow(a, b/2) * pow(a, b/2) a performance bug?', 'How does the same idea give Fibonacci in O(log n)?']
     },
     {

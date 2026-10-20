@@ -728,6 +728,7 @@ console.log(wrongModel()); // "A B C"  <- not what really happens`
           `<p>Hint 2: setTimeout hands the callback to the timer system (Web APIs). When the timer finishes it can only <i>queue</i> the callback.</p>`,
           `<p>Hint 3: Recipe: write the sync output (A, C), then queued callbacks (B). The delay = time until the stack is empty ≈ 100 ms.</p>`
         ],
+        tests: {"io":true,"cases":[{"stdin":"","stdout":"A\nC\nB after ~100+ ms"}]},
         solution: {
           approach: `<p>Split the code into "runs now" and "runs later". Now: log A, register timer, busy loop 100 ms, log C. The timer expired at ~0–1 ms, so its callback sits in the task queue — but the loop and the rest of the script must finish first. When the stack empties, the event loop takes B.</p>`,
           code: { lang: 'js', run: true, code: `const start = Date.now();
@@ -937,6 +938,7 @@ console.log(naive.join(' '));   // W X Y Z Q  <- incorrect`
           `<p>Hint 2: Each timer callback is queued when its delay finishes. Sort the timers by delay.</p>`,
           `<p>Hint 3: Ties (same delay) keep creation order. Recipe: sync lines → sort timers by (delay, creation index).</p>`
         ],
+        tests: {"io":true,"cases":[{"stdin":"","stdout":"Y\nX\nQ\nZ\nW"}]},
         solution: {
           approach: `<p>Sort timers by <b>(start time + delay, creation order)</b>. All were started at ~0 ms, so sort by delay: X(0, #2), Q(0, #4), Z(100), W(300). Sync Y prints before any of them.</p>`,
           code: { lang: 'js', run: true, code: `setTimeout(() => console.log('W'), 300);
@@ -1165,6 +1167,7 @@ console.log(['S'].concat(createdOrder, ['M3']).join(' '));  // S T M1 M2 M3  <- 
           `<p>Hint 2: After the script, drain microtasks FIFO. Anything queued during the drain joins the back.</p>`,
           `<p>Hint 3: Recipe: sync → microtasks (keep adding new ones to the back) → one task → repeat.</p>`
         ],
+        tests: {"io":true,"cases":[{"stdin":"","stdout":"S\nM1\nM2\nM3\nT"}]},
         solution: {
           approach: `<p>Sync: S. Microtask queue after the script: [M1, M2]. Run M1 → prints M1, queues M3 → [M2, M3]. Run M2, then M3. Queue empty → task T.</p>`,
           code: { lang: 'js', run: true, code: `setTimeout(() => console.log('T'), 0);
@@ -1479,6 +1482,7 @@ console.log(['sync'].concat(micro, macrotasks).join(' '));
           `<p>Hint 2: Between callbacks Node drains nextTick first, then promises. Then the loop moves to the <i>next phase</i>.</p>`,
           `<p>Hint 3: Recipe: sync → nextTick queue → promise queue → next phase after poll (check: immediate) → … → timers (timeout).</p>`
         ],
+        tests: {"io":true,"cases":[{"stdin":"","stdout":"sync\nnextTick\npromise\nimmediate\ntimeout"}]},
         solution: {
           approach: `<p>We are in <b>poll</b>. Sync prints first. When the callback returns, Node drains <code>nextTick</code> then promises. The loop then proceeds to <b>check</b> (immediate), then close, then wraps to <b>timers</b> (timeout).</p>`,
           code: `const fs = require('fs');
@@ -1716,6 +1720,7 @@ console.log(readingOrder.join(' '));   // 1 2 3 4 5 6 7 8  <- incorrect`
           `<p>Hint 2: Microtasks after the script: the then-callback (3) and queueMicrotask (5), in that order. 3 creates timer 4 — <i>after</i> timers 2 and 6 already exist.</p>`,
           `<p>Hint 3: Then tasks in order 2, 6, 4 — and after each task drain microtasks (7 after 6). Recipe: sync → micro → [task → micro]*.</p>`
         ],
+        tests: {"io":true,"cases":[{"stdin":"","stdout":"1\n8\n3\n5\n2\n6\n7\n4"}]},
         solution: {
           approach: `<p>Track three lists. After the script: printed [1, 8], micro [3, 5], tasks [2, 6]. Drain micro: 3 (adds task 4 → tasks [2, 6, 4]), 5. Task 2. Task 6 (adds micro 7) → drain 7. Task 4.</p>`,
           code: { lang: 'js', run: true, code: `console.log('1');
@@ -2050,6 +2055,7 @@ console.log(oldEngineOrder.join(' | '));`
           `<p>Hint 2: <code>await two()</code>: two() returned an already-fulfilled promise → the continuation of one() is queued <b>now</b> (1 tick).</p>`,
           `<p>Hint 3: The then-callback is queued after that. Microtask FIFO → one end, then.</p>`
         ],
+        tests: {"io":true,"cases":[{"stdin":"","stdout":"script start\none start\ntwo\nscript end\none end\nthen"}]},
         solution: {
           approach: `<p>Sync: script start, one start, two (inside one → two), then one suspends at await with its continuation queued. Then the .then callback is queued. script end. Drain: continuation (one end), then-callback (then).</p>`,
           code: { lang: 'js', run: true, code: `async function one() {
@@ -2444,6 +2450,7 @@ console.log(naive.join(' | '));`
           `<p>Hint 2: Tick 1: the .then passes the rejection on (queues .catch); the async function resumes, throws at await, its catch prints and it continues to "async after".</p>`,
           `<p>Hint 3: Tick 2: .catch prints and returns 'ok' (queues the last .then). Tick 3: "then ok". Only then the timer task T.</p>`
         ],
+        tests: {"io":true,"cases":[{"stdin":"","stdout":"S\nasync caught E2\nasync after\ncaught E1\nthen ok\nT"}]},
         solution: {
           approach: `<p>Track each chain one microtask at a time. Chain 1 needs 3 ticks (skip, catch, then). The async function needs 1 tick (resume into catch), and it runs the rest of its body synchronously in that same tick. Timer last.</p>`,
           code: { lang: 'js', run: true, code: `setTimeout(() => console.log('T'), 0);
@@ -2768,6 +2775,7 @@ console.log(wrong.join(' '));`
           `<p>Hint 2: p is pending after the script. <code>p.then(v)</code> and the await continuation are both parked on p — in that order. The only microtask is I.</p>`,
           `<p>Hint 3: Task timer1 → B, microtask C. Task timer2 → E, resolve('F') queues the parked reactions in registration order → F, H. Recipe: sync → micro → [task → micro]*.</p>`
         ],
+        tests: {"io":true,"cases":[{"stdin":"","stdout":"A\nD\nG\nJ\nI\nB\nC\nE\nF\nH"}]},
         solution: {
           approach: `<p>Use the four columns. After the script: Output A D G J; Microtasks [I]; Tasks [timer1, timer2]; Waiting on p: [then(v), resume async]. Drain: I. Task timer1: B, queues C → drain: C. Task timer2: E, resolve('F') moves both parked reactions into the microtask queue → drain: F, H.</p>`,
           code: { lang: 'js', run: true, code: `console.log('A');
@@ -2838,6 +2846,7 @@ console.log(['1', '2', '3'].join(' '));`
       `<p>Hint 2: setTimeout hands the callback to the timer system (Web APIs / libuv) and returns undefined immediately.</p>`,
       `<p>Hint 3: When the script ends the stack is empty, so the event loop takes the timer task and prints 2 last.</p>`
     ],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"1\n3\n2"}]},
     solution: {
       approach: `<p>Sync logs first (1, 3). The timer callback is a task, so it runs after the script task finishes.</p>`,
       code: { lang: 'js', run: true, code: `console.log('1');
@@ -2874,6 +2883,7 @@ console.log(['A', 'D', 'B', 'C'].join(' '));`
       `<p>Hint 2: Sort the two callbacks into lanes: then-callback → microtask queue; timer callback → task queue.</p>`,
       `<p>Hint 3: Rule: after each task (the script is one), drain all microtasks, then take one task.</p>`
     ],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"A\nD\nC\nB"}]},
     solution: {
       approach: `<p>Sync: A, D. Microtask drain: C. Next task: B.</p>`,
       code: { lang: 'js', run: true, code: `console.log('A');
@@ -2918,6 +2928,7 @@ console.log('1 2 4 3 5');`
       `<p>Hint 2: resolve() is just a function call that changes the promise's state; code after it in the executor still runs.</p>`,
       `<p>Hint 3: p.then on a fulfilled promise queues the callback as a microtask; it runs after the last sync log.</p>`
     ],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"1\n2\n3\n5\n4"}]},
     solution: {
       approach: `<p>Sync: 1, executor prints 2, resolve, 3, then 5. Microtask: 4.</p>`,
       code: { lang: 'js', run: true, code: `console.log('1');
@@ -2963,6 +2974,7 @@ console.log('liftoff');`
       `<p>Hint 2: Wrap it: <code>new Promise((resolve) =&gt; setTimeout(resolve, ms))</code>. The timer callback is resolve itself.</p>`,
       `<p>Hint 3: In countdown, loop i from 3 to 1: log, then <code>await sleep(100)</code>. After the loop log liftoff. Use for…of / for, not forEach.</p>`
     ],
+    tests: {"sig":"string int -> string[]","fn":"chk","harness":{"js":"var __q = Promise.resolve(), __n = 0, __ready = new Promise(function (r) { setTimeout(r, 700); });\nfunction __job(f) { var ci = __n++; __q = __q.then(function () { return __ready; }).then(f).then(function (v) { console.log('@@' + ci + ' ' + _h_json(v)); }, function (e) { console.log('@@' + ci + ' !' + e); }); return null; }\nfunction __cap(f) { var out = [], old = console.log; console.log = function () { out.push([].join.call(arguments, ' ')); }; return Promise.resolve().then(f).then(function (v) { console.log = old; return [v, out]; }, function (e) { console.log = old; throw e; }); }\n\nfunction chk(kind, n) {\n  return __job(async function () {\n    if (kind === 'countdown') {\n      var r = await __cap(async function () { setTimeout(function () { console.log('other work ran'); }, 150); await countdown(); await sleep(60); });\n      return r[1];\n    }\n    if (kind === 'elapsed') { var t = Date.now(); await sleep(n); return Date.now() - t >= n - 2 && Date.now() - t < n + 200; }\n    if (kind === 'order') {\n      var ev = []; setTimeout(function () { ev.push('t5'); }, 5); setTimeout(function () { ev.push('t60'); }, 60);\n      await sleep(n); ev.push('slept'); await sleep(80); return ev;\n    }\n    if (kind === 'promise') { var p = sleep(n); var ok = typeof p.then === 'function'; await p; return ok; }\n    if (kind === 'parallel') { var s = Date.now(); await Promise.all([sleep(n), sleep(n), sleep(n)]); return Date.now() - s < n * 2 + 50; }\n  });\n}"},"cases":[[["countdown",0],["3","2","other work ran","1","liftoff"]],[["elapsed",30],true],[["elapsed",0],true],[["order",30],["t5","slept","t60"]],[["order",0],["slept","t5","t60"]],[["promise",10],true],[["parallel",40],true]]},
     solution: {
       approach: `<p>Promise-wrap setTimeout. Each <code>await sleep(100)</code> suspends countdown, the stack empties, and other tasks (the 150 ms timer) get their turn.</p>`,
       code: { lang: 'js', run: true, code: `const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -3015,6 +3027,7 @@ console.log(['a1', 'a2', 'a3', 'b1', 'b2', 'm'].join(' '));`
       `<p>Hint 2: Running a1 queues a2 at the back: [b1, m, a2]. Running b1 queues b2: [m, a2, b2].</p>`,
       `<p>Hint 3: Keep simulating the FIFO queue: m, a2 (queues a3), b2, a3. Write the queue after every step.</p>`
     ],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"a1\nb1\nm\na2\nb2\na3"}]},
     solution: {
       approach: `<p>Simulate the single FIFO microtask queue, adding each next link at the back when its parent runs.</p>`,
       code: { lang: 'js', run: true, code: `Promise.resolve()
@@ -3065,6 +3078,7 @@ console.log(['s', 'p1', 't1', 't2', 'p-in-t1', 't-in-p1'].join(' '));`
       `<p>Hint 2: Drain: p1 prints and registers a third timer, which joins after t2.</p>`,
       `<p>Hint 3: Task t1 → microtask p-in-t1 drains before the next task. Then t2, then t-in-p1.</p>`
     ],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"s\np1\nt1\np-in-t1\nt2\nt-in-p1"}]},
     solution: {
       approach: `<p>Alternate: one task, then all microtasks. Timers with equal delay keep creation order.</p>`,
       code: { lang: 'js', run: true, code: `setTimeout(() => {
@@ -3114,6 +3128,7 @@ console.log(['sync', 'f1', 't1', 'f2', 't2 undefined'].join(' | '));`
       `<p>Hint 2: finally callbacks run on both paths and get no argument; they forward the incoming outcome.</p>`,
       `<p>Hint 3: Only sync is synchronous. Then follow the chain: f1, (t1 skipped), c1 x, f2, t2 recovered.</p>`
     ],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"sync\nf1\nc1 x\nf2\nt2 recovered"}]},
     solution: {
       approach: `<p>Follow the settled state link by link. Rejection: finally (runs, keeps rejection) → then (skipped) → catch (handles, returns value) → finally (runs, keeps value) → then (receives value).</p>`,
       code: { lang: 'js', run: true, code: `console.log('sync');
@@ -3159,6 +3174,7 @@ loadUsersSlow([1, 2, 3]).then((u) => console.log(u.join(',') + ' sequential >= 1
       `<p>Hint 2: <code>ids.map(getUser)</code> gives an array of promises; <code>Promise.all</code> waits for all and keeps index order.</p>`,
       `<p>Hint 3: Edge cases: empty array resolves to [] immediately; one rejection rejects the whole call (use allSettled if partial results are OK); for 1000 ids consider a concurrency limit.</p>`
     ],
+    tests: {"sig":"int[] -> string[]","fn":"chk","harness":{"js":"var __q = Promise.resolve(), __n = 0, __ready = new Promise(function (r) { setTimeout(r, 300); });\nfunction __job(f) { var ci = __n++; __q = __q.then(function () { return __ready; }).then(f).then(function (v) { console.log('@@' + ci + ' ' + _h_json(v)); }, function (e) { console.log('@@' + ci + ' !' + e); }); return null; }\nfunction __cap(f) { var out = [], old = console.log; console.log = function () { out.push([].join.call(arguments, ' ')); }; return Promise.resolve().then(f).then(function (v) { console.log = old; return [v, out]; }, function (e) { console.log = old; throw e; }); }\n\nfunction chk(ids) {\n  return __job(async function () {\n    var t = Date.now(), users = await loadUsers(ids), ms = Date.now() - t;\n    var inOrder = users.length === ids.length && users.every(function (u, i) { return u === 'user' + ids[i]; });\n    return [users.length > 5 ? users.length : users, inOrder, ms < 400];\n  });\n}"},"cases":[[[[1,2,3]],[["user1","user2","user3"],true,true]],[[[3,1,2]],[["user3","user1","user2"],true,true]],[[[7]],[["user7"],true,true]],[[[5,5,5]],[["user5","user5","user5"],true,true]],[[[0,-1,10]],[["user0","user-1","user10"],true,true]],[[{"$range":[0,1000]}],[1000,true,true]]]},
     solution: {
       approach: `<p>Fan out, then fan in: <code>return Promise.all(ids.map(getUser))</code>. All timers run concurrently in the host; JavaScript just waits once.</p>`,
       code: { lang: 'js', run: true, code: `const getUser = (id) => new Promise((r) => setTimeout(() => r('user' + id), 50));
@@ -3203,6 +3219,7 @@ withTimeoutLeaky(Promise.resolve('fast'), 200).then((v) => console.log(v + ' (bu
       `<p>Hint 2: Keep the timer id; whatever wins, call clearTimeout(id) in a finally so the loser timer is removed.</p>`,
       `<p>Hint 3: Remember race does not cancel the slow work. For fetch, pass an AbortSignal (AbortSignal.timeout(ms)) to really stop it.</p>`
     ],
+    tests: {"sig":"string int int -> string[]","fn":"chk","harness":{"js":"var __q = Promise.resolve(), __n = 0, __ready = new Promise(function (r) { setTimeout(r, 400); });\nfunction __job(f) { var ci = __n++; __q = __q.then(function () { return __ready; }).then(f).then(function (v) { console.log('@@' + ci + ' ' + _h_json(v)); }, function (e) { console.log('@@' + ci + ' !' + e); }); return null; }\nfunction __cap(f) { var out = [], old = console.log; console.log = function () { out.push([].join.call(arguments, ' ')); }; return Promise.resolve().then(f).then(function (v) { console.log = old; return [v, out]; }, function (e) { console.log = old; throw e; }); }\n\nfunction chk(kind, delayMs, limitMs) {\n  return __job(async function () {\n    var live = 0, st = globalThis.setTimeout, ct = globalThis.clearTimeout, ids = new Set();\n    globalThis.setTimeout = function (f, ms) { var id = st(function () { ids.delete(id); f(); }, ms); ids.add(id); return id; };\n    globalThis.clearTimeout = function (id) { ids.delete(id); return ct(id); };\n    var out;\n    try {\n      var p = new Promise(function (res, rej) { st(function () { if (kind === 'reject') rej(new Error('server 500')); else res('value'); }, delayMs); });\n      try { out = 'ok:' + await withTimeout(p, limitMs); } catch (e) { out = 'err:' + e.message; }\n      var leaked = ids.size;\n    } finally { globalThis.setTimeout = st; globalThis.clearTimeout = ct; }\n    return [out, leaked];\n  });\n}"},"cases":[[["fulfil",10,200],["ok:value",0]],[["fulfil",150,20],["err:Timeout after 20 ms",0]],[["reject",10,200],["err:server 500",0]],[["reject",150,20],["err:Timeout after 20 ms",0]],[["fulfil",0,100],["ok:value",0]],[["fulfil",40,0],["err:Timeout after 0 ms",0]]]},
     solution: {
       approach: `<p><code>Promise.race</code> between the input and a timer-rejecting promise; <code>.finally(() =&gt; clearTimeout(id))</code> cleans up in every outcome.</p>`,
       code: { lang: 'js', run: true, code: `function withTimeout(promise, ms) {
@@ -3259,6 +3276,7 @@ console.log('all done in one go, sum = ' + total);`
       `<p>Hint 2: Yield with a task: <code>const yieldToMain = () =&gt; new Promise((r) =&gt; setTimeout(r, 0));</code> and <code>await</code> it. (In Chrome 129+ prefer <code>scheduler.yield()</code>.)</p>`,
       `<p>Hint 3: Do not yield after the last chunk. Make the function async so the caller gets a promise of the total.</p>`
     ],
+    tests: {"sig":"int int -> string[]","fn":"chk","harness":{"js":"var __q = Promise.resolve(), __n = 0, __ready = new Promise(function (r) { setTimeout(r, 500); });\nfunction __job(f) { var ci = __n++; __q = __q.then(function () { return __ready; }).then(f).then(function (v) { console.log('@@' + ci + ' ' + _h_json(v)); }, function (e) { console.log('@@' + ci + ' !' + e); }); return null; }\nfunction __cap(f) { var out = [], old = console.log; console.log = function () { out.push([].join.call(arguments, ' ')); }; return Promise.resolve().then(f).then(function (v) { console.log = old; return [v, out]; }, function (e) { console.log = old; throw e; }); }\n\nfunction chk(n, size) {\n  return __job(async function () {\n    var items = Array.from({ length: n }, function (_, i) { return i + 1; });\n    var r = await __cap(async function () {\n      setTimeout(function () { console.log('click'); }, 0);\n      var total = await processInChunks(items, size, function (x) { return x * x; });\n      await new Promise(function (r) { setTimeout(r, 30); });\n      return total;\n    });\n    return [r[0], r[1]];\n  });\n}"},"cases":[[[9,3],[285,["chunk done up to 3","click","chunk done up to 6","chunk done up to 9"]]],[[1,5],[1,["chunk done up to 1","click"]]],[[0,3],[0,["click"]]],[[4,4],[30,["chunk done up to 4","click"]]],[[5,2],[55,["chunk done up to 2","click","chunk done up to 4","chunk done up to 5"]]],[[3,1],[14,["chunk done up to 1","click","chunk done up to 2","chunk done up to 3"]]]]},
     solution: {
       approach: `<p>Async loop over chunks; after each chunk except the last, await a task-based yield. Pending tasks (clicks, timers) and rendering can happen in between.</p>`,
       code: { lang: 'js', run: true, code: `// Prefer scheduler.yield() where available; fall back to a 0 ms timer (a new task).
@@ -3329,6 +3347,7 @@ console.log(['a start', 'b start', 'sync', 'a end', 'got B', 't1', 'got A', 't2'
       `<p>Hint 2: resume a prints "a end" and returns a promise → queue the resolve-thenable job at the back. Keep simulating the FIFO queue tick by tick.</p>`,
       `<p>Hint 3: The thenable job runs after t1, queues the adopt reaction after t2; that reaction fulfils a's promise and queues got A after t3.</p>`
     ],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"a start\nb start\nsync\na end\ngot B\nt1\nt2\nt3\ngot A\nt4"}]},
     solution: {
       approach: `<p>Write the microtask queue after every job. Adopting a returned promise = 2 jobs before the outer promise is fulfilled, plus 1 for its then-callback.</p>`,
       code: { lang: 'js', run: true, code: `async function a() {
@@ -3403,6 +3422,7 @@ batches([job(30, 'a'), job(5, 'b'), job(5, 'c')], 2).then((r) => console.log(r.j
       `<p>Hint 2: Each worker: <code>while (next &lt; tasks.length) { const i = next++; results[i] = await tasks[i](); }</code>. Run <code>Math.min(limit, n)</code> workers with Promise.all.</p>`,
       `<p>Hint 3: Store by index to keep input order. Empty input → []. A rejection rejects Promise.all of the workers; set a flag so other workers stop taking new tasks.</p>`
     ],
+    tests: {"sig":"string int[] int -> string[]","fn":"chk","harness":{"js":"var __q = Promise.resolve(), __n = 0, __ready = new Promise(function (r) { setTimeout(r, 700); });\nfunction __job(f) { var ci = __n++; __q = __q.then(function () { return __ready; }).then(f).then(function (v) { console.log('@@' + ci + ' ' + _h_json(v)); }, function (e) { console.log('@@' + ci + ' !' + e); }); return null; }\nfunction __cap(f) { var out = [], old = console.log; console.log = function () { out.push([].join.call(arguments, ' ')); }; return Promise.resolve().then(f).then(function (v) { console.log = old; return [v, out]; }, function (e) { console.log = old; throw e; }); }\n\nfunction chk(kind, durs, limit) {\n  return __job(async function () {\n    var running = 0, max = 0, order = [];\n    if (kind === 'many') {\n      var tasks = durs.map(function (_, id) { return function () { running++; max = Math.max(max, running); return Promise.resolve().then(function () { running--; return 'r' + id; }); }; });\n      var res = await runWithLimit(tasks, limit);\n      return [res.length, res[0], res[res.length - 1], max, res.every(function (v, i) { return v === 'r' + i; })];\n    }\n    if (kind === 'fail') {\n      var tasks2 = durs.map(function (ms, id) { return function () { return new Promise(function (res, rej) { setTimeout(function () { if (ms < 0) rej(new Error('boom' + id)); else res('r' + id); }, Math.abs(ms) * 3); }); }; });\n      try { await runWithLimit(tasks2, limit); return 'resolved'; } catch (e) { return e.message; }\n    }\n    var tasks3 = durs.map(function (ms, id) { return function () { running++; max = Math.max(max, running); return new Promise(function (res) { setTimeout(function () { running--; order.push(id); res('r' + id); }, ms * 3); }); }; });\n    var out = await runWithLimit(tasks3, limit);\n    return [out, max, order];\n  });\n}"},"cases":[[["run",[60,20,50,20,20],2],[["r0","r1","r2","r3","r4"],2,[1,0,2,3,4]]],[["run",[],3],[[],0,[]]],[["run",[20,10],5],[["r0","r1"],2,[1,0]]],[["run",[30,10,20],1],[["r0","r1","r2"],1,[0,1,2]]],[["run",[40],1],[["r0"],1,[0]]],[["fail",[10,-10,10],2],"boom1"],[["fail",[10,10,-20],1],"boom2"],[["many",{"$rep":0,"n":10000},7],[10000,"r0","r9999",7,true]]]},
     solution: {
       approach: `<p>Worker-pool pattern. Because only one piece of JS runs at a time, <code>next++</code> is atomic — no locks needed. Each worker awaits one task at a time, so at most <code>limit</code> are in flight.</p>`,
       code: { lang: 'js', run: true, code: `async function runWithLimit(tasks, limit) {
@@ -3488,6 +3508,7 @@ console.log(out.join(' | ') + '   <- wrong order');`
       `<p>Hint 2: <code>drain()</code>: while microtasks exist, shift and run one (new ones are pushed to the back, so the loop picks them up).</p>`,
       `<p>Hint 3: run(main): main(); drain(); while timers exist: pick min by (due, seq), clock = max(clock, due), run it, drain(). For a few timers a sort is fine; for many use a heap.</p>`
     ],
+    tests: {"sig":"int -> string[]","fn":"chk","harness":{"js":"\nfunction chk(k) {\n  var rt = createRuntime(), log = rt.log, qm = rt.toyQueueMicrotask, st = rt.toySetTimeout;\n  var main;\n  if (k === 0) main = function () { log('S'); st(function () { log('T10'); qm(function () { log('M-in-T10'); }); st(function () { log('T10+0'); }, 0); }, 10); st(function () { log('T0'); }, 0); qm(function () { log('M1'); qm(function () { log('M2'); }); st(function () { log('T0-from-M1'); }, 0); }); log('E'); };\n  if (k === 1) main = function () { qm(function () { log('A'); qm(function () { log('B'); }); }); log('m'); };\n  if (k === 2) main = function () { st(function () { log('a'); }, 50); st(function () { log('b'); }, 20); st(function () { log('c'); }, 20); };\n  if (k === 3) main = function () { st(function () { log('x'); st(function () { log('y'); }, 5); }, 10); };\n  if (k === 4) main = function () { st(function () { log('T1'); qm(function () { log('m1'); }); }, 0); st(function () { log('T2'); }, 0); };\n  if (k === 5) main = function () {};\n  if (k === 6) main = function () { st(function () { log('d'); }); };\n  if (k === 7) { main = function () { for (var i = 0; i < 2000; i++) (function (j) { st(function () { log(j); }, 2000 - j); })(i); }; var o = rt.run(main); return [o.length, o[0], o[1999]]; }\n  if (k === 8) { main = function () { var n = 0; (function step() { if (n++ < 3000) qm(step); else log('done'); })(); st(function () { log('timer'); }, 0); }; var o2 = rt.run(main); return o2; }\n  return rt.run(main);\n}"},"cases":[[[0],["t=0 S","t=0 E","t=0 M1","t=0 M2","t=0 T0","t=0 T0-from-M1","t=10 T10","t=10 M-in-T10","t=10 T10+0"]],[[1],["t=0 m","t=0 A","t=0 B"]],[[2],["t=20 b","t=20 c","t=50 a"]],[[3],["t=10 x","t=15 y"]],[[4],["t=0 T1","t=0 m1","t=0 T2"]],[[5],[]],[[6],["t=0 d"]],[[7],[2000,"t=1 1999","t=2000 0"]],[[8],["t=0 done","t=0 timer"]]]},
     solution: {
       approach: `<p>Implement the HTML/Node loop literally: one task → microtask checkpoint → next timer by (due, seq). Timers created inside callbacks get <code>due = clock + ms</code>.</p>`,
       code: { lang: 'js', run: true, code: `function createRuntime() {
@@ -3597,6 +3618,7 @@ console.log(['T', 'N1', 'P1', 'P-from-N1', 'N2', 'N-from-P1', 'I1', 'T2'].join('
       `<p>Hint 2: Drain nextTicks fully: N1 (adds P-from-N1 to promises, N2 to ticks), N2. Then drain promises fully: P1 (adds tick N-from-P1), P-from-N1. Then ticks again: N-from-P1.</p>`,
       `<p>Hint 3: After the timers phase comes poll then <b>check</b> (setImmediate → I1); T2 needs the next loop's timers phase.</p>`
     ],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"T\nN1\nN2\nP1\nP-from-N1\nN-from-P1\nI1\nT2"}]},
     solution: {
       approach: `<p>Model Node's <code>processTicksAndRejections</code>: do { run all nextTicks; run all promise microtasks } while ticks remain. Then follow the libuv phase order: timers → poll → check → next timers.</p>`,
       code: { lang: 'js', run: true, code: `if (typeof process === 'undefined' || typeof setImmediate === 'undefined') {

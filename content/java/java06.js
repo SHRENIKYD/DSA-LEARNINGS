@@ -257,6 +257,24 @@ static String kindByName(Throwable t) {
         `<p>Hint 2: for the chain, start with <code>Class&lt;?&gt; c = t.getClass()</code> and repeatedly call <code>c.getSuperclass()</code>, appending <code>getSimpleName()</code>, until you have added <code>Throwable</code>.</p>`,
         `<p>Hint 3: use a <code>StringJoiner(" -&gt; ")</code> to avoid a trailing arrow. Stop when <code>c == Throwable.class</code> after adding it. Recipe: kind = Error? ERROR : Runtime? UNCHECKED : CHECKED; chain = walk superclasses; return kind + ": " + chain.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'descCheck',
+        harness: { java: `class Check { static String descCheck(String cls) throws Exception { Class<?> c = Class.forName(cls); java.lang.reflect.Constructor<?> k = c.getDeclaredConstructor(); k.setAccessible(true); return Describe.describe((Throwable) k.newInstance()); } }` }, cases: [
+        [["java.lang.NumberFormatException"],"UNCHECKED: NumberFormatException -> IllegalArgumentException -> RuntimeException -> Exception -> Throwable"],
+        [["java.lang.InterruptedException"],"CHECKED: InterruptedException -> Exception -> Throwable"],
+        [["java.io.FileNotFoundException"],"CHECKED: FileNotFoundException -> IOException -> Exception -> Throwable"],
+        [["java.lang.StackOverflowError"],"ERROR: StackOverflowError -> VirtualMachineError -> Error -> Throwable"],
+        [["Describe$PaymentDeclinedException"],"CHECKED: PaymentDeclinedException -> Exception -> Throwable"],
+        [["java.lang.Throwable"],"CHECKED: Throwable"],
+        [["java.lang.Exception"],"CHECKED: Exception -> Throwable"],
+        [["java.lang.RuntimeException"],"UNCHECKED: RuntimeException -> Exception -> Throwable"],
+        [["java.lang.Error"],"ERROR: Error -> Throwable"],
+        [["java.lang.ArithmeticException"],"UNCHECKED: ArithmeticException -> RuntimeException -> Exception -> Throwable"],
+        [["java.lang.OutOfMemoryError"],"ERROR: OutOfMemoryError -> VirtualMachineError -> Error -> Throwable"],
+        [["java.lang.AssertionError"],"ERROR: AssertionError -> Error -> Throwable"],
+        [["java.lang.ClassNotFoundException"],"CHECKED: ClassNotFoundException -> ReflectiveOperationException -> Exception -> Throwable"],
+        [["java.lang.ArrayIndexOutOfBoundsException"],"UNCHECKED: ArrayIndexOutOfBoundsException -> IndexOutOfBoundsException -> RuntimeException -> Exception -> Throwable"],
+        [["java.io.IOException"],"CHECKED: IOException -> Exception -> Throwable"]
+      ] },
       solution: {
         approach: `<p>Decide the kind with two <code>instanceof</code> checks (they test the full ancestry). Build the chain by walking <code>getSuperclass()</code> from the runtime class up to <code>Throwable</code>.</p>`,
         code: `
@@ -643,6 +661,27 @@ static long sumBroken(String[] tokens) {
         `<p>Hint 2: catch <code>NumberFormatException</code> specifically (not <code>Exception</code>), increment the invalid counter, and continue. Handle <code>null</code> before calling <code>trim()</code>, or it becomes an NPE.</p>`,
         `<p>Hint 3: use a <code>long</code> accumulator — 10<sup>5</sup> values near 2<sup>31</sup> overflow an int. Recipe: for each token → null? invalid++ : try { sum += parseInt(trim) } catch (NFE) { invalid++ }.</p>`
       ],
+      tests: { sig: 'string[] -> long[]', fn: 'svCheck',
+        harness: { java: `class Check { static long[] svCheck(String[] tokens) { SumValid.Result r = SumValid.sumValid(tokens); return new long[]{r.sum(), r.invalid()}; } }`, python: `def sv_check(tokens):
+    r = sum_valid(tokens)
+    return [r[0], r[1]]
+` }, cases: [
+        [[["12"," 7","x9","","-3","2147483648"]],[16,3]],
+        [[[]],[0,0]],
+        [[[null]],[0,1]],
+        [[["5"]],[5,0]],
+        [[["+5","-0"]],[5,0]],
+        [[[" "]],[0,1]],
+        [[["2147483647","1"]],[2147483648,0]],
+        [[["-2147483648","-1"]],[-2147483649,0]],
+        [[["1_000","1,000","0x10"]],[0,3]],
+        [[["\t8\n","9 "]],[17,0]],
+        [[["1.5","1e3","--1"]],[0,3]],
+        [[["2147483647","2147483648","-2147483648","-2147483649"]],[-1,2]],
+        [[{"$rep":"2147483647","n":100000}],[214748364700000,0]],
+        [[{"$rep":"x","n":100000}],[0,100000]],
+        [[{"$concat":[{"$rep":"1","n":50000},{"$rep":"","n":50000}]}],[50000,50000]]
+      ] },
       solution: {
         approach: `<p>Loop once. For each token, try to parse it inside a narrow try/catch. A <code>NumberFormatException</code> only increments the counter for that token. <code>Integer.parseInt</code> already rejects empty strings, letters and out-of-range values, so we do not need our own validation.</p>`,
         code: `
@@ -668,7 +707,7 @@ class SumValid {
         // Result[sum=16, invalid=3]
     }
 }`,
-        alt: [{ lang: 'python', code: `def sum_valid(tokens):\n    total, invalid = 0, 0\n    for t in tokens:\n        try:\n            v = int(t.strip())\n            if not -2**31 <= v < 2**31:\n                raise ValueError("out of int range")\n            total += v\n        except (ValueError, AttributeError):   # AttributeError: None has no strip\n            invalid += 1\n    return total, invalid\n\nprint(sum_valid(["12", " 7", "x9", "", "-3", "2147483648"]))`, run: true }],
+        alt: [{ lang: 'python', code: `import re\n\ndef sum_valid(tokens):\n    total, invalid = 0, 0\n    for t in tokens:\n        # int() also accepts "1_000" and other forms Java rejects, so check the shape first\n        if t is None or not re.fullmatch(r"[+-]?[0-9]+", t.strip()):\n            invalid += 1\n            continue\n        v = int(t)\n        if -2**31 <= v < 2**31:\n            total += v\n        else:\n            invalid += 1\n    return total, invalid\n\nprint(sum_valid(["12", " 7", "x9", "", "-3", "2147483648"]))`, run: true }],
         dry: { head: ['token', 'parseInt result', 'sum', 'invalid'], rows: [
           ['"12"', '12', '12', '0'], ['" 7"', '7 (after trim)', '19', '0'], ['"x9"', H.c('r', 'NumberFormatException'), '19', '1'],
           ['""', H.c('r', 'NumberFormatException'), '19', '2'], ['"-3"', '-3', '16', '2'], ['"2147483648"', H.c('r', 'NumberFormatException (overflow)'), '16', '3']
@@ -989,6 +1028,39 @@ static long copySlow(InputStream in, OutputStream out) throws IOException {
         `<p>Hint 2: <code>byte[] buf = new byte[8192]; int n; while ((n = in.read(buf)) != -1) { out.write(buf, 0, n); total += n; }</code>. Use a <code>long</code> total — files can exceed 2 GB.</p>`,
         `<p>Hint 3: in copyFile, put <b>both</b> streams in one TWR header: <code>try (InputStream in = Files.newInputStream(src); OutputStream out = Files.newOutputStream(dst))</code>. They close in reverse: out first (flushing data), then in. Do not close in <code>copy</code> — whoever opens a stream closes it.</p>`
       ],
+      tests: { sig: 'int[] int -> string', fn: 'copyCheck',
+        harness: { java: `class Check {
+  static String copyCheck(int[] data, int chunk) throws Exception {
+    byte[] src = new byte[data.length];
+    for (int i = 0; i < src.length; i++) src[i] = (byte) data[i];
+    boolean[] closed = {false, false};
+    InputStream in = new FilterInputStream(new ByteArrayInputStream(src)) {
+      public int read(byte[] b, int off, int len) throws IOException { return super.read(b, off, Math.min(len, chunk)); }
+      public void close() throws IOException { closed[0] = true; super.close(); }
+    };
+    ByteArrayOutputStream sink = new ByteArrayOutputStream() { public void close() throws IOException { closed[1] = true; } };
+    long n = StreamCopy.copy(in, sink);
+    java.nio.file.Path a = java.nio.file.Files.createTempFile("c", ".bin"), b = java.nio.file.Files.createTempFile("d", ".bin");
+    java.nio.file.Files.write(a, src);
+    long m = StreamCopy.copyFile(a, b);
+    boolean same2 = Arrays.equals(java.nio.file.Files.readAllBytes(b), src);
+    java.nio.file.Files.delete(a);
+    java.nio.file.Files.delete(b);
+    return "n=" + n + " same=" + Arrays.equals(sink.toByteArray(), src) + " closed=" + closed[0] + "/" + closed[1] + " file=" + m + " fsame=" + same2;
+  }
+}` }, cases: [
+        [[{"$range":[0,200]},8192],"n=200 same=true closed=false/false file=200 fsame=true"],
+        [[[],8192],"n=0 same=true closed=false/false file=0 fsame=true"],
+        [[[7],8192],"n=1 same=true closed=false/false file=1 fsame=true"],
+        [[{"$range":[0,256]},1],"n=256 same=true closed=false/false file=256 fsame=true"],
+        [[{"$concat":[{"$range":[0,256]},{"$rep":7,"n":7935}]},8192],"n=8191 same=true closed=false/false file=8191 fsame=true"],
+        [[{"$concat":[{"$range":[0,256]},{"$rep":7,"n":7936}]},8192],"n=8192 same=true closed=false/false file=8192 fsame=true"],
+        [[{"$concat":[{"$range":[0,256]},{"$rep":7,"n":7937}]},8192],"n=8193 same=true closed=false/false file=8193 fsame=true"],
+        [[{"$concat":[{"$range":[0,256]},{"$rep":255,"n":19744}]},1000],"n=20000 same=true closed=false/false file=20000 fsame=true"],
+        [[{"$concat":[{"$range":[0,256]},{"$rep":1,"n":20000}]},8192],"n=20256 same=true closed=false/false file=20256 fsame=true"],
+        [[{"$concat":[{"$range":[0,256]},{"$rep":3,"n":2999744}]},100000],"n=3000000 same=true closed=false/false file=3000000 fsame=true"],
+        [[{"$rep":0,"n":16384},8192],"n=16384 same=true closed=false/false file=16384 fsame=true"]
+      ] },
       solution: {
         approach: `<p>A fixed 8 KB buffer gives constant memory. The loop condition both reads and tests for end of stream. copyFile owns both streams, so it opens them in one try-with-resources header; even if writing fails halfway, both files are closed. (In real code, <code>in.transferTo(out)</code> since Java 9 or <code>Files.copy</code> does the same job.)</p>`,
         code: `
@@ -1322,6 +1394,25 @@ static <T> T retryNaive(IoTask0<T> task, int maxAttempts) {
         `<p>Hint 2: the custom exception needs a <code>(String message, Throwable cause)</code> constructor that calls <code>super(message, cause)</code>. After the loop, build it with the last failure as cause.</p>`,
         `<p>Hint 3: add failures 0 … size−2 with <code>addSuppressed</code>. Validate maxAttempts first. Recipe: for attempt in 1..max → try return task.run() catch IOException → remember; after loop → build + throw.</p>`
       ],
+      tests: { sig: 'int int string -> string', fn: 'retryCheck',
+        harness: { java: `class Check { static String retryCheck(int fails, int max, String mode) { int[] calls = {0}; Retry.IoTask<String> t = () -> { calls[0]++; if (mode.equals("io") || calls[0] <= fails) throw new java.io.IOException("timeout #" + calls[0]); if (mode.equals("runtime")) throw new RuntimeException("boom"); return "OK on attempt " + calls[0]; }; try { String r = Retry.retry(t, max); return r + " calls=" + calls[0]; } catch (IllegalArgumentException e) { return "IAE"; } catch (Retry.RetryExhaustedException e) { List<String> sup = new ArrayList<>(); for (Throwable s : e.getSuppressed()) sup.add(s.getMessage()); return "EXHAUSTED " + e.getMessage() + " cause=" + e.getCause().getMessage() + " suppressed=" + sup + " calls=" + calls[0]; } catch (RuntimeException e) { return "RUNTIME " + e.getMessage() + " calls=" + calls[0]; } } }` }, cases: [
+        [[2,5,"ok"],"OK on attempt 3 calls=3"],
+        [[2,2,"ok"],"EXHAUSTED failed after 2 attempts cause=timeout #2 suppressed=[timeout #1] calls=2"],
+        [[0,1,"ok"],"OK on attempt 1 calls=1"],
+        [[1,1,"ok"],"EXHAUSTED failed after 1 attempts cause=timeout #1 suppressed=[] calls=1"],
+        [[0,0,"ok"],"IAE"],
+        [[0,11,"ok"],"IAE"],
+        [[0,-1,"ok"],"IAE"],
+        [[9,10,"ok"],"OK on attempt 10 calls=10"],
+        [[10,10,"ok"],"EXHAUSTED failed after 10 attempts cause=timeout #10 suppressed=[timeout #1, timeout #2, timeout #3, timeout #4, timeout #5, timeout #6, timeout #7, timeout #8, timeout #9] calls=10"],
+        [[0,10,"io"],"EXHAUSTED failed after 10 attempts cause=timeout #10 suppressed=[timeout #1, timeout #2, timeout #3, timeout #4, timeout #5, timeout #6, timeout #7, timeout #8, timeout #9] calls=10"],
+        [[1,5,"runtime"],"RUNTIME boom calls=2"],
+        [[0,5,"runtime"],"RUNTIME boom calls=1"],
+        [[3,3,"ok"],"EXHAUSTED failed after 3 attempts cause=timeout #3 suppressed=[timeout #1, timeout #2] calls=3"],
+        [[0,3,"io"],"EXHAUSTED failed after 3 attempts cause=timeout #3 suppressed=[timeout #1, timeout #2] calls=3"],
+        [[4,10,"ok"],"OK on attempt 5 calls=5"],
+        [[2147483647,10,"ok"],"EXHAUSTED failed after 10 attempts cause=timeout #10 suppressed=[timeout #1, timeout #2, timeout #3, timeout #4, timeout #5, timeout #6, timeout #7, timeout #8, timeout #9] calls=10"]
+      ] },
       solution: {
         approach: `<p>Loop up to maxAttempts; return on the first success. Catch only <code>IOException</code> and remember it. After the loop, create a custom unchecked exception with the last failure as its cause and the others as suppressed exceptions, so a single log line shows the complete story.</p>`,
         code: `
@@ -1684,6 +1775,27 @@ static int utf8LengthBrute(String s) {
         `<p>Hint 2: use <code>s.codePointAt(i)</code> and advance <code>i</code> by <code>Character.charCount(cp)</code> (1 or 2), or simply <code>s.codePoints()</code> as an <code>IntStream</code>.</p>`,
         `<p>Hint 3: sum with an <code>int</code> (10<sup>7</sup> × 4 &lt; 2<sup>31</sup>). Edge cases: empty string → 0; a lone surrogate would be encoded by Java as '?' (1 byte), so the problem excludes it. Recipe: total = Σ size(cp).</p>`
       ],
+      tests: { sig: 'string -> int', fn: 'utf8Length', cases: [
+        [["héllo☕"],9],
+        [["😀"],4],
+        [[""],0],
+        [["a"],1],
+        [["é"],2],
+        [["€"],3],
+        [[""],1],
+        [[""],2],
+        [["߿"],2],
+        [["ࠀ"],3],
+        [["￿"],3],
+        [["𐀀"],4],
+        [["􏿿"],4],
+        [["abc é€😀"],13],
+        [["中文𝄞x"],11],
+        [["퟿"],6],
+        [[{"$rep":"a","n":10000000}],10000000],
+        [[{"$rep":"a€😀é","n":2000000}],20000000],
+        [[{"$rep":"😀","n":5000000}],20000000]
+      ] },
       solution: {
         approach: `<p>Walk the string by code point and add 1, 2, 3 or 4 according to the value. No allocation, one pass.</p>`,
         code: `
@@ -2001,6 +2113,23 @@ static Map<String, Integer> countBrute(java.nio.file.Path p) throws IOException 
         `<p>Hint 2: <code>line.split(" ", 3)</code> splits into at most 3 parts: timestamp, level, rest of message (spaces inside the message are kept). Check the part count and that the level is in a <code>Set.of("DEBUG","INFO","WARN","ERROR")</code>.</p>`,
         `<p>Hint 3: use <code>TreeMap</code> for alphabetical order and <code>merge(key, 1, Integer::sum)</code>. Skip <code>line.isBlank()</code>. The Path version: <code>try (BufferedReader r = Files.newBufferedReader(p)) { return countLevels(r); }</code>.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'lvCheck',
+        harness: { java: `class Check { static String lvCheck(String text) throws Exception { Map<String, Integer> a = LogLevels.countLevels(new BufferedReader(new StringReader(text))); java.nio.file.Path p = java.nio.file.Files.createTempFile("log", ".txt"); java.nio.file.Files.writeString(p, text); Map<String, Integer> b = LogLevels.countLevels(p); java.nio.file.Files.delete(p); return a + " file=" + a.equals(b); } }` }, cases: [
+        [["t1 INFO up\nt2 ERROR db down\ngarbage\n\nt3 ERROR retry failed again\nt4 FATAL x\n"],"{ERROR=2, INFO=1, MALFORMED=2} file=true"],
+        [[""],"{} file=true"],
+        [["\n\n   \n"],"{} file=true"],
+        [["t DEBUG a\nt INFO b\nt WARN c\nt ERROR d"],"{DEBUG=1, ERROR=1, INFO=1, WARN=1} file=true"],
+        [["t info lower\nt Warn mixed"],"{MALFORMED=2} file=true"],
+        [["onlyone"],"{MALFORMED=1} file=true"],
+        [["t  INFO double space"],"{MALFORMED=1} file=true"],
+        [["t ERROR a   b    c"],"{ERROR=1} file=true"],
+        [["t ERROR x\r\nt WARN y\r\n"],"{ERROR=1, WARN=1} file=true"],
+        [["2026-10-14T10:00:01 ERROR payment failed\n2026-10-14T10:00:02 INFO ok"],"{ERROR=1, INFO=1} file=true"],
+        [["t INFO a\n   \nt INFO b\n\n\nt ERROR c"],"{ERROR=1, INFO=2} file=true"],
+        [["a b c d e f g"],"{MALFORMED=1} file=true"],
+        [[{"$rep":"t1 INFO up\n","n":100000}],"{INFO=100000} file=true"],
+        [[{"$concat":[{"$rep":"t WARN w\n","n":50000},{"$rep":"junk\n","n":50000}]}],"{MALFORMED=50000, WARN=50000} file=true"]
+      ] },
       solution: {
         approach: `<p>Split the job: a pure function over any <code>BufferedReader</code> (easy to test with a <code>StringReader</code>) and a thin wrapper that owns the file. Each line is validated; malformed lines are counted, never fatal.</p>`,
         code: `
@@ -2303,6 +2432,18 @@ class ShallowTeam implements Cloneable {
         `<p>Hint 2: wrap them with <code>ObjectOutputStream</code>/<code>ObjectInputStream</code> in try-with-resources. Close (or flush) the output stream <b>before</b> calling <code>toByteArray()</code>, or the last block of data may still be in its buffer.</p>`,
         `<p>Hint 3: <code>readObject()</code> returns <code>Object</code> — cast to <code>T</code> with <code>@SuppressWarnings("unchecked")</code>. Catch <code>IOException | ClassNotFoundException</code> and rethrow as <code>IllegalStateException("deep copy failed", e)</code>.</p>`
       ],
+      tests: { sig: 'list<string> string bool -> string', fn: 'dcCheck',
+        harness: { java: `class Check { static String f(List<String> l) { return l.size() <= 10 ? l.toString() : "n=" + l.size() + " last=" + l.get(l.size() - 1); } static String dcCheck(List<String> members, String add, boolean bad) { if (bad) { try { DeepCopy.deepCopy(new ArrayList<Object>(List.of(new Object()))); return "no exception"; } catch (IllegalStateException e) { return "ISE cause=" + e.getCause().getClass().getSimpleName(); } } DeepCopy.Team t = new DeepCopy.Team("core", members); DeepCopy.Team c = DeepCopy.deepCopy(t); t.members.add(add); return f(t.members) + " " + f(c.members) + " " + (c != t) + " " + c.name; } }` }, cases: [
+        [[["asha","ben"],"chen",false],"[asha, ben, chen] [asha, ben] true core"],
+        [[[],"x",false],"[x] [] true core"],
+        [[["a"],"a",false],"[a, a] [a] true core"],
+        [[["a","b","c"],"d",false],"[a, b, c, d] [a, b, c] true core"],
+        [[[],"x",true],"ISE cause=NotSerializableException"],
+        [[["a","b","c","d","e","f","g","h","i","j"],"k",false],"n=11 last=k [a, b, c, d, e, f, g, h, i, j] true core"],
+        [[["x","y"],"z",false],"[x, y, z] [x, y] true core"],
+        [[{"$rep":"m","n":100000},"new",false],"n=100001 last=new n=100000 last=m true core"],
+        [[{"$rep":"m","n":3},"z",false],"[m, m, m, z] [m, m, m] true core"]
+      ] },
       solution: {
         approach: `<p>Serialize into a byte array, close the writer (which flushes), then deserialize from that byte array. Every reachable object is recreated, so the copy shares nothing with the original — but sharing <i>inside</i> the graph is preserved.</p>`,
         code: `
@@ -2408,6 +2549,9 @@ class OrderInstrumented {
       `<p>Hint 2: for f(0), the throw jumps straight to catch, skipping <code>trace += "t"</code>. Does finally still run after the catch's return? Yes.</p>`,
       `<p>Hint 3: the print happens after both calls, so <code>trace</code> contains both calls' letters in order: (T t F)(T C F).</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "5 -1 TtFTCF" }
+    ] },
     solution: {
       approach: `<p>Apply the three-case rule. No exception: try → finally. Exception caught: try (partial) → catch → finally. Return values are computed before finally and are not changed by it.</p>`,
       code: `
@@ -2490,6 +2634,9 @@ class VanishFixed {
       `<p>Hint 2: the catch throws a new exception, but before it can leave the method, finally runs. What does finally do?</p>`,
       `<p>Hint 3: <code>return</code> in finally ends the method normally with that value; the pending exception is forgotten. So both calls print a number.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "111\n222" }
+    ] },
     solution: {
       approach: `<p>Trace count: +1 in try, +10 in catch, +100 in finally, then finally returns it. The exception thrown in catch is dropped by the finally's return. Lesson: never return (or throw) from finally — static analysers flag it ("finally block does not complete normally").</p>`,
       code: `
@@ -2542,6 +2689,26 @@ static int parseAgeMagic(String text) {
       `<p>Hint 2: check null first, then <code>try { age = Integer.parseInt(text.trim()); } catch (NumberFormatException e) { throw new InvalidAgeException(text, "not a number", e); }</code>.</p>`,
       `<p>Hint 3: after parsing, check the range and throw without a cause. In main, loop over test inputs with a try/catch inside the loop.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'ageCheck',
+      harness: { java: `class Check { static String ageCheck(String s) { try { return "age=" + AgeParser.parseAge(s); } catch (AgeParser.InvalidAgeException e) { return e.getMessage() + " cause=" + (e.getCause() == null ? "none" : e.getCause().getClass().getSimpleName()); } } }` }, cases: [
+      [[" 42 "],"age=42"],
+      [["abc"],"invalid age: 'abc' (not a number) cause=NumberFormatException"],
+      [["200"],"invalid age: '200' (must be 0..150) cause=none"],
+      [[null],"invalid age: 'null' (missing) cause=none"],
+      [["0"],"age=0"],
+      [["150"],"age=150"],
+      [["151"],"invalid age: '151' (must be 0..150) cause=none"],
+      [["-1"],"invalid age: '-1' (must be 0..150) cause=none"],
+      [[""],"invalid age: '' (not a number) cause=NumberFormatException"],
+      [["12.5"],"invalid age: '12.5' (not a number) cause=NumberFormatException"],
+      [["99999999999"],"invalid age: '99999999999' (not a number) cause=NumberFormatException"],
+      [[" abc "],"invalid age: ' abc ' (not a number) cause=NumberFormatException"],
+      [["  7"],"age=7"],
+      [["+30"],"age=30"],
+      [["1 2"],"invalid age: '1 2' (not a number) cause=NumberFormatException"],
+      [["2147483647"],"invalid age: '2147483647' (must be 0..150) cause=none"],
+      [["-2147483648"],"invalid age: '-2147483648' (must be 0..150) cause=none"]
+    ] },
     solution: {
       approach: `<p>A small checked exception with a data field and two constructors. Parsing errors are <b>translated</b> into the domain exception with the original as cause; range errors are created directly.</p>`,
       code: `
@@ -2608,6 +2775,25 @@ static long[] wcBrute(String all) {
       `<p>Hint 2: per line: lines++, chars += line.length(); count words by scanning chars and counting positions where a non-space follows a space (or the line start).</p>`,
       `<p>Hint 3: the Path version owns the file: <code>try (Reader r = Files.newBufferedReader(p, UTF_8)) { return wc(r); }</code>. The Reader version must not close what it did not open.</p>`
     ],
+    tests: { sig: 'string -> long[]', fn: 'wcCheck',
+      harness: { java: `class Check { static long[] wcCheck(String text) throws Exception { long[] a = Wc.wc(new StringReader(text)); java.nio.file.Path p = java.nio.file.Files.createTempFile("wc", ".txt"); java.nio.file.Files.write(p, text.getBytes(java.nio.charset.StandardCharsets.UTF_8)); long[] b = Wc.wc(p); java.nio.file.Files.delete(p); return new long[]{a[0], a[1], a[2], b[0], b[1], b[2]}; } }` }, cases: [
+      [["hello world\n\n  java  io \n"],[3,4,22,3,4,22]],
+      [[""],[0,0,0,0,0,0]],
+      [["\n"],[1,0,0,1,0,0]],
+      [["a"],[1,1,1,1,1,1]],
+      [["a b c"],[1,3,5,1,3,5]],
+      [["one\ntwo\nthree"],[3,3,11,3,3,11]],
+      [["a\r\nb\r\n"],[2,2,2,2,2,2]],
+      [["  leading and trailing  \n"],[1,3,24,1,3,24]],
+      [["tab\tseparated\twords"],[1,3,19,1,3,19]],
+      [["\n\n\n"],[3,0,0,3,0,0]],
+      [["café € 😀!"],[1,3,10,1,3,10]],
+      [["multiple   spaces    here\n"],[1,3,25,1,3,25]],
+      [["no newline at end"],[1,4,17,1,4,17]],
+      [[{"$rep":"word word\n","n":500000}],[500000,1000000,4500000,500000,1000000,4500000]],
+      [[{"$rep":"\n","n":100000}],[100000,0,0,100000,0,0]],
+      [[{"$rep":"x","n":1000000}],[1,1,1000000,1,1,1000000]]
+    ] },
     solution: {
       approach: `<p>Stream line by line. Words are counted by detecting the start of each non-whitespace run, which handles leading, trailing and repeated spaces without creating arrays.</p>`,
       code: `
@@ -2655,7 +2841,7 @@ class Wc {
     title: 'CSV Score Loader with a Line-Numbered Error Report',
     level: 'Medium', tags: ['BufferedReader', 'validation', 'records', 'error collection'], companies: ['Amazon', 'Walmart', 'Zoho'],
     statement: `<p>Each line of a CSV has the form <code>name,score</code>. Write <code>static Report load(BufferedReader r) throws IOException</code> that returns a record <code>Report(Map&lt;String,Integer&gt; scores, List&lt;String&gt; errors)</code>. Valid lines go into <code>scores</code> (keep insertion order; if a name repeats, keep the <b>highest</b> score). Each invalid line adds an error like <code>"line 3: score 'abc' is not a number"</code>. The first line is a header and must be skipped. Blank lines are ignored.</p>`,
-    constraints: `Rules: exactly 2 fields; name non-blank after trim; score an int in 0..100. Up to 10<sup>6</sup> lines.`,
+    constraints: `Rules: exactly 2 fields; name non-blank after trim (otherwise the error is <code>line N: name is blank</code>); score an int in 0..100. Line numbers count every line, blank ones included. A repeated name keeps its first position and its highest score. Up to 10<sup>6</sup> lines.`,
     example: `<p>Input:<br><code>name,score</code><br><code>asha,91</code><br><code>ben,abc</code><br><code>chen,105</code><br><code>asha,95</code><br><code>dev</code><br>→ scores ${H.c('g', '{asha=95}')}; errors ${H.c('r', "[line 3: score 'abc' is not a number, line 4: score 105 out of range, line 6: expected 2 fields but got 1]")}.</p>`,
     brute: {
       why: `<p>Throwing on the first bad line gives the user one error per run — fix, rerun, next error… for a file with 500 bad rows that is 500 runs. Collect <b>all</b> problems in one pass and report them together (with line numbers, so they can be found).</p>`,
@@ -2677,6 +2863,27 @@ static Map<String, Integer> loadStrict(BufferedReader r) throws IOException {
       `<p>Hint 2: <code>line.split(",", -1)</code> keeps trailing empty fields so <code>"x,"</code> is 2 fields. Parse inside a small try/catch around <code>Integer.parseInt</code> only.</p>`,
       `<p>Hint 3: <code>scores.merge(name, score, Math::max)</code> keeps the highest. Use <code>LinkedHashMap</code> for insertion order. Return <code>new Report(scores, errors)</code>.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'csvCheck',
+      harness: { java: `class Check { static String csvCheck(String text) throws Exception { ScoreLoader.Report r = ScoreLoader.load(new BufferedReader(new StringReader(text))); String ss = r.scores().size() <= 10 ? r.scores().toString() : "n=" + r.scores().size(); List<String> e = r.errors(); String es = e.size() <= 5 ? e.toString() : "n=" + e.size() + " last=" + e.get(e.size() - 1); return ss + " errors=" + es; } }` }, cases: [
+      [["name,score\nasha,91\nben,abc\nchen,105\nasha,95\ndev\n"],"{asha=95} errors=[line 3: score 'abc' is not a number, line 4: score 105 out of range, line 6: expected 2 fields but got 1]"],
+      [[""],"{} errors=[]"],
+      [["name,score\n"],"{} errors=[]"],
+      [["asha,91\nben,50\n"],"{ben=50} errors=[]"],
+      [["h\na,50\nb,60\na,70"],"{a=70, b=60} errors=[]"],
+      [["h\na,70\nb,60\na,50"],"{a=70, b=60} errors=[]"],
+      [["h\n\n\nx,1\n\ny,2"],"{x=1, y=2} errors=[]"],
+      [["h\na,b,c\n,\nz"],"{} errors=[line 2: expected 2 fields but got 3, line 3: name is blank, line 4: expected 2 fields but got 1]"],
+      [["h\n  spaced  , 42 \n"],"{spaced=42} errors=[]"],
+      [["h\nx,0\ny,100\nz,101\nw,-1"],"{x=0, y=100} errors=[line 4: score 101 out of range, line 5: score -1 out of range]"],
+      [["h\nx,1.5\ny,1e2\nz,"],"{} errors=[line 2: score '1.5' is not a number, line 3: score '1e2' is not a number, line 4: score '' is not a number]"],
+      [["h\n,5\n  ,6\nok,7"],"{ok=7} errors=[line 2: name is blank, line 3: name is blank]"],
+      [["h\nx,2147483648\ny,-2147483649"],"{} errors=[line 2: score '2147483648' is not a number, line 3: score '-2147483649' is not a number]"],
+      [["h\na,1,\n,,"],"{} errors=[line 2: expected 2 fields but got 3, line 3: expected 2 fields but got 3]"],
+      [["h\nonlyname"],"{} errors=[line 2: expected 2 fields but got 1]"],
+      [[{"$concat":["h,s\n",{"$rep":"a,5\n","n":1000000}]}],"{a=5} errors=[]"],
+      [[{"$concat":["h\n",{"$rep":"x\n","n":100000}]}],"{} errors=n=100000 last=line 100001: expected 2 fields but got 1"],
+      [[{"$concat":["h\n",{"$rep":"abc,100\n","n":200000},{"$rep":"q,1000\n","n":10}]}],"{abc=100} errors=n=10 last=line 200011: score 1000 out of range"]
+    ] },
     solution: {
       approach: `<p>Single streaming pass. Every rule check either records an error with the line number and <code>continue</code>s, or the row is merged into the map. Exceptions are used only for the one place the JDK forces it (<code>parseInt</code>), with the narrowest possible try.</p>`,
       code: `
@@ -2765,6 +2972,9 @@ class OldStyle {
       `<p>Hint 2: the body throws X first, so X is the primary exception. Each failing close calls <code>X.addSuppressed(...)</code>.</p>`,
       `<p>Hint 3: suppressed order = order of the failing closes: B, then A. finally prints last.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "open A\nopen B\nbody\nclose B\nclose A\ncaught X\nsuppressed B\nsuppressed A\nfinally" }
+    ] },
     solution: {
       approach: `<p>Apply the TWR order: open A, open B, body (throws X), close B (suppressed B), close A (suppressed A), catch X, finally.</p>`,
       code: `
@@ -2819,6 +3029,21 @@ static long totalSizeNoisy(List<java.nio.file.Path> files) {
       `<p>Hint 2: <code>unchecked(f)</code> returns <code>t -&gt; { try { return f.apply(t); } catch (IOException e) { throw new UncheckedIOException(e); } }</code>.</p>`,
       `<p>Hint 3: in totalSize, wrap the whole stream pipeline in <code>try { … } catch (UncheckedIOException e) { throw e.getCause(); }</code> — <code>getCause()</code> is typed as <code>IOException</code>.</p>`
     ],
+    tests: { sig: 'int[] bool -> string', fn: 'tsCheck',
+      harness: { java: `class Check { static String tsCheck(int[] sizes, boolean missing) throws Exception { java.nio.file.Path dir = java.nio.file.Files.createTempDirectory("ts"); List<java.nio.file.Path> files = new ArrayList<>(); for (int i = 0; i < sizes.length; i++) { java.nio.file.Path p = dir.resolve("f" + i); java.nio.file.Files.write(p, new byte[sizes[i]]); files.add(p); } if (missing) files.add(dir.resolve("missing.bin")); String r; try { r = String.valueOf(StreamsAndIo.totalSize(files)); } catch (Exception e) { r = e.getClass().getSimpleName(); } for (java.nio.file.Path p : files) java.nio.file.Files.deleteIfExists(p); java.nio.file.Files.delete(dir); return r; } }` }, cases: [
+      [[[10,32],false],"42"],
+      [[[10],true],"NoSuchFileException"],
+      [[[],false],"0"],
+      [[[],true],"NoSuchFileException"],
+      [[[0],false],"0"],
+      [[[0,0,0],false],"0"],
+      [[[1],false],"1"],
+      [[[1,2,3,4,5],false],"15"],
+      [[[100,200],true],"NoSuchFileException"],
+      [[[5000000,7],false],"5000007"],
+      [[{"$rep":1,"n":500},false],"500"],
+      [[{"$rep":2,"n":300},true],"NoSuchFileException"]
+    ] },
     solution: {
       approach: `<p>Adapter pattern: a throwing functional interface + a converter to <code>Function</code>. The checked exception travels through the stream as an <code>UncheckedIOException</code> and is unwrapped at the boundary, preserving the exact original exception.</p>`,
       code: `
@@ -2889,6 +3114,26 @@ static List<String> tailBrute(java.nio.file.Path p, int n) throws IOException {
       `<p>Hint 2: <code>ArrayDeque&lt;String&gt;</code>: for each line, <code>addLast(line)</code>; if size &gt; n, <code>pollFirst()</code>.</p>`,
       `<p>Hint 3: handle n = 0 (return empty immediately, but still a valid call) and negative n (throw). Return <code>new ArrayList&lt;&gt;(deque)</code>.</p>`
     ],
+    tests: { sig: 'string int -> list<string>', fn: 'tailCheck',
+      harness: { java: `class Check { static List<String> tailCheck(String text, int n) throws Exception { try { return Tail.tail(new BufferedReader(new StringReader(text)), n); } catch (IllegalArgumentException e) { return List.of("IAE"); } } }` }, cases: [
+      [["a\nb\nc\nd\ne",2],["d","e"]],
+      [["a\nb\nc\nd\ne",10],["a","b","c","d","e"]],
+      [["a\nb\nc\nd\ne",0],[]],
+      [["a\nb",-1],["IAE"]],
+      [["",3],[]],
+      [["",0],[]],
+      [["only",1],["only"]],
+      [["a\nb\n",1],["b"]],
+      [["a\n\nb",2],["","b"]],
+      [["a\nb\nc",3],["a","b","c"]],
+      [["a\nb\nc",2],["b","c"]],
+      [["\n\n",5],["",""]],
+      [["x\ny",-100],["IAE"]],
+      [["a\r\nb\r\nc",2],["b","c"]],
+      [[{"$rep":"line\n","n":1000000},10000],{"$rep":"line","n":10000}],
+      [[{"$concat":[{"$rep":"old\n","n":500000},"new1\nnew2"]},2],["new1","new2"]],
+      [[{"$rep":"z\n","n":20000},10000],{"$rep":"z","n":10000}]
+    ] },
     solution: {
       approach: `<p>Stream once, keep a bounded deque as a sliding window. Memory is O(n · line length) regardless of file size. (A further optimisation for files on disk: seek near the end with <code>RandomAccessFile</code>/<code>FileChannel</code> and scan backwards for newlines — O(n) I/O instead of reading the whole file.)</p>`,
       code: `
@@ -2935,6 +3180,25 @@ static void writeText(PrintWriter out, List<String[]> rows) {
       `<p>Hint 2: read in exactly the same order. Check the magic first. Keep a loop index so the error can say which record failed.</p>`,
       `<p>Hint 3: catch <code>EOFException</code> around the record loop and rethrow <code>new CorruptFileException("truncated at record " + (i + 1) + " of " + count, e)</code>. Validate count ≥ 0.</p>`
     ],
+    tests: { sig: 'int[] string[] double[] int -> string', fn: 'pfCheck',
+      harness: { java: `class Check { static String pfCheck(int[] ids, String[] names, double[] prices, int cut) throws Exception { List<ProductFile.Product> items = new ArrayList<>(); for (int i = 0; i < ids.length; i++) items.add(new ProductFile.Product(ids[i], names[i], prices[i])); ByteArrayOutputStream bos = new ByteArrayOutputStream(); ProductFile.write(bos, items); byte[] data = bos.toByteArray(); if (cut == -2) data[0] ^= 0x55; else if (cut >= 0 && cut < data.length) data = Arrays.copyOf(data, cut); try { List<ProductFile.Product> back = ProductFile.read(new ByteArrayInputStream(data)); return "len=" + bos.size() + " equal=" + back.equals(items) + " count=" + back.size(); } catch (ProductFile.CorruptFileException e) { String m = e.getMessage(); return "len=" + bos.size() + " CORRUPT " + (m.startsWith("truncated at record") ? m : "other"); } } }` }, cases: [
+      [[[1,2],["pen","ink"],[9.5,3],-1],"len=42 equal=true count=2"],
+      [[[1,2],["pen","ink"],[9.5,3],30],"len=42 CORRUPT truncated at record 2 of 2"],
+      [[[],[],[],-1],"len=8 equal=true count=0"],
+      [[[1],["a"],[0.5],-1],"len=23 equal=true count=1"],
+      [[[1,2],["pen","ink"],[9.5,3],7],"len=42 CORRUPT other"],
+      [[[1,2],["pen","ink"],[9.5,3],8],"len=42 CORRUPT truncated at record 1 of 2"],
+      [[[1,2],["pen","ink"],[9.5,3],25],"len=42 CORRUPT truncated at record 2 of 2"],
+      [[[1,2],["pen","ink"],[9.5,3],24],"len=42 CORRUPT truncated at record 1 of 2"],
+      [[[1,2],["pen","ink"],[9.5,3],41],"len=42 CORRUPT truncated at record 2 of 2"],
+      [[[1,2],["pen","ink"],[9.5,3],42],"len=42 equal=true count=2"],
+      [[[1,2],["pen","ink"],[9.5,3],-2],"len=42 CORRUPT other"],
+      [[[2147483647,-2147483648,0],["","café","€ uro"],[-1.5,1e+300,0],-1],"len=62 equal=true count=3"],
+      [[[1,2,3],["a","b","c"],[1,2,3],50],"len=53 CORRUPT truncated at record 3 of 3"],
+      [[[5],["xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"],[2.25],100],"len=122 CORRUPT truncated at record 1 of 1"],
+      [[{"$range":[0,1000000]},{"$rep":"n","n":1000000},{"$rep":1.5,"n":1000000},-1],"len=15000008 equal=true count=1000000"],
+      [[{"$range":[0,100000]},{"$rep":"abc","n":100000},{"$rep":2,"n":100000},700000],"len=1700008 CORRUPT truncated at record 41177 of 100000"]
+    ] },
     solution: {
       approach: `<p>A self-describing header (magic + count) lets the reader detect wrong files and truncation. <code>DataOutputStream</code> writes big-endian primitives and length-prefixed modified-UTF-8 strings; <code>DataInputStream</code> reads them back and throws <code>EOFException</code> on early end, which we translate into a domain exception with context.</p>`,
       code: `
@@ -3022,6 +3286,57 @@ class ManualPool {
       `<p>Hint 2: <code>Lease</code> is an inner class with the id and a <code>boolean closed</code>. <code>close()</code>: if already closed, return; else mark closed and push the id back.</p>`,
       `<p>Hint 3: <code>id()</code> checks <code>closed</code> and throws <code>IllegalStateException("lease closed")</code>. For multi-threading, make lease/close synchronized or use a <code>Semaphore</code> + concurrent queue.</p>`
     ],
+    tests: { sig: 'int string[] -> string', fn: 'poolCheck',
+      harness: { java: `class Check {
+  static String poolCheck(int size, String[] ops) {
+    Pool pool;
+    try { pool = new Pool(size); } catch (IllegalArgumentException e) { return "IAE"; }
+    List<Pool.Lease> leases = new ArrayList<>();
+    List<Integer> ids = new ArrayList<>();
+    Set<Integer> held = new HashSet<>();
+    boolean fresh = true;
+    StringBuilder sb = new StringBuilder();
+    for (String o : ops) {
+      if (sb.length() > 0) sb.append(' ');
+      if (o.equals("L")) {
+        try {
+          Pool.Lease l = pool.lease();
+          int id = l.id();
+          boolean good = id >= 1 && id <= size && held.add(id);
+          leases.add(l);
+          ids.add(id);
+          sb.append(!good ? "BAD" : fresh ? "ok#" + id : "ok");
+        } catch (IllegalStateException e) { sb.append("exh"); }
+      } else if (o.equals("T")) {
+        fresh = false;
+        try (Pool.Lease l = pool.lease()) { throw new IllegalStateException("body"); }
+        catch (IllegalStateException e) { sb.append("t:").append(e.getMessage()); }
+      } else {
+        int k = Integer.parseInt(o.substring(1));
+        Pool.Lease l = leases.get(k);
+        if (o.charAt(0) == 'C') { if (held.remove(ids.get(k))) fresh = false; l.close(); sb.append("c"); }
+        else if (o.charAt(0) == 'D') { if (held.remove(ids.get(k))) { } l.close(); l.close(); fresh = false; sb.append("d"); }
+        else { try { sb.append(l.id() == ids.get(k) ? "uok" : "uBAD"); } catch (IllegalStateException e) { sb.append("uISE"); } }
+      }
+    }
+    return sb + " avail=" + pool.available();
+  }
+}` }, cases: [
+      [[2,["L","L","L"]],"ok#1 ok#2 exh avail=0"],
+      [[2,["T","L","L"]],"t:body ok ok avail=0"],
+      [[2,["L","L","T"]],"ok#1 ok#2 t:pool exhausted avail=0"],
+      [[2,["L","C0","C0","L","L"]],"ok#1 c c ok ok avail=0"],
+      [[1,["L","U0","C0","U0","L"]],"ok#1 uok c uISE ok avail=0"],
+      [[3,["L","L","L","D1","D1","L","L"]],"ok#1 ok#2 ok#3 d d ok exh avail=0"],
+      [[0,[]],"IAE"],
+      [[101,[]],"IAE"],
+      [[1,[]]," avail=1"],
+      [[100,[]]," avail=100"],
+      [[1,["L","D0","D0","D0","L","L"]],"ok#1 d d d ok exh avail=0"],
+      [[2,["L","L","C0","C1","L","L","L"]],"ok#1 ok#2 c c ok ok exh avail=0"],
+      [[2,["T","T","T","L"]],"t:body t:body t:body ok avail=1"],
+      [[100,["L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","T","D0","D1","D2","D3","D4","D5","D6","D7","D8","D9","D10","D11","D12","D13","D14","D15","D16","D17","D18","D19","D20","D21","D22","D23","D24","D25","D26","D27","D28","D29","D30","D31","D32","D33","D34","D35","D36","D37","D38","D39","D40","D41","D42","D43","D44","D45","D46","D47","D48","D49","D50","D51","D52","D53","D54","D55","D56","D57","D58","D59","D60","D61","D62","D63","D64","D65","D66","D67","D68","D69","D70","D71","D72","D73","D74","D75","D76","D77","D78","D79","D80","D81","D82","D83","D84","D85","D86","D87","D88","D89","D90","D91","D92","D93","D94","D95","D96","D97","D98","D99","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L","L"]],"ok#1 ok#2 ok#3 ok#4 ok#5 ok#6 ok#7 ok#8 ok#9 ok#10 ok#11 ok#12 ok#13 ok#14 ok#15 ok#16 ok#17 ok#18 ok#19 ok#20 ok#21 ok#22 ok#23 ok#24 ok#25 ok#26 ok#27 ok#28 ok#29 ok#30 ok#31 ok#32 ok#33 ok#34 ok#35 ok#36 ok#37 ok#38 ok#39 ok#40 ok#41 ok#42 ok#43 ok#44 ok#45 ok#46 ok#47 ok#48 ok#49 ok#50 ok#51 ok#52 ok#53 ok#54 ok#55 ok#56 ok#57 ok#58 ok#59 ok#60 ok#61 ok#62 ok#63 ok#64 ok#65 ok#66 ok#67 ok#68 ok#69 ok#70 ok#71 ok#72 ok#73 ok#74 ok#75 ok#76 ok#77 ok#78 ok#79 ok#80 ok#81 ok#82 ok#83 ok#84 ok#85 ok#86 ok#87 ok#88 ok#89 ok#90 ok#91 ok#92 ok#93 ok#94 ok#95 ok#96 ok#97 ok#98 ok#99 ok#100 exh t:pool exhausted d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok exh avail=0"]
+    ] },
     solution: {
       approach: `<p>Turn "remember to release" into "release is automatic": the pool hands out an AutoCloseable lease object. try-with-resources guarantees close on every exit path; the closed flag makes close idempotent and guards use-after-close.</p>`,
       code: `
@@ -3107,6 +3422,66 @@ static List<Long> mergeBrute(List<java.nio.file.Path> inputs) throws IOException
       `<p>Hint 2: open readers one by one, adding each to a <code>List&lt;BufferedReader&gt;</code> immediately. Put the whole algorithm in <code>try { … } finally { closeAll(readers, primary) }</code>, where closeAll closes every reader and attaches failures as suppressed.</p>`,
       `<p>Hint 3: wrap parsing in a helper that catches <code>NumberFormatException</code> and throws <code>new IOException(file + ":" + lineNo + " not a number", e)</code>. Track line numbers per reader in an <code>int[]</code>. The writer goes in its own TWR.</p>`
     ],
+    tests: { sig: 'string[] bool -> string', fn: 'mergeCheck',
+      harness: { java: `class Check {
+  static int fds() { String[] l = new java.io.File("/proc/self/fd").list(); return l == null ? 0 : l.length; }
+  static String mergeCheck(String[] contents, boolean missing) throws Exception {
+    java.nio.file.Path dir = java.nio.file.Files.createTempDirectory("merge");
+    List<java.nio.file.Path> ins = new ArrayList<>();
+    for (int i = 0; i < contents.length; i++) {
+      java.nio.file.Path p = dir.resolve("f" + (char) ('a' + i % 26) + (char) ('a' + i / 26) + ".txt");
+      java.nio.file.Files.writeString(p, contents[i]);
+      ins.add(p);
+    }
+    if (missing) ins.add(dir.resolve("missing.txt"));
+    int bf = -1, bl = -1;
+    outer:
+    for (int i = 0; i < contents.length; i++) {
+      String[] ls = contents[i].split("\\n", -1);
+      for (int j = 0; j < ls.length; j++) {
+        String t = ls[j].trim();
+        if (!t.isEmpty() && !t.matches("-?\\\\d+")) { bf = i; bl = j + 1; break outer; }
+      }
+    }
+    java.nio.file.Path out = dir.resolve("out.txt");
+    int before = fds();
+    String r;
+    try {
+      KWayMerge.merge(ins, out);
+      List<String> lines = java.nio.file.Files.readAllLines(out);
+      long sum = 0;
+      for (String s : lines) sum += Long.parseLong(s);
+      r = "ok " + (lines.size() <= 20 ? String.join(",", lines) : "n=" + lines.size() + " sum=" + sum);
+    } catch (java.io.IOException e) {
+      String m = e.getMessage() == null ? "" : e.getMessage().replace(dir.toString(), "");
+      boolean named = bf >= 0 ? m.contains("f" + (char) ('a' + bf % 26) + (char) ('a' + bf / 26) + ".txt") && m.contains(String.valueOf(bl)) : m.contains("missing.txt");
+      r = "IOE " + (named ? "named" : "unnamed");
+    }
+    int after = fds();
+    for (java.nio.file.Path p : ins) java.nio.file.Files.deleteIfExists(p);
+    java.nio.file.Files.deleteIfExists(out);
+    java.nio.file.Files.delete(dir);
+    return r + " leak=" + (after != before);
+  }
+}` }, cases: [
+      [[["1\n4\n9\n","2\n3\n10\n","5\n"],false],"ok 1,2,3,4,5,9,10 leak=false"],
+      [[["1\n2\nabc\n4\n"],false],"IOE named leak=false"],
+      [[["1\n","2\n"],true],"IOE named leak=false"],
+      [[[""],false],"ok  leak=false"],
+      [[["","",""],false],"ok  leak=false"],
+      [[["5"],false],"ok 5 leak=false"],
+      [[["1\n\n3\n"],false],"ok 1,3 leak=false"],
+      [[["-5\n0\n7\n","-9\n-5\n","0\n"],false],"ok -9,-5,-5,0,0,7 leak=false"],
+      [[["1\n1\n1\n","1\n1\n"],false],"ok 1,1,1,1,1 leak=false"],
+      [[["9223372036854775807\n","-9223372036854775808\n0\n"],false],"ok -9223372036854775808,0,9223372036854775807 leak=false"],
+      [[["1\n","2\n","x\n","4\n"],false],"IOE named leak=false"],
+      [[["1\n2\n","3\n4\n"],true],"IOE named leak=false"],
+      [[["1\n3\n5\n","2\n4\n6"],false],"ok 1,2,3,4,5,6 leak=false"],
+      [[[],true],"IOE named leak=false"],
+      [[["10\n20\n30","5\n15\n25\n35\n45","1\n100"],false],"ok 1,5,10,15,20,25,30,35,45,100 leak=false"],
+      [[{"$rep":"1\n2\n","n":500},false],"ok n=1000 sum=1500 leak=false"],
+      [[{"$rep":"1\n2\n","n":300},true],"IOE named leak=false"]
+    ] },
     solution: {
       approach: `<p>Min-heap of size ≤ K gives O(N log K) time and O(K) memory. Resource safety: readers are registered the moment they open, and a finally block closes all of them, keeping the first exception as primary and adding the rest as suppressed — the same contract as try-with-resources, but for a dynamic count.</p>`,
       code: `
@@ -3203,6 +3578,54 @@ static void closeAllNaive(List<AutoCloseable> list) throws Exception {
       `<p>Hint 2: in close(), loop while the deque is not empty; catch <code>Throwable t</code> around each close; keep <code>first</code>; for later ones call <code>first.addSuppressed(t)</code>. Set a <code>closed</code> flag first for idempotency.</p>`,
       `<p>Hint 3: at the end rethrow <code>first</code> preserving its type: if it is an Exception throw it (close() declares <code>throws Exception</code>), if an Error throw it as Error. In register-after-close, close the argument (attaching any failure) before throwing IllegalStateException.</p>`
     ],
+    tests: { sig: 'string[] bool -> string', fn: 'closerCheck',
+      harness: { java: `class Check {
+  static String closerCheck(String[] res, boolean late) {
+    Closer c = new Closer();
+    List<String> log = new ArrayList<>();
+    for (String spec : res) {
+      String[] p = spec.split(":");
+      String name = p[0], kind = p[1];
+      AutoCloseable r = () -> {
+        log.add(name);
+        if (kind.equals("IO")) throw new java.io.IOException(name);
+        if (kind.equals("ISE")) throw new IllegalStateException(name);
+        if (kind.equals("ERR")) throw new AssertionError(name);
+      };
+      c.register(r);
+    }
+    Throwable thrown = null;
+    try { c.close(); } catch (Throwable t) { thrown = t; }
+    int sizeAfterFirst = log.size();
+    Throwable second = null;
+    try { c.close(); } catch (Throwable t) { second = t; }
+    String secondRes = second == null && log.size() == sizeAfterFirst ? "none" : "bad";
+    String lateRes = "";
+    if (late) {
+      AutoCloseable l = () -> log.add("late");
+      try { c.register(l); lateRes = " late=none"; } catch (IllegalStateException e) { lateRes = " late=ISE"; } catch (Exception e) { lateRes = " late=other"; }
+    }
+    List<String> sup = new ArrayList<>();
+    if (thrown != null) for (Throwable s : thrown.getSuppressed()) sup.add(s.getMessage());
+    return "order=" + String.join(",", log) + " thrown=" + (thrown == null ? "none" : thrown.getClass().getSimpleName() + ":" + thrown.getMessage()) + " suppressed=" + (sup.size() <= 10 ? sup.toString() : "n=" + sup.size()) + " second=" + secondRes + lateRes;
+  }
+}` }, cases: [
+      [[["A:-","B:IO","C:ISE"],false],"order=C,B,A thrown=IllegalStateException:C suppressed=[B] second=none"],
+      [[[],false],"order= thrown=none suppressed=[] second=none"],
+      [[["A:-"],false],"order=A thrown=none suppressed=[] second=none"],
+      [[["A:IO"],false],"order=A thrown=IOException:A suppressed=[] second=none"],
+      [[["A:ERR","B:IO"],false],"order=B,A thrown=IOException:B suppressed=[A] second=none"],
+      [[["A:IO","B:ERR"],false],"order=B,A thrown=AssertionError:B suppressed=[A] second=none"],
+      [[["A:-","B:-","C:-"],false],"order=C,B,A thrown=none suppressed=[] second=none"],
+      [[["A:ISE","B:-","C:ISE"],false],"order=C,B,A thrown=IllegalStateException:C suppressed=[A] second=none"],
+      [[["A:IO","B:IO","C:IO","D:IO"],false],"order=D,C,B,A thrown=IOException:D suppressed=[C, B, A] second=none"],
+      [[["A:-","B:IO"],true],"order=B,A,late thrown=IOException:B suppressed=[] second=none late=ISE"],
+      [[[],true],"order=late thrown=none suppressed=[] second=none late=ISE"],
+      [[["A:-"],true],"order=A,late thrown=none suppressed=[] second=none late=ISE"],
+      [[["A:ERR","B:ERR"],false],"order=B,A thrown=AssertionError:B suppressed=[A] second=none"],
+      [[["R0:ISE","R1:ISE","R2:ISE","R3:ISE","R4:ISE","R5:ISE","R6:ISE","R7:ISE","R8:ISE","R9:ISE","R10:ISE","R11:ISE","R12:ISE","R13:ISE","R14:ISE","R15:ISE","R16:ISE","R17:ISE","R18:ISE","R19:ISE","R20:ISE","R21:ISE","R22:ISE","R23:ISE","R24:ISE","R25:ISE","R26:ISE","R27:ISE","R28:ISE","R29:ISE","R30:ISE","R31:ISE","R32:ISE","R33:ISE","R34:ISE","R35:ISE","R36:ISE","R37:ISE","R38:ISE","R39:ISE","R40:ISE","R41:ISE","R42:ISE","R43:ISE","R44:ISE","R45:ISE","R46:ISE","R47:ISE","R48:ISE","R49:ISE","R50:ISE","R51:ISE","R52:ISE","R53:ISE","R54:ISE","R55:ISE","R56:ISE","R57:ISE","R58:ISE","R59:ISE","R60:ISE","R61:ISE","R62:ISE","R63:ISE","R64:ISE","R65:ISE","R66:ISE","R67:ISE","R68:ISE","R69:ISE","R70:ISE","R71:ISE","R72:ISE","R73:ISE","R74:ISE","R75:ISE","R76:ISE","R77:ISE","R78:ISE","R79:ISE","R80:ISE","R81:ISE","R82:ISE","R83:ISE","R84:ISE","R85:ISE","R86:ISE","R87:ISE","R88:ISE","R89:ISE","R90:ISE","R91:ISE","R92:ISE","R93:ISE","R94:ISE","R95:ISE","R96:ISE","R97:ISE","R98:ISE","R99:ISE","R100:ISE","R101:ISE","R102:ISE","R103:ISE","R104:ISE","R105:ISE","R106:ISE","R107:ISE","R108:ISE","R109:ISE","R110:ISE","R111:ISE","R112:ISE","R113:ISE","R114:ISE","R115:ISE","R116:ISE","R117:ISE","R118:ISE","R119:ISE","R120:ISE","R121:ISE","R122:ISE","R123:ISE","R124:ISE","R125:ISE","R126:ISE","R127:ISE","R128:ISE","R129:ISE","R130:ISE","R131:ISE","R132:ISE","R133:ISE","R134:ISE","R135:ISE","R136:ISE","R137:ISE","R138:ISE","R139:ISE","R140:ISE","R141:ISE","R142:ISE","R143:ISE","R144:ISE","R145:ISE","R146:ISE","R147:ISE","R148:ISE","R149:ISE","R150:ISE","R151:ISE","R152:ISE","R153:ISE","R154:ISE","R155:ISE","R156:ISE","R157:ISE","R158:ISE","R159:ISE","R160:ISE","R161:ISE","R162:ISE","R163:ISE","R164:ISE","R165:ISE","R166:ISE","R167:ISE","R168:ISE","R169:ISE","R170:ISE","R171:ISE","R172:ISE","R173:ISE","R174:ISE","R175:ISE","R176:ISE","R177:ISE","R178:ISE","R179:ISE","R180:ISE","R181:ISE","R182:ISE","R183:ISE","R184:ISE","R185:ISE","R186:ISE","R187:ISE","R188:ISE","R189:ISE","R190:ISE","R191:ISE","R192:ISE","R193:ISE","R194:ISE","R195:ISE","R196:ISE","R197:ISE","R198:ISE","R199:ISE","R200:ISE","R201:ISE","R202:ISE","R203:ISE","R204:ISE","R205:ISE","R206:ISE","R207:ISE","R208:ISE","R209:ISE","R210:ISE","R211:ISE","R212:ISE","R213:ISE","R214:ISE","R215:ISE","R216:ISE","R217:ISE","R218:ISE","R219:ISE","R220:ISE","R221:ISE","R222:ISE","R223:ISE","R224:ISE","R225:ISE","R226:ISE","R227:ISE","R228:ISE","R229:ISE","R230:ISE","R231:ISE","R232:ISE","R233:ISE","R234:ISE","R235:ISE","R236:ISE","R237:ISE","R238:ISE","R239:ISE","R240:ISE","R241:ISE","R242:ISE","R243:ISE","R244:ISE","R245:ISE","R246:ISE","R247:ISE","R248:ISE","R249:ISE","R250:ISE","R251:ISE","R252:ISE","R253:ISE","R254:ISE","R255:ISE","R256:ISE","R257:ISE","R258:ISE","R259:ISE","R260:ISE","R261:ISE","R262:ISE","R263:ISE","R264:ISE","R265:ISE","R266:ISE","R267:ISE","R268:ISE","R269:ISE","R270:ISE","R271:ISE","R272:ISE","R273:ISE","R274:ISE","R275:ISE","R276:ISE","R277:ISE","R278:ISE","R279:ISE","R280:ISE","R281:ISE","R282:ISE","R283:ISE","R284:ISE","R285:ISE","R286:ISE","R287:ISE","R288:ISE","R289:ISE","R290:ISE","R291:ISE","R292:ISE","R293:ISE","R294:ISE","R295:ISE","R296:ISE","R297:ISE","R298:ISE","R299:ISE","R300:ISE","R301:ISE","R302:ISE","R303:ISE","R304:ISE","R305:ISE","R306:ISE","R307:ISE","R308:ISE","R309:ISE","R310:ISE","R311:ISE","R312:ISE","R313:ISE","R314:ISE","R315:ISE","R316:ISE","R317:ISE","R318:ISE","R319:ISE","R320:ISE","R321:ISE","R322:ISE","R323:ISE","R324:ISE","R325:ISE","R326:ISE","R327:ISE","R328:ISE","R329:ISE","R330:ISE","R331:ISE","R332:ISE","R333:ISE","R334:ISE","R335:ISE","R336:ISE","R337:ISE","R338:ISE","R339:ISE","R340:ISE","R341:ISE","R342:ISE","R343:ISE","R344:ISE","R345:ISE","R346:ISE","R347:ISE","R348:ISE","R349:ISE","R350:ISE","R351:ISE","R352:ISE","R353:ISE","R354:ISE","R355:ISE","R356:ISE","R357:ISE","R358:ISE","R359:ISE","R360:ISE","R361:ISE","R362:ISE","R363:ISE","R364:ISE","R365:ISE","R366:ISE","R367:ISE","R368:ISE","R369:ISE","R370:ISE","R371:ISE","R372:ISE","R373:ISE","R374:ISE","R375:ISE","R376:ISE","R377:ISE","R378:ISE","R379:ISE","R380:ISE","R381:ISE","R382:ISE","R383:ISE","R384:ISE","R385:ISE","R386:ISE","R387:ISE","R388:ISE","R389:ISE","R390:ISE","R391:ISE","R392:ISE","R393:ISE","R394:ISE","R395:ISE","R396:ISE","R397:ISE","R398:ISE","R399:ISE","R400:ISE","R401:ISE","R402:ISE","R403:ISE","R404:ISE","R405:ISE","R406:ISE","R407:ISE","R408:ISE","R409:ISE","R410:ISE","R411:ISE","R412:ISE","R413:ISE","R414:ISE","R415:ISE","R416:ISE","R417:ISE","R418:ISE","R419:ISE","R420:ISE","R421:ISE","R422:ISE","R423:ISE","R424:ISE","R425:ISE","R426:ISE","R427:ISE","R428:ISE","R429:ISE","R430:ISE","R431:ISE","R432:ISE","R433:ISE","R434:ISE","R435:ISE","R436:ISE","R437:ISE","R438:ISE","R439:ISE","R440:ISE","R441:ISE","R442:ISE","R443:ISE","R444:ISE","R445:ISE","R446:ISE","R447:ISE","R448:ISE","R449:ISE","R450:ISE","R451:ISE","R452:ISE","R453:ISE","R454:ISE","R455:ISE","R456:ISE","R457:ISE","R458:ISE","R459:ISE","R460:ISE","R461:ISE","R462:ISE","R463:ISE","R464:ISE","R465:ISE","R466:ISE","R467:ISE","R468:ISE","R469:ISE","R470:ISE","R471:ISE","R472:ISE","R473:ISE","R474:ISE","R475:ISE","R476:ISE","R477:ISE","R478:ISE","R479:ISE","R480:ISE","R481:ISE","R482:ISE","R483:ISE","R484:ISE","R485:ISE","R486:ISE","R487:ISE","R488:ISE","R489:ISE","R490:ISE","R491:ISE","R492:ISE","R493:ISE","R494:ISE","R495:ISE","R496:ISE","R497:ISE","R498:ISE","R499:ISE","R500:ISE","R501:ISE","R502:ISE","R503:ISE","R504:ISE","R505:ISE","R506:ISE","R507:ISE","R508:ISE","R509:ISE","R510:ISE","R511:ISE","R512:ISE","R513:ISE","R514:ISE","R515:ISE","R516:ISE","R517:ISE","R518:ISE","R519:ISE","R520:ISE","R521:ISE","R522:ISE","R523:ISE","R524:ISE","R525:ISE","R526:ISE","R527:ISE","R528:ISE","R529:ISE","R530:ISE","R531:ISE","R532:ISE","R533:ISE","R534:ISE","R535:ISE","R536:ISE","R537:ISE","R538:ISE","R539:ISE","R540:ISE","R541:ISE","R542:ISE","R543:ISE","R544:ISE","R545:ISE","R546:ISE","R547:ISE","R548:ISE","R549:ISE","R550:ISE","R551:ISE","R552:ISE","R553:ISE","R554:ISE","R555:ISE","R556:ISE","R557:ISE","R558:ISE","R559:ISE","R560:ISE","R561:ISE","R562:ISE","R563:ISE","R564:ISE","R565:ISE","R566:ISE","R567:ISE","R568:ISE","R569:ISE","R570:ISE","R571:ISE","R572:ISE","R573:ISE","R574:ISE","R575:ISE","R576:ISE","R577:ISE","R578:ISE","R579:ISE","R580:ISE","R581:ISE","R582:ISE","R583:ISE","R584:ISE","R585:ISE","R586:ISE","R587:ISE","R588:ISE","R589:ISE","R590:ISE","R591:ISE","R592:ISE","R593:ISE","R594:ISE","R595:ISE","R596:ISE","R597:ISE","R598:ISE","R599:ISE","R600:ISE","R601:ISE","R602:ISE","R603:ISE","R604:ISE","R605:ISE","R606:ISE","R607:ISE","R608:ISE","R609:ISE","R610:ISE","R611:ISE","R612:ISE","R613:ISE","R614:ISE","R615:ISE","R616:ISE","R617:ISE","R618:ISE","R619:ISE","R620:ISE","R621:ISE","R622:ISE","R623:ISE","R624:ISE","R625:ISE","R626:ISE","R627:ISE","R628:ISE","R629:ISE","R630:ISE","R631:ISE","R632:ISE","R633:ISE","R634:ISE","R635:ISE","R636:ISE","R637:ISE","R638:ISE","R639:ISE","R640:ISE","R641:ISE","R642:ISE","R643:ISE","R644:ISE","R645:ISE","R646:ISE","R647:ISE","R648:ISE","R649:ISE","R650:ISE","R651:ISE","R652:ISE","R653:ISE","R654:ISE","R655:ISE","R656:ISE","R657:ISE","R658:ISE","R659:ISE","R660:ISE","R661:ISE","R662:ISE","R663:ISE","R664:ISE","R665:ISE","R666:ISE","R667:ISE","R668:ISE","R669:ISE","R670:ISE","R671:ISE","R672:ISE","R673:ISE","R674:ISE","R675:ISE","R676:ISE","R677:ISE","R678:ISE","R679:ISE","R680:ISE","R681:ISE","R682:ISE","R683:ISE","R684:ISE","R685:ISE","R686:ISE","R687:ISE","R688:ISE","R689:ISE","R690:ISE","R691:ISE","R692:ISE","R693:ISE","R694:ISE","R695:ISE","R696:ISE","R697:ISE","R698:ISE","R699:ISE","R700:ISE","R701:ISE","R702:ISE","R703:ISE","R704:ISE","R705:ISE","R706:ISE","R707:ISE","R708:ISE","R709:ISE","R710:ISE","R711:ISE","R712:ISE","R713:ISE","R714:ISE","R715:ISE","R716:ISE","R717:ISE","R718:ISE","R719:ISE","R720:ISE","R721:ISE","R722:ISE","R723:ISE","R724:ISE","R725:ISE","R726:ISE","R727:ISE","R728:ISE","R729:ISE","R730:ISE","R731:ISE","R732:ISE","R733:ISE","R734:ISE","R735:ISE","R736:ISE","R737:ISE","R738:ISE","R739:ISE","R740:ISE","R741:ISE","R742:ISE","R743:ISE","R744:ISE","R745:ISE","R746:ISE","R747:ISE","R748:ISE","R749:ISE","R750:ISE","R751:ISE","R752:ISE","R753:ISE","R754:ISE","R755:ISE","R756:ISE","R757:ISE","R758:ISE","R759:ISE","R760:ISE","R761:ISE","R762:ISE","R763:ISE","R764:ISE","R765:ISE","R766:ISE","R767:ISE","R768:ISE","R769:ISE","R770:ISE","R771:ISE","R772:ISE","R773:ISE","R774:ISE","R775:ISE","R776:ISE","R777:ISE","R778:ISE","R779:ISE","R780:ISE","R781:ISE","R782:ISE","R783:ISE","R784:ISE","R785:ISE","R786:ISE","R787:ISE","R788:ISE","R789:ISE","R790:ISE","R791:ISE","R792:ISE","R793:ISE","R794:ISE","R795:ISE","R796:ISE","R797:ISE","R798:ISE","R799:ISE","R800:ISE","R801:ISE","R802:ISE","R803:ISE","R804:ISE","R805:ISE","R806:ISE","R807:ISE","R808:ISE","R809:ISE","R810:ISE","R811:ISE","R812:ISE","R813:ISE","R814:ISE","R815:ISE","R816:ISE","R817:ISE","R818:ISE","R819:ISE","R820:ISE","R821:ISE","R822:ISE","R823:ISE","R824:ISE","R825:ISE","R826:ISE","R827:ISE","R828:ISE","R829:ISE","R830:ISE","R831:ISE","R832:ISE","R833:ISE","R834:ISE","R835:ISE","R836:ISE","R837:ISE","R838:ISE","R839:ISE","R840:ISE","R841:ISE","R842:ISE","R843:ISE","R844:ISE","R845:ISE","R846:ISE","R847:ISE","R848:ISE","R849:ISE","R850:ISE","R851:ISE","R852:ISE","R853:ISE","R854:ISE","R855:ISE","R856:ISE","R857:ISE","R858:ISE","R859:ISE","R860:ISE","R861:ISE","R862:ISE","R863:ISE","R864:ISE","R865:ISE","R866:ISE","R867:ISE","R868:ISE","R869:ISE","R870:ISE","R871:ISE","R872:ISE","R873:ISE","R874:ISE","R875:ISE","R876:ISE","R877:ISE","R878:ISE","R879:ISE","R880:ISE","R881:ISE","R882:ISE","R883:ISE","R884:ISE","R885:ISE","R886:ISE","R887:ISE","R888:ISE","R889:ISE","R890:ISE","R891:ISE","R892:ISE","R893:ISE","R894:ISE","R895:ISE","R896:ISE","R897:ISE","R898:ISE","R899:ISE","R900:ISE","R901:ISE","R902:ISE","R903:ISE","R904:ISE","R905:ISE","R906:ISE","R907:ISE","R908:ISE","R909:ISE","R910:ISE","R911:ISE","R912:ISE","R913:ISE","R914:ISE","R915:ISE","R916:ISE","R917:ISE","R918:ISE","R919:ISE","R920:ISE","R921:ISE","R922:ISE","R923:ISE","R924:ISE","R925:ISE","R926:ISE","R927:ISE","R928:ISE","R929:ISE","R930:ISE","R931:ISE","R932:ISE","R933:ISE","R934:ISE","R935:ISE","R936:ISE","R937:ISE","R938:ISE","R939:ISE","R940:ISE","R941:ISE","R942:ISE","R943:ISE","R944:ISE","R945:ISE","R946:ISE","R947:ISE","R948:ISE","R949:ISE","R950:ISE","R951:ISE","R952:ISE","R953:ISE","R954:ISE","R955:ISE","R956:ISE","R957:ISE","R958:ISE","R959:ISE","R960:ISE","R961:ISE","R962:ISE","R963:ISE","R964:ISE","R965:ISE","R966:ISE","R967:ISE","R968:ISE","R969:ISE","R970:ISE","R971:ISE","R972:ISE","R973:ISE","R974:ISE","R975:ISE","R976:ISE","R977:ISE","R978:ISE","R979:ISE","R980:ISE","R981:ISE","R982:ISE","R983:ISE","R984:ISE","R985:ISE","R986:ISE","R987:ISE","R988:ISE","R989:ISE","R990:ISE","R991:ISE","R992:ISE","R993:ISE","R994:ISE","R995:ISE","R996:ISE","R997:ISE","R998:ISE","R999:ISE"],false],"order=R999,R998,R997,R996,R995,R994,R993,R992,R991,R990,R989,R988,R987,R986,R985,R984,R983,R982,R981,R980,R979,R978,R977,R976,R975,R974,R973,R972,R971,R970,R969,R968,R967,R966,R965,R964,R963,R962,R961,R960,R959,R958,R957,R956,R955,R954,R953,R952,R951,R950,R949,R948,R947,R946,R945,R944,R943,R942,R941,R940,R939,R938,R937,R936,R935,R934,R933,R932,R931,R930,R929,R928,R927,R926,R925,R924,R923,R922,R921,R920,R919,R918,R917,R916,R915,R914,R913,R912,R911,R910,R909,R908,R907,R906,R905,R904,R903,R902,R901,R900,R899,R898,R897,R896,R895,R894,R893,R892,R891,R890,R889,R888,R887,R886,R885,R884,R883,R882,R881,R880,R879,R878,R877,R876,R875,R874,R873,R872,R871,R870,R869,R868,R867,R866,R865,R864,R863,R862,R861,R860,R859,R858,R857,R856,R855,R854,R853,R852,R851,R850,R849,R848,R847,R846,R845,R844,R843,R842,R841,R840,R839,R838,R837,R836,R835,R834,R833,R832,R831,R830,R829,R828,R827,R826,R825,R824,R823,R822,R821,R820,R819,R818,R817,R816,R815,R814,R813,R812,R811,R810,R809,R808,R807,R806,R805,R804,R803,R802,R801,R800,R799,R798,R797,R796,R795,R794,R793,R792,R791,R790,R789,R788,R787,R786,R785,R784,R783,R782,R781,R780,R779,R778,R777,R776,R775,R774,R773,R772,R771,R770,R769,R768,R767,R766,R765,R764,R763,R762,R761,R760,R759,R758,R757,R756,R755,R754,R753,R752,R751,R750,R749,R748,R747,R746,R745,R744,R743,R742,R741,R740,R739,R738,R737,R736,R735,R734,R733,R732,R731,R730,R729,R728,R727,R726,R725,R724,R723,R722,R721,R720,R719,R718,R717,R716,R715,R714,R713,R712,R711,R710,R709,R708,R707,R706,R705,R704,R703,R702,R701,R700,R699,R698,R697,R696,R695,R694,R693,R692,R691,R690,R689,R688,R687,R686,R685,R684,R683,R682,R681,R680,R679,R678,R677,R676,R675,R674,R673,R672,R671,R670,R669,R668,R667,R666,R665,R664,R663,R662,R661,R660,R659,R658,R657,R656,R655,R654,R653,R652,R651,R650,R649,R648,R647,R646,R645,R644,R643,R642,R641,R640,R639,R638,R637,R636,R635,R634,R633,R632,R631,R630,R629,R628,R627,R626,R625,R624,R623,R622,R621,R620,R619,R618,R617,R616,R615,R614,R613,R612,R611,R610,R609,R608,R607,R606,R605,R604,R603,R602,R601,R600,R599,R598,R597,R596,R595,R594,R593,R592,R591,R590,R589,R588,R587,R586,R585,R584,R583,R582,R581,R580,R579,R578,R577,R576,R575,R574,R573,R572,R571,R570,R569,R568,R567,R566,R565,R564,R563,R562,R561,R560,R559,R558,R557,R556,R555,R554,R553,R552,R551,R550,R549,R548,R547,R546,R545,R544,R543,R542,R541,R540,R539,R538,R537,R536,R535,R534,R533,R532,R531,R530,R529,R528,R527,R526,R525,R524,R523,R522,R521,R520,R519,R518,R517,R516,R515,R514,R513,R512,R511,R510,R509,R508,R507,R506,R505,R504,R503,R502,R501,R500,R499,R498,R497,R496,R495,R494,R493,R492,R491,R490,R489,R488,R487,R486,R485,R484,R483,R482,R481,R480,R479,R478,R477,R476,R475,R474,R473,R472,R471,R470,R469,R468,R467,R466,R465,R464,R463,R462,R461,R460,R459,R458,R457,R456,R455,R454,R453,R452,R451,R450,R449,R448,R447,R446,R445,R444,R443,R442,R441,R440,R439,R438,R437,R436,R435,R434,R433,R432,R431,R430,R429,R428,R427,R426,R425,R424,R423,R422,R421,R420,R419,R418,R417,R416,R415,R414,R413,R412,R411,R410,R409,R408,R407,R406,R405,R404,R403,R402,R401,R400,R399,R398,R397,R396,R395,R394,R393,R392,R391,R390,R389,R388,R387,R386,R385,R384,R383,R382,R381,R380,R379,R378,R377,R376,R375,R374,R373,R372,R371,R370,R369,R368,R367,R366,R365,R364,R363,R362,R361,R360,R359,R358,R357,R356,R355,R354,R353,R352,R351,R350,R349,R348,R347,R346,R345,R344,R343,R342,R341,R340,R339,R338,R337,R336,R335,R334,R333,R332,R331,R330,R329,R328,R327,R326,R325,R324,R323,R322,R321,R320,R319,R318,R317,R316,R315,R314,R313,R312,R311,R310,R309,R308,R307,R306,R305,R304,R303,R302,R301,R300,R299,R298,R297,R296,R295,R294,R293,R292,R291,R290,R289,R288,R287,R286,R285,R284,R283,R282,R281,R280,R279,R278,R277,R276,R275,R274,R273,R272,R271,R270,R269,R268,R267,R266,R265,R264,R263,R262,R261,R260,R259,R258,R257,R256,R255,R254,R253,R252,R251,R250,R249,R248,R247,R246,R245,R244,R243,R242,R241,R240,R239,R238,R237,R236,R235,R234,R233,R232,R231,R230,R229,R228,R227,R226,R225,R224,R223,R222,R221,R220,R219,R218,R217,R216,R215,R214,R213,R212,R211,R210,R209,R208,R207,R206,R205,R204,R203,R202,R201,R200,R199,R198,R197,R196,R195,R194,R193,R192,R191,R190,R189,R188,R187,R186,R185,R184,R183,R182,R181,R180,R179,R178,R177,R176,R175,R174,R173,R172,R171,R170,R169,R168,R167,R166,R165,R164,R163,R162,R161,R160,R159,R158,R157,R156,R155,R154,R153,R152,R151,R150,R149,R148,R147,R146,R145,R144,R143,R142,R141,R140,R139,R138,R137,R136,R135,R134,R133,R132,R131,R130,R129,R128,R127,R126,R125,R124,R123,R122,R121,R120,R119,R118,R117,R116,R115,R114,R113,R112,R111,R110,R109,R108,R107,R106,R105,R104,R103,R102,R101,R100,R99,R98,R97,R96,R95,R94,R93,R92,R91,R90,R89,R88,R87,R86,R85,R84,R83,R82,R81,R80,R79,R78,R77,R76,R75,R74,R73,R72,R71,R70,R69,R68,R67,R66,R65,R64,R63,R62,R61,R60,R59,R58,R57,R56,R55,R54,R53,R52,R51,R50,R49,R48,R47,R46,R45,R44,R43,R42,R41,R40,R39,R38,R37,R36,R35,R34,R33,R32,R31,R30,R29,R28,R27,R26,R25,R24,R23,R22,R21,R20,R19,R18,R17,R16,R15,R14,R13,R12,R11,R10,R9,R8,R7,R6,R5,R4,R3,R2,R1,R0 thrown=IllegalStateException:R999 suppressed=n=999 second=none"],
+      [[["R0:-","R1:-","R2:-","R3:-","R4:-","R5:-","R6:-","R7:-","R8:-","R9:-","R10:-","R11:-","R12:-","R13:-","R14:-","R15:-","R16:-","R17:-","R18:-","R19:-","R20:-","R21:-","R22:-","R23:-","R24:-","R25:-","R26:-","R27:-","R28:-","R29:-","R30:-","R31:-","R32:-","R33:-","R34:-","R35:-","R36:-","R37:-","R38:-","R39:-","R40:-","R41:-","R42:-","R43:-","R44:-","R45:-","R46:-","R47:-","R48:-","R49:-","R50:-","R51:-","R52:-","R53:-","R54:-","R55:-","R56:-","R57:-","R58:-","R59:-","R60:-","R61:-","R62:-","R63:-","R64:-","R65:-","R66:-","R67:-","R68:-","R69:-","R70:-","R71:-","R72:-","R73:-","R74:-","R75:-","R76:-","R77:-","R78:-","R79:-","R80:-","R81:-","R82:-","R83:-","R84:-","R85:-","R86:-","R87:-","R88:-","R89:-","R90:-","R91:-","R92:-","R93:-","R94:-","R95:-","R96:-","R97:-","R98:-","R99:-","R100:-","R101:-","R102:-","R103:-","R104:-","R105:-","R106:-","R107:-","R108:-","R109:-","R110:-","R111:-","R112:-","R113:-","R114:-","R115:-","R116:-","R117:-","R118:-","R119:-","R120:-","R121:-","R122:-","R123:-","R124:-","R125:-","R126:-","R127:-","R128:-","R129:-","R130:-","R131:-","R132:-","R133:-","R134:-","R135:-","R136:-","R137:-","R138:-","R139:-","R140:-","R141:-","R142:-","R143:-","R144:-","R145:-","R146:-","R147:-","R148:-","R149:-","R150:-","R151:-","R152:-","R153:-","R154:-","R155:-","R156:-","R157:-","R158:-","R159:-","R160:-","R161:-","R162:-","R163:-","R164:-","R165:-","R166:-","R167:-","R168:-","R169:-","R170:-","R171:-","R172:-","R173:-","R174:-","R175:-","R176:-","R177:-","R178:-","R179:-","R180:-","R181:-","R182:-","R183:-","R184:-","R185:-","R186:-","R187:-","R188:-","R189:-","R190:-","R191:-","R192:-","R193:-","R194:-","R195:-","R196:-","R197:-","R198:-","R199:-","R200:-","R201:-","R202:-","R203:-","R204:-","R205:-","R206:-","R207:-","R208:-","R209:-","R210:-","R211:-","R212:-","R213:-","R214:-","R215:-","R216:-","R217:-","R218:-","R219:-","R220:-","R221:-","R222:-","R223:-","R224:-","R225:-","R226:-","R227:-","R228:-","R229:-","R230:-","R231:-","R232:-","R233:-","R234:-","R235:-","R236:-","R237:-","R238:-","R239:-","R240:-","R241:-","R242:-","R243:-","R244:-","R245:-","R246:-","R247:-","R248:-","R249:-","R250:-","R251:-","R252:-","R253:-","R254:-","R255:-","R256:-","R257:-","R258:-","R259:-","R260:-","R261:-","R262:-","R263:-","R264:-","R265:-","R266:-","R267:-","R268:-","R269:-","R270:-","R271:-","R272:-","R273:-","R274:-","R275:-","R276:-","R277:-","R278:-","R279:-","R280:-","R281:-","R282:-","R283:-","R284:-","R285:-","R286:-","R287:-","R288:-","R289:-","R290:-","R291:-","R292:-","R293:-","R294:-","R295:-","R296:-","R297:-","R298:-","R299:-","R300:-","R301:-","R302:-","R303:-","R304:-","R305:-","R306:-","R307:-","R308:-","R309:-","R310:-","R311:-","R312:-","R313:-","R314:-","R315:-","R316:-","R317:-","R318:-","R319:-","R320:-","R321:-","R322:-","R323:-","R324:-","R325:-","R326:-","R327:-","R328:-","R329:-","R330:-","R331:-","R332:-","R333:-","R334:-","R335:-","R336:-","R337:-","R338:-","R339:-","R340:-","R341:-","R342:-","R343:-","R344:-","R345:-","R346:-","R347:-","R348:-","R349:-","R350:-","R351:-","R352:-","R353:-","R354:-","R355:-","R356:-","R357:-","R358:-","R359:-","R360:-","R361:-","R362:-","R363:-","R364:-","R365:-","R366:-","R367:-","R368:-","R369:-","R370:-","R371:-","R372:-","R373:-","R374:-","R375:-","R376:-","R377:-","R378:-","R379:-","R380:-","R381:-","R382:-","R383:-","R384:-","R385:-","R386:-","R387:-","R388:-","R389:-","R390:-","R391:-","R392:-","R393:-","R394:-","R395:-","R396:-","R397:-","R398:-","R399:-","R400:-","R401:-","R402:-","R403:-","R404:-","R405:-","R406:-","R407:-","R408:-","R409:-","R410:-","R411:-","R412:-","R413:-","R414:-","R415:-","R416:-","R417:-","R418:-","R419:-","R420:-","R421:-","R422:-","R423:-","R424:-","R425:-","R426:-","R427:-","R428:-","R429:-","R430:-","R431:-","R432:-","R433:-","R434:-","R435:-","R436:-","R437:-","R438:-","R439:-","R440:-","R441:-","R442:-","R443:-","R444:-","R445:-","R446:-","R447:-","R448:-","R449:-","R450:-","R451:-","R452:-","R453:-","R454:-","R455:-","R456:-","R457:-","R458:-","R459:-","R460:-","R461:-","R462:-","R463:-","R464:-","R465:-","R466:-","R467:-","R468:-","R469:-","R470:-","R471:-","R472:-","R473:-","R474:-","R475:-","R476:-","R477:-","R478:-","R479:-","R480:-","R481:-","R482:-","R483:-","R484:-","R485:-","R486:-","R487:-","R488:-","R489:-","R490:-","R491:-","R492:-","R493:-","R494:-","R495:-","R496:-","R497:-","R498:-","R499:-","R500:-","R501:-","R502:-","R503:-","R504:-","R505:-","R506:-","R507:-","R508:-","R509:-","R510:-","R511:-","R512:-","R513:-","R514:-","R515:-","R516:-","R517:-","R518:-","R519:-","R520:-","R521:-","R522:-","R523:-","R524:-","R525:-","R526:-","R527:-","R528:-","R529:-","R530:-","R531:-","R532:-","R533:-","R534:-","R535:-","R536:-","R537:-","R538:-","R539:-","R540:-","R541:-","R542:-","R543:-","R544:-","R545:-","R546:-","R547:-","R548:-","R549:-","R550:-","R551:-","R552:-","R553:-","R554:-","R555:-","R556:-","R557:-","R558:-","R559:-","R560:-","R561:-","R562:-","R563:-","R564:-","R565:-","R566:-","R567:-","R568:-","R569:-","R570:-","R571:-","R572:-","R573:-","R574:-","R575:-","R576:-","R577:-","R578:-","R579:-","R580:-","R581:-","R582:-","R583:-","R584:-","R585:-","R586:-","R587:-","R588:-","R589:-","R590:-","R591:-","R592:-","R593:-","R594:-","R595:-","R596:-","R597:-","R598:-","R599:-","R600:-","R601:-","R602:-","R603:-","R604:-","R605:-","R606:-","R607:-","R608:-","R609:-","R610:-","R611:-","R612:-","R613:-","R614:-","R615:-","R616:-","R617:-","R618:-","R619:-","R620:-","R621:-","R622:-","R623:-","R624:-","R625:-","R626:-","R627:-","R628:-","R629:-","R630:-","R631:-","R632:-","R633:-","R634:-","R635:-","R636:-","R637:-","R638:-","R639:-","R640:-","R641:-","R642:-","R643:-","R644:-","R645:-","R646:-","R647:-","R648:-","R649:-","R650:-","R651:-","R652:-","R653:-","R654:-","R655:-","R656:-","R657:-","R658:-","R659:-","R660:-","R661:-","R662:-","R663:-","R664:-","R665:-","R666:-","R667:-","R668:-","R669:-","R670:-","R671:-","R672:-","R673:-","R674:-","R675:-","R676:-","R677:-","R678:-","R679:-","R680:-","R681:-","R682:-","R683:-","R684:-","R685:-","R686:-","R687:-","R688:-","R689:-","R690:-","R691:-","R692:-","R693:-","R694:-","R695:-","R696:-","R697:-","R698:-","R699:-","R700:-","R701:-","R702:-","R703:-","R704:-","R705:-","R706:-","R707:-","R708:-","R709:-","R710:-","R711:-","R712:-","R713:-","R714:-","R715:-","R716:-","R717:-","R718:-","R719:-","R720:-","R721:-","R722:-","R723:-","R724:-","R725:-","R726:-","R727:-","R728:-","R729:-","R730:-","R731:-","R732:-","R733:-","R734:-","R735:-","R736:-","R737:-","R738:-","R739:-","R740:-","R741:-","R742:-","R743:-","R744:-","R745:-","R746:-","R747:-","R748:-","R749:-","R750:-","R751:-","R752:-","R753:-","R754:-","R755:-","R756:-","R757:-","R758:-","R759:-","R760:-","R761:-","R762:-","R763:-","R764:-","R765:-","R766:-","R767:-","R768:-","R769:-","R770:-","R771:-","R772:-","R773:-","R774:-","R775:-","R776:-","R777:-","R778:-","R779:-","R780:-","R781:-","R782:-","R783:-","R784:-","R785:-","R786:-","R787:-","R788:-","R789:-","R790:-","R791:-","R792:-","R793:-","R794:-","R795:-","R796:-","R797:-","R798:-","R799:-","R800:-","R801:-","R802:-","R803:-","R804:-","R805:-","R806:-","R807:-","R808:-","R809:-","R810:-","R811:-","R812:-","R813:-","R814:-","R815:-","R816:-","R817:-","R818:-","R819:-","R820:-","R821:-","R822:-","R823:-","R824:-","R825:-","R826:-","R827:-","R828:-","R829:-","R830:-","R831:-","R832:-","R833:-","R834:-","R835:-","R836:-","R837:-","R838:-","R839:-","R840:-","R841:-","R842:-","R843:-","R844:-","R845:-","R846:-","R847:-","R848:-","R849:-","R850:-","R851:-","R852:-","R853:-","R854:-","R855:-","R856:-","R857:-","R858:-","R859:-","R860:-","R861:-","R862:-","R863:-","R864:-","R865:-","R866:-","R867:-","R868:-","R869:-","R870:-","R871:-","R872:-","R873:-","R874:-","R875:-","R876:-","R877:-","R878:-","R879:-","R880:-","R881:-","R882:-","R883:-","R884:-","R885:-","R886:-","R887:-","R888:-","R889:-","R890:-","R891:-","R892:-","R893:-","R894:-","R895:-","R896:-","R897:-","R898:-","R899:-","R900:-","R901:-","R902:-","R903:-","R904:-","R905:-","R906:-","R907:-","R908:-","R909:-","R910:-","R911:-","R912:-","R913:-","R914:-","R915:-","R916:-","R917:-","R918:-","R919:-","R920:-","R921:-","R922:-","R923:-","R924:-","R925:-","R926:-","R927:-","R928:-","R929:-","R930:-","R931:-","R932:-","R933:-","R934:-","R935:-","R936:-","R937:-","R938:-","R939:-","R940:-","R941:-","R942:-","R943:-","R944:-","R945:-","R946:-","R947:-","R948:-","R949:-","R950:-","R951:-","R952:-","R953:-","R954:-","R955:-","R956:-","R957:-","R958:-","R959:-","R960:-","R961:-","R962:-","R963:-","R964:-","R965:-","R966:-","R967:-","R968:-","R969:-","R970:-","R971:-","R972:-","R973:-","R974:-","R975:-","R976:-","R977:-","R978:-","R979:-","R980:-","R981:-","R982:-","R983:-","R984:-","R985:-","R986:-","R987:-","R988:-","R989:-","R990:-","R991:-","R992:-","R993:-","R994:-","R995:-","R996:-","R997:-","R998:-","R999:-"],true],"order=R999,R998,R997,R996,R995,R994,R993,R992,R991,R990,R989,R988,R987,R986,R985,R984,R983,R982,R981,R980,R979,R978,R977,R976,R975,R974,R973,R972,R971,R970,R969,R968,R967,R966,R965,R964,R963,R962,R961,R960,R959,R958,R957,R956,R955,R954,R953,R952,R951,R950,R949,R948,R947,R946,R945,R944,R943,R942,R941,R940,R939,R938,R937,R936,R935,R934,R933,R932,R931,R930,R929,R928,R927,R926,R925,R924,R923,R922,R921,R920,R919,R918,R917,R916,R915,R914,R913,R912,R911,R910,R909,R908,R907,R906,R905,R904,R903,R902,R901,R900,R899,R898,R897,R896,R895,R894,R893,R892,R891,R890,R889,R888,R887,R886,R885,R884,R883,R882,R881,R880,R879,R878,R877,R876,R875,R874,R873,R872,R871,R870,R869,R868,R867,R866,R865,R864,R863,R862,R861,R860,R859,R858,R857,R856,R855,R854,R853,R852,R851,R850,R849,R848,R847,R846,R845,R844,R843,R842,R841,R840,R839,R838,R837,R836,R835,R834,R833,R832,R831,R830,R829,R828,R827,R826,R825,R824,R823,R822,R821,R820,R819,R818,R817,R816,R815,R814,R813,R812,R811,R810,R809,R808,R807,R806,R805,R804,R803,R802,R801,R800,R799,R798,R797,R796,R795,R794,R793,R792,R791,R790,R789,R788,R787,R786,R785,R784,R783,R782,R781,R780,R779,R778,R777,R776,R775,R774,R773,R772,R771,R770,R769,R768,R767,R766,R765,R764,R763,R762,R761,R760,R759,R758,R757,R756,R755,R754,R753,R752,R751,R750,R749,R748,R747,R746,R745,R744,R743,R742,R741,R740,R739,R738,R737,R736,R735,R734,R733,R732,R731,R730,R729,R728,R727,R726,R725,R724,R723,R722,R721,R720,R719,R718,R717,R716,R715,R714,R713,R712,R711,R710,R709,R708,R707,R706,R705,R704,R703,R702,R701,R700,R699,R698,R697,R696,R695,R694,R693,R692,R691,R690,R689,R688,R687,R686,R685,R684,R683,R682,R681,R680,R679,R678,R677,R676,R675,R674,R673,R672,R671,R670,R669,R668,R667,R666,R665,R664,R663,R662,R661,R660,R659,R658,R657,R656,R655,R654,R653,R652,R651,R650,R649,R648,R647,R646,R645,R644,R643,R642,R641,R640,R639,R638,R637,R636,R635,R634,R633,R632,R631,R630,R629,R628,R627,R626,R625,R624,R623,R622,R621,R620,R619,R618,R617,R616,R615,R614,R613,R612,R611,R610,R609,R608,R607,R606,R605,R604,R603,R602,R601,R600,R599,R598,R597,R596,R595,R594,R593,R592,R591,R590,R589,R588,R587,R586,R585,R584,R583,R582,R581,R580,R579,R578,R577,R576,R575,R574,R573,R572,R571,R570,R569,R568,R567,R566,R565,R564,R563,R562,R561,R560,R559,R558,R557,R556,R555,R554,R553,R552,R551,R550,R549,R548,R547,R546,R545,R544,R543,R542,R541,R540,R539,R538,R537,R536,R535,R534,R533,R532,R531,R530,R529,R528,R527,R526,R525,R524,R523,R522,R521,R520,R519,R518,R517,R516,R515,R514,R513,R512,R511,R510,R509,R508,R507,R506,R505,R504,R503,R502,R501,R500,R499,R498,R497,R496,R495,R494,R493,R492,R491,R490,R489,R488,R487,R486,R485,R484,R483,R482,R481,R480,R479,R478,R477,R476,R475,R474,R473,R472,R471,R470,R469,R468,R467,R466,R465,R464,R463,R462,R461,R460,R459,R458,R457,R456,R455,R454,R453,R452,R451,R450,R449,R448,R447,R446,R445,R444,R443,R442,R441,R440,R439,R438,R437,R436,R435,R434,R433,R432,R431,R430,R429,R428,R427,R426,R425,R424,R423,R422,R421,R420,R419,R418,R417,R416,R415,R414,R413,R412,R411,R410,R409,R408,R407,R406,R405,R404,R403,R402,R401,R400,R399,R398,R397,R396,R395,R394,R393,R392,R391,R390,R389,R388,R387,R386,R385,R384,R383,R382,R381,R380,R379,R378,R377,R376,R375,R374,R373,R372,R371,R370,R369,R368,R367,R366,R365,R364,R363,R362,R361,R360,R359,R358,R357,R356,R355,R354,R353,R352,R351,R350,R349,R348,R347,R346,R345,R344,R343,R342,R341,R340,R339,R338,R337,R336,R335,R334,R333,R332,R331,R330,R329,R328,R327,R326,R325,R324,R323,R322,R321,R320,R319,R318,R317,R316,R315,R314,R313,R312,R311,R310,R309,R308,R307,R306,R305,R304,R303,R302,R301,R300,R299,R298,R297,R296,R295,R294,R293,R292,R291,R290,R289,R288,R287,R286,R285,R284,R283,R282,R281,R280,R279,R278,R277,R276,R275,R274,R273,R272,R271,R270,R269,R268,R267,R266,R265,R264,R263,R262,R261,R260,R259,R258,R257,R256,R255,R254,R253,R252,R251,R250,R249,R248,R247,R246,R245,R244,R243,R242,R241,R240,R239,R238,R237,R236,R235,R234,R233,R232,R231,R230,R229,R228,R227,R226,R225,R224,R223,R222,R221,R220,R219,R218,R217,R216,R215,R214,R213,R212,R211,R210,R209,R208,R207,R206,R205,R204,R203,R202,R201,R200,R199,R198,R197,R196,R195,R194,R193,R192,R191,R190,R189,R188,R187,R186,R185,R184,R183,R182,R181,R180,R179,R178,R177,R176,R175,R174,R173,R172,R171,R170,R169,R168,R167,R166,R165,R164,R163,R162,R161,R160,R159,R158,R157,R156,R155,R154,R153,R152,R151,R150,R149,R148,R147,R146,R145,R144,R143,R142,R141,R140,R139,R138,R137,R136,R135,R134,R133,R132,R131,R130,R129,R128,R127,R126,R125,R124,R123,R122,R121,R120,R119,R118,R117,R116,R115,R114,R113,R112,R111,R110,R109,R108,R107,R106,R105,R104,R103,R102,R101,R100,R99,R98,R97,R96,R95,R94,R93,R92,R91,R90,R89,R88,R87,R86,R85,R84,R83,R82,R81,R80,R79,R78,R77,R76,R75,R74,R73,R72,R71,R70,R69,R68,R67,R66,R65,R64,R63,R62,R61,R60,R59,R58,R57,R56,R55,R54,R53,R52,R51,R50,R49,R48,R47,R46,R45,R44,R43,R42,R41,R40,R39,R38,R37,R36,R35,R34,R33,R32,R31,R30,R29,R28,R27,R26,R25,R24,R23,R22,R21,R20,R19,R18,R17,R16,R15,R14,R13,R12,R11,R10,R9,R8,R7,R6,R5,R4,R3,R2,R1,R0,late thrown=none suppressed=[] second=none late=ISE"]
+    ] },
     solution: {
       approach: `<p>A stack of resources plus the exact suppression contract of try-with-resources. Catching <code>Throwable</code> is justified here because we always rethrow it — nothing is swallowed, we just make sure every resource gets its close attempt first.</p>`,
       code: `
@@ -3262,7 +3685,7 @@ final class Closer implements AutoCloseable {
     title: 'Directory Report That Survives Unreadable Folders',
     level: 'Hard', tags: ['walkFileTree', 'FileVisitor', 'error tolerance', 'NIO.2'], companies: ['Dropbox', 'Microsoft', 'Box'],
     statement: `<p>Write <code>static Report scan(Path root) throws IOException</code> returning a record <code>Report(long files, long bytes, Path largest, List&lt;String&gt; failures)</code> for everything under <code>root</code>. Requirements: do <b>not</b> follow symbolic links; skip any directory named <code>.git</code> or <code>node_modules</code> entirely; if a file or folder cannot be read (permission denied, deleted during the scan), record <code>"&lt;path&gt;: &lt;ExceptionSimpleName&gt;"</code> in failures and <b>continue</b>. Only a failure on <code>root</code> itself should throw.</p>`,
-    constraints: `Trees with 10<sup>6</sup>+ entries; constant memory apart from the failures list.`,
+    constraints: `Trees with 10<sup>6</sup>+ entries; constant memory apart from the failures list. A symbolic link is neither followed nor counted as a file; <code>largest</code> is <code>null</code> when no file is found; ties for the largest file are not tested.`,
     example: `<p>root/ has a.txt (10 B), src/B.java (300 B), .git/ (ignored, 5,000 files), secret/ (no permission). → ${H.c('g', 'files=2, bytes=310, largest=root/src/B.java')}, failures = ${H.c('r', '["root/secret: AccessDeniedException"]')}.</p>`,
     brute: {
       why: `<p><code>Files.walk(root)</code> is lovely until the first unreadable folder: it throws <code>UncheckedIOException</code> from inside the stream and the whole scan dies, with no partial result. It also walks into <code>.git</code> and <code>node_modules</code> (often 90% of all files) because a stream filter cannot prune a subtree — it still visits everything below.</p>`,
@@ -3281,6 +3704,47 @@ static long countBrute(java.nio.file.Path root) throws IOException {
       `<p>Hint 2: override <code>preVisitDirectory</code> (return SKIP_SUBTREE for ignored names, but never for root), <code>visitFile</code> (count, add <code>attrs.size()</code>, track largest), and <code>visitFileFailed</code> (record and return CONTINUE).</p>`,
       `<p>Hint 3: <code>postVisitDirectory(dir, exc)</code> receives an exception if listing the directory failed midway — record it too. For root failures, check <code>Files.isDirectory(root)</code> and let <code>visitFileFailed</code> rethrow when <code>file.equals(root)</code>.</p>`
     ],
+    tests: { sig: 'string[] bool -> string', fn: 'treeCheck',
+      harness: { java: `class Check {
+  static String treeCheck(String[] spec, boolean missingRoot) throws Exception {
+    java.nio.file.Path root = java.nio.file.Files.createTempDirectory("tree");
+    java.nio.file.Path outside = java.nio.file.Files.createTempDirectory("outside");
+    java.nio.file.Files.write(outside.resolve("secret.bin"), new byte[999]);
+    for (String e : spec) {
+      String[] p = e.split(":");
+      java.nio.file.Path t = root.resolve(p[1]);
+      if (p[0].equals("d")) java.nio.file.Files.createDirectories(t);
+      else if (p[0].equals("l")) { java.nio.file.Files.createDirectories(t.getParent()); java.nio.file.Files.createSymbolicLink(t, outside); }
+      else { java.nio.file.Files.createDirectories(t.getParent()); java.nio.file.Files.write(t, new byte[Integer.parseInt(p[2])]); }
+    }
+    String r;
+    try {
+      DirReport.Report rep = DirReport.scan(missingRoot ? root.resolve("nope") : root);
+      r = "files=" + rep.files() + " bytes=" + rep.bytes() + " largest=" + (rep.largest() == null ? "-" : root.relativize(rep.largest()).toString()) + " failures=" + rep.failures().size();
+    } catch (java.io.IOException e) { r = "IOE " + e.getClass().getSimpleName(); }
+    for (java.nio.file.Path base : new java.nio.file.Path[]{root, outside}) {
+      try (java.util.stream.Stream<java.nio.file.Path> w = java.nio.file.Files.walk(base)) {
+        for (java.nio.file.Path q : w.sorted(Comparator.reverseOrder()).toList()) java.nio.file.Files.delete(q);
+      }
+    }
+    return r;
+  }
+}` }, cases: [
+      [[["f:a.txt:10","f:src/B.java:300","f:.git/HEAD:50","f:.git/objects/x:5000"],false],"files=2 bytes=310 largest=src/B.java failures=0"],
+      [[[],false],"files=0 bytes=0 largest=- failures=0"],
+      [[[],true],"IOE NoSuchFileException"],
+      [[["d:empty"],false],"files=0 bytes=0 largest=- failures=0"],
+      [[["f:a:1"],false],"files=1 bytes=1 largest=a failures=0"],
+      [[["f:node_modules/x/y.js:100","f:app.js:7"],false],"files=1 bytes=7 largest=app.js failures=0"],
+      [[["f:a/b/c/d/e.txt:12","f:a/b/x.txt:30","f:z.txt:1"],false],"files=3 bytes=43 largest=a/b/x.txt failures=0"],
+      [[["f:src/.git/config:100","f:src/main.c:2"],false],"files=1 bytes=2 largest=src/main.c failures=0"],
+      [[["f:real/one.txt:10","l:link"],false],"files=1 bytes=10 largest=real/one.txt failures=0"],
+      [[["f:z.bin:0","f:y.bin:0"],false],"files=2 bytes=0 largest=z.bin failures=0"],
+      [[["f:big.bin:1000000","f:small.bin:1"],false],"files=2 bytes=1000001 largest=big.bin failures=0"],
+      [[["f:.gitignore:3","f:node_modules_extra/x:4"],false],"files=2 bytes=7 largest=node_modules_extra/x failures=0"],
+      [[["f:d0/f0:1","f:d1/f1:2","f:d2/f2:3","f:d3/f3:4","f:d4/f4:5","f:d5/f5:6","f:d6/f6:7","f:d7/f7:8","f:d8/f8:9","f:d9/f9:10","f:d10/f10:11","f:d11/f11:12","f:d12/f12:13","f:d13/f13:14","f:d14/f14:15","f:d15/f15:16","f:d16/f16:17","f:d17/f17:18","f:d18/f18:19","f:d19/f19:20","f:d0/f20:21","f:d1/f21:22","f:d2/f22:23","f:d3/f23:24","f:d4/f24:25","f:d5/f25:26","f:d6/f26:27","f:d7/f27:28","f:d8/f28:29","f:d9/f29:30","f:d10/f30:31","f:d11/f31:32","f:d12/f32:33","f:d13/f33:34","f:d14/f34:35","f:d15/f35:36","f:d16/f36:37","f:d17/f37:38","f:d18/f38:39","f:d19/f39:40","f:d0/f40:41","f:d1/f41:42","f:d2/f42:43","f:d3/f43:44","f:d4/f44:45","f:d5/f45:46","f:d6/f46:47","f:d7/f47:48","f:d8/f48:49","f:d9/f49:50","f:d10/f50:51","f:d11/f51:52","f:d12/f52:53","f:d13/f53:54","f:d14/f54:55","f:d15/f55:56","f:d16/f56:57","f:d17/f57:58","f:d18/f58:59","f:d19/f59:60","f:d0/f60:61","f:d1/f61:62","f:d2/f62:63","f:d3/f63:64","f:d4/f64:65","f:d5/f65:66","f:d6/f66:67","f:d7/f67:68","f:d8/f68:69","f:d9/f69:70","f:d10/f70:71","f:d11/f71:72","f:d12/f72:73","f:d13/f73:74","f:d14/f74:75","f:d15/f75:76","f:d16/f76:77","f:d17/f77:78","f:d18/f78:79","f:d19/f79:80","f:d0/f80:81","f:d1/f81:82","f:d2/f82:83","f:d3/f83:84","f:d4/f84:85","f:d5/f85:86","f:d6/f86:87","f:d7/f87:88","f:d8/f88:89","f:d9/f89:90","f:d10/f90:91","f:d11/f91:92","f:d12/f92:93","f:d13/f93:94","f:d14/f94:95","f:d15/f95:96","f:d16/f96:97","f:d17/f97:98","f:d18/f98:99","f:d19/f99:100","f:d0/f100:101","f:d1/f101:102","f:d2/f102:103","f:d3/f103:104","f:d4/f104:105","f:d5/f105:106","f:d6/f106:107","f:d7/f107:108","f:d8/f108:109","f:d9/f109:110","f:d10/f110:111","f:d11/f111:112","f:d12/f112:113","f:d13/f113:114","f:d14/f114:115","f:d15/f115:116","f:d16/f116:117","f:d17/f117:118","f:d18/f118:119","f:d19/f119:120","f:d0/f120:121","f:d1/f121:122","f:d2/f122:123","f:d3/f123:124","f:d4/f124:125","f:d5/f125:126","f:d6/f126:127","f:d7/f127:128","f:d8/f128:129","f:d9/f129:130","f:d10/f130:131","f:d11/f131:132","f:d12/f132:133","f:d13/f133:134","f:d14/f134:135","f:d15/f135:136","f:d16/f136:137","f:d17/f137:138","f:d18/f138:139","f:d19/f139:140","f:d0/f140:141","f:d1/f141:142","f:d2/f142:143","f:d3/f143:144","f:d4/f144:145","f:d5/f145:146","f:d6/f146:147","f:d7/f147:148","f:d8/f148:149","f:d9/f149:150","f:d10/f150:151","f:d11/f151:152","f:d12/f152:153","f:d13/f153:154","f:d14/f154:155","f:d15/f155:156","f:d16/f156:157","f:d17/f157:158","f:d18/f158:159","f:d19/f159:160","f:d0/f160:161","f:d1/f161:162","f:d2/f162:163","f:d3/f163:164","f:d4/f164:165","f:d5/f165:166","f:d6/f166:167","f:d7/f167:168","f:d8/f168:169","f:d9/f169:170","f:d10/f170:171","f:d11/f171:172","f:d12/f172:173","f:d13/f173:174","f:d14/f174:175","f:d15/f175:176","f:d16/f176:177","f:d17/f177:178","f:d18/f178:179","f:d19/f179:180","f:d0/f180:181","f:d1/f181:182","f:d2/f182:183","f:d3/f183:184","f:d4/f184:185","f:d5/f185:186","f:d6/f186:187","f:d7/f187:188","f:d8/f188:189","f:d9/f189:190","f:d10/f190:191","f:d11/f191:192","f:d12/f192:193","f:d13/f193:194","f:d14/f194:195","f:d15/f195:196","f:d16/f196:197","f:d17/f197:198","f:d18/f198:199","f:d19/f199:200","f:d0/f200:201","f:d1/f201:202","f:d2/f202:203","f:d3/f203:204","f:d4/f204:205","f:d5/f205:206","f:d6/f206:207","f:d7/f207:208","f:d8/f208:209","f:d9/f209:210","f:d10/f210:211","f:d11/f211:212","f:d12/f212:213","f:d13/f213:214","f:d14/f214:215","f:d15/f215:216","f:d16/f216:217","f:d17/f217:218","f:d18/f218:219","f:d19/f219:220","f:d0/f220:221","f:d1/f221:222","f:d2/f222:223","f:d3/f223:224","f:d4/f224:225","f:d5/f225:226","f:d6/f226:227","f:d7/f227:228","f:d8/f228:229","f:d9/f229:230","f:d10/f230:231","f:d11/f231:232","f:d12/f232:233","f:d13/f233:234","f:d14/f234:235","f:d15/f235:236","f:d16/f236:237","f:d17/f237:238","f:d18/f238:239","f:d19/f239:240","f:d0/f240:241","f:d1/f241:242","f:d2/f242:243","f:d3/f243:244","f:d4/f244:245","f:d5/f245:246","f:d6/f246:247","f:d7/f247:248","f:d8/f248:249","f:d9/f249:250","f:d10/f250:251","f:d11/f251:252","f:d12/f252:253","f:d13/f253:254","f:d14/f254:255","f:d15/f255:256","f:d16/f256:257","f:d17/f257:258","f:d18/f258:259","f:d19/f259:260","f:d0/f260:261","f:d1/f261:262","f:d2/f262:263","f:d3/f263:264","f:d4/f264:265","f:d5/f265:266","f:d6/f266:267","f:d7/f267:268","f:d8/f268:269","f:d9/f269:270","f:d10/f270:271","f:d11/f271:272","f:d12/f272:273","f:d13/f273:274","f:d14/f274:275","f:d15/f275:276","f:d16/f276:277","f:d17/f277:278","f:d18/f278:279","f:d19/f279:280","f:d0/f280:281","f:d1/f281:282","f:d2/f282:283","f:d3/f283:284","f:d4/f284:285","f:d5/f285:286","f:d6/f286:287","f:d7/f287:288","f:d8/f288:289","f:d9/f289:290","f:d10/f290:291","f:d11/f291:292","f:d12/f292:293","f:d13/f293:294","f:d14/f294:295","f:d15/f295:296","f:d16/f296:297","f:d17/f297:298","f:d18/f298:299","f:d19/f299:300","f:d0/f300:301","f:d1/f301:302","f:d2/f302:303","f:d3/f303:304","f:d4/f304:305","f:d5/f305:306","f:d6/f306:307","f:d7/f307:308","f:d8/f308:309","f:d9/f309:310","f:d10/f310:311","f:d11/f311:312","f:d12/f312:313","f:d13/f313:314","f:d14/f314:315","f:d15/f315:316","f:d16/f316:317","f:d17/f317:318","f:d18/f318:319","f:d19/f319:320","f:d0/f320:321","f:d1/f321:322","f:d2/f322:323","f:d3/f323:324","f:d4/f324:325","f:d5/f325:326","f:d6/f326:327","f:d7/f327:328","f:d8/f328:329","f:d9/f329:330","f:d10/f330:331","f:d11/f331:332","f:d12/f332:333","f:d13/f333:334","f:d14/f334:335","f:d15/f335:336","f:d16/f336:337","f:d17/f337:338","f:d18/f338:339","f:d19/f339:340","f:d0/f340:341","f:d1/f341:342","f:d2/f342:343","f:d3/f343:344","f:d4/f344:345","f:d5/f345:346","f:d6/f346:347","f:d7/f347:348","f:d8/f348:349","f:d9/f349:350","f:d10/f350:351","f:d11/f351:352","f:d12/f352:353","f:d13/f353:354","f:d14/f354:355","f:d15/f355:356","f:d16/f356:357","f:d17/f357:358","f:d18/f358:359","f:d19/f359:360","f:d0/f360:361","f:d1/f361:362","f:d2/f362:363","f:d3/f363:364","f:d4/f364:365","f:d5/f365:366","f:d6/f366:367","f:d7/f367:368","f:d8/f368:369","f:d9/f369:370","f:d10/f370:371","f:d11/f371:372","f:d12/f372:373","f:d13/f373:374","f:d14/f374:375","f:d15/f375:376","f:d16/f376:377","f:d17/f377:378","f:d18/f378:379","f:d19/f379:380","f:d0/f380:381","f:d1/f381:382","f:d2/f382:383","f:d3/f383:384","f:d4/f384:385","f:d5/f385:386","f:d6/f386:387","f:d7/f387:388","f:d8/f388:389","f:d9/f389:390","f:d10/f390:391","f:d11/f391:392","f:d12/f392:393","f:d13/f393:394","f:d14/f394:395","f:d15/f395:396","f:d16/f396:397","f:d17/f397:398","f:d18/f398:399","f:d19/f399:400","f:d0/f400:401","f:d1/f401:402","f:d2/f402:403","f:d3/f403:404","f:d4/f404:405","f:d5/f405:406","f:d6/f406:407","f:d7/f407:408","f:d8/f408:409","f:d9/f409:410","f:d10/f410:411","f:d11/f411:412","f:d12/f412:413","f:d13/f413:414","f:d14/f414:415","f:d15/f415:416","f:d16/f416:417","f:d17/f417:418","f:d18/f418:419","f:d19/f419:420","f:d0/f420:421","f:d1/f421:422","f:d2/f422:423","f:d3/f423:424","f:d4/f424:425","f:d5/f425:426","f:d6/f426:427","f:d7/f427:428","f:d8/f428:429","f:d9/f429:430","f:d10/f430:431","f:d11/f431:432","f:d12/f432:433","f:d13/f433:434","f:d14/f434:435","f:d15/f435:436","f:d16/f436:437","f:d17/f437:438","f:d18/f438:439","f:d19/f439:440","f:d0/f440:441","f:d1/f441:442","f:d2/f442:443","f:d3/f443:444","f:d4/f444:445","f:d5/f445:446","f:d6/f446:447","f:d7/f447:448","f:d8/f448:449","f:d9/f449:450","f:d10/f450:451","f:d11/f451:452","f:d12/f452:453","f:d13/f453:454","f:d14/f454:455","f:d15/f455:456","f:d16/f456:457","f:d17/f457:458","f:d18/f458:459","f:d19/f459:460","f:d0/f460:461","f:d1/f461:462","f:d2/f462:463","f:d3/f463:464","f:d4/f464:465","f:d5/f465:466","f:d6/f466:467","f:d7/f467:468","f:d8/f468:469","f:d9/f469:470","f:d10/f470:471","f:d11/f471:472","f:d12/f472:473","f:d13/f473:474","f:d14/f474:475","f:d15/f475:476","f:d16/f476:477","f:d17/f477:478","f:d18/f478:479","f:d19/f479:480","f:d0/f480:481","f:d1/f481:482","f:d2/f482:483","f:d3/f483:484","f:d4/f484:485","f:d5/f485:486","f:d6/f486:487","f:d7/f487:488","f:d8/f488:489","f:d9/f489:490","f:d10/f490:491","f:d11/f491:492","f:d12/f492:493","f:d13/f493:494","f:d14/f494:495","f:d15/f495:496","f:d16/f496:497","f:d17/f497:498","f:d18/f498:499","f:d19/f499:500"],false],"files=500 bytes=125250 largest=d19/f499 failures=0"],
+      [[["f:.git/o0:9","f:.git/o1:9","f:.git/o2:9","f:.git/o3:9","f:.git/o4:9","f:.git/o5:9","f:.git/o6:9","f:.git/o7:9","f:.git/o8:9","f:.git/o9:9","f:.git/o10:9","f:.git/o11:9","f:.git/o12:9","f:.git/o13:9","f:.git/o14:9","f:.git/o15:9","f:.git/o16:9","f:.git/o17:9","f:.git/o18:9","f:.git/o19:9","f:.git/o20:9","f:.git/o21:9","f:.git/o22:9","f:.git/o23:9","f:.git/o24:9","f:.git/o25:9","f:.git/o26:9","f:.git/o27:9","f:.git/o28:9","f:.git/o29:9","f:.git/o30:9","f:.git/o31:9","f:.git/o32:9","f:.git/o33:9","f:.git/o34:9","f:.git/o35:9","f:.git/o36:9","f:.git/o37:9","f:.git/o38:9","f:.git/o39:9","f:.git/o40:9","f:.git/o41:9","f:.git/o42:9","f:.git/o43:9","f:.git/o44:9","f:.git/o45:9","f:.git/o46:9","f:.git/o47:9","f:.git/o48:9","f:.git/o49:9","f:.git/o50:9","f:.git/o51:9","f:.git/o52:9","f:.git/o53:9","f:.git/o54:9","f:.git/o55:9","f:.git/o56:9","f:.git/o57:9","f:.git/o58:9","f:.git/o59:9","f:.git/o60:9","f:.git/o61:9","f:.git/o62:9","f:.git/o63:9","f:.git/o64:9","f:.git/o65:9","f:.git/o66:9","f:.git/o67:9","f:.git/o68:9","f:.git/o69:9","f:.git/o70:9","f:.git/o71:9","f:.git/o72:9","f:.git/o73:9","f:.git/o74:9","f:.git/o75:9","f:.git/o76:9","f:.git/o77:9","f:.git/o78:9","f:.git/o79:9","f:.git/o80:9","f:.git/o81:9","f:.git/o82:9","f:.git/o83:9","f:.git/o84:9","f:.git/o85:9","f:.git/o86:9","f:.git/o87:9","f:.git/o88:9","f:.git/o89:9","f:.git/o90:9","f:.git/o91:9","f:.git/o92:9","f:.git/o93:9","f:.git/o94:9","f:.git/o95:9","f:.git/o96:9","f:.git/o97:9","f:.git/o98:9","f:.git/o99:9","f:.git/o100:9","f:.git/o101:9","f:.git/o102:9","f:.git/o103:9","f:.git/o104:9","f:.git/o105:9","f:.git/o106:9","f:.git/o107:9","f:.git/o108:9","f:.git/o109:9","f:.git/o110:9","f:.git/o111:9","f:.git/o112:9","f:.git/o113:9","f:.git/o114:9","f:.git/o115:9","f:.git/o116:9","f:.git/o117:9","f:.git/o118:9","f:.git/o119:9","f:.git/o120:9","f:.git/o121:9","f:.git/o122:9","f:.git/o123:9","f:.git/o124:9","f:.git/o125:9","f:.git/o126:9","f:.git/o127:9","f:.git/o128:9","f:.git/o129:9","f:.git/o130:9","f:.git/o131:9","f:.git/o132:9","f:.git/o133:9","f:.git/o134:9","f:.git/o135:9","f:.git/o136:9","f:.git/o137:9","f:.git/o138:9","f:.git/o139:9","f:.git/o140:9","f:.git/o141:9","f:.git/o142:9","f:.git/o143:9","f:.git/o144:9","f:.git/o145:9","f:.git/o146:9","f:.git/o147:9","f:.git/o148:9","f:.git/o149:9","f:.git/o150:9","f:.git/o151:9","f:.git/o152:9","f:.git/o153:9","f:.git/o154:9","f:.git/o155:9","f:.git/o156:9","f:.git/o157:9","f:.git/o158:9","f:.git/o159:9","f:.git/o160:9","f:.git/o161:9","f:.git/o162:9","f:.git/o163:9","f:.git/o164:9","f:.git/o165:9","f:.git/o166:9","f:.git/o167:9","f:.git/o168:9","f:.git/o169:9","f:.git/o170:9","f:.git/o171:9","f:.git/o172:9","f:.git/o173:9","f:.git/o174:9","f:.git/o175:9","f:.git/o176:9","f:.git/o177:9","f:.git/o178:9","f:.git/o179:9","f:.git/o180:9","f:.git/o181:9","f:.git/o182:9","f:.git/o183:9","f:.git/o184:9","f:.git/o185:9","f:.git/o186:9","f:.git/o187:9","f:.git/o188:9","f:.git/o189:9","f:.git/o190:9","f:.git/o191:9","f:.git/o192:9","f:.git/o193:9","f:.git/o194:9","f:.git/o195:9","f:.git/o196:9","f:.git/o197:9","f:.git/o198:9","f:.git/o199:9","f:keep:5"],false],"files=1 bytes=5 largest=keep failures=0"]
+    ] },
     solution: {
       approach: `<p>The visitor API gives a callback per event and lets each failure be handled locally: record and continue. Pruning happens in <code>preVisitDirectory</code>, so ignored trees are never opened. File sizes come free from the <code>BasicFileAttributes</code> the walker already read.</p>`,
       code: `
@@ -3375,6 +3839,38 @@ class NaiveRange implements Serializable {
       `<p>Hint 2: the fix: <code>private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException { in.defaultReadObject(); if (lo &gt; hi) throw new InvalidObjectException("lo &gt; hi"); }</code>. Final fields are fine: defaultReadObject sets them.</p>`,
       `<p>Hint 3: for the record version, validate in the compact constructor: <code>record RangeR(int lo, int hi) implements Serializable { RangeR { if (lo &gt; hi) throw new IllegalArgumentException(); } }</code>. Tampered data then fails inside readObject with the constructor's exception wrapped in InvalidObjectException.</p>`
     ],
+    tests: { sig: 'int int bool -> string', fn: 'rangeCheck',
+      harness: { java: `class Check {
+  static String rangeCheck(int lo, int hi, boolean tamper) throws Exception {
+    String s, r;
+    try {
+      byte[] d = ForgeDemo.serialize(new SafeRange(lo, hi));
+      if (tamper) d = ForgeDemo.swapLastTwoInts(d);
+      s = ForgeDemo.deserialize(d).toString();
+    } catch (IllegalArgumentException e) { s = "IAE"; } catch (java.io.InvalidObjectException e) { s = "rejected"; }
+    try {
+      byte[] d = ForgeDemo.serialize(new RangeRecord(lo, hi));
+      if (tamper) d = ForgeDemo.swapLastTwoInts(d);
+      RangeRecord rr = (RangeRecord) ForgeDemo.deserialize(d);
+      r = rr.lo() + "," + rr.hi();
+    } catch (IllegalArgumentException e) { r = "IAE"; } catch (java.io.InvalidObjectException e) { r = "rejected"; }
+    return "safe=" + s + " record=" + r;
+  }
+}` }, cases: [
+      [[1,9,false],"safe=Range[lo=1, hi=9] record=1,9"],
+      [[1,9,true],"safe=rejected record=rejected"],
+      [[3,3,true],"safe=Range[lo=3, hi=3] record=3,3"],
+      [[9,1,false],"safe=IAE record=IAE"],
+      [[9,1,true],"safe=IAE record=IAE"],
+      [[0,0,false],"safe=Range[lo=0, hi=0] record=0,0"],
+      [[-5,5,true],"safe=rejected record=rejected"],
+      [[-5,5,false],"safe=Range[lo=-5, hi=5] record=-5,5"],
+      [[-2147483648,2147483647,true],"safe=rejected record=rejected"],
+      [[-2147483648,2147483647,false],"safe=Range[lo=-2147483648, hi=2147483647] record=-2147483648,2147483647"],
+      [[2147483647,2147483647,true],"safe=Range[lo=2147483647, hi=2147483647] record=2147483647,2147483647"],
+      [[-3,-2,true],"safe=rejected record=rejected"],
+      [[2147483647,-2147483648,false],"safe=IAE record=IAE"]
+    ] },
     solution: {
       approach: `<p>Treat <code>readObject</code> like a public constructor: read the default fields, then re-check every invariant (and defensively copy any mutable fields). Prefer records for serializable value types: their deserialization goes through the canonical constructor, so validation cannot be bypassed.</p>`,
       code: `

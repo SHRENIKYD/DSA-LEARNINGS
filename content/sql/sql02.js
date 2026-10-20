@@ -778,6 +778,14 @@ FROM employees;` } },
         `<p>Hint 2: integer ÷ integer truncates. Divide by <code>12.0</code> (or <code>CAST(salary AS REAL)</code>) to keep the fraction.</p>`,
         `<p>Hint 3: wrap the division in <code>ROUND(x, 2)</code>. Recipe: <code>SELECT name, salary AS yearly_salary, ROUND(salary / 12.0, 2) AS monthly_pay FROM employees;</code></p>`
       ],
+      tests: { engine: 'sqlite', cmp: 'set', cases: [
+        { cols: ['name', 'yearly_salary', 'monthly_pay'], rows: [['Priya Sharma', 250000, 20833.33], ['Arjun Mehta', 160000, 13333.33], ['Lena Fischer', 120000, 10000], ['Marco Rossi', 120000, 10000], ['Sara Johnson', 250000, 20833.33], ['Tom Becker', 90000, 7500], ['Aisha Bello', 95000, 7916.67], ['Kenji Tanaka', 130000, 10833.33], ['Olivia Brown', 85000, 7083.33], ['Rahul Verma', 30000, 2500], ['Zoe Martin', 110000, 9166.67], ['Nina Kowalski', 135000, 11250]] },
+        { setup: 'UPDATE employees SET salary = 1 WHERE id = 1; UPDATE employees SET salary = 5 WHERE id = 2; UPDATE employees SET salary = 7 WHERE id = 3;', cols: ['name', 'yearly_salary', 'monthly_pay'], rows: [['Priya Sharma', 1, 0.08], ['Arjun Mehta', 5, 0.42], ['Lena Fischer', 7, 0.58], ['Marco Rossi', 120000, 10000], ['Sara Johnson', 250000, 20833.33], ['Tom Becker', 90000, 7500], ['Aisha Bello', 95000, 7916.67], ['Kenji Tanaka', 130000, 10833.33], ['Olivia Brown', 85000, 7083.33], ['Rahul Verma', 30000, 2500], ['Zoe Martin', 110000, 9166.67], ['Nina Kowalski', 135000, 11250]] },
+        { setup: 'UPDATE employees SET salary = 0 WHERE id = 4;', cols: ['name', 'yearly_salary', 'monthly_pay'], rows: [['Priya Sharma', 250000, 20833.33], ['Arjun Mehta', 160000, 13333.33], ['Lena Fischer', 120000, 10000], ['Marco Rossi', 0, 0], ['Sara Johnson', 250000, 20833.33], ['Tom Becker', 90000, 7500], ['Aisha Bello', 95000, 7916.67], ['Kenji Tanaka', 130000, 10833.33], ['Olivia Brown', 85000, 7083.33], ['Rahul Verma', 30000, 2500], ['Zoe Martin', 110000, 9166.67], ['Nina Kowalski', 135000, 11250]] },
+        { setup: 'DELETE FROM employees;', rows: [] },
+        { setup: 'INSERT INTO employees (id, name, salary) VALUES (13, \'Big Earner\', 2000000000);', cols: ['name', 'yearly_salary', 'monthly_pay'], rows: [['Priya Sharma', 250000, 20833.33], ['Arjun Mehta', 160000, 13333.33], ['Lena Fischer', 120000, 10000], ['Marco Rossi', 120000, 10000], ['Sara Johnson', 250000, 20833.33], ['Tom Becker', 90000, 7500], ['Aisha Bello', 95000, 7916.67], ['Kenji Tanaka', 130000, 10833.33], ['Olivia Brown', 85000, 7083.33], ['Rahul Verma', 30000, 2500], ['Zoe Martin', 110000, 9166.67], ['Nina Kowalski', 135000, 11250], ['Big Earner', 2000000000, 166666666.67]] },
+        { setup: 'INSERT INTO employees (id, name, salary) VALUES (13, \'Priya Sharma\', 250000), (14, \'Odd Pay\', 99999);', cols: ['name', 'yearly_salary', 'monthly_pay'], rows: [['Priya Sharma', 250000, 20833.33], ['Arjun Mehta', 160000, 13333.33], ['Lena Fischer', 120000, 10000], ['Marco Rossi', 120000, 10000], ['Sara Johnson', 250000, 20833.33], ['Tom Becker', 90000, 7500], ['Aisha Bello', 95000, 7916.67], ['Kenji Tanaka', 130000, 10833.33], ['Olivia Brown', 85000, 7083.33], ['Rahul Verma', 30000, 2500], ['Zoe Martin', 110000, 9166.67], ['Nina Kowalski', 135000, 11250], ['Priya Sharma', 250000, 20833.33], ['Odd Pay', 99999, 8333.25]] }
+      ] },
       solution: {
         approach: `<p>Pure projection: no filtering needed. Rename <code>salary</code> with an alias, compute the monthly figure using a REAL divisor so no precision is lost, and round to cents. No ORDER BY because order was not requested (add <code>ORDER BY name</code> if the output must be deterministic for tests).</p>`,
         code: { lang: 'sql', db: 'hr', code: `SELECT name,
@@ -945,6 +953,14 @@ ORDER BY salary DESC;` } },
         `<p>Hint 2: group the department test in parentheses, or use <code>dept IN ('Sales', 'Marketing')</code> which is a single test.</p>`,
         `<p>Hint 3: "more than" means <code>&gt;</code> not <code>&gt;=</code>; finish with <code>ORDER BY salary DESC</code>.</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['name', 'dept', 'salary'], rows: [['Sara Johnson', 'Sales', 250000], ['Kenji Tanaka', 'Marketing', 130000], ['Aisha Bello', 'Sales', 95000]] },
+        { setup: 'UPDATE employees SET salary = 90001 WHERE id = 6;', cols: ['name', 'dept', 'salary'], rows: [['Sara Johnson', 'Sales', 250000], ['Kenji Tanaka', 'Marketing', 130000], ['Aisha Bello', 'Sales', 95000], ['Tom Becker', 'Sales', 90001]] },
+        { setup: 'UPDATE employees SET dept = NULL WHERE id IN (5, 8);', cols: ['name', 'dept', 'salary'], rows: [['Aisha Bello', 'Sales', 95000]] },
+        { setup: 'INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (13, \'Edge Exact\', \'Sales\', \'AE\', 90000, NULL, NULL);INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (14, \'Edge Over\', \'Marketing\', \'AE\', 90001, NULL, NULL);INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (15, \'No Pay\', \'Sales\', \'AE\', NULL, NULL, NULL);INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (16, \'Eng Rich\', \'Engineering\', \'AE\', 999999, NULL, NULL);', cols: ['name', 'dept', 'salary'], rows: [['Sara Johnson', 'Sales', 250000], ['Kenji Tanaka', 'Marketing', 130000], ['Aisha Bello', 'Sales', 95000], ['Edge Over', 'Marketing', 90001]] },
+        { setup: 'UPDATE employees SET salary = 1;', rows: [] },
+        { setup: 'UPDATE employees SET salary = salary + 1 WHERE dept IN (\'Engineering\', \'HR\') OR dept IS NULL; UPDATE employees SET salary = 300000 WHERE id = 9;', cols: ['name', 'dept', 'salary'], rows: [['Olivia Brown', 'Marketing', 300000], ['Sara Johnson', 'Sales', 250000], ['Kenji Tanaka', 'Marketing', 130000], ['Aisha Bello', 'Sales', 95000]] }
+      ] },
       solution: {
         approach: `<p>Make the OR explicit with parentheses so the salary condition applies to both departments. <code>IN</code> is an equivalent, tidier spelling. NULL departments are naturally excluded because <code>NULL = 'Sales'</code> is UNKNOWN.</p>`,
         code: { lang: 'sql', db: 'hr', code: `SELECT name, dept, salary
@@ -1091,6 +1107,14 @@ WHERE email LIKE '%gmail%' AND country = 'India' OR country = 'UAE';` } },
         `<p>Hint 2: use <code>IN ('India', 'UAE')</code> for the countries — it is one test, so no precedence trouble.</p>`,
         `<p>Hint 3: NULL emails fail LIKE automatically (UNKNOWN). In PostgreSQL wrap with <code>LOWER(email)</code> because LIKE is case-sensitive there.</p>`
       ],
+      tests: { engine: 'sqlite', cmp: 'set', cases: [
+        { cols: ['name', 'email', 'country'], rows: [['Asha Rao', 'asha@gmail.com', 'India'], ['Diya Patel', 'diya@gmail.com', 'India'], ['Fatima Khan', 'fatima_k@gmail.com', 'UAE'], ['Jia Li', 'jia_li@GMAIL.com', 'India']] },
+        { setup: 'UPDATE customers SET email = \'k@gmail.com\' WHERE id = 11;', cols: ['name', 'email', 'country'], rows: [['Asha Rao', 'asha@gmail.com', 'India'], ['Diya Patel', 'diya@gmail.com', 'India'], ['Fatima Khan', 'fatima_k@gmail.com', 'UAE'], ['Jia Li', 'jia_li@GMAIL.com', 'India'], ['Kabir Singh', 'k@gmail.com', 'India']] },
+        { setup: 'UPDATE customers SET country = NULL WHERE id = 1;', cols: ['name', 'email', 'country'], rows: [['Diya Patel', 'diya@gmail.com', 'India'], ['Fatima Khan', 'fatima_k@gmail.com', 'UAE'], ['Jia Li', 'jia_li@GMAIL.com', 'India']] },
+        { setup: 'UPDATE customers SET email = \'x@gmail.com.evil.com\' WHERE id = 1; UPDATE customers SET email = \'a@mygmail.com\' WHERE id = 4;', cols: ['name', 'email', 'country'], rows: [['Fatima Khan', 'fatima_k@gmail.com', 'UAE'], ['Jia Li', 'jia_li@GMAIL.com', 'India']] },
+        { setup: 'UPDATE customers SET email = NULL;', rows: [] },
+        { setup: 'UPDATE customers SET email = \'e@gmail.com\' WHERE id = 5; UPDATE customers SET email = \'u@Gmail.Com\' WHERE id = 6;', cols: ['name', 'email', 'country'], rows: [['Asha Rao', 'asha@gmail.com', 'India'], ['Diya Patel', 'diya@gmail.com', 'India'], ['Fatima Khan', 'u@Gmail.Com', 'UAE'], ['Jia Li', 'jia_li@GMAIL.com', 'India']] }
+      ] },
       solution: {
         approach: `<p>Anchor the pattern to the end of the string with the @ included, and express the country choice with IN. Both conditions are joined by AND, so no parentheses are needed.</p>`,
         code: { lang: 'sql', db: 'shop', code: `SELECT name, email, country
@@ -1266,6 +1290,14 @@ ORDER BY name;` } },
         `<p>Hint 2: add the missing case explicitly with <code>OR dept IS NULL</code>.</p>`,
         `<p>Hint 3: or use a null-safe comparison: <code>dept IS NOT 'Engineering'</code> (SQLite) / <code>dept IS DISTINCT FROM 'Engineering'</code> (standard).</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['name', 'dept'], rows: [['Aisha Bello', 'Sales'], ['Kenji Tanaka', 'Marketing'], ['Olivia Brown', 'Marketing'], ['Rahul Verma', null], ['Sara Johnson', 'Sales'], ['Tom Becker', 'Sales'], ['Zoe Martin', 'HR']] },
+        { setup: 'UPDATE employees SET dept = NULL;', cols: ['name', 'dept'], rows: [['Aisha Bello', null], ['Arjun Mehta', null], ['Kenji Tanaka', null], ['Lena Fischer', null], ['Marco Rossi', null], ['Nina Kowalski', null], ['Olivia Brown', null], ['Priya Sharma', null], ['Rahul Verma', null], ['Sara Johnson', null], ['Tom Becker', null], ['Zoe Martin', null]] },
+        { setup: 'UPDATE employees SET dept = \'Engineering\';', rows: [] },
+        { setup: 'UPDATE employees SET dept = NULL WHERE id IN (1, 2);', cols: ['name', 'dept'], rows: [['Aisha Bello', 'Sales'], ['Arjun Mehta', null], ['Kenji Tanaka', 'Marketing'], ['Olivia Brown', 'Marketing'], ['Priya Sharma', null], ['Rahul Verma', null], ['Sara Johnson', 'Sales'], ['Tom Becker', 'Sales'], ['Zoe Martin', 'HR']] },
+        { setup: 'UPDATE employees SET dept = \'\' WHERE id = 3;', cols: ['name', 'dept'], rows: [['Aisha Bello', 'Sales'], ['Kenji Tanaka', 'Marketing'], ['Lena Fischer', ''], ['Olivia Brown', 'Marketing'], ['Rahul Verma', null], ['Sara Johnson', 'Sales'], ['Tom Becker', 'Sales'], ['Zoe Martin', 'HR']] },
+        { setup: 'INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (13, \'Aaron\', \'Sales\', \'AE\', 1, NULL, NULL);INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (14, \'Aaron\', NULL, \'AE\', 1, NULL, NULL);', cols: ['name', 'dept'], rows: [['Aaron', 'Sales'], ['Aaron', null], ['Aisha Bello', 'Sales'], ['Kenji Tanaka', 'Marketing'], ['Olivia Brown', 'Marketing'], ['Rahul Verma', null], ['Sara Johnson', 'Sales'], ['Tom Becker', 'Sales'], ['Zoe Martin', 'HR']] }
+      ] },
       solution: {
         approach: `<p>Spell out the NULL case. <code>dept &lt;&gt; 'Engineering' OR dept IS NULL</code> turns Rahul's UNKNOWN into TRUE (UNKNOWN OR TRUE = TRUE). The null-safe operator does the same in one test.</p>`,
         code: { lang: 'sql', db: 'hr', code: `SELECT name, dept
@@ -1383,6 +1415,15 @@ ORDER BY rating;      -- NULLs first, ties unordered` } },
         `<p>Hint 2: control NULLs explicitly with <code>NULLS LAST</code> (SQLite 3.30+, PostgreSQL) or the portable <code>rating IS NULL</code> first key.</p>`,
         `<p>Hint 3: recipe: <code>ORDER BY rating ASC NULLS LAST, votes DESC, title</code>. Title is the final tie-breaker (titles are unique here).</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['title', 'rating', 'votes'], rows: [['The Room', 3.6, 95000], ['Groundhog Day', 8, 680000], ['Lagaan', 8.1, 120000], ['Jurassic Park', 8.2, 1100000], ['Toy Story', 8.3, 1050000], ['Amelie', 8.3, 780000], ['Dangal', 8.3, 200000], ['Parasite', 8.5, 950000], ['Se7en', 8.6, 1800000], ['Spirited Away', 8.6, 850000], ['The Matrix', 8.7, 2000000], ['Inception', 8.8, 2500000], ['Dune: Part Three', null, null], ['Untitled Indie Film', null, null]] },
+        { setup: 'UPDATE movies SET rating = 8.3 WHERE id IN (1, 2, 3, 4);', cols: ['title', 'rating', 'votes'], rows: [['The Room', 3.6, 95000], ['Groundhog Day', 8, 680000], ['Lagaan', 8.1, 120000], ['Jurassic Park', 8.2, 1100000], ['Inception', 8.3, 2500000], ['The Matrix', 8.3, 2000000], ['Toy Story', 8.3, 1050000], ['Parasite', 8.3, 950000], ['Spirited Away', 8.3, 850000], ['Amelie', 8.3, 780000], ['Dangal', 8.3, 200000], ['Se7en', 8.6, 1800000], ['Dune: Part Three', null, null], ['Untitled Indie Film', null, null]] },
+        { setup: 'UPDATE movies SET rating = 7, votes = 1000;', cols: ['title', 'rating', 'votes'], rows: [['Amelie', 7, 1000], ['Dangal', 7, 1000], ['Dune: Part Three', 7, 1000], ['Groundhog Day', 7, 1000], ['Inception', 7, 1000], ['Jurassic Park', 7, 1000], ['Lagaan', 7, 1000], ['Parasite', 7, 1000], ['Se7en', 7, 1000], ['Spirited Away', 7, 1000], ['The Matrix', 7, 1000], ['The Room', 7, 1000], ['Toy Story', 7, 1000], ['Untitled Indie Film', 7, 1000]] },
+        { setup: 'UPDATE movies SET rating = NULL, votes = NULL;', cols: ['title', 'rating', 'votes'], rows: [['Amelie', null, null], ['Dangal', null, null], ['Dune: Part Three', null, null], ['Groundhog Day', null, null], ['Inception', null, null], ['Jurassic Park', null, null], ['Lagaan', null, null], ['Parasite', null, null], ['Se7en', null, null], ['Spirited Away', null, null], ['The Matrix', null, null], ['The Room', null, null], ['Toy Story', null, null], ['Untitled Indie Film', null, null]] },
+        { setup: 'DELETE FROM movies WHERE id <> 5;', cols: ['title', 'rating', 'votes'], rows: [['Dangal', 8.3, 200000]] },
+        { setup: 'DELETE FROM movies;', rows: [] },
+        { setup: 'INSERT INTO movies (id, title, rating, votes) VALUES (15, \'Zero Star\', 0, 5), (16, \'Aardvark\', NULL, NULL);', cols: ['title', 'rating', 'votes'], rows: [['Zero Star', 0, 5], ['The Room', 3.6, 95000], ['Groundhog Day', 8, 680000], ['Lagaan', 8.1, 120000], ['Jurassic Park', 8.2, 1100000], ['Toy Story', 8.3, 1050000], ['Amelie', 8.3, 780000], ['Dangal', 8.3, 200000], ['Parasite', 8.5, 950000], ['Se7en', 8.6, 1800000], ['Spirited Away', 8.6, 850000], ['The Matrix', 8.7, 2000000], ['Inception', 8.8, 2500000], ['Aardvark', null, null], ['Dune: Part Three', null, null], ['Untitled Indie Film', null, null]] }
+      ] },
       solution: {
         approach: `<p>Three keys: rating ascending with NULLs forced last, votes descending to break rating ties, and title as a final deterministic key (it also orders the unrated films, whose rating and votes are both NULL).</p>`,
         code: { lang: 'sql', db: 'movies', code: `SELECT title, rating, votes
@@ -1522,6 +1563,16 @@ LIMIT 1 OFFSET 1;     -- 250000: duplicates occupy positions` } },
         `<p>Hint 2: logical order is DISTINCT → ORDER BY → LIMIT/OFFSET, so <code>SELECT DISTINCT salary … ORDER BY salary DESC LIMIT 1 OFFSET 1</code> works.</p>`,
         `<p>Hint 3: to get NULL instead of no row, wrap it as a scalar subquery: <code>SELECT ( … ) AS second_highest_salary;</code> — a scalar subquery with no row evaluates to NULL.</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['second_highest_salary'], rows: [[160000]] },
+        { setup: 'UPDATE employees SET salary = 100;', cols: ['second_highest_salary'], rows: [[null]] },
+        { setup: 'DELETE FROM employees WHERE id <> 1;', cols: ['second_highest_salary'], rows: [[null]] },
+        { setup: 'DELETE FROM employees;', cols: ['second_highest_salary'], rows: [[null]] },
+        { setup: 'UPDATE employees SET salary = NULL WHERE id NOT IN (1, 2, 3);', cols: ['second_highest_salary'], rows: [[160000]] },
+        { setup: 'UPDATE employees SET salary = NULL WHERE id <> 1;', cols: ['second_highest_salary'], rows: [[null]] },
+        { setup: 'UPDATE employees SET salary = -salary;', cols: ['second_highest_salary'], rows: [[-85000]] },
+        { setup: 'UPDATE employees SET salary = NULL WHERE id IN (1, 5);', cols: ['second_highest_salary'], rows: [[135000]] }
+      ] },
       solution: {
         approach: `<p>De-duplicate salaries with DISTINCT, sort descending, skip the first value and take one. Wrapping the whole thing in a scalar subquery guarantees exactly one output row: the value, or NULL when there is no second salary.</p>`,
         code: { lang: 'sql', db: 'hr', code: `SELECT (
@@ -1651,6 +1702,14 @@ ORDER BY customer_id;     -- duplicates: 1,1,1,2,2,...` } },
         `<p>Hint 2: filter August with a date range on the ISO text column, then put DISTINCT right after SELECT.</p>`,
         `<p>Hint 3: prefer the half-open range <code>order_date &gt;= '2024-08-01' AND order_date &lt; '2024-09-01'</code>; sort with ORDER BY customer_id.</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['customer_id'], rows: [[1], [2], [3], [4], [5], [6], [8], [10]] },
+        { setup: 'INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (115, 11, \'2024-08-31\', \'delivered\', 100);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (116, 7, \'2024-09-01\', \'delivered\', 100);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (117, 12, \'2024-07-31\', \'delivered\', 100);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (118, 7, \'2024-08-01\', \'delivered\', 100);', cols: ['customer_id'], rows: [[1], [2], [3], [4], [5], [6], [7], [8], [10], [11]] },
+        { setup: 'INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (115, 7, \'2023-08-15\', \'delivered\', 100);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (116, 11, \'2025-08-02\', \'delivered\', 100);', cols: ['customer_id'], rows: [[1], [2], [3], [4], [5], [6], [8], [10]] },
+        { setup: 'DELETE FROM orders;', rows: [] },
+        { setup: 'UPDATE orders SET order_date = \'2024-09-15\';', rows: [] },
+        { setup: 'UPDATE orders SET order_date = \'2024-08-10\' WHERE id IN (112, 113, 114);', cols: ['customer_id'], rows: [[1], [2], [3], [4], [5], [6], [8], [9], [10], [12]] }
+      ] },
       solution: {
         approach: `<p>Filter rows to August (WHERE), project customer_id (SELECT), collapse duplicates (DISTINCT), then sort. The half-open range is correct whether the column holds dates or full timestamps.</p>`,
         code: { lang: 'sql', db: 'shop', code: `SELECT DISTINCT customer_id
@@ -1802,6 +1861,38 @@ ORDER BY total_comp DESC;          -- and Arjun (NULL bonus) is lost` } },
         `<p>Hint 2: since WHERE cannot see aliases, repeat the expression in WHERE (or compute it in a subquery and filter outside).</p>`,
         `<p>Hint 3: ORDER BY <i>can</i> use the alias. Recipe: SELECT name, salary + COALESCE(bonus,0) AS total_comp … WHERE salary + COALESCE(bonus,0) &gt; 150000 ORDER BY total_comp DESC.</p>`
       ],
+      tests: { engine: 'both', pg: `CREATE TABLE employees (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  dept TEXT,
+  title TEXT,
+  salary INTEGER,
+  bonus INTEGER,
+  manager_id INTEGER,
+  hire_date TEXT,
+  email TEXT
+);
+INSERT INTO employees VALUES
+  (1, 'Priya Sharma', 'Engineering', 'VP Engineering', 250000, 50000, NULL, '2015-03-01', 'priya@corp.com'),
+  (2, 'Arjun Mehta', 'Engineering', 'Senior Engineer', 160000, NULL, 1, '2018-07-15', 'arjun@corp.com'),
+  (3, 'Lena Fischer', 'Engineering', 'Engineer', 120000, 8000, 2, '2021-01-10', 'lena@corp.com'),
+  (4, 'Marco Rossi', 'Engineering', 'Engineer', 120000, NULL, 2, '2022-05-23', NULL),
+  (5, 'Sara Johnson', 'Sales', 'VP Sales', 250000, 40000, NULL, '2016-11-01', 'sara@corp.com'),
+  (6, 'Tom Becker', 'Sales', 'Account Exec', 90000, 15000, 5, '2020-02-17', 'tom@corp.com'),
+  (7, 'Aisha Bello', 'Sales', 'Account Exec', 95000, 0, 5, '2023-08-01', 'aisha@corp.com'),
+  (8, 'Kenji Tanaka', 'Marketing', 'Marketing Lead', 130000, 10000, NULL, '2019-04-08', 'kenji@corp.com'),
+  (9, 'Olivia Brown', 'Marketing', 'Designer', 85000, NULL, 8, '2024-01-15', 'olivia@corp.com'),
+  (10, 'Rahul Verma', NULL, 'Intern', 30000, NULL, 2, '2024-06-01', NULL),
+  (11, 'Zoe Martin', 'HR', 'HR Manager', 110000, 5000, NULL, '2017-09-12', 'zoe@corp.com'),
+  (12, 'Nina Kowalski', 'Engineering', 'Engineer', 135000, 12000, 2, '2020-10-05', 'nina@corp.com');`, cases: [
+        { cols: ['name', 'total_comp'], rows: [['Priya Sharma', 300000], ['Sara Johnson', 290000], ['Arjun Mehta', 160000]] },
+        { setup: 'UPDATE employees SET bonus = 15001 WHERE id = 12;', cols: ['name', 'total_comp'], rows: [['Priya Sharma', 300000], ['Sara Johnson', 290000], ['Arjun Mehta', 160000], ['Nina Kowalski', 150001]] },
+        { setup: 'UPDATE employees SET bonus = 15000 WHERE id = 12;', cols: ['name', 'total_comp'], rows: [['Priya Sharma', 300000], ['Sara Johnson', 290000], ['Arjun Mehta', 160000]] },
+        { setup: 'UPDATE employees SET bonus = NULL WHERE id <> 1;', cols: ['name', 'total_comp'], rows: [['Priya Sharma', 300000], ['Sara Johnson', 250000], ['Arjun Mehta', 160000]] },
+        { setup: 'UPDATE employees SET bonus = -200000 WHERE id = 1;', cols: ['name', 'total_comp'], rows: [['Sara Johnson', 290000], ['Arjun Mehta', 160000]] },
+        { setup: 'DELETE FROM employees;', rows: [] },
+        { setup: 'INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (13, \'Big\', \'HR\', \'X\', 1000000000, 1000000000, NULL);INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (14, \'Edge\', \'HR\', \'X\', 150000, 1, NULL);', cols: ['name', 'total_comp'], rows: [['Big', 2000000000], ['Priya Sharma', 300000], ['Sara Johnson', 290000], ['Arjun Mehta', 160000], ['Edge', 150001]] }
+      ] },
       solution: {
         approach: `<p>Use COALESCE to turn unknown bonuses into 0, repeat the expression in WHERE (step 2 cannot see the alias), and sort by the alias in ORDER BY (step 7 can). The derived-table version computes once and filters outside — identical plan in most engines.</p>`,
         code: { lang: 'sql', db: 'hr', code: `SELECT name,
@@ -1840,6 +1931,14 @@ ORDER BY price;` } },
       `<p>Hint 2: match the stored spelling exactly (<code>'Stationery'</code>), or compare case-insensitively with <code>LOWER(category) = 'stationery'</code>.</p>`,
       `<p>Hint 3: finish with <code>ORDER BY price</code> (ascending is the default). NULL prices fail <code>price &lt; 200</code> automatically.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['name', 'price'], rows: [['Notebook A5', 149], ['Gel Pen 10-pack', 199]] },
+      { setup: 'INSERT INTO products (id, name, category, price) VALUES (13, \'Pen Edge\', \'Stationery\', 200);INSERT INTO products (id, name, category, price) VALUES (14, \'Pencil Free\', \'Stationery\', 0);INSERT INTO products (id, name, category, price) VALUES (15, \'Stapler\', \'Stationery\', 150);', cols: ['name', 'price'], rows: [['Pencil Free', 0], ['Notebook A5', 149], ['Stapler', 150], ['Gel Pen 10-pack', 199]] },
+      { setup: 'INSERT INTO products (id, name, category, price) VALUES (13, \'Unpriced\', \'Stationery\', NULL);', cols: ['name', 'price'], rows: [['Notebook A5', 149], ['Gel Pen 10-pack', 199]] },
+      { setup: 'INSERT INTO products (id, name, category, price) VALUES (13, \'Cheap Mug\', \'Kitchen\', 100);', cols: ['name', 'price'], rows: [['Notebook A5', 149], ['Gel Pen 10-pack', 199]] },
+      { setup: 'UPDATE products SET price = 500 WHERE category = \'Stationery\';', rows: [] },
+      { setup: 'DELETE FROM products WHERE category = \'Stationery\';', rows: [] }
+    ] },
     solution: {
       approach: `<p>Filter with two AND-ed predicates, using the exact stored category spelling, and sort ascending by price.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT name, price
@@ -1867,6 +1966,14 @@ ORDER BY id;` } },
       `<p>Hint 2: SQL has a dedicated predicate for this: <code>col IS NULL</code>, which always returns TRUE or FALSE.</p>`,
       `<p>Hint 3: if empty strings <code>''</code> could also mean "missing" in your data, add <code>OR email = ''</code>.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['id', 'name'], rows: [[3, 'Chen Wei'], [7, 'Gabriel Silva']] },
+      { setup: 'UPDATE customers SET email = NULL;', cols: ['id', 'name'], rows: [[1, 'Asha Rao'], [2, 'Ben Carter'], [3, 'Chen Wei'], [4, 'Diya Patel'], [5, 'Ethan Brooks'], [6, 'Fatima Khan'], [7, 'Gabriel Silva'], [8, 'Hana Sato'], [9, 'Ivan Petrov'], [10, 'Jia Li'], [11, 'Kabir Singh'], [12, 'Lucy Evans']] },
+      { setup: 'UPDATE customers SET email = \'a@b.com\' WHERE email IS NULL;', rows: [] },
+      { setup: 'UPDATE customers SET email = \'\' WHERE id = 1; UPDATE customers SET email = \'NULL\' WHERE id = 2;', cols: ['id', 'name'], rows: [[3, 'Chen Wei'], [7, 'Gabriel Silva']] },
+      { setup: 'INSERT INTO customers (id, name) VALUES (0, \'First\'), (20, \'Last\');', cols: ['id', 'name'], rows: [[0, 'First'], [3, 'Chen Wei'], [7, 'Gabriel Silva'], [20, 'Last']] },
+      { setup: 'DELETE FROM customers;', rows: [] }
+    ] },
     solution: {
       approach: `<p>Use the IS NULL predicate, which is designed for missing values and never yields UNKNOWN.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT id, name
@@ -1892,6 +1999,80 @@ LIMIT 3;          -- no ORDER BY → arbitrary 3 rows` } },
       `<p>Hint 2: NULL placement differs between databases; the safest way to exclude unknown prices is <code>WHERE price IS NOT NULL</code>.</p>`,
       `<p>Hint 3: recipe: filter NULLs → ORDER BY price DESC → LIMIT 3. Consider a tie-breaker (id) if prices can repeat.</p>`
     ],
+    tests: { engine: 'both', pg: `CREATE TABLE customers (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT,
+  city TEXT,
+  country TEXT,
+  signup_date TEXT,
+  referred_by INTEGER
+);
+INSERT INTO customers VALUES
+  (1, 'Asha Rao', 'asha@gmail.com', 'Mumbai', 'India', '2024-01-15', NULL),
+  (2, 'Ben Carter', 'ben.carter@yahoo.com', 'London', 'UK', '2024-02-03', 1),
+  (3, 'Chen Wei', NULL, 'Shanghai', 'China', '2024-02-20', NULL),
+  (4, 'Diya Patel', 'diya@gmail.com', NULL, 'India', '2024-03-11', 1),
+  (5, 'Ethan Brooks', 'ethan@outlook.com', 'New York', 'USA', '2024-03-29', 2),
+  (6, 'Fatima Khan', 'fatima_k@gmail.com', 'Dubai', 'UAE', '2024-04-14', NULL),
+  (7, 'Gabriel Silva', NULL, 'Sao Paulo', 'Brazil', '2024-05-02', 5),
+  (8, 'Hana Sato', 'hana@sato.jp', 'Tokyo', 'Japan', '2024-05-30', NULL),
+  (9, 'Ivan Petrov', 'ivan.p@mail.ru', NULL, NULL, '2024-06-18', 3),
+  (10, 'Jia Li', 'jia_li@GMAIL.com', 'Mumbai', 'India', '2024-07-07', 4),
+  (11, 'Kabir Singh', 'gmailfan@yahoo.in', 'Delhi', 'India', '2024-08-01', NULL),
+  (12, 'Lucy Evans', 'lucy@outlook.com', 'London', 'UK', '2024-08-19', 2);
+CREATE TABLE products (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  category TEXT,
+  price INTEGER,
+  stock INTEGER,
+  discount_pct INTEGER
+);
+INSERT INTO products VALUES
+  (1, 'Wireless Mouse', 'Electronics', 799, 120, 10),
+  (2, 'Mechanical Keyboard', 'Electronics', 3499, 40, NULL),
+  (3, 'USB-C Cable', 'Electronics', 299, 500, 0),
+  (4, 'Yoga Mat', 'Fitness', 1199, 60, 15),
+  (5, 'Dumbbell 5kg', 'Fitness', 1499, 0, NULL),
+  (6, 'Coffee Mug', 'Kitchen', 349, 200, 5),
+  (7, 'French Press', 'Kitchen', 1899, 25, NULL),
+  (8, 'Notebook A5', 'Stationery', 149, 1000, NULL),
+  (9, 'Gel Pen 10-pack', 'Stationery', 199, NULL, 20),
+  (10, '100% Cotton Tee', 'Apparel', 599, 80, 50),
+  (11, 'Running_Shoes', 'Apparel', 4999, 15, NULL),
+  (12, 'Desk Lamp', 'Electronics', NULL, 30, NULL);
+CREATE TABLE orders (
+  id INTEGER PRIMARY KEY,
+  customer_id INTEGER,
+  order_date TEXT,
+  status TEXT,
+  amount INTEGER,
+  coupon TEXT
+);
+INSERT INTO orders VALUES
+  (101, 1, '2024-08-01', 'delivered', 1598, NULL),
+  (102, 2, '2024-08-02', 'shipped', 3499, 'WELCOME10'),
+  (103, 1, '2024-08-05', 'cancelled', 299, NULL),
+  (104, 3, '2024-08-07', 'delivered', 1199, 'FIT15'),
+  (105, 5, '2024-08-10', 'pending', 4999, NULL),
+  (106, 4, '2024-08-11', 'delivered', 349, NULL),
+  (107, 6, '2024-08-15', 'returned', 1899, 'KITCHEN5'),
+  (108, 2, '2024-08-18', 'delivered', 149, NULL),
+  (109, 8, '2024-08-20', 'shipped', 2398, NULL),
+  (110, 10, '2024-08-25', 'pending', NULL, NULL),
+  (111, 1, '2024-08-28', 'delivered', 599, 'WELCOME10'),
+  (112, 9, '2024-09-01', 'cancelled', 799, NULL),
+  (113, 12, '2024-09-03', NULL, 1499, 'WELCOME10'),
+  (114, 2, '2024-09-05', 'delivered', 1899, NULL);`, cases: [
+      { cols: ['name', 'price'], rows: [['Running_Shoes', 4999], ['Mechanical Keyboard', 3499], ['French Press', 1899]] },
+      { setup: 'UPDATE products SET price = 10000 WHERE id = 12;', cols: ['name', 'price'], rows: [['Desk Lamp', 10000], ['Running_Shoes', 4999], ['Mechanical Keyboard', 3499]] },
+      { setup: 'UPDATE products SET price = NULL;', rows: [] },
+      { setup: 'UPDATE products SET price = NULL WHERE id > 2;', cols: ['name', 'price'], rows: [['Mechanical Keyboard', 3499], ['Wireless Mouse', 799]] },
+      { setup: 'DELETE FROM products;', rows: [] },
+      { setup: 'UPDATE products SET price = price * 2 WHERE id IN (1, 3, 4);', cols: ['name', 'price'], rows: [['Running_Shoes', 4999], ['Mechanical Keyboard', 3499], ['Yoga Mat', 2398]] },
+      { setup: 'UPDATE products SET price = 7000 WHERE id = 3; UPDATE products SET price = 6000 WHERE id = 8; UPDATE products SET price = 5000 WHERE id = 9;', cols: ['name', 'price'], rows: [['USB-C Cable', 7000], ['Notebook A5', 6000], ['Gel Pen 10-pack', 5000]] }
+    ] },
     solution: {
       approach: `<p>Remove unknown prices in WHERE, sort descending, keep three rows. A tie-breaker on id makes the result deterministic if two products share a price.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT name, price
@@ -1918,6 +2099,14 @@ ORDER BY city;      -- duplicates and NULLs` } },
       `<p>Hint 2: WHERE runs before DISTINCT, so <code>WHERE city IS NOT NULL</code> removes the unknowns early.</p>`,
       `<p>Hint 3: alphabetical = <code>ORDER BY city</code>. Use COLLATE NOCASE if casing in the data is inconsistent.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['city'], rows: [['Delhi'], ['Dubai'], ['London'], ['Mumbai'], ['New York'], ['Sao Paulo'], ['Shanghai'], ['Tokyo']] },
+      { setup: 'UPDATE customers SET city = NULL;', rows: [] },
+      { setup: 'UPDATE customers SET city = \'X\';', cols: ['city'], rows: [['X']] },
+      { setup: 'INSERT INTO customers (id, name, city) VALUES (13, \'A\', \'london\');INSERT INTO customers (id, name, city) VALUES (14, \'B\', \'London \');INSERT INTO customers (id, name, city) VALUES (15, \'C\', \'Zurich\');INSERT INTO customers (id, name, city) VALUES (16, \'D\', \'Zurich\');', cols: ['city'], rows: [['Delhi'], ['Dubai'], ['London'], ['London '], ['Mumbai'], ['New York'], ['Sao Paulo'], ['Shanghai'], ['Tokyo'], ['Zurich'], ['london']] },
+      { setup: 'DELETE FROM customers;', rows: [] },
+      { setup: 'UPDATE customers SET city = \'Pune\' WHERE city IS NOT NULL; UPDATE customers SET city = \'Agra\' WHERE id = 1;', cols: ['city'], rows: [['Agra'], ['Pune']] }
+    ] },
     solution: {
       approach: `<p>Filter out NULL cities, de-duplicate with DISTINCT, sort ascending.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT DISTINCT city
@@ -1944,6 +2133,14 @@ ORDER BY year, title;` } },
       `<p>Hint 2: BETWEEN low AND high is inclusive on both ends; the smaller number must come first.</p>`,
       `<p>Hint 3: sort with two keys: <code>ORDER BY year, title</code> to break ties between same-year films.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['title', 'year'], rows: [['Groundhog Day', 1993], ['Jurassic Park', 1993], ['Se7en', 1995], ['Toy Story', 1995], ['The Matrix', 1999]] },
+      { setup: 'INSERT INTO movies (id, title, year) VALUES (15, \'Y1989\', 1989);INSERT INTO movies (id, title, year) VALUES (16, \'Y1990\', 1990);INSERT INTO movies (id, title, year) VALUES (17, \'Y1999\', 1999);INSERT INTO movies (id, title, year) VALUES (18, \'Y2000\', 2000);', cols: ['title', 'year'], rows: [['Y1990', 1990], ['Groundhog Day', 1993], ['Jurassic Park', 1993], ['Se7en', 1995], ['Toy Story', 1995], ['The Matrix', 1999], ['Y1999', 1999]] },
+      { setup: 'INSERT INTO movies (id, title, year) VALUES (15, \'Beta\', 1993);INSERT INTO movies (id, title, year) VALUES (16, \'Alpha\', 1993);', cols: ['title', 'year'], rows: [['Alpha', 1993], ['Beta', 1993], ['Groundhog Day', 1993], ['Jurassic Park', 1993], ['Se7en', 1995], ['Toy Story', 1995], ['The Matrix', 1999]] },
+      { setup: 'UPDATE movies SET year = NULL;', rows: [] },
+      { setup: 'UPDATE movies SET year = 2005;', rows: [] },
+      { setup: 'DELETE FROM movies;', rows: [] }
+    ] },
     solution: {
       approach: `<p>An inclusive range check with BETWEEN; the NULL-year movie fails the test (UNKNOWN) and is excluded automatically. Two sort keys give a deterministic order.</p>`,
       code: { lang: 'sql', db: 'movies', code: `SELECT title, year
@@ -1973,6 +2170,15 @@ ORDER BY name;` } },
       `<p>Hint 2: then test membership with <code>IN ('a','e','i','o','u')</code>.</p>`,
       `<p>Hint 3: an alternative is five LIKE tests joined by OR (<code>name LIKE 'a%' OR …</code>) — LIKE is case-insensitive in SQLite, or use GLOB <code>'[AEIOUaeiou]*'</code>.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['name'], rows: [['Aisha Bello'], ['Arjun Mehta'], ['Olivia Brown']] },
+      { setup: 'DELETE FROM employees; INSERT INTO employees (id, name) VALUES (1, \'umar\'), (2, \'zed\'), (3, \'Ünal\'), (4, \'x\');', cols: ['name'], rows: [['umar']] },
+      { setup: 'INSERT INTO employees (id, name) VALUES (13, \'Eve\'), (14, \'Ivy\'), (15, \'Uma\'), (16, \'Yara\');', cols: ['name'], rows: [['Aisha Bello'], ['Arjun Mehta'], ['Eve'], ['Ivy'], ['Olivia Brown'], ['Uma']] },
+      { setup: 'DELETE FROM employees;', rows: [] },
+      { setup: 'UPDATE employees SET name = \'Bob \' || name;', rows: [] },
+      { setup: 'INSERT INTO employees (id, name) VALUES (13, \'Aisha Bello\'), (14, \'Oscar\');', cols: ['name'], rows: [['Aisha Bello'], ['Aisha Bello'], ['Arjun Mehta'], ['Olivia Brown'], ['Oscar']] },
+      { setup: 'DELETE FROM employees; INSERT INTO employees (id, name) VALUES (1, \'olga\'), (2, \'abe\'), (3, \'ivan\');', cols: ['name'], rows: [['abe'], ['ivan'], ['olga']] }
+    ] },
     solution: {
       approach: `<p>Take the first character, normalise its case, and check it against the vowel list with IN. Portable to any engine that has SUBSTR/SUBSTRING and LOWER.</p>`,
       code: { lang: 'sql', db: 'hr', code: `SELECT name
@@ -2003,6 +2209,15 @@ LIMIT 4 OFFSET 2;     -- wrong offset, no tie-breaker` } },
       `<p>Hint 2: make the sort unique: <code>ORDER BY order_date DESC, id DESC</code>.</p>`,
       `<p>Hint 3: <code>LIMIT 4 OFFSET 4</code> — or in SQLite/MySQL short form <code>LIMIT 4, 4</code> (offset first!).</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['id', 'order_date', 'amount'], rows: [[110, '2024-08-25', null], [109, '2024-08-20', 2398], [108, '2024-08-18', 149], [107, '2024-08-15', 1899]] },
+      { setup: 'UPDATE orders SET order_date = \'2024-09-05\';', cols: ['id', 'order_date', 'amount'], rows: [[110, '2024-09-05', null], [109, '2024-09-05', 2398], [108, '2024-09-05', 149], [107, '2024-09-05', 1899]] },
+      { setup: 'DELETE FROM orders WHERE id > 105;', cols: ['id', 'order_date', 'amount'], rows: [[101, '2024-08-01', 1598]] },
+      { setup: 'DELETE FROM orders WHERE id > 104;', rows: [] },
+      { setup: 'DELETE FROM orders;', rows: [] },
+      { setup: 'UPDATE orders SET order_date = \'2024-08-25\' WHERE id IN (109, 110, 111, 112);', cols: ['id', 'order_date', 'amount'], rows: [[110, '2024-08-25', null], [109, '2024-08-25', 2398], [108, '2024-08-18', 149], [107, '2024-08-15', 1899]] },
+      { setup: 'INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (115, 1, \'2024-09-06\', \'delivered\', 100);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (116, 2, \'2024-09-06\', \'delivered\', 100);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (117, 3, \'2024-09-06\', \'delivered\', 100);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (118, 4, \'2024-09-07\', \'delivered\', 100);', cols: ['id', 'order_date', 'amount'], rows: [[114, '2024-09-05', 1899], [113, '2024-09-03', 1499], [112, '2024-09-01', 799], [111, '2024-08-28', 599]] }
+    ] },
     solution: {
       approach: `<p>Deterministic sort (date, then id, both descending), skip one page of 4 rows, take 4.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT id, order_date, amount
@@ -2034,6 +2249,14 @@ WHERE name LIKE '%_%';     -- matches every non-empty name` } },
       `<p>Hint 2: choose an escape character and declare it: <code>LIKE '%\\_%' ESCAPE '\\'</code>.</p>`,
       `<p>Hint 3: alternatives without LIKE: <code>INSTR(name, '_') &gt; 0</code> or SQLite <code>GLOB '*_*'</code> (in GLOB, _ is not special).</p>`
     ],
+    tests: { engine: 'sqlite', cmp: 'set', cases: [
+      { cols: ['id', 'name'], rows: [[11, 'Running_Shoes']] },
+      { setup: 'DELETE FROM products WHERE id = 11;', rows: [] },
+      { setup: 'INSERT INTO products (id, name, category, price) VALUES (13, \'a_b_c\', \'X\', 1);INSERT INTO products (id, name, category, price) VALUES (14, \'_lead\', \'X\', 1);INSERT INTO products (id, name, category, price) VALUES (15, \'trail_\', \'X\', 1);INSERT INTO products (id, name, category, price) VALUES (16, \'_\', \'X\', 1);', cols: ['id', 'name'], rows: [[11, 'Running_Shoes'], [13, 'a_b_c'], [14, '_lead'], [15, 'trail_'], [16, '_']] },
+      { setup: 'INSERT INTO products (id, name, category, price) VALUES (13, \'100% sure\', \'X\', 1);INSERT INTO products (id, name, category, price) VALUES (14, \'ab\', \'X\', 1);', cols: ['id', 'name'], rows: [[11, 'Running_Shoes']] },
+      { setup: 'UPDATE products SET name = replace(name, \' \', \'_\');', cols: ['id', 'name'], rows: [[1, 'Wireless_Mouse'], [2, 'Mechanical_Keyboard'], [3, 'USB-C_Cable'], [4, 'Yoga_Mat'], [5, 'Dumbbell_5kg'], [6, 'Coffee_Mug'], [7, 'French_Press'], [8, 'Notebook_A5'], [9, 'Gel_Pen_10-pack'], [10, '100%_Cotton_Tee'], [11, 'Running_Shoes'], [12, 'Desk_Lamp']] },
+      { setup: 'UPDATE products SET name = \'plain\' || id;', rows: [] }
+    ] },
     solution: {
       approach: `<p>Escape the wildcard so LIKE treats it as a literal character. INSTR is a wildcard-free alternative.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT id, name
@@ -2062,6 +2285,14 @@ ORDER BY id;` } },
       `<p>Hint 2: add <code>OR coupon IS NULL</code>, or use the null-safe <code>IS NOT</code> / <code>IS DISTINCT FROM</code>.</p>`,
       `<p>Hint 3: sanity check: 3 + 11 = 14 orders.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['id', 'coupon'], rows: [[101, null], [103, null], [104, 'FIT15'], [105, null], [106, null], [107, 'KITCHEN5'], [108, null], [109, null], [110, null], [112, null], [114, null]] },
+      { setup: 'UPDATE orders SET coupon = NULL;', cols: ['id', 'coupon'], rows: [[101, null], [102, null], [103, null], [104, null], [105, null], [106, null], [107, null], [108, null], [109, null], [110, null], [111, null], [112, null], [113, null], [114, null]] },
+      { setup: 'UPDATE orders SET coupon = \'WELCOME10\';', rows: [] },
+      { setup: 'UPDATE orders SET coupon = \'\' WHERE id = 101; UPDATE orders SET coupon = \'WELCOME100\' WHERE id = 103;', cols: ['id', 'coupon'], rows: [[101, ''], [103, 'WELCOME100'], [104, 'FIT15'], [105, null], [106, null], [107, 'KITCHEN5'], [108, null], [109, null], [110, null], [112, null], [114, null]] },
+      { setup: 'DELETE FROM orders;', rows: [] },
+      { setup: 'UPDATE orders SET coupon = \'FIT15\' WHERE coupon = \'WELCOME10\';', cols: ['id', 'coupon'], rows: [[101, null], [102, 'FIT15'], [103, null], [104, 'FIT15'], [105, null], [106, null], [107, 'KITCHEN5'], [108, null], [109, null], [110, null], [111, 'FIT15'], [112, null], [113, 'FIT15'], [114, null]] }
+    ] },
     solution: {
       approach: `<p>Use a null-safe inequality so that "no coupon" counts as "not WELCOME10".</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT id, coupon
@@ -2092,6 +2323,15 @@ ORDER BY rating, title;` } },
       `<p>Hint 2: <code>rating &lt; 8.2 OR rating IS NULL</code> — UNKNOWN OR TRUE is TRUE for the unrated films.</p>`,
       `<p>Hint 3: for "unrated first", SQLite's ascending default already puts NULLs first, but write <code>NULLS FIRST</code> to be explicit and portable to PostgreSQL.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['title', 'rating'], rows: [['Dune: Part Three', null], ['Untitled Indie Film', null], ['The Room', 3.6], ['Groundhog Day', 8], ['Lagaan', 8.1]] },
+      { setup: 'INSERT INTO movies (id, title, rating) VALUES (15, \'Edge 8.2\', 8.2);INSERT INTO movies (id, title, rating) VALUES (16, \'Edge 8.19\', 8.19);INSERT INTO movies (id, title, rating) VALUES (17, \'Zero\', 0);', cols: ['title', 'rating'], rows: [['Dune: Part Three', null], ['Untitled Indie Film', null], ['Zero', 0], ['The Room', 3.6], ['Groundhog Day', 8], ['Lagaan', 8.1], ['Edge 8.19', 8.19]] },
+      { setup: 'UPDATE movies SET rating = NULL;', cols: ['title', 'rating'], rows: [['Amelie', null], ['Dangal', null], ['Dune: Part Three', null], ['Groundhog Day', null], ['Inception', null], ['Jurassic Park', null], ['Lagaan', null], ['Parasite', null], ['Se7en', null], ['Spirited Away', null], ['The Matrix', null], ['The Room', null], ['Toy Story', null], ['Untitled Indie Film', null]] },
+      { setup: 'UPDATE movies SET rating = 9;', rows: [] },
+      { setup: 'UPDATE movies SET rating = 7 WHERE id IN (1, 2, 3);', cols: ['title', 'rating'], rows: [['Dune: Part Three', null], ['Untitled Indie Film', null], ['The Room', 3.6], ['Parasite', 7], ['Spirited Away', 7], ['The Matrix', 7], ['Groundhog Day', 8], ['Lagaan', 8.1]] },
+      { setup: 'DELETE FROM movies;', rows: [] },
+      { setup: 'UPDATE movies SET rating = NULL WHERE rating IS NOT NULL AND rating >= 8.2; ', cols: ['title', 'rating'], rows: [['Amelie', null], ['Dangal', null], ['Dune: Part Three', null], ['Inception', null], ['Jurassic Park', null], ['Parasite', null], ['Se7en', null], ['Spirited Away', null], ['The Matrix', null], ['Toy Story', null], ['Untitled Indie Film', null], ['The Room', 3.6], ['Groundhog Day', 8], ['Lagaan', 8.1]] }
+    ] },
     solution: {
       approach: `<p>OR the low-rating condition with an explicit IS NULL check; sort ascending with NULLS FIRST and title as tie-breaker.</p>`,
       code: { lang: 'sql', db: 'movies', code: `SELECT title, rating
@@ -2119,6 +2359,16 @@ LIMIT 1 OFFSET 4;` } },
       `<p>Hint 2: 5th largest → <code>ORDER BY amount DESC LIMIT 1 OFFSET 4</code> after DISTINCT.</p>`,
       `<p>Hint 3: wrap in a scalar subquery <code>SELECT ( … ) AS amount</code> so a missing value yields NULL rather than no row.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['amount'], rows: [[1598]] },
+      { setup: 'UPDATE orders SET amount = 100;', cols: ['amount'], rows: [[null]] },
+      { setup: 'DELETE FROM orders;', cols: ['amount'], rows: [[null]] },
+      { setup: 'DELETE FROM orders WHERE id > 105;', cols: ['amount'], rows: [[299]] },
+      { setup: 'DELETE FROM orders WHERE id > 104;', cols: ['amount'], rows: [[null]] },
+      { setup: 'UPDATE orders SET amount = NULL WHERE id > 106;', cols: ['amount'], rows: [[349]] },
+      { setup: 'UPDATE orders SET amount = -amount;', cols: ['amount'], rows: [[-799]] },
+      { setup: 'UPDATE orders SET amount = 4999 WHERE id IN (101, 102, 103);', cols: ['amount'], rows: [[1199]] }
+    ] },
     solution: {
       approach: `<p>Drop NULLs, de-duplicate, sort descending, skip 4, take 1 — inside a scalar subquery for the NULL-if-missing guarantee.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT (
@@ -2152,6 +2402,15 @@ LIMIT 3;` } },
       `<p>Hint 2: "later" for a DESC key means smaller; for an ASC key it means larger.</p>`,
       `<p>Hint 3: write <code>salary &lt; 120000 OR (salary = 120000 AND id &gt; 3)</code>, keep the same ORDER BY, and LIMIT 3.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['id', 'name', 'salary'], rows: [[4, 'Marco Rossi', 120000], [11, 'Zoe Martin', 110000], [7, 'Aisha Bello', 95000]] },
+      { setup: 'INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (13, \'Tie13\', \'HR\', \'X\', 120000, NULL, NULL);', cols: ['id', 'name', 'salary'], rows: [[4, 'Marco Rossi', 120000], [13, 'Tie13', 120000], [11, 'Zoe Martin', 110000]] },
+      { setup: 'INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (0, \'Tie0\', \'HR\', \'X\', 120000, NULL, NULL);', cols: ['id', 'name', 'salary'], rows: [[4, 'Marco Rossi', 120000], [11, 'Zoe Martin', 110000], [7, 'Aisha Bello', 95000]] },
+      { setup: 'DELETE FROM employees WHERE salary < 100000;', cols: ['id', 'name', 'salary'], rows: [[4, 'Marco Rossi', 120000], [11, 'Zoe Martin', 110000]] },
+      { setup: 'DELETE FROM employees WHERE id = 4;', cols: ['id', 'name', 'salary'], rows: [[11, 'Zoe Martin', 110000], [7, 'Aisha Bello', 95000], [6, 'Tom Becker', 90000]] },
+      { setup: 'DELETE FROM employees WHERE salary < 120000;', cols: ['id', 'name', 'salary'], rows: [[4, 'Marco Rossi', 120000]] },
+      { setup: 'INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (13, \'T13\', \'HR\', \'X\', 120000, NULL, NULL);INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (14, \'T14\', \'HR\', \'X\', 120000, NULL, NULL);INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (15, \'T15\', \'HR\', \'X\', 120000, NULL, NULL);', cols: ['id', 'name', 'salary'], rows: [[4, 'Marco Rossi', 120000], [13, 'T13', 120000], [14, 'T14', 120000]] }
+    ] },
     solution: {
       approach: `<p>Expand the lexicographic comparison by hand because the directions differ. The ORDER BY must match the cursor definition exactly, and its last key must be unique (id) so no row can be skipped or repeated.</p>`,
       code: { lang: 'sql', db: 'hr', code: `SELECT id, name, salary
@@ -2186,6 +2445,15 @@ ORDER BY id;` } },
       `<p>Hint 2: remove the NULLs inside the subquery: <code>WHERE manager_id IS NOT NULL</code>.</p>`,
       `<p>Hint 3: the industry-standard fix is <code>NOT EXISTS (SELECT 1 FROM employees r WHERE r.manager_id = e.id)</code>, which is immune to NULLs and usually becomes an efficient anti-join.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['id', 'name'], rows: [[3, 'Lena Fischer'], [4, 'Marco Rossi'], [6, 'Tom Becker'], [7, 'Aisha Bello'], [9, 'Olivia Brown'], [10, 'Rahul Verma'], [11, 'Zoe Martin'], [12, 'Nina Kowalski']] },
+      { setup: 'UPDATE employees SET manager_id = NULL;', cols: ['id', 'name'], rows: [[1, 'Priya Sharma'], [2, 'Arjun Mehta'], [3, 'Lena Fischer'], [4, 'Marco Rossi'], [5, 'Sara Johnson'], [6, 'Tom Becker'], [7, 'Aisha Bello'], [8, 'Kenji Tanaka'], [9, 'Olivia Brown'], [10, 'Rahul Verma'], [11, 'Zoe Martin'], [12, 'Nina Kowalski']] },
+      { setup: 'UPDATE employees SET manager_id = 3 WHERE id = 12;', cols: ['id', 'name'], rows: [[4, 'Marco Rossi'], [6, 'Tom Becker'], [7, 'Aisha Bello'], [9, 'Olivia Brown'], [10, 'Rahul Verma'], [11, 'Zoe Martin'], [12, 'Nina Kowalski']] },
+      { setup: 'DELETE FROM employees;', rows: [] },
+      { setup: 'UPDATE employees SET manager_id = id WHERE id = 6;', cols: ['id', 'name'], rows: [[3, 'Lena Fischer'], [4, 'Marco Rossi'], [7, 'Aisha Bello'], [9, 'Olivia Brown'], [10, 'Rahul Verma'], [11, 'Zoe Martin'], [12, 'Nina Kowalski']] },
+      { setup: 'UPDATE employees SET manager_id = 12 WHERE manager_id IS NOT NULL;', cols: ['id', 'name'], rows: [[1, 'Priya Sharma'], [2, 'Arjun Mehta'], [3, 'Lena Fischer'], [4, 'Marco Rossi'], [5, 'Sara Johnson'], [6, 'Tom Becker'], [7, 'Aisha Bello'], [8, 'Kenji Tanaka'], [9, 'Olivia Brown'], [10, 'Rahul Verma'], [11, 'Zoe Martin']] },
+      { setup: 'UPDATE employees SET manager_id = 99 WHERE id = 10;', cols: ['id', 'name'], rows: [[3, 'Lena Fischer'], [4, 'Marco Rossi'], [6, 'Tom Becker'], [7, 'Aisha Bello'], [9, 'Olivia Brown'], [10, 'Rahul Verma'], [11, 'Zoe Martin'], [12, 'Nina Kowalski']] }
+    ] },
     solution: {
       approach: `<p>Exclude NULLs from the NOT IN list so the comparison can become TRUE, or switch to NOT EXISTS, whose correlated test simply finds no matching row.</p>`,
       code: { lang: 'sql', db: 'hr', code: `SELECT id, name
@@ -2219,6 +2487,15 @@ WHERE name LIKE '%' || '_S' || '%';     -- user text used as a pattern` } },
       `<p>Hint 2: in the app: <code>term.replace('\\\\', '\\\\\\\\').replace('%', '\\\\%').replace('_', '\\\\_')</code> — escape the backslash first.</p>`,
       `<p>Hint 3: in SQL you can also escape inside the query with nested REPLACE calls, then <code>LIKE '%' || escaped || '%' ESCAPE '\\'</code>.</p>`
     ],
+    tests: { engine: 'sqlite', cmp: 'set', cases: [
+      { cols: ['id', 'name'], rows: [[11, 'Running_Shoes']] },
+      { setup: 'INSERT INTO products (id, name, category, price) VALUES (13, \'Big_sale\', \'X\', 1);', cols: ['id', 'name'], rows: [[11, 'Running_Shoes'], [13, 'Big_sale']] },
+      { setup: 'DELETE FROM products WHERE id = 11;', rows: [] },
+      { setup: 'INSERT INTO products (id, name, category, price) VALUES (13, \'x_S_y\', \'X\', 1);INSERT INTO products (id, name, category, price) VALUES (14, \'under score S\', \'X\', 1);INSERT INTO products (id, name, category, price) VALUES (15, \'S_\', \'X\', 1);', cols: ['id', 'name'], rows: [[11, 'Running_Shoes'], [13, 'x_S_y']] },
+      { setup: 'UPDATE products SET name = \'Run%_Shoes\' WHERE id = 11;', cols: ['id', 'name'], rows: [[11, 'Run%_Shoes']] },
+      { setup: 'UPDATE products SET name = \'a\\_Sb\' WHERE id = 11;', cols: ['id', 'name'], rows: [[11, 'a\\_Sb']] },
+      { setup: 'UPDATE products SET name = \'S_\' || id WHERE id < 4;', cols: ['id', 'name'], rows: [[11, 'Running_Shoes']] }
+    ] },
     solution: {
       approach: `<p>Escape the escape character, then % and _, and declare the escape character with ESCAPE. Doing it in SQL with REPLACE keeps the example self-contained; in production pass the raw term as a bind parameter and escape in code (or in SQL exactly like this).</p>`,
       code: { lang: 'sql', db: 'shop', code: `-- :term = '_S' (would be a bind parameter in an app)
@@ -2249,6 +2526,14 @@ ORDER BY dept_name, title;      -- N/A lands between Marketing and Sales` } },
       `<p>Hint 2: ORDER BY runs after SELECT and can use the alias; add a first sort key that is 1 for 'N/A' and 0 otherwise.</p>`,
       `<p>Hint 3: recipe: <code>ORDER BY dept_name = 'N/A', dept_name, title</code> (or a CASE expression for portability).</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['dept_name', 'title'], rows: [['Engineering', 'Engineer'], ['Engineering', 'Senior Engineer'], ['Engineering', 'VP Engineering'], ['HR', 'HR Manager'], ['Marketing', 'Designer'], ['Marketing', 'Marketing Lead'], ['Sales', 'Account Exec'], ['Sales', 'VP Sales'], ['N/A', 'Intern']] },
+      { setup: 'UPDATE employees SET dept = \'N/A\' WHERE id = 3; UPDATE employees SET dept = NULL WHERE id IN (4, 10);', cols: ['dept_name', 'title'], rows: [['Engineering', 'Engineer'], ['Engineering', 'Senior Engineer'], ['Engineering', 'VP Engineering'], ['HR', 'HR Manager'], ['Marketing', 'Designer'], ['Marketing', 'Marketing Lead'], ['Sales', 'Account Exec'], ['Sales', 'VP Sales'], ['N/A', 'Engineer'], ['N/A', 'Intern']] },
+      { setup: 'DELETE FROM employees WHERE dept IS NULL;', cols: ['dept_name', 'title'], rows: [['Engineering', 'Engineer'], ['Engineering', 'Senior Engineer'], ['Engineering', 'VP Engineering'], ['HR', 'HR Manager'], ['Marketing', 'Designer'], ['Marketing', 'Marketing Lead'], ['Sales', 'Account Exec'], ['Sales', 'VP Sales']] },
+      { setup: 'UPDATE employees SET dept = NULL;', cols: ['dept_name', 'title'], rows: [['N/A', 'Account Exec'], ['N/A', 'Designer'], ['N/A', 'Engineer'], ['N/A', 'HR Manager'], ['N/A', 'Intern'], ['N/A', 'Marketing Lead'], ['N/A', 'Senior Engineer'], ['N/A', 'VP Engineering'], ['N/A', 'VP Sales']] },
+      { setup: 'DELETE FROM employees;', rows: [] },
+      { setup: 'INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (13, \'Z\', \'Zoology\', \'Zoologist\', 1, NULL, NULL);INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (14, \'Z2\', \'Zoology\', \'Zoologist\', 1, NULL, NULL);INSERT INTO employees (id, name, dept, title, salary, bonus, manager_id) VALUES (15, \'Q\', \'Accounts\', \'Clerk\', 1, NULL, NULL);', cols: ['dept_name', 'title'], rows: [['Accounts', 'Clerk'], ['Engineering', 'Engineer'], ['Engineering', 'Senior Engineer'], ['Engineering', 'VP Engineering'], ['HR', 'HR Manager'], ['Marketing', 'Designer'], ['Marketing', 'Marketing Lead'], ['Sales', 'Account Exec'], ['Sales', 'VP Sales'], ['Zoology', 'Zoologist'], ['N/A', 'Intern']] }
+    ] },
     solution: {
       approach: `<p>Project the display value with COALESCE, de-duplicate pairs with DISTINCT, then sort by a boolean "is unknown" key first. Every ORDER BY expression only uses select-list columns, which keeps it legal under strict DISTINCT rules.</p>`,
       code: { lang: 'sql', db: 'hr', code: `SELECT DISTINCT COALESCE(dept, 'N/A') AS dept_name,

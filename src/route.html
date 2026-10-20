@@ -70,6 +70,11 @@
     if (x.st.pct) return '<span class="rp-st part">' + x.st.pct + '%</span>';
     return '';
   }
+  function projectHtml(pid, pr, ps) {
+    return '<div class="rp-proj' + (ps.done ? ' done' : '') + '" id="proj-' + pid + '"><span class="kicker">Project · about ' + pr.hours + ' h' + (ps.done ? ' · done' : '') + '</span><b>' + esc(pr.name) + '</b><p>' + esc(pr.brief) + '</p>' +
+      '<fieldset class="rp-chk"><legend>Done when every criterion is ticked (<span id="pc-' + pid + '">' + ps.ticked + ' of ' + ps.total + '</span>)</legend>' +
+      pr.rubric.map(function (x, i) { return '<label><input type="checkbox" data-proj="' + pid + '" data-i="' + i + '"' + (ps.ticks[i] ? ' checked' : '') + '> <span>' + esc(x) + '</span></label>'; }).join('') + '</fieldset></div>';
+  }
   function draw() {
     var p = Learn.pref(), v = Learn.routeView(p), R = v.sch.plan.route, D = JSON.parse(localStorage.getItem('imastery.done') || '{}');
     $('#rpRoutes').innerHTML = PATHS.ROUTES.map(function (r) {
@@ -90,23 +95,24 @@
     $('#rpNote').innerHTML = 'Hours come from each module’s own estimate, which already includes its practice problems. Weeks are the route total divided by your weekly hours, rounded up. ' +
       (v.coverage.length ? '<b>' + v.coverage.length + ' required modules do not yet have every solution in ' + esc(Learn.LANG_NAMES[p.lang]) + ':</b> ' + v.coverage.slice(0, 8).map(function (id) { var m = Learn.meta(id); return '<a href="' + Learn.href(id) + '">' + esc(m ? m.title : id) + '</a>'; }).join(', ') + (v.coverage.length > 8 ? ' and more' : '') + '.' : 'Every required module has its solutions in ' + esc(Learn.LANG_NAMES[p.lang]) + '.');
     $('#rpNext').innerHTML = v.next.length ? v.next.map(function (n) {
+      if (n.kind === 'project') return '<a class="rp-nx" href="#proj-' + n.id + '"><span class="kicker">Project · about ' + n.meta.hours + ' h</span><b>' + esc(n.meta.title) + '</b><span>' + esc(n.why) + '</span></a>';
       var miss = Learn.missing(n.id, p.lang, D);
       return '<a class="rp-nx" href="' + Learn.href(n.id) + '"><span class="kicker">' + esc(LV[n.meta.level] || '') + ' · ' + n.meta.hours + ' h</span><b>' + esc(n.meta.title) + '</b><span>' + esc(n.why) + '</span>' + (miss.length ? '<small class="c-clay">Missing first: ' + miss.map(function (x) { var m = Learn.meta(x); return esc(m ? m.title : x); }).join(', ') + '</small>' : '') + '</a>';
-    }).join('') : '<p>Every required module is complete. Pick an extension below, or a new route.</p>';
+    }).join('') : '<p>Every required module and project is complete. Pick an extension below, or a new route.</p>';
     var due = Learn.due();
     $('#rpDue').innerHTML = due.length ? '<div class="rp-due"><b>' + due.length + ' review' + (due.length === 1 ? '' : 's') + ' due today</b>' + due.slice(0, 5).map(function (r) { var m = Learn.meta(r.mod); return '<a href="' + (m ? m.track + '.html#' + r.id : '#') + '">' + esc(r.title) + ' · riddle gate</a>'; }).join('') + '</div>' : '';
     var byStage = {};
     v.items.forEach(function (x) { (byStage[x.stage] = byStage[x.stage] || []).push(x); });
     $('#rpStages').innerHTML = R.stages.map(function (st, si) {
-      var list = byStage[si] || [], hrs = list.reduce(function (a, x) { return a + (x.meta && x.kind !== 'opt' ? x.meta.hours : 0); }, 0), pr = st.project && PATHS.PROJECTS[st.project];
-      return '<article class="rp-stage jcard"><div class="jrow"><h3><span class="rp-n">' + (si + 1) + '</span>' + esc(st.name) + '</h3><span class="muted">' + list.length + ' modules · ' + hrs + ' h</span></div><ol class="rp-mods">' +
+      var sg = v.stages[si], list = byStage[si] || [], hrs = list.reduce(function (a, x) { return a + (x.meta && x.kind !== 'opt' ? x.meta.hours : 0); }, 0), pr = st.project && PATHS.PROJECTS[st.project];
+      return '<article class="rp-stage jcard"><div class="jrow"><h3><span class="rp-n">' + (si + 1) + '</span>' + esc(st.name) + '</h3><span class="muted">' + list.length + ' modules · ' + hrs + ' h</span></div><p class="rp-stat' + (sg.complete ? ' ok' : '') + '">' + (sg.complete ? '★ Stage complete' : sg.mastered + ' of ' + sg.required + ' required modules mastered' + (sg.project ? ' · project ' + (sg.project.done ? 'done' : 'not done yet') : '')) + '</p><ol class="rp-mods">' +
         list.map(function (x) {
           var m = x.meta, miss = Learn.missing(x.id, p.lang, D);
           return '<li class="rp-mod' + (x.st.satisfied ? ' ok' : '') + '"><a href="' + Learn.href(x.id) + '"><b>' + esc(m ? m.title : x.id) + '</b><span class="muted">' + esc(m ? (LV[m.level] || '') + ' · ' + m.hours + ' h' : '') + '</span></a>' + badge(x.kind) + stateTag(x) +
             (miss.length && !x.st.satisfied ? '<small class="rp-miss">Needs first: ' + miss.map(function (y) { var mm = Learn.meta(y); return '<a href="' + Learn.href(y) + '">' + esc(mm ? mm.title : y) + '</a>'; }).join(', ') + '</small>' : '') + '</li>';
         }).join('') + '</ol>' +
         (st.behavioral ? '<p class="rp-beh"><b>Behavioural prep here:</b> ' + st.behavioral.map(function (b) { var m = Learn.meta(b); return '<a href="' + Learn.href(b) + '">' + esc(m ? m.title : b) + '</a>'; }).join(', ') + '</p>' : '') +
-        (pr ? '<div class="rp-proj"><span class="kicker">Project · about ' + pr.hours + ' h</span><b>' + esc(pr.name) + '</b><p>' + esc(pr.brief) + '</p><ul>' + pr.rubric.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></div>' : '') + '</article>';
+        (pr ? projectHtml(st.project, pr, sg.project) : '') + '</article>';
     }).join('');
     $('#rpExtNote').textContent = (s.opt + s.ext) + ' hours of optional depth: about ' + s.extWeeks[p.hours] + ' more weeks at ' + p.hours + ' h/week.';
     $('#rpExt').innerHTML = v.sch.plan.extensions.map(function (id) { var m = Learn.meta(id), st = Learn.status(id, D); return '<a class="rp-x' + (st.satisfied ? ' ok' : '') + '" href="' + Learn.href(id) + '">' + esc(m ? m.title : id) + '<small>' + (m ? m.hours + ' h' : '') + '</small></a>'; }).join('');
@@ -115,6 +121,13 @@
     var r = e.target.closest('[data-route]'), h = e.target.closest('[data-hours]');
     if (r) { Learn.setPref({ id: r.getAttribute('data-route') }); draw(); var b = document.querySelector('[data-route="' + r.getAttribute('data-route') + '"]'); if (b) b.focus(); }
     if (h) { Learn.setPref({ hours: +h.getAttribute('data-hours') }); draw(); var c = document.querySelector('[data-hours="' + h.getAttribute('data-hours') + '"]'); if (c) c.focus(); }
+  });
+  document.addEventListener('change', function (e) {
+    var c = e.target.closest && e.target.closest('input[data-proj]');
+    if (!c) return;
+    var pid = c.getAttribute('data-proj'), i = c.getAttribute('data-i');
+    Learn.setCriterion(pid, +i, c.checked); draw();
+    var again = document.querySelector('input[data-proj="' + pid + '"][data-i="' + i + '"]'); if (again) again.focus();
   });
   $('#rpLang').addEventListener('change', function () { Learn.setPref({ lang: this.value }); draw(); $('#rpLang').focus(); });
   if (window.Auth) { Auth.on(function (k) { if (k === 'progress') draw(); }); Auth.init(); }

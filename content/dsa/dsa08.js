@@ -1,6 +1,13 @@
 (function () {
   var topics = [], practice = [], quiz = [], interview = [];
 
+  /* ---------- code panes for the zero-sum visualizer: Java is the main version, hl uses its line numbers ---------- */
+  var ZS_CODE = 'seen.add(0L); long pf = 0;\nfor (int x : a) {\n  pf += x;\n  if (!seen.add(pf)) return true;\n}\nreturn false;';
+  var ZS_PY = 'seen = {0}; pf = 0\nfor x in a:\n    pf += x\n    if pf in seen: return True\n    seen.add(pf)\nreturn False';
+  var ZS_JS = 'const seen = new Set([0]); let pf = 0;\nfor (const x of a) {\n  pf += x;\n  if (seen.has(pf)) return true; seen.add(pf);\n}\nreturn false;';
+  var ZS_CPP = 'unordered_set<long long> seen = {0}; long long pf = 0;\nfor (int x : a) {\n  pf += x;\n  if (!seen.insert(pf).second) return true;\n}\nreturn false;';
+  var ZS_ALT = { python: { code: ZS_PY, map: {} }, js: { code: ZS_JS, map: {} }, cpp: { code: ZS_CPP, map: {} } };
+
   /* ---------- small shared helpers for the visualizers ---------- */
   // Parse "1 2 3" (or "1,2,3") into whole numbers, with friendly errors.
   function parseNums(s, maxLen, what, minLen) {
@@ -471,7 +478,9 @@ cout << a.size() << "\\n";` }] }
 <p><b>Why:</b> key 17 lands in the same bucket as 1 (17 &amp; 15 = 1), but equals() tells them apart so <code>get(1)</code> is still 1. Key 3 was never added → −1. <code>put(2,1)</code> overwrites 2 → value 1. After <code>remove(2)</code>, key 2 is gone → −1.</p>`,
       brute: {
         why: `<p>Keep every pair in one list and scan it on every call. Each operation is <b>O(N)</b> where N = number of stored keys; with 10<sup>4</sup> calls that is up to 10<sup>8</sup> comparisons in the worst case. The wasted work: we compare against keys that could never match. (A direct-address <code>int[1_000_001]</code> is O(1) but wastes ~4 MB and only works because keys are small — interviewers want the general design.)</p>`,
-        code: `class MyHashMapBrute {
+        code: {
+          lang: 'java',
+          code: `class MyHashMapBrute {
     // Every pair lives in one list: [key, value].
     private final List<int[]> pairs = new ArrayList<>();
 
@@ -492,7 +501,78 @@ cout << a.size() << "\\n";` }] }
             if (pairs.get(i)[0] == key) { pairs.remove(i); return; }
         }
     }
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `class MyHashMap:
+    # Every pair lives in one list: [key, value].
+    def __init__(self):
+        self.pairs = []
+
+    def put(self, key, value):
+        for p in self.pairs:
+            if p[0] == key:
+                p[1] = value               # update existing
+                return
+        self.pairs.append([key, value])    # brand-new key
+
+    def get(self, key):
+        for p in self.pairs:
+            if p[0] == key:
+                return p[1]
+        return -1
+
+    def remove(self, key):
+        for i in range(len(self.pairs)):
+            if self.pairs[i][0] == key:
+                del self.pairs[i]
+                return` },
+            { lang: 'js', code: `class MyHashMap {
+  // Every pair lives in one array: [key, value].
+  constructor() { this.pairs = []; }
+
+  put(key, value) {
+    for (const p of this.pairs) {
+      if (p[0] === key) { p[1] = value; return; } // update existing
+    }
+    this.pairs.push([key, value]);                // brand-new key
+  }
+
+  get(key) {
+    for (const p of this.pairs) if (p[0] === key) return p[1];
+    return -1;
+  }
+
+  remove(key) {
+    for (let i = 0; i < this.pairs.length; i++) {
+      if (this.pairs[i][0] === key) { this.pairs.splice(i, 1); return; }
+    }
+  }
+}` },
+            { lang: 'cpp', code: `class MyHashMap {
+    // Every pair lives in one vector: {key, value}.
+    vector<pair<int, int>> pairs;
+
+public:
+    void put(int key, int value) {
+        for (auto& p : pairs) {
+            if (p.first == key) { p.second = value; return; } // update existing
+        }
+        pairs.push_back({key, value});                        // brand-new key
+    }
+
+    int get(int key) {
+        for (auto& p : pairs) if (p.first == key) return p.second;
+        return -1;
+    }
+
+    void remove(int key) {
+        for (size_t i = 0; i < pairs.size(); i++) {
+            if (pairs[i].first == key) { pairs.erase(pairs.begin() + i); return; }
+        }
+    }
+};` }
+          ]
+        }
       },
       mcq: {
         q: 'You have an array of 16 buckets. Which pair of keys collide when index = key &amp; 15?',
@@ -1024,7 +1104,9 @@ def majority(a):
 <p>Output: <b>${H.c('g', '3')}</b>. −1 appears twice and 2 appears twice (red); 3 appears once and is the first such value (green).</p>`,
       brute: {
         why: `<p>For each index i, scan the whole array to count arr[i]; return the first with count 1. That is N scans of N elements = <b>O(N<sup>2</sup>)</b> = 10<sup>10</sup> steps for N = 10<sup>5</sup>. The waste: we re-count the same value every time it appears.</p>`,
-        code: `int firstNonRepeatingBrute(int[] arr) {
+        code: {
+          lang: 'java',
+          code: `int firstNonRepeatingBrute(int[] arr) {
     for (int i = 0; i < arr.length; i++) {
         int count = 0;
         for (int j = 0; j < arr.length; j++) {
@@ -1033,11 +1115,43 @@ def majority(a):
         if (count == 1) return arr[i];   // first one in array order
     }
     return 0;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def first_non_repeating(arr):
+    for i in range(len(arr)):
+        count = 0
+        for j in range(len(arr)):
+            if arr[j] == arr[i]:
+                count += 1
+        if count == 1:
+            return arr[i]    # first one in array order
+    return 0` },
+            { lang: 'js', code: `function firstNonRepeating(arr) {
+  for (let i = 0; i < arr.length; i++) {
+    let count = 0;
+    for (let j = 0; j < arr.length; j++) {
+      if (arr[j] === arr[i]) count++;
+    }
+    if (count === 1) return arr[i];   // first one in array order
+  }
+  return 0;
+}` },
+            { lang: 'cpp', code: `int firstNonRepeating(vector<int>& arr) {
+    for (size_t i = 0; i < arr.size(); i++) {
+        int count = 0;
+        for (size_t j = 0; j < arr.size(); j++) {
+            if (arr[j] == arr[i]) count++;
+        }
+        if (count == 1) return arr[i];   // first one in array order
+    }
+    return 0;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'After building the count map, why must the second pass loop over the <b>array</b> rather than over the HashMap?',
-        options: ['A HashMap does not keep insertion order, so its "first" entry may not be the earliest in the array', 'Looping over a HashMap is O(N<sup>2</sup>)', 'The HashMap might have lost some counts', 'Java does not allow iterating a HashMap'],
+        options: ['A HashMap does not keep insertion order, so its "first" entry may not be the earliest in the array', 'Looping over a HashMap is O(N<sup>2</sup>)', 'The HashMap might have lost some counts', 'Hash maps cannot be iterated'],
         answer: 0,
         explain: 'HashMap iterates in bucket order. The question asks for the first in ARRAY order, so walk the array (or use a LinkedHashMap).'
       },
@@ -1124,7 +1238,9 @@ def first_non_repeating(arr):
 <p>s = "rat", t = "car" → ${H.c('r', 'false')} (s has a 't', t has a 'c').</p>`,
       brute: {
         why: `<p>For each letter of s, search t for an unused copy and mark it used. Each search is O(N), so the total is <b>O(N<sup>2</sup>)</b> — 2.5·10<sup>9</sup> steps at the limit. (Sorting both strings and comparing is a decent O(N log N) middle ground.)</p>`,
-        code: `boolean isAnagramBrute(String s, String t) {
+        code: {
+          lang: 'java',
+          code: `boolean isAnagramBrute(String s, String t) {
     if (s.length() != t.length()) return false;
     boolean[] used = new boolean[t.length()];
     for (int i = 0; i < s.length(); i++) {
@@ -1135,7 +1251,48 @@ def first_non_repeating(arr):
         if (!found) return false;     // s has a letter t cannot match
     }
     return true;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def is_anagram(s, t):
+    if len(s) != len(t):
+        return False
+    used = [False] * len(t)
+    for i in range(len(s)):
+        found = False
+        for j in range(len(t)):
+            if not used[j] and t[j] == s[i]:
+                used[j] = True
+                found = True
+                break
+        if not found:
+            return False    # s has a letter t cannot match
+    return True` },
+            { lang: 'js', code: `function isAnagram(s, t) {
+  if (s.length !== t.length) return false;
+  const used = new Array(t.length).fill(false);
+  for (let i = 0; i < s.length; i++) {
+    let found = false;
+    for (let j = 0; j < t.length; j++) {
+      if (!used[j] && t[j] === s[i]) { used[j] = true; found = true; break; }
+    }
+    if (!found) return false;     // s has a letter t cannot match
+  }
+  return true;
+}` },
+            { lang: 'cpp', code: `bool isAnagram(string s, string t) {
+    if (s.size() != t.size()) return false;
+    vector<bool> used(t.size(), false);
+    for (size_t i = 0; i < s.size(); i++) {
+        bool found = false;
+        for (size_t j = 0; j < t.size(); j++) {
+            if (!used[j] && t[j] == s[i]) { used[j] = true; found = true; break; }
+        }
+        if (!found) return false;     // s has a letter t cannot match
+    }
+    return true;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'You use one int[26] array: +1 for each letter of s and −1 for each letter of t (same length). When is it an anagram?',
@@ -1236,7 +1393,9 @@ def is_anagram(s: str, t: str) -> bool:
 <p><b>Why:</b> "eat", "tea", "ate" all sort to <b>"aet"</b>; "tan", "nat" sort to <b>"ant"</b>; "bat" alone sorts to <b>"abt"</b>.</p>`,
       brute: {
         why: `<p>For each word not yet grouped, compare it with every later word using an anagram check, and pull matches into its group. That is O(N<sup>2</sup>) pairs × O(K) per check = <b>O(N<sup>2</sup>·K)</b> ≈ 10<sup>10</sup> for N = 10<sup>4</sup>, K = 100. The waste: we keep re-comparing words that could be labelled once.</p>`,
-        code: `List<List<String>> groupAnagramsBrute(String[] strs) {
+        code: {
+          lang: 'java',
+          code: `List<List<String>> groupAnagramsBrute(String[] strs) {
     List<List<String>> res = new ArrayList<>();
     boolean[] used = new boolean[strs.length];
     for (int i = 0; i < strs.length; i++) {
@@ -1257,7 +1416,80 @@ boolean sameLetters(String a, String b) {
     for (int k = 0; k < a.length(); k++) { cnt[a.charAt(k) - 'a']++; cnt[b.charAt(k) - 'a']--; }
     for (int c : cnt) if (c != 0) return false;
     return true;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def group_anagrams(strs):
+    res = []
+    used = [False] * len(strs)
+    for i in range(len(strs)):
+        if used[i]:
+            continue
+        group = [strs[i]]
+        used[i] = True
+        for j in range(i + 1, len(strs)):
+            if not used[j] and same_letters(strs[i], strs[j]):
+                group.append(strs[j])
+                used[j] = True
+        res.append(group)
+    return res
+
+
+def same_letters(a, b):
+    if len(a) != len(b):
+        return False
+    cnt = [0] * 26
+    for k in range(len(a)):
+        cnt[ord(a[k]) - ord('a')] += 1
+        cnt[ord(b[k]) - ord('a')] -= 1
+    return all(c == 0 for c in cnt)` },
+            { lang: 'js', code: `function groupAnagrams(strs) {
+  const res = [];
+  const used = new Array(strs.length).fill(false);
+  for (let i = 0; i < strs.length; i++) {
+    if (used[i]) continue;
+    const group = [strs[i]];
+    used[i] = true;
+    for (let j = i + 1; j < strs.length; j++) {
+      if (!used[j] && sameLetters(strs[i], strs[j])) { group.push(strs[j]); used[j] = true; }
+    }
+    res.push(group);
+  }
+  return res;
+}
+
+function sameLetters(a, b) {
+  if (a.length !== b.length) return false;
+  const cnt = new Array(26).fill(0);
+  for (let k = 0; k < a.length; k++) {
+    cnt[a.charCodeAt(k) - 97]++;
+    cnt[b.charCodeAt(k) - 97]--;
+  }
+  return cnt.every((c) => c === 0);
+}` },
+            { lang: 'cpp', code: `bool sameLetters(const string& a, const string& b) {
+    if (a.size() != b.size()) return false;
+    int cnt[26] = {0};
+    for (size_t k = 0; k < a.size(); k++) { cnt[a[k] - 'a']++; cnt[b[k] - 'a']--; }
+    for (int c : cnt) if (c != 0) return false;
+    return true;
+}
+
+vector<vector<string>> groupAnagrams(vector<string>& strs) {
+    vector<vector<string>> res;
+    vector<bool> used(strs.size(), false);
+    for (size_t i = 0; i < strs.size(); i++) {
+        if (used[i]) continue;
+        vector<string> group = {strs[i]};
+        used[i] = true;
+        for (size_t j = i + 1; j < strs.size(); j++) {
+            if (!used[j] && sameLetters(strs[i], strs[j])) { group.push_back(strs[j]); used[j] = true; }
+        }
+        res.push_back(group);
+    }
+    return res;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Which key correctly puts all anagrams of a word into the same HashMap bucket?',
@@ -1657,14 +1889,41 @@ ${H.table(['input', 'best approach', 'time', 'space'], [['unsorted, return indic
       example: `${H.arr([11, 2, 15, 7], { label: 'nums', hl: { 1: 'g', 3: 'g' } })}<p>target = 9 → output ${H.c('g', '[1, 3]')} because nums[1] + nums[3] = 2 + 7 = 9.</p>`,
       brute: {
         why: `<p>Try every pair (i, j) with i &lt; j: N(N−1)/2 ≈ 5·10<sup>7</sup> checks for N = 10<sup>4</sup>. It passes here but is <b>O(N<sup>2</sup>)</b>. The wasted work: for each i, the inner loop <i>searches</i> for one specific value (target − nums[i]) by scanning — a perfect job for a hash lookup.</p>`,
-        code: `int[] twoSumBrute(int[] nums, int target) {
+        code: {
+          lang: 'java',
+          code: `int[] twoSumBrute(int[] nums, int target) {
     for (int i = 0; i < nums.length; i++) {
         for (int j = i + 1; j < nums.length; j++) {
             if (nums[i] + nums[j] == target) return new int[]{i, j};
         }
     }
     return new int[0];
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def two_sum(nums, target):
+    for i in range(len(nums)):
+        for j in range(i + 1, len(nums)):
+            if nums[i] + nums[j] == target:
+                return [i, j]
+    return []` },
+            { lang: 'js', code: `function twoSum(nums, target) {
+  for (let i = 0; i < nums.length; i++) {
+    for (let j = i + 1; j < nums.length; j++) {
+      if (nums[i] + nums[j] === target) return [i, j];
+    }
+  }
+  return [];
+}` },
+            { lang: 'cpp', code: `vector<int> twoSum(vector<int>& nums, int target) {
+    for (size_t i = 0; i < nums.size(); i++) {
+        for (size_t j = i + 1; j < nums.size(); j++) {
+            if (nums[i] + nums[j] == target) return {(int)i, (int)j};
+        }
+    }
+    return {};
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'nums = [3, 2, 4], target = 6. You insert nums[i] into the map BEFORE checking for its complement. What goes wrong?',
@@ -2044,7 +2303,9 @@ ${H.table(['window', 'map', 'distinct'], [['asha ben asha', '{asha:2, ben:1}', '
       example: `${H.arr([1, 2, 1, 3, 4, 2, 3], { label: 'arr', hl: { 0: 'b', 1: 'b', 2: 'b', 3: 'b' } })}<p>K = 4 → output ${H.c('g', '[3, 4, 4, 3]')}. The first window [1, 2, 1, 3] has values {1, 2, 3} → 3; the last window [3, 4, 2, 3] has {2, 3, 4} → 3.</p>`,
       brute: {
         why: `<p>For each of the N − K + 1 windows, build a fresh HashSet of its K elements and record its size. That is <b>O(N·K)</b> — about 2.5·10<sup>9</sup> operations when K = N/2 = 5·10<sup>4</sup>. The waste: consecutive windows share K − 1 elements, yet we rebuild everything.</p>`,
-        code: `List<Integer> countDistinctBrute(int[] arr, int k) {
+        code: {
+          lang: 'java',
+          code: `List<Integer> countDistinctBrute(int[] arr, int k) {
     List<Integer> res = new ArrayList<>();
     for (int start = 0; start + k <= arr.length; start++) {
         Set<Integer> seen = new HashSet<>();
@@ -2052,7 +2313,36 @@ ${H.table(['window', 'map', 'distinct'], [['asha ben asha', '{asha:2, ben:1}', '
         res.add(seen.size());
     }
     return res;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def count_distinct(arr, k):
+    res = []
+    for start in range(len(arr) - k + 1):
+        seen = set()
+        for j in range(start, start + k):
+            seen.add(arr[j])
+        res.append(len(seen))
+    return res` },
+            { lang: 'js', code: `function countDistinct(arr, k) {
+  const res = [];
+  for (let start = 0; start + k <= arr.length; start++) {
+    const seen = new Set();
+    for (let j = start; j < start + k; j++) seen.add(arr[j]);
+    res.push(seen.size);
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<int> countDistinct(vector<int>& arr, int k) {
+    vector<int> res;
+    for (int start = 0; start + k <= (int)arr.size(); start++) {
+        unordered_set<int> seen;
+        for (int j = start; j < start + k; j++) seen.insert(arr[j]);
+        res.push_back((int)seen.size());
+    }
+    return res;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'The window [1, 2, 1, 3] slides right; the 1 at index 0 leaves. What should happen to key 1 in the count map?',
@@ -2320,7 +2610,7 @@ int main() {
       inputLabel: 'Array (whole numbers incl. negatives, at most 14)',
       gen: function (input) {
         var a = parseNums(input, 14, 'array'), seen = [0], pf = 0, pfs = [], frames = [];
-        frames.push({ narr: 'Seed the set with <b>0</b>: the balance before any transaction. This lets us catch zero-sum subarrays that start at index 0.', parts: [{ type: 'array', label: 'arr', values: a.slice() }, { type: 'set', label: 'balances seen (HashSet)', items: seen.slice(), hl: { '0': 'ok' } }, { type: 'code', label: 'code', lang: 'java', code: 'seen.add(0L); long pf = 0;\nfor (int x : a) {\n  pf += x;\n  if (!seen.add(pf)) return true;\n}\nreturn false;', hl: { 1: 'cur' } }] });
+        frames.push({ narr: 'Seed the set with <b>0</b>: the balance before any transaction. This lets us catch zero-sum subarrays that start at index 0.', parts: [{ type: 'array', label: 'arr', values: a.slice() }, { type: 'set', label: 'balances seen (HashSet)', items: seen.slice(), hl: { '0': 'ok' } }, { type: 'code', label: 'code', lang: 'java', code: ZS_CODE, hl: { 1: 'cur' }, alt: ZS_ALT }] });
         for (var i = 0; i < a.length; i++) {
           pf += a[i]; pfs.push(pf);
           var dup = seen.indexOf(pf) >= 0;
@@ -2330,12 +2620,12 @@ int main() {
             for (var q = 0; q < i; q++) if (pfs[q] === pf) { j = q; break; }
             var start = j + 1;                      // j = -1 means the match was the seed 0
             if (j >= 0) bhl[j] = 'bad';
-            frames.push({ narr: 'i = ' + i + ': balance = ' + (pf - a[i]) + ' + (' + a[i] + ') = <b>' + pf + '</b>. <span class="c-r">Already in the set!</span> The same balance appeared ' + (j < 0 ? 'before index 0 (the seed 0)' : 'after index ' + j) + ', so arr[' + start + '..' + i + '] sums to <b>0</b>.', parts: [{ type: 'array', label: 'arr', values: a.slice(), range: [start, i], ptr: one(i, 'i') }, { type: 'bars', label: 'running balance pf[i]', values: pfs.slice(), hl: bhl }, { type: 'set', label: 'balances seen (HashSet)', items: seen.slice(), hl: one(pf, 'bad') }, { type: 'code', label: 'code', lang: 'java', code: 'seen.add(0L); long pf = 0;\nfor (int x : a) {\n  pf += x;\n  if (!seen.add(pf)) return true;\n}\nreturn false;', hl: { 4: 'bad' } }] });
+            frames.push({ narr: 'i = ' + i + ': balance = ' + (pf - a[i]) + ' + (' + a[i] + ') = <b>' + pf + '</b>. <span class="c-r">Already in the set!</span> The same balance appeared ' + (j < 0 ? 'before index 0 (the seed 0)' : 'after index ' + j) + ', so arr[' + start + '..' + i + '] sums to <b>0</b>.', parts: [{ type: 'array', label: 'arr', values: a.slice(), range: [start, i], ptr: one(i, 'i') }, { type: 'bars', label: 'running balance pf[i]', values: pfs.slice(), hl: bhl }, { type: 'set', label: 'balances seen (HashSet)', items: seen.slice(), hl: one(pf, 'bad') }, { type: 'code', label: 'code', lang: 'java', code: ZS_CODE, hl: { 4: 'bad' }, alt: ZS_ALT }] });
             frames.push({ narr: 'Answer: <b>true</b>. The highlighted window [' + a.slice(start, i + 1).join(', ') + '] has sum 0 — Monday\'s balance equals Friday\'s.', parts: [{ type: 'array', label: 'arr', values: a.slice(), hl: rng(start, i, 'sel') }, { type: 'vars', vals: { answer: true, subarray: start + '..' + i }, hl: { answer: 'sel' } }] });
             return frames;
           }
           seen.push(pf);
-          frames.push({ narr: 'i = ' + i + ': balance = <b>' + pf + '</b>. New balance → <span class="c-g">insert</span> into the set.', parts: [{ type: 'array', label: 'arr', values: a.slice(), ptr: one(i, 'i'), hl: one(i, 'cur') }, { type: 'bars', label: 'running balance pf[i]', values: pfs.slice(), hl: bhl }, { type: 'set', label: 'balances seen (HashSet)', items: seen.slice(), hl: one(pf, 'ok') }, { type: 'code', label: 'code', lang: 'java', code: 'seen.add(0L); long pf = 0;\nfor (int x : a) {\n  pf += x;\n  if (!seen.add(pf)) return true;\n}\nreturn false;', hl: { 3: 'cur', 4: 'ok' } }] });
+          frames.push({ narr: 'i = ' + i + ': balance = <b>' + pf + '</b>. New balance → <span class="c-g">insert</span> into the set.', parts: [{ type: 'array', label: 'arr', values: a.slice(), ptr: one(i, 'i'), hl: one(i, 'cur') }, { type: 'bars', label: 'running balance pf[i]', values: pfs.slice(), hl: bhl }, { type: 'set', label: 'balances seen (HashSet)', items: seen.slice(), hl: one(pf, 'ok') }, { type: 'code', label: 'code', lang: 'java', code: ZS_CODE, hl: { 3: 'cur', 4: 'ok' }, alt: ZS_ALT }] });
         }
         frames.push({ narr: 'No balance ever repeated → <b>false</b>: no zero-sum subarray.', parts: [{ type: 'bars', label: 'running balance', values: pfs.slice() }, { type: 'set', label: 'balances seen', items: seen.slice() }, { type: 'vars', vals: { answer: false }, hl: { answer: 'sel' } }] });
         return frames;
@@ -2434,7 +2724,9 @@ void demo() {
 <p>arr = [4, 2, 0, 1, 6] → <b>true</b> (the single 0). arr = [1, 2, 3] → <b>false</b>.</p>`,
       brute: {
         why: `<p>Try every start l and extend r, keeping a running sum: N(N+1)/2 ≈ 5·10<sup>9</sup> additions for N = 10<sup>5</sup> → <b>TLE</b>. The waste: for each start we recompute sums we could have compared against remembered balances.</p>`,
-        code: `boolean hasZeroSumBrute(int[] a) {
+        code: {
+          lang: 'java',
+          code: `boolean hasZeroSumBrute(int[] a) {
     for (int l = 0; l < a.length; l++) {
         long sum = 0;
         for (int r = l; r < a.length; r++) {
@@ -2443,7 +2735,38 @@ void demo() {
         }
     }
     return false;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def find_sum(arr):
+    for l in range(len(arr)):
+        total = 0
+        for r in range(l, len(arr)):
+            total += arr[r]
+            if total == 0:
+                return True
+    return False` },
+            { lang: 'js', code: `function findsum(arr) {
+  for (let l = 0; l < arr.length; l++) {
+    let sum = 0;
+    for (let r = l; r < arr.length; r++) {
+      sum += arr[r];
+      if (sum === 0) return true;
+    }
+  }
+  return false;
+}` },
+            { lang: 'cpp', code: `bool findsum(vector<int>& arr) {
+    for (size_t l = 0; l < arr.size(); l++) {
+        long long sum = 0;
+        for (size_t r = l; r < arr.size(); r++) {
+            sum += arr[r];
+            if (sum == 0) return true;
+        }
+    }
+    return false;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'The running balance is 7 after index 2 and again 7 after index 5. Which subarray sums to 0?',
@@ -2775,7 +3098,9 @@ int main() {
 <p>nums = [1, 1, 1], k = 2 → 2.</p>`,
       brute: {
         why: `<p>For every start l, extend r and keep a running sum; count when it equals k. That is N(N+1)/2 ≈ 2·10<sup>8</sup> steps for N = 2·10<sup>4</sup> — borderline, and hopeless for N = 10<sup>5</sup>. You cannot break early (negatives can bring the sum back to k later). The waste: for a fixed r we re-derive sums that a tally of earlier balances answers in O(1).</p>`,
-        code: `int subarraySumBrute(int[] nums, int k) {
+        code: {
+          lang: 'java',
+          code: `int subarraySumBrute(int[] nums, int k) {
     int count = 0;
     for (int l = 0; l < nums.length; l++) {
         int sum = 0;
@@ -2785,7 +3110,41 @@ int main() {
         }
     }
     return count;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def subarray_sum(nums, k):
+    count = 0
+    for l in range(len(nums)):
+        total = 0
+        for r in range(l, len(nums)):
+            total += nums[r]
+            if total == k:
+                count += 1    # no early break: negatives may hit k again
+    return count` },
+            { lang: 'js', code: `function subarraySum(nums, k) {
+  let count = 0;
+  for (let l = 0; l < nums.length; l++) {
+    let sum = 0;
+    for (let r = l; r < nums.length; r++) {
+      sum += nums[r];
+      if (sum === k) count++;   // no early break: negatives may hit k again
+    }
+  }
+  return count;
+}` },
+            { lang: 'cpp', code: `int subarraySum(vector<int>& nums, int k) {
+    int count = 0;
+    for (size_t l = 0; l < nums.size(); l++) {
+        int sum = 0;
+        for (size_t r = l; r < nums.size(); r++) {
+            sum += nums[r];
+            if (sum == k) count++;   // no early break: negatives may hit k again
+        }
+    }
+    return count;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Why must the map start as {0: 1} rather than empty?',
@@ -3161,7 +3520,9 @@ int main() {
       example: `${H.arr([15, -2, 2, -8, 1, 7, 10, 23], { label: 'arr', hl: { 1: 'g', 2: 'g', 3: 'g', 4: 'g', 5: 'g' } })}<p>Output ${H.c('g', '5')}: [−2, 2, −8, 1, 7] sums to 0. The shorter [−2, 2] also sums to 0 but is not the longest.</p>`,
       brute: {
         why: `<p>Check every (l, r) pair with a running sum and track the longest with sum 0: <b>O(N<sup>2</sup>)</b> = 5·10<sup>9</sup> steps at N = 10<sup>5</sup>. The waste: for each end r we only need the earliest start whose balance matches — information a map can remember.</p>`,
-        code: `int maxLenBrute(int[] arr) {
+        code: {
+          lang: 'java',
+          code: `int maxLenBrute(int[] arr) {
     int best = 0;
     for (int l = 0; l < arr.length; l++) {
         int sum = 0;
@@ -3171,7 +3532,41 @@ int main() {
         }
     }
     return best;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def max_len(arr):
+    best = 0
+    for l in range(len(arr)):
+        total = 0
+        for r in range(l, len(arr)):
+            total += arr[r]
+            if total == 0:
+                best = max(best, r - l + 1)
+    return best` },
+            { lang: 'js', code: `function maxLen(arr) {
+  let best = 0;
+  for (let l = 0; l < arr.length; l++) {
+    let sum = 0;
+    for (let r = l; r < arr.length; r++) {
+      sum += arr[r];
+      if (sum === 0) best = Math.max(best, r - l + 1);
+    }
+  }
+  return best;
+}` },
+            { lang: 'cpp', code: `int maxLen(vector<int>& arr) {
+    int best = 0;
+    for (int l = 0; l < (int)arr.size(); l++) {
+        int sum = 0;
+        for (int r = l; r < (int)arr.size(); r++) {
+            sum += arr[r];
+            if (sum == 0) best = max(best, r - l + 1);
+        }
+    }
+    return best;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Balance 15 appears at indices 0, 2 and 5. When you reach index 5, which earlier index gives the longest zero-sum subarray ending at 5?',
@@ -3269,7 +3664,9 @@ int main() {
       example: `${H.arr([10, 5, 2, 7, 1, -10], { label: 'arr', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g', 4: 'g', 5: 'g' } })}<p>k = 15 → output ${H.c('g', '6')}: the whole array sums to 15. Shorter answers exist ([10, 5], [5, 2, 7, 1]) but 6 is the longest.</p>`,
       brute: {
         why: `<p>All (l, r) pairs with a running sum: <b>O(N<sup>2</sup>)</b>. Sliding window is <b>not</b> a valid speed-up because negatives break the "shrink when too big" rule: here the window would shrink away the 10 and never reach the full-array answer.</p>`,
-        code: `int longestSubarrayBrute(int[] arr, int k) {
+        code: {
+          lang: 'java',
+          code: `int longestSubarrayBrute(int[] arr, int k) {
     int best = 0;
     for (int l = 0; l < arr.length; l++) {
         long sum = 0;
@@ -3279,7 +3676,41 @@ int main() {
         }
     }
     return best;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def longest_subarray(arr, k):
+    best = 0
+    for l in range(len(arr)):
+        total = 0
+        for r in range(l, len(arr)):
+            total += arr[r]
+            if total == k:
+                best = max(best, r - l + 1)
+    return best` },
+            { lang: 'js', code: `function longestSubarray(arr, k) {
+  let best = 0;
+  for (let l = 0; l < arr.length; l++) {
+    let sum = 0;
+    for (let r = l; r < arr.length; r++) {
+      sum += arr[r];
+      if (sum === k) best = Math.max(best, r - l + 1);
+    }
+  }
+  return best;
+}` },
+            { lang: 'cpp', code: `int longestSubarray(vector<int>& arr, int k) {
+    int best = 0;
+    for (int l = 0; l < (int)arr.size(); l++) {
+        long long sum = 0;
+        for (int r = l; r < (int)arr.size(); r++) {
+            sum += arr[r];
+            if (sum == k) best = max(best, r - l + 1);
+        }
+    }
+    return best;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'You adapt the zero-sum code "if (found) measure; <b>else</b> insert" to K = 5 by looking up pf − 5. On arr = [5, 1, 4], what happens?',
@@ -3377,7 +3808,9 @@ int main() {
       example: `${H.arr([0, 1, 1, 0, 1, 1, 1, 0], { label: 'nums', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g' } })}<p>Output ${H.c('g', '4')}: [0, 1, 1, 0] has two 0s and two 1s. No longer balanced stretch exists.</p>`,
       brute: {
         why: `<p>For every start, extend and count zeros and ones; record when equal: <b>O(N<sup>2</sup>)</b> = 10<sup>10</sup> at N = 10<sup>5</sup>. The waste: "ones − zeros" is just a running balance, and equal balances can be matched with a map.</p>`,
-        code: `int findMaxLengthBrute(int[] nums) {
+        code: {
+          lang: 'java',
+          code: `int findMaxLengthBrute(int[] nums) {
     int best = 0;
     for (int l = 0; l < nums.length; l++) {
         int zeros = 0, ones = 0;
@@ -3387,11 +3820,48 @@ int main() {
         }
     }
     return best;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def find_max_length(nums):
+    best = 0
+    for l in range(len(nums)):
+        zeros = ones = 0
+        for r in range(l, len(nums)):
+            if nums[r] == 0:
+                zeros += 1
+            else:
+                ones += 1
+            if zeros == ones:
+                best = max(best, r - l + 1)
+    return best` },
+            { lang: 'js', code: `function findMaxLength(nums) {
+  let best = 0;
+  for (let l = 0; l < nums.length; l++) {
+    let zeros = 0, ones = 0;
+    for (let r = l; r < nums.length; r++) {
+      if (nums[r] === 0) zeros++; else ones++;
+      if (zeros === ones) best = Math.max(best, r - l + 1);
+    }
+  }
+  return best;
+}` },
+            { lang: 'cpp', code: `int findMaxLength(vector<int>& nums) {
+    int best = 0;
+    for (int l = 0; l < (int)nums.size(); l++) {
+        int zeros = 0, ones = 0;
+        for (int r = l; r < (int)nums.size(); r++) {
+            if (nums[r] == 0) zeros++; else ones++;
+            if (zeros == ones) best = max(best, r - l + 1);
+        }
+    }
+    return best;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Why turn every 0 into −1?',
-        options: ['Then "equal 0s and 1s" becomes "subarray sum is 0", which prefix sums + a map solve', 'To make all values negative so sliding window works', 'Because Java cannot add zeros', 'To sort the array faster'],
+        options: ['Then "equal 0s and 1s" becomes "subarray sum is 0", which prefix sums + a map solve', 'To make all values negative so sliding window works', 'Because zeros cannot be added to a sum', 'To sort the array faster'],
         answer: 0,
         explain: 'With ±1, each 1 cancels one 0. Equal counts ⇔ net sum 0 ⇔ two equal running balances.'
       },
@@ -3855,7 +4325,9 @@ ${H.arr(['p', 'w', 'w', 'k', 'e', 'w'], { label: 's', hl: { 2: 'g', 3: 'g', 4: '
       example: `${H.arr(['a', 'b', 'c', 'a', 'b', 'c', 'b', 'b'], { label: 's', hl: { 0: 'g', 1: 'g', 2: 'g' } })}<p>Output ${H.c('g', '3')} — "abc". For "bbbbb" → 1, for "pwwkew" → 3 ("wke"), for "" → 0.</p>`,
       brute: {
         why: `<p>For every start i, extend j while characters stay unique (using a set), and record the longest. That is <b>O(N<sup>2</sup>)</b> in the worst case (≈ 10<sup>9</sup> for N = 5·10<sup>4</sup> with a large alphabet). The waste: after a duplicate at j, starting over from i + 1 re-scans characters we already know are unique.</p>`,
-        code: `int lengthOfLongestSubstringBrute(String s) {
+        code: {
+          lang: 'java',
+          code: `int lengthOfLongestSubstringBrute(String s) {
     int best = 0;
     for (int i = 0; i < s.length(); i++) {
         Set<Character> seen = new HashSet<>();
@@ -3865,7 +4337,43 @@ ${H.arr(['p', 'w', 'w', 'k', 'e', 'w'], { label: 's', hl: { 2: 'g', 3: 'g', 4: '
         }
     }
     return best;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def length_of_longest_substring(s):
+    best = 0
+    for i in range(len(s)):
+        seen = set()
+        for j in range(i, len(s)):
+            if s[j] in seen:
+                break              # repeat: this start can go no further
+            seen.add(s[j])
+            best = max(best, j - i + 1)
+    return best` },
+            { lang: 'js', code: `function lengthOfLongestSubstring(s) {
+  let best = 0;
+  for (let i = 0; i < s.length; i++) {
+    const seen = new Set();
+    for (let j = i; j < s.length; j++) {
+      if (seen.has(s[j])) break;      // repeat: this start can go no further
+      seen.add(s[j]);
+      best = Math.max(best, j - i + 1);
+    }
+  }
+  return best;
+}` },
+            { lang: 'cpp', code: `int lengthOfLongestSubstring(string s) {
+    int best = 0;
+    for (int i = 0; i < (int)s.size(); i++) {
+        unordered_set<char> seen;
+        for (int j = i; j < (int)s.size(); j++) {
+            if (!seen.insert(s[j]).second) break;      // repeat: this start can go no further
+            best = max(best, j - i + 1);
+        }
+    }
+    return best;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Jump version: s = "abba". At right = 3 (char a), last[a] = 0 and left = 2. What should left become?',
@@ -3983,7 +4491,9 @@ ${H.arr('ADOBECODEBANC'.split(''), { label: 's', hl: { 9: 'g', 10: 'g', 11: 'g',
 <p>s = "a", t = "aa" → ${H.c('r', '""')} (s has only one 'a', t needs two).</p>`,
       brute: {
         why: `<p>For every start l, extend r and maintain counts; as soon as the window covers t (check 52 letter counts), record it and stop extending. That is <b>O(|s|<sup>2</sup> · Σ)</b> ≈ 5·10<sup>11</sup> at the limits. The waste: after finding a valid window at (l, r), the next start l + 1 re-extends over the same characters instead of reusing the counts.</p>`,
-        code: `String minWindowBrute(String s, String t) {
+        code: {
+          lang: 'java',
+          code: `String minWindowBrute(String s, String t) {
     int[] need = new int[128];
     for (char c : t.toCharArray()) need[c]++;
     String best = "";
@@ -4003,7 +4513,70 @@ ${H.arr('ADOBECODEBANC'.split(''), { label: 's', hl: { 9: 'g', 10: 'g', 11: 'g',
 boolean covers(int[] have, int[] need) {
     for (int c = 0; c < 128; c++) if (have[c] < need[c]) return false;
     return true;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def min_window(s, t):
+    need = [0] * 128
+    for c in t:
+        need[ord(c)] += 1
+    best = ""
+    for l in range(len(s)):
+        have = [0] * 128
+        for r in range(l, len(s)):
+            have[ord(s[r])] += 1
+            if covers(have, need):
+                if best == "" or r - l + 1 < len(best):
+                    best = s[l:r + 1]
+                break              # longer windows from this l cannot be shorter
+    return best
+
+
+def covers(have, need):
+    return all(have[c] >= need[c] for c in range(128))` },
+            { lang: 'js', code: `function minWindow(s, t) {
+  const need = new Array(128).fill(0);
+  for (const c of t) need[c.charCodeAt(0)]++;
+  let best = "";
+  for (let l = 0; l < s.length; l++) {
+    const have = new Array(128).fill(0);
+    for (let r = l; r < s.length; r++) {
+      have[s.charCodeAt(r)]++;
+      if (covers(have, need)) {
+        if (best === "" || r - l + 1 < best.length) best = s.slice(l, r + 1);
+        break;                         // longer windows from this l cannot be shorter
+      }
+    }
+  }
+  return best;
+}
+
+function covers(have, need) {
+  for (let c = 0; c < 128; c++) if (have[c] < need[c]) return false;
+  return true;
+}` },
+            { lang: 'cpp', code: `bool covers(const vector<int>& have, const vector<int>& need) {
+    for (int c = 0; c < 128; c++) if (have[c] < need[c]) return false;
+    return true;
+}
+
+string minWindow(string s, string t) {
+    vector<int> need(128, 0);
+    for (char c : t) need[c]++;
+    string best = "";
+    for (size_t l = 0; l < s.size(); l++) {
+        vector<int> have(128, 0);
+        for (size_t r = l; r < s.size(); r++) {
+            have[s[r]]++;
+            if (covers(have, need)) {
+                if (best.empty() || r - l + 1 < best.size()) best = s.substr(l, r - l + 1);
+                break;                 // longer windows from this l cannot be shorter
+            }
+        }
+    }
+    return best;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'While shrinking a valid window, you remove s[left] = \'D\' (not in t) and then \'B\' where need[B] goes from 0 to 1. What do you do?',
@@ -4470,7 +5043,9 @@ ${H.arr([1, 2, 3, 4, 100, 200], { label: 'sorted', hl: { 0: 'g', 1: 'g', 2: 'g',
       example: `${H.arr([100, 4, 200, 1, 3, 2], { label: 'nums', hl: { 1: 'g', 3: 'g', 4: 'g', 5: 'g' } })}<p>Output ${H.c('g', '4')}: the values 1, 2, 3, 4 are all present. [0, 3, 7, 2, 5, 8, 4, 6, 0, 1] → 9 (0..8).</p>`,
       brute: {
         why: `<p>For every x, repeatedly scan the whole array to see if x+1, x+2, … exist. A run of length L costs O(N·L) per starting value → up to <b>O(N<sup>3</sup>)</b>. Sorting first gives O(N log N), still above the required O(N). The waste: repeated linear searches (fix: a set) and re-walking runs from their middle (fix: only start at chain fronts).</p>`,
-        code: `int longestConsecutiveBrute(int[] nums) {
+        code: {
+          lang: 'java',
+          code: `int longestConsecutiveBrute(int[] nums) {
     int best = 0;
     for (int x : nums) {
         int len = 1;
@@ -4483,7 +5058,53 @@ ${H.arr([1, 2, 3, 4, 100, 200], { label: 'sorted', hl: { 0: 'g', 1: 'g', 2: 'g',
 boolean containsLinear(int[] a, int target) {
     for (int v : a) if (v == target) return true;
     return false;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def longest_consecutive(nums):
+    best = 0
+    for x in nums:
+        length = 1
+        while contains_linear(nums, x + length):   # O(N) search each time
+            length += 1
+        best = max(best, length)
+    return best
+
+
+def contains_linear(a, target):
+    for v in a:
+        if v == target:
+            return True
+    return False` },
+            { lang: 'js', code: `function longestConsecutive(nums) {
+  let best = 0;
+  for (const x of nums) {
+    let len = 1;
+    while (containsLinear(nums, x + len)) len++;   // O(N) search each time
+    best = Math.max(best, len);
+  }
+  return best;
+}
+
+function containsLinear(a, target) {
+  for (const v of a) if (v === target) return true;
+  return false;
+}` },
+            { lang: 'cpp', code: `bool containsLinear(const vector<int>& a, int target) {
+    for (int v : a) if (v == target) return true;
+    return false;
+}
+
+int longestConsecutive(vector<int>& nums) {
+    int best = 0;
+    for (int x : nums) {
+        int len = 1;
+        while (containsLinear(nums, x + len)) len++;   // O(N) search each time
+        best = max(best, len);
+    }
+    return best;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'In the O(N) solution, why do we skip x when x − 1 is in the set?',
@@ -4589,7 +5210,9 @@ boolean containsLinear(int[] a, int target) {
     example: `<p>note = "aa", magazine = "aab" → ${H.c('g', 'true')} (two a's available). note = "aa", magazine = "ab" → ${H.c('r', 'false')} (only one a).</p>`,
     brute: {
       why: `<p>For each note letter, search the magazine for an unused copy and mark it: <b>O(n·m)</b> = 10<sup>10</sup> at the limits. The waste: we only care <i>how many</i> of each letter the magazine has, not where.</p>`,
-      code: `boolean canConstructBrute(String note, String magazine) {
+      code: {
+          lang: 'java',
+          code: `boolean canConstructBrute(String note, String magazine) {
     StringBuilder mag = new StringBuilder(magazine);
     for (char c : note.toCharArray()) {
         int pos = mag.indexOf(String.valueOf(c));   // O(m) search
@@ -4597,7 +5220,35 @@ boolean containsLinear(int[] a, int target) {
         mag.deleteCharAt(pos);                      // use it up
     }
     return true;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def can_construct(note, magazine):
+    mag = list(magazine)
+    for c in note:
+        if c not in mag:      # O(m) search
+            return False
+        mag.remove(c)         # use it up
+    return True` },
+            { lang: 'js', code: `function canConstruct(ransomNote, magazine) {
+  let mag = magazine;
+  for (const c of ransomNote) {
+    const pos = mag.indexOf(c);                     // O(m) search
+    if (pos < 0) return false;
+    mag = mag.slice(0, pos) + mag.slice(pos + 1);   // use it up
+  }
+  return true;
+}` },
+            { lang: 'cpp', code: `bool canConstruct(string ransomNote, string magazine) {
+    string mag = magazine;
+    for (char c : ransomNote) {
+        size_t pos = mag.find(c);                   // O(m) search
+        if (pos == string::npos) return false;
+        mag.erase(pos, 1);                          // use it up
+    }
+    return true;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Which single data structure answers this in O(n + m)?', options: ['A tally of magazine letters (int[26]) decremented by the note', 'A HashSet of magazine letters', 'Sorting the note only', 'A stack of magazine letters'], answer: 0, explain: 'A set loses multiplicity ("aa" needs two a\'s). Counts keep it.' },
     hints: [
@@ -4661,7 +5312,9 @@ def can_construct(note, magazine):
     example: `<p>nums1 = [1, 2, 2, 1], nums2 = [2, 2] → ${H.c('g', '[2, 2]')}. nums1 = [4, 9, 5], nums2 = [9, 4, 9, 8, 4] → ${H.c('g', '[4, 9]')}.</p>`,
     brute: {
       why: `<p>For each element of nums1, scan nums2 for an unused equal element and mark it: <b>O(n·m)</b>. The waste: rescanning nums2 when a count map of nums1 answers "how many are left?" in O(1).</p>`,
-      code: `int[] intersectBrute(int[] a, int[] b) {
+      code: {
+          lang: 'java',
+          code: `int[] intersectBrute(int[] a, int[] b) {
     boolean[] used = new boolean[b.length];
     List<Integer> res = new ArrayList<>();
     for (int x : a) {
@@ -4670,7 +5323,40 @@ def can_construct(note, magazine):
         }
     }
     return res.stream().mapToInt(Integer::intValue).toArray();
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def intersect(nums1, nums2):
+    used = [False] * len(nums2)
+    res = []
+    for x in nums1:
+        for j in range(len(nums2)):
+            if not used[j] and nums2[j] == x:
+                used[j] = True
+                res.append(x)
+                break
+    return res` },
+            { lang: 'js', code: `function intersect(nums1, nums2) {
+  const used = new Array(nums2.length).fill(false);
+  const res = [];
+  for (const x of nums1) {
+    for (let j = 0; j < nums2.length; j++) {
+      if (!used[j] && nums2[j] === x) { used[j] = true; res.push(x); break; }
+    }
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<int> intersect(vector<int>& nums1, vector<int>& nums2) {
+    vector<bool> used(nums2.size(), false);
+    vector<int> res;
+    for (int x : nums1) {
+        for (size_t j = 0; j < nums2.size(); j++) {
+            if (!used[j] && nums2[j] == x) { used[j] = true; res.push_back(x); break; }
+        }
+    }
+    return res;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Why is a HashSet not enough here?', options: ['It forgets how many times a value appears, but the output must repeat values (min of counts)', 'HashSet cannot store integers', 'HashSet is slower than a list', 'It is enough'], answer: 0, explain: 'Intersection I (unique values) uses sets; Intersection II needs counts.' },
     hints: [
@@ -4741,7 +5427,9 @@ def intersect(nums1, nums2):
     example: `<p>"egg", "add" → ${H.c('g', 'true')} (e→a, g→d). "foo", "bar" → ${H.c('r', 'false')} (o would need to map to both a and r). "badc", "baba" → ${H.c('r', 'false')} (b→b and d→b: two letters map to the same one).</p>`,
     brute: {
       why: `<p>Check every pair (i, j): s[i] == s[j] must hold exactly when t[i] == t[j]. That is <b>O(n<sup>2</sup>)</b> = 2.5·10<sup>9</sup> comparisons. The waste: a mapping table answers "what did s[i] map to before?" in O(1).</p>`,
-      code: `boolean isIsomorphicBrute(String s, String t) {
+      code: {
+          lang: 'java',
+          code: `boolean isIsomorphicBrute(String s, String t) {
     for (int i = 0; i < s.length(); i++) {
         for (int j = i + 1; j < s.length(); j++) {
             boolean sameS = s.charAt(i) == s.charAt(j);
@@ -4750,7 +5438,38 @@ def intersect(nums1, nums2):
         }
     }
     return true;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def is_isomorphic(s, t):
+    for i in range(len(s)):
+        for j in range(i + 1, len(s)):
+            same_s = s[i] == s[j]
+            same_t = t[i] == t[j]
+            if same_s != same_t:
+                return False
+    return True` },
+            { lang: 'js', code: `function isIsomorphic(s, t) {
+  for (let i = 0; i < s.length; i++) {
+    for (let j = i + 1; j < s.length; j++) {
+      const sameS = s[i] === s[j];
+      const sameT = t[i] === t[j];
+      if (sameS !== sameT) return false;
+    }
+  }
+  return true;
+}` },
+            { lang: 'cpp', code: `bool isIsomorphic(string s, string t) {
+    for (size_t i = 0; i < s.size(); i++) {
+        for (size_t j = i + 1; j < s.size(); j++) {
+            bool sameS = s[i] == s[j];
+            bool sameT = t[i] == t[j];
+            if (sameS != sameT) return false;
+        }
+    }
+    return true;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Why does "badc" vs "baba" need a SECOND map (t → s)?', options: ['One map s→t accepts b→b and d→b; only the reverse map notices that b in t is claimed twice', 'Because the strings have different lengths', 'To handle uppercase letters', 'It does not — one map is always enough'], answer: 0, explain: 'Isomorphism is a bijection: check both directions (or map both to "first index seen").' },
     hints: [
@@ -4823,7 +5542,9 @@ def intersect(nums1, nums2):
     example: `<p>n = 19: 1²+9² = <b>82</b> → 8²+2² = <b>68</b> → 6²+8² = <b>100</b> → 1²+0²+0² = ${H.c('g', '1 → true')}.</p><p>n = 2: 4 → 16 → 37 → 58 → 89 → 145 → 42 → 20 → ${H.c('r', '4 (seen before!) → false')}.</p>`,
     brute: {
       why: `<p>Keep the history in a list and search it linearly each step: O(k<sup>2</sup>) for k steps. Or "run 1000 steps and hope" — not a proof. The waste: "have I seen this number before?" is exactly a HashSet question.</p>`,
-      code: `boolean isHappyBrute(int n) {
+      code: {
+          lang: 'java',
+          code: `boolean isHappyBrute(int n) {
     List<Integer> history = new ArrayList<>();
     while (n != 1 && !history.contains(n)) {   // contains() is O(k) on a list
         history.add(n);
@@ -4836,7 +5557,53 @@ int digitSquareSum(int n) {
     int s = 0;
     while (n > 0) { int d = n % 10; s += d * d; n /= 10; }
     return s;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def is_happy(n):
+    history = []
+    while n != 1 and n not in history:    # "in" is O(k) on a list
+        history.append(n)
+        n = digit_square_sum(n)
+    return n == 1
+
+
+def digit_square_sum(n):
+    s = 0
+    while n > 0:
+        d = n % 10
+        s += d * d
+        n //= 10
+    return s` },
+            { lang: 'js', code: `function isHappy(n) {
+  const history = [];
+  while (n !== 1 && !history.includes(n)) {   // includes() is O(k) on an array
+    history.push(n);
+    n = digitSquareSum(n);
+  }
+  return n === 1;
+}
+
+function digitSquareSum(n) {
+  let s = 0;
+  while (n > 0) { const d = n % 10; s += d * d; n = Math.floor(n / 10); }
+  return s;
+}` },
+            { lang: 'cpp', code: `int digitSquareSum(int n) {
+    int s = 0;
+    while (n > 0) { int d = n % 10; s += d * d; n /= 10; }
+    return s;
+}
+
+bool isHappy(int n) {
+    vector<int> history;
+    while (n != 1 && find(history.begin(), history.end(), n) == history.end()) {   // find() is O(k) on a vector
+        history.push_back(n);
+        n = digitSquareSum(n);
+    }
+    return n == 1;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Why is the process guaranteed to either reach 1 or repeat a number?', options: ['After one step any int becomes ≤ 9²·10 = 810, so only finitely many values are possible — eventually one repeats', 'Because every number is happy', 'Because the sequence always decreases', 'It is not guaranteed; you must cap the steps'], answer: 0, explain: 'Finite state space + deterministic step ⇒ the sequence must eventually cycle (pigeonhole). A set detects the first repeat.' },
     hints: [
@@ -4916,7 +5683,9 @@ int digitSquareSum(int n) {
     example: `<p>nums = [1, 1, 1, 2, 2, 3], k = 2 → ${H.c('g', '[1, 2]')} (1 appears 3 times, 2 twice, 3 once).</p>`,
     brute: {
       why: `<p>Tally, then sort all distinct values by count: O(N + D log D). Fine in practice, but the follow-up asks for better. A naive brute that recounts each value by scanning is O(N·D).</p>`,
-      code: `int[] topKFrequentSort(int[] nums, int k) {
+      code: {
+          lang: 'java',
+          code: `int[] topKFrequentSort(int[] nums, int k) {
     Map<Integer, Integer> cnt = new HashMap<>();
     for (int x : nums) cnt.merge(x, 1, Integer::sum);
     List<Integer> keys = new ArrayList<>(cnt.keySet());
@@ -4924,7 +5693,32 @@ int digitSquareSum(int n) {
     int[] res = new int[k];
     for (int i = 0; i < k; i++) res[i] = keys.get(i);
     return res;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def top_k_frequent(nums, k):
+    cnt = {}
+    for x in nums:
+        cnt[x] = cnt.get(x, 0) + 1
+    keys = list(cnt)
+    keys.sort(key=lambda v: -cnt[v])     # most frequent first: O(D log D)
+    return keys[:k]` },
+            { lang: 'js', code: `function topKFrequent(nums, k) {
+  const cnt = new Map();
+  for (const x of nums) cnt.set(x, (cnt.get(x) || 0) + 1);
+  const keys = [...cnt.keys()];
+  keys.sort((a, b) => cnt.get(b) - cnt.get(a));     // most frequent first: O(D log D)
+  return keys.slice(0, k);
+}` },
+            { lang: 'cpp', code: `vector<int> topKFrequent(vector<int>& nums, int k) {
+    unordered_map<int, int> cnt;
+    for (int x : nums) cnt[x]++;
+    vector<int> keys;
+    for (auto& kv : cnt) keys.push_back(kv.first);
+    sort(keys.begin(), keys.end(), [&](int a, int b) { return cnt[a] > cnt[b]; });   // most frequent first: O(D log D)
+    return vector<int>(keys.begin(), keys.begin() + k);
+}` }
+          ]
+        }
     },
     mcq: { q: 'Bucket sort works here because…', options: ['every frequency is between 1 and N, so we can index buckets by frequency', 'the values are small', 'k is always 1', 'HashMaps are sorted by value'], answer: 0, explain: 'Frequencies are bounded by N, so an array of N+1 buckets indexed by count replaces sorting.' },
     hints: [
@@ -5010,7 +5804,9 @@ def top_k_frequent(nums, k):
     example: `<p>nums = [4, 5, 0, −2, −3, 1], k = 5 → ${H.c('g', '7')}: [4, 5, 0, −2, −3, 1], [5], [5, 0], [5, 0, −2, −3], [0], [0, −2, −3], [−2, −3].</p>`,
     brute: {
       why: `<p>All (l, r) pairs with a running sum and a modulo check: <b>O(N<sup>2</sup>)</b> ≈ 4.5·10<sup>8</sup>. The waste: divisibility depends only on the <b>remainders</b> of two prefix sums, which a tally can match in O(1).</p>`,
-      code: `int subarraysDivByKBrute(int[] nums, int k) {
+      code: {
+          lang: 'java',
+          code: `int subarraysDivByKBrute(int[] nums, int k) {
     int count = 0;
     for (int l = 0; l < nums.length; l++) {
         int sum = 0;
@@ -5020,7 +5816,41 @@ def top_k_frequent(nums, k):
         }
     }
     return count;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def subarrays_div_by_k(nums, k):
+    count = 0
+    for l in range(len(nums)):
+        total = 0
+        for r in range(l, len(nums)):
+            total += nums[r]
+            if total % k == 0:
+                count += 1        # works for negatives too: -5 % 5 == 0
+    return count` },
+            { lang: 'js', code: `function subarraysDivByK(nums, k) {
+  let count = 0;
+  for (let l = 0; l < nums.length; l++) {
+    let sum = 0;
+    for (let r = l; r < nums.length; r++) {
+      sum += nums[r];
+      if (sum % k === 0) count++;        // works for negatives too: -5 % 5 is -0, and -0 === 0
+    }
+  }
+  return count;
+}` },
+            { lang: 'cpp', code: `int subarraysDivByK(vector<int>& nums, int k) {
+    int count = 0;
+    for (size_t l = 0; l < nums.size(); l++) {
+        int sum = 0;
+        for (size_t r = l; r < nums.size(); r++) {
+            sum += nums[r];
+            if (sum % k == 0) count++;   // works for negatives too: -5 % 5 == 0
+        }
+    }
+    return count;
+}` }
+          ]
+        }
     },
     mcq: { q: 'pf = −7 and k = 5. Which remainder must you store so it matches pf = 3?', options: ['3, using ((pf % k) + k) % k', '−2, the raw −7 % 5 of Java, JS or C++', '7', '2'], answer: 0, explain: '−7 and 3 differ by 10, a multiple of 5, so they must land in the same bucket. Java, JS and C++ give −7 % 5 = −2 (Python gives 3), so normalize to 3.' },
     hints: [
@@ -5095,7 +5925,9 @@ def top_k_frequent(nums, k):
     example: `<p>nums = [23, 2, 4, 6, 7], k = 6 → ${H.c('g', 'true')} ([2, 4] sums to 6). nums = [23, 2, 6, 4, 7], k = 13 → ${H.c('r', 'false')}. nums = [5, 0, 0], k = 3 → ${H.c('g', 'true')} ([0, 0] sums to 0).</p>`,
     brute: {
       why: `<p>Every subarray of length ≥ 2 with a running sum: <b>O(N<sup>2</sup>)</b> = 10<sup>10</sup>. The waste: only remainders matter, and the earliest index of each remainder is all we need to test the length condition.</p>`,
-      code: `boolean checkSubarraySumBrute(int[] nums, int k) {
+      code: {
+          lang: 'java',
+          code: `boolean checkSubarraySumBrute(int[] nums, int k) {
     for (int l = 0; l < nums.length; l++) {
         long sum = nums[l];
         for (int r = l + 1; r < nums.length; r++) {
@@ -5104,7 +5936,38 @@ def top_k_frequent(nums, k):
         }
     }
     return false;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def check_subarray_sum(nums, k):
+    for l in range(len(nums)):
+        total = nums[l]
+        for r in range(l + 1, len(nums)):
+            total += nums[r]
+            if total % k == 0:
+                return True       # length r - l + 1 >= 2
+    return False` },
+            { lang: 'js', code: `function checkSubarraySum(nums, k) {
+  for (let l = 0; l < nums.length; l++) {
+    let sum = nums[l];
+    for (let r = l + 1; r < nums.length; r++) {
+      sum += nums[r];
+      if (sum % k === 0) return true;   // length r - l + 1 >= 2
+    }
+  }
+  return false;
+}` },
+            { lang: 'cpp', code: `bool checkSubarraySum(vector<int>& nums, int k) {
+    for (size_t l = 0; l < nums.size(); l++) {
+        long long sum = nums[l];
+        for (size_t r = l + 1; r < nums.size(); r++) {
+            sum += nums[r];
+            if (sum % k == 0) return true;   // length r - l + 1 >= 2
+        }
+    }
+    return false;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Why store the FIRST index of each remainder (and never overwrite)?', options: ['The earliest match gives the longest subarray, which is the most likely to satisfy length ≥ 2', 'To save memory', 'Because later indices are always invalid', 'Overwriting would be equally correct'], answer: 0, explain: 'With [0] and k = 1 style cases, overwriting with i would make every later match too short. The earliest index maximizes length.' },
     hints: [
@@ -5189,7 +6052,9 @@ def top_k_frequent(nums, k):
     example: `<p>nums = [1, 1, 2, 1, 1], k = 3 → ${H.c('g', '2')}: [1, 1, 2, 1] and [1, 2, 1, 1]. nums = [2, 2, 2, 1, 2, 2, 1, 2, 2, 2], k = 2 → ${H.c('g', '16')}.</p>`,
     brute: {
       why: `<p>Every (l, r) with a running odd counter: <b>O(N<sup>2</sup>)</b> = 2.5·10<sup>9</sup>. The waste: "number of odds in l..r" is a prefix-count difference, so this is "count subarrays with sum k" in disguise.</p>`,
-      code: `int numberOfSubarraysBrute(int[] nums, int k) {
+      code: {
+          lang: 'java',
+          code: `int numberOfSubarraysBrute(int[] nums, int k) {
     int count = 0;
     for (int l = 0; l < nums.length; l++) {
         int odd = 0;
@@ -5200,7 +6065,45 @@ def top_k_frequent(nums, k):
         }
     }
     return count;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def number_of_subarrays(nums, k):
+    count = 0
+    for l in range(len(nums)):
+        odd = 0
+        for r in range(l, len(nums)):
+            odd += nums[r] & 1
+            if odd == k:
+                count += 1
+            elif odd > k:
+                break             # more odds can only grow
+    return count` },
+            { lang: 'js', code: `function numberOfSubarrays(nums, k) {
+  let count = 0;
+  for (let l = 0; l < nums.length; l++) {
+    let odd = 0;
+    for (let r = l; r < nums.length; r++) {
+      odd += nums[r] & 1;
+      if (odd === k) count++;
+      else if (odd > k) break;          // more odds can only grow
+    }
+  }
+  return count;
+}` },
+            { lang: 'cpp', code: `int numberOfSubarrays(vector<int>& nums, int k) {
+    int count = 0;
+    for (size_t l = 0; l < nums.size(); l++) {
+        int odd = 0;
+        for (size_t r = l; r < nums.size(); r++) {
+            odd += nums[r] & 1;
+            if (odd == k) count++;
+            else if (odd > k) break;      // more odds can only grow
+        }
+    }
+    return count;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Turn each element into (nums[i] % 2). The problem then becomes…', options: ['Count subarrays with sum exactly k', 'Longest subarray with sum k', 'Does a zero-sum subarray exist?', 'Count distinct elements per window'], answer: 0, explain: 'Odd → 1, even → 0: the number of odds in a subarray is its sum. Then use the prefix-count map from topic 6.' },
     hints: [
@@ -5276,7 +6179,9 @@ def top_k_frequent(nums, k):
     example: `<p>s = "eceba", k = 2 → ${H.c('g', '3')} ("ece"). s = "aa", k = 1 → ${H.c('g', '2')}.</p>`,
     brute: {
       why: `<p>For every start, extend while the distinct count (a set) stays ≤ k: <b>O(N<sup>2</sup>)</b>. The waste: when the window becomes invalid we restart instead of shrinking from the left.</p>`,
-      code: `int lengthOfLongestSubstringKDistinctBrute(String s, int k) {
+      code: {
+          lang: 'java',
+          code: `int lengthOfLongestSubstringKDistinctBrute(String s, int k) {
     int best = 0;
     for (int i = 0; i < s.length(); i++) {
         Set<Character> seen = new HashSet<>();
@@ -5287,7 +6192,44 @@ def top_k_frequent(nums, k):
         }
     }
     return best;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def length_of_longest_substring_k_distinct(s, k):
+    best = 0
+    for i in range(len(s)):
+        seen = set()
+        for j in range(i, len(s)):
+            seen.add(s[j])
+            if len(seen) > k:
+                break
+            best = max(best, j - i + 1)
+    return best` },
+            { lang: 'js', code: `function lengthOfLongestSubstringKDistinct(s, k) {
+  let best = 0;
+  for (let i = 0; i < s.length; i++) {
+    const seen = new Set();
+    for (let j = i; j < s.length; j++) {
+      seen.add(s[j]);
+      if (seen.size > k) break;
+      best = Math.max(best, j - i + 1);
+    }
+  }
+  return best;
+}` },
+            { lang: 'cpp', code: `int lengthOfLongestSubstringKDistinct(string s, int k) {
+    int best = 0;
+    for (int i = 0; i < (int)s.size(); i++) {
+        unordered_set<char> seen;
+        for (int j = i; j < (int)s.size(); j++) {
+            seen.insert(s[j]);
+            if ((int)seen.size() > k) break;
+            best = max(best, j - i + 1);
+        }
+    }
+    return best;
+}` }
+          ]
+        }
     },
     mcq: { q: 'While shrinking, when may you remove a character from the window map entirely?', options: ['Only when its count drops to 0', 'As soon as it is at s[left]', 'Never — just decrement', 'When the map size equals k'], answer: 0, explain: 'map.size() must equal the number of distinct characters in the window, so delete keys exactly when their count reaches 0.' },
     hints: [
@@ -5376,12 +6318,38 @@ def length_of_longest_substring_k_distinct(s, k):
     example: `<p>A = [1, 2], B = [−2, −1], C = [−1, 2], D = [0, 2] → ${H.c('g', '2')}: (0,0,0,1): 1 − 2 − 1 + 2 = 0 and (1,1,0,0): 2 − 1 − 1 + 0 = 0.</p>`,
     brute: {
       why: `<p>Four nested loops: n<sup>4</sup> = 1.6·10<sup>9</sup> for n = 200. The waste: for each (C, D) pair we search for a matching (A, B) sum by enumeration instead of lookup.</p>`,
-      code: `int fourSumCountBrute(int[] A, int[] B, int[] C, int[] D) {
+      code: {
+          lang: 'java',
+          code: `int fourSumCountBrute(int[] A, int[] B, int[] C, int[] D) {
     int count = 0;
     for (int a : A) for (int b : B) for (int c : C) for (int d : D)
         if (a + b + c + d == 0) count++;
     return count;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def four_sum_count(A, B, C, D):
+    count = 0
+    for a in A:
+        for b in B:
+            for c in C:
+                for d in D:
+                    if a + b + c + d == 0:
+                        count += 1
+    return count` },
+            { lang: 'js', code: `function fourSumCount(A, B, C, D) {
+  let count = 0;
+  for (const a of A) for (const b of B) for (const c of C) for (const d of D)
+    if (a + b + c + d === 0) count++;
+  return count;
+}` },
+            { lang: 'cpp', code: `int fourSumCount(vector<int>& A, vector<int>& B, vector<int>& C, vector<int>& D) {
+    int count = 0;
+    for (int a : A) for (int b : B) for (int c : C) for (int d : D)
+        if (a + b + c + d == 0) count++;
+    return count;
+}` }
+          ]
+        }
     },
     mcq: { q: 'What do you store in the HashMap?', options: ['Every sum A[i] + B[j] → how many pairs produce it', 'Every element of A', 'Every quadruple sum', 'Only the distinct values of C'], answer: 0, explain: 'Then each (C[k], D[l]) pair looks up −(C[k] + D[l]) in O(1): n² + n² work instead of n⁴ ("meet in the middle").' },
     hints: [
@@ -5442,7 +6410,9 @@ def four_sum_count(A, B, C, D):
     example: `<p>wall = [[1,2,2,1],[3,1,2],[1,3,2],[2,4],[3,1,2],[1,3,1,1]] → ${H.c('g', '2')}. Edge position 4 (from the left) appears in 4 of the 6 rows, so a line at x = 4 crosses only 6 − 4 = 2 bricks.</p>`,
     brute: {
       why: `<p>Try every x from 1 to width − 1 and count crossed bricks per row: O(width · bricks). Width can be 2<sup>31</sup> → impossible. The waste: only positions where some edge exists can be optimal, and we can count them directly.</p>`,
-      code: `int leastBricksBrute(List<List<Integer>> wall) {
+      code: {
+          lang: 'java',
+          code: `int leastBricksBrute(List<List<Integer>> wall) {
     int width = 0;
     for (int w : wall.get(0)) width += w;
     int best = wall.size();
@@ -5457,7 +6427,61 @@ def four_sum_count(A, B, C, D):
         best = Math.min(best, crossed);
     }
     return best;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def least_bricks(wall):
+    width = sum(wall[0])
+    best = len(wall)
+    for x in range(1, width):            # hopeless when width is huge
+        crossed = 0
+        for row in wall:
+            pos = 0
+            on_edge = False
+            for w in row:
+                pos += w
+                if pos == x:
+                    on_edge = True
+                    break
+                if pos > x:
+                    break
+            if not on_edge:
+                crossed += 1
+        best = min(best, crossed)
+    return best` },
+            { lang: 'js', code: `function leastBricks(wall) {
+  let width = 0;
+  for (const w of wall[0]) width += w;
+  let best = wall.length;
+  for (let x = 1; x < width; x++) {            // hopeless when width is huge
+    let crossed = 0;
+    for (const row of wall) {
+      let pos = 0;
+      let onEdge = false;
+      for (const w of row) { pos += w; if (pos === x) { onEdge = true; break; } if (pos > x) break; }
+      if (!onEdge) crossed++;
+    }
+    best = Math.min(best, crossed);
+  }
+  return best;
+}` },
+            { lang: 'cpp', code: `int leastBricks(vector<vector<int>>& wall) {
+    int width = 0;
+    for (int w : wall[0]) width += w;
+    int best = wall.size();
+    for (int x = 1; x < width; x++) {            // hopeless when width is huge
+        int crossed = 0;
+        for (auto& row : wall) {
+            int pos = 0;
+            bool onEdge = false;
+            for (int w : row) { pos += w; if (pos == x) { onEdge = true; break; } if (pos > x) break; }
+            if (!onEdge) crossed++;
+        }
+        best = min(best, crossed);
+    }
+    return best;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Which positions should you count in the map?', options: ['Running sums of brick widths in each row, excluding the row\'s final total', 'Each brick width', 'Only the first brick of each row', 'The total width'], answer: 0, explain: 'Inner edges sit at prefix sums of widths. The final prefix equals the wall\'s outer edge, which is not allowed.' },
     hints: [
@@ -5537,7 +6561,9 @@ def least_bricks(wall):
     example: `<p>nums = [1, 2, 1, 2, 3], k = 2 → ${H.c('g', '7')}: [1,2], [2,1], [1,2], [2,3], [1,2,1], [2,1,2], [1,2,1,2]. nums = [1, 2, 1, 3, 4], k = 3 → ${H.c('g', '3')}.</p>`,
     brute: {
       why: `<p>For each start, extend with a set and count windows whose distinct count is exactly k (stop once it exceeds k): <b>O(N<sup>2</sup>)</b> = 4·10<sup>8</sup>. Why a plain sliding window is not enough: for a fixed right end, the valid starts form a whole <i>range</i> of positions (shrinking a little keeps exactly k distinct values, shrinking more drops to k − 1), so "shrink until valid, then add 1" undercounts.</p>`,
-      code: `int subarraysWithKDistinctBrute(int[] nums, int k) {
+      code: {
+          lang: 'java',
+          code: `int subarraysWithKDistinctBrute(int[] nums, int k) {
     int count = 0;
     for (int l = 0; l < nums.length; l++) {
         Set<Integer> seen = new HashSet<>();
@@ -5548,7 +6574,45 @@ def least_bricks(wall):
         }
     }
     return count;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def subarrays_with_k_distinct(nums, k):
+    count = 0
+    for l in range(len(nums)):
+        seen = set()
+        for r in range(l, len(nums)):
+            seen.add(nums[r])
+            if len(seen) == k:
+                count += 1
+            elif len(seen) > k:
+                break
+    return count` },
+            { lang: 'js', code: `function subarraysWithKDistinct(nums, k) {
+  let count = 0;
+  for (let l = 0; l < nums.length; l++) {
+    const seen = new Set();
+    for (let r = l; r < nums.length; r++) {
+      seen.add(nums[r]);
+      if (seen.size === k) count++;
+      else if (seen.size > k) break;
+    }
+  }
+  return count;
+}` },
+            { lang: 'cpp', code: `int subarraysWithKDistinct(vector<int>& nums, int k) {
+    int count = 0;
+    for (size_t l = 0; l < nums.size(); l++) {
+        unordered_set<int> seen;
+        for (size_t r = l; r < nums.size(); r++) {
+            seen.insert(nums[r]);
+            if ((int)seen.size() == k) count++;
+            else if ((int)seen.size() > k) break;
+        }
+    }
+    return count;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Why does exactly(k) = atMost(k) − atMost(k − 1) help?', options: ['"At most k distinct" is monotone, so each atMost is a simple sliding window that adds (right − left + 1) per step', 'Because exactly(k) is always 0', 'It turns the problem into sorting', 'It removes the need for a HashMap'], answer: 0, explain: 'Windows with ≤ k distinct shrink nicely. Subtracting the ≤ k−1 ones leaves exactly k.' },
     hints: [
@@ -5651,7 +6715,9 @@ def subarrays_with_k_distinct(nums, k):
     example: `<p>matrix = [[0,1,0],[1,1,1],[0,1,0]], target = 0 → ${H.c('g', '4')} (the four single 0 cells). matrix = [[1,−1],[−1,1]], target = 0 → ${H.c('g', '5')} (two 1×2 rows, two 2×1 columns, and the whole 2×2).</p>`,
     brute: {
       why: `<p>Enumerate all rectangles (R<sup>2</sup>·C<sup>2</sup> ≈ 10<sup>8</sup> for 100×100) and get each sum in O(1) from a 2D prefix table. Borderline-slow; and the naive version that sums each rectangle cell by cell is O(R<sup>3</sup>C<sup>3</sup>). The waste: for a fixed pair of rows, the inner two column loops are just "count subarrays with sum = target" — an O(C) hashing job.</p>`,
-      code: `int numSubmatrixSumTargetBrute(int[][] m, int target) {
+      code: {
+          lang: 'java',
+          code: `int numSubmatrixSumTargetBrute(int[][] m, int target) {
     int R = m.length, C = m[0].length, count = 0;
     int[][] P = new int[R + 1][C + 1];                       // 2D prefix sums
     for (int i = 0; i < R; i++)
@@ -5665,7 +6731,55 @@ def subarrays_with_k_distinct(nums, k):
                     if (sum == target) count++;
                 }
     return count;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def num_submatrix_sum_target(matrix, target):
+    R, C, count = len(matrix), len(matrix[0]), 0
+    P = [[0] * (C + 1) for _ in range(R + 1)]            # 2D prefix sums
+    for i in range(R):
+        for j in range(C):
+            P[i + 1][j + 1] = matrix[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j]
+    for r1 in range(R):
+        for r2 in range(r1, R):
+            for c1 in range(C):
+                for c2 in range(c1, C):
+                    total = P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
+                    if total == target:
+                        count += 1
+    return count` },
+            { lang: 'js', code: `function numSubmatrixSumTarget(matrix, target) {
+  const R = matrix.length, C = matrix[0].length;
+  let count = 0;
+  const P = Array.from({ length: R + 1 }, () => new Array(C + 1).fill(0));   // 2D prefix sums
+  for (let i = 0; i < R; i++)
+    for (let j = 0; j < C; j++)
+      P[i + 1][j + 1] = matrix[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+  for (let r1 = 0; r1 < R; r1++)
+    for (let r2 = r1; r2 < R; r2++)
+      for (let c1 = 0; c1 < C; c1++)
+        for (let c2 = c1; c2 < C; c2++) {
+          const sum = P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1];
+          if (sum === target) count++;
+        }
+  return count;
+}` },
+            { lang: 'cpp', code: `int numSubmatrixSumTarget(vector<vector<int>>& matrix, int target) {
+    int R = matrix.size(), C = matrix[0].size(), count = 0;
+    vector<vector<int>> P(R + 1, vector<int>(C + 1, 0));     // 2D prefix sums
+    for (int i = 0; i < R; i++)
+        for (int j = 0; j < C; j++)
+            P[i + 1][j + 1] = matrix[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+    for (int r1 = 0; r1 < R; r1++)
+        for (int r2 = r1; r2 < R; r2++)
+            for (int c1 = 0; c1 < C; c1++)
+                for (int c2 = c1; c2 < C; c2++) {
+                    int sum = P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1];
+                    if (sum == target) count++;
+                }
+    return count;
+}` }
+          ]
+        }
     },
     mcq: { q: 'After fixing the top and bottom rows, what 1D problem remains?', options: ['Count subarrays with sum = target over the column sums between those rows', 'Longest consecutive sequence of columns', 'Two Sum on the first row', 'Distinct elements in every window'], answer: 0, explain: 'Collapsing rows top..bottom into one array of column sums turns every rectangle into a contiguous subarray of that array.' },
     hints: [
@@ -5770,7 +6884,9 @@ def num_submatrix_sum_target(matrix, target):
 <p>s = "wordgoodgoodgoodbestword", words = ["word","good","best","word"] → ${H.c('r', '[]')} (needs "word" twice).</p>`,
     brute: {
       why: `<p>For every start i, cut the next W words of length L and compare their tally with the words' tally: O(|s| · W · L). With |s| = 10<sup>4</sup>, W = 5000, L = 30 that is far too slow. The waste: windows starting at i and i + L share all but one word.</p>`,
-      code: `List<Integer> findSubstringBrute(String s, String[] words) {
+      code: {
+          lang: 'java',
+          code: `List<Integer> findSubstringBrute(String s, String[] words) {
     List<Integer> res = new ArrayList<>();
     int L = words[0].length(), W = words.length, total = L * W;
     Map<String, Integer> need = new HashMap<>();
@@ -5785,7 +6901,62 @@ def num_submatrix_sum_target(matrix, target):
         if (j == W) res.add(i);
     }
     return res;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def find_substring(s, words):
+    res = []
+    L, W = len(words[0]), len(words)
+    total = L * W
+    need = {}
+    for w in words:
+        need[w] = need.get(w, 0) + 1
+    for i in range(len(s) - total + 1):
+        seen = {}
+        j = 0
+        while j < W:
+            w = s[i + j * L : i + (j + 1) * L]
+            seen[w] = seen.get(w, 0) + 1
+            if seen[w] > need.get(w, 0):
+                break                  # too many / unknown word
+            j += 1
+        if j == W:
+            res.append(i)
+    return res` },
+            { lang: 'js', code: `function findSubstring(s, words) {
+  const res = [];
+  const L = words[0].length, W = words.length, total = L * W;
+  const need = new Map();
+  for (const w of words) need.set(w, (need.get(w) || 0) + 1);
+  for (let i = 0; i + total <= s.length; i++) {
+    const seen = new Map();
+    let j = 0;
+    for (; j < W; j++) {
+      const w = s.slice(i + j * L, i + (j + 1) * L);
+      seen.set(w, (seen.get(w) || 0) + 1);
+      if (seen.get(w) > (need.get(w) || 0)) break;   // too many / unknown word
+    }
+    if (j === W) res.push(i);
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<int> findSubstring(string s, vector<string>& words) {
+    vector<int> res;
+    int L = words[0].size(), W = words.size(), total = L * W;
+    unordered_map<string, int> need;
+    for (auto& w : words) need[w]++;
+    for (int i = 0; i + total <= (int)s.size(); i++) {
+        unordered_map<string, int> seen;
+        int j = 0;
+        for (; j < W; j++) {
+            string w = s.substr(i + j * L, L);
+            if (++seen[w] > need[w]) break;          // too many / unknown word
+        }
+        if (j == W) res.push_back(i);
+    }
+    return res;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Why run the sliding window L separate times (offsets 0..L−1)?', options: ['Words are aligned to multiples of L from the start; each offset gives one word grid that can be slid word by word', 'To handle uppercase letters', 'Because words may have different lengths', 'To sort the words'], answer: 0, explain: 'From offset o, s splits into chunks o, o+L, o+2L… A valid concatenation lies on exactly one of these L grids.' },
     hints: [
@@ -5916,7 +7087,9 @@ def find_substring(s, words):
     example: `<p>[[1,1],[2,2],[3,3]] → ${H.c('g', '3')}. [[1,1],[3,2],[5,3],[4,1],[2,3],[1,4]] → ${H.c('g', '4')} ((3,2), (4,1), (2,3), (1,4) lie on x + y = 5).</p>`,
     brute: {
       why: `<p>For every pair of points (defining a line), count all points on it with a cross-product test: <b>O(N<sup>3</sup>)</b> = 2.7·10<sup>7</sup> — fine for N = 300, too slow for N = 3000. The waste: for a fixed anchor point, the lines through it are identified by <b>slope</b>; a map can group all other points by slope in one pass.</p>`,
-      code: `int maxPointsBrute(int[][] p) {
+      code: {
+          lang: 'java',
+          code: `int maxPointsBrute(int[][] p) {
     int n = p.length;
     if (n <= 2) return n;
     int best = 2;
@@ -5931,9 +7104,59 @@ def find_substring(s, words):
             best = Math.max(best, cnt);
         }
     return best;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def max_points(points):
+    n = len(points)
+    if n <= 2:
+        return n
+    best = 2
+    for i in range(n):
+        for j in range(i + 1, n):
+            cnt = 0
+            for k in range(n):
+                cross = ((points[j][0] - points[i][0]) * (points[k][1] - points[i][1])
+                         - (points[j][1] - points[i][1]) * (points[k][0] - points[i][0]))
+                if cross == 0:
+                    cnt += 1                 # k is on line (i, j)
+            best = max(best, cnt)
+    return best` },
+            { lang: 'js', code: `function maxPoints(points) {
+  const n = points.length;
+  if (n <= 2) return n;
+  let best = 2;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++) {
+      let cnt = 0;
+      for (let k = 0; k < n; k++) {
+        const cross = (points[j][0] - points[i][0]) * (points[k][1] - points[i][1])
+                    - (points[j][1] - points[i][1]) * (points[k][0] - points[i][0]);
+        if (cross === 0) cnt++;                 // k is on line (i, j)
+      }
+      best = Math.max(best, cnt);
+    }
+  return best;
+}` },
+            { lang: 'cpp', code: `int maxPoints(vector<vector<int>>& points) {
+    int n = points.size();
+    if (n <= 2) return n;
+    int best = 2;
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j < n; j++) {
+            int cnt = 0;
+            for (int k = 0; k < n; k++) {
+                long long cross = (long long)(points[j][0] - points[i][0]) * (points[k][1] - points[i][1])
+                                - (long long)(points[j][1] - points[i][1]) * (points[k][0] - points[i][0]);
+                if (cross == 0) cnt++;                 // k is on line (i, j)
+            }
+            best = max(best, cnt);
+        }
+    return best;
+}` }
+          ]
+        }
     },
-    mcq: { q: 'Why store slopes as a reduced (dy, dx) pair instead of the double dy / dx?', options: ['Floating-point rounding can make equal slopes differ (or different slopes collide), and vertical lines divide by zero', 'Doubles cannot be HashMap keys in Java', 'Pairs are faster to compute than division', 'To sort the slopes'], answer: 0, explain: 'Reduce by gcd and normalize the sign; then equal slopes give identical integer keys. Also beware −0.0 vs 0.0 with doubles.' },
+    mcq: { q: 'Why store slopes as a reduced (dy, dx) pair instead of the double dy / dx?', options: ['Floating-point rounding can make equal slopes differ (or different slopes collide), and vertical lines divide by zero', 'Floating-point numbers can never be hash-map keys', 'Pairs are faster to compute than division', 'To sort the slopes'], answer: 0, explain: 'Reduce by gcd and normalize the sign; then equal slopes give identical integer keys. Also beware −0.0 vs 0.0 with doubles.' },
     hints: [
       `<p><b>Hint 1:</b> Fix an anchor point; every other point defines a line through the anchor, identified by its slope.</p>`,
       `<p><b>Hint 2:</b> Group by slope with a HashMap; the biggest group + 1 (the anchor) is the best line through that anchor.</p>`,
@@ -6046,15 +7269,15 @@ def max_points(points):
   quiz.push({ q: 'With default settings (capacity 16, load factor 0.75), the first resize happens when inserting the…', options: ['13th distinct key', '16th distinct key', '12th distinct key', '17th distinct key'], answer: 0, explain: 'Threshold = 16 × 0.75 = 12. Java resizes when size becomes greater than 12, i.e. after inserting the 13th key.' });
   quiz.push({ q: 'When does a Java 8+ HashMap bucket turn into a red-black tree?', options: ['When its chain grows past 8 nodes AND the table has at least 64 buckets (otherwise it resizes)', 'Whenever two keys collide', 'When the map holds more than 64 keys', 'Never — only TreeMap uses trees'], answer: 0, explain: 'TREEIFY_THRESHOLD = 8 and MIN_TREEIFY_CAPACITY = 64. Small tables are resized instead, which usually spreads the chain out.' });
   quiz.push({ q: '"Aa" and "BB" have the same <code>hashCode()</code> (2112). Putting both in a HashSet results in…', options: ['Both stored in the same bucket; equals() tells them apart; size() = 2', 'The second one overwrites the first', 'An exception: duplicate hash', 'Only one stored, size() = 1'], answer: 0, explain: 'Equal hashCodes only mean the same bucket. Equality is decided by equals(), so both strings are kept.' });
-  quiz.push({ q: 'Why do prefix-sum + hashing solutions use a 64-bit <code>long</code> (C++ <code>long long</code>) for the running sum in Java or C++ when N ≤ 10<sup>5</sup> and |a[i]| ≤ 10<sup>9</sup>?', options: ['The running sum can reach 10<sup>14</sup>, far beyond int\'s ~2.1·10<sup>9</sup>', 'HashMap does not accept Integer keys', 'long lookups are faster', 'To allow negative numbers'], answer: 0, explain: '10<sup>5</sup> × 10<sup>9</sup> = 10<sup>14</sup>. An int overflows silently and produces wrong matches.' });
+  quiz.push({ q: 'Why do prefix-sum + hashing solutions use a 64-bit integer (<code>long</code> in Java, <code>long long</code> in C++) for the running sum when N ≤ 10<sup>5</sup> and |a[i]| ≤ 10<sup>9</sup>?', options: ['The running sum can reach 10<sup>14</sup>, far beyond int\'s ~2.1·10<sup>9</sup>', 'A hash map does not accept 32-bit integer keys', '64-bit lookups are faster', 'To allow negative numbers'], answer: 0, explain: '10<sup>5</sup> × 10<sup>9</sup> = 10<sup>14</sup>. An int overflows silently and produces wrong matches.' });
   quiz.push({ q: 'Count subarrays with sum K: what must the map contain before the loop starts?', options: ['{0: 1}', '{0: −1}', '{} (empty)', '{K: 1}'], answer: 0, explain: 'The empty prefix (sum 0) has occurred once, so subarrays starting at index 0 are counted. {0: −1} is the seed for "longest" problems that store indices.' });
   quiz.push({ q: 'Longest subarray with sum K: a balance that is already in the map shows up again. You should…', options: ['Keep the existing (earliest) index — never overwrite', 'Overwrite it with the current index', 'Delete it', 'Store both indices in a list'], answer: 0, explain: 'The earliest index gives the longest future subarray. Overwriting would make answers shorter (that is the "shortest" variant).' });
-  quiz.push({ q: 'Why can\'t you solve "count subarrays with sum K" using a sliding window when the array contains negatives?', options: ['Adding an element can decrease the sum, so "shrink when the sum is too big" is no longer correct (no monotonicity)', 'Sliding windows cannot count', 'Negative numbers cannot be stored in a HashMap', 'It works fine with negatives'], answer: 0, explain: 'Sliding window needs monotone sums (all non-negative values). Prefix sum + hashing works for any integers.' });
-  quiz.push({ q: 'Distinct elements in every window of size K: what goes wrong if you use a HashSet and remove the outgoing element?', options: ['If another copy of that value is still inside the window, the set wrongly forgets it', 'Nothing — it works', 'The set grows without bound', 'It becomes O(N<sup>2</sup>)'], answer: 0, explain: 'Window [1, 2, 1] sliding out the first 1 would remove 1 although the second 1 remains. Use counts and delete at 0.' });
+  quiz.push({ q: 'Why can\'t you solve "count subarrays with sum K" using a sliding window when the array contains negatives?', options: ['Adding an element can decrease the sum, so "shrink when the sum is too big" is no longer correct (no monotonicity)', 'Sliding windows cannot count', 'Negative numbers cannot be stored in a hash map', 'It works fine with negatives'], answer: 0, explain: 'Sliding window needs monotone sums (all non-negative values). Prefix sum + hashing works for any integers.' });
+  quiz.push({ q: 'Distinct elements in every window of size K: what goes wrong if you use a plain set (<code>HashSet</code> / <code>set</code> / <code>Set</code> / <code>unordered_set</code>) and remove the outgoing element?', options: ['If another copy of that value is still inside the window, the set wrongly forgets it', 'Nothing — it works', 'The set grows without bound', 'It becomes O(N<sup>2</sup>)'], answer: 0, explain: 'Window [1, 2, 1] sliding out the first 1 would remove 1 although the second 1 remains. Use counts and delete at 0.' });
   quiz.push({ q: 'In "longest substring without repeating characters" with a last-index map, why <code>left = max(left, last[c] + 1)</code>?', options: ['A stale last index (already left of the window) must not move left backwards — e.g. "abba"', 'To avoid integer overflow', 'Because last[c] can be negative', 'It is only needed for uppercase letters'], answer: 0, explain: 'In "abba", at the final a, last[a] = 0 but left is already 2. Without max, left would jump back to 1 and re-admit the duplicate b.' });
-  quiz.push({ q: 'Longest consecutive sequence: why iterate over the HashSet rather than the original array?', options: ['Duplicates of a chain start in the array would re-walk the same chain many times, breaking O(N)', 'Sets iterate in sorted order', 'Arrays cannot be iterated in Java', 'It makes no difference at all'], answer: 0, explain: 'With the set, each distinct chain start walks its chain exactly once, so total work is O(N).' });
-  quiz.push({ q: 'Two Sum: you check for the complement <i>before</i> inserting the current element because…', options: ['Otherwise an element can pair with itself (e.g. target 6, x = 3 at one index)', 'Inserting first is slower', 'HashMap.put fails on duplicates', 'The order never matters'], answer: 0, explain: 'Check-then-insert keeps the invariant "map contains only earlier indices", so i ≠ j automatically and real duplicates like [3, 3] still work.' });
-  quiz.push({ q: 'Which structure gives sorted iteration and floor/ceiling queries, at O(log N) per operation?', options: ['TreeMap', 'HashMap', 'LinkedHashMap', 'HashSet'], answer: 0, explain: 'TreeMap is a red-black tree ordered by key. HashMap has no order; LinkedHashMap keeps insertion order.' });
+  quiz.push({ q: 'Longest consecutive sequence: why iterate over the set (<code>HashSet</code> / <code>set</code> / <code>Set</code> / <code>unordered_set</code>) rather than the original array?', options: ['Duplicates of a chain start in the array would re-walk the same chain many times, breaking O(N)', 'Sets iterate in sorted order', 'Arrays cannot be iterated', 'It makes no difference at all'], answer: 0, explain: 'With the set, each distinct chain start walks its chain exactly once, so total work is O(N).' });
+  quiz.push({ q: 'Two Sum: you check for the complement <i>before</i> inserting the current element because…', options: ['Otherwise an element can pair with itself (e.g. target 6, x = 3 at one index)', 'Inserting first is slower', 'Inserting a duplicate value into a hash map fails', 'The order never matters'], answer: 0, explain: 'Check-then-insert keeps the invariant "map contains only earlier indices", so i ≠ j automatically and real duplicates like [3, 3] still work.' });
+  quiz.push({ q: 'Which structure gives sorted iteration and floor/ceiling queries, at O(log N) per operation?', options: ['A balanced-tree ordered map (Java <code>TreeMap</code>, C++ <code>std::map</code>)', 'A hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>)', 'An insertion-ordered hash map (Java <code>LinkedHashMap</code>, a Python <code>dict</code>)', 'A hash set'], answer: 0, explain: 'An ordered map such as Java TreeMap or C++ std::map is a balanced tree ordered by key (Python and JavaScript have no built-in one). A hash map has no key order; an insertion-ordered map only remembers when keys arrived.' });
   quiz.push({ q: 'Minimum window substring keeps a counter <code>missing</code>. When you remove s[left] and need[s[left]] becomes 1, you…', options: ['Increase missing — the window no longer covers t — and stop shrinking', 'Decrease missing', 'Record a new best window', 'Reset the whole map'], answer: 0, explain: 'A positive need means a required character is now missing. The window is invalid, so you go back to expanding right.' });
   quiz.push({ q: 'Subarray sums divisible by 5: in Java, JS or C++, prefix sum −7 and prefix sum 3 should…', options: ['Share remainder 3 after normalizing ((−7 % 5) + 5) % 5', 'Have different remainders (−2 and 3)', 'Both be ignored', 'Cause an exception'], answer: 0, explain: '−7 − 3 = −10 is a multiple of 5, so they must match. In Java, JS and C++ −7 % 5 is −2 (Python gives 3), which must be normalized.' });
 
@@ -6072,7 +7295,7 @@ def max_points(points):
     followUps: ['Why are mutable keys dangerous even with a correct hashCode?', 'Is it legal for hashCode() to always return 42? What is the cost?']
   });
   interview.push({
-    q: 'HashMap is "O(1)". When is it not? Give average, amortized and worst-case costs.', level: 'I',
+    q: 'A hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>) is "O(1)". When is it not? Give average, amortized and worst-case costs.', level: 'I',
     a: `<p><b>Average:</b> O(1) for get/put/remove, assuming the hash spreads keys evenly; at load factor ≤ 0.75 the expected chain length is below 1. <b>Amortized:</b> put is O(1) amortized because a resize (O(N)) happens only after the number of keys doubles, so its cost is spread over many cheap inserts. <b>Worst case:</b> if all keys collide (bad hashCode or an attack), one bucket holds everything: O(N) per operation with a list, O(log N) after Java 8 treeifies (keys should be Comparable to get the full benefit). Iteration is O(N + capacity), which matters after many removals because the table never shrinks.</p>`,
     followUps: ['How would an attacker force collisions on a web server?', 'Why does iterating a huge, mostly-empty map stay slow?']
   });
@@ -6088,7 +7311,7 @@ def max_points(points):
   });
   interview.push({
     q: 'You need to count subarrays with sum K in an array with negatives. Walk me through your approach and its correctness.', level: 'I',
-    a: `<p>Sliding window fails because negatives break monotonicity. Use prefix sums: sum(l..r) = P[r] − P[l−1]. For each end r, the number of valid starts equals the number of earlier prefixes equal to P[r] − K. Keep a HashMap prefix → count, seeded with {0: 1} for the empty prefix. In one pass: add x to P, add <code>cnt[P − K]</code> to the answer, then increment <code>cnt[P]</code> — querying before inserting ensures we never count an empty subarray (important when K = 0). Every subarray is counted exactly once, at its right end. O(N) time, O(N) space; use long for the prefix and the answer when values or N are large.</p>`,
+    a: `<p>Sliding window fails because negatives break monotonicity. Use prefix sums: sum(l..r) = P[r] − P[l−1]. For each end r, the number of valid starts equals the number of earlier prefixes equal to P[r] − K. Keep a hash map prefix → count, seeded with {0: 1} for the empty prefix. In one pass: add x to P, add <code>cnt[P − K]</code> to the answer, then increment <code>cnt[P]</code> — querying before inserting ensures we never count an empty subarray (important when K = 0). Every subarray is counted exactly once, at its right end. O(N) time, O(N) space; use a 64-bit integer (Java <code>long</code>, C++ <code>long long</code>) for the prefix and the answer when values or N are large; Python integers never overflow.</p>`,
     followUps: ['How does it change for "divisible by K"?', 'Extend it to count submatrices with sum K.', 'What changes if you want the longest such subarray?']
   });
   interview.push({
@@ -6108,12 +7331,12 @@ def max_points(points):
   });
   interview.push({
     q: 'Longest consecutive sequence in O(N): explain why the nested loop is not O(N²).', level: 'I',
-    a: `<p>Put all numbers in a HashSet. For each x in the set, only start counting if x − 1 is absent (x is the front of a chain); then walk x + 1, x + 2, … while present. The outer loop does O(1) work per distinct value. The inner while loop only runs from chain fronts, and the chains are disjoint, so across the whole run the inner loop advances at most once per distinct value. Total inner steps ≤ N, total work O(N). Iterating the set (not the raw array) matters: duplicates of a chain front in the array would otherwise rewalk the same chain repeatedly.</p>`,
+    a: `<p>Put all numbers in a hash set (<code>HashSet</code> / <code>set</code> / <code>Set</code> / <code>unordered_set</code>). For each x in the set, only start counting if x − 1 is absent (x is the front of a chain); then walk x + 1, x + 2, … while present. The outer loop does O(1) work per distinct value. The inner while loop only runs from chain fronts, and the chains are disjoint, so across the whole run the inner loop advances at most once per distinct value. Total inner steps ≤ N, total work O(N). Iterating the set (not the raw array) matters: duplicates of a chain front in the array would otherwise rewalk the same chain repeatedly.</p>`,
     followUps: ['Solve it for a stream of numbers.', 'When would sorting be the better engineering choice?']
   });
   interview.push({
-    q: 'When would you NOT use a HashMap, even though it would work?', level: 'I',
-    a: `<p>(1) Keys are small dense integers or characters → a plain array (<code>int[26]</code>, <code>int[128]</code>, <code>boolean[N]</code>) is faster, smaller and has an O(1) <i>worst</i> case. (2) You need order, ranges, floor/ceiling or "≤ K" queries → TreeMap or sorting + binary search; hashing only answers exact matches. (3) Memory is tight with millions of primitives → boxing costs ~60–80 bytes per entry; use primitive collections or sorting. (4) Input is sorted already → two pointers with O(1) space. (5) Adversarial input with a weak hash → sorting gives a guaranteed O(N log N). (6) Approximate answers are acceptable at huge scale → Bloom filters, HyperLogLog, Count-Min Sketch.</p>`,
+    q: 'When would you NOT use a hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>), even though it would work?', level: 'I',
+    a: `<p>(1) Keys are small dense integers or characters → a plain array of 26 or 128 counters, or a boolean array of size N, is faster, smaller and has an O(1) <i>worst</i> case. (2) You need order, ranges, floor/ceiling or "≤ K" queries → an ordered map (Java <code>TreeMap</code>, C++ <code>std::map</code>) or sorting + binary search; hashing only answers exact matches. (3) Memory is tight with millions of primitives → in Java, boxing costs ~60–80 bytes per entry (a Python dict entry is similar), so use primitive collections, flat arrays or sorting. (4) Input is sorted already → two pointers with O(1) space. (5) Adversarial input with a weak hash → sorting gives a guaranteed O(N log N). (6) Approximate answers are acceptable at huge scale → Bloom filters, HyperLogLog, Count-Min Sketch.</p>`,
     followUps: ['How much memory does HashMap&lt;Integer,Integer&gt; use per entry?', 'What is a Bloom filter\'s false-positive trade-off?']
   });
   interview.push({
@@ -6123,12 +7346,12 @@ def max_points(points):
   });
   interview.push({
     q: 'Group anagrams: which key do you use and what is the complexity? Any pitfalls?', level: 'B',
-    a: `<p>Key = the word's letters sorted ("tea" → "aet"), giving O(N · K log K) for N words of max length K. Faster: a 26-count signature such as "1#0#0#…#1", O(N · K). Pitfalls: building a count key without separators ("1" + "11" vs "11" + "1" collide), using the sum of character codes or a product of primes (sums collide; products overflow), forgetting empty strings, and Unicode text where <code>int[26]</code> does not apply. Use <code>computeIfAbsent(key, k -&gt; new ArrayList&lt;&gt;())</code> to collect groups in one pass.</p>`,
+    a: `<p>Key = the word's letters sorted ("tea" → "aet"), giving O(N · K log K) for N words of max length K. Faster: a 26-count signature such as "1#0#0#…#1", O(N · K). Pitfalls: building a count key without separators ("1" + "11" vs "11" + "1" collide), using the sum of character codes or a product of primes (sums collide; products overflow), forgetting empty strings, and Unicode text where a 26-slot counter array does not apply. Collect the groups in one pass with a map of lists: Java <code>computeIfAbsent(key, k -&gt; new ArrayList&lt;&gt;())</code>, Python <code>defaultdict(list)</code>, JavaScript get-or-create on a <code>Map</code>, C++ <code>m[key].push_back(w)</code>.</p>`,
     followUps: ['Group strings that are shifts of each other.', 'What if each word is 10<sup>5</sup> characters long but there are only 10 words?']
   });
   interview.push({
-    q: 'What makes a good hash function for a custom key? How would you write hashCode for a Point(x, y)?', level: 'I',
-    a: `<p>A good hash is deterministic, consistent with equals, cheap, and spreads typical keys across all bits (small changes in input should change many output bits). For Point(x, y): <code>31 * x + y</code> or <code>Objects.hash(x, y)</code> (which does the same with boxing), or simply declare <code>record Point(int x, int y)</code>. Avoid <code>x + y</code> or <code>x ^ y</code> — (1, 2) and (2, 1) collide, and x ^ y is 0 for every diagonal point. For competitive programming or untrusted input, mix bits with a randomized function (e.g. splitmix64 with a random seed) to resist anti-hash tests. Java additionally spreads hashes internally, but it cannot fix a hash that maps many keys to the same int.</p>`,
+    q: 'What makes a good hash function for a custom key? How would you hash a Point(x, y) key (Java <code>hashCode</code>, Python <code>__hash__</code>, C++ hash functor)?', level: 'I',
+    a: `<p>A good hash is deterministic, consistent with equals, cheap, and spreads typical keys across all bits (small changes in input should change many output bits). For Point(x, y): <code>31 * x + y</code> or <code>Objects.hash(x, y)</code> (which does the same with boxing), or simply declare <code>record Point(int x, int y)</code>. In Python use <code>hash((x, y))</code> or a frozen dataclass, in C++ write a hash functor that combines both fields, and in JavaScript build a string key such as <code>x + ',' + y</code>. Avoid <code>x + y</code> or <code>x ^ y</code> — (1, 2) and (2, 1) collide, and x ^ y is 0 for every diagonal point. For competitive programming or untrusted input, mix bits with a randomized function (e.g. splitmix64 with a random seed) to resist anti-hash tests. Java additionally spreads hashes internally, but it cannot fix a hash that maps many keys to the same int.</p>`,
     followUps: ['Why multiply by 31?', 'How would you pack two ints into one long key instead?']
   });
   interview.push({

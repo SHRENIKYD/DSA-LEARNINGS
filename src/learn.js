@@ -1,5 +1,6 @@
 /* Learner state on top of PATHS: route preferences, prerequisites met, mastery, spaced review and a quiz dialog.
-   Synced achievements live in imastery.done as '@cp:<track>-<zone>' (checkpoint passed) and '@tested:<module>' (tested out).
+   Synced achievements live in imastery.done as '@cp:<track>-<zone>' (checkpoint passed), '@tested:<module>' (tested out)
+   and '@proj:<project>:<n>' (criterion n of a project checklist ticked).
    The review queue and preferences stay on the device. */
 var Learn = (function () {
   function get(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }
@@ -53,6 +54,21 @@ var Learn = (function () {
     var mastered = quiz && lessons && prac * 2 >= it.practice && (checkpoint || tested) && !overdue;
     return { live: true, visited: visited, lessons: lessons, quiz: quiz, pct: it.ids.length ? Math.round(n / it.ids.length * 100) : 0, tested: tested, checkpoint: checkpoint, overdue: overdue, mastered: mastered, satisfied: tested || visited || (quiz && lessons) };
   }
+  /* ---------- project checklists ---------- */
+  function projectState(pid, D) {
+    D = D || done();
+    var P = PATHS.PROJECTS[pid], total = P ? P.rubric.length : 0, ticks = [], n = 0;
+    for (var i = 0; i < total; i++) { var on = !!D['@proj:' + pid + ':' + i]; ticks.push(on); if (on) n++; }
+    return { id: pid, project: P || null, ticks: ticks, ticked: n, total: total, done: total > 0 && n === total };
+  }
+  function setCriterion(pid, i, on) {
+    var P = PATHS.PROJECTS[pid];
+    if (!P || i < 0 || i >= P.rubric.length) return;
+    var D = done(), k = '@proj:' + pid + ':' + i;
+    if (on) D[k] = 1; else delete D[k];
+    set('imastery.done', D);
+    if (window.Auth) Auth.changed();
+  }
   function missing(mid, lang, D) { D = D || done(); return PATHS.needs(mid, lang).filter(function (x) { return !status(x, D).satisfied; }); }
   function unlocks(mid, lang) { var out = []; Object.keys(PATHS.NEEDS).forEach(function (k) { if (PATHS.needs(k, lang).indexOf(mid) >= 0) out.push(k); }); return out; }
 
@@ -66,10 +82,41 @@ var Learn = (function () {
     var core = items.filter(function (x) { return x.kind !== 'opt'; });
     var hoursDone = 0, hoursAll = 0, mastered = 0, visited = 0;
     core.forEach(function (x) { var h = x.meta ? x.meta.hours : 0; hoursAll += h; if (x.st.satisfied) hoursDone += h; if (x.st.mastered) mastered++; if (x.st.satisfied) visited++; });
-    var left = Math.max(0, sch.total - Math.round(hoursDone * (1 + PATHS.REVISION)));
-    var next = [];
+    /* Stages: complete when every written required module is mastered and the stage project (if any) is done. */
+    var stages = sch.plan.route.stages.map(function (st, si) {
+      var req = items.filter(function (x) { return x.stage === si && x.kind === 'core' && x.st.live; });
+      var m = req.filter(function (x) { return x.st.mastered; }).length;
+      var pr = st.project && PATHS.PROJECTS[st.project] ? projectState(st.project, D) : null;
+      return { index: si, name: st.name, required: req.length, mastered: m, modulesMastered: m === req.length, project: pr, complete: m === req.length && (!pr || pr.done) };
+    });
+    var projects = stages.filter(function (s) { return s.project; }).map(function (s) { return s.project; });
+    var projDone = 0, projHours = 0, projHoursDone = 0;
+    projects.forEach(function (pr) { projHours += pr.project.hours; if (pr.done) { projDone++; projHoursDone += pr.project.hours; } });
+    hoursAll += projHours; hoursDone += projHoursDone;
+    var modHoursDone = hoursDone - projHoursDone;
+    var left = Math.max(0, sch.total - Math.round(modHoursDone * (1 + PATHS.REVISION)) - projHoursDone);
+    /* Study next: unfinished modules in route order; a project follows its stage once that stage's required modules are mastered. */
+    var seq = [];
     items.forEach(function (x, i) {
-      if (next.length >= 3 || x.st.satisfied || x.kind === 'opt' || !x.meta) return;
+      seq.push({ x: x, i: i });
+      var last = !items.slice(i + 1).some(function (y) { return y.stage === x.stage; });
+      if (last && stages[x.stage].project) seq.push({ stage: x.stage });
+    });
+    stages.forEach(function (s) { if (s.project && !items.some(function (y) { return y.stage === s.index; })) seq.push({ stage: s.index }); });
+    var next = [];
+    seq.forEach(function (e) {
+      if (next.length >= 3) return;
+      if (e.stage !== undefined) {
+        var sg = stages[e.stage];
+        if (sg.modulesMastered && !sg.project.done) {
+          var ticked = sg.project.ticked;
+          next.push({ id: sg.project.id, project: sg.project.project, state: sg.project, kind: 'project', meta: { title: sg.project.project.name, hours: sg.project.project.hours, level: '' },
+            why: 'The modules in “' + sg.name + '” are mastered. ' + (ticked ? ticked + ' of ' + sg.project.total + ' project criteria are ticked.' : 'Build the project to finish this stage.') });
+        }
+        return;
+      }
+      var x = e.x, i = e.i;
+      if (x.st.satisfied || x.kind === 'opt' || !x.meta) return;
       var why;
       var after = items.slice(i + 1).filter(function (y) { return PATHS.needs(y.id, p.lang).indexOf(x.id) >= 0; })[0];
       if (x.st.pct) why = 'You have started it (' + x.st.pct + '% done).';
@@ -77,7 +124,8 @@ var Learn = (function () {
       else why = 'Next in “' + sch.plan.route.stages[x.stage].name + '”.';
       next.push({ id: x.id, meta: x.meta, why: why, kind: x.kind });
     });
-    return { pref: p, sch: sch, items: items, core: core.length, mastered: mastered, visited: visited, pctHours: hoursAll ? Math.round(hoursDone / hoursAll * 100) : 0, weeksLeft: Math.ceil(left / p.hours), next: next, coverage: coverage(items, p.lang) };
+    return { pref: p, sch: sch, items: items, core: core.length, mastered: mastered, visited: visited, pctHours: hoursAll ? Math.round(hoursDone / hoursAll * 100) : 0, weeksLeft: Math.ceil(left / p.hours), next: next, coverage: coverage(items, p.lang),
+      stages: stages, projects: projects, projectsDone: projDone, hoursDone: hoursDone, hoursAll: hoursAll };
   }
   function coverage(items, lang) {
     var bit = { java: 1, python: 2, js: 4, cpp: 8 }[lang] || 1, gaps = [];
@@ -171,7 +219,7 @@ var Learn = (function () {
       onPass: function () { var D = done(); D['@cp:' + track + '-' + zone] = 1; set('imastery.done', D); if (window.Auth) Auth.changed(); if (onDone) onDone(); } });
   }
 
-  return { pref: pref, setPref: setPref, status: status, missing: missing, unlocks: unlocks, routeView: routeView, href: href, meta: meta,
+  return { pref: pref, setPref: setPref, status: status, projectState: projectState, setCriterion: setCriterion, missing: missing, unlocks: unlocks, routeView: routeView, href: href, meta: meta,
     reviews: reviews, remember: remember, schedule: schedule, passed: passed, due: due, quizDialog: quizDialog, readiness: readiness, checkpoint: checkpoint,
     LANG_NAMES: LANG_NAMES, esc: esc, itemsOf: itemsOf };
 })();

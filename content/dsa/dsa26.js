@@ -1,6 +1,20 @@
 (function () {
   var topics = [], practice = [], quiz = [], interview = [];
 
+  // Alternative-language versions of the Java code panes shown by the visualizers (same lines, same highlights).
+  var TURN_ALT = {
+    python: { code: 'c = ((b.x - a.x) * (c.y - a.y)\n     - (b.y - a.y) * (c.x - a.x))\nif c > 0: turn_left()\nelif c < 0: turn_right()\nelse: go_straight()', map: {} },
+    js: { code: 'let c = (b.x - a.x) * (c.y - a.y)\n      - (b.y - a.y) * (c.x - a.x);\nif (c > 0) turnLeft();\nelse if (c < 0) turnRight();\nelse goStraight();', map: {} },
+    cpp: { code: 'long long c = (long long)(b.x - a.x) * (c.y - a.y)\n           - (long long)(b.y - a.y) * (c.x - a.x);\nif (c > 0) turnLeft();\nelse if (c < 0) turnRight();\nelse goStraight();', map: {} } };
+  var SEG_ALT = {
+    python: { code: 'if o1 != o2 and o3 != o4: return True\nif o1 == 0 and in_box(P1, P2, Q1): return True\nif o2 == 0 and in_box(P1, P2, Q2): return True\nif o3 == 0 and in_box(Q1, Q2, P1): return True\nif o4 == 0 and in_box(Q1, Q2, P2): return True\nreturn False', map: {} },
+    js: { code: 'if (o1 !== o2 && o3 !== o4) return true;\nif (o1 === 0 && inBox(P1, P2, Q1)) return true;\nif (o2 === 0 && inBox(P1, P2, Q2)) return true;\nif (o3 === 0 && inBox(Q1, Q2, P1)) return true;\nif (o4 === 0 && inBox(Q1, Q2, P2)) return true;\nreturn false;', map: {} },
+    cpp: { code: 'if (o1 != o2 && o3 != o4) return true;\nif (o1 == 0 && inBox(P1, P2, Q1)) return true;\nif (o2 == 0 && inBox(P1, P2, Q2)) return true;\nif (o3 == 0 && inBox(Q1, Q2, P1)) return true;\nif (o4 == 0 && inBox(Q1, Q2, P2)) return true;\nreturn false;', map: {} } };
+  var RESERVOIR_ALT = {
+    python: { code: 'j = random.randint(0, i)\nif j < k: res[j] = item', map: {} },
+    js: { code: 'const j = Math.floor(Math.random() * (i + 1));\nif (j < k) res[j] = item;', map: {} },
+    cpp: { code: 'int j = rnd() % (i + 1);\nif (j < k) res[j] = item;', map: {} } };
+
   // =====================================================================
   // Shared helpers for the visualizers of DSA 26
   // =====================================================================
@@ -370,7 +384,7 @@ int main() {
             narr: 'At <b>P' + i + '</b>: A = ' + pstr(A) + ', B = ' + pstr(B) + ', C = ' + pstr(C) + '. u = B − A = (' + ux + ', ' + uy + '), v = C − A = (' + vx + ', ' + vy + '). cross = ' + ux + '·' + vy + ' − ' + uy + '·' + vx + ' = <b>' + c + '</b> → <span class="' + (c > 0 ? 'c-g' : c < 0 ? 'c-r' : 'c-y') + '">' + turnWord(c) + '</span>. ' + (c === 0 ? 'Zero means C lies exactly on the line through A and B.' : 'The size ' + Math.abs(c) + ' is twice the area of triangle ABC = ' + (Math.abs(c) / 2) + '.'),
             parts: [plot(P, { directed: true, edges: allEdges, ehl: ehl, hl: hl, label: 'triple (P' + (i - 1) + ', P' + i + ', P' + (i + 1) + ')' }),
               { type: 'vars', label: 'arithmetic', vals: { 'u = B−A': '(' + ux + ',' + uy + ')', 'v = C−A': '(' + vx + ',' + vy + ')', 'u.x·v.y': ux * vy, 'u.y·v.x': uy * vx, cross: c }, hl: { cross: cls } },
-              { type: 'code', lang: 'java', label: 'line running', code: 'long c = (b.x - a.x) * (c.y - a.y)\n       - (b.y - a.y) * (c.x - a.x);\nif (c > 0) turnLeft();\nelse if (c < 0) turnRight();\nelse goStraight();', hl: c > 0 ? { 3: 'ok' } : c < 0 ? { 4: 'bad' } : { 5: 'cur' } }]
+              { type: 'code', lang: 'java', label: 'line running', code: 'long c = (b.x - a.x) * (c.y - a.y)\n       - (b.y - a.y) * (c.x - a.x);\nif (c > 0) turnLeft();\nelse if (c < 0) turnRight();\nelse goStraight();', hl: c > 0 ? { 3: 'ok' } : c < 0 ? { 4: 'bad' } : { 5: 'cur' }, alt: TURN_ALT }]
           });
         }
         var lefts = summary.filter(function (r) { return r[3] === 'left'; }).length, rights = summary.filter(function (r) { return r[3] === 'right'; }).length;
@@ -414,7 +428,7 @@ cout << twice / 2.0 << endl;   // 9.5` }] } },
         <p>Input: <code>[[1,1],[2,2],[3,4],[4,5]]</code> → Output ${H.c('r', 'false')} — cross((1,1),(2,2),(3,4)) = 1·3 − 1·2 = 1 ≠ 0, so (3,4) bends off the line.</p>`,
       brute: {
         why: `<p>Check every triple (i, j, k) with the cross product: correct, but <b>O(N<sup>3</sup>)</b> ≈ 1.7·10<sup>8</sup> triples for N = 1000 — wasteful, because a line is fully decided by its first two points. The other "naive" approach, comparing slopes <code>dy/dx</code> as doubles, is faster but <span class="c-r">wrong</span> on vertical lines (division by zero) and fragile with rounding.</p>`,
-        code: `class Solution {
+        code: { lang: 'java', code: `class Solution {
     // Brute force: every triple must be collinear. O(N^3).
     public boolean checkStraightLine(int[][] p) {
         int n = p.length;
@@ -427,7 +441,47 @@ cout << twice / 2.0 << endl;   // 9.5` }] } },
                 }
         return true;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class Solution:
+    # Brute force: every triple must be collinear. O(N^3).
+    def check_straight_line(self, coordinates):
+        p = coordinates
+        n = len(p)
+        for i in range(n):
+            for j in range(i + 1, n):
+                for k in range(j + 1, n):
+                    c = (p[j][0] - p[i][0]) * (p[k][1] - p[i][1]) \
+                        - (p[j][1] - p[i][1]) * (p[k][0] - p[i][0])
+                    if c != 0:
+                        return False                  # this triple bends
+        return True` }, { lang: 'js', code: String.raw`
+// Brute force: every triple must be collinear. O(N^3).
+function checkStraightLine(p) {
+  const n = p.length;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++)
+      for (let k = j + 1; k < n; k++) {
+        const c = (p[j][0] - p[i][0]) * (p[k][1] - p[i][1])
+                - (p[j][1] - p[i][1]) * (p[k][0] - p[i][0]);
+        if (c !== 0) return false;                    // this triple bends
+      }
+  return true;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    // Brute force: every triple must be collinear. O(N^3).
+    bool checkStraightLine(const vector<vector<int>>& p) {
+        int n = p.size();
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                for (int k = j + 1; k < n; k++) {
+                    long long c = (long long)(p[j][0] - p[i][0]) * (p[k][1] - p[i][1])
+                                - (long long)(p[j][1] - p[i][1]) * (p[k][0] - p[i][0]);
+                    if (c != 0) return false;         // this triple bends
+                }
+        return true;
+    }
+};` }] }
       },
       mcq: { q: 'Points (2,1), (2,5), (2,9). A slope-based solution computes (5−1)/(2−2). What should you do instead?', options: ['Catch the ArithmeticException and return true', 'Compute cross((2,1),(2,5),(2,9)) = 0·8 − 4·0 = 0 → collinear', 'Use Double.compare on slopes', 'Sort the points first'], answer: 1, explain: 'The cross product needs no division, so vertical lines are not special. It equals 0 here, so the points are collinear.' },
       hints: [
@@ -966,7 +1020,7 @@ pair<bool, array<double, 2>> crossingPoint(const P& p1, const P& p2, const P& q1
         }
         frames.push({ narr: general ? '<b>General case holds</b>: o1 ≠ o2 AND o3 ≠ o4 → each segment splits the other → <span class="c-g">they intersect</span>.' : hit ? 'General case fails, but a <b>collinear special case</b> fires: ' + why + ' (orientation 0 AND inside the bounding box) → <span class="c-g">they touch</span>.' : 'General case fails and no endpoint lies on the other segment → <span class="c-r">no intersection</span>.' + (o1 === 0 && o2 === 0 ? ' (They are collinear but their shadows on the line do not overlap.)' : ''),
           parts: [pl(hit ? { P1: 'ok', P2: 'ok', Q1: 'ok', Q2: 'ok' } : { P1: 'bad', P2: 'bad', Q1: 'bad', Q2: 'bad' }, hit ? { 'P1-P2': 'ok', 'Q1-Q2': 'ok' } : { 'P1-P2': 'bad', 'Q1-Q2': 'bad' }),
-            { type: 'code', lang: 'java', label: 'decision', code: 'if (o1 != o2 && o3 != o4) return true;\nif (o1 == 0 && inBox(P1,P2,Q1)) return true;\nif (o2 == 0 && inBox(P1,P2,Q2)) return true;\nif (o3 == 0 && inBox(Q1,Q2,P1)) return true;\nif (o4 == 0 && inBox(Q1,Q2,P2)) return true;\nreturn false;', hl: general ? { 1: 'ok' } : hit ? { 2: 'ok', 3: 'ok', 4: 'ok', 5: 'ok' } : { 6: 'bad' } }] });
+            { type: 'code', lang: 'java', label: 'decision', code: 'if (o1 != o2 && o3 != o4) return true;\nif (o1 == 0 && inBox(P1,P2,Q1)) return true;\nif (o2 == 0 && inBox(P1,P2,Q2)) return true;\nif (o3 == 0 && inBox(Q1,Q2,P1)) return true;\nif (o4 == 0 && inBox(Q1,Q2,P2)) return true;\nreturn false;', hl: general ? { 1: 'ok' } : hit ? { 2: 'ok', 3: 'ok', 4: 'ok', 5: 'ok' } : { 6: 'bad' }, alt: SEG_ALT }] });
         var rx = P2[0] - P1[0], ry = P2[1] - P1[1], sx = Q2[0] - Q1[0], sy = Q2[1] - Q1[1], qx = Q1[0] - P1[0], qy = Q1[1] - P1[1];
         var den = rx * sy - ry * sx;
         if (den !== 0) {
@@ -1014,7 +1068,7 @@ cout << "r x s = " << rxs << " -> parallel, never divide by this" << endl;` }] }
         <p><code>(0,0)-(1,1)</code> and <code>(1,0)-(2,1)</code> → ${H.c('r', '[]')}: parallel, different lines.</p>`,
       brute: {
         why: `<p>The school approach writes each segment as <code>y = kx + b</code> and solves the two equations with doubles. It needs special code for vertical segments (k is infinite), compares slopes with <code>==</code> on doubles, and treats "same slope" as "no answer" — so it silently fails on collinear overlaps. Every patch adds another special case. It is not slow, it is <b>wrong-prone</b>: the wasted effort is all the case-handling that vector cross products make unnecessary.</p>`,
-        code: `class Solution {
+        code: { lang: 'java', code: `class Solution {
     // Naive slope-intercept solution: shown to illustrate the special cases it gets wrong.
     public double[] intersection(int[] s1, int[] e1, int[] s2, int[] e2) {
         if (s1[0] == e1[0] || s2[0] == e2[0]) return new double[0];   // BUG: gives up on vertical segments
@@ -1026,7 +1080,50 @@ cout << "r x s = " << rxs << " -> parallel, never divide by this" << endl;` }] }
         if (x < Math.min(s2[0], e2[0]) || x > Math.max(s2[0], e2[0])) return new double[0];
         return new double[]{x, y};
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class Solution:
+    # Naive slope-intercept solution: shown to illustrate the special cases it gets wrong.
+    def intersection(self, start1, end1, start2, end2):
+        if start1[0] == end1[0] or start2[0] == end2[0]:
+            return []                                 # BUG: gives up on vertical segments
+        k1 = (end1[1] - start1[1]) / (end1[0] - start1[0])
+        b1 = start1[1] - k1 * start1[0]
+        k2 = (end2[1] - start2[1]) / (end2[0] - start2[0])
+        b2 = start2[1] - k2 * start2[0]
+        if k1 == k2:
+            return []                                 # BUG: collinear overlaps ignored
+        x = (b2 - b1) / (k1 - k2)
+        y = k1 * x + b1
+        if x < min(start1[0], end1[0]) or x > max(start1[0], end1[0]):
+            return []
+        if x < min(start2[0], end2[0]) or x > max(start2[0], end2[0]):
+            return []
+        return [x, y]` }, { lang: 'js', code: String.raw`
+// Naive slope-intercept solution: shown to illustrate the special cases it gets wrong.
+function intersection(s1, e1, s2, e2) {
+  if (s1[0] === e1[0] || s2[0] === e2[0]) return [];   // BUG: gives up on vertical segments
+  const k1 = (e1[1] - s1[1]) / (e1[0] - s1[0]), b1 = s1[1] - k1 * s1[0];
+  const k2 = (e2[1] - s2[1]) / (e2[0] - s2[0]), b2 = s2[1] - k2 * s2[0];
+  if (k1 === k2) return [];                            // BUG: collinear overlaps ignored
+  const x = (b2 - b1) / (k1 - k2), y = k1 * x + b1;
+  if (x < Math.min(s1[0], e1[0]) || x > Math.max(s1[0], e1[0])) return [];
+  if (x < Math.min(s2[0], e2[0]) || x > Math.max(s2[0], e2[0])) return [];
+  return [x, y];
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    // Naive slope-intercept solution: shown to illustrate the special cases it gets wrong.
+    vector<double> intersection(vector<int> s1, vector<int> e1, vector<int> s2, vector<int> e2) {
+        if (s1[0] == e1[0] || s2[0] == e2[0]) return {};   // BUG: gives up on vertical segments
+        double k1 = (double)(e1[1] - s1[1]) / (e1[0] - s1[0]), b1 = s1[1] - k1 * s1[0];
+        double k2 = (double)(e2[1] - s2[1]) / (e2[0] - s2[0]), b2 = s2[1] - k2 * s2[0];
+        if (k1 == k2) return {};                           // BUG: collinear overlaps ignored
+        double x = (b2 - b1) / (k1 - k2), y = k1 * x + b1;
+        if (x < min(s1[0], e1[0]) || x > max(s1[0], e1[0])) return {};
+        if (x < min(s2[0], e2[0]) || x > max(s2[0], e2[0])) return {};
+        return {x, y};
+    }
+};` }] }
       },
       mcq: { q: 'You computed r × s = 0 for the two direction vectors. What is the next check?', options: ['Return empty — parallel segments never meet', 'Check whether (Q1 − P1) × r = 0; if so they are collinear and may overlap', 'Divide anyway; floating-point division just returns Infinity', 'Swap the segments and recompute'], answer: 1, explain: 'r × s = 0 means parallel. They can still overlap if they lie on the same line, which is exactly when Q1 − P1 is also parallel to r.' },
       hints: [
@@ -1597,7 +1694,7 @@ cout << per << endl;   // 16` }] } },
         <p><code>[[1,2],[2,2],[4,2]]</code> → ${H.c('g', '[[1,2],[2,2],[4,2]]')}: all collinear, the "fence" is a line and every tree touches it.</p>`,
       brute: {
         why: `<p>For every ordered pair (i, j), check whether <b>no</b> tree lies strictly to the right of i → j. If so, i → j is a fence edge and every tree on segment ij is on the fence. That is N<sup>2</sup> pairs × N checks = <b>O(N<sup>3</sup>)</b> ≈ 2.7·10<sup>10</sup> for N = 3000 → far too slow. The waste: most pairs are obviously interior, and we re-scan all trees for each.</p>`,
-        code: `class Solution {
+        code: { lang: 'java', code: `class Solution {
     public int[][] outerTrees(int[][] t) {
         int n = t.length;
         boolean[] on = new boolean[n];
@@ -1623,7 +1720,85 @@ cout << per << endl;   // 16` }] } },
         return Math.min(a[0], b[0]) <= p[0] && p[0] <= Math.max(a[0], b[0])
             && Math.min(a[1], b[1]) <= p[1] && p[1] <= Math.max(a[1], b[1]);
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class Solution:
+    def outer_trees(self, trees):
+        t = trees
+        n = len(t)
+        on = [False] * n
+        if n <= 3:
+            return t                                  # all of them touch the rope
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    continue
+                edge = True
+                for k in range(n):
+                    if self.cross(t[i], t[j], t[k]) < 0:
+                        edge = False                  # someone is on the right
+                        break
+                if not edge:
+                    continue
+                for k in range(n):                    # trees on this fence stretch
+                    if self.cross(t[i], t[j], t[k]) == 0 and self.between(t[i], t[j], t[k]):
+                        on[k] = True
+        return [t[k] for k in range(n) if on[k]]
+
+    def cross(self, o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    def between(self, a, b, p):
+        return (min(a[0], b[0]) <= p[0] <= max(a[0], b[0])
+                and min(a[1], b[1]) <= p[1] <= max(a[1], b[1]))` }, { lang: 'js', code: String.raw`
+function outerTrees(t) {
+  const n = t.length;
+  const on = new Array(n).fill(false);
+  if (n <= 3) return t;                               // all of them touch the rope
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const between = (a, b, p) =>
+    Math.min(a[0], b[0]) <= p[0] && p[0] <= Math.max(a[0], b[0]) &&
+    Math.min(a[1], b[1]) <= p[1] && p[1] <= Math.max(a[1], b[1]);
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++) {
+      if (i === j) continue;
+      let edge = true;
+      for (let k = 0; k < n && edge; k++)
+        if (cross(t[i], t[j], t[k]) < 0) edge = false;   // someone is on the right
+      if (!edge) continue;
+      for (let k = 0; k < n; k++)                     // trees on this fence stretch
+        if (cross(t[i], t[j], t[k]) === 0 && between(t[i], t[j], t[k])) on[k] = true;
+    }
+  return t.filter((_, k) => on[k]);
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+    int cross(const vector<int>& o, const vector<int>& a, const vector<int>& b) {
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    }
+    bool between(const vector<int>& a, const vector<int>& b, const vector<int>& p) {
+        return min(a[0], b[0]) <= p[0] && p[0] <= max(a[0], b[0])
+            && min(a[1], b[1]) <= p[1] && p[1] <= max(a[1], b[1]);
+    }
+
+public:
+    vector<vector<int>> outerTrees(vector<vector<int>> t) {
+        int n = t.size();
+        vector<char> on(n, 0);
+        if (n <= 3) return t;                         // all of them touch the rope
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++) {
+                if (i == j) continue;
+                bool edge = true;
+                for (int k = 0; k < n && edge; k++)
+                    if (cross(t[i], t[j], t[k]) < 0) edge = false;   // someone is on the right
+                if (!edge) continue;
+                for (int k = 0; k < n; k++)           // trees on this fence stretch
+                    if (cross(t[i], t[j], t[k]) == 0 && between(t[i], t[j], t[k])) on[k] = 1;
+            }
+        vector<vector<int>> res;
+        for (int k = 0; k < n; k++) if (on[k]) res.push_back(t[k]);
+        return res;
+    }
+};` }] }
       },
       mcq: { q: 'In the monotone chain, which pop condition keeps trees that lie exactly on a fence edge?', options: ['Pop while cross ≤ 0', 'Pop while cross &lt; 0', 'Pop while cross ≥ 0', 'Never pop'], answer: 1, explain: 'A tree on a straight stretch makes a zero cross product. Popping only on strictly negative (right) turns keeps it.' },
       hints: [
@@ -2447,7 +2622,7 @@ cout << best / 2.0 << endl;   // 2` }] } }
         <p><code>[[0,0],[0,10],[10,10],[10,0],[5,5]]</code> → ${H.c('r', 'false')} — at (10,0) the turn is right (−50) but at (5,5) it is left (+50): a dent.</p>`,
       brute: {
         why: `<p>A polygon is convex iff for every edge, all vertices lie on one side of the edge's line. Checking every edge against every vertex is <b>O(N<sup>2</sup>)</b> = 10<sup>8</sup> cross products at N = 10<sup>4</sup> — borderline slow, and wasteful: a dent always shows up <i>locally</i> as a turn of the wrong sign, so looking at consecutive triples is enough.</p>`,
-        code: `class Solution {
+        code: { lang: 'java', code: `class Solution {
     public boolean isConvex(List<List<Integer>> points) {
         int n = points.size();
         for (int i = 0; i < n; i++) {
@@ -2464,7 +2639,57 @@ cout << best / 2.0 << endl;   // 2` }] } }
         }
         return true;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class Solution:
+    def is_convex(self, points):
+        n = len(points)
+        for i in range(n):
+            a, b = points[i], points[(i + 1) % n]
+            pos = neg = 0
+            for c in points:                          # every vertex vs this edge line
+                cr = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+                if cr > 0:
+                    pos += 1
+                elif cr < 0:
+                    neg += 1
+            if pos > 0 and neg > 0:
+                return False                          # vertices on both sides
+        return True` }, { lang: 'js', code: String.raw`
+function isConvex(points) {
+  const n = points.length;
+  for (let i = 0; i < n; i++) {
+    const a = points[i], b = points[(i + 1) % n];
+    let pos = 0, neg = 0;
+    for (let k = 0; k < n; k++) {                     // every vertex vs this edge line
+      const c = points[k];
+      const cr = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      if (cr > 0) pos++;
+      else if (cr < 0) neg++;
+    }
+    if (pos > 0 && neg > 0) return false;             // vertices on both sides
+  }
+  return true;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    bool isConvex(const vector<vector<int>>& points) {
+        int n = points.size();
+        for (int i = 0; i < n; i++) {
+            const vector<int>& a = points[i];
+            const vector<int>& b = points[(i + 1) % n];
+            int pos = 0, neg = 0;
+            for (int k = 0; k < n; k++) {             // every vertex vs this edge line
+                const vector<int>& c = points[k];
+                long long cr = (long long)(b[0] - a[0]) * (c[1] - a[1])
+                             - (long long)(b[1] - a[1]) * (c[0] - a[0]);
+                if (cr > 0) pos++;
+                else if (cr < 0) neg++;
+            }
+            if (pos > 0 && neg > 0) return false;     // vertices on both sides
+        }
+        return true;
+    }
+};` }] }
       },
       mcq: { q: 'Walking the polygon you see turn signs: −, −, 0, −, −. Is it convex?', options: ['No — a zero means a dent', 'Yes — zeros are straight angles; all non-zero turns agree', 'Only if N is even', 'Cannot tell without the area'], answer: 1, explain: 'A zero cross product is a 180° angle (collinear vertices). Convexity only fails when both a positive and a negative turn appear.' },
       hints: [
@@ -3048,7 +3273,7 @@ int main() {
                 { type: 'array', label: 'stream', values: a, hl: hlS, ptr: one(i, 'i') },
                 { type: 'array', label: 'reservoir', values: res.slice(), hl: ok ? one(j, 'ok') : {}, ptr: ok ? one(j, 'j') : {} },
                 { type: 'vars', vals: { i: i, j: j, k: k, 'P(enter)': k + '/' + (i + 1) }, hl: { j: ok ? 'ok' : 'bad' } },
-                { type: 'code', lang: 'java', label: 'line running', code: 'int j = rnd.nextInt(i + 1);\nif (j < k) res.set(j, item);', hl: ok ? { 2: 'ok' } : { 1: 'cur' } }] });
+                { type: 'code', lang: 'java', label: 'line running', code: 'int j = rnd.nextInt(i + 1);\nif (j < k) res.set(j, item);', hl: ok ? { 2: 'ok' } : { 1: 'cur' }, alt: RESERVOIR_ALT }] });
           }
         }
         frames.push({ narr: 'Stream over. Final sample: <b>[' + res.join(', ') + ']</b>. Over many runs (different seeds), every item would appear with probability k/N = ' + k + '/' + a.length + '. Try other seeds to see different — but equally likely — samples.',
@@ -3140,7 +3365,7 @@ cout << pick << endl;` }] } },
       example: `<p>List 1 → 2 → 3. Each call returns 1, 2 or 3 with probability ⅓ each. One possible sequence of calls: ${H.c('b', '1, 3, 2, 2, 3')}.</p>`,
       brute: {
         why: `<p>Copy all values into a list in the constructor, then return the element at a random index. O(1) per call, but <b>O(N) extra memory</b> — exactly what the follow-up forbids — and impossible if the list is a stream that cannot be stored or its length changes.</p>`,
-        code: `class Solution {
+        code: { lang: 'java', code: `class Solution {
     private final List<Integer> vals = new ArrayList<>();
     private final Random rnd = new Random();
 
@@ -3151,7 +3376,42 @@ cout << pick << endl;` }] } },
     public int getRandom() {
         return vals.get(rnd.nextInt(vals.size()));
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+import random
+
+class Solution:
+    def __init__(self, head):
+        self.vals = []
+        cur = head
+        while cur:
+            self.vals.append(cur.val)                 # O(N) memory
+            cur = cur.next
+
+    def getRandom(self):
+        return self.vals[random.randrange(len(self.vals))]` }, { lang: 'js', code: String.raw`
+class Solution {
+  constructor(head) {
+    this.vals = [];
+    for (let cur = head; cur !== null; cur = cur.next) this.vals.push(cur.val);   // O(N) memory
+  }
+
+  getRandom() {
+    return this.vals[Math.floor(Math.random() * this.vals.length)];
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+    vector<int> vals;
+    mt19937 rnd{random_device{}()};
+
+public:
+    Solution(ListNode* head) {
+        for (ListNode* cur = head; cur; cur = cur->next) vals.push_back(cur->val);   // O(N) memory
+    }
+
+    int getRandom() {
+        return vals[rnd() % vals.size()];
+    }
+};` }] }
       },
       mcq: { q: 'While walking the list you are at the 5th node (1-based). With what probability should it replace the current pick?', options: ['1/2', '1/5', '5/N', '1/N — but N is unknown'], answer: 1, explain: 'Reservoir with k = 1 keeps the i-th item with probability 1/i. The telescoping product then makes every node’s final chance 1/N.' },
       hints: [
@@ -3738,13 +3998,29 @@ cout << x << ", " << y << " after " << tries << " tries" << endl;` }] } }
         <p><code>nums = [3,2,3,1,2,4,5,5,6], k = 4</code> → ${H.c('g', '4')} (sorted descending: 6 5 5 <b>4</b> …).</p>`,
       brute: {
         why: `<p>Sort and return <code>nums[N − k]</code>: <b>O(N log N)</b>. It does far more work than needed — it fully orders thousands of elements we never look at. A size-k min-heap is O(N log k), better but still not linear.</p>`,
-        code: `class Solution {
+        code: { lang: 'java', code: `class Solution {
     public int findKthLargest(int[] nums, int k) {
         int[] a = nums.clone();
         Arrays.sort(a);                 // O(N log N): orders everything
         return a[a.length - k];
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class Solution:
+    def find_kth_largest(self, nums, k):
+        a = sorted(nums)                              # O(N log N): orders everything
+        return a[len(a) - k]` }, { lang: 'js', code: String.raw`
+function findKthLargest(nums, k) {
+  const a = nums.slice().sort((x, y) => x - y);       // O(N log N): orders everything
+  return a[a.length - k];
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    int findKthLargest(vector<int>& nums, int k) {
+        vector<int> a = nums;
+        sort(a.begin(), a.end());                     // O(N log N): orders everything
+        return a[a.size() - k];
+    }
+};` }] }
       },
       mcq: { q: 'nums has 10<sup>5</sup> copies of the same number. Which quickselect variant stays fast?', options: ['Lomuto partition with a random pivot', 'Hoare partition with pivot = first element', '3-way (Dutch flag) partition with a random pivot', 'Any — duplicates do not matter'], answer: 2, explain: 'With 2-way partitions all equal keys go to one side, so each round removes one element → O(N²). A 3-way partition puts all equal keys in the middle block and finishes in one round.' },
       hints: [
@@ -4439,7 +4715,7 @@ cout << first << " " << second << endl;                   // 1 2 (FIFO), next po
       example: `<p>add 5, add 7, add 9 (capacity 1 → 2 → 4), get(1) = ${H.c('g', '7')}, removeLast() = ${H.c('g', '9')}, removeLast() = ${H.c('g', '7')} → size 1 = capacity 4 / 4 → shrink to 2. Total copies stay linear in the number of operations.</p>`,
       brute: {
         why: `<p>Grow the array by exactly <b>one</b> slot on every add (allocate size+1, copy all). Each add copies the whole array: 0 + 1 + 2 + … + (N−1) ≈ N<sup>2</sup>/2 copies → 5·10<sup>11</sup> for 10<sup>6</sup> adds. The waste: we keep paying for the same copies again and again instead of buying spare room in advance.</p>`,
-        code: `class GrowableArray {
+        code: { lang: 'java', code: `class GrowableArray {
     private int[] data = new int[0];
 
     void add(int x) {
@@ -4459,7 +4735,78 @@ cout << first << " " << second << endl;                   // 1 2 (FIFO), next po
     int get(int i) { return data[i]; }
     void set(int i, int x) { data[i] = x; }
     int size() { return data.length; }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class GrowableArray:
+    def __init__(self):
+        self.data = []
+
+    def add(self, x):
+        bigger = [0] * (len(self.data) + 1)           # grow by ONE: O(N) every time
+        for i, v in enumerate(self.data):
+            bigger[i] = v
+        bigger[len(self.data)] = x
+        self.data = bigger
+
+    def removeLast(self):
+        if not self.data:
+            raise IndexError("empty")
+        x = self.data[-1]
+        self.data = self.data[:-1]                    # shrink by ONE: O(N) every time
+        return x
+
+    def get(self, i):
+        return self.data[i]
+
+    def set(self, i, x):
+        self.data[i] = x
+
+    def size(self):
+        return len(self.data)` }, { lang: 'js', code: String.raw`
+class GrowableArray {
+  constructor() {
+    this.data = [];
+  }
+
+  add(x) {
+    const bigger = new Array(this.data.length + 1);   // grow by ONE: O(N) every time
+    for (let i = 0; i < this.data.length; i++) bigger[i] = this.data[i];
+    bigger[this.data.length] = x;
+    this.data = bigger;
+  }
+
+  removeLast() {
+    if (this.data.length === 0) throw new Error("empty");
+    const x = this.data[this.data.length - 1];
+    this.data = this.data.slice(0, -1);               // shrink by ONE: O(N) every time
+    return x;
+  }
+
+  get(i) { return this.data[i]; }
+  set(i, x) { this.data[i] = x; }
+  size() { return this.data.length; }
+}` }, { lang: 'cpp', code: String.raw`
+class GrowableArray {
+    vector<int> data;
+
+public:
+    void add(int x) {
+        vector<int> bigger(data.size() + 1);          // grow by ONE: O(N) every time
+        copy(data.begin(), data.end(), bigger.begin());
+        bigger[data.size()] = x;
+        data = bigger;
+    }
+
+    int removeLast() {
+        if (data.empty()) throw out_of_range("empty");
+        int x = data.back();
+        data = vector<int>(data.begin(), data.end() - 1);   // shrink by ONE: O(N) every time
+        return x;
+    }
+
+    int get(int i) const { return data[i]; }
+    void set(int i, int x) { data[i] = x; }
+    int size() const { return data.size(); }
+};` }] }
       },
       mcq: { q: 'You double when full. When should you halve the capacity during removals?', options: ['When size drops to capacity / 2', 'When size drops to capacity / 4', 'Never — memory is cheap', 'On every removal'], answer: 1, explain: 'Halving at ½ lets an add/remove pair at the boundary trigger a full copy every time. At ¼, after halving the array is half full, so at least capacity/4 cheap operations happen before the next resize.' },
       hints: [
@@ -5438,7 +5785,7 @@ cout << endl;` }] } },
       example: `<p>add 1, add 2, add 3, search(0) → ${H.c('r', 'false')}, add 4, search(1) → ${H.c('g', 'true')}, erase(0) → ${H.c('r', 'false')}, erase(1) → ${H.c('g', 'true')}, search(1) → ${H.c('r', 'false')}.</p>`,
       brute: {
         why: `<p>Keep a sorted array list (<code>ArrayList</code> / <code>list</code> / <code>vector</code>): search with binary search in O(log N), but <code>add</code>/<code>erase</code> shift elements → <b>O(N)</b> each, so 5·10<sup>4</sup> operations can cost ~10<sup>9</sup> moves in the worst case. A plain sorted linked list fixes the shifting but makes the search O(N). The skip list gets both: linked-list splicing plus binary-search-like hops.</p>`,
-        code: `class Skiplist {
+        code: { lang: 'java', code: `class Skiplist {
     private final List<Integer> list = new ArrayList<>();   // always sorted
 
     public boolean search(int target) {
@@ -5457,7 +5804,77 @@ cout << endl;` }] } },
         list.remove(i);                                      // O(N) shift
         return true;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+from bisect import bisect_left
+
+class Skiplist:
+    def __init__(self):
+        self.list = []                                # always sorted
+
+    def search(self, target):
+        i = bisect_left(self.list, target)            # O(log N)
+        return i < len(self.list) and self.list[i] == target
+
+    def add(self, num):
+        i = bisect_left(self.list, num)
+        self.list.insert(i, num)                      # O(N) shift
+
+    def erase(self, num):
+        i = bisect_left(self.list, num)
+        if i == len(self.list) or self.list[i] != num:
+            return False
+        self.list.pop(i)                              # O(N) shift
+        return True` }, { lang: 'js', code: String.raw`
+class Skiplist {
+  constructor() {
+    this.list = [];                                   // always sorted
+  }
+
+  lowerBound(x) {                                     // O(log N) binary search
+    let lo = 0, hi = this.list.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.list[mid] < x) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  }
+
+  search(target) {
+    const i = this.lowerBound(target);
+    return i < this.list.length && this.list[i] === target;
+  }
+
+  add(num) {
+    this.list.splice(this.lowerBound(num), 0, num);   // O(N) shift
+  }
+
+  erase(num) {
+    const i = this.lowerBound(num);
+    if (i === this.list.length || this.list[i] !== num) return false;
+    this.list.splice(i, 1);                           // O(N) shift
+    return true;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class Skiplist {
+    vector<int> list;                                 // always sorted
+
+public:
+    bool search(int target) {
+        auto it = lower_bound(list.begin(), list.end(), target);   // O(log N)
+        return it != list.end() && *it == target;
+    }
+
+    void add(int num) {
+        list.insert(lower_bound(list.begin(), list.end(), num), num);   // O(N) shift
+    }
+
+    bool erase(int num) {
+        auto it = lower_bound(list.begin(), list.end(), num);
+        if (it == list.end() || *it != num) return false;
+        list.erase(it);                               // O(N) shift
+        return true;
+    }
+};` }] }
       },
       mcq: { q: 'During add(num), what does update[l] store?', options: ['The node num itself on level l', 'The last node on level l whose value is &lt; num (num is spliced right after it)', 'The first node on level l whose value is ≥ num', 'The head of level l'], answer: 1, explain: 'The search drops a level exactly when the next value is ≥ num, so the current node is the predecessor on that level. New levels above the current top use the head as predecessor.' },
       hints: [
@@ -6127,7 +6544,7 @@ public:
     example: `<p><code>[[1,1],[2,3],[3,2]]</code> → ${H.c('g', 'true')}: cross = (2−1)(2−1) − (3−1)(3−1) = 1 − 4 = −3 ≠ 0.</p><p><code>[[1,1],[2,2],[3,3]]</code> → ${H.c('r', 'false')}: cross = 1·2 − 1·2 = 0 (collinear). Duplicate points also give cross 0.</p>`,
     brute: {
       why: `<p>Compare the slopes (y2−y1)/(x2−x1) and (y3−y1)/(x3−x1) as doubles and check duplicates separately. It needs special cases for vertical lines (division by zero) and duplicates, and floating comparison is fragile. Not slow — just error-prone.</p>`,
-      code: `class Solution {
+      code: { lang: 'java', code: `class Solution {
     public boolean isBoomerang(int[][] p) {
         if (Arrays.equals(p[0], p[1]) || Arrays.equals(p[0], p[2]) || Arrays.equals(p[1], p[2])) return false;
         int dx1 = p[1][0] - p[0][0], dx2 = p[2][0] - p[0][0];
@@ -6137,7 +6554,42 @@ public:
         double s2 = (double) (p[2][1] - p[0][1]) / dx2;
         return s1 != s2;                                  // fragile double comparison
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class Solution:
+    def is_boomerang(self, points):
+        p = points
+        if p[0] == p[1] or p[0] == p[2] or p[1] == p[2]:
+            return False
+        dx1, dx2 = p[1][0] - p[0][0], p[2][0] - p[0][0]
+        if dx1 == 0 and dx2 == 0:
+            return False                              # both vertical: same line
+        if dx1 == 0 or dx2 == 0:
+            return True                               # exactly one vertical
+        s1 = (p[1][1] - p[0][1]) / dx1
+        s2 = (p[2][1] - p[0][1]) / dx2
+        return s1 != s2                               # fragile float comparison` }, { lang: 'js', code: String.raw`
+function isBoomerang(p) {
+  const same = (a, b) => a[0] === b[0] && a[1] === b[1];
+  if (same(p[0], p[1]) || same(p[0], p[2]) || same(p[1], p[2])) return false;
+  const dx1 = p[1][0] - p[0][0], dx2 = p[2][0] - p[0][0];
+  if (dx1 === 0 && dx2 === 0) return false;           // both vertical: same line
+  if (dx1 === 0 || dx2 === 0) return true;            // exactly one vertical
+  const s1 = (p[1][1] - p[0][1]) / dx1;
+  const s2 = (p[2][1] - p[0][1]) / dx2;
+  return s1 !== s2;                                   // fragile floating-point comparison
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    bool isBoomerang(const vector<vector<int>>& p) {
+        if (p[0] == p[1] || p[0] == p[2] || p[1] == p[2]) return false;
+        int dx1 = p[1][0] - p[0][0], dx2 = p[2][0] - p[0][0];
+        if (dx1 == 0 && dx2 == 0) return false;       // both vertical: same line
+        if (dx1 == 0 || dx2 == 0) return true;        // exactly one vertical
+        double s1 = (double)(p[1][1] - p[0][1]) / dx1;
+        double s2 = (double)(p[2][1] - p[0][1]) / dx2;
+        return s1 != s2;                              // fragile double comparison
+    }
+};` }] }
     },
     mcq: { q: 'Why does a single cross-product test also catch duplicate points?', options: ['It does not; you must check duplicates separately', 'A duplicate makes one of the vectors (0,0), so the cross product is 0', 'Duplicates make the cross product negative', 'Because the constraints forbid duplicates'], answer: 1, explain: 'If two points coincide, B − A or C − A is the zero vector, and anything crossed with the zero vector is 0 — reported as "collinear", which is exactly "not a boomerang".' },
     hints: [
@@ -6214,7 +6666,7 @@ public:
     example: `<p><code>[[0,0],[0,1],[1,0],[0,2],[2,0]]</code> → ${H.c('g', '2.0')}: triangle (0,0), (0,2), (2,0) has |cross| = |0·0 − 2·2| = 4 → area 2.</p>`,
     brute: {
       why: `<p>All triples are only C(50,3) = 19 600, so trying every triple is the intended solution. The <i>naive</i> part people get wrong is the area formula: Heron's formula needs three square roots for the side lengths and another for the area, losing precision (and giving NaN for flat triangles when rounding makes the radicand slightly negative).</p>`,
-      code: `class Solution {
+      code: { lang: 'java', code: `class Solution {
     public double largestTriangleArea(int[][] p) {
         double best = 0;
         int n = p.length;
@@ -6229,7 +6681,55 @@ public:
         return best;
     }
     private double dist(int[] u, int[] v) { return Math.hypot(u[0] - v[0], u[1] - v[1]); }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+import math
+
+class Solution:
+    def largest_triangle_area(self, points):
+        p = points
+        best = 0.0
+        n = len(p)
+        dist = lambda u, v: math.hypot(u[0] - v[0], u[1] - v[1])
+        for i in range(n):
+            for j in range(i + 1, n):
+                for k in range(j + 1, n):
+                    a, b, c = dist(p[i], p[j]), dist(p[j], p[k]), dist(p[i], p[k])
+                    s = (a + b + c) / 2
+                    sq = s * (s - a) * (s - b) * (s - c)   # can be slightly negative
+                    best = max(best, math.sqrt(max(0, sq)))
+        return best` }, { lang: 'js', code: String.raw`
+function largestTriangleArea(p) {
+  const dist = (u, v) => Math.hypot(u[0] - v[0], u[1] - v[1]);
+  let best = 0;
+  const n = p.length;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++)
+      for (let k = j + 1; k < n; k++) {
+        const a = dist(p[i], p[j]), b = dist(p[j], p[k]), c = dist(p[i], p[k]);
+        const s = (a + b + c) / 2;
+        const sq = s * (s - a) * (s - b) * (s - c);   // can be slightly negative
+        best = Math.max(best, Math.sqrt(Math.max(0, sq)));
+      }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+    double dist(const vector<int>& u, const vector<int>& v) { return hypot(u[0] - v[0], u[1] - v[1]); }
+
+public:
+    double largestTriangleArea(const vector<vector<int>>& p) {
+        double best = 0;
+        int n = p.size();
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                for (int k = j + 1; k < n; k++) {
+                    double a = dist(p[i], p[j]), b = dist(p[j], p[k]), c = dist(p[i], p[k]);
+                    double s = (a + b + c) / 2;
+                    double sq = s * (s - a) * (s - b) * (s - c);   // can be slightly negative
+                    best = max(best, sqrt(max(0.0, sq)));
+                }
+        return best;
+    }
+};` }] }
     },
     mcq: { q: 'Which formula gives the exact doubled area of triangle ABC from integer coordinates?', options: ['|AB| · |AC| / 2', '|(B−A) × (C−A)|', 'Heron with sides rounded to integers', '(B−A) · (C−A)'], answer: 1, explain: 'The absolute cross product equals the parallelogram area = 2 × triangle area, computed exactly with integer multiplication.' },
     hints: [
@@ -6347,7 +6847,7 @@ public:
     example: `<p><code>rec1 = [0,0,2,2], rec2 = [1,1,3,3]</code> → ${H.c('g', 'true')} (overlap square [1,1]–[2,2]).</p><p><code>[0,0,1,1]</code> and <code>[1,0,2,1]</code> → ${H.c('r', 'false')}: they only share the edge x = 1.</p>`,
     brute: {
       why: `<p>Check every unit cell of rectangle 1 to see whether it lies inside rectangle 2. With coordinates up to 10<sup>9</sup> that is up to 10<sup>18</sup> cells — impossible. The waste: area overlap is decided by two independent 1D interval overlaps.</p>`,
-      code: `class Solution {
+      code: { lang: 'java', code: `class Solution {
     // Only usable for tiny coordinates: tests each unit cell of rec1.
     public boolean isRectangleOverlap(int[] a, int[] b) {
         for (long x = a[0]; x < a[2]; x++)
@@ -6355,7 +6855,33 @@ public:
                 if (x >= b[0] && x + 1 <= b[2] && y >= b[1] && y + 1 <= b[3]) return true;
         return false;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class Solution:
+    # Only usable for tiny coordinates: tests each unit cell of rec1.
+    def is_rectangle_overlap(self, rec1, rec2):
+        a, b = rec1, rec2
+        for x in range(a[0], a[2]):
+            for y in range(a[1], a[3]):
+                if x >= b[0] and x + 1 <= b[2] and y >= b[1] and y + 1 <= b[3]:
+                    return True
+        return False` }, { lang: 'js', code: String.raw`
+// Only usable for tiny coordinates: tests each unit cell of rec1.
+function isRectangleOverlap(a, b) {
+  for (let x = a[0]; x < a[2]; x++)
+    for (let y = a[1]; y < a[3]; y++)
+      if (x >= b[0] && x + 1 <= b[2] && y >= b[1] && y + 1 <= b[3]) return true;
+  return false;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    // Only usable for tiny coordinates: tests each unit cell of rec1.
+    bool isRectangleOverlap(const vector<int>& a, const vector<int>& b) {
+        for (long long x = a[0]; x < a[2]; x++)
+            for (long long y = a[1]; y < a[3]; y++)
+                if (x >= b[0] && x + 1 <= b[2] && y >= b[1] && y + 1 <= b[3]) return true;
+        return false;
+    }
+};` }] }
     },
     mcq: { q: 'Two rectangles overlap with positive area exactly when…', options: ['their x-intervals overlap OR their y-intervals overlap', 'their x-intervals overlap with positive length AND their y-intervals overlap with positive length', 'one corner of A is inside B', 'their centres are closer than the sum of half-diagonals'], answer: 1, explain: 'The intersection of two axis-aligned rectangles is the product of the x-overlap and the y-overlap; it has positive area only if both lengths are positive. "Corner inside" fails for a plus-sign (cross) arrangement.' },
     hints: [
@@ -6437,7 +6963,7 @@ public:
     example: `<p>push 1, push 2, peek → ${H.c('g', '1')}, pop → ${H.c('g', '1')}, empty → ${H.c('r', 'false')}.</p>`,
     brute: {
       why: `<p>Keep the oldest element on top of a single stack: on every push, move everything to a helper stack, push x, move everything back. Each push is <b>O(N)</b>, so N pushes cost O(N<sup>2</sup>). The waste: we re-reverse the same elements on every push.</p>`,
-      code: `class MyQueue {
+      code: { lang: 'java', code: `class MyQueue {
     private final Deque<Integer> s = new ArrayDeque<>(), tmp = new ArrayDeque<>();
 
     public void push(int x) {                       // O(N) every time
@@ -6448,7 +6974,56 @@ public:
     public int pop() { return s.pop(); }
     public int peek() { return s.peek(); }
     public boolean empty() { return s.isEmpty(); }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class MyQueue:
+    def __init__(self):
+        self.s = []
+        self.tmp = []
+
+    def push(self, x):                                # O(N) every time
+        while self.s:
+            self.tmp.append(self.s.pop())
+        self.s.append(x)
+        while self.tmp:
+            self.s.append(self.tmp.pop())
+
+    def pop(self):
+        return self.s.pop()
+
+    def peek(self):
+        return self.s[-1]
+
+    def empty(self):
+        return not self.s` }, { lang: 'js', code: String.raw`
+class MyQueue {
+  constructor() {
+    this.s = [];
+    this.tmp = [];
+  }
+
+  push(x) {                                           // O(N) every time
+    while (this.s.length) this.tmp.push(this.s.pop());
+    this.s.push(x);
+    while (this.tmp.length) this.s.push(this.tmp.pop());
+  }
+
+  pop() { return this.s.pop(); }
+  peek() { return this.s[this.s.length - 1]; }
+  empty() { return this.s.length === 0; }
+}` }, { lang: 'cpp', code: String.raw`
+class MyQueue {
+    stack<int> s, tmp;
+
+public:
+    void push(int x) {                                // O(N) every time
+        while (!s.empty()) { tmp.push(s.top()); s.pop(); }
+        s.push(x);
+        while (!tmp.empty()) { s.push(tmp.top()); tmp.pop(); }
+    }
+    int pop() { int x = s.top(); s.pop(); return x; }
+    int peek() { return s.top(); }
+    bool empty() { return s.empty(); }
+};` }] }
     },
     mcq: { q: 'Over a long sequence, how many times can one element be moved from the in-stack to the out-stack?', options: ['Once per pop call', 'At most once in its lifetime', 'log N times', 'N times'], answer: 1, explain: 'We only transfer when out is empty, and an element in out leaves only by being popped. So each element is pushed to in once, moved once, popped once: O(1) amortized.' },
     hints: [
@@ -6850,7 +7425,7 @@ public:
     example: `<p>nums = [1,2,3]: shuffle() might return ${H.c('b', '[3,1,2]')}; each of the 6 orders with probability 1/6. reset() returns ${H.c('g', '[1,2,3]')}.</p>`,
     brute: {
       why: `<p>Copy the elements into a list; repeatedly remove a random element and append it to the result. Correct and uniform, but removing from the middle of an array list (<code>ArrayList.remove(i)</code>, <code>list.pop(i)</code>, <code>vector::erase</code>) shifts elements → <b>O(N<sup>2</sup>)</b> per shuffle. Fisher–Yates does the same "pick from the remaining" in place with a swap, O(N).</p>`,
-      code: `class Solution {
+      code: { lang: 'java', code: `class Solution {
     private final int[] orig;
     private final Random rnd = new Random();
     public Solution(int[] nums) { orig = nums.clone(); }
@@ -6863,7 +7438,56 @@ public:
             res[i] = pool.remove(rnd.nextInt(pool.size()));   // O(N) removal each time
         return res;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+import random
+
+class Solution:
+    def __init__(self, nums):
+        self.orig = list(nums)
+
+    def reset(self):
+        return list(self.orig)
+
+    def shuffle(self):
+        pool = list(self.orig)
+        res = []
+        for _ in range(len(self.orig)):
+            res.append(pool.pop(random.randrange(len(pool))))   # O(N) removal each time
+        return res` }, { lang: 'js', code: String.raw`
+class Solution {
+  constructor(nums) {
+    this.orig = nums.slice();
+  }
+
+  reset() { return this.orig.slice(); }
+
+  shuffle() {
+    const pool = this.orig.slice();
+    const res = [];
+    for (let i = 0; i < this.orig.length; i++)
+      res.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);   // O(N) removal each time
+    return res;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+    vector<int> orig;
+    mt19937 rnd{random_device{}()};
+
+public:
+    Solution(vector<int>& nums) : orig(nums) {}
+
+    vector<int> reset() { return orig; }
+
+    vector<int> shuffle() {
+        vector<int> pool = orig, res;
+        for (size_t i = 0; i < orig.size(); i++) {
+            int j = rnd() % pool.size();
+            res.push_back(pool[j]);
+            pool.erase(pool.begin() + j);             // O(N) removal each time
+        }
+        return res;
+    }
+};` }] }
     },
     mcq: { q: 'Which loop produces a uniformly random permutation?', options: ['for i in 0..n−1: swap(a[i], a[rand(0..n−1)])', 'for i in n−1..1: swap(a[i], a[rand(0..i)])', 'for i in n−1..1: swap(a[i], a[rand(0..i−1)])', 'sort with a random comparator'], answer: 1, explain: 'Fisher–Yates draws j from [0, i] so the number of equally likely runs is n!. Option A gives n^n runs (biased), option C is Sattolo (single cycles only), option D is biased and may violate the comparator contract.' },
     hints: [
@@ -7068,7 +7692,7 @@ public:
     example: `<p>nums = [1,2,3,3,3]: pick(3) returns ${H.c('b', '2, 3 or 4')}, each with probability ⅓; pick(1) always returns ${H.c('g', '0')}.</p>`,
     brute: {
       why: `<p>Precompute <code>Map&lt;value, List&lt;index&gt;&gt;</code> and return a random element of the list: O(1) per pick but <b>O(N) extra memory</b>. Or collect the matching indices on each call — O(N) time and O(K) memory per call. Reservoir sampling needs no extra memory.</p>`,
-      code: `class Solution {
+      code: { lang: 'java', code: `class Solution {
     private final Map<Integer, List<Integer>> pos = new HashMap<>();
     private final Random rnd = new Random();
 
@@ -7081,7 +7705,46 @@ public:
         List<Integer> l = pos.get(target);
         return l.get(rnd.nextInt(l.size()));
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+import random
+
+class Solution:
+    def __init__(self, nums):
+        self.pos = {}
+        for i, v in enumerate(nums):
+            self.pos.setdefault(v, []).append(i)      # O(N) memory
+
+    def pick(self, target):
+        l = self.pos[target]
+        return l[random.randrange(len(l))]` }, { lang: 'js', code: String.raw`
+class Solution {
+  constructor(nums) {
+    this.pos = new Map();
+    nums.forEach((v, i) => {
+      if (!this.pos.has(v)) this.pos.set(v, []);
+      this.pos.get(v).push(i);                        // O(N) memory
+    });
+  }
+
+  pick(target) {
+    const l = this.pos.get(target);
+    return l[Math.floor(Math.random() * l.length)];
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+    unordered_map<int, vector<int>> pos;
+    mt19937 rnd{random_device{}()};
+
+public:
+    Solution(vector<int>& nums) {
+        for (int i = 0; i < (int)nums.size(); i++) pos[nums[i]].push_back(i);   // O(N) memory
+    }
+
+    int pick(int target) {
+        vector<int>& l = pos[target];
+        return l[rnd() % l.size()];
+    }
+};` }] }
     },
     mcq: { q: 'Scanning left to right, you meet the 3rd index whose value equals target. With what probability do you switch your answer to it?', options: ['1/2', '1/3', '1/N', 'Always'], answer: 1, explain: 'Run reservoir sampling only over matching indices: the c-th match replaces the answer with probability 1/c.' },
     hints: [
@@ -7224,7 +7887,7 @@ public:
     example: `<p>w = [1, 3]: index 0 with probability ${H.c('b', '1/4')}, index 1 with ${H.c('b', '3/4')}. Prefix sums [1, 4]; a random ticket in 1..4: ticket 1 → index 0, tickets 2–4 → index 1.</p>`,
     brute: {
       why: `<p>Expand the array — write index i exactly w[i] times — and pick a random slot: sum(w) can reach 10<sup>9</sup> slots, far too much memory. Scanning prefix sums linearly per call is O(N) per pick, 10<sup>8</sup> total — slow but feasible; binary search makes it O(log N).</p>`,
-      code: `class Solution {
+      code: { lang: 'java', code: `class Solution {
     private final int[] prefix;
     private final Random rnd = new Random();
 
@@ -7240,7 +7903,55 @@ public:
             if (ticket <= prefix[i]) return i;
         return prefix.length - 1;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+import random
+
+class Solution:
+    def __init__(self, w):
+        self.prefix = []
+        s = 0
+        for x in w:
+            s += x
+            self.prefix.append(s)
+
+    def pickIndex(self):
+        ticket = random.randint(1, self.prefix[-1])   # 1..total
+        for i in range(len(self.prefix)):             # O(N) scan
+            if ticket <= self.prefix[i]:
+                return i
+        return len(self.prefix) - 1` }, { lang: 'js', code: String.raw`
+class Solution {
+  constructor(w) {
+    this.prefix = [];
+    let s = 0;
+    for (const x of w) { s += x; this.prefix.push(s); }
+  }
+
+  pickIndex() {
+    const total = this.prefix[this.prefix.length - 1];
+    const ticket = Math.floor(Math.random() * total) + 1;   // 1..total
+    for (let i = 0; i < this.prefix.length; i++)            // O(N) scan
+      if (ticket <= this.prefix[i]) return i;
+    return this.prefix.length - 1;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+    vector<int> prefix;
+    mt19937 rnd{random_device{}()};
+
+public:
+    Solution(vector<int>& w) {
+        int s = 0;
+        for (int x : w) { s += x; prefix.push_back(s); }
+    }
+
+    int pickIndex() {
+        int ticket = rnd() % prefix.back() + 1;       // 1..total
+        for (int i = 0; i < (int)prefix.size(); i++)  // O(N) scan
+            if (ticket <= prefix[i]) return i;
+        return prefix.size() - 1;
+    }
+};` }] }
     },
     mcq: { q: 'Prefix sums are [2, 5, 6] and the ticket drawn uniformly from 1..6 is 5. Which index is returned?', options: ['0', '1', '2', 'It depends on the seed'], answer: 1, explain: 'Index 1 owns tickets 3..5 (prefix[0] = 2 < 5 ≤ prefix[1] = 5). The answer is the first prefix ≥ ticket — a lower-bound binary search.' },
     hints: [
@@ -7386,14 +8097,32 @@ public:
     example: `<p><code>points = [[3,3],[5,−1],[−2,4]], k = 2</code> → ${H.c('g', '[[3,3],[−2,4]]')}: squared distances 18, 26, 20 — the two smallest are 18 and 20.</p>`,
     brute: {
       why: `<p>Sort all points by distance and take the first k: <b>O(N log N)</b>, ordering points we never return. A max-heap of size k is O(N log k). Quickselect only needs the k-th boundary: expected O(N).</p>`,
-      code: `class Solution {
+      code: { lang: 'java', code: `class Solution {
     public int[][] kClosest(int[][] points, int k) {
         int[][] p = points.clone();
         Arrays.sort(p, (a, b) -> Long.compare(dist(a), dist(b)));   // O(N log N)
         return Arrays.copyOfRange(p, 0, k);
     }
     private long dist(int[] q) { return (long) q[0] * q[0] + (long) q[1] * q[1]; }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class Solution:
+    def k_closest(self, points, k):
+        p = sorted(points, key=lambda q: q[0] * q[0] + q[1] * q[1])   # O(N log N)
+        return p[:k]` }, { lang: 'js', code: String.raw`
+function kClosest(points, k) {
+  const dist = (q) => q[0] * q[0] + q[1] * q[1];
+  const p = points.slice().sort((a, b) => dist(a) - dist(b));   // O(N log N)
+  return p.slice(0, k);
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+    long long dist(const vector<int>& q) { return (long long)q[0] * q[0] + (long long)q[1] * q[1]; }
+
+public:
+    vector<vector<int>> kClosest(vector<vector<int>> points, int k) {
+        sort(points.begin(), points.end(), [&](auto& a, auto& b) { return dist(a) < dist(b); });   // O(N log N)
+        return vector<vector<int>>(points.begin(), points.begin() + k);
+    }
+};` }] }
     },
     mcq: { q: 'Why compare x² + y² instead of √(x² + y²)?', options: ['A square root function does not exist', 'Squaring preserves the order of non-negative distances, and stays exact in integers', 'It changes which points are closest', 'Square roots are faster'], answer: 1, explain: 'For d ≥ 0, d₁ < d₂ ⇔ d₁² < d₂². Skipping the square root keeps everything in exact integer arithmetic.' },
     hints: [
@@ -7747,7 +8476,7 @@ public:
     example: `<p>prices 100, 80, 60, 70, 60, 75, 85 → spans ${H.c('g', '1, 1, 1, 2, 1, 4, 6')}. For 75: the run 60, 70, 60, 75 are all ≤ 75 → 4.</p>`,
     brute: {
       why: `<p>Store every price and, for each new one, walk backwards until a larger price appears: <b>O(N)</b> per call, O(N<sup>2</sup>) for a rising sequence (10<sup>12</sup> steps for 10<sup>6</sup> calls). The waste: we re-scan days that an earlier, bigger price already "covered".</p>`,
-      code: `class StockSpanner {
+      code: { lang: 'java', code: `class StockSpanner {
     private final List<Integer> prices = new ArrayList<>();
 
     public int next(int price) {
@@ -7756,7 +8485,42 @@ public:
         for (int i = prices.size() - 1; i >= 0 && prices.get(i) <= price; i--) span++;  // O(N)
         return span;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class StockSpanner:
+    def __init__(self):
+        self.prices = []
+
+    def next(self, price):
+        self.prices.append(price)
+        span = 0
+        i = len(self.prices) - 1
+        while i >= 0 and self.prices[i] <= price:     # O(N)
+            span += 1
+            i -= 1
+        return span` }, { lang: 'js', code: String.raw`
+class StockSpanner {
+  constructor() {
+    this.prices = [];
+  }
+
+  next(price) {
+    this.prices.push(price);
+    let span = 0;
+    for (let i = this.prices.length - 1; i >= 0 && this.prices[i] <= price; i--) span++;   // O(N)
+    return span;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class StockSpanner {
+    vector<int> prices;
+
+public:
+    int next(int price) {
+        prices.push_back(price);
+        int span = 0;
+        for (int i = (int)prices.size() - 1; i >= 0 && prices[i] <= price; i--) span++;   // O(N)
+        return span;
+    }
+};` }] }
     },
     mcq: { q: 'The inner while pops many entries for a single call. Why is the total still O(N) over N calls?', options: ['Because prices are bounded by 10<sup>5</sup>', 'Each day is pushed once and popped at most once', 'Because the stack is sorted', 'It is not; it is O(N log N)'], answer: 1, explain: 'Aggregate method: total pops ≤ total pushes = N, so all calls together do O(N) work → amortized O(1) per call.' },
     hints: [
@@ -7946,7 +8710,7 @@ public:
     example: `<p>radius 1, centre (0,0): returns points like ${H.c('b', '[−0.02, −0.73]')}, ${H.c('b', '[0.67, 0.22]')} — every equal-area region of the disc equally likely.</p>`,
     brute: {
       why: `<p>"Random angle θ in [0, 2π), random radius ρ uniform in [0, r]" looks natural but is <b>biased toward the centre</b>: a ring at small ρ has little area but receives as many points as an outer ring of the same width. Half the points land within r/2, which covers only a quarter of the area.</p>`,
-      code: `class Solution {
+      code: { lang: 'java', code: `class Solution {
     private final double r, cx, cy;
     private final Random rnd = new Random();
     public Solution(double radius, double x, double y) { r = radius; cx = x; cy = y; }
@@ -7956,7 +8720,43 @@ public:
         double rho = rnd.nextDouble() * r;
         return new double[]{cx + rho * Math.cos(theta), cy + rho * Math.sin(theta)};
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+import math
+import random
+
+class Solution:
+    def __init__(self, radius, x_center, y_center):
+        self.r, self.cx, self.cy = radius, x_center, y_center
+
+    def randPoint(self):                              # BIASED: radius should be r * sqrt(u)
+        theta = random.random() * 2 * math.pi
+        rho = random.random() * self.r
+        return [self.cx + rho * math.cos(theta), self.cy + rho * math.sin(theta)]` }, { lang: 'js', code: String.raw`
+class Solution {
+  constructor(radius, xCenter, yCenter) {
+    this.r = radius; this.cx = xCenter; this.cy = yCenter;
+  }
+
+  randPoint() {                                       // BIASED: radius should be r * sqrt(u)
+    const theta = Math.random() * 2 * Math.PI;
+    const rho = Math.random() * this.r;
+    return [this.cx + rho * Math.cos(theta), this.cy + rho * Math.sin(theta)];
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+    double r, cx, cy;
+    mt19937 rnd{random_device{}()};
+    uniform_real_distribution<double> unit{0.0, 1.0};
+
+public:
+    Solution(double radius, double xCenter, double yCenter) : r(radius), cx(xCenter), cy(yCenter) {}
+
+    vector<double> randPoint() {                      // BIASED: radius should be r * sqrt(u)
+        double theta = unit(rnd) * 2 * M_PI;
+        double rho = unit(rnd) * r;
+        return {cx + rho * cos(theta), cy + rho * sin(theta)};
+    }
+};` }] }
     },
     mcq: { q: 'To sample uniformly by angle and radius, the radius should be…', options: ['r · u', 'r · u²', 'r · √u', 'r · log(u)'], answer: 2, explain: 'The area within radius ρ grows like ρ². For a uniform point, P(radius ≤ ρ) = (ρ/r)², so ρ = r·√u inverts that CDF.' },
     hints: [
@@ -8136,7 +8936,7 @@ public:
     example: `<p><code>[[1,1],[2,2],[3,3]]</code> → ${H.c('g', '3')}.</p><p><code>[[1,1],[3,2],[5,3],[4,1],[2,3],[1,4]]</code> → ${H.c('g', '4')}: (1,4), (2,3), (3,2), (4,1) lie on x + y = 5.</p>`,
     brute: {
       why: `<p>For every pair (i, j) count all points k with cross(P<sub>i</sub>, P<sub>j</sub>, P<sub>k</sub>) = 0: <b>O(N<sup>3</sup>)</b>. That is 2.7·10<sup>7</sup> for N = 300 (passes) but 2.7·10<sup>10</sup> for N = 3000. The waste: every line through i is rediscovered once per pair on it, and points are re-tested for each.</p>`,
-      code: `class Solution {
+      code: { lang: 'java', code: `class Solution {
     public int maxPoints(int[][] p) {
         int n = p.length;
         if (n <= 2) return n;
@@ -8154,7 +8954,63 @@ public:
             }
         return best;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class Solution:
+    def max_points(self, points):
+        p = points
+        n = len(p)
+        if n <= 2:
+            return n
+        best = 2
+        for i in range(n):
+            for j in range(i + 1, n):
+                cnt = 2
+                for k in range(n):
+                    if k == i or k == j:
+                        continue
+                    c = (p[j][0] - p[i][0]) * (p[k][1] - p[i][1]) \
+                        - (p[j][1] - p[i][1]) * (p[k][0] - p[i][0])
+                    if c == 0:
+                        cnt += 1
+                best = max(best, cnt)
+        return best` }, { lang: 'js', code: String.raw`
+function maxPoints(p) {
+  const n = p.length;
+  if (n <= 2) return n;
+  let best = 2;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++) {
+      let cnt = 2;
+      for (let k = 0; k < n; k++) {
+        if (k === i || k === j) continue;
+        const c = (p[j][0] - p[i][0]) * (p[k][1] - p[i][1])
+                - (p[j][1] - p[i][1]) * (p[k][0] - p[i][0]);
+        if (c === 0) cnt++;
+      }
+      best = Math.max(best, cnt);
+    }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    int maxPoints(const vector<vector<int>>& p) {
+        int n = p.size();
+        if (n <= 2) return n;
+        int best = 2;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++) {
+                int cnt = 2;
+                for (int k = 0; k < n; k++) {
+                    if (k == i || k == j) continue;
+                    long long c = (long long)(p[j][0] - p[i][0]) * (p[k][1] - p[i][1])
+                                - (long long)(p[j][1] - p[i][1]) * (p[k][0] - p[i][0]);
+                    if (c == 0) cnt++;
+                }
+                best = max(best, cnt);
+            }
+        return best;
+    }
+};` }] }
     },
     mcq: { q: 'Directions (2, 4) and (−1, −2) from the same anchor should count as the same line. Which key handles that exactly?', options: ['the double dy/dx', 'the pair (dx/g, dy/g) with g = gcd(|dx|,|dy|) and a fixed sign rule', 'the string dx + "/" + dy', 'atan2(dy, dx) rounded to 6 decimals'], answer: 1, explain: 'Dividing by the gcd gives (1, 2) and (−1, −2); forcing dx &gt; 0 (or dx = 0, dy &gt; 0) maps both to (1, 2). Exact, no floating point, no division by zero for vertical lines.' },
     hints: [
@@ -8430,7 +9286,7 @@ public:
     example: `<p><code>[[1,1,3,3],[3,1,4,2],[3,2,4,4],[1,3,2,4],[2,3,3,4]]</code> → ${H.c('g', 'true')}: areas 4+1+2+1+1 = 9 = the 3×3 bounding box, and only the 4 outer corners appear an odd number of times.</p><p><code>[[1,1,2,3],[1,3,2,4],[3,1,4,2],[3,2,4,4]]</code> → ${H.c('r', 'false')}: a gap in the middle column.</p>`,
     brute: {
       why: `<p>Check (1) total area equals the bounding box area and (2) no two rectangles overlap (pairwise, Rectangle Overlap test). Correct, but the pair check is <b>O(N<sup>2</sup>)</b> = 2·10<sup>8</sup> overlap tests. Painting a grid is worse: up to 4·10<sup>10</sup> unit cells.</p>`,
-      code: `class Solution {
+      code: { lang: 'java', code: `class Solution {
     public boolean isRectangleCover(int[][] r) {
         long area = 0;
         int x1 = Integer.MAX_VALUE, y1 = Integer.MAX_VALUE, x2 = Integer.MIN_VALUE, y2 = Integer.MIN_VALUE;
@@ -8446,7 +9302,57 @@ public:
                  && Math.min(r[i][3], r[j][3]) > Math.max(r[i][1], r[j][1])) return false;
         return true;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class Solution:
+    def is_rectangle_cover(self, rectangles):
+        r = rectangles
+        area = 0
+        x1 = y1 = float("inf")
+        x2 = y2 = float("-inf")
+        for a in r:
+            area += (a[2] - a[0]) * (a[3] - a[1])
+            x1, y1 = min(x1, a[0]), min(y1, a[1])
+            x2, y2 = max(x2, a[2]), max(y2, a[3])
+        if area != (x2 - x1) * (y2 - y1):
+            return False
+        for i in range(len(r)):                       # O(N^2) overlap checks
+            for j in range(i + 1, len(r)):
+                if (min(r[i][2], r[j][2]) > max(r[i][0], r[j][0])
+                        and min(r[i][3], r[j][3]) > max(r[i][1], r[j][1])):
+                    return False
+        return True` }, { lang: 'js', code: String.raw`
+function isRectangleCover(r) {
+  let area = 0, x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  for (const a of r) {
+    area += (a[2] - a[0]) * (a[3] - a[1]);
+    x1 = Math.min(x1, a[0]); y1 = Math.min(y1, a[1]);
+    x2 = Math.max(x2, a[2]); y2 = Math.max(y2, a[3]);
+  }
+  if (area !== (x2 - x1) * (y2 - y1)) return false;
+  for (let i = 0; i < r.length; i++)                  // O(N^2) overlap checks
+    for (let j = i + 1; j < r.length; j++)
+      if (Math.min(r[i][2], r[j][2]) > Math.max(r[i][0], r[j][0]) &&
+          Math.min(r[i][3], r[j][3]) > Math.max(r[i][1], r[j][1])) return false;
+  return true;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    bool isRectangleCover(const vector<vector<int>>& r) {
+        long long area = 0;
+        int x1 = INT_MAX, y1 = INT_MAX, x2 = INT_MIN, y2 = INT_MIN;
+        for (auto& a : r) {
+            area += (long long)(a[2] - a[0]) * (a[3] - a[1]);
+            x1 = min(x1, a[0]); y1 = min(y1, a[1]);
+            x2 = max(x2, a[2]); y2 = max(y2, a[3]);
+        }
+        if (area != (long long)(x2 - x1) * (y2 - y1)) return false;
+        for (int i = 0; i < (int)r.size(); i++)       // O(N^2) overlap checks
+            for (int j = i + 1; j < (int)r.size(); j++)
+                if (min(r[i][2], r[j][2]) > max(r[i][0], r[j][0])
+                 && min(r[i][3], r[j][3]) > max(r[i][1], r[j][1])) return false;
+        return true;
+    }
+};` }] }
     },
     mcq: { q: 'In a perfect cover, how often does an interior corner point (not one of the 4 outer corners) appear among all rectangle corners?', options: ['Exactly once', 'An even number of times (2 or 4)', 'Exactly 3 times', 'It never appears'], answer: 1, explain: 'Inside a perfect tiling every corner is shared by 2 rectangles (a T-junction) or 4 (a cross). Only the 4 bounding corners belong to a single rectangle. Toggling corners in a set leaves exactly those 4.' },
     hints: [
@@ -8823,7 +9729,7 @@ public:
     example: `<p><code>[[0,0,2,2],[1,0,2,3],[1,0,3,1]]</code> → ${H.c('g', '6')}. Strips: x∈[0,1] covers y∈[0,2] → 2; x∈[1,2] covers y∈[0,3] → 3; x∈[2,3] covers y∈[0,1] → 1. Total 6.</p>`,
     brute: {
       why: `<p>Coordinate-compress x and y (≤ 400 values each), mark every compressed cell each rectangle covers, then sum the areas of marked cells: <b>O(N<sup>3</sup>)</b> ≈ 200 × 400 × 400 = 3.2·10<sup>7</sup> — fine here, but 10<sup>12</sup> for N = 10<sup>4</sup>. The waste: re-marking cells one by one instead of measuring covered lengths per strip.</p>`,
-      code: `class Solution {
+      code: { lang: 'java', code: `class Solution {
     public int rectangleArea(int[][] rects) {
         TreeSet<Integer> xs = new TreeSet<>(), ys = new TreeSet<>();
         for (int[] r : rects) { xs.add(r[0]); xs.add(r[2]); ys.add(r[1]); ys.add(r[3]); }
@@ -8841,7 +9747,58 @@ public:
                 if (covered[i][j]) area += (long) (X[i + 1] - X[i]) * (Y[j + 1] - Y[j]);
         return (int) (area % 1_000_000_007L);
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class Solution:
+    def rectangle_area(self, rectangles):
+        xs = sorted({v for r in rectangles for v in (r[0], r[2])})
+        ys = sorted({v for r in rectangles for v in (r[1], r[3])})
+        xi = {v: i for i, v in enumerate(xs)}
+        yi = {v: i for i, v in enumerate(ys)}
+        covered = [[False] * len(ys) for _ in range(len(xs))]
+        for r in rectangles:
+            for i in range(xi[r[0]], xi[r[2]]):
+                for j in range(yi[r[1]], yi[r[3]]):
+                    covered[i][j] = True
+        area = 0
+        for i in range(len(xs) - 1):
+            for j in range(len(ys) - 1):
+                if covered[i][j]:
+                    area += (xs[i + 1] - xs[i]) * (ys[j + 1] - ys[j])
+        return area % 1_000_000_007` }, { lang: 'js', code: String.raw`
+function rectangleArea(rects) {
+  const X = [...new Set(rects.flatMap((r) => [r[0], r[2]]))].sort((a, b) => a - b);
+  const Y = [...new Set(rects.flatMap((r) => [r[1], r[3]]))].sort((a, b) => a - b);
+  const xi = new Map(X.map((v, i) => [v, i])), yi = new Map(Y.map((v, i) => [v, i]));
+  const covered = Array.from({ length: X.length }, () => new Array(Y.length).fill(false));
+  for (const r of rects)
+    for (let i = xi.get(r[0]); i < xi.get(r[2]); i++)
+      for (let j = yi.get(r[1]); j < yi.get(r[3]); j++) covered[i][j] = true;
+  let area = 0n;                                      // up to 1e18, so BigInt
+  for (let i = 0; i + 1 < X.length; i++)
+    for (let j = 0; j + 1 < Y.length; j++)
+      if (covered[i][j]) area += BigInt(X[i + 1] - X[i]) * BigInt(Y[j + 1] - Y[j]);
+  return Number(area % 1000000007n);
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    int rectangleArea(const vector<vector<int>>& rects) {
+        set<int> xs, ys;
+        for (auto& r : rects) { xs.insert(r[0]); xs.insert(r[2]); ys.insert(r[1]); ys.insert(r[3]); }
+        vector<int> X(xs.begin(), xs.end()), Y(ys.begin(), ys.end());
+        map<int, int> xi, yi;
+        for (int i = 0; i < (int)X.size(); i++) xi[X[i]] = i;
+        for (int i = 0; i < (int)Y.size(); i++) yi[Y[i]] = i;
+        vector<vector<char>> covered(X.size(), vector<char>(Y.size(), 0));
+        for (auto& r : rects)
+            for (int i = xi[r[0]]; i < xi[r[2]]; i++)
+                for (int j = yi[r[1]]; j < yi[r[3]]; j++) covered[i][j] = 1;
+        long long area = 0;
+        for (int i = 0; i + 1 < (int)X.size(); i++)
+            for (int j = 0; j + 1 < (int)Y.size(); j++)
+                if (covered[i][j]) area += (long long)(X[i + 1] - X[i]) * (Y[j + 1] - Y[j]);
+        return (int)(area % 1'000'000'007LL);
+    }
+};` }] }
     },
     mcq: { q: 'In the sweep, what do you multiply between two consecutive event x-coordinates?', options: ['The number of active rectangles × strip width', 'The total length of the UNION of active y-intervals × strip width', 'The sum of active y-interval lengths × strip width', 'The largest active y-interval × strip width'], answer: 1, explain: 'Inside a vertical strip with no events the covered set is constant: the union of the active y-intervals. Summing raw lengths would double-count overlaps.' },
     hints: [
@@ -9334,7 +10291,7 @@ public:
     example: `<p><code>[[1,1],[2,2],[2,0],[2,4],[3,3],[4,2]]</code> → ${H.c('g', '[2.0, 2.0, 2.0]')} (through (2,0), (2,4), (4,2)…).</p><p><code>[[1,2],[2,2],[4,2]]</code> → ${H.c('g', '[2.5, 2.0, 1.5]')}: collinear points — the circle with diameter (1,2)–(4,2).</p>`,
     brute: {
       why: `<p>The optimal circle is determined by 2 boundary points (as a diameter) or 3 (circumcircle). Try every pair and triple — O(N<sup>3</sup>) candidates — and verify each against all N points: <b>O(N<sup>4</sup>)</b> ≈ 8·10<sup>13</sup> for N = 3000. Hopeless; even O(N<sup>3</sup>) is too slow.</p>`,
-      code: `class Solution {
+      code: { lang: 'java', code: `class Solution {
     public double[] outerTrees(int[][] t) {
         int n = t.length;
         if (n == 1) return new double[]{t[0][0], t[0][1], 0};
@@ -9363,7 +10320,105 @@ public:
         double ux = (cy * b2 - by * c2) / d, uy = (bx * c2 - cx * b2) / d;
         return new double[]{a[0] + ux, a[1] + uy, Math.hypot(ux, uy)};
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+import math
+
+class Solution:
+    def outer_trees(self, trees):
+        t = trees
+        n = len(t)
+        if n == 1:
+            return [t[0][0], t[0][1], 0]
+        best = None
+        for i in range(n):
+            for j in range(i + 1, n):
+                best = self.better(best, self.circle2(t[i], t[j]), t)
+                for k in range(j + 1, n):
+                    best = self.better(best, self.circle3(t[i], t[j], t[k]), t)
+        return best
+
+    def better(self, best, c, t):
+        if c is None or (best is not None and c[2] >= best[2]):
+            return best
+        for q in t:
+            if math.hypot(q[0] - c[0], q[1] - c[1]) > c[2] + 1e-7:   # O(N) verify
+                return best
+        return c
+
+    def circle2(self, a, b):
+        cx, cy = (a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0
+        return [cx, cy, math.hypot(a[0] - cx, a[1] - cy)]
+
+    def circle3(self, a, b, c):
+        bx, by, cx, cy = b[0] - a[0], b[1] - a[1], c[0] - a[0], c[1] - a[1]
+        d = 2 * (bx * cy - by * cx)
+        if d == 0:
+            return None                               # collinear: no circumcircle
+        b2, c2 = bx * bx + by * by, cx * cx + cy * cy
+        ux, uy = (cy * b2 - by * c2) / d, (bx * c2 - cx * b2) / d
+        return [a[0] + ux, a[1] + uy, math.hypot(ux, uy)]` }, { lang: 'js', code: String.raw`
+function outerTrees(t) {
+  const n = t.length;
+  if (n === 1) return [t[0][0], t[0][1], 0];
+  const circle2 = (a, b) => {
+    const cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2;
+    return [cx, cy, Math.hypot(a[0] - cx, a[1] - cy)];
+  };
+  const circle3 = (a, b, c) => {
+    const bx = b[0] - a[0], by = b[1] - a[1], cx = c[0] - a[0], cy = c[1] - a[1];
+    const d = 2 * (bx * cy - by * cx);
+    if (d === 0) return null;                         // collinear: no circumcircle
+    const b2 = bx * bx + by * by, c2 = cx * cx + cy * cy;
+    const ux = (cy * b2 - by * c2) / d, uy = (bx * c2 - cx * b2) / d;
+    return [a[0] + ux, a[1] + uy, Math.hypot(ux, uy)];
+  };
+  const better = (best, c) => {
+    if (c === null || (best !== null && c[2] >= best[2])) return best;
+    for (const q of t) if (Math.hypot(q[0] - c[0], q[1] - c[1]) > c[2] + 1e-7) return best;   // O(N) verify
+    return c;
+  };
+  let best = null;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++) {
+      best = better(best, circle2(t[i], t[j]));
+      for (let k = j + 1; k < n; k++) best = better(best, circle3(t[i], t[j], t[k]));
+    }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+    vector<double> better(const vector<double>& best, const vector<double>& c, const vector<vector<int>>& t) {
+        if (c.empty() || (!best.empty() && c[2] >= best[2])) return best;
+        for (auto& q : t) if (hypot(q[0] - c[0], q[1] - c[1]) > c[2] + 1e-7) return best;   // O(N) verify
+        return c;
+    }
+
+    vector<double> circle2(const vector<int>& a, const vector<int>& b) {
+        double cx = (a[0] + b[0]) / 2.0, cy = (a[1] + b[1]) / 2.0;
+        return {cx, cy, hypot(a[0] - cx, a[1] - cy)};
+    }
+
+    vector<double> circle3(const vector<int>& a, const vector<int>& b, const vector<int>& c) {
+        double bx = b[0] - a[0], by = b[1] - a[1], cx = c[0] - a[0], cy = c[1] - a[1];
+        double d = 2 * (bx * cy - by * cx);
+        if (d == 0) return {};                        // collinear: no circumcircle
+        double b2 = bx * bx + by * by, c2 = cx * cx + cy * cy;
+        double ux = (cy * b2 - by * c2) / d, uy = (bx * c2 - cx * b2) / d;
+        return {a[0] + ux, a[1] + uy, hypot(ux, uy)};
+    }
+
+public:
+    vector<double> outerTrees(const vector<vector<int>>& t) {
+        int n = t.size();
+        if (n == 1) return {(double)t[0][0], (double)t[0][1], 0};
+        vector<double> best;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++) {
+                best = better(best, circle2(t[i], t[j]), t);
+                for (int k = j + 1; k < n; k++) best = better(best, circle3(t[i], t[j], t[k]), t);
+            }
+        return best;
+    }
+};` }] }
     },
     mcq: { q: 'Why does Welzl\'s algorithm shuffle the points first?', options: ['To make the answer unique', 'So that a point falls outside the current circle rarely: the i-th point is on the final boundary with probability ≤ 3/i, giving expected O(N)', 'Because the circle must be computed in sorted order', 'To avoid floating-point error'], answer: 1, explain: 'Backwards analysis: the minimal circle of the first i points is fixed by at most 3 of them, so the i-th (random) point is one of them with probability ≤ 3/i. Expensive inner loops are entered rarely, and the expected total work telescopes to O(N).' },
     hints: [
@@ -9742,7 +10797,7 @@ public:
   // =====================================================================
   quiz.push(
     { q: 'For A = (0,0), B = (4,0), C = (2,3), cross(A, B, C) = (B−A)×(C−A) equals…', options: ['−12: a right turn', '12: a left (counter-clockwise) turn', '0: collinear', '6: the triangle area'], answer: 1, explain: '(4,0)×(2,3) = 4·3 − 0·2 = 12 &gt; 0 → left turn. The triangle area is |12|/2 = 6, but the cross product itself is 12.' },
-    { q: 'In a segment-intersection test you have two cross products c1, c2 up to 10<sup>18</sup>. How should you test "opposite sides"?', options: ['c1 * c2 &lt; 0', 'sign(c1) * sign(c2) &lt; 0 (compare the signs, e.g. Long.signum in Java)', '(double) c1 * c2 &lt; 0', 'c1 + c2 == 0'], answer: 1, explain: 'c1 * c2 overflows a 64-bit integer when both are near 10<sup>18</sup>. Comparing signs is exact; converting to double loses precision near zero.' },
+    { q: 'In a segment-intersection test you have two cross products c1, c2 up to 10<sup>18</sup>. How should you test "opposite sides"?', options: ['c1 * c2 &lt; 0', 'sign(c1) * sign(c2) &lt; 0 (compare the signs: Long.signum in Java, (c1 &gt; 0) - (c1 &lt; 0) in Python, JavaScript and C++)', '(double) c1 * c2 &lt; 0', 'c1 + c2 == 0'], answer: 1, explain: 'c1 * c2 overflows a 64-bit integer when both are near 10<sup>18</sup>. Comparing signs is exact; converting to double loses precision near zero.' },
     { q: 'Segments (0,0)–(2,2) and (3,3)–(5,5). All four orientations are 0. Do they intersect?', options: ['Yes — collinear segments always intersect', 'No — they are collinear but the bounding-box (on-segment) checks all fail', 'Yes — the general case o1 ≠ o2 fires', 'Undefined'], answer: 1, explain: 'Collinear is necessary but not sufficient. None of the endpoints lies inside the other segment\'s box (3 &gt; 2), so they are disjoint.' },
     { q: 'Andrew\'s monotone chain should keep points lying exactly on hull edges (Erect the Fence). The pop condition must be…', options: ['pop while cross ≤ 0', 'pop while cross &lt; 0', 'pop while cross ≥ 0', 'never pop collinear points, pop everything else'], answer: 1, explain: 'A point on a straight stretch makes cross = 0; popping only on strictly negative (right) turns keeps it. Remember to de-duplicate when all points are collinear.' },
     { q: 'The shoelace sum for a polygon comes out as −32. What do you conclude?', options: ['The input is invalid', 'Area 16, vertices listed clockwise', 'Area −16', 'Area 32, counter-clockwise'], answer: 1, explain: 'Area = |sum| / 2 = 16. The sign gives orientation: negative = clockwise, positive = counter-clockwise.' },
@@ -9782,7 +10837,7 @@ public:
     { q: 'Design a point-in-polygon test for a geofencing service. What edge cases matter?', level: 'A', a: `<p>Core: ray casting (even-odd rule). Shoot a horizontal ray to the right of the point; count edges it crosses; odd = inside. Edge cases: the ray passing exactly through a vertex (use the half-open rule: count an edge only if low.y ≤ p.y &lt; high.y), horizontal edges (ignored by that rule), and points exactly on the boundary (detect with cross = 0 + bounding box and return a defined answer). Use exact integer math (cross product sign) rather than computing x-intersections in floating point.</p><p>For the service: for convex polygons O(log N) via binary search over the triangle fan; for many polygons put bounding boxes in an R-tree (or geohash/S2 cells) to shortlist candidates; use winding number if polygons may self-intersect; project lat/long appropriately.</p>`, followUps: ['How would you scale to 10<sup>6</sup> geofences and 10<sup>5</sup> queries per second?', 'Winding number vs even-odd: when do they differ?'] },
     { q: 'Explain reservoir sampling and prove that it is uniform.', level: 'A', a: `<p>To sample k items from a stream of unknown length: put the first k in the reservoir; for the item with 0-based index i ≥ k, draw j uniformly in [0, i]; if j &lt; k replace reservoir[j]. O(N) time, O(k) memory, one pass.</p><p>Proof by induction: after i items each is present with probability k/i. Item i enters with probability k/(i+1). An existing member is evicted with probability (k/(i+1))·(1/k) = 1/(i+1), so it stays with i/(i+1); k/i · i/(i+1) = k/(i+1). For k = 1 the chain (1/i)·(i/(i+1))···((N−1)/N) telescopes to 1/N. The sample is valid at every moment, so you can stop the stream any time.</p>`, followUps: ['Algorithm L: how do you skip items to reduce RNG calls?', 'What goes wrong if j is drawn from [0, i − 1] instead of [0, i]?'] },
     { q: 'You need a uniform sample of 10 000 events from logs spread across 100 servers, and some events should count more (weights). How?', level: 'E', a: `<p>Uniform case: each server keeps its own reservoir of size k plus its count n<sub>s</sub>. To merge, fill the global sample slot by slot: choose server s with probability proportional to its <i>remaining</i> count, then take a random unused item from its reservoir (sampling without replacement), decrementing counts. Simply concatenating and resampling uniformly would over-represent small servers.</p><p>Weighted case: A-Res (Efraimidis–Spirakis) — give each item the key u<sup>1/w</sup> with u uniform in (0,1), keep the k largest keys in a min-heap. Keys are comparable across machines, so a distributed version just keeps the top-k keys per server and merges with a final top-k — perfectly parallel. Use seeded, per-thread RNGs (SplittableRandom) for reproducibility.</p>`, followUps: ['Why are A-Res keys mergeable but Algorithm R reservoirs need counts?', 'How would you favour recent events (time-decayed sampling)?'] },
-    { q: 'Write a fair shuffle and explain why the "obvious" version is biased.', level: 'I', a: `<p>Fisher–Yates: for i from n−1 down to 1, j = random in [0, i], swap a[i] and a[j]. Each run is one of n·(n−1)···2 = n! equally likely choice sequences, and different sequences give different permutations, so each permutation has probability exactly 1/n!.</p><p>The obvious version swaps a[i] with a random index in [0, n−1] for every i: n<sup>n</sup> equally likely runs. Since n! does not divide n<sup>n</sup> (for n = 3: 27 vs 6), some permutations must be more likely — ACB, BAC and BCA appear 5/27 times, the others 4/27. Also beware drawing j from [0, i − 1] (<code>nextInt(i)</code> in Java — that is Sattolo's algorithm, which gives only single cycles), sorting with a random comparator, and RNGs whose seed space is smaller than n! (a 32-bit seed cannot reach most of 52! deck orders).</p>`, followUps: ['How do you shuffle a file too large for memory?', 'When would you deliberately use Sattolo\'s algorithm?'] },
+    { q: 'Write a fair shuffle and explain why the "obvious" version is biased.', level: 'I', a: `<p>Fisher–Yates: for i from n−1 down to 1, j = random in [0, i], swap a[i] and a[j]. Each run is one of n·(n−1)···2 = n! equally likely choice sequences, and different sequences give different permutations, so each permutation has probability exactly 1/n!.</p><p>The obvious version swaps a[i] with a random index in [0, n−1] for every i: n<sup>n</sup> equally likely runs. Since n! does not divide n<sup>n</sup> (for n = 3: 27 vs 6), some permutations must be more likely — ACB, BAC and BCA appear 5/27 times, the others 4/27. Also beware drawing j from [0, i − 1] (<code>nextInt(i)</code> in Java, <code>randrange(i)</code> in Python, <code>rnd() % i</code> in C++ — that is Sattolo's algorithm, which gives only single cycles), sorting with a random comparator, and RNGs whose seed space is smaller than n! (a 32-bit seed cannot reach most of 52! deck orders).</p>`, followUps: ['How do you shuffle a file too large for memory?', 'When would you deliberately use Sattolo\'s algorithm?'] },
     { q: 'Why is randomized quickselect expected O(N)? How do production libraries avoid its worst case?', level: 'A', a: `<p>Call a pivot good if it lies in the middle half of the current range — probability ½. A good pivot leaves at most ¾ of the range. The expected number of rounds between good pivots is 2, so the expected total work is at most 2·(N + ¾N + (¾)<sup>2</sup>N + …) = 8N = O(N). A sharper indicator-variable analysis gives ≈ 3.4N comparisons.</p><p>Worst case is O(N<sup>2</sup>) (consistently terrible pivots) and with many duplicates a 2-way partition degrades too — so use a 3-way partition. Libraries use <b>introselect</b> (C++ <code>nth_element</code>): quickselect with a depth limit, falling back to median-of-medians or heap-based selection, giving O(N) average and a guaranteed bound. Deterministic median-of-medians is O(N) worst case but has a large constant.</p>`, followUps: ['Derive the median-of-medians recurrence.', 'How can an adversary break a fixed pivot rule?'] },
     { q: 'Explain amortized analysis using the dynamic array. Show all three methods.', level: 'A', a: `<p>Doubling array: a push costs 1, or 1 + size when it triggers a copy. <b>Aggregate:</b> over N pushes, copies are 1 + 2 + 4 + … &lt; 2N, total &lt; 3N → O(1) amortized. <b>Accounting:</b> charge 3 coins per push; 1 pays the write, 2 are stored on the element. When size m doubles, the m/2 elements added since the last doubling hold m coins, enough to copy all m. <b>Potential:</b> Φ = 2·size − capacity; a normal push costs 1 + 2 = 3, a doubling push costs (1 + m) + (2 − m) = 3.</p><p>Shrinking must happen at ¼ full (not ½) to avoid thrashing; growth must be multiplicative (any constant factor &gt; 1), never additive, or the total becomes quadratic.</p>`, followUps: ['Why do some libraries (Java <code>ArrayList</code>, MSVC <code>vector</code>) grow by 1.5× instead of 2×?', 'Show the potential function for the binary counter.'] },
     { q: 'When is an amortized O(1) structure unacceptable, and what do you do instead?', level: 'E', a: `<p>When a single slow operation breaks a latency budget: trading systems, real-time audio, game frames at 16 ms, request p99 SLOs, interrupt handlers. A hash-map or dynamic-array resize copying 10<sup>8</sup> entries can stall for hundreds of milliseconds even though the average is tiny.</p><p>De-amortize: allocate the bigger table early and migrate a few entries on every operation (incremental resizing). Redis rehashes dictionaries incrementally with two tables live at once; Go maps grow incrementally during writes; real-time GCs slice their work. Other options: pre-size with a known capacity, use structures with worst-case bounds (balanced trees, real-time queues), or move the rebuild off the hot path (copy-on-write snapshot built in the background).</p>`, followUps: ['How does incremental rehashing handle lookups during migration?', 'What happens to amortized bounds when you add rollback/undo?'] },

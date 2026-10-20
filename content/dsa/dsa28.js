@@ -546,7 +546,7 @@ public:
       statement: `<p>Given an integer array <code>nums</code> (values may be <b>negative</b>) and an integer <code>k</code>, return the <b>number of contiguous subarrays</b> whose sum equals <code>k</code>.</p><p>This is the classic "which pattern?" trap: it looks like a sliding window, but it is not.</p>`,
       constraints: `1 ≤ N ≤ 2·10<sup>4</sup>, −1000 ≤ nums[i] ≤ 1000, −10<sup>7</sup> ≤ k ≤ 10<sup>7</sup>`,
       example: `${H.arr([1, -1, 1, 1], { hl: { 2: 'g', 3: 'g' } })}<p>k = 2 → output <b>${H.c('g', '2')}</b>: subarrays [1,1] (indexes 2..3) and [1,−1,1,1] (indexes 0..3) both sum to 2.</p>`,
-      brute: { why: `<p>Try every start i and every end j, adding as you go: O(N<sup>2</sup>) = 4·10<sup>8</sup> additions at the max size — borderline TLE. The wasted work: every new start recomputes sums we already knew.</p>`, code: `int bruteCount(int[] nums, int k) {
+      brute: { why: `<p>Try every start i and every end j, adding as you go: O(N<sup>2</sup>) = 4·10<sup>8</sup> additions at the max size — borderline TLE. The wasted work: every new start recomputes sums we already knew.</p>`, code: { lang: 'java', code: `int bruteCount(int[] nums, int k) {
     int count = 0;
     for (int i = 0; i < nums.length; i++) {
         int sum = 0;
@@ -556,7 +556,38 @@ public:
         }
     }
     return count;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def subarray_sum(nums, k):
+    count = 0
+    for i in range(len(nums)):
+        total = 0
+        for j in range(i, len(nums)):
+            total += nums[j]                          # sum of nums[i..j]
+            if total == k:
+                count += 1
+    return count` }, { lang: 'js', code: String.raw`
+function subarraySum(nums, k) {
+  let count = 0;
+  for (let i = 0; i < nums.length; i++) {
+    let sum = 0;
+    for (let j = i; j < nums.length; j++) {
+      sum += nums[j];                                 // sum of nums[i..j]
+      if (sum === k) count++;
+    }
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+int subarraySum(vector<int>& nums, int k) {
+    int count = 0;
+    for (int i = 0; i < (int)nums.size(); i++) {
+        int sum = 0;
+        for (int j = i; j < (int)nums.size(); j++) {
+            sum += nums[j];                           // sum of nums[i..j]
+            if (sum == k) count++;
+        }
+    }
+    return count;
+}` }] } },
       mcq: { q: 'Why is a sliding window wrong here?', options: ['Negative numbers mean shrinking the window can increase the sum, so grow/shrink decisions are unreliable', 'Windows only work on strings', 'The array is too long for a window', 'Windows cannot count, only find the longest'], answer: 0, explain: 'A window needs "adding makes it bigger, removing makes it smaller". Negatives break that, so you cannot know which way to move.' },
       hints: [`<p>Hint 1: sum(i..j) = pf[j] − pf[i−1]. You want pf[j] − pf[i−1] = k, i.e. an <b>earlier</b> prefix equal to pf[j] − k.</p>`, `<p>Hint 2: keep a hash map from "prefix sum value" → "how many times seen so far". At each j, add map[pf − k] to the answer.</p>`, `<p>Hint 3: seed the map with {0: 1} so subarrays starting at index 0 are counted. Recipe: pf = 0; for x: pf += x; ans += map[pf−k]; map[pf]++.</p>`],
       tests: { sig: 'int[] int -> int', fn: 'subarraySum', cases: [
@@ -782,7 +813,7 @@ cout << "search range: " << lo << " .. " << hi << ", about " << (64 - __builtin_
       statement: `<p>Split the array <code>nums</code> into <code>k</code> non-empty <b>contiguous</b> parts so that the <b>largest part sum is as small as possible</b>. Return that minimum possible largest sum.</p><p>Read the constraints first and let them choose the technique.</p>`,
       constraints: `1 ≤ N ≤ 1000, 0 ≤ nums[i] ≤ 10<sup>6</sup>, 1 ≤ k ≤ min(50, N)`,
       example: `${H.arr([7, 2, 5, 10, 8], { hl: { 0: 'b', 1: 'b', 2: 'b', 3: 'g', 4: 'g' } })}<p>k = 2 → <b>${H.c('g', '18')}</b>: split [7,2,5] (sum 14) | [10,8] (sum 18). Every other split has a bigger largest part, e.g. [7,2,5,10] | [8] → 24.</p>`,
-      brute: { why: `<p>Try every way to place k−1 cut points: C(N−1, k−1) splits — astronomically many for N = 1000, k = 50. The waste: we never use the fact that "largest sum ≤ X is possible" is a yes/no question with a monotone answer.</p>`, code: `int bruteSplit(int[] nums, int k) {
+      brute: { why: `<p>Try every way to place k−1 cut points: C(N−1, k−1) splits — astronomically many for N = 1000, k = 50. The waste: we never use the fact that "largest sum ≤ X is possible" is a yes/no question with a monotone answer.</p>`, code: { lang: 'java', code: `int bruteSplit(int[] nums, int k) {
     return go(nums, 0, k);
 }
 // smallest possible "largest part" for nums[start..] cut into exactly k parts
@@ -796,7 +827,54 @@ int go(int[] nums, int start, int k) {
         best = Math.min(best, Math.max(first, rest));
     }
     return best;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def split_array(nums, k):
+    n = len(nums)
+
+    # smallest possible "largest part" for nums[start:] cut into exactly k parts
+    def go(start, k):
+        if k == 1:
+            return sum(nums[start:])
+        best, first = float("inf"), 0
+        for end in range(start, n - k + 1):           # first part is nums[start..end]
+            first += nums[end]
+            rest = go(end + 1, k - 1)                 # recursion explodes: exponential
+            best = min(best, max(first, rest))
+        return best
+
+    return go(0, k)` }, { lang: 'js', code: String.raw`
+function splitArray(nums, k) {
+  const n = nums.length;
+
+  // smallest possible "largest part" for nums[start..] cut into exactly k parts
+  function go(start, k) {
+    if (k === 1) { let s = 0; for (let i = start; i < n; i++) s += nums[i]; return s; }
+    let best = Infinity, first = 0;
+    for (let end = start; end <= n - k; end++) {      // first part is nums[start..end]
+      first += nums[end];
+      const rest = go(end + 1, k - 1);                // recursion explodes: exponential
+      best = Math.min(best, Math.max(first, rest));
+    }
+    return best;
+  }
+
+  return go(0, k);
+}` }, { lang: 'cpp', code: String.raw`
+int splitArray(vector<int>& nums, int k) {
+    int n = nums.size();
+    // smallest possible "largest part" for nums[start..] cut into exactly k parts
+    function<int(int, int)> go = [&](int start, int k) {
+        if (k == 1) { int s = 0; for (int i = start; i < n; i++) s += nums[i]; return s; }
+        int best = INT_MAX, first = 0;
+        for (int end = start; end <= n - k; end++) {  // first part is nums[start..end]
+            first += nums[end];
+            int rest = go(end + 1, k - 1);            // recursion explodes: exponential
+            best = min(best, max(first, rest));
+        }
+        return best;
+    };
+    return go(0, k);
+}` }] } },
       mcq: { q: '"Minimize the largest part sum" + values up to 10<sup>6</sup>. What is the cleanest approach?', options: ['Binary search on the answer with a greedy O(N) feasibility check', 'Sort the array and split in the middle', 'Sliding window of size N/k', 'Heap of part sums'], answer: 0, explain: '"Minimize the maximum" is the classic tell. If largest sum X is achievable, any X\' &gt; X is too — monotone → binary search.' },
       hints: [`<p>Hint 1: Flip the question: "Can I split into ≤ k parts so that every part sum ≤ X?" That yes/no answer only flips once as X grows.</p>`, `<p>Hint 2: The check is greedy: walk left to right, start a new part whenever adding the next number would exceed X. Count the parts.</p>`, `<p>Hint 3: Search X in [max(nums), sum(nums)]. Use long for sums. Recipe: lo = max, hi = sum; while lo &lt; hi: mid; if parts(mid) ≤ k: hi = mid else lo = mid + 1.</p>`],
       tests: { sig: 'int[] int -> int', fn: 'splitArray', cases: [
@@ -1167,7 +1245,7 @@ for n in [10, 100, 1000]:
       statement: `<p>Given meeting time intervals <code>[start, end)</code>, return the <b>minimum number of conference rooms</b> needed so that no two overlapping meetings share a room. A meeting ending at time t and one starting at t can share a room.</p><p>Practise the full 8-step loop on it before reading the hints.</p>`,
       constraints: `0 ≤ N ≤ 10<sup>4</sup>, 0 ≤ start &lt; end ≤ 10<sup>6</sup>`,
       example: `<p>[[0,30],[5,10],[15,20]] → <b>${H.c('g', '2')}</b>. [0,30] overlaps both others, but [5,10] and [15,20] do not overlap each other, so they can share the second room.</p>`,
-      brute: { why: `<p>At every start time, count meetings running then (scan all N): O(N<sup>2</sup>). The waste: each scan rediscovers the same running meetings. A sweep over sorted times keeps that count incrementally.</p>`, code: `int bruteRooms(int[][] iv) {
+      brute: { why: `<p>At every start time, count meetings running then (scan all N): O(N<sup>2</sup>). The waste: each scan rediscovers the same running meetings. A sweep over sorted times keeps that count incrementally.</p>`, code: { lang: 'java', code: `int bruteRooms(int[][] iv) {
     int best = 0;
     for (int[] a : iv) {
         int running = 0;
@@ -1176,7 +1254,36 @@ for n in [10, 100, 1000]:
         best = Math.max(best, running);
     }
     return best;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def min_meeting_rooms(intervals):
+    best = 0
+    for a in intervals:
+        running = 0
+        for b in intervals:
+            if b[0] <= a[0] < b[1]:                   # b is in progress at time a[0]
+                running += 1
+        best = max(best, running)
+    return best` }, { lang: 'js', code: String.raw`
+function minMeetingRooms(intervals) {
+  let best = 0;
+  for (const a of intervals) {
+    let running = 0;
+    for (const b of intervals)
+      if (b[0] <= a[0] && a[0] < b[1]) running++;     // b is in progress at time a[0]
+    best = Math.max(best, running);
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int minMeetingRooms(vector<vector<int>>& intervals) {
+    int best = 0;
+    for (auto& a : intervals) {
+        int running = 0;
+        for (auto& b : intervals)
+            if (b[0] <= a[0] && a[0] < b[1]) running++;   // b is in progress at time a[0]
+        best = max(best, running);
+    }
+    return best;
+}` }] } },
       mcq: { q: 'Which data structure most naturally tells you "the earliest time any room frees up"?', options: ['A min-heap of end times', 'A stack of start times', 'A hash map from start to end', 'A queue of intervals in input order'], answer: 0, explain: 'The heap top is the earliest ending meeting. If it ends by the new start, reuse that room (poll), then push the new end.' },
       hints: [`<p>Hint 1: Process meetings in order of start time. At each start, which rooms are free? Those whose meeting already ended.</p>`, `<p>Hint 2: Keep a min-heap of end times of rooms in use. Before adding a meeting, pop the top if it ended (end ≤ start).</p>`, `<p>Hint 3: The heap's maximum size over time is the answer. Edge cases: empty input → 0; touching intervals share a room (use ≤).</p>`],
       tests: { sig: 'int[][] -> int', fn: 'minMeetingRooms', cases: [
@@ -1438,7 +1545,7 @@ for day in range(1, 4):
       statement: `<p>Given an array of lowercase strings, group the anagrams together (words made of the same letters with the same counts). Return the groups in any order. Target time: <b>15 minutes</b> including tests.</p>`,
       constraints: `1 ≤ N ≤ 10<sup>4</sup>, 0 ≤ word length ≤ 100, lowercase English letters only`,
       example: `<p>["eat","tea","tan","ate","nat","bat"] → [[${H.c('g', 'eat, tea, ate')}], [${H.c('b', 'tan, nat')}], [${H.c('p', 'bat')}]]. All words in a group share the same letter counts.</p>`,
-      brute: { why: `<p>Compare every word with every group's first word by sorting both: O(N<sup>2</sup> · L log L). With N = 10<sup>4</sup> that is 10<sup>8</sup> comparisons, each costly. The waste: we recompute the "signature" of a word for every comparison instead of using it as a hash key.</p>`, code: `List<List<String>> bruteGroups(String[] words) {
+      brute: { why: `<p>Compare every word with every group's first word by sorting both: O(N<sup>2</sup> · L log L). With N = 10<sup>4</sup> that is 10<sup>8</sup> comparisons, each costly. The waste: we recompute the "signature" of a word for every comparison instead of using it as a hash key.</p>`, code: { lang: 'java', code: `List<List<String>> bruteGroups(String[] words) {
     List<List<String>> groups = new ArrayList<>();
     for (String w : words) {
         char[] a = w.toCharArray(); Arrays.sort(a);
@@ -1450,7 +1557,49 @@ for day in range(1, 4):
         if (!placed) groups.add(new ArrayList<>(List.of(w)));
     }
     return groups;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def group_anagrams(strs):
+    groups = []
+    for w in strs:
+        a = sorted(w)
+        placed = False
+        for g in groups:
+            b = sorted(g[0])                          # recomputed every time: the waste
+            if a == b:
+                g.append(w)
+                placed = True
+                break
+        if not placed:
+            groups.append([w])
+    return groups` }, { lang: 'js', code: String.raw`
+function groupAnagrams(strs) {
+  const groups = [];
+  for (const w of strs) {
+    const a = w.split("").sort().join("");
+    let placed = false;
+    for (const g of groups) {
+      const b = g[0].split("").sort().join("");       // recomputed every time: the waste
+      if (a === b) { g.push(w); placed = true; break; }
+    }
+    if (!placed) groups.push([w]);
+  }
+  return groups;
+}` }, { lang: 'cpp', code: String.raw`
+vector<vector<string>> groupAnagrams(vector<string>& strs) {
+    vector<vector<string>> groups;
+    for (auto& w : strs) {
+        string a = w;
+        sort(a.begin(), a.end());
+        bool placed = false;
+        for (auto& g : groups) {
+            string b = g[0];
+            sort(b.begin(), b.end());                 // recomputed every time: the waste
+            if (a == b) { g.push_back(w); placed = true; break; }
+        }
+        if (!placed) groups.push_back({w});
+    }
+    return groups;
+}` }] } },
       mcq: { q: 'What is the best "signature" key for a word when letters are only a–z and words can be 100 long?', options: ['A 26-count string like "1#0#0#…" built in O(L)', 'The word sorted, O(L log L)', 'The sum of character codes', 'The first and last letters'], answer: 0, explain: 'Counts are O(L) and unique per anagram class. Sorting also works (O(L log L)). Sums collide: "ad" and "bc" have equal sums.' },
       hints: [`<p>Hint 1: Two words are anagrams exactly when their letter counts are equal. Turn the counts into a key.</p>`, `<p>Hint 2: HashMap&lt;String, List&lt;String&gt;&gt; from key → words. One pass.</p>`, `<p>Hint 3: Build the key from the 26 counts with separators ("#") so counts like 1,11 and 11,1 cannot collide. Empty string gets the all-zero key — still a valid group.</p>`],
       tests: { sig: 'string[] -> list<list<string>>', fn: 'groupAnagrams', check: "(args, out, expected) => { const words = args[0]; const key = (s) => s.split(\"\").sort().join(\"\"); const seen = new Set(); let total = 0; const sizes = []; for (const g of out) { if (g.length === 0) return false; const k = key(g[0]); if (seen.has(k)) return false; seen.add(k); for (const w of g) if (key(w) !== k) return false; total += g.length; sizes.push(g.length); } if (total !== words.length) return false; const a = words.map(String).sort(), b = out.flat().map(String).sort(); for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; sizes.sort((p, q) => p - q); return JSON.stringify(sizes) === JSON.stringify(expected); }", cases: [
@@ -1881,7 +2030,7 @@ public:
       statement: `<p>In an R × C grid, 0 = empty, 1 = fresh orange, 2 = rotten orange. Every minute, each rotten orange rots its 4-directional fresh neighbours. Return the minimum minutes until no fresh orange remains, or −1 if that is impossible.</p><p>Solve it as if in a live round: clarify, brute force, pattern, code, trace.</p>`,
       constraints: `1 ≤ R, C ≤ 10 (follow-up: up to 1000), grid[i][j] ∈ {0, 1, 2}`,
       example: `<p>[[2,1,1],[1,1,0],[0,1,1]] → <b>${H.c('g', '4')}</b>. The bottom-right orange is 4 steps from the only rotten one. [[2,1,1],[0,1,1],[1,0,1]] → <b>${H.c('r', '−1')}</b>: the bottom-left orange is walled off.</p>`,
-      brute: { why: `<p>Simulate minute by minute: scan the whole grid, rot neighbours of rotten cells (using a copy so new rot does not spread in the same minute). Up to R·C minutes × R·C cells = O((R·C)<sup>2</sup>). The waste: rescanning cells that cannot change.</p>`, code: `int bruteRotting(int[][] grid) {
+      brute: { why: `<p>Simulate minute by minute: scan the whole grid, rot neighbours of rotten cells (using a copy so new rot does not spread in the same minute). Up to R·C minutes × R·C cells = O((R·C)<sup>2</sup>). The waste: rescanning cells that cannot change.</p>`, code: { lang: 'java', code: `int bruteRotting(int[][] grid) {
     int R = grid.length, C = grid[0].length, minutes = 0;
     int[] dr = {1, -1, 0, 0}, dc = {0, 0, 1, -1};
     while (true) {
@@ -1901,7 +2050,69 @@ public:
     }
     for (int[] row : grid) for (int v : row) if (v == 1) return -1;
     return minutes;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def oranges_rotting(grid):
+    R, C, minutes = len(grid), len(grid[0]), 0
+    while True:
+        nxt = [row[:] for row in grid]
+        changed = False
+        for r in range(R):
+            for c in range(C):
+                if grid[r][c] != 2:
+                    continue
+                for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < R and 0 <= nc < C and grid[nr][nc] == 1:
+                        nxt[nr][nc] = 2
+                        changed = True
+        if not changed:
+            break
+        grid = nxt
+        minutes += 1
+    if any(v == 1 for row in grid for v in row):
+        return -1
+    return minutes` }, { lang: 'js', code: String.raw`
+function orangesRotting(grid) {
+  const R = grid.length, C = grid[0].length;
+  const dr = [1, -1, 0, 0], dc = [0, 0, 1, -1];
+  let minutes = 0;
+  while (true) {
+    const next = grid.map((row) => row.slice());
+    let changed = false;
+    for (let r = 0; r < R; r++)
+      for (let c = 0; c < C; c++) {
+        if (grid[r][c] !== 2) continue;
+        for (let d = 0; d < 4; d++) {
+          const nr = r + dr[d], nc = c + dc[d];
+          if (nr >= 0 && nc >= 0 && nr < R && nc < C && grid[nr][nc] === 1) { next[nr][nc] = 2; changed = true; }
+        }
+      }
+    if (!changed) break;
+    grid = next; minutes++;
+  }
+  for (const row of grid) for (const v of row) if (v === 1) return -1;
+  return minutes;
+}` }, { lang: 'cpp', code: String.raw`
+int orangesRotting(vector<vector<int>> grid) {
+    int R = grid.size(), C = grid[0].size(), minutes = 0;
+    int dr[4] = {1, -1, 0, 0}, dc[4] = {0, 0, 1, -1};
+    while (true) {
+        vector<vector<int>> next = grid;
+        bool changed = false;
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++) {
+                if (grid[r][c] != 2) continue;
+                for (int d = 0; d < 4; d++) {
+                    int nr = r + dr[d], nc = c + dc[d];
+                    if (nr >= 0 && nc >= 0 && nr < R && nc < C && grid[nr][nc] == 1) { next[nr][nc] = 2; changed = true; }
+                }
+            }
+        if (!changed) break;
+        grid = next; minutes++;
+    }
+    for (auto& row : grid) for (int v : row) if (v == 1) return -1;
+    return minutes;
+}` }] } },
       mcq: { q: 'Why must the BFS start with ALL rotten oranges in the queue at once?', options: ['They all spread simultaneously, so level k of a multi-source BFS is exactly minute k', 'To save memory', 'Because DFS would be faster otherwise', 'It does not matter; one source at a time gives the same answer'], answer: 0, explain: 'Running BFS from one source at a time would compute distances from that source only; the true minute is the distance to the NEAREST rotten orange, which a multi-source BFS gives directly.' },
       hints: [`<p>Hint 1: The minute a fresh orange rots = its distance to the nearest rotten orange.</p>`, `<p>Hint 2: Multi-source BFS: enqueue every rotten cell first. Process the queue level by level; each level is one minute.</p>`, `<p>Hint 3: Count fresh oranges up front, decrement as they rot. Mark rotten when enqueuing. If fresh &gt; 0 at the end → −1; if fresh was 0 from the start → 0.</p>`],
       tests: { sig: 'int[][] -> int', fn: 'orangesRotting', cases: [
@@ -2040,6 +2251,19 @@ public:
   // =====================================================================
   var BUGGY = 'int lo = 0, hi = n - 1;\nwhile (lo < hi) {\n  int mid = (lo + hi) / 2;\n  if (a[mid] < t) lo = mid;\n  else hi = mid;\n}\nreturn lo;';
   var FIXED = 'int lo = 0, hi = n;          // answer can be n\nwhile (lo < hi) {\n  int mid = lo + (hi - lo) / 2;\n  if (a[mid] < t) lo = mid + 1; // mid is too small: skip it\n  else hi = mid;\n}\nreturn lo;';
+  // Alternative-language versions of the Java panes above (hl keys are Java line numbers).
+  var BUGGY_ALT = {
+    python: { code: 'lo, hi = 0, n - 1\nwhile lo < hi:\n    mid = (lo + hi) // 2\n    if a[mid] < t: lo = mid\n    else: hi = mid\nreturn lo', map: {} },
+    js: { code: 'let lo = 0, hi = n - 1;\nwhile (lo < hi) {\n  const mid = Math.floor((lo + hi) / 2);\n  if (a[mid] < t) lo = mid;\n  else hi = mid;\n}\nreturn lo;', map: {} },
+    cpp: { code: 'int lo = 0, hi = n - 1;\nwhile (lo < hi) {\n  int mid = (lo + hi) / 2;\n  if (a[mid] < t) lo = mid;\n  else hi = mid;\n}\nreturn lo;', map: {} } };
+  var FIXED_ALT = {
+    python: { code: 'lo, hi = 0, n          # answer can be n\nwhile lo < hi:\n    mid = lo + (hi - lo) // 2\n    if a[mid] < t: lo = mid + 1  # mid is too small: skip it\n    else: hi = mid\nreturn lo', map: {} },
+    js: { code: 'let lo = 0, hi = n;          // answer can be n\nwhile (lo < hi) {\n  const mid = lo + Math.floor((hi - lo) / 2);\n  if (a[mid] < t) lo = mid + 1; // mid is too small: skip it\n  else hi = mid;\n}\nreturn lo;', map: {} },
+    cpp: { code: 'int lo = 0, hi = n;          // answer can be n\nwhile (lo < hi) {\n  int mid = lo + (hi - lo) / 2;\n  if (a[mid] < t) lo = mid + 1; // mid is too small: skip it\n  else hi = mid;\n}\nreturn lo;', map: {} } };
+  var MID_ALT = {
+    python: { code: 'mid = (lo + hi) // 2        # overflows only in fixed-width ints (Python ints never do)\nmid = lo + (hi - lo) // 2  # safe in every language', map: {} },
+    js: { code: 'mid = Math.floor((lo + hi) / 2);        // overflows only in 32-bit ints (JS numbers are doubles)\nmid = lo + Math.floor((hi - lo) / 2);  // safe', map: {} },
+    cpp: { code: 'int mid = (lo + hi) / 2;        // can overflow\nint mid = lo + (hi - lo) / 2;  // safe', map: {} } };
 
   topics.push({
     title: 'Debugging Under Pressure',
@@ -2244,7 +2468,7 @@ int main() {
         if (!Number.isInteger(t) || t < -99 || t > 999) throw new Error('Target must be a whole number');
         var n = a.length, frames = [];
         frames.push({ narr: 'Goal: return the <b>first index i with a[i] ≥ ' + t + '</b> (where to insert ' + t + '). The first draft below fails on the sample. Rule 1: <b>stop editing, start tracing</b>.', parts: [
-          { type: 'array', label: 'a', values: a, showIdx: true }, { type: 'code', label: 'buggy draft', lang: 'java', code: BUGGY, hl: {} }
+          { type: 'array', label: 'a', values: a, showIdx: true }, { type: 'code', label: 'buggy draft', lang: 'java', code: BUGGY, hl: {}, alt: BUGGY_ALT }
         ] });
         var lo = 0, hi = n - 1, seen = {}, steps = 0, hung = false, rows = [];
         while (lo < hi && steps < 12) {
@@ -2257,7 +2481,7 @@ int main() {
           frames.push({ narr: (repeat ? '<span class="c-r"><b>Same (lo, hi) = (' + lo + ', ' + hi + ') as before!</b></span> The range did not shrink, so this loop will spin forever. Found it: when a[mid] &lt; t we set <code>lo = mid</code>, and with two elements left mid == lo.' : 'Trace row ' + (steps + 1) + ': lo=' + lo + ', hi=' + hi + ', mid=' + mid + ', a[mid]=' + a[mid] + (goRight ? ' &lt; ' : ' ≥ ') + t + ' → ' + (goRight ? '<code>lo = mid</code>' : '<code>hi = mid</code>') + '.'), parts: [
             { type: 'array', label: 'a', values: a, ptr: ptr, range: [lo, hi], hl: one(mid, repeat ? 'bad' : 'cur') },
             { type: 'table', label: 'state table (write this on the whiteboard)', columns: ['row', 'lo', 'hi', 'mid', 'a[mid]', 'action'], rows: rows.slice(), hl: one(rows.length - 1, repeat ? 'bad' : 'cur') },
-            { type: 'code', label: 'buggy draft', lang: 'java', code: BUGGY, hl: { 3: 'cur', 4: goRight ? (repeat ? 'bad' : 'cur') : '', 5: goRight ? '' : 'cur' } }
+            { type: 'code', label: 'buggy draft', lang: 'java', code: BUGGY, hl: { 3: 'cur', 4: goRight ? (repeat ? 'bad' : 'cur') : '', 5: goRight ? '' : 'cur' }, alt: BUGGY_ALT }
           ] });
           if (repeat) { hung = true; break; }
           if (goRight) lo = mid; else hi = mid;
@@ -2272,7 +2496,7 @@ int main() {
           ] });
         }
         frames.push({ narr: 'Two minimal fixes, each with a reason: (1) <code>hi = n</code> because "insert at the end" is a valid answer; (2) <code>lo = mid + 1</code> because a[mid] &lt; t proves mid is <b>not</b> the answer, and +1 guarantees the range shrinks. Also use <code>lo + (hi − lo) / 2</code> out of habit.', parts: [
-          { type: 'code', label: 'fixed', lang: 'java', code: FIXED, hl: { 1: 'ok', 4: 'ok' } }
+          { type: 'code', label: 'fixed', lang: 'java', code: FIXED, hl: { 1: 'ok', 4: 'ok' }, alt: FIXED_ALT }
         ] });
         lo = 0; hi = n; rows = [];
         var guard = 0;
@@ -2345,11 +2569,26 @@ while (lo &lt; hi) {
 return lo;</pre><p>It hangs on some inputs and returns wrong answers on others. Find every bug, explain each with a failing input, and write a correct O(log N) version.</p>`,
       constraints: `1 ≤ N ≤ 10<sup>4</sup>, −10<sup>4</sup> ≤ nums[i], target ≤ 10<sup>4</sup>, nums sorted ascending, distinct`,
       example: `<p>nums = [1,3,5,6]: target 5 → <b>2</b>; target 2 → <b>1</b>; target 7 → <b>${H.c('g', '4')}</b> (insert at the end — the buggy code can never return 4 because hi starts at 3).</p>`,
-      brute: { why: `<p>Linear scan for the first element ≥ target: O(N). Correct and a perfect oracle for testing, but it ignores the sorted order the problem gave us.</p>`, code: `int searchInsertBrute(int[] nums, int target) {
+      brute: { why: `<p>Linear scan for the first element ≥ target: O(N). Correct and a perfect oracle for testing, but it ignores the sorted order the problem gave us.</p>`, code: { lang: 'java', code: `int searchInsertBrute(int[] nums, int target) {
     for (int i = 0; i < nums.length; i++)
         if (nums[i] >= target) return i;   // first position that is not smaller
     return nums.length;                     // larger than everything: insert at the end
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def search_insert(nums, target):
+    for i in range(len(nums)):
+        if nums[i] >= target:
+            return i                                  # first position that is not smaller
+    return len(nums)                                  # larger than everything: insert at the end` }, { lang: 'js', code: String.raw`
+function searchInsert(nums, target) {
+  for (let i = 0; i < nums.length; i++)
+    if (nums[i] >= target) return i;                  // first position that is not smaller
+  return nums.length;                                 // larger than everything: insert at the end
+}` }, { lang: 'cpp', code: String.raw`
+int searchInsert(vector<int>& nums, int target) {
+    for (int i = 0; i < (int)nums.size(); i++)
+        if (nums[i] >= target) return i;              // first position that is not smaller
+    return nums.size();                               // larger than everything: insert at the end
+}` }] } },
       mcq: { q: 'With nums = [1, 3] and target 2, what happens in the buggy code?', options: ['lo=0, hi=1, mid=0, nums[0] &lt; 2 so lo = 0 again — infinite loop', 'It returns 1 correctly', 'It returns 0', 'It throws ArrayIndexOutOfBounds'], answer: 0, explain: 'lo = mid does not move when mid == lo, which happens whenever only two elements remain.' },
       hints: [`<p>Hint 1: Trace [1,3] with target 2. Does the range [lo, hi] get smaller on every iteration?</p>`, `<p>Hint 2: If nums[mid] &lt; target, mid can never be the answer, so the next range should exclude it: lo = mid + 1.</p>`, `<p>Hint 3: The answer can be N (insert after everything), so the search range must be [0, N]: start hi = nums.length. Recipe: lo=0, hi=N; while lo&lt;hi: mid; if nums[mid] &lt; target: lo=mid+1 else hi=mid; return lo.</p>`],
       tests: { sig: 'int[] int -> int', fn: 'searchInsert', cases: [
@@ -2626,7 +2865,7 @@ for k in (1, 2, 4):
       statement: `<p>Design a class with two operations: <code>add(number)</code> stores a number, and <code>find(value)</code> returns true if any <b>two stored numbers</b> (different entries, possibly equal values) sum to <code>value</code>.</p><p>There are two natural designs with opposite costs. Implement one and explain when you would pick the other.</p>`,
       constraints: `−10<sup>5</sup> ≤ number ≤ 10<sup>5</sup>, −2<sup>31</sup> ≤ value ≤ 2<sup>31</sup> − 1, up to 10<sup>4</sup> calls total`,
       example: `<p>add(1), add(3), add(5); find(4) → <b>${H.c('g', 'true')}</b> (1 + 3); find(7) → <b>${H.c('r', 'false')}</b>; add(3) then find(6) → <b>${H.c('g', 'true')}</b> (3 + 3 uses two different entries).</p>`,
-      brute: { why: `<p>Store numbers in a list; find checks every pair: O(1) add, O(N<sup>2</sup>) find. The waste: for each number we search linearly for its complement instead of looking it up.</p>`, code: `class TwoSumBrute {
+      brute: { why: `<p>Store numbers in a list; find checks every pair: O(1) add, O(N<sup>2</sup>) find. The waste: for each number we search linearly for its complement instead of looking it up.</p>`, code: { lang: 'java', code: `class TwoSumBrute {
     private final List<Integer> nums = new ArrayList<>();
     public void add(int number) { nums.add(number); }
     public boolean find(int value) {
@@ -2635,7 +2874,47 @@ for k in (1, 2, 4):
                 if ((long) nums.get(i) + nums.get(j) == value) return true;
         return false;
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+class TwoSumBrute:
+    def __init__(self):
+        self.nums = []
+
+    def add(self, number):
+        self.nums.append(number)
+
+    def find(self, value):
+        for i in range(len(self.nums)):
+            for j in range(i + 1, len(self.nums)):
+                if self.nums[i] + self.nums[j] == value:
+                    return True
+        return False` }, { lang: 'js', code: String.raw`
+class TwoSumBrute {
+  constructor() {
+    this.nums = [];
+  }
+
+  add(number) { this.nums.push(number); }
+
+  find(value) {
+    for (let i = 0; i < this.nums.length; i++)
+      for (let j = i + 1; j < this.nums.length; j++)
+        if (this.nums[i] + this.nums[j] === value) return true;
+    return false;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class TwoSumBrute {
+    vector<int> nums;
+
+public:
+    void add(int number) { nums.push_back(number); }
+
+    bool find(int value) {
+        for (int i = 0; i < (int)nums.size(); i++)
+            for (int j = i + 1; j < (int)nums.size(); j++)
+                if ((long long)nums[i] + nums[j] == value) return true;
+        return false;
+    }
+};` }] } },
       mcq: { q: 'The workload is 1 million find calls and only 100 add calls. Which design fits best?', options: ['Precompute all pair sums into a hash set on add: add O(N), find O(1)', 'Count map: add O(1), find O(N)', 'Keep a sorted list and two-pointer on every find', 'Brute force pairs'], answer: 0, explain: 'Read-heavy workload → pay at write time. With only 100 adds, the set holds at most ~5000 sums and every find is O(1).' },
       hints: [`<p>Hint 1: For find, you need "is value − x present?" for some stored x — a hash map lookup.</p>`, `<p>Hint 2: Store counts, not just presence: value 6 with a single 3 stored must return false; with two 3s, true.</p>`, `<p>Hint 3: Opposite design: on add, insert number + every existing number into a "sums" set → O(N) add, O(1) find. Pick by read/write ratio.</p>`],
       tests: { cls: 'TwoSum', sigs: {TwoSum: '',add: 'int -> void',find: 'int -> bool'}, cases: [
@@ -2922,7 +3201,7 @@ int main() {
         var badMid = to32(sum / 2), goodMid = lo + Math.floor((hi - lo) / 2);
         frames.push({ narr: '(lo + hi) / 2 = <b>' + badMid + '</b>' + (over ? ' → a negative index → ArrayIndexOutOfBounds, or a binary search that runs off into nonsense.' : '.') + ' The safe form <code>lo + (hi − lo) / 2</code> = <b>' + goodMid + '</b> never exceeds hi. Habit: always write it the safe way.', parts: [
           { type: 'vars', vals: { 'bad mid': badMid, 'good mid': goodMid }, hl: { 'bad mid': over ? 'bad' : '', 'good mid': 'ok' } },
-          { type: 'code', lang: 'java', code: 'int mid = (lo + hi) / 2;        // can overflow\nint mid = lo + (hi - lo) / 2;  // safe', hl: { 1: over ? 'bad' : '', 2: 'ok' } }
+          { type: 'code', lang: 'java', code: 'int mid = (lo + hi) / 2;        // can overflow\nint mid = lo + (hi - lo) / 2;  // safe', hl: { 1: over ? 'bad' : '', 2: 'ok' }, alt: MID_ALT }
         ] });
         frames.push({ narr: 'Mistake #2 — <b>negative modulo</b>. In Java, C++ and JavaScript, <code>-7 % 3</code> is <span class="c-r">−1</span>, not 2 (the Python <code>%</code> operator already gives 2). If you use it as an array index or hash bucket, you crash. Fix: <code>((x % m) + m) % m</code> = 2.', parts: [
           { type: 'table', label: 'x % 3 in Java / C++ / JS vs math', columns: ['x', 'Java / C++ / JS x % 3', 'fixed ((x%3)+3)%3'], rows: [[-7, -1, 2], [-6, 0, 0], [-5, -2, 1], [5, 2, 2]], hl: { 0: 'bad', 2: 'bad' } }
@@ -2973,7 +3252,7 @@ cout << sb << endl;                                     // 0,1,2,3,4,` }] } },
       statement: `<p>Given an integer array <code>nums</code>, return the largest product of a non-empty contiguous subarray. This problem is a minefield of the common mistakes: negatives flip signs, zeros reset everything, and "start at 0" is wrong.</p>`,
       constraints: `1 ≤ N ≤ 2·10<sup>4</sup>, −10 ≤ nums[i] ≤ 10, the answer fits in a 32-bit integer`,
       example: `${H.arr([2, 3, -2, 4], { hl: { 0: 'g', 1: 'g' } })}<p>Output <b>${H.c('g', '6')}</b> from [2, 3]. And [−2, 3, −4] → <b>24</b>: two negatives multiply to a positive, which a "max only" Kadane misses.</p>`,
-      brute: { why: `<p>Every start, extend to every end, track the product: O(N<sup>2</sup>) = 4·10<sup>8</sup> at the max size. The waste: we never reuse the best/worst product ending at the previous index.</p>`, code: `int bruteMaxProduct(int[] nums) {
+      brute: { why: `<p>Every start, extend to every end, track the product: O(N<sup>2</sup>) = 4·10<sup>8</sup> at the max size. The waste: we never reuse the best/worst product ending at the previous index.</p>`, code: { lang: 'java', code: `int bruteMaxProduct(int[] nums) {
     int best = nums[0];                         // not 0: all-negative inputs exist
     for (int i = 0; i < nums.length; i++) {
         long prod = 1;
@@ -2983,7 +3262,37 @@ cout << sb << endl;                                     // 0,1,2,3,4,` }] } },
         }
     }
     return best;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def max_product(nums):
+    best = nums[0]                                    # not 0: all-negative inputs exist
+    for i in range(len(nums)):
+        prod = 1
+        for j in range(i, len(nums)):
+            prod *= nums[j]
+            best = max(best, prod)
+    return best` }, { lang: 'js', code: String.raw`
+function maxProduct(nums) {
+  let best = nums[0];                                 // not 0: all-negative inputs exist
+  for (let i = 0; i < nums.length; i++) {
+    let prod = 1;
+    for (let j = i; j < nums.length; j++) {
+      prod *= nums[j];
+      best = Math.max(best, prod);
+    }
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int maxProduct(vector<int>& nums) {
+    int best = nums[0];                               // not 0: all-negative inputs exist
+    for (int i = 0; i < (int)nums.size(); i++) {
+        long long prod = 1;
+        for (int j = i; j < (int)nums.size(); j++) {
+            prod *= nums[j];
+            best = (int)max((long long)best, prod);
+        }
+    }
+    return best;
+}` }] } },
       mcq: { q: 'Why do we track the MINIMUM product ending at each index too?', options: ['A very negative product times a negative number becomes the new maximum', 'To handle zeros only', 'To make the code shorter', 'Because the answer could be negative'], answer: 0, explain: 'min × (negative) can jump to the top. Tracking both lets a sign flip promote the old minimum to the new maximum.' },
       hints: [`<p>Hint 1: Kadane tracks the best sum ending here. For products, a negative number swaps the roles of the best and worst.</p>`, `<p>Hint 2: Keep curMax and curMin ending at i. New values come from {x, curMax·x, curMin·x}.</p>`, `<p>Hint 3: Compute both new values from the OLD pair (use temporaries). Initialise everything with nums[0], not 0 or 1. Zero naturally resets because x itself is a candidate.</p>`],
       tests: { sig: 'int[] -> int', fn: 'maxProduct', cases: [
@@ -3409,13 +3718,33 @@ int main() {
     statement: `<p><b>Timed: 10 min.</b> <code>prices[i]</code> is a stock price on day i. Buy on one day and sell on a <b>later</b> day to maximise profit. Return the max profit, or 0 if no profit is possible.</p>`,
     constraints: `1 ≤ N ≤ 10<sup>5</sup>, 0 ≤ prices[i] ≤ 10<sup>4</sup>`,
     example: `${H.arr([7, 1, 5, 3, 6, 4], { hl: { 1: 'g', 4: 'g' } })}<p>Buy at ${H.c('g', '1')} (day 1), sell at ${H.c('g', '6')} (day 4) → profit <b>5</b>. Selling at 7 is not allowed: day 0 comes before the purchase.</p>`,
-    brute: { why: `<p>Every buy day × every later sell day: O(N<sup>2</sup>) = 5·10<sup>9</sup> at N = 10<sup>5</sup> → TLE. The waste: for each sell day we re-find the cheapest earlier price.</p>`, code: `int maxProfitBrute(int[] p) {
+    brute: { why: `<p>Every buy day × every later sell day: O(N<sup>2</sup>) = 5·10<sup>9</sup> at N = 10<sup>5</sup> → TLE. The waste: for each sell day we re-find the cheapest earlier price.</p>`, code: { lang: 'java', code: `int maxProfitBrute(int[] p) {
     int best = 0;
     for (int i = 0; i < p.length; i++)
         for (int j = i + 1; j < p.length; j++)
             best = Math.max(best, p[j] - p[i]);
     return best;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def max_profit(prices):
+    best = 0
+    for i in range(len(prices)):
+        for j in range(i + 1, len(prices)):
+            best = max(best, prices[j] - prices[i])
+    return best` }, { lang: 'js', code: String.raw`
+function maxProfit(prices) {
+  let best = 0;
+  for (let i = 0; i < prices.length; i++)
+    for (let j = i + 1; j < prices.length; j++)
+      best = Math.max(best, prices[j] - prices[i]);
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int maxProfit(vector<int>& prices) {
+    int best = 0;
+    for (int i = 0; i < (int)prices.size(); i++)
+        for (int j = i + 1; j < (int)prices.size(); j++)
+            best = max(best, prices[j] - prices[i]);
+    return best;
+}` }] } },
     mcq: { q: 'Which single value do you need to carry forward while scanning left to right?', options: ['The minimum price seen so far', 'The maximum price seen so far', 'The sum of prices so far', 'The previous day price only'], answer: 0, explain: 'Selling today, the best buy is the cheapest earlier day — carry the running minimum (DSA 5, carry forward).' },
     hints: [`<p>Hint 1: If you sell on day j, the best buy day is the cheapest day before j.</p>`, `<p>Hint 2: Keep <code>minSoFar</code> while scanning; profit today = price − minSoFar.</p>`, `<p>Hint 3: Initialise minSoFar = prices[0], best = 0 (never negative). Update best before or after min — both work because selling on the buy day gives 0.</p>`],
     tests: { sig: 'int[] -> int', fn: 'maxProfit', cases: [
@@ -3484,12 +3813,32 @@ public:
     statement: `<p><b>Timed: 10 min.</b> Return true if there are two <b>different</b> indices i and j with <code>nums[i] == nums[j]</code> and <code>|i − j| ≤ k</code>.</p>`,
     constraints: `1 ≤ N ≤ 10<sup>5</sup>, −10<sup>9</sup> ≤ nums[i] ≤ 10<sup>9</sup>, 0 ≤ k ≤ 10<sup>5</sup>`,
     example: `${H.arr([1, 2, 3, 1], { hl: { 0: 'g', 3: 'g' } })}<p>k = 3 → <b>${H.c('g', 'true')}</b> (indices 0 and 3, distance 3). With [1,2,3,1,2,3] and k = 2 → <b>false</b>: equal values are always 3 apart.</p>`,
-    brute: { why: `<p>For each i check the next k elements: O(N·k) = 10<sup>10</sup> worst case. The waste: neighbouring windows share k−1 elements, but we re-check them all.</p>`, code: `boolean bruteNearby(int[] nums, int k) {
+    brute: { why: `<p>For each i check the next k elements: O(N·k) = 10<sup>10</sup> worst case. The waste: neighbouring windows share k−1 elements, but we re-check them all.</p>`, code: { lang: 'java', code: `boolean bruteNearby(int[] nums, int k) {
     for (int i = 0; i < nums.length; i++)
         for (int j = i + 1; j < nums.length && j - i <= k; j++)
             if (nums[i] == nums[j]) return true;
     return false;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def contains_nearby_duplicate(nums, k):
+    for i in range(len(nums)):
+        j = i + 1
+        while j < len(nums) and j - i <= k:
+            if nums[i] == nums[j]:
+                return True
+            j += 1
+    return False` }, { lang: 'js', code: String.raw`
+function containsNearbyDuplicate(nums, k) {
+  for (let i = 0; i < nums.length; i++)
+    for (let j = i + 1; j < nums.length && j - i <= k; j++)
+      if (nums[i] === nums[j]) return true;
+  return false;
+}` }, { lang: 'cpp', code: String.raw`
+bool containsNearbyDuplicate(vector<int>& nums, int k) {
+    for (int i = 0; i < (int)nums.size(); i++)
+        for (int j = i + 1; j < (int)nums.size() && j - i <= k; j++)
+            if (nums[i] == nums[j]) return true;
+    return false;
+}` }] } },
     mcq: { q: 'Which pattern fits "two equal values at most k apart"?', options: ['A fixed-size sliding window kept in a hash set', 'Sorting then two pointers', 'Binary search', 'Prefix sums'], answer: 0, explain: 'Only the last k values matter; keep them in a set, drop the one leaving the window. Sorting loses the index distances.' },
     hints: [`<p>Hint 1: At index i, only nums[i−k .. i−1] can pair with nums[i].</p>`, `<p>Hint 2: Keep exactly those values in a hash set; set.add returns false on a duplicate.</p>`, `<p>Hint 3: After adding nums[i], if the set size exceeds k, remove nums[i−k]. k = 0 → always false.</p>`],
     tests: { sig: 'int[] int -> bool', fn: 'containsNearbyDuplicate', cases: [
@@ -3564,14 +3913,42 @@ public:
     statement: `<p><b>Timed: 10 min.</b> Given a string of <code>()[]{}</code>, return true if every opener is closed by the same type in the correct order.</p>`,
     constraints: `1 ≤ N ≤ 10<sup>4</sup>, only the six bracket characters`,
     example: `<p>"([]{})" → <b>${H.c('g', 'true')}</b>. "([)]" → <b>${H.c('r', 'false')}</b>: ")" arrives while "[" is the most recent unclosed opener.</p>`,
-    brute: { why: `<p>Repeatedly delete adjacent pairs "()", "[]", "{}" until nothing changes: up to N/2 passes of O(N) each → O(N<sup>2</sup>). The waste: rescanning the whole string after every deletion.</p>`, code: `boolean bruteValid(String s) {
+    brute: { why: `<p>Repeatedly delete adjacent pairs "()", "[]", "{}" until nothing changes: up to N/2 passes of O(N) each → O(N<sup>2</sup>). The waste: rescanning the whole string after every deletion.</p>`, code: { lang: 'java', code: `boolean bruteValid(String s) {
     String prev;
     do {
         prev = s;
         s = s.replace("()", "").replace("[]", "").replace("{}", "");
     } while (!s.equals(prev));
     return s.isEmpty();
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def is_valid(s):
+    while True:
+        prev = s
+        s = s.replace("()", "").replace("[]", "").replace("{}", "")
+        if s == prev:
+            break
+    return s == ""` }, { lang: 'js', code: String.raw`
+function isValid(s) {
+  let prev;
+  do {
+    prev = s;
+    s = s.split("()").join("").split("[]").join("").split("{}").join("");   // delete every adjacent pair
+  } while (s !== prev);
+  return s.length === 0;
+}` }, { lang: 'cpp', code: String.raw`
+bool isValid(string s) {
+    auto eraseAll = [](string t, const string& pat) {
+        size_t p;
+        while ((p = t.find(pat)) != string::npos) t.erase(p, pat.size());
+        return t;
+    };
+    string prev;
+    do {
+        prev = s;
+        s = eraseAll(eraseAll(eraseAll(s, "()"), "[]"), "{}");
+    } while (s != prev);
+    return s.empty();
+}` }] } },
     mcq: { q: '"Each closer must match the most recent unmatched opener" describes which structure?', options: ['Stack (LIFO)', 'Queue (FIFO)', 'Heap', 'Hash set'], answer: 0, explain: '"Most recent" = last in, first out.' },
     hints: [`<p>Hint 1: The closer always matches the latest unclosed opener.</p>`, `<p>Hint 2: Push openers; on a closer, the top must be its partner — pop it.</p>`, `<p>Hint 3: Fail if the stack is empty on a closer, or non-empty at the end. Quick reject: odd length.</p>`],
     tests: { sig: 'string -> bool', fn: 'isValid', cases: [
@@ -3660,14 +4037,40 @@ public:
     statement: `<p><b>Timed: 10 min.</b> An array holds N <b>distinct</b> numbers from the range 0..N (so exactly one is missing). Return the missing number using O(1) extra space.</p>`,
     constraints: `1 ≤ N ≤ 10<sup>4</sup>, 0 ≤ nums[i] ≤ N, all distinct`,
     example: `${H.arr([3, 0, 1])}<p>N = 3, range 0..3, the array lacks <b>${H.c('g', '2')}</b>.</p>`,
-    brute: { why: `<p>For each candidate 0..N, scan the array for it: O(N<sup>2</sup>). Or a hash set: O(N) time but O(N) space, which breaks the O(1)-space requirement.</p>`, code: `int missingBrute(int[] nums) {
+    brute: { why: `<p>For each candidate 0..N, scan the array for it: O(N<sup>2</sup>). Or a hash set: O(N) time but O(N) space, which breaks the O(1)-space requirement.</p>`, code: { lang: 'java', code: `int missingBrute(int[] nums) {
     for (int c = 0; c <= nums.length; c++) {
         boolean found = false;
         for (int x : nums) if (x == c) { found = true; break; }
         if (!found) return c;
     }
     return -1;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def missing_number(nums):
+    for c in range(len(nums) + 1):
+        found = False
+        for x in nums:
+            if x == c:
+                found = True
+                break
+        if not found:
+            return c
+    return -1` }, { lang: 'js', code: String.raw`
+function missingNumber(nums) {
+  for (let c = 0; c <= nums.length; c++) {
+    let found = false;
+    for (const x of nums) if (x === c) { found = true; break; }
+    if (!found) return c;
+  }
+  return -1;
+}` }, { lang: 'cpp', code: String.raw`
+int missingNumber(vector<int>& nums) {
+    for (int c = 0; c <= (int)nums.size(); c++) {
+        bool found = false;
+        for (int x : nums) if (x == c) { found = true; break; }
+        if (!found) return c;
+    }
+    return -1;
+}` }] } },
     mcq: { q: 'XOR of all indices 0..N and all array values leaves…', options: ['the missing number, because every present number cancels with its twin', '0 always', 'the largest value', 'the sum of the array'], answer: 0, explain: 'x ^ x = 0 and x ^ 0 = x (DSA 4). Every number except the missing one appears twice.' },
     hints: [`<p>Hint 1: "Every value appears in two lists except one" is the XOR-cancellation signature.</p>`, `<p>Hint 2: XOR together i for i in 0..N and every nums[i].</p>`, `<p>Hint 3: Alternative: N(N+1)/2 − sum(nums) — fine here, but mention overflow for big N; XOR never overflows.</p>`],
     tests: { sig: 'int[] -> int', fn: 'missingNumber', cases: [
@@ -3723,7 +4126,7 @@ public:
     statement: `<p><b>Timed: 20 min.</b> Return the <code>k</code> most frequent elements of <code>nums</code> in any order. The answer is guaranteed unique. Beat O(N log N).</p>`,
     constraints: `1 ≤ N ≤ 10<sup>5</sup>, −10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup>, 1 ≤ k ≤ number of distinct values`,
     example: `<p>[1,1,1,2,2,3], k = 2 → <b>${H.c('g', '[1, 2]')}</b>: 1 appears 3 times, 2 twice, 3 once.</p>`,
-    brute: { why: `<p>Count, then sort all distinct values by frequency: O(N + U log U). Fine in practice, but the follow-up asks for better than O(N log N). The waste: we fully order values whose relative order we never need.</p>`, code: `int[] topKBrute(int[] nums, int k) {
+    brute: { why: `<p>Count, then sort all distinct values by frequency: O(N + U log U). Fine in practice, but the follow-up asks for better than O(N log N). The waste: we fully order values whose relative order we never need.</p>`, code: { lang: 'java', code: `int[] topKBrute(int[] nums, int k) {
     Map<Integer, Integer> cnt = new HashMap<>();
     for (int x : nums) cnt.merge(x, 1, Integer::sum);
     List<Integer> keys = new ArrayList<>(cnt.keySet());
@@ -3731,7 +4134,28 @@ public:
     int[] res = new int[k];
     for (int i = 0; i < k; i++) res[i] = keys.get(i);
     return res;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def top_k_frequent(nums, k):
+    cnt = {}
+    for x in nums:
+        cnt[x] = cnt.get(x, 0) + 1
+    keys = sorted(cnt, key=lambda x: -cnt[x])         # full sort: O(U log U)
+    return keys[:k]` }, { lang: 'js', code: String.raw`
+function topKFrequent(nums, k) {
+  const cnt = new Map();
+  for (const x of nums) cnt.set(x, (cnt.get(x) || 0) + 1);
+  const keys = [...cnt.keys()];
+  keys.sort((a, b) => cnt.get(b) - cnt.get(a));       // full sort: O(U log U)
+  return keys.slice(0, k);
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> topKFrequent(vector<int>& nums, int k) {
+    unordered_map<int, int> cnt;
+    for (int x : nums) cnt[x]++;
+    vector<int> keys;
+    for (auto& [v, c] : cnt) keys.push_back(v);
+    sort(keys.begin(), keys.end(), [&](int a, int b) { return cnt[a] > cnt[b]; });   // full sort: O(U log U)
+    return vector<int>(keys.begin(), keys.begin() + k);
+}` }] } },
     mcq: { q: 'Frequencies lie in 1..N. Which trick gives O(N) total?', options: ['Bucket sort: bucket[f] = values with frequency f, read from high f down', 'Binary search on k', 'Two pointers on the sorted array', 'Union-Find'], answer: 0, explain: 'A bounded key range (1..N) allows counting/bucket sort in linear time.' },
     hints: [`<p>Hint 1: First count frequencies with a hash map.</p>`, `<p>Hint 2: Either keep a min-heap of size k keyed by frequency (O(U log k)) or bucket by frequency (O(N)).</p>`, `<p>Hint 3: Buckets: array of lists of size N+1. Walk f from N down to 1, collecting until you have k values.</p>`],
     tests: { sig: 'int[] int -> int[]', fn: 'topKFrequent', cmp: 'set', cases: [
@@ -3823,7 +4247,7 @@ public:
     statement: `<p><b>Timed: 20 min.</b> A grid of '1' (land) and '0' (water). An island is land connected up/down/left/right. Count the islands.</p>`,
     constraints: `1 ≤ R, C ≤ 300`,
     example: `<p>["11000","11000","00100","00011"] → <b>${H.c('g', '3')}</b>: the top-left block, the single middle cell and the bottom-right pair.</p>`,
-    brute: { why: `<p>For every pair of land cells, test whether they are connected by a fresh search, then count classes: O((R·C)<sup>2</sup>) or worse. The waste: re-exploring the same island again and again.</p>`, code: `int bruteIslands(char[][] g) {
+    brute: { why: `<p>For every pair of land cells, test whether they are connected by a fresh search, then count classes: O((R·C)<sup>2</sup>) or worse. The waste: re-exploring the same island again and again.</p>`, code: { lang: 'java', code: `int bruteIslands(char[][] g) {
     int R = g.length, C = g[0].length, n = R * C;
     int[] label = new int[n];
     Arrays.fill(label, -1);
@@ -3849,7 +4273,85 @@ public:
         }
     }
     return islands;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def num_islands(grid):
+    R, C = len(grid), len(grid[0])
+    n = R * C
+    label = [-1] * n
+    islands = 0
+    for s in range(n):
+        if grid[s // C][s % C] != '1' or label[s] != -1:
+            continue
+        islands += 1
+        # naive: repeatedly sweep the grid, growing the label until nothing changes
+        label[s] = islands
+        changed = True
+        while changed:
+            changed = False
+            for c in range(n):
+                if label[c] != islands:
+                    continue
+                r, col = divmod(c, C)
+                for pr, pc in ((r + 1, col), (r - 1, col), (r, col + 1), (r, col - 1)):
+                    if pr < 0 or pc < 0 or pr >= R or pc >= C:
+                        continue
+                    ident = pr * C + pc
+                    if grid[pr][pc] == '1' and label[ident] == -1:
+                        label[ident] = islands
+                        changed = True
+    return islands` }, { lang: 'js', code: String.raw`
+function numIslands(g) {
+  const R = g.length, C = g[0].length, n = R * C;
+  const label = new Array(n).fill(-1);
+  let islands = 0;
+  for (let s = 0; s < n; s++) {
+    if (g[Math.floor(s / C)][s % C] !== '1' || label[s] !== -1) continue;
+    islands++;
+    // naive: repeatedly sweep the grid, growing the label until nothing changes
+    label[s] = islands;
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let c = 0; c < n; c++) {
+        if (label[c] !== islands) continue;
+        const r = Math.floor(c / C), col = c % C;
+        const nb = [[r + 1, col], [r - 1, col], [r, col + 1], [r, col - 1]];
+        for (const [pr, pc] of nb) {
+          if (pr < 0 || pc < 0 || pr >= R || pc >= C) continue;
+          const id = pr * C + pc;
+          if (g[pr][pc] === '1' && label[id] === -1) { label[id] = islands; changed = true; }
+        }
+      }
+    }
+  }
+  return islands;
+}` }, { lang: 'cpp', code: String.raw`
+int numIslands(vector<vector<char>>& g) {
+    int R = g.size(), C = g[0].size(), n = R * C;
+    vector<int> label(n, -1);
+    int islands = 0;
+    for (int s = 0; s < n; s++) {
+        if (g[s / C][s % C] != '1' || label[s] != -1) continue;
+        islands++;
+        // naive: repeatedly sweep the grid, growing the label until nothing changes
+        label[s] = islands;
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            for (int c = 0; c < n; c++) {
+                if (label[c] != islands) continue;
+                int r = c / C, col = c % C;
+                int nb[4][2] = {{r + 1, col}, {r - 1, col}, {r, col + 1}, {r, col - 1}};
+                for (auto& p : nb) {
+                    if (p[0] < 0 || p[1] < 0 || p[0] >= R || p[1] >= C) continue;
+                    int id = p[0] * C + p[1];
+                    if (g[p[0]][p[1]] == '1' && label[id] == -1) { label[id] = islands; changed = true; }
+                }
+            }
+        }
+    }
+    return islands;
+}` }] } },
     mcq: { q: 'Each time the outer scan finds an unvisited land cell, what do you do?', options: ['Count +1 and flood-fill (BFS/DFS) its whole island, marking visited', 'Count +1 only', 'Sort the grid', 'Run Dijkstra'], answer: 0, explain: 'The flood fill guarantees each island is counted exactly once — the components pattern (DSA 20).' },
     hints: [`<p>Hint 1: Islands are connected components of land cells.</p>`, `<p>Hint 2: Scan the grid; on unvisited land, increment the count and flood-fill to mark the whole island.</p>`, `<p>Hint 3: Use an explicit stack/queue — recursive DFS can be 90,000 deep on a 300×300 all-land grid. Mark cells when pushing.</p>`],
     tests: { sig: 'char[][] -> int', fn: 'numIslands', cases: [
@@ -3972,13 +4474,36 @@ public:
     statement: `<p><b>Timed: 20 min.</b> There are <code>piles</code> of bananas and <code>h</code> hours. Each hour Koko picks one pile and eats up to <code>s</code> bananas from it (if fewer remain, she finishes the pile and waits). Return the <b>minimum integer speed s</b> to finish within h hours.</p>`,
     constraints: `1 ≤ N ≤ 10<sup>4</sup>, N ≤ h ≤ 10<sup>9</sup>, 1 ≤ piles[i] ≤ 10<sup>9</sup>`,
     example: `<p>piles = [3,6,7,11], h = 8 → <b>${H.c('g', '4')}</b>: hours at s = 4 are 1+2+2+3 = 8 ✔; at s = 3 they are 1+2+3+4 = 10 ✘.</p>`,
-    brute: { why: `<p>Try s = 1, 2, 3, … until it works: up to 10<sup>9</sup> speeds × N piles → TLE. The waste: checking speeds one by one when "works" is monotone.</p>`, code: `int bruteSpeed(int[] piles, int h) {
+    brute: { why: `<p>Try s = 1, 2, 3, … until it works: up to 10<sup>9</sup> speeds × N piles → TLE. The waste: checking speeds one by one when "works" is monotone.</p>`, code: { lang: 'java', code: `int bruteSpeed(int[] piles, int h) {
     for (int s = 1; ; s++) {
         long hours = 0;
         for (int p : piles) hours += (p + s - 1) / s;
         if (hours <= h) return s;
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def min_eating_speed(piles, h):
+    s = 1
+    while True:
+        hours = 0
+        for p in piles:
+            hours += (p + s - 1) // s
+        if hours <= h:
+            return s
+        s += 1` }, { lang: 'js', code: String.raw`
+function minEatingSpeed(piles, h) {
+  for (let s = 1; ; s++) {
+    let hours = 0;
+    for (const p of piles) hours += Math.floor((p + s - 1) / s);
+    if (hours <= h) return s;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+int minEatingSpeed(vector<int>& piles, int h) {
+    for (int s = 1; ; s++) {
+        long long hours = 0;
+        for (int p : piles) hours += (p + s - 1) / s;
+        if (hours <= h) return s;
+    }
+}` }] } },
     mcq: { q: 'What makes binary search valid here?', options: ['If speed s finishes in time, every speed above s also does', 'The piles are sorted', 'h is large', 'Speeds are integers'], answer: 0, explain: 'Monotone feasibility (NO…NO YES…YES) is the precondition for binary search on the answer (DSA 10).' },
     hints: [`<p>Hint 1: "Minimum speed such that…" → guess a speed and check it.</p>`, `<p>Hint 2: Check = Σ ⌈pile / s⌉ ≤ h, computed in O(N) with integer ceil (p + s − 1) / s.</p>`, `<p>Hint 3: Search s in [1, max(piles)]. Use long for the hour total (10<sup>4</sup> piles × 10<sup>9</sup> hours overflows int).</p>`],
     tests: { sig: 'int[] int -> int', fn: 'minEatingSpeed', cases: [
@@ -4071,13 +4596,36 @@ public:
     statement: `<p><b>Timed: 20 min.</b> For each day, return how many days you must wait for a <b>warmer</b> temperature; 0 if none.</p>`,
     constraints: `1 ≤ N ≤ 10<sup>5</sup>, 30 ≤ temperatures[i] ≤ 100`,
     example: `${H.arr([73, 74, 75, 71, 69, 72, 76, 73])}<p>→ <b>[1, 1, 4, 2, 1, 1, 0, 0]</b>. Day 2 (75) waits until day 6 (76): ${H.c('g', '4 days')}.</p>`,
-    brute: { why: `<p>For each day scan forward until warmer: O(N<sup>2</sup>) on a decreasing sequence = 5·10<sup>9</sup>. The waste: many days wait for the same future warm day, but each scans independently.</p>`, code: `int[] bruteTemps(int[] t) {
+    brute: { why: `<p>For each day scan forward until warmer: O(N<sup>2</sup>) on a decreasing sequence = 5·10<sup>9</sup>. The waste: many days wait for the same future warm day, but each scans independently.</p>`, code: { lang: 'java', code: `int[] bruteTemps(int[] t) {
     int[] ans = new int[t.length];
     for (int i = 0; i < t.length; i++)
         for (int j = i + 1; j < t.length; j++)
             if (t[j] > t[i]) { ans[i] = j - i; break; }
     return ans;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def daily_temperatures(temps):
+    t = temps
+    ans = [0] * len(t)
+    for i in range(len(t)):
+        for j in range(i + 1, len(t)):
+            if t[j] > t[i]:
+                ans[i] = j - i
+                break
+    return ans` }, { lang: 'js', code: String.raw`
+function dailyTemperatures(t) {
+  const ans = new Array(t.length).fill(0);
+  for (let i = 0; i < t.length; i++)
+    for (let j = i + 1; j < t.length; j++)
+      if (t[j] > t[i]) { ans[i] = j - i; break; }
+  return ans;
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> dailyTemperatures(vector<int>& t) {
+    vector<int> ans(t.size(), 0);
+    for (int i = 0; i < (int)t.size(); i++)
+        for (int j = i + 1; j < (int)t.size(); j++)
+            if (t[j] > t[i]) { ans[i] = j - i; break; }
+    return ans;
+}` }] } },
     mcq: { q: '"Days until a warmer temperature" is which classic?', options: ['Next greater element → monotonic decreasing stack of indices', 'Sliding window maximum', 'Binary search on the answer', 'Kadane'], answer: 0, explain: 'Every "next greater/smaller" question is a monotonic stack (DSA 14).' },
     hints: [`<p>Hint 1: This is "next greater element", returning distances instead of values.</p>`, `<p>Hint 2: Keep a stack of indices whose answer is unknown; their temperatures are decreasing from bottom to top.</p>`, `<p>Hint 3: When t[i] is warmer than the top, pop it and set ans[top] = i − top. Repeat, then push i. Leftovers keep 0.</p>`],
     tests: { sig: 'int[] -> int[]', fn: 'dailyTemperatures', cases: [
@@ -4159,7 +4707,7 @@ public:
     statement: `<p><b>Timed: 25 min.</b> There are <code>n</code> courses (0..n−1). <code>prerequisites[i] = [a, b]</code> means you must take b before a. Return any valid order to take all courses, or an empty array if impossible.</p>`,
     constraints: `1 ≤ n ≤ 2000, 0 ≤ prerequisites.length ≤ n·(n−1), all pairs distinct`,
     example: `<p>n = 4, [[1,0],[2,0],[3,1],[3,2]] → <b>${H.c('g', '[0, 1, 2, 3]')}</b> (or [0,2,1,3]). With [[1,0],[0,1]] → <b>${H.c('r', '[]')}</b>: a cycle.</p>`,
-    brute: { why: `<p>Try permutations and check each against all prerequisites: O(n!·E) — impossible beyond n ≈ 10. The waste: we ignore the structure (only courses with no remaining prerequisites can go next).</p>`, code: `int[] bruteOrder(int n, int[][] pre) {
+    brute: { why: `<p>Try permutations and check each against all prerequisites: O(n!·E) — impossible beyond n ≈ 10. The waste: we ignore the structure (only courses with no remaining prerequisites can go next).</p>`, code: { lang: 'java', code: `int[] bruteOrder(int n, int[][] pre) {
     // repeatedly scan for a course whose prerequisites are all taken: O(n * (n + E))
     boolean[] taken = new boolean[n];
     int[] order = new int[n];
@@ -4175,7 +4723,58 @@ public:
         taken[pick] = true; order[k] = pick;
     }
     return order;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def find_order(n, prerequisites):
+    # repeatedly scan for a course whose prerequisites are all taken: O(n * (n + E))
+    taken = [False] * n
+    order = []
+    for _ in range(n):
+        pick = -1
+        for c in range(n):
+            if pick != -1:
+                break
+            if taken[c]:
+                continue
+            if all(taken[p[1]] for p in prerequisites if p[0] == c):
+                pick = c
+        if pick == -1:
+            return []                                 # nothing available: cycle
+        taken[pick] = True
+        order.append(pick)
+    return order` }, { lang: 'js', code: String.raw`
+function findOrder(n, prerequisites) {
+  // repeatedly scan for a course whose prerequisites are all taken: O(n * (n + E))
+  const taken = new Array(n).fill(false), order = [];
+  for (let k = 0; k < n; k++) {
+    let pick = -1;
+    for (let c = 0; c < n && pick === -1; c++) {
+      if (taken[c]) continue;
+      let ok = true;
+      for (const p of prerequisites) if (p[0] === c && !taken[p[1]]) { ok = false; break; }
+      if (ok) pick = c;
+    }
+    if (pick === -1) return [];                       // nothing available: cycle
+    taken[pick] = true; order.push(pick);
+  }
+  return order;
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> findOrder(int n, vector<vector<int>>& prerequisites) {
+    // repeatedly scan for a course whose prerequisites are all taken: O(n * (n + E))
+    vector<char> taken(n, 0);
+    vector<int> order;
+    for (int k = 0; k < n; k++) {
+        int pick = -1;
+        for (int c = 0; c < n && pick == -1; c++) {
+            if (taken[c]) continue;
+            bool ok = true;
+            for (auto& p : prerequisites) if (p[0] == c && !taken[p[1]]) { ok = false; break; }
+            if (ok) pick = c;
+        }
+        if (pick == -1) return {};                    // nothing available: cycle
+        taken[pick] = 1; order.push_back(pick);
+    }
+    return order;
+}` }] } },
     mcq: { q: 'In Kahn’s algorithm, how do you detect that no valid order exists?', options: ['Fewer than n courses get output — the rest are stuck in a cycle', 'The queue becomes empty at the start', 'A course has two prerequisites', 'The graph is disconnected'], answer: 0, explain: 'Nodes on a cycle never reach indegree 0, so they never leave the queue logic.' },
     hints: [`<p>Hint 1: "b before a" is a directed edge b → a. You want a topological order.</p>`, `<p>Hint 2: Kahn: compute indegrees; queue all indegree-0 courses; pop, output, decrement neighbours, enqueue those reaching 0.</p>`, `<p>Hint 3: If the output has fewer than n courses, return an empty array. Disconnected courses are fine — they start with indegree 0.</p>`],
     tests: { sig: 'int int[][] -> int[]', fn: 'findOrder', check: "(args, out, expected) => { const n = args[0], pre = args[1]; if (expected.length === 0) return out.length === 0; if (out.length !== n) return false; const pos = new Array(n).fill(-1); for (let i = 0; i < n; i++) { if (out[i] < 0 || out[i] >= n || pos[out[i]] !== -1) return false; pos[out[i]] = i; } return pre.every(p => pos[p[1]] < pos[p[0]]); }", cases: [
@@ -4277,7 +4876,7 @@ public:
     statement: `<p><b>Timed: 25 min.</b> Given an uppercase string <code>s</code> and an integer <code>k</code>, you may change at most k characters. Return the length of the longest substring that can be made of one repeated letter.</p>`,
     constraints: `1 ≤ N ≤ 10<sup>5</sup>, 0 ≤ k ≤ N, uppercase English letters`,
     example: `<p>s = "AABABBA", k = 1 → <b>${H.c('g', '4')}</b>: window "AABA" (indexes 0..3) needs one change (B→A) to become "AAAA". "BABB" (indexes 2..5) also works. No window of length 5 has 4 equal letters.</p>`,
-    brute: { why: `<p>Every substring: count letters, check length − maxCount ≤ k: O(26·N<sup>2</sup>) = 2.6·10<sup>11</sup>. The waste: neighbouring substrings share almost all their counts.</p>`, code: `int bruteReplace(String s, int k) {
+    brute: { why: `<p>Every substring: count letters, check length − maxCount ≤ k: O(26·N<sup>2</sup>) = 2.6·10<sup>11</sup>. The waste: neighbouring substrings share almost all their counts.</p>`, code: { lang: 'java', code: `int bruteReplace(String s, int k) {
     int best = 0;
     for (int i = 0; i < s.length(); i++) {
         int[] cnt = new int[26];
@@ -4288,7 +4887,43 @@ public:
         }
     }
     return best;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def character_replacement(s, k):
+    best = 0
+    for i in range(len(s)):
+        cnt = [0] * 26
+        max_cnt = 0
+        for j in range(i, len(s)):
+            idx = ord(s[j]) - ord('A')
+            cnt[idx] += 1
+            max_cnt = max(max_cnt, cnt[idx])
+            if j - i + 1 - max_cnt <= k:
+                best = max(best, j - i + 1)
+    return best` }, { lang: 'js', code: String.raw`
+function characterReplacement(s, k) {
+  let best = 0;
+  for (let i = 0; i < s.length; i++) {
+    const cnt = new Array(26).fill(0);
+    let maxCnt = 0;
+    for (let j = i; j < s.length; j++) {
+      maxCnt = Math.max(maxCnt, ++cnt[s.charCodeAt(j) - 65]);
+      if (j - i + 1 - maxCnt <= k) best = Math.max(best, j - i + 1);
+    }
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int characterReplacement(string s, int k) {
+    int best = 0;
+    for (int i = 0; i < (int)s.size(); i++) {
+        int cnt[26] = {0};
+        int maxCnt = 0;
+        for (int j = i; j < (int)s.size(); j++) {
+            maxCnt = max(maxCnt, ++cnt[s[j] - 'A']);
+            if (j - i + 1 - maxCnt <= k) best = max(best, j - i + 1);
+        }
+    }
+    return best;
+}` }] } },
     mcq: { q: 'A window is valid when…', options: ['window length − count of its most frequent letter ≤ k', 'it has at most k distinct letters', 'its length ≤ k', 'all letters are equal'], answer: 0, explain: 'Keep the majority letter, change the rest; the "rest" must be at most k.' },
     hints: [`<p>Hint 1: "Longest substring" + a validity condition → variable sliding window.</p>`, `<p>Hint 2: Valid iff (right − left + 1) − maxCount ≤ k, where maxCount is the top letter count in the window.</p>`, `<p>Hint 3: When invalid, move left by one. You never need to decrease maxCount: the answer only grows when a bigger maxCount appears.</p>`],
     tests: { sig: 'string int -> int', fn: 'characterReplacement', cases: [
@@ -4380,7 +5015,7 @@ public:
     statement: `<p><b>Timed: 25 min.</b> Given coin denominations (unlimited supply) and an amount, return the fewest coins that make the amount, or −1 if impossible.</p>`,
     constraints: `1 ≤ coins.length ≤ 12, 1 ≤ coins[i] ≤ 2<sup>31</sup> − 1, 0 ≤ amount ≤ 10<sup>4</sup>`,
     example: `<p>coins = [1, 3, 4], amount = 6 → <b>${H.c('g', '2')}</b> (3 + 3). Greedy would pick 4 + 1 + 1 = ${H.c('r', '3 coins')} — a trap from Topic 8.</p>`,
-    brute: { why: `<p>Recursively try every coin at every step: branching factor up to 12, depth up to 10<sup>4</sup> → exponential. The waste: "fewest coins for amount 5" is recomputed along countless paths.</p>`, code: `int bruteCoins(int[] coins, int amount) {
+    brute: { why: `<p>Recursively try every coin at every step: branching factor up to 12, depth up to 10<sup>4</sup> → exponential. The waste: "fewest coins for amount 5" is recomputed along countless paths.</p>`, code: { lang: 'java', code: `int bruteCoins(int[] coins, int amount) {
     if (amount == 0) return 0;
     int best = Integer.MAX_VALUE;
     for (int c : coins) {
@@ -4389,7 +5024,38 @@ public:
         if (sub != -1) best = Math.min(best, sub + 1);
     }
     return best == Integer.MAX_VALUE ? -1 : best;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def coin_change(coins, amount):
+    if amount == 0:
+        return 0
+    best = float("inf")
+    for c in coins:
+        if c > amount:
+            continue
+        sub = coin_change(coins, amount - c)          # same sub-amounts solved again and again
+        if sub != -1:
+            best = min(best, sub + 1)
+    return -1 if best == float("inf") else best` }, { lang: 'js', code: String.raw`
+function coinChange(coins, amount) {
+  if (amount === 0) return 0;
+  let best = Infinity;
+  for (const c of coins) {
+    if (c > amount) continue;
+    const sub = coinChange(coins, amount - c);        // same sub-amounts solved again and again
+    if (sub !== -1) best = Math.min(best, sub + 1);
+  }
+  return best === Infinity ? -1 : best;
+}` }, { lang: 'cpp', code: String.raw`
+int coinChange(vector<int>& coins, int amount) {
+    if (amount == 0) return 0;
+    int best = INT_MAX;
+    for (int c : coins) {
+        if (c > amount) continue;
+        int sub = coinChange(coins, amount - c);      // same sub-amounts solved again and again
+        if (sub != -1) best = min(best, sub + 1);
+    }
+    return best == INT_MAX ? -1 : best;
+}` }] } },
     mcq: { q: 'What does dp[a] mean in the standard solution?', options: ['Fewest coins that sum exactly to a', 'Number of ways to make a', 'Largest coin used for a', 'Whether coin a exists'], answer: 0, explain: 'Then dp[a] = 1 + min over coins c ≤ a of dp[a − c] (DSA 18).' },
     hints: [`<p>Hint 1: Greedy fails ({1,3,4}, 6). "Fewest" + choices at each step → DP.</p>`, `<p>Hint 2: dp[a] = min over coins c of dp[a − c] + 1, with dp[0] = 0.</p>`, `<p>Hint 3: Fill a from 1 to amount; use a sentinel "infinity" = amount + 1. Watch out: coins can be up to 2<sup>31</sup>−1, so check c ≤ a before subtracting.</p>`],
     tests: { sig: 'int[] int -> int', fn: 'coinChange', cases: [
@@ -4465,7 +5131,7 @@ public:
     statement: `<p><b>Timed: 30 min.</b> Return the maximum of every contiguous window of size <code>k</code> as the window slides from left to right.</p>`,
     constraints: `1 ≤ N ≤ 10<sup>5</sup>, 1 ≤ k ≤ N, −10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup>`,
     example: `${H.arr([1, 3, -1, -3, 5, 3, 6, 7])}<p>k = 3 → <b>[3, 3, 5, 5, 6, 7]</b>. Window [−1, −3, 5] has max ${H.c('g', '5')}.</p>`,
-    brute: { why: `<p>Scan each window: O(N·k) = 10<sup>10</sup> when k = N/2. A heap gives O(N log N) but needs lazy deletion. The waste: values that can never be a future max (a smaller value left of a bigger one) are kept and rescanned.</p>`, code: `int[] bruteWindowMax(int[] a, int k) {
+    brute: { why: `<p>Scan each window: O(N·k) = 10<sup>10</sup> when k = N/2. A heap gives O(N log N) but needs lazy deletion. The waste: values that can never be a future max (a smaller value left of a bigger one) are kept and rescanned.</p>`, code: { lang: 'java', code: `int[] bruteWindowMax(int[] a, int k) {
     int[] res = new int[a.length - k + 1];
     for (int i = 0; i + k <= a.length; i++) {
         int m = Integer.MIN_VALUE;
@@ -4473,7 +5139,33 @@ public:
         res[i] = m;
     }
     return res;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def max_sliding_window(nums, k):
+    res = []
+    for i in range(len(nums) - k + 1):
+        m = nums[i]
+        for j in range(i, i + k):
+            m = max(m, nums[j])
+        res.append(m)
+    return res` }, { lang: 'js', code: String.raw`
+function maxSlidingWindow(nums, k) {
+  const res = new Array(nums.length - k + 1);
+  for (let i = 0; i + k <= nums.length; i++) {
+    let m = -Infinity;
+    for (let j = i; j < i + k; j++) m = Math.max(m, nums[j]);
+    res[i] = m;
+  }
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> maxSlidingWindow(vector<int>& nums, int k) {
+    vector<int> res(nums.size() - k + 1);
+    for (int i = 0; i + k <= (int)nums.size(); i++) {
+        int m = INT_MIN;
+        for (int j = i; j < i + k; j++) m = max(m, nums[j]);
+        res[i] = m;
+    }
+    return res;
+}` }] } },
     mcq: { q: 'Why may we discard a value that has a larger value to its right inside the window?', options: ['The larger one stays in the window longer and is bigger, so the smaller can never be a max again', 'To save memory only', 'Because the array is sorted', 'We may not discard it'], answer: 0, explain: 'Dominated elements are useless → keep a decreasing deque (DSA 14).' },
     hints: [`<p>Hint 1: A value is useless once a bigger value appears after it.</p>`, `<p>Hint 2: Deque of indices with decreasing values: pop from the back while smaller than the new value; the front is the max.</p>`, `<p>Hint 3: Pop the front if its index ≤ i − k (left the window). Record the front once i ≥ k − 1.</p>`],
     tests: { sig: 'int[] int -> int[]', fn: 'maxSlidingWindow', cases: [
@@ -4563,7 +5255,7 @@ public:
     statement: `<p><b>Timed: 30 min.</b> Merge <code>k</code> sorted linked lists into one sorted list and return its head.</p>`,
     constraints: `0 ≤ k ≤ 10<sup>4</sup>, total nodes N ≤ 10<sup>4</sup>, −10<sup>4</sup> ≤ val ≤ 10<sup>4</sup>`,
     example: `<p>[[1,4,5],[1,3,4],[2,6]] → <b>${H.c('g', '1→1→2→3→4→4→5→6')}</b>.</p>`,
-    brute: { why: `<p>Merge lists one by one into a growing result: list sizes add up to O(N·k) work. Or scan all k heads to find the minimum each step: O(N·k). The waste: re-finding the minimum among k heads from scratch every time.</p>`, code: `ListNode bruteMerge(ListNode[] lists) {
+    brute: { why: `<p>Merge lists one by one into a growing result: list sizes add up to O(N·k) work. Or scan all k heads to find the minimum each step: O(N·k). The waste: re-finding the minimum among k heads from scratch every time.</p>`, code: { lang: 'java', code: `ListNode bruteMerge(ListNode[] lists) {
     ListNode dummy = new ListNode(0), tail = dummy;
     while (true) {
         int best = -1;
@@ -4574,7 +5266,47 @@ public:
         lists[best] = lists[best].next;
     }
     return dummy.next;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def merge_k_lists(lists):
+    dummy = ListNode(0)
+    tail = dummy
+    while True:
+        best = -1
+        for i in range(len(lists)):                   # O(k) scan for the smallest head
+            if lists[i] is not None and (best == -1 or lists[i].val < lists[best].val):
+                best = i
+        if best == -1:
+            break
+        tail.next = lists[best]
+        tail = tail.next
+        lists[best] = lists[best].next
+    return dummy.next` }, { lang: 'js', code: String.raw`
+function mergeKLists(lists) {
+  const dummy = new ListNode(0);
+  let tail = dummy;
+  while (true) {
+    let best = -1;
+    for (let i = 0; i < lists.length; i++)            // O(k) scan for the smallest head
+      if (lists[i] !== null && (best === -1 || lists[i].val < lists[best].val)) best = i;
+    if (best === -1) break;
+    tail.next = lists[best]; tail = tail.next;
+    lists[best] = lists[best].next;
+  }
+  return dummy.next;
+}` }, { lang: 'cpp', code: String.raw`
+ListNode* mergeKLists(vector<ListNode*>& lists) {
+    ListNode dummy(0);
+    ListNode* tail = &dummy;
+    while (true) {
+        int best = -1;
+        for (int i = 0; i < (int)lists.size(); i++)   // O(k) scan for the smallest head
+            if (lists[i] && (best == -1 || lists[i]->val < lists[best]->val)) best = i;
+        if (best == -1) break;
+        tail->next = lists[best]; tail = tail->next;
+        lists[best] = lists[best]->next;
+    }
+    return dummy.next;
+}` }] } },
     mcq: { q: 'Which structure finds the smallest of k heads in O(log k)?', options: ['Min-heap (priority queue) of list nodes', 'Stack', 'Hash map', 'Sorted array rebuilt each step'], answer: 0, explain: '"Merge k sorted" is a heap signature (DSA 16): poll the smallest, push its successor.' },
     hints: [`<p>Hint 1: At any moment the next output node is the smallest of the k current heads.</p>`, `<p>Hint 2: Keep those heads in a min-heap ordered by value.</p>`, `<p>Hint 3: Skip null lists. Use a dummy head. Compare nodes by <code>val</code> (Java: <code>Integer.compare(a.val, b.val)</code>; Python: push <code>(val, index, node)</code> tuples).</p>`],
     tests: { sig: 'ListNode[] -> ListNode', fn: 'mergeKLists', cases: [
@@ -4701,7 +5433,7 @@ public:
     statement: `<p><b>Timed: 30 min.</b> Bars of width 1 have heights <code>height[i]</code>. How much rain water is trapped between them?</p>`,
     constraints: `1 ≤ N ≤ 2·10<sup>4</sup>, 0 ≤ height[i] ≤ 10<sup>5</sup>`,
     example: `${H.arr([0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1])}<p>→ <b>${H.c('g', '6')}</b>. Above index 5 (height 0) the water level is min(2, 3) = 2, so 2 units sit there.</p>`,
-    brute: { why: `<p>For each bar, scan left for the tallest and right for the tallest: O(N<sup>2</sup>). The waste: the left max of i+1 is just max(left max of i, height[i]) — we keep recomputing it.</p>`, code: `int bruteTrap(int[] h) {
+    brute: { why: `<p>For each bar, scan left for the tallest and right for the tallest: O(N<sup>2</sup>). The waste: the left max of i+1 is just max(left max of i, height[i]) — we keep recomputing it.</p>`, code: { lang: 'java', code: `int bruteTrap(int[] h) {
     int water = 0;
     for (int i = 0; i < h.length; i++) {
         int lm = 0, rm = 0;
@@ -4710,7 +5442,34 @@ public:
         water += Math.min(lm, rm) - h[i];
     }
     return water;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def trap(h):
+    water = 0
+    for i in range(len(h)):
+        lm = max(h[:i + 1])
+        rm = max(h[i:])
+        water += min(lm, rm) - h[i]
+    return water` }, { lang: 'js', code: String.raw`
+function trap(h) {
+  let water = 0;
+  for (let i = 0; i < h.length; i++) {
+    let lm = 0, rm = 0;
+    for (let j = 0; j <= i; j++) lm = Math.max(lm, h[j]);
+    for (let j = i; j < h.length; j++) rm = Math.max(rm, h[j]);
+    water += Math.min(lm, rm) - h[i];
+  }
+  return water;
+}` }, { lang: 'cpp', code: String.raw`
+int trap(vector<int>& h) {
+    int water = 0;
+    for (int i = 0; i < (int)h.size(); i++) {
+        int lm = 0, rm = 0;
+        for (int j = 0; j <= i; j++) lm = max(lm, h[j]);
+        for (int j = i; j < (int)h.size(); j++) rm = max(rm, h[j]);
+        water += min(lm, rm) - h[i];
+    }
+    return water;
+}` }] } },
     mcq: { q: 'With two pointers, why is it safe to settle the side with the smaller max?', options: ['Its water level is decided by its own max, because the other side is known to be at least as tall', 'Because it is closer to the edge', 'Because water flows left', 'It is not safe'], answer: 0, explain: 'If leftMax ≤ rightMax, water at left = leftMax − h[left]; nothing on the right can lower it.' },
     hints: [`<p>Hint 1: Water above i = min(maxLeft(i), maxRight(i)) − height[i].</p>`, `<p>Hint 2: Precompute prefix max and suffix max arrays → O(N) time, O(N) space.</p>`, `<p>Hint 3: Two pointers for O(1) space: move the side whose running max is smaller and add its water.</p>`],
     tests: { sig: 'int[] -> int', fn: 'trap', cases: [
@@ -4793,7 +5552,7 @@ public:
     statement: `<p><b>Timed: 35 min.</b> Transform <code>beginWord</code> into <code>endWord</code> changing one letter at a time; every intermediate word must be in <code>wordList</code>. Return the number of words in the shortest sequence (including both ends), or 0.</p>`,
     constraints: `1 ≤ word length ≤ 10, 1 ≤ wordList.length ≤ 5000, lowercase letters, all words the same length`,
     example: `<p>hit → hot → dot → dog → cog with list [hot, dot, dog, lot, log, cog] → <b>${H.c('g', '5')}</b>.</p>`,
-    brute: { why: `<p>DFS over all transformation sequences, keeping the shortest: exponential paths. The waste: DFS explores long paths first and revisits words via different routes.</p>`, code: `int bruteLadder(String cur, String end, Set<String> dict, Set<String> onPath) {
+    brute: { why: `<p>DFS over all transformation sequences, keeping the shortest: exponential paths. The waste: DFS explores long paths first and revisits words via different routes.</p>`, code: { lang: 'java', code: `int bruteLadder(String cur, String end, Set<String> dict, Set<String> onPath) {
     if (cur.equals(end)) return 1;
     int best = 0;
     for (String w : dict) {
@@ -4809,7 +5568,59 @@ boolean oneApart(String a, String b) {
     int diff = 0;
     for (int i = 0; i < a.length(); i++) if (a.charAt(i) != b.charAt(i)) diff++;
     return diff == 1;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def ladder_length(cur, end, words, on_path):
+    if cur == end:
+        return 1
+    best = 0
+    for w in words:
+        if w in on_path or not one_apart(cur, w):
+            continue
+        on_path.add(w)
+        sub = ladder_length(w, end, words, on_path)   # explores every simple path: exponential
+        on_path.remove(w)
+        if sub > 0 and (best == 0 or sub + 1 < best):
+            best = sub + 1
+    return best
+
+def one_apart(a, b):
+    return sum(1 for x, y in zip(a, b) if x != y) == 1` }, { lang: 'js', code: String.raw`
+function ladderLength(cur, end, words, onPath) {
+  if (cur === end) return 1;
+  let best = 0;
+  for (const w of words) {
+    if (onPath.has(w) || !oneApart(cur, w)) continue;
+    onPath.add(w);
+    const sub = ladderLength(w, end, words, onPath);  // explores every simple path: exponential
+    onPath.delete(w);
+    if (sub > 0 && (best === 0 || sub + 1 < best)) best = sub + 1;
+  }
+  return best;
+}
+
+function oneApart(a, b) {
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) diff++;
+  return diff === 1;
+}` }, { lang: 'cpp', code: String.raw`
+bool oneApart(const string& a, const string& b) {
+    int diff = 0;
+    for (size_t i = 0; i < a.size(); i++) if (a[i] != b[i]) diff++;
+    return diff == 1;
+}
+
+int ladderLength(const string& cur, const string& end, const unordered_set<string>& words, unordered_set<string>& onPath) {
+    if (cur == end) return 1;
+    int best = 0;
+    for (auto& w : words) {
+        if (onPath.count(w) || !oneApart(cur, w)) continue;
+        onPath.insert(w);
+        int sub = ladderLength(w, end, words, onPath);   // explores every simple path: exponential
+        onPath.erase(w);
+        if (sub > 0 && (best == 0 || sub + 1 < best)) best = sub + 1;
+    }
+    return best;
+}` }] } },
     mcq: { q: '"Shortest sequence of one-letter changes" is…', options: ['BFS on an implicit graph whose nodes are words', 'Dijkstra with weights = letter distance', 'DP over the word list order', 'Backtracking for all paths'], answer: 0, explain: 'All moves cost 1 → unweighted shortest path → BFS (DSA 20). The graph is never given; you generate neighbours.' },
     hints: [`<p>Hint 1: Words are nodes, one-letter changes are edges, each costs 1.</p>`, `<p>Hint 2: BFS from beginWord. Generate neighbours by trying all 26 letters at each position (O(26·L) per word) and checking the dictionary set.</p>`, `<p>Hint 3: Remove words from the set when enqueued (visited). If endWord is not in the list, return 0 immediately.</p>`],
     tests: { sig: 'string string list<string> -> int', fn: 'ladderLength', cases: [
@@ -4943,7 +5754,7 @@ public:
     statement: `<p><b>Timed: 40 min.</b> For each index i, return how many elements to its <b>right</b> are strictly smaller than nums[i].</p>`,
     constraints: `1 ≤ N ≤ 10<sup>5</sup>, −10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup>`,
     example: `${H.arr([5, 2, 6, 1])}<p>→ <b>${H.c('g', '[2, 1, 1, 0]')}</b>: right of 5 are 2 and 1 (two smaller); right of 2 is 1; right of 6 is 1; nothing right of 1.</p>`,
-    brute: { why: `<p>For each i scan everything to its right: O(N<sup>2</sup>) = 10<sup>10</sup>. The waste: we repeatedly count over the same suffix instead of maintaining counts as the suffix grows.</p>`, code: `List<Integer> bruteSmaller(int[] nums) {
+    brute: { why: `<p>For each i scan everything to its right: O(N<sup>2</sup>) = 10<sup>10</sup>. The waste: we repeatedly count over the same suffix instead of maintaining counts as the suffix grows.</p>`, code: { lang: 'java', code: `List<Integer> bruteSmaller(int[] nums) {
     List<Integer> res = new ArrayList<>();
     for (int i = 0; i < nums.length; i++) {
         int c = 0;
@@ -4951,7 +5762,34 @@ public:
         res.add(c);
     }
     return res;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def count_smaller(nums):
+    res = []
+    for i in range(len(nums)):
+        c = 0
+        for j in range(i + 1, len(nums)):
+            if nums[j] < nums[i]:
+                c += 1
+        res.append(c)
+    return res` }, { lang: 'js', code: String.raw`
+function countSmaller(nums) {
+  const res = [];
+  for (let i = 0; i < nums.length; i++) {
+    let c = 0;
+    for (let j = i + 1; j < nums.length; j++) if (nums[j] < nums[i]) c++;
+    res.push(c);
+  }
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> countSmaller(vector<int>& nums) {
+    vector<int> res;
+    for (int i = 0; i < (int)nums.size(); i++) {
+        int c = 0;
+        for (int j = i + 1; j < (int)nums.size(); j++) if (nums[j] < nums[i]) c++;
+        res.push_back(c);
+    }
+    return res;
+}` }] } },
     mcq: { q: 'Scanning from right to left, which operation do you need per element?', options: ['"How many seen values are &lt; x?" then "add x" — a prefix count query + point update (Fenwick tree)', 'Find the maximum seen so far', 'Check whether x was seen', 'Sort the seen values every time'], answer: 0, explain: 'Prefix count + point update on a value-indexed array is exactly what a Fenwick tree does in O(log N) (DSA 23).' },
     hints: [`<p>Hint 1: Walk from right to left; the "seen" set is exactly the elements to the right.</p>`, `<p>Hint 2: Keep counts indexed by value; the answer for x is the count of values &lt; x — a prefix sum with updates → Fenwick tree.</p>`, `<p>Hint 3: Shift values by +10<sup>4</sup>+1 so indices are ≥ 1 (or coordinate-compress for large ranges). Query(x − 1) before update(x).</p>`],
     tests: { sig: 'int[] -> list<int>', fn: 'countSmaller', cases: [
@@ -5056,11 +5894,11 @@ public:
   quiz.push({ q: '"Find the minimum largest distance between adjacent gas stations after adding k stations." Which phrase is the giveaway?', options: ['"minimum largest" — minimise the maximum → binary search on the answer', '"gas stations" → greedy', '"adjacent" → two pointers', '"add k" → heap is the only option'], answer: 0, explain: 'Minimise-the-maximum with a monotone feasibility check is the binary-search-on-answer signature.' });
   quiz.push({ q: 'Which statement about the 10<sup>8</sup>-operations-per-second rule is most accurate?', options: ['It is a rough budget; constants, cache behaviour and language speed shift it', 'It is an exact law for every computer', 'It only applies to C++', 'It means O(N<sup>2</sup>) always passes for N = 10<sup>5</sup>'], answer: 0, explain: 'It is an estimate for planning. N = 10<sup>5</sup> squared is 10<sup>10</sup>, about 100 seconds.' });
   quiz.push({ q: 'In the 8-step approach, when should you start writing real code?', options: ['After clarifying, examples, brute force, optimising and agreeing on the approach', 'Immediately, to save time', 'Only after the interviewer gives the solution', 'After writing all test cases in code'], answer: 0, explain: 'Coding before agreement is the most common process mistake; the thinking steps make the coding short.' });
-  quiz.push({ q: 'Your binary search hangs on input [1, 3] with target 2. Most likely bug?', options: ['<code>lo = mid</code> instead of <code>lo = mid + 1</code>', '<code>hi = mid</code>', 'Using <code>long</code>', 'The array is too small'], answer: 0, explain: 'With two elements mid == lo, so lo = mid makes no progress.' });
+  quiz.push({ q: 'Your binary search hangs on input [1, 3] with target 2. Most likely bug?', options: ['<code>lo = mid</code> instead of <code>lo = mid + 1</code>', '<code>hi = mid</code>', 'Using a 64-bit integer type (<code>long</code> / <code>long long</code>)', 'The array is too small'], answer: 0, explain: 'With two elements mid == lo, so lo = mid makes no progress.' });
   quiz.push({ q: 'BFS on a grid where moving into a cell costs either 0 or 1. Best algorithm?', options: ['0-1 BFS with a deque (push front for 0, back for 1)', 'Plain BFS with a queue', 'DFS', 'Floyd-Warshall'], answer: 0, explain: 'Plain BFS assumes equal weights. 0-1 BFS is Dijkstra specialised to weights 0/1, O(V + E) (DSA 21).' });
   quiz.push({ q: 'Workload: 10<sup>5</sup> range-sum queries and 10<sup>5</sup> point updates on 10<sup>5</sup> numbers. Best fit?', options: ['Fenwick tree (O(log N) each)', 'Prefix sums rebuilt after each update', 'Naive loop per query', 'Sorting'], answer: 0, explain: 'Prefix sums make updates O(N) → 10<sup>10</sup> total. Fenwick: ~3.4·10<sup>6</sup>.' });
   quiz.push({ q: 'Greedy coin change works for coins {1, 5, 10, 25} but not for {1, 3, 4}. What should you do before coding a greedy in an interview?', options: ['Try to break it with a small counterexample, or sketch an exchange argument', 'Trust it if it passes the sample', 'Always use DP instead of greedy', 'Sort coins descending, which fixes it'], answer: 0, explain: 'Greedy needs a proof; a one-minute counterexample hunt is the practical substitute.' });
-  quiz.push({ q: 'You compute <code>(lo + hi) / 2</code> with lo = hi = 2·10<sup>9</sup> in 32-bit ints (Java, C++). What happens?', options: ['Overflow: the sum wraps negative and mid becomes negative', 'It throws an ArithmeticException', 'It returns 2·10<sup>9</sup>', 'It promotes to long automatically'], answer: 0, explain: 'A 32-bit int wraps silently (Python ints never overflow; JavaScript numbers are doubles). Use lo + (hi − lo) / 2.' });
+  quiz.push({ q: 'You compute <code>(lo + hi) / 2</code> with lo = hi = 2·10<sup>9</sup> in 32-bit ints (Java, C++). What happens?', options: ['Overflow: the sum wraps negative and mid becomes negative', 'It throws an arithmetic exception', 'It returns 2·10<sup>9</sup>', 'It promotes to long automatically'], answer: 0, explain: 'A 32-bit int wraps silently (Python ints never overflow; JavaScript numbers are doubles). Use lo + (hi − lo) / 2.' });
   quiz.push({ q: 'Why do interleaved (mixed) practice sets beat blocked sets for interview prep?', options: ['They train choosing the pattern, not just executing it', 'They are easier', 'They take less time', 'They avoid hard problems'], answer: 0, explain: 'Blocked practice reveals the pattern by the chapter title; interviews do not.' });
   quiz.push({ q: '"Return the k closest points to the origin" with a stream of points. Which choice and why?', options: ['Max-heap of size k (evict the farthest) — O(N log k), works online', 'Sort all points every time', 'Quickselect — needs all data, not online', 'BFS from the origin'], answer: 0, explain: 'Quickselect is great offline, but a stream needs an online structure; the size-k heap keeps only the best k.' });
   quiz.push({ q: 'The interviewer asks "Are you sure about that line?" What does it usually mean and what should you do?', options: ['There is probably a bug there — trace that line with a tiny input out loud', 'They are impressed — move on', 'They want you to rewrite everything', 'They want a different language'], answer: 0, explain: 'Treat it as a hint. Calm tracing beats defensiveness or random edits.' });

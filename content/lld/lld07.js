@@ -9,7 +9,7 @@
     o = o || {};
     return { type: 'graph', label: label, directed: true, height: o.h || 60, nodes: nodes, edges: edges, hl: o.hl || {}, ehl: o.ehl || {}, tags: o.tags || {} };
   }
-  function CODE(label, code, hl) { return { type: 'code', label: label, lang: 'java', code: code, hl: hl || {} }; }
+  function CODE(label, code, hl, alt) { var p = { type: 'code', label: label, lang: 'java', code: code, hl: hl || {} }; if (alt) p.alt = alt; return p; }
   function TXT(html, label) { var p = { type: 'text', html: html }; if (label) p.label = label; return p; }
   function VARS(label, vals, hl) { return { type: 'vars', label: label, vals: vals, hl: hl || {} }; }
   function TABLE(label, columns, rows, hl) { return { type: 'table', label: label, columns: columns, rows: rows, hl: hl || {} }; }
@@ -8559,7 +8559,7 @@ int main() {
       statement: `<p>Apply the 7-step framework to a small library. Members borrow and return books; a member may hold at most <b>3</b> books; loans last <b>14 days</b>; the librarian can list overdue loans. The interviewer warns: <i>"next quarter, premium members get different limits"</i>. Produce entities, APIs and working code.</p>`,
       constraints: `In-memory only. Up to 10<sup>5</sup> books and members. Dates use your language's date type (<code>LocalDate</code> / <code>datetime.date</code> / <code>Date</code> / <code>std::chrono</code>). Borrowing an already-lent book or exceeding the limit must fail with a clear exception.`,
       example: `<p>Asha borrows <code>111</code> on ${H.c('b', '2026-01-01')} → due ${H.c('g', '2026-01-15')}. On 2026-01-20, <code>overdue()</code> returns ${H.c('r', '1 loan')}. After she returns it, ${H.c('g', '0 loans')}. Asha trying a 4th book → ${H.c('r', 'an error: reached the limit of 3')}.</p>`,
-      brute: { why: `<p>A single <code>LibrarySystem</code> class with two maps and string statuses ("FREE" / memberId). It passes a demo, but the limit 3 is hard-coded mid-method, there is no Loan object so "overdue" cannot even be computed (no due date stored), and the premium-member follow-up means editing the core method. Errors come back as magic strings that callers must remember.</p>`, code: J.g1_brute },
+      brute: { why: `<p>A single <code>LibrarySystem</code> class with two maps and string statuses ("FREE" / memberId). It passes a demo, but the limit 3 is hard-coded mid-method, there is no Loan object so "overdue" cannot even be computed (no due date stored), and the premium-member follow-up means editing the core method. Errors come back as magic strings that callers must remember.</p>`, code: { lang: 'java', code: J.g1_brute, alt: [{ lang: 'python', code: "# BRUTE FORCE: one class, dicts of strings, status as magic text.\n# It \"works\" for the demo, but every new rule means editing this one class.\nclass LibrarySystem:\n    def __init__(self):\n        self.book_status = {}      # isbn -> \"FREE\" or member_id\n        self.borrowed_count = {}   # member_id -> count\n\n    def add_book(self, isbn):\n        self.book_status[isbn] = \"FREE\"\n\n    def borrow(self, member_id, isbn):\n        if isbn not in self.book_status: return \"NO_SUCH_BOOK\"\n        if self.book_status[isbn] != \"FREE\": return \"TAKEN\"\n        count = self.borrowed_count.get(member_id, 0)\n        if count >= 3: return \"LIMIT\"                # rule hard-coded in the middle of the flow\n        self.book_status[isbn] = member_id\n        self.borrowed_count[member_id] = count + 1\n        return \"OK\"\n\n    def give_back(self, member_id, isbn):\n        if self.book_status.get(isbn) != member_id: return \"NOT_YOURS\"\n        self.book_status[isbn] = \"FREE\"\n        self.borrowed_count[member_id] = self.borrowed_count.get(member_id, 0) - 1\n        return \"OK\"\n" }, { lang: 'ts', code: "// BRUTE FORCE: one class, maps of strings, status as magic text.\n// It \"works\" for the demo, but every new rule means editing this one class.\nclass LibrarySystem {\n  private bookStatus = new Map<string, string>();      // isbn -> \"FREE\" or memberId\n  private borrowedCount = new Map<string, number>();   // memberId -> count\n\n  addBook(isbn: string): void { this.bookStatus.set(isbn, \"FREE\"); }\n\n  borrow(memberId: string, isbn: string): string {\n    if (!this.bookStatus.has(isbn)) return \"NO_SUCH_BOOK\";\n    if (this.bookStatus.get(isbn) !== \"FREE\") return \"TAKEN\";\n    const count = this.borrowedCount.get(memberId) ?? 0;\n    if (count >= 3) return \"LIMIT\";                  // rule hard-coded in the middle of the flow\n    this.bookStatus.set(isbn, memberId);\n    this.borrowedCount.set(memberId, count + 1);\n    return \"OK\";\n  }\n\n  giveBack(memberId: string, isbn: string): string {\n    if (this.bookStatus.get(isbn) !== memberId) return \"NOT_YOURS\";\n    this.bookStatus.set(isbn, \"FREE\");\n    this.borrowedCount.set(memberId, (this.borrowedCount.get(memberId) ?? 0) - 1);\n    return \"OK\";\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE FORCE: one class, maps of strings, status as magic text.\n// It \"works\" for the demo, but every new rule means editing this one class.\nclass LibrarySystem {\n    unordered_map<string, string> bookStatus;   // isbn -> \"FREE\" or memberId\n    unordered_map<string, int> borrowedCount;   // memberId -> count\npublic:\n    void addBook(const string& isbn) { bookStatus[isbn] = \"FREE\"; }\n\n    string borrow(const string& memberId, const string& isbn) {\n        if (!bookStatus.count(isbn)) return \"NO_SUCH_BOOK\";\n        if (bookStatus[isbn] != \"FREE\") return \"TAKEN\";\n        int count = borrowedCount[memberId];\n        if (count >= 3) return \"LIMIT\";          // rule hard-coded in the middle of the flow\n        bookStatus[isbn] = memberId;\n        borrowedCount[memberId] = count + 1;\n        return \"OK\";\n    }\n\n    string giveBack(const string& memberId, const string& isbn) {\n        if (bookStatus[isbn] != memberId) return \"NOT_YOURS\";\n        bookStatus[isbn] = \"FREE\";\n        borrowedCount[memberId]--;\n        return \"OK\";\n    }\n};\n" }] } },
       mcq: { q: 'The interviewer says "premium members will have different limits". Where should that rule live?', options: ['Inside <code>borrow()</code> as an if-else on member type', 'In a <code>LendingPolicy</code> interface injected into Library', 'In the <code>Book</code> class', 'In a static constant'], answer: 1, explain: 'A rule that is announced to change goes behind an interface. A new PremiumPolicy class plugs in; Library never changes.' },
       hints: [
         `<p>Hint 1: underline nouns in the prompt — book, member, loan, library, limit. Which of them has its <i>own data</i>? A loan has a member, a book and a due date: it deserves a class.</p>`,
@@ -8602,6 +8602,69 @@ int main() {
     '  }',
     '}'
   ].join('\n');
+  var GOD_PY = [
+    "class ParkingLot:",
+    "    def __init__(self): self.size, self.who, self.since = [], [], []",
+    "    def park(self, type_, plate, h):",
+    "        for i in range(len(self.size)):",
+    "            fits = (type_ == \"BIKE\"",
+    "                or (type_ == \"CAR\" and self.size[i] != \"S\")",
+    "                or (type_ == \"TRUCK\" and self.size[i] == \"L\"))",
+    "            if self.who[i] is None and fits: self.who[i] = plate; self.since[i] = h; return i",
+    "        return -1",
+    "    def leave(self, i, type_, h):",
+    "        hrs = max(1, h - self.since[i])",
+    "        fee = (hrs * 10 if type_ == \"BIKE\"",
+    "               else hrs * 20 if type_ == \"CAR\" else hrs * 50)",
+    "        self.who[i] = None",
+    "        print(\"Paid\", fee)",
+    "        return fee"
+  ].join('\n');
+  var GOD_TS = [
+    "class ParkingLot {",
+    "  size: string[] = []; who: (string | null)[] = []; since: number[] = [];",
+    "  park(type: string, plate: string, h: number): number {",
+    "    for (let i = 0; i < this.size.length; i++) {",
+    "      const fits = type === \"BIKE\"",
+    "        || (type === \"CAR\" && this.size[i] !== \"S\")",
+    "        || (type === \"TRUCK\" && this.size[i] === \"L\");",
+    "      if (this.who[i] === null && fits) { this.who[i] = plate; this.since[i] = h; return i; }",
+    "    }",
+    "    return -1;",
+    "  }",
+    "  leave(i: number, type: string, h: number): number {",
+    "    const hrs = Math.max(1, h - this.since[i]);",
+    "    const fee = type === \"BIKE\" ? hrs * 10",
+    "              : type === \"CAR\" ? hrs * 20 : hrs * 50;",
+    "    this.who[i] = null;",
+    "    console.log(\"Paid \" + fee);",
+    "    return fee;",
+    "  }",
+    "}"
+  ].join('\n');
+  var GOD_CPP = [
+    "class ParkingLot {",
+    "  vector<string> size, who; vector<long long> since;",
+    "  int park(const string& type, const string& plate, long long h) {",
+    "    for (int i = 0; i < (int)size.size(); i++) {",
+    "      bool fits = type == \"BIKE\"",
+    "        || (type == \"CAR\" && size[i] != \"S\")",
+    "        || (type == \"TRUCK\" && size[i] == \"L\");",
+    "      if (who[i].empty() && fits) { who[i] = plate; since[i] = h; return i; }",
+    "    }",
+    "    return -1;",
+    "  }",
+    "  long long leave(int i, const string& type, long long h) {",
+    "    long long hrs = max(1LL, h - since[i]);",
+    "    long long fee = type == \"BIKE\" ? hrs * 10",
+    "                  : type == \"CAR\" ? hrs * 20 : hrs * 50;",
+    "    who[i] = \"\";",
+    "    cout << \"Paid \" << fee << endl;",
+    "    return fee;",
+    "  }",
+    "};"
+  ].join('\n');
+  var GOD_ALT = { python: { code: GOD_PY, map: {"10":9,"12":10,"13":11,"14":12,"15":13,"16":14,"17":15,"18":16} }, js: { lang: 'ts', code: GOD_TS, map: {} }, cpp: { code: GOD_CPP, map: {} } };
   var GOD_SMELLS = { 2: 'bad', 5: 'bad', 6: 'bad', 7: 'bad', 10: 'bad', 14: 'bad', 15: 'bad', 17: 'bad' };
   var OO_BASE_NODES = [
     B('Lot', 'ParkingLot', 50, 8), B('Spot', 'ParkingSpot', 14, 28), B('Tkt', 'Ticket', 50, 28),
@@ -8652,7 +8715,7 @@ int main() {
         reqs.forEach(function (r) { if (!CHANGE_REQS[r]) throw new Error('Unknown request "' + r + '". Use ev, weekend, display, nearest or upi'); });
         var frames = [], godEdits = 0, ooNew = 0, ooEdits = 0, tally = [];
         frames.push(F('Here is a typical brute-force answer. Red lines are smells: strings for types, parallel arrays, rules and prices as if-else ladders, printing inside logic. It works for the demo — now watch what each follow-up costs.', [
-          CODE('God class (brute force)', GOD_VIZ_CODE, GOD_SMELLS),
+          CODE('God class (brute force)', GOD_VIZ_CODE, GOD_SMELLS, GOD_ALT),
           G('Modelled design (same behaviour)', OO_BASE_NODES, OO_BASE_EDGES, { h: 80 })
         ]));
         reqs.forEach(function (r) {
@@ -8660,7 +8723,7 @@ int main() {
           cr.god.forEach(function (ln) { hl[ln] = 'bad'; });
           godEdits += cr.god.length;
           frames.push(F('Follow-up: <b>' + cr.title + '</b>. In the God class you must edit <span class="c-r">' + cr.god.length + ' lines</span> spread across both methods — every one a chance to break parking or billing for existing cars.', [
-            CODE('God class: lines that must change', GOD_VIZ_CODE, hl),
+            CODE('God class: lines that must change', GOD_VIZ_CODE, hl, GOD_ALT),
             VARS('Running cost', { godLinesEdited: godEdits, ooClassesAdded: ooNew, ooCoreClassesEdited: ooEdits }, { godLinesEdited: 'bad' })
           ]));
           ooNew += 1;
@@ -8720,7 +8783,7 @@ int main() {
       statement: `<p>You are given a working, single-class parking program (parallel arrays, type strings, inline pricing). Refactor it into a clean design <b>without changing its observable behaviour</b>: the demo must still print <code>Car at spot 1, pays 60</code>. Then show how "weekend pricing" would be added.</p>`,
       constraints: `Keep the same rules: bikes fit any spot, cars fit M or L, trucks only L; price per hour 10 / 20 / 50, minimum 1 hour. Tickets must not be reusable.`,
       example: `<p>Spots ${H.arr(['S', 'M', 'M', 'L'])} Car enters at hour 9 → ${H.c('g', 'spot 1')} (first M). Leaves at 12 → ${H.c('b', '3 h × 20 = 60')}. Leaving again with the same ticket → ${H.c('r', 'IllegalArgumentException')} (the brute force silently "frees" the spot twice).</p>`,
-      brute: { why: `<p>The original: everything static, rules duplicated as string comparisons, a ticket is just an array index (anyone can "leave" any spot), and pricing is tangled into <code>leave()</code>. Adding a vehicle type means editing both the fit check and the price ladder.</p>`, code: J.g2_brute },
+      brute: { why: `<p>The original: everything static, rules duplicated as string comparisons, a ticket is just an array index (anyone can "leave" any spot), and pricing is tangled into <code>leave()</code>. Adding a vehicle type means editing both the fit check and the price ladder.</p>`, code: { lang: 'java', code: J.g2_brute, alt: [{ lang: 'python', code: "# THE GOD CLASS: everything about the parking lot lives in one place.\n# Spots are parallel lists, vehicle types are strings, prices are magic numbers.\nspot_size = [\"S\", \"M\", \"M\", \"L\"]   # S=bike, M=car, L=truck\nspot_plate = [None] * 4            # None = free\nspot_since = [0] * 4               # entry hour\n\ndef park(plate, type_, hour):\n    for i in range(len(spot_size)):\n        if spot_plate[i] is not None: continue\n        if (type_ == \"BIKE\" or (type_ == \"CAR\" and spot_size[i] != \"S\")\n                or (type_ == \"TRUCK\" and spot_size[i] == \"L\")):\n            spot_plate[i] = plate\n            spot_since[i] = hour\n            return i                           # the \"ticket\" is just an index\n    return -1                                  # full (or wrong type string, who knows)\n\ndef leave(spot, type_, hour):\n    hours = max(1, hour - spot_since[spot])\n    if type_ == \"BIKE\": fee = hours * 10       # pricing tangled into exit logic\n    elif type_ == \"CAR\": fee = hours * 20\n    else: fee = hours * 50\n    spot_plate[spot] = None                    # no check that the right car leaves\n    return fee\n\nif __name__ == \"__main__\":\n    t = park(\"KA-01\", \"CAR\", 9)\n    print(f\"Car at spot {t}, pays {leave(t, 'CAR', 12)}\")\n" }, { lang: 'ts', code: "// THE GOD CLASS: everything about the parking lot lives in one place.\n// Spots are parallel arrays, vehicle types are strings, prices are magic numbers.\nconst spotSize: string[] = [\"S\", \"M\", \"M\", \"L\"];            // S=bike, M=car, L=truck\nconst spotPlate: (string | null)[] = [null, null, null, null]; // null = free\nconst spotSince: number[] = [0, 0, 0, 0];                   // entry hour\n\nfunction park(plate: string, type: string, hour: number): number {\n  for (let i = 0; i < spotSize.length; i++) {\n    if (spotPlate[i] !== null) continue;\n    if (type === \"BIKE\" || (type === \"CAR\" && spotSize[i] !== \"S\")\n        || (type === \"TRUCK\" && spotSize[i] === \"L\")) {\n      spotPlate[i] = plate;\n      spotSince[i] = hour;\n      return i;                                 // the \"ticket\" is just an index\n    }\n  }\n  return -1;                                    // full (or wrong type string, who knows)\n}\n\nfunction leave(spot: number, type: string, hour: number): number {\n  const hours = Math.max(1, hour - spotSince[spot]);\n  let fee: number;\n  if (type === \"BIKE\") fee = hours * 10;        // pricing tangled into exit logic\n  else if (type === \"CAR\") fee = hours * 20;\n  else fee = hours * 50;\n  spotPlate[spot] = null;                       // no check that the right car leaves\n  return fee;\n}\n\nconst t = park(\"KA-01\", \"CAR\", 9);\nconsole.log(\"Car at spot \" + t + \", pays \" + leave(t, \"CAR\", 12));\n" }, { lang: 'cpp', code: "// THE GOD CLASS: everything about the parking lot lives in one place.\n// Spots are parallel arrays, vehicle types are strings, prices are magic numbers.\nstring spotSize[4] = {\"S\", \"M\", \"M\", \"L\"};   // S=bike, M=car, L=truck\nstring spotPlate[4];                          // \"\" = free\nlong long spotSince[4];                       // entry hour\n\nint park(const string& plate, const string& type, long long hour) {\n    for (int i = 0; i < 4; i++) {\n        if (!spotPlate[i].empty()) continue;\n        if (type == \"BIKE\" || (type == \"CAR\" && spotSize[i] != \"S\")\n                || (type == \"TRUCK\" && spotSize[i] == \"L\")) {\n            spotPlate[i] = plate;\n            spotSince[i] = hour;\n            return i;                           // the \"ticket\" is just an index\n        }\n    }\n    return -1;                                  // full (or wrong type string, who knows)\n}\n\nlong long leave(int spot, const string& type, long long hour) {\n    long long hours = max(1LL, hour - spotSince[spot]);\n    long long fee;\n    if (type == \"BIKE\") fee = hours * 10;       // pricing tangled into exit logic\n    else if (type == \"CAR\") fee = hours * 20;\n    else fee = hours * 50;\n    spotPlate[spot] = \"\";                       // no check that the right car leaves\n    return fee;\n}\n\nint main() {\n    int t = park(\"KA-01\", \"CAR\", 9);\n    cout << \"Car at spot \" << t << \", pays \" << leave(t, \"CAR\", 12) << endl;\n}\n" }] } },
       mcq: { q: 'What is the FIRST safe step when refactoring a God class you did not write?', options: ['Rename everything to nicer names', 'Pin its current behaviour with a test or a demo whose output you record', 'Split it into ten classes at once', 'Add a Singleton'], answer: 1, explain: 'Characterization tests (or a recorded demo output) let you refactor in small steps and prove nothing broke.' },
       hints: [
         `<p>Hint 1: the type strings and their rules ("CAR fits M or L, costs 20") are data. Put them in an <code>enum VType</code> with a rate and a list of fitting sizes.</p>`,
@@ -8791,7 +8854,7 @@ int main() {
       '"Design a parking lot / garage / parking system" → the canonical LLD question; expect follow-ups on pricing, spot types and concurrency',
       '"Different vehicle sizes" → enum with fit rules (data), not an if-else ladder',
       '"Nearest spot", "first available" → allocation Strategy; mention per-type free lists or a min-heap for speed',
-      '"Multiple entry gates" → park() must be atomic: one lock (synchronized / mutex), per-floor locks, or concurrent queues',
+      '"Multiple entry gates" → park() must be atomic: one lock (Java <code>synchronized</code> / <code>threading.Lock</code> / <code>std::mutex</code>), per-floor locks, or concurrent queues',
       '"Display board", "show availability" → Observer with counters, not a full scan per refresh',
       '"Hourly / daily / weekend pricing" → PricingStrategy, possibly decorated (cap, surcharge)'
     ],
@@ -8881,7 +8944,7 @@ int main() {
       statement: `<p>Model spot types and vehicle types so that the "which spots fit" rule lives in exactly one place. Then implement two interchangeable allocation strategies: <b>NearestFirst</b> (lowest floor first; on that floor the smallest fitting type) and <b>BestFitFirst</b> (smallest fitting type anywhere, then lowest floor — protects large spots for trucks).</p>`,
       constraints: `Floors ≤ 50, spots per floor ≤ 1000. Bikes fit SMALL, COMPACT, LARGE (in that preference); cars COMPACT, LARGE; trucks LARGE. Return empty when nothing fits.`,
       example: `<p>Floor 0 = ${H.arr(['S', 'L'])} Floor 1 = ${H.arr(['S', 'M'])} A car arrives.</p><p>NearestFirst → ${H.c('y', '0-1 (LARGE on floor 0)')}: less driving. BestFitFirst → ${H.c('g', '1-1 (COMPACT on floor 1)')}: keeps the large spot for a truck.</p>`,
-      brute: { why: `<p>One method with a hand-written branch per vehicle type and the fit rules copy-pasted into each branch. A second strategy means copying the whole method; adding a vehicle type means editing every copy.</p>`, code: J.g3_brute },
+      brute: { why: `<p>One method with a hand-written branch per vehicle type and the fit rules copy-pasted into each branch. A second strategy means copying the whole method; adding a vehicle type means editing every copy.</p>`, code: { lang: 'java', code: J.g3_brute, alt: [{ lang: 'python', code: "# BRUTE: one method, one hand-written branch per vehicle type, fit rules copy-pasted.\n# Adding a new strategy means copying the whole method; adding EV means editing every branch.\nclass SpotFinder:\n    # layout[f][i] is \"S\", \"M\" or \"L\"; taken[f][i] marks occupied spots\n    @staticmethod\n    def find(layout, taken, vehicle):\n        for f in range(len(layout)):\n            if vehicle == \"BIKE\":\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"S\": return f\"{f}-{i}\"\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"M\": return f\"{f}-{i}\"\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"L\": return f\"{f}-{i}\"\n            elif vehicle == \"CAR\":\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"M\": return f\"{f}-{i}\"\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"L\": return f\"{f}-{i}\"\n            elif vehicle == \"TRUCK\":\n                for i in range(len(layout[f])):\n                    if not taken[f][i] and layout[f][i] == \"L\": return f\"{f}-{i}\"\n        return \"FULL\"\n" }, { lang: 'ts', code: "// BRUTE: one method, one hand-written branch per vehicle type, fit rules copy-pasted.\n// Adding a new strategy means copying the whole method; adding EV means editing every branch.\nclass SpotFinder {\n  // layout[f][i] is \"S\", \"M\" or \"L\"; taken[f][i] marks occupied spots\n  static find(layout: string[][], taken: boolean[][], vehicle: string): string {\n    for (let f = 0; f < layout.length; f++) {\n      if (vehicle === \"BIKE\") {\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"S\") return f + \"-\" + i;\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"M\") return f + \"-\" + i;\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"L\") return f + \"-\" + i;\n      } else if (vehicle === \"CAR\") {\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"M\") return f + \"-\" + i;\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"L\") return f + \"-\" + i;\n      } else if (vehicle === \"TRUCK\") {\n        for (let i = 0; i < layout[f].length; i++) if (!taken[f][i] && layout[f][i] === \"L\") return f + \"-\" + i;\n      }\n    }\n    return \"FULL\";\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: one method, one hand-written branch per vehicle type, fit rules copy-pasted.\n// Adding a new strategy means copying the whole method; adding EV means editing every branch.\nstruct SpotFinder {\n    // layout[f][i] is \"S\", \"M\" or \"L\"; taken[f][i] marks occupied spots\n    static string find(const vector<vector<string>>& layout, const vector<vector<bool>>& taken, const string& vehicle) {\n        for (int f = 0; f < (int)layout.size(); f++) {\n            int n = layout[f].size();\n            if (vehicle == \"BIKE\") {\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"S\") return to_string(f) + \"-\" + to_string(i);\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"M\") return to_string(f) + \"-\" + to_string(i);\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"L\") return to_string(f) + \"-\" + to_string(i);\n            } else if (vehicle == \"CAR\") {\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"M\") return to_string(f) + \"-\" + to_string(i);\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"L\") return to_string(f) + \"-\" + to_string(i);\n            } else if (vehicle == \"TRUCK\") {\n                for (int i = 0; i < n; i++) if (!taken[f][i] && layout[f][i] == \"L\") return to_string(f) + \"-\" + to_string(i);\n            }\n        }\n        return \"FULL\";\n    }\n};\n" }] } },
       mcq: { q: 'Where should "a CAR can use COMPACT or LARGE" be stored?', options: ['In every strategy class', 'In the VehicleType enum as data', 'In ParkingLot.park()', 'In the Spot constructor'], answer: 1, explain: 'It is a fact about the vehicle type. Storing it once on the enum means all strategies share it and a new type is one line.' },
       hints: [
         `<p>Hint 1: both strategies loop over the same three things (floors, fitting types, spots); they only differ in <b>loop order</b>. That is a sign the rule is data and the order is the strategy.</p>`,
@@ -9092,7 +9155,7 @@ int main() {
       statement: `<p>Implement exit pricing: cars pay <b>₹30 for the first 2 hours</b>, then <b>₹20 per started hour</b>, capped at <b>₹200 per 24-hour day</b>; bikes and trucks have their own numbers. A <b>lost ticket</b> costs <code>max(normal fee, ₹500)</code>. New tariffs must be addable without editing existing ones.</p>`,
       constraints: `Durations up to 30 days. Money as <code>long</code> rupees. Partial hours round up; minimum 1 hour.`,
       example: `<p>Car 90 min → ${H.c('g', '₹30')} (inside the first block). Car 250 min = 5 started hours → ${H.c('g', '30 + 3×20 = ₹90')}. Car 30 h → day 1 capped ${H.c('b', '₹200')} + remaining 6 h = ${H.c('b', '₹110')} → ${H.c('g', '₹310')}. Lost ticket after 1 h → ${H.c('r', '₹500')}.</p>`,
-      brute: { why: `<p>One <code>fee()</code> method with an if-else ladder per vehicle type, each repeating the slab arithmetic with different numbers. The cap is copy-pasted (and forgotten for trucks), multi-day stays are wrong (the cap is applied once, not per day), and adding a weekend tariff means another branch in every type.</p>`, code: J.g4_brute },
+      brute: { why: `<p>One <code>fee()</code> method with an if-else ladder per vehicle type, each repeating the slab arithmetic with different numbers. The cap is copy-pasted (and forgotten for trucks), multi-day stays are wrong (the cap is applied once, not per day), and adding a weekend tariff means another branch in every type.</p>`, code: { lang: 'java', code: J.g4_brute, alt: [{ lang: 'python', code: "# BRUTE: the fee rules are an if-else ladder buried inside the exit method.\nclass ExitCounter:\n    @staticmethod\n    def fee(type_, minutes, lost_ticket):\n        if lost_ticket: return 500\n        hours = (minutes + 59) // 60\n        if type_ == \"CAR\":\n            fee = 30 if hours <= 2 else 30 + (hours - 2) * 20\n            if fee > 200: fee = 200\n        elif type_ == \"BIKE\":\n            fee = 10 if hours <= 2 else 10 + (hours - 2) * 5\n            if fee > 60: fee = 60\n        else:\n            fee = hours * 100                        # trucks: someone forgot the cap here\n        return fee\n" }, { lang: 'ts', code: "// BRUTE: the fee rules are an if-else ladder buried inside the exit method.\nclass ExitCounter {\n  static fee(type: string, minutes: number, lostTicket: boolean): number {\n    if (lostTicket) return 500;\n    const hours = Math.floor((minutes + 59) / 60);\n    let fee: number;\n    if (type === \"CAR\") {\n      fee = hours <= 2 ? 30 : 30 + (hours - 2) * 20;\n      if (fee > 200) fee = 200;\n    } else if (type === \"BIKE\") {\n      fee = hours <= 2 ? 10 : 10 + (hours - 2) * 5;\n      if (fee > 60) fee = 60;\n    } else {\n      fee = hours * 100;                        // trucks: someone forgot the cap here\n    }\n    return fee;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: the fee rules are an if-else ladder buried inside the exit method.\nstruct ExitCounter {\n    static long long fee(const string& type, long long minutes, bool lostTicket) {\n        if (lostTicket) return 500;\n        long long hours = (minutes + 59) / 60;\n        long long fee;\n        if (type == \"CAR\") {\n            if (hours <= 2) fee = 30; else fee = 30 + (hours - 2) * 20;\n            if (fee > 200) fee = 200;\n        } else if (type == \"BIKE\") {\n            if (hours <= 2) fee = 10; else fee = 10 + (hours - 2) * 5;\n            if (fee > 60) fee = 60;\n        } else {\n            fee = hours * 100;                  // trucks: someone forgot the cap here\n        }\n        return fee;\n    }\n};\n" }] } },
       mcq: { q: 'You need "₹200 cap per day" on top of ANY tariff. Which pattern composes best?', options: ['Inheritance: CappedSlabPricing extends SlabPricing', 'Decorator: DailyCap wraps any PricingStrategy', 'A boolean flag capEnabled in every strategy', 'Singleton PriceManager'], answer: 1, explain: 'A decorator implements the same interface and wraps another strategy, so the cap works on slab, hourly or flat pricing without new subclasses.' },
       hints: [
         `<p>Hint 1: separate "what does N hours cost?" (slab rule) from "never more than X per day" (cap rule). They change independently, so they are different classes.</p>`,
@@ -9124,6 +9187,41 @@ int main() {
     '    || diag == target || anti == target) return WON;',
     'return board.isFull() ? DRAW : IN_PROGRESS;'
   ].join('\n');
+
+  var TTT_PY = [
+    "add = 1 if player == X else -1",
+    "rows[r] += add",
+    "cols[c] += add",
+    "if r == c: diag += add",
+    "if r + c == n - 1: anti += add",
+    "target = add * n",
+    "if (rows[r] == target or cols[c] == target",
+    "        or diag == target or anti == target): return WON",
+    "return DRAW if board.is_full() else IN_PROGRESS"
+  ].join('\n');
+  var TTT_TS = [
+    "const add = player === X ? +1 : -1;",
+    "rows[r] += add;",
+    "cols[c] += add;",
+    "if (r === c) diag += add;",
+    "if (r + c === n - 1) anti += add;",
+    "const target = add * n;",
+    "if (rows[r] === target || cols[c] === target",
+    "    || diag === target || anti === target) return WON;",
+    "return board.isFull() ? DRAW : IN_PROGRESS;"
+  ].join('\n');
+  var TTT_CPP = [
+    "int add = (player == X) ? +1 : -1;",
+    "rows[r] += add;",
+    "cols[c] += add;",
+    "if (r == c) diag += add;",
+    "if (r + c == n - 1) anti += add;",
+    "int target = add * n;",
+    "if (rows[r] == target || cols[c] == target",
+    "    || diag == target || anti == target) return WON;",
+    "return board.isFull() ? DRAW : IN_PROGRESS;"
+  ].join('\n');
+  var TTT_ALT = { python: { code: TTT_PY, map: {} }, js: { lang: 'ts', code: TTT_TS, map: {} }, cpp: { code: TTT_CPP, map: {} } };
 
   topics.push({
     title: 'Tic-Tac-Toe: Full Object Design and O(1) Win Detection',
@@ -9185,7 +9283,7 @@ int main() {
             { type: 'array', label: 'cols[]', values: cols.slice(), hl: ch === undefined ? {} : one(ch, 'cur') }
           ];
         }
-        frames.push(F('Empty ' + n + '×' + n + ' board. Instead of rescanning after each move, we keep <b>' + (2 * n + 2) + ' counters</b>: one per row, one per column, and two diagonals. A counter reaching <b>+' + n + '</b> means X owns that whole line; <b>−' + n + '</b> means O does.', [gridPart()].concat(counters(), [VARS('Diagonals and status', { diag: diag, anti: anti, target: '±' + n, status: status }), CODE('Per-move work: O(1)', TTT_COUNTER_CODE)])));
+        frames.push(F('Empty ' + n + '×' + n + ' board. Instead of rescanning after each move, we keep <b>' + (2 * n + 2) + ' counters</b>: one per row, one per column, and two diagonals. A counter reaching <b>+' + n + '</b> means X owns that whole line; <b>−' + n + '</b> means O does.', [gridPart()].concat(counters(), [VARS('Diagonals and status', { diag: diag, anti: anti, target: '±' + n, status: status }), CODE('Per-move work: O(1)', TTT_COUNTER_CODE, {}, TTT_ALT)])));
         for (var m = 0; m < toks.length; m++) {
           var mm = /^(\d+),(\d+)$/.exec(toks[m]);
           if (!mm) throw new Error('Bad move "' + toks[m] + '". Use row,col like 0,2');
@@ -9218,13 +9316,13 @@ int main() {
           if (line) {
             status = 'WON';
             codeHl[7] = 'sel'; codeHl[8] = 'sel';
-            frames.push(F('<b>' + sym + '</b> plays (' + r + ',' + c + '): ' + touched + '. The ' + line.kind + ' counter hit <b>' + target + '</b> = ' + (add > 0 ? '+' : '−') + 'n, so every cell in it is ' + sym + '. <span class="c-g">' + sym + ' WINS</span> — found with ' + (2 + (onD ? 1 : 0) + (onA ? 1 : 0)) + ' additions and no board scan.', [gridPart(many(line.cells, 'sel'), 'Board — winning line')].concat(counters(r, c), [VARS('Diagonals and status', { diag: diag, anti: anti, target: target, status: status, winner: sym }, { status: 'ok', winner: 'ok' }), CODE('Per-move work: O(1)', TTT_COUNTER_CODE, codeHl)])));
+            frames.push(F('<b>' + sym + '</b> plays (' + r + ',' + c + '): ' + touched + '. The ' + line.kind + ' counter hit <b>' + target + '</b> = ' + (add > 0 ? '+' : '−') + 'n, so every cell in it is ' + sym + '. <span class="c-g">' + sym + ' WINS</span> — found with ' + (2 + (onD ? 1 : 0) + (onA ? 1 : 0)) + ' additions and no board scan.', [gridPart(many(line.cells, 'sel'), 'Board — winning line')].concat(counters(r, c), [VARS('Diagonals and status', { diag: diag, anti: anti, target: target, status: status, winner: sym }, { status: 'ok', winner: 'ok' }), CODE('Per-move work: O(1)', TTT_COUNTER_CODE, codeHl, TTT_ALT)])));
           } else if (filled === n * n) {
             status = 'DRAW';
             codeHl[9] = 'sel';
-            frames.push(F('<b>' + sym + '</b> plays (' + r + ',' + c + '): ' + touched + '. No counter reached ±' + n + ' and the board is full → <span class="c-y">DRAW</span>.', [gridPart(one(r + ',' + c, 'ok'))].concat(counters(r, c), [VARS('Diagonals and status', { diag: diag, anti: anti, status: status }, { status: 'cur' }), CODE('Per-move work: O(1)', TTT_COUNTER_CODE, codeHl)])));
+            frames.push(F('<b>' + sym + '</b> plays (' + r + ',' + c + '): ' + touched + '. No counter reached ±' + n + ' and the board is full → <span class="c-y">DRAW</span>.', [gridPart(one(r + ',' + c, 'ok'))].concat(counters(r, c), [VARS('Diagonals and status', { diag: diag, anti: anti, status: status }, { status: 'cur' }), CODE('Per-move work: O(1)', TTT_COUNTER_CODE, codeHl, TTT_ALT)])));
           } else {
-            frames.push(F('<b>' + sym + '</b> plays (' + r + ',' + c + '): update ' + touched + (onD && onA ? ' (the centre lies on <i>both</i> diagonals)' : '') + '. No counter equals ' + target + ', so the game goes on and the turn passes to ' + SYM[1 - turn] + '.', [gridPart(one(r + ',' + c, 'ok'))].concat(counters(r, c), [VARS('Diagonals and status', { diag: diag, anti: anti, target: target, next: SYM[1 - turn], status: status }, { next: 'cur' }), CODE('Per-move work: O(1)', TTT_COUNTER_CODE, codeHl)])));
+            frames.push(F('<b>' + sym + '</b> plays (' + r + ',' + c + '): update ' + touched + (onD && onA ? ' (the centre lies on <i>both</i> diagonals)' : '') + '. No counter equals ' + target + ', so the game goes on and the turn passes to ' + SYM[1 - turn] + '.', [gridPart(one(r + ',' + c, 'ok'))].concat(counters(r, c), [VARS('Diagonals and status', { diag: diag, anti: anti, target: target, next: SYM[1 - turn], status: status }, { next: 'cur' }), CODE('Per-move work: O(1)', TTT_COUNTER_CODE, codeHl, TTT_ALT)])));
             turn = 1 - turn;
           }
         }
@@ -9280,7 +9378,7 @@ int main() {
       statement: `<p>Design a class <code>TicTacToe(int n)</code> with <code>int move(int row, int col, int player)</code> where player is 1 or 2. Moves are guaranteed valid (empty cell, game not over). Return the winning player's number if this move wins, otherwise 0. Aim for better than O(n²) per move.</p>`,
       constraints: `2 ≤ n ≤ 100; player ∈ {1, 2}; at most n² calls; every move is on an empty cell.`,
       example: `<p>n = 3: moves (0,0,1) (0,2,2) (2,2,1) (1,1,2) (2,0,1) (1,0,2) (2,1,1) → outputs ${H.c('m', '0 0 0 0 0 0')} ${H.c('g', '1')}. The last move completes row 2 = 1, 1, 1 → rows[2] reaches +3.</p>`,
-      brute: { why: `<p>Store the board and, after each move, rescan every row, column and both diagonals: O(n²) per move and O(n⁴) for a whole game. For n = 100 that is 10,000 cells per move. Even the "check only the last move's lines" improvement is O(n).</p>`, code: J.g5_brute },
+      brute: { why: `<p>Store the board and, after each move, rescan every row, column and both diagonals: O(n²) per move and O(n⁴) for a whole game. For n = 100 that is 10,000 cells per move. Even the "check only the last move's lines" improvement is O(n).</p>`, code: { lang: 'java', code: J.g5_brute, alt: [{ lang: 'python', code: "# BRUTE: after every move, rescan every row, column and both diagonals: O(n^2) per move.\nclass TicTacToeBrute:\n    def __init__(self, n):\n        self.n = n\n        self.board = [[0] * n for _ in range(n)]\n\n    def move(self, row, col, player):\n        \"\"\"player is 1 or 2. Returns the winner (1 or 2) or 0 if nobody has won yet.\"\"\"\n        n, b = self.n, self.board\n        b[row][col] = player\n        for r in range(n):                               # every row\n            if all(b[r][c] == player for c in range(n)): return player\n        for c in range(n):                               # every column\n            if all(b[r][c] == player for r in range(n)): return player\n        d = all(b[i][i] == player for i in range(n))     # both diagonals\n        a = all(b[i][n - 1 - i] == player for i in range(n))\n        return player if d or a else 0\n" }, { lang: 'ts', code: "// BRUTE: after every move, rescan every row, column and both diagonals: O(n^2) per move.\nclass TicTacToeBrute {\n  private board: number[][];\n  constructor(private n: number) { this.board = Array.from({ length: n }, () => new Array<number>(n).fill(0)); }\n\n  /** player is 1 or 2. Returns the winner (1 or 2) or 0 if nobody has won yet. */\n  move(row: number, col: number, player: number): number {\n    const n = this.n, b = this.board;\n    b[row][col] = player;\n    for (let r = 0; r < n; r++) {                        // every row\n      if (b[r].every((v) => v === player)) return player;\n    }\n    for (let c = 0; c < n; c++) {                        // every column\n      if (b.every((rowArr) => rowArr[c] === player)) return player;\n    }\n    let d = true, a = true;                              // both diagonals\n    for (let i = 0; i < n; i++) { d = d && b[i][i] === player; a = a && b[i][n - 1 - i] === player; }\n    return d || a ? player : 0;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: after every move, rescan every row, column and both diagonals: O(n^2) per move.\nclass TicTacToeBrute {\n    int n;\n    vector<vector<int>> board;\npublic:\n    TicTacToeBrute(int n) : n(n), board(n, vector<int>(n, 0)) {}\n\n    /** player is 1 or 2. Returns the winner (1 or 2) or 0 if nobody has won yet. */\n    int move(int row, int col, int player) {\n        board[row][col] = player;\n        for (int r = 0; r < n; r++) {                    // every row\n            bool all = true;\n            for (int c = 0; c < n; c++) all &= board[r][c] == player;\n            if (all) return player;\n        }\n        for (int c = 0; c < n; c++) {                    // every column\n            bool all = true;\n            for (int r = 0; r < n; r++) all &= board[r][c] == player;\n            if (all) return player;\n        }\n        bool d = true, a = true;                         // both diagonals\n        for (int i = 0; i < n; i++) { d &= board[i][i] == player; a &= board[i][n - 1 - i] == player; }\n        return d || a ? player : 0;\n    }\n};\n" }] } },
       mcq: { q: 'Player 1 adds +1 and player 2 adds −1 to rows[r]. Why does rows[r] == n prove row r is all player 1?', options: ['Because n is odd', 'Because any player-2 cell lowers the sum below n, and the row has only n cells', 'Because rows are checked left to right', 'It does not prove it'], answer: 1, explain: 'Each of the n cells contributes at most +1; reaching exactly n needs every cell to be +1, i.e. player 1.' },
       hints: [
         `<p>Hint 1: you never need to know <i>which</i> cells are in a row — only whether one player owns all of them. A running sum can tell you that.</p>`,
@@ -9314,6 +9412,226 @@ int main() {
         B('Nearest', 'NearestFirst', 16, 48), B('ST', 'enum SpotType', 47, 48), B('Hourly', 'HourlyPricing', 88, 48)],
       edges: [['Lot', 'Alloc', 'uses'], ['Lot', 'Spot', '1..*'], ['Lot', 'Price', 'uses'], ['Nearest', 'Alloc', 'implements'], ['Spot', 'ST'], ['Hourly', 'Price', 'implements']]
     }
+  };
+  var EXT_BOT_PY = [
+    "class MinimaxBot(Player):",
+    "    def choose_move(self, b):",
+    "        # try every free cell, score it with minimax,",
+    "        # return the best one",
+    "        return self.best_move(b)"
+  ].join('\n');
+  var EXT_BOT_TS = [
+    "class MinimaxBot implements Player {",
+    "  chooseMove(b: Board): [number, number] {",
+    "    // try every free cell, score it with minimax,",
+    "    // return the best one",
+    "    return this.bestMove(b);",
+    "  }",
+    "}"
+  ].join('\n');
+  var EXT_BOT_CPP = [
+    "class MinimaxBot : public Player {",
+    "public:",
+    "    pair<int, int> chooseMove(const Board& b) override {",
+    "        // try every free cell, score it with minimax,",
+    "        // return the best one",
+    "        return bestMove(b);",
+    "    }",
+    "};"
+  ].join('\n');
+  var EXT_KINAROW_PY = [
+    "class KInARowStrategy(WinningStrategy):",
+    "    def is_winning_move(self, b, m, p):",
+    "        # walk 4 directions from the last move,",
+    "        # count same symbols: O(K)",
+    "        return self.longest_run_through(b, m) >= self.k"
+  ].join('\n');
+  var EXT_KINAROW_TS = [
+    "class KInARowStrategy implements WinningStrategy {",
+    "  isWinningMove(b: Board, m: Move, p: number): boolean {",
+    "    // walk 4 directions from the last move,",
+    "    // count same symbols: O(K)",
+    "    return this.longestRunThrough(b, m) >= this.k;",
+    "  }",
+    "}"
+  ].join('\n');
+  var EXT_KINAROW_CPP = [
+    "class KInARowStrategy : public WinningStrategy {",
+    "public:",
+    "    bool isWinningMove(const Board& b, const Move& m, int p) override {",
+    "        // walk 4 directions from the last move,",
+    "        // count same symbols: O(K)",
+    "        return longestRunThrough(b, m) >= k;",
+    "    }",
+    "};"
+  ].join('\n');
+  var EXT_UNDO_PY = [
+    "class MoveCommand(Command):",
+    "    def execute(self): self.board.apply(self.r, self.c, self.p, +1)",
+    "    def undo(self):    self.board.apply(self.r, self.c, self.p, -1)",
+    "",
+    "# Game: history = []  (a stack); undo() pops one"
+  ].join('\n');
+  var EXT_UNDO_TS = [
+    "class MoveCommand implements Command {",
+    "  execute(): void { this.board.apply(this.r, this.c, this.p, +1); }",
+    "  undo(): void    { this.board.apply(this.r, this.c, this.p, -1); }",
+    "}",
+    "// Game: history: MoveCommand[]; undo() pops one"
+  ].join('\n');
+  var EXT_UNDO_CPP = [
+    "class MoveCommand : public Command {",
+    "public:",
+    "    void execute() override { board.apply(r, c, p, +1); }",
+    "    void undo() override    { board.apply(r, c, p, -1); }",
+    "};",
+    "// Game: vector<MoveCommand> history; undo() pops one"
+  ].join('\n');
+  var EXT_SCOREBOARD_PY = [
+    "class GameListener(Protocol):",
+    "    def moved(self, who: str, r: int, c: int) -> None: pass",
+    "    def ended(self, result: str) -> None: pass",
+    "",
+    "class Scoreboard(GameListener):",
+    "    def __init__(self): self.wins = {}   # counts wins",
+    "    def ended(self, result): self.wins[result] = self.wins.get(result, 0) + 1"
+  ].join('\n');
+  var EXT_SCOREBOARD_TS = [
+    "interface GameListener {",
+    "  moved(who: string, r: number, c: number): void;",
+    "  ended(result: string): void;",
+    "}",
+    "class Scoreboard implements GameListener {",
+    "  wins = new Map<string, number>();   // counts wins",
+    "  moved(who: string, r: number, c: number): void {}",
+    "  ended(result: string): void { this.wins.set(result, (this.wins.get(result) ?? 0) + 1); }",
+    "}"
+  ].join('\n');
+  var EXT_SCOREBOARD_CPP = [
+    "class GameListener {",
+    "public:",
+    "    virtual void moved(char who, int r, int c) = 0;",
+    "    virtual void ended(const string& result) = 0;",
+    "    virtual ~GameListener() = default;",
+    "};",
+    "class Scoreboard : public GameListener {",
+    "    map<string, int> wins;               // counts wins",
+    "public:",
+    "    void moved(char who, int r, int c) override {}",
+    "    void ended(const string& result) override { wins[result]++; }",
+    "};"
+  ].join('\n');
+  var EXT_EV_PY = [
+    "class ChargingAddOn(PricingStrategy):",
+    "    def __init__(self, inner): self.inner = inner",
+    "    def fee(self, t, out):",
+    "        return self.inner.fee(t, out) + self.kwh(t) * self.per_kwh",
+    "",
+    "# + EV constant in enum SpotType (data, not logic)"
+  ].join('\n');
+  var EXT_EV_TS = [
+    "class ChargingAddOn implements PricingStrategy {",
+    "  constructor(private inner: PricingStrategy) {}",
+    "  fee(t: Ticket, out: Date): number {",
+    "    return this.inner.fee(t, out) + this.kwh(t) * this.perKwh;",
+    "  }",
+    "}",
+    "// + EV constant in enum SpotType (data, not logic)"
+  ].join('\n');
+  var EXT_EV_CPP = [
+    "class ChargingAddOn : public PricingStrategy {",
+    "    PricingStrategy& inner;",
+    "public:",
+    "    long long fee(const Ticket& t, Time out) const override {",
+    "        return inner.fee(t, out) + kwh(t) * perKwh;",
+    "    }",
+    "};",
+    "// + EV constant in enum SpotType (data, not logic)"
+  ].join('\n');
+  var EXT_WEEKEND_PY = [
+    "class WeekendSurcharge(PricingStrategy):",
+    "    def __init__(self, inner): self.inner = inner",
+    "    def fee(self, t, out):",
+    "        base = self.inner.fee(t, out)",
+    "        return base * 3 // 2 if self.is_weekend(t) else base"
+  ].join('\n');
+  var EXT_WEEKEND_TS = [
+    "class WeekendSurcharge implements PricingStrategy {",
+    "  constructor(private inner: PricingStrategy) {}",
+    "  fee(t: Ticket, out: Date): number {",
+    "    const base = this.inner.fee(t, out);",
+    "    return this.isWeekend(t) ? Math.floor(base * 3 / 2) : base;",
+    "  }",
+    "}"
+  ].join('\n');
+  var EXT_WEEKEND_CPP = [
+    "class WeekendSurcharge : public PricingStrategy {",
+    "    PricingStrategy& inner;",
+    "public:",
+    "    long long fee(const Ticket& t, Time out) const override {",
+    "        long long base = inner.fee(t, out);",
+    "        return isWeekend(t) ? base * 3 / 2 : base;",
+    "    }",
+    "};"
+  ].join('\n');
+  var EXT_GATES_PY = [
+    "class NearestToGate(SpotAllocationStrategy):",
+    "    # one min-heap of free spots per gate,",
+    "    # ordered by distance; lazy deletion",
+    "    def find_spot(self, floors, type_):",
+    "        return heappop(self.heaps[self.entry_gate])   # poll the heap of the entry gate"
+  ].join('\n');
+  var EXT_GATES_TS = [
+    "class NearestToGate implements SpotAllocationStrategy {",
+    "  // one min-heap of free spots per gate,",
+    "  // ordered by distance; lazy deletion",
+    "  findSpot(floors: Floor[], type: SpotType): ParkingSpot | undefined {",
+    "    return this.heaps[this.entryGate].poll();   // poll the heap of the entry gate",
+    "  }",
+    "}"
+  ].join('\n');
+  var EXT_GATES_CPP = [
+    "class NearestToGate : public SpotAllocationStrategy {",
+    "    // one min-heap of free spots per gate,",
+    "    // ordered by distance; lazy deletion",
+    "public:",
+    "    optional<ParkingSpot> findSpot(const vector<Floor>& floors, SpotType type) override {",
+    "        return pollHeap(heaps[entryGate]);       // poll the heap of the entry gate",
+    "    }",
+    "};"
+  ].join('\n');
+  var EXT_RESERVE_PY = [
+    "class SpotCalendar:",
+    "    def __init__(self): self.booked = SortedDict()   # start -> end",
+    "    def is_free(self, s, e):",
+    "        return self.clear_of_neighbours(s, e)         # floor + ceiling",
+    "",
+    "# ParkingLot.park() honours a reservation id"
+  ].join('\n');
+  var EXT_RESERVE_TS = [
+    "class SpotCalendar {",
+    "  booked = new TreeMap<number, number>();   // start -> end",
+    "  isFree(s: number, e: number): boolean { return this.clearOfNeighbours(s, e); }   // floor + ceiling",
+    "}",
+    "// ParkingLot.park() honours a reservation id"
+  ].join('\n');
+  var EXT_RESERVE_CPP = [
+    "class SpotCalendar {",
+    "    map<int, int> booked;                   // start -> end",
+    "public:",
+    "    bool isFree(int s, int e) const { return clearOfNeighbours(s, e); }   // floor + ceiling",
+    "};",
+    "// ParkingLot.park() honours a reservation id"
+  ].join('\n');
+  var EXT_ALT = {
+    bot: { python: { code: EXT_BOT_PY }, js: { lang: 'ts', code: EXT_BOT_TS }, cpp: { code: EXT_BOT_CPP } },
+    kinarow: { python: { code: EXT_KINAROW_PY }, js: { lang: 'ts', code: EXT_KINAROW_TS }, cpp: { code: EXT_KINAROW_CPP } },
+    undo: { python: { code: EXT_UNDO_PY }, js: { lang: 'ts', code: EXT_UNDO_TS }, cpp: { code: EXT_UNDO_CPP } },
+    scoreboard: { python: { code: EXT_SCOREBOARD_PY }, js: { lang: 'ts', code: EXT_SCOREBOARD_TS }, cpp: { code: EXT_SCOREBOARD_CPP } },
+    ev: { python: { code: EXT_EV_PY }, js: { lang: 'ts', code: EXT_EV_TS }, cpp: { code: EXT_EV_CPP } },
+    weekend: { python: { code: EXT_WEEKEND_PY }, js: { lang: 'ts', code: EXT_WEEKEND_TS }, cpp: { code: EXT_WEEKEND_CPP } },
+    gates: { python: { code: EXT_GATES_PY }, js: { lang: 'ts', code: EXT_GATES_TS }, cpp: { code: EXT_GATES_CPP } },
+    reserve: { python: { code: EXT_RESERVE_PY }, js: { lang: 'ts', code: EXT_RESERVE_TS }, cpp: { code: EXT_RESERVE_CPP } }
   };
   var EXT_REQS = {
     bot: { base: 'ttt', req: '"Let me play against the computer."', axis: 'who chooses moves', touch: 'Player', node: B('New', 'MinimaxBot', 55, 66), edge: ['New', 'Player', 'implements'], pattern: 'Strategy', added: 1, edited: 0,
@@ -9402,7 +9720,7 @@ int main() {
           var maxY = x.node.y > 66 ? 90 : 76;
           frames.push(F('Plug in <span class="c-g">' + x.node.label + '</span> (' + x.pattern + '). Change set: <b>+' + x.added + ' class' + (x.added > 1 ? 'es' : '') + '</b>, <b>' + x.edited + ' existing class' + (x.edited === 1 ? '' : 'es') + ' edited</b>' + (x.edited ? ' — honest note: this follow-up needs a small hook in the owner class the first time (a history stack / listener list), after which similar features are free.' : ' — the existing classes are not touched at all.'), [
             G(base.name + ': after the change', base.nodes.concat([x.node]), base.edges.concat([x.edge]), { h: maxY, hl: hl2, ehl: one(x.edge[0] + '-' + x.edge[1], 'ok'), tags: { New: 'NEW' } }),
-            CODE('The new code (sketch)', x.code, { 1: 'ok' }),
+            CODE('The new code (sketch)', x.code, { 1: 'ok' }, EXT_ALT[r]),
             VARS('Running change cost', { classesAdded: added, classesEdited: edited }, { classesAdded: 'ok' })
           ]));
           rows.push([r, base.name, x.pattern, '+' + x.added, String(x.edited)]);
@@ -9460,7 +9778,7 @@ int main() {
       statement: `<p>Extend Tic-Tac-Toe with <code>undo()</code> and <code>redo()</code>. Undo must restore the board, the turn, the game-over flag <b>and</b> the O(1) win-check counters exactly. A new move after an undo clears the redo history. Undo of a winning move re-opens the game.</p>`,
       constraints: `n ≤ 100, up to n² moves. undo/redo must be O(1). Return <code>false</code> when there is nothing to undo/redo.`,
       example: `<p>X(0,0) O(1,0) X(0,1) O(1,1) X(0,2) → ${H.c('g', 'X wins')}. <code>undo()</code> → row 0 becomes ${H.c('y', 'XX.')} and the game is open, still X to move. X plays (2,2) → ${H.c('b', 'ok')}. <code>redo()</code> → ${H.c('r', 'false')} (the redo branch was discarded).</p>`,
-      brute: { why: `<p>Copy the whole board before each move and pop a snapshot on undo. It restores the cells, but costs O(n²) time and memory per move, and it does <b>not</b> restore the counters, turn or game-over flag — after an undo the win check is silently wrong unless you rescan everything.</p>`, code: J.g6_brute },
+      brute: { why: `<p>Copy the whole board before each move and pop a snapshot on undo. It restores the cells, but costs O(n²) time and memory per move, and it does <b>not</b> restore the counters, turn or game-over flag — after an undo the win check is silently wrong unless you rescan everything.</p>`, code: { lang: 'java', code: J.g6_brute, alt: [{ lang: 'python', code: "# BRUTE: copy the whole board before every move so undo can restore it.\n# Works, but costs O(n^2) memory per move and the win-check state is not restored with it.\nclass SnapshotGame:\n    def __init__(self, n):\n        self.board = [[\".\"] * n for _ in range(n)]\n        self.history = []\n\n    def play(self, r, c, s):\n        self.history.append([row[:] for row in self.board])   # full deep copy, every move\n        self.board[r][c] = s\n\n    def undo(self):\n        if self.history: self.board = self.history.pop()\n" }, { lang: 'ts', code: "// BRUTE: copy the whole board before every move so undo can restore it.\n// Works, but costs O(n^2) memory per move and the win-check state is not restored with it.\nclass SnapshotGame {\n  private board: string[][];\n  private history: string[][][] = [];\n  constructor(n: number) { this.board = Array.from({ length: n }, () => new Array<string>(n).fill(\".\")); }\n\n  play(r: number, c: number, s: string): void {\n    this.history.push(this.board.map((row) => row.slice()));   // full deep copy, every move\n    this.board[r][c] = s;\n  }\n\n  undo(): void { const prev = this.history.pop(); if (prev) this.board = prev; }\n}\n" }, { lang: 'cpp', code: "// BRUTE: copy the whole board before every move so undo can restore it.\n// Works, but costs O(n^2) memory per move and the win-check state is not restored with it.\nclass SnapshotGame {\n    vector<vector<char>> board;\n    vector<vector<vector<char>>> history;\npublic:\n    SnapshotGame(int n) : board(n, vector<char>(n, '.')) {}\n\n    void play(int r, int c, char s) {\n        history.push_back(board);                 // full deep copy, every move\n        board[r][c] = s;\n    }\n\n    void undo() { if (!history.empty()) { board = history.back(); history.pop_back(); } }\n};\n" }] } },
       mcq: { q: 'Why must the counter-update code avoid early returns once undo exists?', options: ['Early returns are slower', 'If the row check returns before the column/diagonal counters are incremented, undo (which decrements all of them) leaves counters wrong', 'The language forbids it', 'It breaks redo only'], answer: 1, explain: 'execute() and undo() must be exact mirrors. Update every counter, then check for a win.' },
       hints: [
         `<p>Hint 1: a move is fully described by (row, col, player). If applying it is "+1 to some counters and write a symbol", undoing it is "−1 to the same counters and clear the cell".</p>`,
@@ -9487,7 +9805,7 @@ int main() {
     statement: `<p>Model spot sizes and vehicle types so that <code>canPark(spotType)</code> works for every vehicle, and <code>fits()</code> lists the usable spot types smallest-first. Adding a new vehicle type (e.g. BUS needing LARGE) must be a one-line change.</p>`,
     constraints: `Spot sizes are ordered SMALL &lt; COMPACT &lt; LARGE. A vehicle fits any spot at least as big as its minimum.`,
     example: `<p><code>CAR.canPark(SMALL)</code> → ${H.c('r', 'false')}; <code>CAR.canPark(LARGE)</code> → ${H.c('g', 'true')}; <code>BIKE.fits()</code> → ${H.c('b', '[SMALL, COMPACT, LARGE]')}; <code>TRUCK.fits()</code> → ${H.c('b', '[LARGE]')}.</p>`,
-    brute: { why: `<p>String comparisons in a static helper: <code>"Car"</code> vs <code>"CAR"</code> silently returns false, the rule is duplicated wherever someone needs it, and a new type means editing an if-chain.</p>`, code: J.p01_brute },
+    brute: { why: `<p>String comparisons in a static helper: <code>"Car"</code> vs <code>"CAR"</code> silently returns false, the rule is duplicated wherever someone needs it, and a new type means editing an if-chain.</p>`, code: { lang: 'java', code: J.p01_brute, alt: [{ lang: 'python', code: "# BRUTE: string comparisons scattered wherever a fit check is needed.\nclass FitCheck:\n    @staticmethod\n    def can_park(vehicle, spot):\n        if vehicle == \"BIKE\": return True\n        if vehicle == \"CAR\": return spot == \"COMPACT\" or spot == \"LARGE\"\n        if vehicle == \"TRUCK\": return spot == \"LARGE\"\n        return False                                     # typo \"Car\" silently returns False\n" }, { lang: 'ts', code: "// BRUTE: string comparisons scattered wherever a fit check is needed.\nclass FitCheck {\n  static canPark(vehicle: string, spot: string): boolean {\n    if (vehicle === \"BIKE\") return true;\n    if (vehicle === \"CAR\") return spot === \"COMPACT\" || spot === \"LARGE\";\n    if (vehicle === \"TRUCK\") return spot === \"LARGE\";\n    return false;                                        // typo \"Car\" silently returns false\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: string comparisons scattered wherever a fit check is needed.\nstruct FitCheck {\n    static bool canPark(const string& vehicle, const string& spot) {\n        if (vehicle == \"BIKE\") return true;\n        if (vehicle == \"CAR\") return spot == \"COMPACT\" || spot == \"LARGE\";\n        if (vehicle == \"TRUCK\") return spot == \"LARGE\";\n        return false;                                    // typo \"Car\" silently returns false\n    }\n};\n" }] } },
     mcq: { q: 'Which representation turns "a vehicle fits any spot at least as big as X" into one comparison?', options: ['A hash map from vehicle name to a list of spot names', 'Enums whose declaration order is the size order, compared by their numeric order (<code>ordinal()</code> in Java, an <code>IntEnum</code> in Python, a numeric <code>enum</code> in TypeScript, enum order in C++)', 'A switch statement per vehicle', 'Subclasses Car, Bike, Truck'], answer: 1, explain: 'Declaring SMALL, COMPACT, LARGE in order makes the numeric order of the enum a size rank (<code>ordinal()</code> in Java, the <code>IntEnum</code> value in Python); fit = spot rank ≥ minimum rank.' },
     hints: [
       `<p>Hint 1: the rule is really "minimum size" — each vehicle needs one number (its smallest acceptable spot); everything else follows.</p>`,
@@ -9510,7 +9828,7 @@ int main() {
     statement: `<p>Given a list of moves on a 3×3 board (A plays first as X, then B as O, alternating), return <code>"A"</code> or <code>"B"</code> if that player wins, <code>"Draw"</code> if all 9 cells are filled with no winner, or <code>"Pending"</code> otherwise. All moves are valid and the game stops at a win.</p>`,
     constraints: `1 ≤ moves.length ≤ 9; moves[i] = [row, col]; 0 ≤ row, col ≤ 2; no repeated cells.`,
     example: `<p>moves = [[0,0],[2,0],[1,1],[2,1],[2,2]] → A has (0,0), (1,1), (2,2) = main diagonal → ${H.c('g', '"A"')}. moves = [[0,0],[1,1]] → ${H.c('y', '"Pending"')}.</p>`,
-    brute: { why: `<p>Rebuild the board and check all 8 lines for both players. Fine for 3×3 (it is "easy"), but it is O(n²) and does not stop at the winning move — in an interview, show you know the O(1)-per-move counter version.</p>`, code: J.p02_brute },
+    brute: { why: `<p>Rebuild the board and check all 8 lines for both players. Fine for 3×3 (it is "easy"), but it is O(n²) and does not stop at the winning move — in an interview, show you know the O(1)-per-move counter version.</p>`, code: { lang: 'java', code: J.p02_brute, alt: [{ lang: 'python', code: "# BRUTE: rebuild the whole board every move and check all 8 lines.\nclass WinnerBrute:\n    @staticmethod\n    def tictactoe(moves):\n        b = [[\"\"] * 3 for _ in range(3)]\n        for i, (r, c) in enumerate(moves):\n            b[r][c] = \"X\" if i % 2 == 0 else \"O\"\n        for p in \"XO\":\n            for i in range(3):\n                if b[i][0] == b[i][1] == b[i][2] == p: return \"A\" if p == \"X\" else \"B\"\n                if b[0][i] == b[1][i] == b[2][i] == p: return \"A\" if p == \"X\" else \"B\"\n            if b[0][0] == b[1][1] == b[2][2] == p: return \"A\" if p == \"X\" else \"B\"\n            if b[0][2] == b[1][1] == b[2][0] == p: return \"A\" if p == \"X\" else \"B\"\n        return \"Draw\" if len(moves) == 9 else \"Pending\"\n" }, { lang: 'ts', code: "// BRUTE: rebuild the whole board every move and check all 8 lines.\nclass WinnerBrute {\n  static tictactoe(moves: number[][]): string {\n    const b: string[][] = Array.from({ length: 3 }, () => [\"\", \"\", \"\"]);\n    moves.forEach(([r, c], i) => { b[r][c] = i % 2 === 0 ? \"X\" : \"O\"; });\n    for (const p of [\"X\", \"O\"]) {\n      const who = p === \"X\" ? \"A\" : \"B\";\n      for (let i = 0; i < 3; i++) {\n        if (b[i][0] === p && b[i][1] === p && b[i][2] === p) return who;\n        if (b[0][i] === p && b[1][i] === p && b[2][i] === p) return who;\n      }\n      if (b[0][0] === p && b[1][1] === p && b[2][2] === p) return who;\n      if (b[0][2] === p && b[1][1] === p && b[2][0] === p) return who;\n    }\n    return moves.length === 9 ? \"Draw\" : \"Pending\";\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: rebuild the whole board every move and check all 8 lines.\nstruct WinnerBrute {\n    static string tictactoe(const vector<vector<int>>& moves) {\n        char b[3][3] = {};\n        for (int i = 0; i < (int)moves.size(); i++) b[moves[i][0]][moves[i][1]] = i % 2 == 0 ? 'X' : 'O';\n        for (char p : {'X', 'O'}) {\n            string who = p == 'X' ? \"A\" : \"B\";\n            for (int i = 0; i < 3; i++) {\n                if (b[i][0] == p && b[i][1] == p && b[i][2] == p) return who;\n                if (b[0][i] == p && b[1][i] == p && b[2][i] == p) return who;\n            }\n            if (b[0][0] == p && b[1][1] == p && b[2][2] == p) return who;\n            if (b[0][2] == p && b[1][1] == p && b[2][0] == p) return who;\n        }\n        return moves.size() == 9 ? \"Draw\" : \"Pending\";\n    }\n};\n" }] } },
     mcq: { q: 'Move index i (0-based) belongs to which player?', options: ['A if i is odd', 'A if i is even', 'Whoever has fewer marks', 'Cannot tell'], answer: 1, explain: 'A moves first: indices 0, 2, 4, ... are A; 1, 3, 5, ... are B.' },
     hints: [
       `<p>Hint 1: player of move i = A if i % 2 == 0. You can decide the winner the moment their counter reaches 3.</p>`,
@@ -9533,7 +9851,7 @@ int main() {
     statement: `<p>The entrance screen shows free spots per type and refreshes many times a second. Instead of scanning every spot on each refresh, make the lot <b>publish</b> "occupied" and "freed" events and let the display board keep counters. The lot must not depend on the concrete board class (screens, a mobile app and analytics may all subscribe).</p>`,
     constraints: `Up to 10<sup>5</sup> spots; board reads must be O(1); occupying a taken spot or freeing a free spot is an error.`,
     example: `<p>Spots ${H.arr(['SMALL', 'COMPACT', 'COMPACT', 'LARGE'])} occupy(1), occupy(3) → board ${H.c('b', '{SMALL=1, COMPACT=1, LARGE=0}')}; free(3) → ${H.c('g', '{SMALL=1, COMPACT=1, LARGE=1}')}.</p>`,
-    brute: { why: `<p>Recount on every refresh: O(total spots) per read. With 10<sup>5</sup> spots and several screens refreshing 10× per second, that is millions of wasted checks per second — and the lot code ends up calling the screen directly.</p>`, code: J.p03_brute },
+    brute: { why: `<p>Recount on every refresh: O(total spots) per read. With 10<sup>5</sup> spots and several screens refreshing 10× per second, that is millions of wasted checks per second — and the lot code ends up calling the screen directly.</p>`, code: { lang: 'java', code: J.p03_brute, alt: [{ lang: 'python', code: "# BRUTE: count free spots by scanning every spot each time the board refreshes.\nclass BoardScan:\n    @staticmethod\n    def free_counts(types, taken):\n        m = {}\n        for t, is_taken in zip(types, taken):\n            if not is_taken: m[t] = m.get(t, 0) + 1\n        return m                                         # O(total spots) per refresh, many refreshes per second\n" }, { lang: 'ts', code: "// BRUTE: count free spots by scanning every spot each time the board refreshes.\nclass BoardScan {\n  static freeCounts(types: string[], taken: boolean[]): Map<string, number> {\n    const m = new Map<string, number>();\n    for (let i = 0; i < types.length; i++) if (!taken[i]) m.set(types[i], (m.get(types[i]) ?? 0) + 1);\n    return m;                                            // O(total spots) per refresh, many refreshes per second\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: count free spots by scanning every spot each time the board refreshes.\nstruct BoardScan {\n    static map<string, int> freeCounts(const vector<string>& types, const vector<bool>& taken) {\n        map<string, int> m;\n        for (int i = 0; i < (int)types.size(); i++) if (!taken[i]) m[types[i]]++;\n        return m;                                        // O(total spots) per refresh, many refreshes per second\n    }\n};\n" }] } },
     mcq: { q: 'Why should ParkingLot depend on a <code>SpotListener</code> interface instead of <code>DisplayBoard</code>?', options: ['Interfaces are faster', 'So any number of different subscribers can be added without changing the lot (Dependency Inversion + Observer)', 'The language requires it', 'To make DisplayBoard a Singleton'], answer: 1, explain: 'The publisher knows only the interface; new subscribers (app, analytics) plug in with zero edits.' },
     hints: [
       `<p>Hint 1: a count changes only when a spot is occupied or freed — update it at that moment instead of recomputing later.</p>`,
@@ -9556,7 +9874,7 @@ int main() {
     statement: `<p>A fee calculator must support flat pricing, hourly pricing, and ad-hoc promotions ("first 15 minutes free"), switchable at runtime (e.g. on weekends). Design it so a new tariff never edits the calculator.</p>`,
     constraints: `Minutes 0 ≤ m ≤ 10<sup>6</sup>; hourly charges per started hour with a minimum of 1 hour.`,
     example: `<p>Hourly ₹40, 61 min → 2 started hours → ${H.c('g', '₹80')}. Switch to flat ₹100 → ${H.c('g', '₹100')}. Promotion lambda <code>m -&gt; m &lt;= 15 ? 0 : 50</code>, 10 min → ${H.c('g', '₹0')}.</p>`,
-    brute: { why: `<p>A <code>switch</code> on a mode string with copy-pasted formulas. Each new tariff (weekend, festival, promo) adds a case to the same method; a typo in the mode string is a runtime crash.</p>`, code: J.p04_brute },
+    brute: { why: `<p>A <code>switch</code> on a mode string with copy-pasted formulas. Each new tariff (weekend, festival, promo) adds a case to the same method; a typo in the mode string is a runtime crash.</p>`, code: { lang: 'java', code: J.p04_brute, alt: [{ lang: 'python', code: "# BRUTE: a mode string decides the formula; every new tariff edits this switch.\nclass FeeCalc:\n    @staticmethod\n    def fee(mode, minutes):\n        if mode == \"FLAT\": return 100\n        if mode == \"HOURLY\": return max(1, (minutes + 59) // 60) * 40\n        if mode == \"WEEKEND\": return max(1, (minutes + 59) // 60) * 60   # copy-paste with a new number\n        raise ValueError(mode)\n" }, { lang: 'ts', code: "// BRUTE: a mode string decides the formula; every new tariff edits this switch.\nclass FeeCalc {\n  static fee(mode: string, minutes: number): number {\n    switch (mode) {\n      case \"FLAT\": return 100;\n      case \"HOURLY\": return Math.max(1, Math.floor((minutes + 59) / 60)) * 40;\n      case \"WEEKEND\": return Math.max(1, Math.floor((minutes + 59) / 60)) * 60;   // copy-paste with a new number\n      default: throw new Error(mode);\n    }\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: a mode string decides the formula; every new tariff edits this switch.\nstruct FeeCalc {\n    static long long fee(const string& mode, long long minutes) {\n        if (mode == \"FLAT\") return 100;\n        if (mode == \"HOURLY\") return max(1LL, (minutes + 59) / 60) * 40;\n        if (mode == \"WEEKEND\") return max(1LL, (minutes + 59) / 60) * 60;   // copy-paste with a new number\n        throw invalid_argument(mode);\n    }\n};\n" }] } },
     mcq: { q: 'Marking <code>PricingStrategy</code> with <code>@FunctionalInterface</code> buys you…', options: ['Faster execution', 'The ability to pass small tariffs as lambdas, plus a compile error if someone adds a second abstract method', 'Automatic thread safety', 'Nothing'], answer: 1, explain: 'One abstract method → lambdas allowed; the annotation enforces it.' },
     hints: [
       `<p>Hint 1: the varying part is a function minutes → amount. That is exactly what a one-method interface describes.</p>`,
@@ -9582,7 +9900,7 @@ int main() {
     statement: `<p>Given a 3×3 board as 3 strings of <code>'X'</code>, <code>'O'</code> and <code>' '</code>, return true if it can occur during a valid game: X moves first, players alternate, and nobody moves after someone wins.</p>`,
     constraints: `board.length == 3; each row has length 3; characters are 'X', 'O' or ' '.`,
     example: `<p>${H.c('r', '["O  ","   ","   "]')} → false (O cannot move first). ${H.c('r', '["XXX","   ","OOO"]')} → false (both cannot win). ${H.c('g', '["XOX","O O","XOX"]')} → true (5 X, 4 O, no winner).</p>`,
-    brute: { why: `<p>Generate every reachable position by DFS from the empty board (5,478 positions) and test membership. Correct and fast for 3×3, but it explores the whole game tree, and the idea collapses for larger boards — the interviewer wants the invariants.</p>`, code: J.p05_brute },
+    brute: { why: `<p>Generate every reachable position by DFS from the empty board (5,478 positions) and test membership. Correct and fast for 3×3, but it explores the whole game tree, and the idea collapses for larger boards — the interviewer wants the invariants.</p>`, code: { lang: 'java', code: J.p05_brute, alt: [{ lang: 'python', code: "# BRUTE: play every possible game from the empty board, remember every board we can reach,\n# then check membership. Only 5,478 legal 3x3 positions exist, so it runs, but it does not scale to N x N.\nclass ValidBrute:\n    LINES = [(0,1,2),(3,4,5),(6,7,8),(0,3,6),(1,4,7),(2,5,8),(0,4,8),(2,4,6)]\n\n    def __init__(self):\n        self.reachable = set()\n\n    def valid_tic_tac_toe(self, board):\n        self._dfs([\".\"] * 9, \"X\")\n        return \"\".join(board).replace(\" \", \".\") in self.reachable\n\n    def _dfs(self, b, turn):\n        key = \"\".join(b)\n        if key in self.reachable: return\n        self.reachable.add(key)\n        if self._won(b, \"X\") or self._won(b, \"O\"): return    # nobody moves after a win\n        for i in range(9):\n            if b[i] == \".\":\n                b[i] = turn\n                self._dfs(b, \"O\" if turn == \"X\" else \"X\")\n                b[i] = \".\"\n\n    def _won(self, b, p):\n        return any(b[x] == p and b[y] == p and b[z] == p for x, y, z in self.LINES)\n" }, { lang: 'ts', code: "// BRUTE: play every possible game from the empty board, remember every board we can reach,\n// then check membership. Only 5,478 legal 3x3 positions exist, so it runs, but it does not scale to N x N.\nclass ValidBrute {\n  private reachable = new Set<string>();\n  private static LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];\n\n  validTicTacToe(board: string[]): boolean {\n    this.dfs(new Array<string>(9).fill(\".\"), \"X\");\n    return this.reachable.has(board.join(\"\").replace(/ /g, \".\"));\n  }\n\n  private dfs(b: string[], turn: string): void {\n    const key = b.join(\"\");\n    if (this.reachable.has(key)) return;\n    this.reachable.add(key);\n    if (this.won(b, \"X\") || this.won(b, \"O\")) return;    // nobody moves after a win\n    for (let i = 0; i < 9; i++) if (b[i] === \".\") {\n      b[i] = turn;\n      this.dfs(b, turn === \"X\" ? \"O\" : \"X\");\n      b[i] = \".\";\n    }\n  }\n\n  private won(b: string[], p: string): boolean {\n    return ValidBrute.LINES.some(([x, y, z]) => b[x] === p && b[y] === p && b[z] === p);\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: play every possible game from the empty board, remember every board we can reach,\n// then check membership. Only 5,478 legal 3x3 positions exist, so it runs, but it does not scale to N x N.\nclass ValidBrute {\n    set<string> reachable;\n\n    bool won(const string& b, char p) {\n        static const int lines[8][3] = {{0,1,2},{3,4,5},{6,7,8},{0,3,6},{1,4,7},{2,5,8},{0,4,8},{2,4,6}};\n        for (auto& l : lines) if (b[l[0]] == p && b[l[1]] == p && b[l[2]] == p) return true;\n        return false;\n    }\n\n    void dfs(string& b, char turn) {\n        if (!reachable.insert(b).second) return;\n        if (won(b, 'X') || won(b, 'O')) return;          // nobody moves after a win\n        for (int i = 0; i < 9; i++) if (b[i] == '.') {\n            b[i] = turn;\n            dfs(b, turn == 'X' ? 'O' : 'X');\n            b[i] = '.';\n        }\n    }\npublic:\n    bool validTicTacToe(const vector<string>& board) {\n        string start(9, '.');\n        dfs(start, 'X');\n        string key;\n        for (auto& row : board) key += row;\n        replace(key.begin(), key.end(), ' ', '.');\n        return reachable.count(key) > 0;\n    }\n};\n" }] } },
     mcq: { q: 'X has three in a row. What must be true of the counts for the board to be valid?', options: ['x == o', 'x == o + 1', 'o == x + 1', 'Anything'], answer: 1, explain: 'X just made the winning move, so X has played exactly one more time than O.' },
     hints: [
       `<p>Hint 1: think about what each move changes: counts of X and O, and possibly a winning line. Write down the invariants a real game must satisfy.</p>`,
@@ -9605,7 +9923,7 @@ int main() {
     statement: `<p>Design Connect Four on an R×C grid: <code>drop(col, symbol)</code> places a disc in the lowest empty cell of that column and returns <code>"WIN"</code>, <code>"DRAW"</code> or <code>"OK"</code>. A win is K or more same discs in a row horizontally, vertically or diagonally. Reject full or invalid columns.</p>`,
     constraints: `4 ≤ R, C ≤ 100; K ≤ min(R, C); up to R × C drops.`,
     example: `<p>6×7, K = 4. Drops by column, alternating R/Y: 0,1,1,2,2,3,2,3,3,6,3 → red discs at (5,0), (4,1), (3,2), (2,3) → ${H.c('g', '"WIN"')} on the last drop (a rising diagonal).</p>`,
-    brute: { why: `<p>After each drop, scan every cell in 4 directions: O(R × C × K) per move. Most of that work re-checks lines that could not have changed — only lines through the new disc can create a win.</p>`, code: J.p06_brute },
+    brute: { why: `<p>After each drop, scan every cell in 4 directions: O(R × C × K) per move. Most of that work re-checks lines that could not have changed — only lines through the new disc can create a win.</p>`, code: { lang: 'java', code: J.p06_brute, alt: [{ lang: 'python', code: "# BRUTE: after each drop, scan every cell in every direction: O(rows * cols) per move.\nclass ConnectFourBrute:\n    @staticmethod\n    def any_win(g, p):\n        R, C = len(g), len(g[0])\n        for r in range(R):\n            for c in range(C):\n                for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):\n                    k = 0\n                    while k < 4:\n                        rr, cc = r + dr * k, c + dc * k\n                        if rr < 0 or rr >= R or cc < 0 or cc >= C or g[rr][cc] != p: break\n                        k += 1\n                    if k == 4: return True\n        return False\n" }, { lang: 'ts', code: "// BRUTE: after each drop, scan every cell in every direction: O(rows * cols) per move.\nclass ConnectFourBrute {\n  static anyWin(g: string[][], p: string): boolean {\n    const R = g.length, C = g[0].length;\n    const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];\n    for (let r = 0; r < R; r++)\n      for (let c = 0; c < C; c++)\n        for (const [dr, dc] of dirs) {\n          let k = 0;\n          while (k < 4) {\n            const rr = r + dr * k, cc = c + dc * k;\n            if (rr < 0 || rr >= R || cc < 0 || cc >= C || g[rr][cc] !== p) break;\n            k++;\n          }\n          if (k === 4) return true;\n        }\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: after each drop, scan every cell in every direction: O(rows * cols) per move.\nstruct ConnectFourBrute {\n    static bool anyWin(const vector<vector<char>>& g, char p) {\n        int R = g.size(), C = g[0].size();\n        int dirs[4][2] = {{0, 1}, {1, 0}, {1, 1}, {1, -1}};\n        for (int r = 0; r < R; r++)\n            for (int c = 0; c < C; c++)\n                for (auto& d : dirs) {\n                    int k = 0;\n                    while (k < 4) {\n                        int rr = r + d[0] * k, cc = c + d[1] * k;\n                        if (rr < 0 || rr >= R || cc < 0 || cc >= C || g[rr][cc] != p) break;\n                        k++;\n                    }\n                    if (k == 4) return true;\n                }\n        return false;\n    }\n};\n" }] } },
     mcq: { q: 'How do you find the landing row of a drop in O(1)?', options: ['Scan the column from the top', 'Keep <code>height[col]</code> = number of discs in the column', 'Binary search', 'You cannot'], answer: 1, explain: 'The next disc lands at row rows − 1 − height[col]; increment height after placing.' },
     hints: [
       `<p>Hint 1: a new win must include the disc just dropped, so only inspect the 4 lines through it.</p>`,
@@ -9628,7 +9946,7 @@ int main() {
     statement: `<p>Write a <code>GridGame</code> that supports any board size, any number of players and any win rule. Implement the rule <code>KInARow(k)</code> (Gomoku: 5 in a row on 15×15) so it checks only the lines through the last move. The game class must not change when a new rule is added.</p>`,
     constraints: `R, C ≤ 1000; 3 ≤ k ≤ 10; players 2–4.`,
     example: `<p>15×15, k = 5. X plays (7,3), (7,4), (7,5), (7,6), (7,7) while O plays elsewhere → ${H.c('g', 'Winner: X')} after X's 5th move. Counters per whole line would not work: the row has 15 cells but only 5 are needed.</p>`,
-    brute: { why: `<p>Rescan the whole board after each move: O(R × C × k). On a 1000×1000 board that is billions of operations over a game.</p>`, code: J.p07_brute },
+    brute: { why: `<p>Rescan the whole board after each move: O(R × C × k). On a 1000×1000 board that is billions of operations over a game.</p>`, code: { lang: 'java', code: J.p07_brute, alt: [{ lang: 'python', code: "# BRUTE: rescan the whole R x C board for K-in-a-row after every move: O(R*C*K) per move.\nclass GomokuBrute:\n    @staticmethod\n    def wins(b, p, k):\n        R, C = len(b), len(b[0])\n        for r in range(R):\n            for c in range(C):\n                if b[r][c] != p: continue\n                for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):\n                    length, rr, cc = 0, r, c\n                    while 0 <= rr < R and 0 <= cc < C and b[rr][cc] == p:\n                        length += 1\n                        rr += dr; cc += dc\n                    if length >= k: return True\n        return False\n" }, { lang: 'ts', code: "// BRUTE: rescan the whole R x C board for K-in-a-row after every move: O(R*C*K) per move.\nclass GomokuBrute {\n  static wins(b: string[][], p: string, k: number): boolean {\n    const R = b.length, C = b[0].length;\n    for (let r = 0; r < R; r++)\n      for (let c = 0; c < C; c++) {\n        if (b[r][c] !== p) continue;\n        for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {\n          let len = 0;\n          for (let rr = r, cc = c; rr >= 0 && rr < R && cc >= 0 && cc < C && b[rr][cc] === p; rr += dr, cc += dc) len++;\n          if (len >= k) return true;\n        }\n      }\n    return false;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: rescan the whole R x C board for K-in-a-row after every move: O(R*C*K) per move.\nstruct GomokuBrute {\n    static bool wins(const vector<vector<char>>& b, char p, int k) {\n        int R = b.size(), C = b[0].size();\n        for (int r = 0; r < R; r++)\n            for (int c = 0; c < C; c++) {\n                if (b[r][c] != p) continue;\n                int dirs[4][2] = {{0, 1}, {1, 0}, {1, 1}, {1, -1}};\n                for (auto& d : dirs) {\n                    int len = 0;\n                    for (int rr = r, cc = c; rr >= 0 && rr < R && cc >= 0 && cc < C && b[rr][cc] == p; rr += d[0], cc += d[1]) len++;\n                    if (len >= k) return true;\n                }\n            }\n        return false;\n    }\n};\n" }] } },
     mcq: { q: 'Why can\'t the O(1) row/column counters from Tic-Tac-Toe detect 5-in-a-row on 15×15?', options: ['They can', 'A counter tells you how many marks a player has in the whole row, not whether they are consecutive', 'Counters overflow', 'Diagonals do not exist'], answer: 1, explain: 'Five X marks scattered across a 15-cell row reach count 5 without being a win.' },
     hints: [
       `<p>Hint 1: a win must pass through the last move. Check 4 directions from it: horizontal, vertical, two diagonals.</p>`,
@@ -9651,7 +9969,7 @@ int main() {
     statement: `<p>Add advance bookings: <code>reserve(type, start, end)</code> returns a reservation on some spot of that type free for the whole half-open window <code>[start, end)</code>, or empty. <code>cancel(id)</code> frees it. Overlapping bookings on one spot are forbidden; back-to-back ([9,12) then [12,14)) is allowed.</p>`,
     constraints: `Up to 10<sup>4</sup> spots and 10<sup>5</sup> reservations; times are integers (hours); start &lt; end.`,
     example: `<p>Spots A1, A2. reserve 9–12 → ${H.c('g', 'A1')}; 10–11 → ${H.c('g', 'A2')}; 11–13 → ${H.c('g', 'A2')} (A2's booking ends exactly at 11); 12–14 → ${H.c('g', 'A1')}; cancel R2, then 10–11 → ${H.c('g', 'A2')} again.</p>`,
-    brute: { why: `<p>A single list of every reservation, scanned once per spot per request: O(spots × reservations). At 10<sup>4</sup> × 10<sup>5</sup> that is 10<sup>9</sup> checks per request.</p>`, code: J.p08_brute },
+    brute: { why: `<p>A single list of every reservation, scanned once per spot per request: O(spots × reservations). At 10<sup>4</sup> × 10<sup>5</sup> that is 10<sup>9</sup> checks per request.</p>`, code: { lang: 'java', code: J.p08_brute, alt: [{ lang: 'python', code: "# BRUTE: one global list of reservations; every request scans all of them for every spot.\nclass ReservationsBrute:\n    def __init__(self, spots):\n        self.spots = spots\n        self.all = []                                  # (spot, start, end) tuples\n\n    def reserve(self, start, end):\n        for s in range(self.spots):\n            clash = False\n            for spot, rs, re in self.all:\n                if spot == s and start < re and rs < end:\n                    clash = True\n                    break\n            if not clash:\n                self.all.append((s, start, end))\n                return s\n        return -1                                      # O(spots * total reservations) per request\n" }, { lang: 'ts', code: "// BRUTE: one global list of reservations; every request scans all of them for every spot.\ninterface Res { spot: number; start: number; end: number }\nclass ReservationsBrute {\n  private all: Res[] = [];\n  constructor(private spots: number) {}\n\n  reserve(start: number, end: number): number {\n    for (let s = 0; s < this.spots; s++) {\n      let clash = false;\n      for (const r of this.all) if (r.spot === s && start < r.end && r.start < end) { clash = true; break; }\n      if (!clash) { this.all.push({ spot: s, start, end }); return s; }\n    }\n    return -1;                                         // O(spots * total reservations) per request\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: one global list of reservations; every request scans all of them for every spot.\nclass ReservationsBrute {\n    struct Res { int spot, start, end; };\n    vector<Res> all;\n    int spots;\npublic:\n    ReservationsBrute(int spots) : spots(spots) {}\n\n    int reserve(int start, int end) {\n        for (int s = 0; s < spots; s++) {\n            bool clash = false;\n            for (const Res& r : all) if (r.spot == s && start < r.end && r.start < end) { clash = true; break; }\n            if (!clash) { all.push_back({s, start, end}); return s; }\n        }\n        return -1;                                     // O(spots * total reservations) per request\n    }\n};\n" }] } },
     mcq: { q: 'Bookings on a spot are non-overlapping and sorted by start. To test [s, e), which neighbours must you check?', options: ['All bookings', 'Only the booking with the greatest start ≤ s and the booking with the smallest start ≥ s', 'Only the first and last', 'None'], answer: 1, explain: 'Non-overlapping sorted intervals: only the immediate predecessor and successor can collide (a sorted map: <code>TreeMap.floorEntry</code> / <code>ceilingKey</code>, <code>bisect</code> on sorted starts, <code>std::map::lower_bound</code>).' },
     hints: [
       `<p>Hint 1: give every spot its own sorted calendar; then a free-check only looks at that spot's neighbours of <code>start</code>.</p>`,
@@ -9674,7 +9992,7 @@ int main() {
     statement: `<p>Pricing now has a base tariff plus optional add-ons: <b>EV charging</b> (per kWh) and <b>valet</b> (flat fee when used). Any combination must be possible, and adding a new add-on must not create new combination classes. EV spots automatically include the charging add-on.</p>`,
     constraints: `Stays up to 72 h; energy up to 100 kWh; money as long rupees (round charging to the nearest rupee).`,
     example: `<p>EV spot, 3 h, 10 kWh, no valet: hourly ₹20 × 3 = 60, + 10 × 15 = 150 → ${H.c('g', '₹210')}. Regular spot, 3 h, valet: 60 + 100 → ${H.c('g', '₹160')}. <code>describe()</code> → ${H.c('b', 'hourly@20 + valet + charging@15.0/kWh')}.</p>`,
-    brute: { why: `<p>Subclass explosion: HourlyWithCharging, HourlyWithValet, HourlyWithChargingAndValet, then the same again for flat and weekend tariffs. Classes = tariffs × 2<sup>add-ons</sup> — 3 tariffs and 3 add-ons already need 24 classes.</p>`, code: J.p09_brute },
+    brute: { why: `<p>Subclass explosion: HourlyWithCharging, HourlyWithValet, HourlyWithChargingAndValet, then the same again for flat and weekend tariffs. Classes = tariffs × 2<sup>add-ons</sup> — 3 tariffs and 3 add-ons already need 24 classes.</p>`, code: { lang: 'java', code: J.p09_brute, alt: [{ lang: 'python', code: "# BRUTE: subclass explosion. Every combination of features becomes a new class.\nclass HourlyFee:\n    def fee(self, hours, kwh): return hours * 20\nclass HourlyWithCharging(HourlyFee):\n    def fee(self, hours, kwh): return super().fee(hours, kwh) + round(kwh * 15)\nclass HourlyWithValet(HourlyFee):\n    def fee(self, hours, kwh): return super().fee(hours, kwh) + 100\nclass HourlyWithChargingAndValet(HourlyWithCharging):\n    def fee(self, hours, kwh): return super().fee(hours, kwh) + 100\n# ...and again for FlatFee, WeekendFee, and every new add-on: classes = pricings x 2^addons\n" }, { lang: 'ts', code: "// BRUTE: subclass explosion. Every combination of features becomes a new class.\nclass HourlyFee { fee(hours: number, kwh: number): number { return hours * 20; } }\nclass HourlyWithCharging extends HourlyFee { fee(hours: number, kwh: number): number { return super.fee(hours, kwh) + Math.round(kwh * 15); } }\nclass HourlyWithValet extends HourlyFee { fee(hours: number, kwh: number): number { return super.fee(hours, kwh) + 100; } }\nclass HourlyWithChargingAndValet extends HourlyWithCharging { fee(hours: number, kwh: number): number { return super.fee(hours, kwh) + 100; } }\n// ...and again for FlatFee, WeekendFee, and every new add-on: classes = pricings x 2^addons\n" }, { lang: 'cpp', code: "// BRUTE: subclass explosion. Every combination of features becomes a new class.\nstruct HourlyFee { virtual long long fee(long long hours, double kwh) { return hours * 20; } virtual ~HourlyFee() = default; };\nstruct HourlyWithCharging : HourlyFee { long long fee(long long hours, double kwh) override { return HourlyFee::fee(hours, kwh) + llround(kwh * 15); } };\nstruct HourlyWithValet : HourlyFee { long long fee(long long hours, double kwh) override { return HourlyFee::fee(hours, kwh) + 100; } };\nstruct HourlyWithChargingAndValet : HourlyWithCharging { long long fee(long long hours, double kwh) override { return HourlyWithCharging::fee(hours, kwh) + 100; } };\n// ...and again for FlatFee, WeekendFee, and every new add-on: classes = pricings x 2^addons\n" }] } },
     mcq: { q: 'With 3 base tariffs and 3 optional add-ons, how many classes do decorators need?', options: ['24', '6', '9', '3'], answer: 1, explain: '3 base classes + 3 decorator classes; combinations are built at runtime by wrapping.' },
     hints: [
       `<p>Hint 1: an add-on "is a" pricing (same interface) and "has a" pricing (the one it adds to). That double relationship is the Decorator signature.</p>`,
@@ -9697,7 +10015,7 @@ int main() {
     statement: `<p>A lot has G entry gates and S spots; <code>dist[g][s]</code> is the walking distance from gate g to spot s. Implement a <code>GateAwareStrategy</code>: <code>allocate(gate)</code> returns the free spot nearest that gate (ties → smaller id), <code>release(spot)</code> frees it. Make allocation faster than scanning all spots.</p>`,
     constraints: `G ≤ 20, S ≤ 10<sup>5</sup>, up to 10<sup>6</sup> operations.`,
     example: `<p>dist = gate0 ${H.arr([1, 2, 3, 4])} gate1 ${H.arr([4, 3, 2, 1])}. allocate(0) → ${H.c('g', '0')}; allocate(1) → ${H.c('g', '3')}; allocate(1) → ${H.c('g', '2')}; release(3); allocate(1) → ${H.c('g', '3')}; allocate(0) → ${H.c('g', '1')}.</p>`,
-    brute: { why: `<p>For every arriving car, scan all S spots and compute the minimum distance: O(S) per allocation — 10<sup>5</sup> × 10<sup>6</sup> operations is far too slow.</p>`, code: J.p10_brute },
+    brute: { why: `<p>For every arriving car, scan all S spots and compute the minimum distance: O(S) per allocation — 10<sup>5</sup> × 10<sup>6</sup> operations is far too slow.</p>`, code: { lang: 'java', code: J.p10_brute, alt: [{ lang: 'python', code: "# BRUTE: for every arriving car, scan every spot and compute its distance to this gate.\nclass NearestBrute:\n    @staticmethod\n    def nearest(dist, taken, gate):\n        best = -1\n        for s in range(len(taken)):\n            if not taken[s] and (best == -1 or dist[gate][s] < dist[gate][best]): best = s\n        return best                                    # O(spots) per car, per gate\n" }, { lang: 'ts', code: "// BRUTE: for every arriving car, scan every spot and compute its distance to this gate.\nclass NearestBrute {\n  static nearest(dist: number[][], taken: boolean[], gate: number): number {\n    let best = -1;\n    for (let s = 0; s < taken.length; s++)\n      if (!taken[s] && (best === -1 || dist[gate][s] < dist[gate][best])) best = s;\n    return best;                                       // O(spots) per car, per gate\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: for every arriving car, scan every spot and compute its distance to this gate.\nstruct NearestBrute {\n    static int nearest(const vector<vector<int>>& dist, const vector<bool>& taken, int gate) {\n        int best = -1;\n        for (int s = 0; s < (int)taken.size(); s++)\n            if (!taken[s] && (best == -1 || dist[gate][s] < dist[gate][best])) best = s;\n        return best;                                   // O(spots) per car, per gate\n    }\n};\n" }] } },
     mcq: { q: 'A spot taken through gate 0 still sits in gate 1\'s heap. What is the cheapest correct handling?', options: ['Remove it from every heap immediately (O(S) each)', 'Lazy deletion: when gate 1 pops it later, see it is taken and pop again', 'Ignore it — double allocation is fine', 'Rebuild all heaps'], answer: 1, explain: 'Lazy deletion keeps operations O(log S) amortised; stale entries are skipped when popped.' },
     hints: [
       `<p>Hint 1: each gate needs its own ordering of spots, so keep one min-heap per gate keyed by that gate's distance.</p>`,
@@ -9723,7 +10041,7 @@ int main() {
     statement: `<p>Eight entry gates run on eight threads and call <code>park(plate, type)</code> at the same time; exit gates call <code>leave(plate)</code>. Guarantee: no spot is ever given to two vehicles, a plate cannot be inside twice, and gates should not all queue behind a single global lock. Prove it with a stress test.</p>`,
     constraints: `Up to 10<sup>5</sup> spots and 64 gate threads. park/leave should be lock-free or fine-grained. Return empty when no spot of that type is free.`,
     example: `<p>500 COMPACT spots, 8 threads × 125 cars = 1000 arrivals → ${H.c('g', 'parked=500 duplicates=0 inside=500')}. With the racy version the same test occasionally prints ${H.c('r', 'duplicates &gt; 0')} — and only occasionally, which is what makes races dangerous.</p>`,
-    brute: { why: `<p>Check-then-act on a shared array: two threads both read <code>spots[i] == null</code> and both write. Wrapping everything in one lock (<code>synchronized</code>, a mutex) fixes correctness but serialises every gate. The interviewer wants you to name the race, fix it, then improve throughput.</p>`, code: J.p11_brute },
+    brute: { why: `<p>Check-then-act on a shared array: two threads both read <code>spots[i] == null</code> and both write. Wrapping everything in one lock (<code>synchronized</code>, <code>threading.Lock</code>, <code>std::mutex</code>; in TypeScript the same bug appears whenever an <code>await</code> sits between the check and the act) fixes correctness but serialises every gate. The interviewer wants you to name the race, fix it, then improve throughput.</p>`, code: { lang: 'java', code: J.p11_brute, alt: [{ lang: 'python', code: "# BRUTE (and BROKEN): check-then-act with no locking. Two gates can both see spot 7 as free\n# and both write their car into it. Wrapping park() in one global lock fixes correctness\n# but makes every gate wait for every other gate.\nclass RacyLot:\n    def __init__(self, n):\n        self.spots = [None] * n\n\n    def park(self, plate):\n        for i in range(len(self.spots)):\n            if self.spots[i] is None:        # CHECK  <- another thread can run here\n                self.spots[i] = plate        # ACT    <- and both \"win\" the same spot\n                return i\n        return -1\n" }, { lang: 'ts', code: "// BRUTE (and BROKEN): check-then-act with no locking. Two gates can both see spot 7 as free\n// and both write their car into it. Wrapping park() in one global lock fixes correctness\n// but makes every gate wait for every other gate. (JavaScript runs one callback at a time, but the\n// same bug appears as soon as an await sits between the check and the act, as below.)\nclass RacyLot {\n  private spots: (string | null)[];\n  constructor(n: number) { this.spots = new Array<string | null>(n).fill(null); }\n\n  async park(plate: string): Promise<number> {\n    for (let i = 0; i < this.spots.length; i++) {\n      if (this.spots[i] === null) {        // CHECK  <- another request can run at the await\n        await Promise.resolve();\n        this.spots[i] = plate;             // ACT    <- and both \"win\" the same spot\n        return i;\n      }\n    }\n    return -1;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE (and BROKEN): check-then-act with no locking. Two gates can both see spot 7 as free\n// and both write their car into it. Wrapping park() in one global lock fixes correctness\n// but makes every gate wait for every other gate.\nclass RacyLot {\n    vector<string> spots;                    // \"\" = free\npublic:\n    RacyLot(int n) : spots(n) {}\n\n    int park(const string& plate) {\n        for (int i = 0; i < (int)spots.size(); i++) {\n            if (spots[i].empty()) {          // CHECK  <- another thread can run here\n                spots[i] = plate;            // ACT    <- and both \"win\" the same spot\n                return i;\n            }\n        }\n        return -1;\n    }\n};\n" }] } },
     mcq: { q: 'Why is the pop of a thread-safe queue (<code>ConcurrentLinkedQueue.poll()</code> in Java) enough to stop two gates getting the same free spot?', options: ['It is synchronized internally on the whole lot', 'It atomically removes the head: each element is returned to at most one caller', 'It sorts spots by distance', 'It blocks until a spot is free'], answer: 1, explain: 'The pop is atomic (<code>poll()</code> uses CAS; a mutex-guarded deque pops under its lock), so exactly one thread wins each element; the losing thread gets the next one or nothing.' },
     hints: [
       `<p>Hint 1: the dangerous moment is "find a free spot" + "mark it taken". Make that one atomic operation instead of two steps.</p>`,
@@ -9746,7 +10064,7 @@ int main() {
     statement: `<p>Implement <code>MinimaxBot implements Player</code> so it plugs into the existing game without any change to <code>Game</code>. The bot must never lose on 3×3: take a win when available, block the opponent's win, and prefer faster wins / slower losses.</p>`,
     constraints: `3×3 board; the bot may be X or O; respond within a few milliseconds.`,
     example: `<p>Board ${H.c('b', 'XX. / OO. / ...')}, bot = O → plays ${H.c('g', '(1,2)')} — winning now beats blocking. Board ${H.c('b', 'XX. / .O. / ...')}, bot = O → plays ${H.c('g', '(0,2)')} — the only move that does not lose.</p>`,
-    brute: { why: `<p>A "first free cell" bot. It fits the interface but loses to any human in a few moves. (Plain minimax without pruning is also acceptable for 3×3 — at most 9! ≈ 362,880 leaves — but alpha-beta is the expected upgrade and is essential for bigger boards.)</p>`, code: J.p12_brute },
+    brute: { why: `<p>A "first free cell" bot. It fits the interface but loses to any human in a few moves. (Plain minimax without pruning is also acceptable for 3×3 — at most 9! ≈ 362,880 leaves — but alpha-beta is the expected upgrade and is essential for bigger boards.)</p>`, code: { lang: 'java', code: J.p12_brute, alt: [{ lang: 'python', code: "# BRUTE: a bot that takes the first empty cell. It \"plays\", but any human beats it.\nclass FirstFreeBot:\n    @staticmethod\n    def choose(b):\n        for r in range(3):\n            for c in range(3):\n                if b[r][c] == \".\": return (r, c)\n        raise RuntimeError(\"board full\")\n" }, { lang: 'ts', code: "// BRUTE: a bot that takes the first empty cell. It \"plays\", but any human beats it.\nclass FirstFreeBot {\n  static choose(b: string[][]): [number, number] {\n    for (let r = 0; r < 3; r++)\n      for (let c = 0; c < 3; c++)\n        if (b[r][c] === \".\") return [r, c];\n    throw new Error(\"board full\");\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: a bot that takes the first empty cell. It \"plays\", but any human beats it.\nstruct FirstFreeBot {\n    static pair<int, int> choose(const vector<vector<char>>& b) {\n        for (int r = 0; r < 3; r++)\n            for (int c = 0; c < 3; c++)\n                if (b[r][c] == '.') return {r, c};\n        throw runtime_error(\"board full\");\n    }\n};\n" }] } },
     mcq: { q: 'Why score a win as <code>10 − depth</code> rather than a flat +10?', options: ['To avoid integer overflow', 'So the bot prefers the fastest win (and the slowest loss) among equally winning lines', 'Depth is required by alpha-beta', 'It makes no difference'], answer: 1, explain: 'Without depth, a win in 1 and a win in 5 look the same and the bot may "play with its food" and dither.' },
     hints: [
       `<p>Hint 1: assume both sides play perfectly. The bot maximises the score, the opponent minimises it; recurse over every free cell.</p>`,
@@ -9777,7 +10095,7 @@ int main() {
       <p>Bad lines must print an error, never crash. New commands must be addable without touching the existing ones.</p>`,
     constraints: `Up to 10<sup>5</sup> slots and 10<sup>6</sup> commands; colour matching case-insensitive; outputs must match exactly. Commands arrive one per line on standard input and blank lines are skipped.`,
     example: `<p>create 3; park ×3 → ${H.c('g', 'slots 1, 2, 3')}; 4th park → ${H.c('r', 'Sorry, parking lot is full')}; leave 2 → ${H.c('b', 'Slot number 2 is free')}; park → ${H.c('g', 'Allocated slot number: 2')} (lowest free); colour White → ${H.c('g', 'KA-01-HH-1234, KA-01-BB-0001')}; <code>fly_away now</code> → ${H.c('r', 'Unknown command: fly_away')}.</p>`,
-    brute: { why: `<p>Everything in one class with an if-else ladder over the command word and linear scans for the nearest slot and colour queries: O(n) per park and query, no validation (a missing argument throws), and each new command grows the ladder. It may pass the sample but fails the evaluator's large hidden input and the code-quality rubric.</p>`, code: J.p13_brute },
+    brute: { why: `<p>Everything in one class with an if-else ladder over the command word and linear scans for the nearest slot and colour queries: O(n) per park and query, no validation (a missing argument throws), and each new command grows the ladder. It may pass the sample but fails the evaluator's large hidden input and the code-quality rubric.</p>`, code: { lang: 'java', code: J.p13_brute, alt: [{ lang: 'python', code: "# BRUTE: one function with a giant if-else on the command word and linear scans everywhere.\nplate, colour = [], []\n\ndef run(line):\n    global plate, colour\n    p = line.split(\" \")\n    if p[0] == \"create_parking_lot\":\n        plate = [None] * int(p[1]); colour = [None] * len(plate)\n        print(\"Created a parking lot with\", len(plate), \"slots\")\n    elif p[0] == \"park\":\n        for i in range(len(plate)):                     # O(n) scan for the nearest slot\n            if plate[i] is None:\n                plate[i] = p[1]; colour[i] = p[2]\n                print(\"Allocated slot number:\", i + 1)\n                return\n        print(\"Sorry, parking lot is full\")\n    elif p[0] == \"leave\":\n        s = int(p[1]) - 1\n        plate[s] = None; colour[s] = None\n        print(\"Slot number\", s + 1, \"is free\")\n    elif p[0] == \"registration_numbers_for_cars_with_colour\":\n        found = [plate[i] for i in range(len(plate)) if colour[i] == p[1]]\n        print(\", \".join(found) if found else \"Not found\")\n    else:\n        print(\"Unknown command\")                        # every new command grows this ladder\n" }, { lang: 'ts', code: "// BRUTE: one function with a giant if-else on the command word and linear scans everywhere.\nlet plate: (string | null)[] = [], colour: (string | null)[] = [];\n\nfunction run(line: string): void {\n  const p = line.split(\" \");\n  if (p[0] === \"create_parking_lot\") {\n    plate = new Array<string | null>(parseInt(p[1])).fill(null); colour = new Array<string | null>(plate.length).fill(null);\n    console.log(\"Created a parking lot with \" + plate.length + \" slots\");\n  } else if (p[0] === \"park\") {\n    for (let i = 0; i < plate.length; i++)              // O(n) scan for the nearest slot\n      if (plate[i] === null) { plate[i] = p[1]; colour[i] = p[2]; console.log(\"Allocated slot number: \" + (i + 1)); return; }\n    console.log(\"Sorry, parking lot is full\");\n  } else if (p[0] === \"leave\") {\n    const s = parseInt(p[1]) - 1; plate[s] = null; colour[s] = null;\n    console.log(\"Slot number \" + (s + 1) + \" is free\");\n  } else if (p[0] === \"registration_numbers_for_cars_with_colour\") {\n    const found: string[] = [];\n    for (let i = 0; i < plate.length; i++) if (colour[i] === p[1]) found.push(plate[i]!);\n    console.log(found.length === 0 ? \"Not found\" : found.join(\", \"));\n  } else {\n    console.log(\"Unknown command\");                    // every new command grows this ladder\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: one function with a giant if-else on the command word and linear scans everywhere.\nvector<string> plate, colour;                           // \"\" = free slot\n\nvoid run(const string& line) {\n    istringstream in(line);\n    vector<string> p; string w;\n    while (in >> w) p.push_back(w);\n    if (p[0] == \"create_parking_lot\") {\n        plate.assign(stoi(p[1]), \"\"); colour.assign(plate.size(), \"\");\n        cout << \"Created a parking lot with \" << plate.size() << \" slots\" << endl;\n    } else if (p[0] == \"park\") {\n        for (int i = 0; i < (int)plate.size(); i++)     // O(n) scan for the nearest slot\n            if (plate[i].empty()) { plate[i] = p[1]; colour[i] = p[2]; cout << \"Allocated slot number: \" << i + 1 << endl; return; }\n        cout << \"Sorry, parking lot is full\" << endl;\n    } else if (p[0] == \"leave\") {\n        int s = stoi(p[1]) - 1; plate[s] = \"\"; colour[s] = \"\";\n        cout << \"Slot number \" << s + 1 << \" is free\" << endl;\n    } else if (p[0] == \"registration_numbers_for_cars_with_colour\") {\n        string out;\n        for (int i = 0; i < (int)plate.size(); i++) if (colour[i] == p[1]) out += (out.empty() ? \"\" : \", \") + plate[i];\n        cout << (out.empty() ? \"Not found\" : out) << endl;\n    } else {\n        cout << \"Unknown command\" << endl;              // every new command grows this ladder\n    }\n}\n" }] } },
     mcq: { q: 'Which structure gives "nearest free slot" in O(log n) and supports freeing any slot?', options: ['ArrayList scanned from the start', 'A sorted set or min-heap of free slots (<code>TreeSet</code> + <code>pollFirst()</code>, <code>heapq</code>, <code>std::set</code>)', 'HashSet&lt;Integer&gt;', 'Stack&lt;Integer&gt;'], answer: 1, explain: 'A sorted set keeps the smallest free slot first; add() on leave and pollFirst() on park are both O(log n). (A min-heap also works.)' },
     hints: [
       `<p>Hint 1: separate three layers: text parsing, command handlers, and the domain (<code>Garage</code>) that knows nothing about strings like "park".</p>`,
@@ -9800,7 +10118,7 @@ int main() {
     statement: `<p>Support P players on a (P+1)×(P+1) board (a full line wins). Spectators (TV screen, logger, scoreboard) must receive every event without the game knowing their classes. Every game must be <b>replayable</b>: rebuild the board as it looked after any move k from stored history alone.</p>`,
     constraints: `2 ≤ P ≤ 8; win check O(1) per move; replay O(moves); events are immutable.`,
     example: `<p>Players X, O, Z on 4×4. Moves (0,0) (1,0) (2,0) (0,1) (1,1) (2,1) (0,2) (1,2) (2,2) (0,3) → TV sees ${H.c('g', 'X WINS')} (row 0). <code>replay(events, 4, 3)</code> → ${H.c('b', 'X... / O... / Z... / ....')}.</p>`,
-    brute: { why: `<p>The game prints directly ("Player X played…") and copy-pastes a second println for the TV. No history is stored, so replay is impossible, and every new spectator means editing <code>play()</code>.</p>`, code: J.p14_brute },
+    brute: { why: `<p>The game prints directly ("Player X played…") and copy-pastes a second println for the TV. No history is stored, so replay is impossible, and every new spectator means editing <code>play()</code>.</p>`, code: { lang: 'java', code: J.p14_brute, alt: [{ lang: 'python', code: "# BRUTE: the game prints straight to the console and keeps no history.\n# Spectators? Copy-paste print calls. Replay? Impossible: past states are gone.\nclass LoudGame:\n    def __init__(self):\n        self.b = [[None] * 4 for _ in range(4)]\n        self.syms = [\"X\", \"O\", \"Z\"]\n        self.turn = 0\n\n    def play(self, r, c):\n        self.b[r][c] = self.syms[self.turn]\n        print(f\"Player {self.syms[self.turn]} played {r},{c}\")           # UI glued into the model\n        print(f\"[TV screen] {self.syms[self.turn]} -> {r},{c}\")          # second \"spectator\", copy-pasted\n        self.turn = (self.turn + 1) % 3\n" }, { lang: 'ts', code: "// BRUTE: the game prints straight to the console and keeps no history.\n// Spectators? Copy-paste console.log calls. Replay? Impossible: past states are gone.\nclass LoudGame {\n  b: string[][] = Array.from({ length: 4 }, () => new Array<string>(4).fill(\"\"));\n  syms = [\"X\", \"O\", \"Z\"];\n  turn = 0;\n  play(r: number, c: number): void {\n    this.b[r][c] = this.syms[this.turn];\n    console.log(\"Player \" + this.syms[this.turn] + \" played \" + r + \",\" + c);    // UI glued into the model\n    console.log(\"[TV screen] \" + this.syms[this.turn] + \" -> \" + r + \",\" + c);    // second \"spectator\", copy-pasted\n    this.turn = (this.turn + 1) % 3;\n  }\n}\n" }, { lang: 'cpp', code: "// BRUTE: the game prints straight to the console and keeps no history.\n// Spectators? Copy-paste cout lines. Replay? Impossible: past states are gone.\nstruct LoudGame {\n    char b[4][4] = {};\n    char syms[3] = {'X', 'O', 'Z'};\n    int turn = 0;\n    void play(int r, int c) {\n        b[r][c] = syms[turn];\n        cout << \"Player \" << syms[turn] << \" played \" << r << \",\" << c << endl;    // UI glued into the model\n        cout << \"[TV screen] \" << syms[turn] << \" -> \" << r << \",\" << c << endl;    // second \"spectator\", copy-pasted\n        turn = (turn + 1) % 3;\n    }\n};\n" }] } },
     mcq: { q: 'Why model events as a closed set of immutable types (a Java <b>sealed</b> interface of records, a TypeScript discriminated union, a C++ <code>std::variant</code>)?', options: ['Records are faster', 'The compiler knows every event type, so a <code>switch</code> / <code>match</code> / <code>std::visit</code> over events can be checked for exhaustiveness, and events are immutable', 'Sealed classes are required for Observer', 'To prevent subclassing Game'], answer: 1, explain: 'A closed set of immutable facts (sealed + records in Java, a discriminated union in TypeScript, <code>std::variant</code> in C++, frozen dataclasses in Python): pattern-matching switches must handle each one, and the compiler or type checker flags a missing case.' },
     hints: [
       `<p>Hint 1: anything that happened (move, win, draw) is a fact — store it as an immutable event in an append-only list.</p>`,
@@ -9821,10 +10139,10 @@ int main() {
      QUIZ
      ===================================================================== */
   quiz.push({ q: 'An interviewer says "Design a parking lot." What should your first two minutes produce?', options: ['A ParkingLot class with a main method', 'A written list of clarified requirements: vehicle types, floors, pricing, concurrency, out-of-scope items', 'A UML diagram of every possible class', 'A database schema'], answer: 1, explain: 'Clarifying requirements first fixes the scope; every later step (entities, APIs, patterns) depends on it.' });
-  quiz.push({ q: 'Which noun from "drivers get a ticket at the gate" most clearly deserves its own class?', options: ['driver', 'ticket', 'gate (as a String)', 'at'], answer: 1, explain: 'A ticket has its own data (id, vehicle, spot, entry time) and lifecycle; the driver usually has no data the system needs.' });
-  quiz.push({ q: 'Vehicle types BIKE, CAR, TRUCK differ only in which spots they fit and their hourly rate. The simplest extensible model is…', options: ['Abstract class Vehicle with three empty subclasses', 'An enum VehicleType with fields for fit list and rate', 'Three String constants', 'A Singleton VehicleRegistry'], answer: 1, explain: 'When variants differ only by data, an enum with fields keeps rules in one place; a new type is one line.' });
+  quiz.push({ q: 'Which noun from "drivers get a ticket at the gate" most clearly deserves its own class?', options: ['driver', 'ticket', 'gate (as a plain string)', 'at'], answer: 1, explain: 'A ticket has its own data (id, vehicle, spot, entry time) and lifecycle; the driver usually has no data the system needs.' });
+  quiz.push({ q: 'Vehicle types BIKE, CAR, TRUCK differ only in which spots they fit and their hourly rate. The simplest extensible model is…', options: ['Abstract class Vehicle with three empty subclasses', 'An enum VehicleType with fields for fit list and rate', 'Three string constants', 'A Singleton VehicleRegistry'], answer: 1, explain: 'When variants differ only by data, an enum with fields keeps rules in one place; a new type is one line.' });
   quiz.push({ q: 'Why is a Singleton ParkingLot usually a poor choice in an LLD interview?', options: ['Singletons cannot have methods', 'It hides a global dependency, prevents multiple lots and makes tests share state', 'The language forbids it', 'It is slower'], answer: 1, explain: 'Create one instance in main() and inject it; the "only one" constraint is a deployment decision, not a class property.' });
-  quiz.push({ q: 'Two entry gates call park() at the same moment and both get spot F0-S2. What is the root cause?', options: ['A bad allocation strategy', 'A check-then-act race: finding a free spot and marking it taken are not atomic', 'Using enums', 'Pricing logic'], answer: 1, explain: 'Make find+assign one atomic step: one lock around park() (synchronized / mutex), per-floor locks, or a concurrent free queue whose pop is atomic.' });
+  quiz.push({ q: 'Two entry gates call park() at the same moment and both get spot F0-S2. What is the root cause?', options: ['A bad allocation strategy', 'A check-then-act race: finding a free spot and marking it taken are not atomic', 'Using enums', 'Pricing logic'], answer: 1, explain: 'Make find+assign one atomic step: one lock around park() (Java <code>synchronized</code> / <code>threading.Lock</code> / <code>std::mutex</code>), per-floor locks, or a concurrent free queue whose pop is atomic.' });
   quiz.push({ q: 'In unpark(), which order is safest?', options: ['release spot → compute fee → remove ticket', 'remove ticket → compute fee → release spot', 'compute fee → release spot → keep ticket for audit as active', 'any order'], answer: 1, explain: 'Removing the ticket first makes reuse impossible even if a later step fails; the spot is released last.' });
   quiz.push({ q: 'A car parks for 61 minutes at ₹20 per started hour (minimum 1 hour). The fee is…', options: ['₹20', '₹40', '₹20.33', '₹60'], answer: 1, explain: 'Started hours = ⌈61/60⌉ = 2 → 2 × 20 = ₹40.' });
   quiz.push({ q: 'On an n×n tic-tac-toe board with counters (X = +1, O = −1), X wins when…', options: ['any counter is positive', 'a touched row, column or diagonal counter equals +n', 'the sum of all counters is n', 'n moves have been made'], answer: 1, explain: 'Only a line fully owned by X can reach +n; any O in it lowers the sum.' });
@@ -9849,7 +10167,7 @@ int main() {
      INTERVIEW Q&A
      ===================================================================== */
   interview.push({ level: 'B', q: 'Walk me through how you approach any LLD interview question.',
-    a: `<p>I use seven steps and keep them visible. <b>1. Clarify</b>: actors, use cases, variants, scale/concurrency, out of scope — written down. <b>2. Entities</b>: nouns become classes, enums or records; verbs become methods on the class that owns the data. <b>3. APIs</b>: public signatures with inputs, outputs and failure cases. <b>4. Class diagram</b>: relationships and multiplicities. <b>5. Patterns</b>: interfaces only where the requirements say something will vary. <b>6. Code</b>: dependency order, then a <code>main()</code> demo. <b>7. Extend</b>: take one follow-up and show it is a new class, not edits everywhere. I timebox: about a quarter of the round on steps 1–5, half on code.</p>`,
+    a: `<p>I use seven steps and keep them visible. <b>1. Clarify</b>: actors, use cases, variants, scale/concurrency, out of scope — written down. <b>2. Entities</b>: nouns become classes, enums or small value types (records, dataclasses, structs); verbs become methods on the class that owns the data. <b>3. APIs</b>: public signatures with inputs, outputs and failure cases. <b>4. Class diagram</b>: relationships and multiplicities. <b>5. Patterns</b>: interfaces only where the requirements say something will vary. <b>6. Code</b>: dependency order, then a <code>main()</code> demo. <b>7. Extend</b>: take one follow-up and show it is a new class, not edits everywhere. I timebox: about a quarter of the round on steps 1–5, half on code.</p>`,
     followUps: ['What do you cut when only 10 minutes remain?', 'How does the framework change for a 90-minute machine-coding round?'] });
   interview.push({ level: 'B', q: 'What clarifying questions would you ask for "Design a parking lot"?',
     a: `<p>How many floors and spots; which spot sizes and vehicle types, and which fits where; how pricing works (hourly, slabs, caps, per type); how many entry/exit gates and whether they operate concurrently; payment modes; whether we need a display of free spots; whether reservations, monthly passes, EV charging or lost tickets are in scope; and whether it is in-memory or persisted. I also ask what is explicitly out of scope, so I do not build features nobody needs.</p>`,
@@ -9870,7 +10188,7 @@ int main() {
     a: `<p>Keep counters for each row, each column, and the two diagonals. With two players, X adds +1 and O adds −1 to the row, column and (if applicable) diagonal counters of the cell played. A line of n cells reaches +n only if every cell contributes +1, i.e. all X; any O lowers the maximum possible sum to n − 2. So <code>counter == ±n</code> exactly means a full line for one player. Each move touches at most four counters: O(1) time, O(n) space. For 3+ players, keep separate counter arrays per player and test for n.</p>`,
     followUps: ['Why does it break for K-in-a-row with K &lt; N?', 'How do you support undo with counters?'] });
   interview.push({ level: 'I', q: 'How did you split responsibilities in Tic-Tac-Toe?',
-    a: `<p><code>Board</code> owns cells and validates moves (bounds, empty). <code>Player</code> is an interface that chooses moves, so humans, scripted test players and bots are interchangeable. <code>WinningStrategy</code> decides whether the last move won, so rule variants plug in. <code>Game</code> orchestrates: turn order, status (an enum), history of <code>Move</code> records, and the invariant "no moves after the game ends". No class reads the console (<code>System.in</code> / <code>input()</code> / <code>std::cin</code>) except a console player, which keeps the model testable.</p>`,
+    a: `<p><code>Board</code> owns cells and validates moves (bounds, empty). <code>Player</code> is an interface that chooses moves, so humans, scripted test players and bots are interchangeable. <code>WinningStrategy</code> decides whether the last move won, so rule variants plug in. <code>Game</code> orchestrates: turn order, status (an enum), history of immutable <code>Move</code> values, and the invariant "no moves after the game ends". No class reads the console (<code>System.in</code> / <code>input()</code> / <code>std::cin</code>) except a console player, which keeps the model testable.</p>`,
     followUps: ['Where does the draw check go and why?', 'How would you add a networked player?'] });
   interview.push({ level: 'A', q: 'Add undo/redo to Tic-Tac-Toe. What changes?',
     a: `<p>Each move becomes a <code>MoveCommand</code> with <code>execute()</code> and <code>undo()</code> that apply ±1 to exactly the same counters and set/clear the cell — so counter updates must not short-circuit. <code>Game</code> keeps an undo deque and a redo deque: play → execute, push to undo, clear redo; undo → pop, reverse, push to redo, and fix turn/game-over (undoing a winning move re-opens the game with the same player to move). This is O(1) per operation versus O(n²) for board snapshots. The only edit to existing code is the history hook in <code>Game</code>.</p>`,

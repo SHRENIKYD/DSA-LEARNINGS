@@ -523,6 +523,14 @@ SELECT * FROM order_items;` }
           `<p>Hint 2: stick several one-row queries together with <code>UNION ALL</code>, and add a text literal column like <code>'customers' AS table_name</code> so you know which count is which.</p>`,
           `<p>Hint 3: wrap the UNION in an outer query (or just put ORDER BY at the very end) to sort by <code>row_count DESC, table_name</code>. Recipe: one SELECT per table → UNION ALL → ORDER BY.</p>`
         ],
+        tests: { engine: 'sqlite', cases: [
+          { cols: ['table_name', 'row_count'], rows: [['order_items', 10], ['orders', 6], ['products', 6], ['customers', 5], ['loyalty_cards', 3]] },
+          { setup: 'DELETE FROM order_items;', cols: ['table_name', 'row_count'], rows: [['orders', 6], ['products', 6], ['customers', 5], ['loyalty_cards', 3], ['order_items', 0]] },
+          { setup: 'DELETE FROM order_items; DELETE FROM orders; DELETE FROM loyalty_cards;', cols: ['table_name', 'row_count'], rows: [['products', 6], ['customers', 5], ['loyalty_cards', 0], ['order_items', 0], ['orders', 0]] },
+          { setup: 'DELETE FROM order_items; DELETE FROM orders; DELETE FROM loyalty_cards; DELETE FROM customers; DELETE FROM products;', cols: ['table_name', 'row_count'], rows: [['customers', 0], ['loyalty_cards', 0], ['order_items', 0], ['orders', 0], ['products', 0]] },
+          { setup: 'INSERT INTO loyalty_cards VALUES (504, 3, \'silver\', 0), (505, 4, \'gold\', 10);', cols: ['table_name', 'row_count'], rows: [['order_items', 10], ['orders', 6], ['products', 6], ['customers', 5], ['loyalty_cards', 5]] },
+          { setup: 'WITH RECURSIVE n(i) AS (SELECT 100 UNION ALL SELECT i + 1 FROM n WHERE i < 149) INSERT INTO customers (customer_id, email, name) SELECT i, \'c\' || i || \'@x.com\', \'C\' || i FROM n;', cols: ['table_name', 'row_count'], rows: [['customers', 55], ['order_items', 10], ['orders', 6], ['products', 6], ['loyalty_cards', 3]] }
+        ] },
         solution: {
           approach: `<p>Ask the DBMS to count inside each table, label each count with a literal string, glue the five one-row results into one result with <code>UNION ALL</code> (ALL = keep duplicates, and it is cheaper than UNION because it skips de-duplication), then sort. Bonus: the catalogue query lists tables so you never forget one.</p>`,
           code: { lang: 'sql', db: 'shop', code: `-- Which tables exist? (the catalogue never lies)
@@ -723,6 +731,14 @@ SELECT 5 AS degree, 7 AS cardinality, 'course_id,title,credits,dept_id,teacher_i
           `<p>Hint 2: cardinality is about the <b>data</b>: <code>SELECT COUNT(*) FROM courses</code>. Use scalar subqueries to put both numbers in one row.</p>`,
           `<p>Hint 3: <code>group_concat(name, ',')</code> over the table_info rows ordered by <code>cid</code> gives the column list. Recipe: three scalar subqueries in one SELECT.</p>`
         ],
+        tests: { engine: 'sqlite', cases: [
+          { cols: ['degree', 'cardinality', 'columns'], rows: [[5, 7, 'course_id,title,credits,dept_id,teacher_id']] },
+          { setup: 'ALTER TABLE courses ADD COLUMN room TEXT;', cols: ['degree', 'cardinality', 'columns'], rows: [[6, 7, 'course_id,title,credits,dept_id,teacher_id,room']] },
+          { setup: 'DELETE FROM enrollments; DELETE FROM courses;', cols: ['degree', 'cardinality', 'columns'], rows: [[5, 0, 'course_id,title,credits,dept_id,teacher_id']] },
+          { setup: 'DELETE FROM enrollments WHERE course_id = \'HI101\'; DELETE FROM courses WHERE course_id = \'HI101\';', cols: ['degree', 'cardinality', 'columns'], rows: [[5, 6, 'course_id,title,credits,dept_id,teacher_id']] },
+          { setup: 'ALTER TABLE courses ADD COLUMN room TEXT; ALTER TABLE courses ADD COLUMN term TEXT; ALTER TABLE courses RENAME COLUMN title TO name;', cols: ['degree', 'cardinality', 'columns'], rows: [[7, 7, 'course_id,name,credits,dept_id,teacher_id,room,term']] },
+          { setup: 'INSERT INTO courses (course_id, title, credits, dept_id) VALUES (\'ZZ1\', \'A\', 1, 1), (\'ZZ2\', \'B\', 2, 2), (\'ZZ3\', \'C\', 3, 3);', cols: ['degree', 'cardinality', 'columns'], rows: [[5, 10, 'course_id,title,credits,dept_id,teacher_id']] }
+        ] },
         solution: {
           approach: `<p>Use three scalar subqueries — each returns exactly one value — side by side in one SELECT. Two of them read the catalogue (<code>pragma_table_info</code>), one reads the data. Ordering the column list by <code>cid</code> (column id) keeps the declared order.</p>`,
           code: { lang: 'sql', db: 'school', code: `SELECT
@@ -933,7 +949,7 @@ SELECT 'quirky', code, label FROM quirky;` }
         level: 'Medium', tags: ['candidate key', 'COUNT DISTINCT', 'NULL'], companies: ['Google', 'Stripe', 'Flipkart'],
         statement: `<p>The <code>signups</code> table (shop database) was imported from a CSV with no constraints. For each column, report how many distinct non-NULL values and how many NULLs it has, and decide which single columns are <b>candidate keys</b> by the data (distinct = total rows and zero NULLs). Also test the pair <code>(full_name, city)</code>.</p>`,
         constraints: `Use <code>db: shop</code>. One result row per column (or tested pair): <code>col, distinct_values, nulls, total_rows, verdict</code>.`,
-        example: `${H.table(['col', 'distinct_values', 'nulls', 'total_rows', 'verdict'], [['email', '8', '0', '8', H.c('g', 'candidate key')], ['username', '8', '0', '8', H.c('g', 'candidate key')], ['phone', '6', '2', '8', H.c('y', 'unique but has NULLs')], ['full_name', '6', '0', '8', H.c('r', 'not unique')], ['(full_name, city)', '7', '0', '8', H.c('r', 'not unique')]])}<p>Two Sam Parks live in Pune, so even the pair repeats.</p>`,
+        example: `${H.table(['col', 'distinct_values', 'nulls', 'total_rows', 'verdict'], [['email', '8', '0', '8', H.c('g', 'candidate key')], ['username', '8', '0', '8', H.c('g', 'candidate key')], ['phone', '6', '2', '8', H.c('y', 'unique but has NULLs')], ['full_name', '6', '0', '8', H.c('r', 'not unique')], ['city', '5', '0', '8', H.c('r', 'not unique')], ['(full_name, city)', '7', '0', '8', H.c('r', 'not unique')]])}<p>Two Sam Parks live in Pune, so even the pair repeats.</p>`,
         brute: {
           why: `<p>Looking at the first few rows (<code>LIMIT 5</code>) and guessing: in the first five rows every full_name and every city-name pair looks unique, so you would wrongly crown <code>full_name</code> a key. Samples cannot reveal duplicates that live further down the table.</p>`,
           code: { lang: 'sql', db: 'shop', code: `-- Eyeballing a sample: every name looks unique here... wrong conclusion
@@ -945,22 +961,33 @@ SELECT * FROM signups LIMIT 5;` }
           `<p>Hint 2: build one small SELECT per column and glue them with <code>UNION ALL</code>. A <code>CASE</code> expression turns the numbers into a verdict.</p>`,
           `<p>Hint 3: for the pair, count distinct pairs with a subquery: <code>SELECT COUNT(*) FROM (SELECT DISTINCT full_name, city FROM signups)</code>. Recipe: stats CTE → per-column rows → CASE verdict.</p>`
         ],
+        tests: { engine: 'sqlite', cmp: 'set', cases: [
+          { cols: ['col', 'distinct_values', 'nulls', 'total_rows', 'verdict'], rows: [['email', 8, 0, 8, 'candidate key'], ['username', 8, 0, 8, 'candidate key'], ['phone', 6, 2, 8, 'unique but has NULLs'], ['full_name', 6, 0, 8, 'not unique'], ['city', 5, 0, 8, 'not unique'], ['(full_name, city)', 7, 0, 8, 'not unique']] },
+          { setup: 'DELETE FROM signups;', cols: ['col', 'distinct_values', 'nulls', 'total_rows', 'verdict'], rows: [['email', 0, 0, 0, 'candidate key'], ['username', 0, 0, 0, 'candidate key'], ['phone', 0, 0, 0, 'candidate key'], ['full_name', 0, 0, 0, 'candidate key'], ['city', 0, 0, 0, 'candidate key'], ['(full_name, city)', 0, 0, 0, 'candidate key']] },
+          { setup: 'DELETE FROM signups WHERE username <> \'sam1\';', cols: ['col', 'distinct_values', 'nulls', 'total_rows', 'verdict'], rows: [['email', 1, 0, 1, 'candidate key'], ['username', 1, 0, 1, 'candidate key'], ['phone', 1, 0, 1, 'candidate key'], ['full_name', 1, 0, 1, 'candidate key'], ['city', 1, 0, 1, 'candidate key'], ['(full_name, city)', 1, 0, 1, 'candidate key']] },
+          { setup: 'UPDATE signups SET phone = NULL;', cols: ['col', 'distinct_values', 'nulls', 'total_rows', 'verdict'], rows: [['email', 8, 0, 8, 'candidate key'], ['username', 8, 0, 8, 'candidate key'], ['phone', 0, 8, 8, 'unique but has NULLs'], ['full_name', 6, 0, 8, 'not unique'], ['city', 5, 0, 8, 'not unique'], ['(full_name, city)', 7, 0, 8, 'not unique']] },
+          { setup: 'UPDATE signups SET email = \'asha@mail.com\' WHERE username = \'sam2\';', cols: ['col', 'distinct_values', 'nulls', 'total_rows', 'verdict'], rows: [['email', 7, 0, 8, 'not unique'], ['username', 8, 0, 8, 'candidate key'], ['phone', 6, 2, 8, 'unique but has NULLs'], ['full_name', 6, 0, 8, 'not unique'], ['city', 5, 0, 8, 'not unique'], ['(full_name, city)', 7, 0, 8, 'not unique']] },
+          { setup: 'UPDATE signups SET full_name = \'Sam Park 2\' WHERE username = \'sam2\';', cols: ['col', 'distinct_values', 'nulls', 'total_rows', 'verdict'], rows: [['email', 8, 0, 8, 'candidate key'], ['username', 8, 0, 8, 'candidate key'], ['phone', 6, 2, 8, 'unique but has NULLs'], ['full_name', 7, 0, 8, 'not unique'], ['city', 5, 0, 8, 'not unique'], ['(full_name, city)', 8, 0, 8, 'candidate key']] },
+          { setup: 'UPDATE signups SET city = NULL WHERE username = \'sam2\';', cols: ['col', 'distinct_values', 'nulls', 'total_rows', 'verdict'], rows: [['email', 8, 0, 8, 'candidate key'], ['username', 8, 0, 8, 'candidate key'], ['phone', 6, 2, 8, 'unique but has NULLs'], ['full_name', 6, 0, 8, 'not unique'], ['city', 5, 1, 8, 'not unique'], ['(full_name, city)', 7, 1, 8, 'unique but has NULLs']] },
+          { setup: 'UPDATE signups SET username = NULL WHERE username IN (\'sam1\', \'sam2\'); UPDATE signups SET email = NULL WHERE username = \'chenw\';', cols: ['col', 'distinct_values', 'nulls', 'total_rows', 'verdict'], rows: [['email', 7, 1, 8, 'unique but has NULLs'], ['username', 6, 2, 8, 'unique but has NULLs'], ['phone', 6, 2, 8, 'unique but has NULLs'], ['full_name', 6, 0, 8, 'not unique'], ['city', 5, 0, 8, 'not unique'], ['(full_name, city)', 7, 0, 8, 'not unique']] }
+        ] },
         solution: {
           approach: `<p>Profile each column: total rows, distinct non-NULL values, NULL count. Verdict: distinct = total and nulls = 0 → candidate key; distinct + nulls = total with nulls &gt; 0 → unique but nullable (fit for UNIQUE, not PK); otherwise not unique. A CTE (<code>WITH</code>) holds the raw numbers so the verdict logic is written once.</p>`,
           code: { lang: 'sql', db: 'shop', code: `WITH stats AS (
-  SELECT 'email' AS col, COUNT(DISTINCT email) AS d, SUM(email IS NULL) AS n, COUNT(*) AS total FROM signups
+  SELECT 'email' AS col, COUNT(DISTINCT email) AS d, COUNT(*) - COUNT(email) AS n, COUNT(*) AS total FROM signups
   UNION ALL
-  SELECT 'username', COUNT(DISTINCT username), SUM(username IS NULL), COUNT(*) FROM signups
+  SELECT 'username', COUNT(DISTINCT username), COUNT(*) - COUNT(username), COUNT(*) FROM signups
   UNION ALL
-  SELECT 'phone', COUNT(DISTINCT phone), SUM(phone IS NULL), COUNT(*) FROM signups
+  SELECT 'phone', COUNT(DISTINCT phone), COUNT(*) - COUNT(phone), COUNT(*) FROM signups
   UNION ALL
-  SELECT 'full_name', COUNT(DISTINCT full_name), SUM(full_name IS NULL), COUNT(*) FROM signups
+  SELECT 'full_name', COUNT(DISTINCT full_name), COUNT(*) - COUNT(full_name), COUNT(*) FROM signups
   UNION ALL
-  SELECT 'city', COUNT(DISTINCT city), SUM(city IS NULL), COUNT(*) FROM signups
+  SELECT 'city', COUNT(DISTINCT city), COUNT(*) - COUNT(city), COUNT(*) FROM signups
   UNION ALL
   SELECT '(full_name, city)',
-         (SELECT COUNT(*) FROM (SELECT DISTINCT full_name, city FROM signups)),
-         SUM(full_name IS NULL OR city IS NULL), COUNT(*) FROM signups
+         (SELECT COUNT(*) FROM (SELECT DISTINCT full_name, city FROM signups
+                                WHERE full_name IS NOT NULL AND city IS NOT NULL)),
+         COUNT(*) - COUNT(CASE WHEN full_name IS NOT NULL AND city IS NOT NULL THEN 1 END), COUNT(*) FROM signups
 )
 SELECT col,
        d     AS distinct_values,
@@ -1174,9 +1201,9 @@ ORDER BY manager, employee;` }
       {
         title: 'Audit a Bad Import: Find the Orphans',
         level: 'Medium', tags: ['foreign key', 'referential integrity', 'NOT EXISTS'], companies: ['Amazon', 'Atlassian', 'Infosys'],
-        statement: `<p>An intern loaded extra enrolments with foreign keys switched <b>off</b>. Some rows point at students or courses that do not exist. Run the given import, then list every orphan enrolment and say which reference is broken. Finally confirm with the DBMS's own checker.</p>`,
-        constraints: `Use <code>db: school</code>. The import is: <code>PRAGMA foreign_keys = OFF; INSERT INTO enrollments VALUES (99,'CS101','2025-SPRING',NULL),(2,'XX999','2025-SPRING',NULL),(98,'ZZ000','2025-SPRING',NULL);</code>. Output <code>student_id, course_id, problem</code>.`,
-        example: `${H.table(['student_id', 'course_id', 'problem'], [['99', 'CS101', H.c('r', 'missing student')], ['2', 'XX999', H.c('r', 'missing course')], ['98', 'ZZ000', H.c('r', 'missing student + course')]])}<p>Valid rows (all 14 originals) do not appear — each points at a real student and a real course.</p>`,
+        statement: `<p>An intern loaded extra enrolments with foreign keys switched <b>off</b>. Some rows point at students or courses that do not exist. Run the given import, then confirm with the DBMS's own checker, and finish by listing every orphan enrolment and saying which reference is broken.</p>`,
+        constraints: `Use <code>db: school</code>. The import is: <code>PRAGMA foreign_keys = OFF; INSERT INTO enrollments VALUES (99,'CS101','2025-SPRING',NULL),(2,'XX999','2025-SPRING',NULL),(98,'ZZ000','2025-SPRING',NULL);</code>. Output <code>student_id, course_id, problem</code>, ordered by <code>student_id, course_id</code>; the orphan list must be the last result.`,
+        example: `${H.table(['student_id', 'course_id', 'problem'], [['2', 'XX999', H.c('r', 'missing course')], ['98', 'ZZ000', H.c('r', 'missing student + course')], ['99', 'CS101', H.c('r', 'missing student')]])}<p>Valid rows (all 14 originals) do not appear — each points at a real student and a real course.</p>`,
         brute: {
           why: `<p>Comparing two counts tells you <i>that</i> something is wrong (17 enrolments, only 14 join cleanly) but not <i>which</i> rows or <i>why</i>. You would still have to eyeball 17 rows — impossible at 17 million.</p>`,
           code: { lang: 'sql', db: 'school', code: `PRAGMA foreign_keys = OFF;
@@ -1194,12 +1221,24 @@ SELECT (SELECT COUNT(*) FROM enrollments) AS all_rows,
           `<p>Hint 2: test the two references separately: student missing? course missing? Combine with <code>OR</code> in WHERE, and build the label with a <code>CASE</code>.</p>`,
           `<p>Hint 3: SQLite can do the audit for you: <code>SELECT * FROM pragma_foreign_key_check('enrollments')</code> lists every violating rowid and the parent table. Recipe: import → anti-join report → built-in check → (fix) → re-check returns nothing.</p>`
         ],
+        tests: { engine: 'sqlite', cases: [
+          { cols: ['student_id', 'course_id', 'problem'], rows: [[2, 'XX999', 'missing course'], [98, 'ZZ000', 'missing student + course'], [99, 'CS101', 'missing student']] },
+          { setup: 'PRAGMA foreign_keys = OFF; DELETE FROM students WHERE student_id = 6;', cols: ['student_id', 'course_id', 'problem'], rows: [[2, 'XX999', 'missing course'], [6, 'MA201', 'missing student'], [98, 'ZZ000', 'missing student + course'], [99, 'CS101', 'missing student']] },
+          { setup: 'PRAGMA foreign_keys = OFF; DELETE FROM courses WHERE course_id = \'PH101\';', cols: ['student_id', 'course_id', 'problem'], rows: [[2, 'XX999', 'missing course'], [4, 'PH101', 'missing course'], [98, 'ZZ000', 'missing student + course'], [99, 'CS101', 'missing student']] },
+          { setup: 'PRAGMA foreign_keys = OFF; DELETE FROM students WHERE student_id = 8; DELETE FROM courses WHERE course_id = \'HI101\';', cols: ['student_id', 'course_id', 'problem'], rows: [[2, 'XX999', 'missing course'], [8, 'CS101', 'missing student'], [8, 'HI101', 'missing student + course'], [98, 'ZZ000', 'missing student + course'], [99, 'CS101', 'missing student']] },
+          { setup: 'INSERT INTO students (student_id, roll_no, name, joined_on) VALUES (99, \'R2099-1\', \'Late\', \'2025-01-01\'); INSERT INTO courses (course_id, title, credits, dept_id) VALUES (\'XX999\', \'Extra\', 3, 1);', cols: ['student_id', 'course_id', 'problem'], rows: [[98, 'ZZ000', 'missing student + course']] },
+          { setup: 'DELETE FROM enrollments;', cols: ['student_id', 'course_id', 'problem'], rows: [[2, 'XX999', 'missing course'], [98, 'ZZ000', 'missing student + course'], [99, 'CS101', 'missing student']] },
+          { setup: 'PRAGMA foreign_keys = OFF; DELETE FROM students WHERE student_id = 2;', cols: ['student_id', 'course_id', 'problem'], rows: [[2, 'MA101', 'missing student'], [2, 'MA201', 'missing student'], [2, 'XX999', 'missing student + course'], [98, 'ZZ000', 'missing student + course'], [99, 'CS101', 'missing student']] }
+        ] },
         solution: {
-          approach: `<p>Use an <b>anti-join</b>: for each enrolment, ask "does a matching student exist? does a matching course exist?" with <code>EXISTS</code>. Keep rows where either answer is no, and label which one. Cross-check with <code>pragma_foreign_key_check</code>, which uses the declared FKs. Finally, show the clean-up inside a transaction and confirm zero violations remain.</p>`,
+          approach: `<p>Use an <b>anti-join</b>: for each enrolment, ask "does a matching student exist? does a matching course exist?" with <code>EXISTS</code>. Keep rows where either answer is no, and label which one. Cross-check with <code>pragma_foreign_key_check</code>, which uses the declared FKs. The orphan list is the final query, so the clean-up (shown in a comment) is something you run after reading it.</p>`,
           code: { lang: 'sql', db: 'school', code: `PRAGMA foreign_keys = OFF;   -- simulate the bad import
 INSERT INTO enrollments VALUES (99,'CS101','2025-SPRING',NULL),(2,'XX999','2025-SPRING',NULL),(98,'ZZ000','2025-SPRING',NULL);
 
--- 1) Our own audit: which reference is broken?
+-- 1) The DBMS's own checker (uses the declared FOREIGN KEYs)
+SELECT "table", rowid, parent FROM pragma_foreign_key_check('enrollments');
+
+-- 2) Our own audit: which reference is broken?
 SELECT e.student_id, e.course_id,
        CASE
          WHEN NOT EXISTS (SELECT 1 FROM students s WHERE s.student_id = e.student_id)
@@ -1210,19 +1249,16 @@ SELECT e.student_id, e.course_id,
 FROM enrollments e
 WHERE NOT EXISTS (SELECT 1 FROM students s WHERE s.student_id = e.student_id)
    OR NOT EXISTS (SELECT 1 FROM courses  c WHERE c.course_id  = e.course_id)
-ORDER BY e.student_id DESC;
+ORDER BY e.student_id, e.course_id;
 
--- 2) The DBMS's own checker (uses the declared FOREIGN KEYs)
-SELECT "table", rowid, parent FROM pragma_foreign_key_check('enrollments');
-
--- 3) Clean up atomically, then turn enforcement back on and re-check
-BEGIN;
-DELETE FROM enrollments
-WHERE NOT EXISTS (SELECT 1 FROM students s WHERE s.student_id = enrollments.student_id)
-   OR NOT EXISTS (SELECT 1 FROM courses  c WHERE c.course_id  = enrollments.course_id);
-COMMIT;
-PRAGMA foreign_keys = ON;
-SELECT COUNT(*) AS violations_left FROM pragma_foreign_key_check('enrollments');` },
+-- 3) After reading the report, clean up atomically and turn enforcement back on:
+--    BEGIN;
+--    DELETE FROM enrollments
+--    WHERE NOT EXISTS (SELECT 1 FROM students s WHERE s.student_id = enrollments.student_id)
+--       OR NOT EXISTS (SELECT 1 FROM courses  c WHERE c.course_id  = enrollments.course_id);
+--    COMMIT;
+--    PRAGMA foreign_keys = ON;
+--    SELECT COUNT(*) AS violations_left FROM pragma_foreign_key_check('enrollments');   -- 0` },
           complexity: `<p>With an index on the parent keys (they are PKs, so they have one) each EXISTS is an O(log P) lookup: O(C log P) for C child rows. Without parent indexes it would be O(C × P). Note the FK checker reports each broken <i>reference</i>, so row 98 appears twice there.</p>`,
           followUps: ['Instead of deleting, move orphans into an <code>enrollments_quarantine</code> table for review.', 'Why is <code>NOT IN</code> dangerous if the subquery column can contain NULL?', 'How would you run this audit across two microservices that own students and enrolments separately?']
         }
@@ -1398,7 +1434,7 @@ HAVING COUNT(*) > 1;` }
         title: 'Model Books and Authors (Many-to-Many)',
         level: 'Medium', tags: ['N:M', 'junction table', 'DDL', 'composite key'], companies: ['Amazon', 'Goodreads', 'Zoho'],
         statement: `<p>A book can have several authors and an author can write several books. Create <code>authors</code>, <code>books</code> and a junction table <code>book_authors</code> (with the author's position on the cover: 1 = first author). Insert the sample data and list every book with its authors in cover order, as one comma-separated string.</p>`,
-        constraints: `Self-contained (empty DB). Use PRIMARY KEY, FOREIGN KEY, UNIQUE and CHECK where they make sense. Output: <code>title, authors</code> ordered by title.`,
+        constraints: `Self-contained (empty DB). Use PRIMARY KEY, FOREIGN KEY, UNIQUE and CHECK where they make sense. Tables: <code>authors(author_id, name)</code>, <code>books(book_id, title)</code>, <code>book_authors(book_id, author_id, position)</code>. Output (the last result): <code>title, authors</code> ordered by title.`,
         example: `${H.table(['title', 'authors'], [['Database System Concepts', 'Silberschatz, Korth, Sudarshan'], ['Operating System Concepts', 'Silberschatz, Galvin, Gagne'], ['Readings in Databases', 'Stonebraker']])}<p>Silberschatz appears in two books (author → many books) and each book has several authors (book → many authors): ${H.c('p', 'many-to-many')}.</p>`,
         brute: {
           why: `<p>The "spreadsheet" design: <code>author1, author2, author3</code> columns. It caps authors at 3, wastes NULL columns, and "books by Silberschatz" needs an OR across every column — add a 4th author and every query must change. It is a <b>repeating group</b> hiding an N : M relationship.</p>`,
@@ -1417,6 +1453,16 @@ WHERE author1 = 'Silberschatz' OR author2 = 'Silberschatz' OR author3 = 'Silbers
           `<p>Hint 2: <code>book_authors(book_id FK, author_id FK, position)</code> with <code>PRIMARY KEY (book_id, author_id)</code> and <code>UNIQUE (book_id, position)</code> so two authors cannot both be "first".</p>`,
           `<p>Hint 3: to print authors in cover order, join the three tables, ORDER BY position inside a subquery, then <code>group_concat(name, ', ')</code> per book. Recipe: DDL → INSERT → join → group.</p>`
         ],
+        tests: { engine: 'sqlite', cases: [
+          { cols: ['title', 'authors'], rows: [['Database System Concepts', 'Silberschatz, Korth, Sudarshan'], ['Operating System Concepts', 'Silberschatz, Galvin, Gagne'], ['Readings in Databases', 'Stonebraker']] },
+          { after: 'INSERT INTO book_authors (book_id, author_id, position) VALUES (1, 1, 5)', error: 'UNIQUE|PRIMARY|duplicate' },
+          { after: 'INSERT INTO book_authors (book_id, author_id, position) VALUES (3, 1, 1)', error: 'UNIQUE|duplicate' },
+          { after: 'INSERT INTO book_authors (book_id, author_id, position) VALUES (3, 1, 0)', error: 'CHECK' },
+          { after: 'INSERT INTO book_authors (book_id, author_id, position) VALUES (99, 1, 1)', error: 'FOREIGN KEY' },
+          { after: 'INSERT INTO book_authors (book_id, author_id, position) VALUES (3, 99, 2)', error: 'FOREIGN KEY' },
+          { after: 'INSERT INTO book_authors (book_id, author_id, position) VALUES (3, 1, 2); SELECT COUNT(*) FROM book_authors WHERE author_id = 1', rows: [[3]] },
+          { after: 'SELECT a.name FROM authors a JOIN book_authors ba ON ba.author_id = a.author_id WHERE ba.book_id = 2 ORDER BY ba.position', rows: [['Silberschatz'], ['Galvin'], ['Gagne']] }
+        ] },
         solution: {
           approach: `<p>Two entity tables with surrogate keys, one junction table with two FKs and a composite PK. Pair-level facts (position) live on the junction. CHECK keeps position positive, UNIQUE(book_id, position) forbids two "first authors". To aggregate in order, feed group_concat from an ordered subquery (SQLite keeps that order in practice; PostgreSQL would use <code>string_agg(name, ', ' ORDER BY position)</code>).</p>`,
           code: { lang: 'sql', code: `PRAGMA foreign_keys = ON;
@@ -1446,6 +1492,11 @@ INSERT INTO book_authors (book_id, author_id, position) VALUES
   (2, 1, 1), (2, 4, 2), (2, 5, 3),
   (3, 6, 1);
 
+-- The other direction is just as easy: books by Silberschatz
+SELECT b.title
+FROM books b JOIN book_authors ba ON ba.book_id = b.book_id
+WHERE ba.author_id = (SELECT author_id FROM authors WHERE name = 'Silberschatz');
+
 SELECT title, group_concat(name, ', ') AS authors
 FROM (
   SELECT b.title, a.name
@@ -1455,12 +1506,7 @@ FROM (
   ORDER BY b.title, ba.position
 )
 GROUP BY title
-ORDER BY title;
-
--- And the other direction is just as easy: books by Silberschatz
-SELECT b.title
-FROM books b JOIN book_authors ba ON ba.book_id = b.book_id
-WHERE ba.author_id = (SELECT author_id FROM authors WHERE name = 'Silberschatz');` },
+ORDER BY title;` },
           complexity: `<p>Lookups by book use the PK index (book_id first); lookups by author would want an extra index on <code>book_authors(author_id)</code>. Storage grows with the number of (book, author) pairs — no NULL columns, no author limit.</p>`,
           followUps: ['Add an index so "all books of an author" does not scan book_authors.', 'Model translators and editors too — one table with a role column, or separate tables?', 'How would a document database store this, and what query becomes hard?']
         }
@@ -1683,7 +1729,7 @@ SELECT customer_id, points FROM loyalty_cards ORDER BY customer_id;     -- 1200,
         title: 'Atomic Money Transfer Without Going Negative',
         level: 'Medium', tags: ['TCL', 'transaction', 'CHECK', 'DML'], companies: ['PayPal', 'Razorpay', 'JPMorgan'],
         statement: `<p>Create an <code>accounts</code> table (A has 500, B has 200). Write SQL that moves an amount from A to B such that: (1) both balances change or neither does, (2) A can never go below zero, (3) the total money stays 700. Show a successful transfer of 300 and a refused transfer of 1000 — with no SQL errors.</p>`,
-        constraints: `Self-contained (empty DB). Pure SQL, no application code. After both attempts the result must be A = 200, B = 500.`,
+        constraints: `Self-contained (empty DB). Pure SQL, no application code. Table <code>accounts(id, balance)</code>. After both attempts the final result, <code>SELECT id, balance FROM accounts ORDER BY id</code>, must be A = 200, B = 500.`,
         example: `${H.table(['step', 'A', 'B', 'total'], [['start', '500', '200', '700'], ['transfer 300', H.c('g', '200'), H.c('g', '500'), '700'], ['transfer 1000', H.c('y', '200 (refused)'), '500', '700']])}<p>The second transfer would make A = −800, so nothing changes at all.</p>`,
         brute: {
           why: `<p>Two independent autocommitted UPDATEs with no guard: the first UPDATE commits on its own, so a crash between them loses money; and nothing stops A from going negative — the 1000 transfer creates a −800 balance and "prints" money for B.</p>`,
@@ -1700,6 +1746,16 @@ SELECT * FROM accounts;   -- A = -500, B = 1200 : wrong` }
           `<p>Hint 2: to refuse <i>without</i> an error, do both rows in <b>one UPDATE</b>: <code>SET balance = balance + CASE id WHEN 'A' THEN -x WHEN 'B' THEN x END</code>, with a WHERE that only matches when A has enough money.</p>`,
           `<p>Hint 3: the WHERE can read A's balance with a scalar subquery: <code>AND (SELECT balance FROM accounts WHERE id = 'A') &gt;= x</code>. If false, 0 rows change. Verify with <code>SUM(balance)</code> = 700.</p>`
         ],
+        tests: { engine: 'sqlite', cases: [
+          { cols: ['id', 'balance'], rows: [['A', 200], ['B', 500]] },
+          { after: 'SELECT SUM(balance) FROM accounts', rows: [[700]] },
+          { after: 'UPDATE accounts SET balance = -1 WHERE id = \'A\'', error: 'CHECK' },
+          { after: 'UPDATE accounts SET balance = balance + 1000 WHERE id = \'B\'; UPDATE accounts SET balance = balance - 1000 WHERE id = \'A\'', error: 'CHECK' },
+          { after: 'INSERT INTO accounts VALUES (\'C\', -5)', error: 'CHECK' },
+          { after: 'SELECT COUNT(*) FROM accounts', rows: [[2]] },
+          { after: 'INSERT INTO accounts VALUES (\'A\', 1)', error: 'UNIQUE|PRIMARY|duplicate' },
+          { after: 'SELECT balance FROM accounts WHERE id = \'B\'', rows: [[500]] }
+        ] },
         solution: {
           approach: `<p>Belt and braces: a CHECK constraint makes negative balances impossible; a single UPDATE moves the money for both rows at once (a single statement is always atomic); its WHERE refuses the move when funds are insufficient (0 rows affected, no error); and BEGIN/COMMIT shows the TCL boundary you would use when the transfer has more steps (e.g. inserting a ledger row).</p>`,
           code: { lang: 'sql', code: `CREATE TABLE accounts (
@@ -1731,9 +1787,9 @@ WHERE id IN ('A', 'B')
 INSERT INTO ledger (from_acc, to_acc, amount) SELECT 'A', 'B', 1000 WHERE changes() = 2;
 COMMIT;
 
-SELECT id, balance FROM accounts ORDER BY id;          -- A 200, B 500
+SELECT * FROM ledger;                                   -- only the 300 transfer
 SELECT SUM(balance) AS total_money FROM accounts;      -- 700
-SELECT * FROM ledger;                                   -- only the 300 transfer` },
+SELECT id, balance FROM accounts ORDER BY id;          -- A 200, B 500 (the final result)` },
           complexity: `<p>Two primary-key lookups and two row updates per transfer: O(log N). The transaction holds row (in SQLite: database) write locks only for microseconds. In PostgreSQL/MySQL under concurrency you would also lock A's row first (<code>SELECT … FOR UPDATE</code>) or rely on the single-statement guard, which re-checks the balance atomically.</p>`,
           followUps: ['Two transfers from A run at the same moment — what can go wrong, and how do row locks or SERIALIZABLE isolation help? (module 12)', 'Store money as integer cents, not REAL — why?', 'Make the transfer idempotent so a retried request does not move money twice.']
         }
@@ -1965,7 +2021,7 @@ SELECT COUNT(*) AS rows_with_id_10 FROM products_backup WHERE product_id = 10;  
         title: 'Your First Real Table: A Bookshop Catalogue',
         level: 'Easy', tags: ['CREATE TABLE', 'constraints', 'INSERT'], companies: ['TCS', 'Accenture', 'Amazon'],
         statement: `<p>Create a <code>books</code> table where: the id is auto-assigned; ISBN is required and unique; title is required; price is stored in <b>cents</b> and cannot be negative; stock defaults to 0 and cannot be negative; format must be 'paperback', 'hardcover' or 'ebook' (default 'paperback'). Insert three valid books (one without stock or format), then show the table.</p>`,
-        constraints: `Self-contained (empty DB). Use explicit column lists in every INSERT.`,
+        constraints: `Self-contained (empty DB). Use explicit column lists in every INSERT. Columns: <code>book_id, isbn, title, price_cents, stock, format</code>; the last result shows exactly these columns ordered by <code>book_id</code>.`,
         example: `${H.table(['book_id', 'isbn', 'title', 'price_cents', 'stock', 'format'], [['1', '978-0262033848', 'Introduction to Algorithms', '9500', '4', 'hardcover'], ['2', '978-1449373320', 'Designing Data-Intensive Applications', '4499', H.c('g', '0'), H.c('g', 'paperback')], ['3', '978-0134757599', 'Refactoring', '4799', '2', 'ebook']])}<p>Book 2 omitted stock and format, so the ${H.c('g', 'DEFAULTs')} filled them in.</p>`,
         brute: {
           why: `<p>A table with no types and no constraints accepts anything: a NULL title, a duplicate ISBN, the text "free" as a price, a negative stock, a format of "scroll". Every report built on it must defend against garbage forever.</p>`,
@@ -1980,6 +2036,17 @@ SELECT * FROM books;   -- garbage got in` }
           `<p>Hint 2: <code>book_id INTEGER PRIMARY KEY</code> is auto-assigned in SQLite. Money as <code>price_cents INTEGER</code> avoids floating-point rounding.</p>`,
           `<p>Hint 3: remember CHECK lets NULL through — pair it with NOT NULL. Then INSERT with column lists, omitting stock/format for one book to prove the DEFAULTs work.</p>`
         ],
+        tests: { engine: 'sqlite', cases: [
+          { cols: ['book_id', 'isbn', 'title', 'price_cents', 'stock', 'format'], rows: [[1, '978-0262033848', 'Introduction to Algorithms', 9500, 4, 'hardcover'], [2, '978-1449373320', 'Designing Data-Intensive Applications', 4499, 0, 'paperback'], [3, '978-0134757599', 'Refactoring', 4799, 2, 'ebook']] },
+          { after: 'INSERT INTO books (isbn, title, price_cents) VALUES (\'978-0262033848\', \'Dup\', 1)', error: 'UNIQUE|duplicate' },
+          { after: 'INSERT INTO books (isbn, title, price_cents) VALUES (\'X-1\', \'Neg\', -1)', error: 'CHECK' },
+          { after: 'INSERT INTO books (isbn, title, price_cents, stock) VALUES (\'X-2\', \'NegStock\', 1, -1)', error: 'CHECK' },
+          { after: 'INSERT INTO books (isbn, title, price_cents, format) VALUES (\'X-3\', \'Scroll\', 1, \'scroll\')', error: 'CHECK' },
+          { after: 'INSERT INTO books (title, price_cents) VALUES (\'NoIsbn\', 1)', error: 'NOT NULL' },
+          { after: 'INSERT INTO books (isbn, price_cents) VALUES (\'X-4\', 1)', error: 'NOT NULL' },
+          { after: 'INSERT INTO books (isbn, title, price_cents) VALUES (\'X-5\', \'Defaults\', 100); SELECT book_id, stock, format FROM books WHERE isbn = \'X-5\'', rows: [[4, 0, 'paperback']] },
+          { after: 'INSERT INTO books (isbn, title, price_cents, format) VALUES (\'X-6\', \'Free\', 0, \'hardcover\'); SELECT price_cents, format FROM books WHERE isbn = \'X-6\'', rows: [[0, 'hardcover']] }
+        ] },
         solution: {
           approach: `<p>Turn every sentence of the requirement into a constraint, so the database itself enforces the rules. Use integer cents for money, a whitelist CHECK for the format, NOT NULL alongside every CHECK whose column is required, and explicit column lists in INSERT so DEFAULTs and the auto id are used.</p>`,
           code: { lang: 'sql', code: `CREATE TABLE books (
@@ -2003,8 +2070,7 @@ VALUES ('978-0134757599', 'Refactoring', 4799, 2, 'ebook');
 INSERT OR IGNORE INTO books (isbn, title, price_cents) VALUES ('978-0262033848', 'Dup', 1);
 INSERT OR IGNORE INTO books (isbn, title, price_cents, format) VALUES ('111', 'Scroll', 1, 'scroll');
 
-SELECT book_id, isbn, title, price_cents, stock, format,
-       printf('%.2f', price_cents / 100.0) AS price
+SELECT book_id, isbn, title, price_cents, stock, format
 FROM books ORDER BY book_id;` },
           complexity: `<p>Each INSERT costs O(log N) for the PK and the UNIQUE(isbn) index checks; CHECK and DEFAULT are O(1). Storage: one row per book plus one index on isbn.</p>`,
           followUps: ['Add an <code>authors</code> table and link books to authors (which relationship type?).', 'Make <code>isbn</code> case/format-insensitive (strip dashes) — CHECK, generated column, or app?', 'Convert this DDL to PostgreSQL types (NUMERIC, GENERATED AS IDENTITY).']
@@ -2033,6 +2099,15 @@ SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'customers';` }
       `<p>Hint 2: turn the 0/1 flags into words with <code>CASE</code>; <code>COALESCE(dflt_value, '-')</code> prints a dash for "no default". An INTEGER PRIMARY KEY is required even though its notnull flag is 0.</p>`,
       `<p>Hint 3: UNIQUE constraints live in indexes: <code>pragma_index_list('customers')</code> (origin 'u' = from a UNIQUE constraint) joined with <code>pragma_index_info(index_name)</code> gives the column names.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['position', 'column_name', 'declared_type', 'required', 'default_value', 'key_role'], rows: [[0, 'customer_id', 'INTEGER', 'required', '-', 'PRIMARY KEY'], [1, 'email', 'TEXT', 'required', '-', 'UNIQUE'], [2, 'name', 'TEXT', 'required', '-', ''], [3, 'phone', 'TEXT', 'optional', '-', 'UNIQUE'], [4, 'city', 'TEXT', 'optional', '-', '']] },
+      { setup: 'ALTER TABLE customers ADD COLUMN country TEXT NOT NULL DEFAULT \'IN\';', cols: ['position', 'column_name', 'declared_type', 'required', 'default_value', 'key_role'], rows: [[0, 'customer_id', 'INTEGER', 'required', '-', 'PRIMARY KEY'], [1, 'email', 'TEXT', 'required', '-', 'UNIQUE'], [2, 'name', 'TEXT', 'required', '-', ''], [3, 'phone', 'TEXT', 'optional', '-', 'UNIQUE'], [4, 'city', 'TEXT', 'optional', '-', ''], [5, 'country', 'TEXT', 'required', '\'IN\'', '']] },
+      { setup: 'ALTER TABLE customers ADD COLUMN age INTEGER DEFAULT 18;', cols: ['position', 'column_name', 'declared_type', 'required', 'default_value', 'key_role'], rows: [[0, 'customer_id', 'INTEGER', 'required', '-', 'PRIMARY KEY'], [1, 'email', 'TEXT', 'required', '-', 'UNIQUE'], [2, 'name', 'TEXT', 'required', '-', ''], [3, 'phone', 'TEXT', 'optional', '-', 'UNIQUE'], [4, 'city', 'TEXT', 'optional', '-', ''], [5, 'age', 'INTEGER', 'optional', '18', '']] },
+      { setup: 'ALTER TABLE customers RENAME COLUMN city TO town;', cols: ['position', 'column_name', 'declared_type', 'required', 'default_value', 'key_role'], rows: [[0, 'customer_id', 'INTEGER', 'required', '-', 'PRIMARY KEY'], [1, 'email', 'TEXT', 'required', '-', 'UNIQUE'], [2, 'name', 'TEXT', 'required', '-', ''], [3, 'phone', 'TEXT', 'optional', '-', 'UNIQUE'], [4, 'town', 'TEXT', 'optional', '-', '']] },
+      { setup: 'ALTER TABLE customers ADD COLUMN score REAL NOT NULL DEFAULT 0.5; ALTER TABLE customers ADD COLUMN note TEXT;', cols: ['position', 'column_name', 'declared_type', 'required', 'default_value', 'key_role'], rows: [[0, 'customer_id', 'INTEGER', 'required', '-', 'PRIMARY KEY'], [1, 'email', 'TEXT', 'required', '-', 'UNIQUE'], [2, 'name', 'TEXT', 'required', '-', ''], [3, 'phone', 'TEXT', 'optional', '-', 'UNIQUE'], [4, 'city', 'TEXT', 'optional', '-', ''], [5, 'score', 'REAL', 'required', '0.5', ''], [6, 'note', 'TEXT', 'optional', '-', '']] },
+      { setup: 'ALTER TABLE customers DROP COLUMN city;', cols: ['position', 'column_name', 'declared_type', 'required', 'default_value', 'key_role'], rows: [[0, 'customer_id', 'INTEGER', 'required', '-', 'PRIMARY KEY'], [1, 'email', 'TEXT', 'required', '-', 'UNIQUE'], [2, 'name', 'TEXT', 'required', '-', ''], [3, 'phone', 'TEXT', 'optional', '-', 'UNIQUE']] },
+      { setup: 'ALTER TABLE customers DROP COLUMN city; ALTER TABLE customers ADD COLUMN nick TEXT;', cols: ['position', 'column_name', 'declared_type', 'required', 'default_value', 'key_role'], rows: [[0, 'customer_id', 'INTEGER', 'required', '-', 'PRIMARY KEY'], [1, 'email', 'TEXT', 'required', '-', 'UNIQUE'], [2, 'name', 'TEXT', 'required', '-', ''], [3, 'phone', 'TEXT', 'optional', '-', 'UNIQUE'], [4, 'nick', 'TEXT', 'optional', '-', '']] }
+    ] },
     solution: {
       approach: `<p>Query the catalogue like any other table. Columns come from <code>pragma_table_info</code>; the PRIMARY KEY flag is the <code>pk</code> column; UNIQUE columns are found through the automatically created unique indexes (<code>origin = 'u'</code>). Everything is derived, so the report stays correct after any ALTER TABLE.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT ti.cid  AS position,
@@ -2073,12 +2148,46 @@ SELECT roll_no, name FROM students WHERE email = '';     -- 0 rows: NULL is not 
       `<p>Hint 2: SQL has a special predicate for it: <code>col IS NULL</code> (and <code>col IS NOT NULL</code>).</p>`,
       `<p>Hint 3: if the data might also contain empty strings, cover both: <code>WHERE email IS NULL OR trim(email) = ''</code>. Then ORDER BY roll_no.</p>`
     ],
+    tests: { engine: 'both', pg: `CREATE TABLE departments (
+  dept_id   INTEGER PRIMARY KEY,
+  name      TEXT NOT NULL UNIQUE,
+  building  TEXT
+);
+CREATE TABLE students (
+  student_id INTEGER PRIMARY KEY,
+  roll_no    TEXT NOT NULL UNIQUE,
+  name       TEXT NOT NULL,
+  email      TEXT UNIQUE,
+  city       TEXT,
+  dept_id    INTEGER REFERENCES departments(dept_id),
+  joined_on  TEXT
+);
+INSERT INTO departments VALUES
+  (1, 'Computer Science', 'Turing Block'),
+  (2, 'Mathematics',      'Euler Hall'),
+  (3, 'Physics',          'Curie Wing'),
+  (4, 'History',          NULL);
+INSERT INTO students VALUES
+  (1, 'R2024-001', 'Asha Verma',   'asha@mail.com',  'Pune',      1, '2024-07-15'),
+  (2, 'R2024-002', 'Ben Carter',   'ben@mail.com',   'Leeds',     2, '2024-07-15'),
+  (3, 'R2024-003', 'Chen Wei',     NULL,             'Shanghai',  1, '2024-07-16'),
+  (4, 'R2024-004', 'Diya Shah',    'diya@mail.com',  'Pune',      3, '2024-07-16'),
+  (5, 'R2024-005', 'Elena Rossi',  'elena@mail.com', 'Milan',     1, '2024-07-18'),
+  (6, 'R2024-006', 'Farid Khan',   'farid@mail.com', NULL,        2, '2024-07-20'),
+  (7, 'R2024-007', 'Grace Lee',    NULL,             'Seoul',     NULL, '2024-08-01'),
+  (8, 'R2024-008', 'Hugo Martin',  'hugo@mail.com',  'Lyon',      4, '2024-08-02');`, cases: [
+      { cols: ['roll_no', 'name'], rows: [['R2024-003', 'Chen Wei'], ['R2024-007', 'Grace Lee']] },
+      { setup: 'UPDATE students SET email = \'x\' || student_id || \'@mail.com\' WHERE email IS NULL;', rows: [] },
+      { setup: 'UPDATE students SET email = NULL;', cols: ['roll_no', 'name'], rows: [['R2024-001', 'Asha Verma'], ['R2024-002', 'Ben Carter'], ['R2024-003', 'Chen Wei'], ['R2024-004', 'Diya Shah'], ['R2024-005', 'Elena Rossi'], ['R2024-006', 'Farid Khan'], ['R2024-007', 'Grace Lee'], ['R2024-008', 'Hugo Martin']] },
+      { setup: 'UPDATE students SET email = \'\' WHERE student_id = 1; UPDATE students SET email = \'NULL\' WHERE student_id = 2;', cols: ['roll_no', 'name'], rows: [['R2024-003', 'Chen Wei'], ['R2024-007', 'Grace Lee']] },
+      { setup: 'INSERT INTO students (student_id, roll_no, name, joined_on) VALUES (9, \'R2023-099\', \'Zed\', \'2023-01-01\');', cols: ['roll_no', 'name'], rows: [['R2023-099', 'Zed'], ['R2024-003', 'Chen Wei'], ['R2024-007', 'Grace Lee']] },
+      { setup: 'INSERT INTO students (student_id, roll_no, name, joined_on) VALUES (10, \'R2024-010\', \'Chen Wei\', \'2024-09-01\');', cols: ['roll_no', 'name'], rows: [['R2024-003', 'Chen Wei'], ['R2024-007', 'Grace Lee'], ['R2024-010', 'Chen Wei']] }
+    ] },
     solution: {
       approach: `<p>Use <code>IS NULL</code>, which returns TRUE or FALSE, never UNKNOWN. Defensive version also catches blank strings, which messy imports often contain.</p>`,
       code: { lang: 'sql', db: 'school', code: `SELECT roll_no, name
 FROM students
 WHERE email IS NULL
-   OR trim(email) = ''          -- defensive: blank strings from bad imports
 ORDER BY roll_no;` },
       complexity: `<p>One scan of students, O(N). With an index on email, <code>IS NULL</code> can use it in most engines (NULLs are stored in the index in SQLite/PostgreSQL).</p>`,
       followUps: ['Count students with and without email in one query.', 'Should email be NOT NULL? What does that force the admissions process to do?']
@@ -2105,6 +2214,102 @@ HAVING COUNT(*) = 0;      -- always empty` }
       `<p>Hint 2: correlate the subquery: <code>SELECT 1 FROM enrollments e WHERE e.course_id = c.course_id</code>.</p>`,
       `<p>Hint 3: alternative: <code>LEFT JOIN</code> enrollments and keep rows where the enrollments side <code>IS NULL</code>. Both are "anti-joins".</p>`
     ],
+    tests: { engine: 'both', pg: `CREATE TABLE departments (
+  dept_id   INTEGER PRIMARY KEY,
+  name      TEXT NOT NULL UNIQUE,
+  building  TEXT
+);
+CREATE TABLE teachers (
+  teacher_id INTEGER PRIMARY KEY,
+  name       TEXT NOT NULL,
+  email      TEXT NOT NULL UNIQUE,
+  dept_id    INTEGER REFERENCES departments(dept_id)
+);
+CREATE TABLE students (
+  student_id INTEGER PRIMARY KEY,
+  roll_no    TEXT NOT NULL UNIQUE,
+  name       TEXT NOT NULL,
+  email      TEXT UNIQUE,
+  city       TEXT,
+  dept_id    INTEGER REFERENCES departments(dept_id),
+  joined_on  TEXT
+);
+CREATE TABLE id_cards (
+  card_no    TEXT PRIMARY KEY,
+  student_id INTEGER NOT NULL UNIQUE REFERENCES students(student_id),
+  issued_on  TEXT,
+  valid_till TEXT
+);
+CREATE TABLE courses (
+  course_id  TEXT PRIMARY KEY,
+  title      TEXT NOT NULL,
+  credits    INTEGER CHECK (credits BETWEEN 1 AND 6),
+  dept_id    INTEGER REFERENCES departments(dept_id),
+  teacher_id INTEGER REFERENCES teachers(teacher_id)
+);
+CREATE TABLE enrollments (
+  student_id INTEGER NOT NULL REFERENCES students(student_id),
+  course_id  TEXT    NOT NULL REFERENCES courses(course_id),
+  semester   TEXT    NOT NULL,
+  grade      TEXT,
+  PRIMARY KEY (student_id, course_id)
+);
+INSERT INTO departments VALUES
+  (1, 'Computer Science', 'Turing Block'),
+  (2, 'Mathematics',      'Euler Hall'),
+  (3, 'Physics',          'Curie Wing'),
+  (4, 'History',          NULL);
+INSERT INTO teachers VALUES
+  (1, 'Dr. Rao',     'rao@uni.edu',     1),
+  (2, 'Ms. Fernandes','fernandes@uni.edu',1),
+  (3, 'Dr. Okafor',  'okafor@uni.edu',  2),
+  (4, 'Dr. Lindqvist','lindqvist@uni.edu',3),
+  (5, 'Mr. Haddad',  'haddad@uni.edu',  NULL);
+INSERT INTO students VALUES
+  (1, 'R2024-001', 'Asha Verma',   'asha@mail.com',  'Pune',      1, '2024-07-15'),
+  (2, 'R2024-002', 'Ben Carter',   'ben@mail.com',   'Leeds',     2, '2024-07-15'),
+  (3, 'R2024-003', 'Chen Wei',     NULL,             'Shanghai',  1, '2024-07-16'),
+  (4, 'R2024-004', 'Diya Shah',    'diya@mail.com',  'Pune',      3, '2024-07-16'),
+  (5, 'R2024-005', 'Elena Rossi',  'elena@mail.com', 'Milan',     1, '2024-07-18'),
+  (6, 'R2024-006', 'Farid Khan',   'farid@mail.com', NULL,        2, '2024-07-20'),
+  (7, 'R2024-007', 'Grace Lee',    NULL,             'Seoul',     NULL, '2024-08-01'),
+  (8, 'R2024-008', 'Hugo Martin',  'hugo@mail.com',  'Lyon',      4, '2024-08-02');
+INSERT INTO id_cards VALUES
+  ('CARD-9001', 1, '2024-07-20', '2028-07-19'),
+  ('CARD-9002', 2, '2024-07-20', '2028-07-19'),
+  ('CARD-9003', 4, '2024-07-22', '2028-07-21'),
+  ('CARD-9004', 5, '2024-07-25', '2028-07-24'),
+  ('CARD-9005', 8, '2024-08-05', '2028-08-04');
+INSERT INTO courses VALUES
+  ('CS101',   'Intro to Programming', 4, 1, 1),
+  ('CS102',   'Databases',            4, 1, 2),
+  ('MA101',   'Calculus I',           3, 2, 3),
+  ('MA201',   'Linear Algebra',       3, 2, 3),
+  ('PH101',   'Mechanics',            4, 3, 4),
+  ('HI101',   'World History',        2, 4, 5),
+  ('CS301',   'Distributed Systems',  5, 1, NULL);
+INSERT INTO enrollments VALUES
+  (1, 'CS101', '2024-FALL', 'A'),
+  (1, 'CS102', '2024-FALL', 'A'),
+  (1, 'MA101', '2024-FALL', 'B'),
+  (2, 'MA101', '2024-FALL', 'A'),
+  (2, 'MA201', '2024-FALL', NULL),
+  (3, 'CS101', '2024-FALL', 'B'),
+  (3, 'CS102', '2024-FALL', 'C'),
+  (4, 'PH101', '2024-FALL', 'A'),
+  (4, 'MA101', '2024-FALL', 'B'),
+  (5, 'CS101', '2024-FALL', 'A'),
+  (5, 'CS102', '2024-FALL', NULL),
+  (6, 'MA201', '2024-FALL', 'B'),
+  (8, 'HI101', '2024-FALL', 'A'),
+  (8, 'CS101', '2024-FALL', 'C');`, cases: [
+      { cols: ['course_id', 'title'], rows: [['CS301', 'Distributed Systems']] },
+      { setup: 'INSERT INTO enrollments VALUES (1, \'CS301\', \'2025-SPRING\', NULL);', rows: [] },
+      { setup: 'DELETE FROM enrollments;', cols: ['course_id', 'title'], rows: [['CS101', 'Intro to Programming'], ['CS102', 'Databases'], ['CS301', 'Distributed Systems'], ['HI101', 'World History'], ['MA101', 'Calculus I'], ['MA201', 'Linear Algebra'], ['PH101', 'Mechanics']] },
+      { setup: 'INSERT INTO courses VALUES (\'ZZ900\', \'Zoology\', 3, 3, NULL), (\'AA100\', \'Art\', 2, 4, NULL);', cols: ['course_id', 'title'], rows: [['AA100', 'Art'], ['CS301', 'Distributed Systems'], ['ZZ900', 'Zoology']] },
+      { setup: 'DELETE FROM enrollments WHERE course_id = \'HI101\';', cols: ['course_id', 'title'], rows: [['CS301', 'Distributed Systems'], ['HI101', 'World History']] },
+      { setup: 'DELETE FROM enrollments WHERE course_id = \'MA201\' AND student_id = 6;', cols: ['course_id', 'title'], rows: [['CS301', 'Distributed Systems']] }
+    ] },
     solution: {
       approach: `<p>Anti-join with NOT EXISTS: keep each course for which no enrolment points at it. The LEFT JOIN … IS NULL form is shown as an equivalent.</p>`,
       code: { lang: 'sql', db: 'school', code: `-- Anti-join with NOT EXISTS
@@ -2144,6 +2349,102 @@ ORDER BY department, student;` }
       `<p>Hint 2: to keep children that have no parent, use <code>LEFT JOIN</code> from students to departments.</p>`,
       `<p>Hint 3: replace the missing name with a label using <code>COALESCE(d.name, '(undeclared)')</code>; sort by that label and the student name.</p>`
     ],
+    tests: { engine: 'both', pg: `CREATE TABLE departments (
+  dept_id   INTEGER PRIMARY KEY,
+  name      TEXT NOT NULL UNIQUE,
+  building  TEXT
+);
+CREATE TABLE teachers (
+  teacher_id INTEGER PRIMARY KEY,
+  name       TEXT NOT NULL,
+  email      TEXT NOT NULL UNIQUE,
+  dept_id    INTEGER REFERENCES departments(dept_id)
+);
+CREATE TABLE students (
+  student_id INTEGER PRIMARY KEY,
+  roll_no    TEXT NOT NULL UNIQUE,
+  name       TEXT NOT NULL,
+  email      TEXT UNIQUE,
+  city       TEXT,
+  dept_id    INTEGER REFERENCES departments(dept_id),
+  joined_on  TEXT
+);
+CREATE TABLE id_cards (
+  card_no    TEXT PRIMARY KEY,
+  student_id INTEGER NOT NULL UNIQUE REFERENCES students(student_id),
+  issued_on  TEXT,
+  valid_till TEXT
+);
+CREATE TABLE courses (
+  course_id  TEXT PRIMARY KEY,
+  title      TEXT NOT NULL,
+  credits    INTEGER CHECK (credits BETWEEN 1 AND 6),
+  dept_id    INTEGER REFERENCES departments(dept_id),
+  teacher_id INTEGER REFERENCES teachers(teacher_id)
+);
+CREATE TABLE enrollments (
+  student_id INTEGER NOT NULL REFERENCES students(student_id),
+  course_id  TEXT    NOT NULL REFERENCES courses(course_id),
+  semester   TEXT    NOT NULL,
+  grade      TEXT,
+  PRIMARY KEY (student_id, course_id)
+);
+INSERT INTO departments VALUES
+  (1, 'Computer Science', 'Turing Block'),
+  (2, 'Mathematics',      'Euler Hall'),
+  (3, 'Physics',          'Curie Wing'),
+  (4, 'History',          NULL);
+INSERT INTO teachers VALUES
+  (1, 'Dr. Rao',     'rao@uni.edu',     1),
+  (2, 'Ms. Fernandes','fernandes@uni.edu',1),
+  (3, 'Dr. Okafor',  'okafor@uni.edu',  2),
+  (4, 'Dr. Lindqvist','lindqvist@uni.edu',3),
+  (5, 'Mr. Haddad',  'haddad@uni.edu',  NULL);
+INSERT INTO students VALUES
+  (1, 'R2024-001', 'Asha Verma',   'asha@mail.com',  'Pune',      1, '2024-07-15'),
+  (2, 'R2024-002', 'Ben Carter',   'ben@mail.com',   'Leeds',     2, '2024-07-15'),
+  (3, 'R2024-003', 'Chen Wei',     NULL,             'Shanghai',  1, '2024-07-16'),
+  (4, 'R2024-004', 'Diya Shah',    'diya@mail.com',  'Pune',      3, '2024-07-16'),
+  (5, 'R2024-005', 'Elena Rossi',  'elena@mail.com', 'Milan',     1, '2024-07-18'),
+  (6, 'R2024-006', 'Farid Khan',   'farid@mail.com', NULL,        2, '2024-07-20'),
+  (7, 'R2024-007', 'Grace Lee',    NULL,             'Seoul',     NULL, '2024-08-01'),
+  (8, 'R2024-008', 'Hugo Martin',  'hugo@mail.com',  'Lyon',      4, '2024-08-02');
+INSERT INTO id_cards VALUES
+  ('CARD-9001', 1, '2024-07-20', '2028-07-19'),
+  ('CARD-9002', 2, '2024-07-20', '2028-07-19'),
+  ('CARD-9003', 4, '2024-07-22', '2028-07-21'),
+  ('CARD-9004', 5, '2024-07-25', '2028-07-24'),
+  ('CARD-9005', 8, '2024-08-05', '2028-08-04');
+INSERT INTO courses VALUES
+  ('CS101',   'Intro to Programming', 4, 1, 1),
+  ('CS102',   'Databases',            4, 1, 2),
+  ('MA101',   'Calculus I',           3, 2, 3),
+  ('MA201',   'Linear Algebra',       3, 2, 3),
+  ('PH101',   'Mechanics',            4, 3, 4),
+  ('HI101',   'World History',        2, 4, 5),
+  ('CS301',   'Distributed Systems',  5, 1, NULL);
+INSERT INTO enrollments VALUES
+  (1, 'CS101', '2024-FALL', 'A'),
+  (1, 'CS102', '2024-FALL', 'A'),
+  (1, 'MA101', '2024-FALL', 'B'),
+  (2, 'MA101', '2024-FALL', 'A'),
+  (2, 'MA201', '2024-FALL', NULL),
+  (3, 'CS101', '2024-FALL', 'B'),
+  (3, 'CS102', '2024-FALL', 'C'),
+  (4, 'PH101', '2024-FALL', 'A'),
+  (4, 'MA101', '2024-FALL', 'B'),
+  (5, 'CS101', '2024-FALL', 'A'),
+  (5, 'CS102', '2024-FALL', NULL),
+  (6, 'MA201', '2024-FALL', 'B'),
+  (8, 'HI101', '2024-FALL', 'A'),
+  (8, 'CS101', '2024-FALL', 'C');`, cases: [
+      { cols: ['student', 'department'], rows: [['Grace Lee', '(undeclared)'], ['Asha Verma', 'Computer Science'], ['Chen Wei', 'Computer Science'], ['Elena Rossi', 'Computer Science'], ['Hugo Martin', 'History'], ['Ben Carter', 'Mathematics'], ['Farid Khan', 'Mathematics'], ['Diya Shah', 'Physics']] },
+      { setup: 'UPDATE students SET dept_id = NULL;', cols: ['student', 'department'], rows: [['Asha Verma', '(undeclared)'], ['Ben Carter', '(undeclared)'], ['Chen Wei', '(undeclared)'], ['Diya Shah', '(undeclared)'], ['Elena Rossi', '(undeclared)'], ['Farid Khan', '(undeclared)'], ['Grace Lee', '(undeclared)'], ['Hugo Martin', '(undeclared)']] },
+      { setup: 'INSERT INTO students (student_id, roll_no, name, dept_id, joined_on) VALUES (9, \'R9\', \'Asha Verma\', 1, \'2024-09-01\');', cols: ['student', 'department'], rows: [['Grace Lee', '(undeclared)'], ['Asha Verma', 'Computer Science'], ['Asha Verma', 'Computer Science'], ['Chen Wei', 'Computer Science'], ['Elena Rossi', 'Computer Science'], ['Hugo Martin', 'History'], ['Ben Carter', 'Mathematics'], ['Farid Khan', 'Mathematics'], ['Diya Shah', 'Physics']] },
+      { setup: 'INSERT INTO departments VALUES (6, \'algebra\', NULL), (5, \'Art\', \'Studio\'); INSERT INTO students (student_id, roll_no, name, dept_id, joined_on) VALUES (10, \'R10\', \'Aaron\', 6, \'2024-09-01\');', cols: ['student', 'department'], rows: [['Grace Lee', '(undeclared)'], ['Asha Verma', 'Computer Science'], ['Chen Wei', 'Computer Science'], ['Elena Rossi', 'Computer Science'], ['Hugo Martin', 'History'], ['Ben Carter', 'Mathematics'], ['Farid Khan', 'Mathematics'], ['Diya Shah', 'Physics'], ['Aaron', 'algebra']] },
+      { setup: 'DELETE FROM id_cards; DELETE FROM enrollments; DELETE FROM students;', rows: [] },
+      { setup: 'INSERT INTO students (student_id, roll_no, name, dept_id, joined_on) VALUES (11, \'R11\', \'Bo\', NULL, \'2024-09-01\'), (12, \'R12\', \'Al\', NULL, \'2024-09-01\');', cols: ['student', 'department'], rows: [['Al', '(undeclared)'], ['Bo', '(undeclared)'], ['Grace Lee', '(undeclared)'], ['Asha Verma', 'Computer Science'], ['Chen Wei', 'Computer Science'], ['Elena Rossi', 'Computer Science'], ['Hugo Martin', 'History'], ['Ben Carter', 'Mathematics'], ['Farid Khan', 'Mathematics'], ['Diya Shah', 'Physics']] }
+    ] },
     solution: {
       approach: `<p>LEFT JOIN keeps every student; when no department matches, the department columns are NULL, which COALESCE turns into a readable label.</p>`,
       code: { lang: 'sql', db: 'school', code: `SELECT s.name AS student,
@@ -2160,7 +2461,7 @@ ORDER BY department, student;` },
     title: 'Enforce One Passport per Person (1 : 1)',
     level: 'Medium', tags: ['1:1', 'UNIQUE', 'foreign key', 'DDL'], companies: ['Government IT', 'Accenture', 'Visa'],
     statement: `<p>Create <code>persons</code> and <code>passports</code> so that a person has <b>at most one</b> passport and every passport belongs to exactly one existing person. Insert 3 persons and passports for two of them, attempt a second passport for the first person (it must be refused without an error), then list all persons with their passport number or <code>'none'</code>.</p>`,
-    constraints: `Self-contained (empty DB). Use FKs (with enforcement on) and the right UNIQUE.`,
+    constraints: `Self-contained (empty DB). Use FKs (with enforcement on) and the right UNIQUE. Tables: <code>persons(person_id, name)</code>, <code>passports(passport_no, person_id, expires_on)</code>. The last result has columns <code>name, passport</code> ordered by person.`,
     example: `${H.table(['name', 'passport'], [['Asha', 'P1001'], ['Ben', 'P2001'], ['Chen', H.c('y', 'none')]])}<p>The attempted second passport P1002 for Asha is ${H.c('r', 'refused')} by UNIQUE(person_id).</p>`,
     brute: {
       why: `<p>An FK alone gives you <b>1 : N</b>, not 1 : 1: nothing stops a second passport row for the same person. Now "Asha's passport" has two answers and any report joining persons to passports double-counts her.</p>`,
@@ -2178,6 +2479,16 @@ SELECT p.name, COUNT(*) AS passports FROM persons p JOIN passports x ON x.person
       `<p>Hint 2: put <code>person_id INTEGER NOT NULL UNIQUE REFERENCES persons(person_id)</code> in passports. (Alternative: make person_id the PK of passports — a "shared primary key".)</p>`,
       `<p>Hint 3: show the refusal with <code>INSERT OR IGNORE</code>, then LEFT JOIN persons → passports and <code>COALESCE(passport_no, 'none')</code>.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['name', 'passport'], rows: [['Asha', 'P1001'], ['Ben', 'P2001'], ['Chen', 'none']] },
+      { after: 'INSERT INTO passports VALUES (\'P1002\', 1, \'2036-01-01\')', error: 'UNIQUE|duplicate' },
+      { after: 'INSERT INTO passports VALUES (\'P9\', 99, \'2030-01-01\')', error: 'FOREIGN KEY' },
+      { after: 'INSERT INTO passports VALUES (\'P3001\', 3, \'2030-01-01\'); SELECT passport_no FROM passports WHERE person_id = 3', rows: [['P3001']] },
+      { after: 'INSERT INTO passports VALUES (\'P1001\', 3, \'2030-01-01\')', error: 'UNIQUE|PRIMARY|duplicate' },
+      { after: 'INSERT INTO passports VALUES (\'P7\', NULL, \'2030-01-01\')', error: 'NOT NULL|UNIQUE' },
+      { after: 'SELECT COUNT(*) FROM persons', rows: [[3]] },
+      { after: 'SELECT COUNT(*) FROM passports', rows: [[2]] }
+    ] },
     solution: {
       approach: `<p>FK for "belongs to an existing person", NOT NULL for "exactly one owner", UNIQUE for "at most one passport per person". The LEFT JOIN keeps people with no passport (optional participation on the person side).</p>`,
       code: { lang: 'sql', code: `PRAGMA foreign_keys = ON;
@@ -2212,7 +2523,7 @@ ORDER BY p.person_id;` },
     title: 'Tag Products: Replace a Tag String With a Junction Table',
     level: 'Medium', tags: ['N:M', 'junction table', 'GROUP BY'], companies: ['Shopify', 'Etsy', 'Flipkart'],
     statement: `<p>Products need tags like <code>sale</code>, <code>gift</code>, <code>wholesale</code>. Model products ↔ tags as many-to-many in the shop database: create <code>tags</code> and <code>product_tags</code>, tag some products, then output (1) every product with its tags as a sorted comma list (untagged products show <code>'-'</code>), and (2) the products tagged exactly <code>sale</code>.</p>`,
-    constraints: `<code>db: shop</code>. Tag data: Keyboard → sale, gift; Mouse → wholesale; SQL for Humans → gift, sale; Coffee Mug → gift. A tag name is unique; a product cannot have the same tag twice.`,
+    constraints: `<code>db: shop</code>. Tag data: Keyboard → sale, gift; Mouse → wholesale; SQL for Humans → gift, sale; Coffee Mug → gift. A tag name is unique; a product cannot have the same tag twice. Tables: <code>tags(tag_id, name)</code>, <code>product_tags(product_id, tag_id)</code>. Run (1) first and finish with (2), so the last result is the list of product <code>name</code>s tagged sale, ordered by name.`,
     example: `${H.table(['name', 'tags'], [['Mechanical Keyboard', 'gift, sale'], ['Wireless Mouse', 'wholesale'], ['SQL for Humans', 'gift, sale'], ['Data Structures', '-'], ['Coffee Mug', 'gift'], ['Noise-Cancel Headphones', '-']])}<p>"Tagged sale" returns Keyboard and SQL for Humans — ${H.c('r', 'not')} the Mouse, whose tag "wholesale" merely contains the letters "sale".</p>`,
     brute: {
       why: `<p>A text column <code>tags = 'gift,sale'</code> searched with <code>LIKE '%sale%'</code> also matches "wholesale" (false positive), cannot be FK-checked (typos like "sael" creep in), cannot be indexed for this search, and renaming a tag means rewriting every product row.</p>`,
@@ -2229,6 +2540,17 @@ SELECT name FROM products WHERE tags LIKE '%sale%';   -- wrongly includes Wirele
       `<p>Hint 2: insert tag links by looking up ids with subqueries (<code>(SELECT tag_id FROM tags WHERE name = 'sale')</code>) so you never hard-code ids.</p>`,
       `<p>Hint 3: products LEFT JOIN product_tags LEFT JOIN tags, then <code>group_concat</code> over an ordered subquery, and <code>COALESCE(…, '-')</code> for untagged products. Exact tag search is a simple equality on <code>tags.name</code>.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['name'], rows: [['Mechanical Keyboard'], ['SQL for Humans']] },
+      { setup: 'UPDATE products SET name = \'Alpha Book\' WHERE product_id = 12;', cols: ['name'], rows: [['Alpha Book'], ['Mechanical Keyboard']] },
+      { setup: 'UPDATE products SET name = \'ZZ Keyboard\' WHERE product_id = 10;', cols: ['name'], rows: [['SQL for Humans'], ['ZZ Keyboard']] },
+      { setup: 'UPDATE products SET name = \'Wholesale Mouse (sale)\' WHERE product_id = 11;', cols: ['name'], rows: [['Mechanical Keyboard'], ['SQL for Humans']] },
+      { after: 'SELECT p.name, t.name FROM product_tags pt JOIN products p ON p.product_id = pt.product_id JOIN tags t ON t.tag_id = pt.tag_id ORDER BY p.product_id, t.name', rows: [['Mechanical Keyboard', 'gift'], ['Mechanical Keyboard', 'sale'], ['Wireless Mouse', 'wholesale'], ['SQL for Humans', 'gift'], ['SQL for Humans', 'sale'], ['Coffee Mug', 'gift']] },
+      { after: 'INSERT INTO product_tags SELECT 10, tag_id FROM tags WHERE name = \'sale\'', error: 'UNIQUE|PRIMARY|duplicate' },
+      { after: 'INSERT INTO tags (name) VALUES (\'sale\')', error: 'UNIQUE|duplicate' },
+      { after: 'INSERT INTO product_tags SELECT 999, MIN(tag_id) FROM tags', error: 'FOREIGN KEY' },
+      { after: 'SELECT COUNT(*) FROM tags', rows: [[3]] }
+    ] },
     solution: {
       approach: `<p>Classic junction table. Tag names live once in <code>tags</code> (UNIQUE), links in <code>product_tags</code> with two FKs and a composite PK. Exact matching uses equality on the tag name — no substring false positives. Aggregation back to a list is a presentation concern done at query time.</p>`,
       code: { lang: 'sql', db: 'shop', code: `CREATE TABLE tags (
@@ -2294,6 +2616,14 @@ SELECT 'Ana Souza',  COUNT(*) FROM employees WHERE manager_id = 7;` }
       `<p>Hint 2: group by the manager and <code>COUNT(*)</code> the matched employees; <code>group_concat</code> collects their names.</p>`,
       `<p>Hint 3: to get the names alphabetical, aggregate from an ordered subquery. Only managers with ≥ 1 report appear naturally with an INNER JOIN.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['manager', 'direct_reports', 'team'], rows: [['Meera Iyer', 3, 'Sara Ali, Tom Baker, Yuki Tanaka'], ['Ana Souza', 1, 'Kofi Mensah'], ['Priya Nair', 1, 'James Wu'], ['Tom Baker', 1, 'Leo Novak']] },
+      { setup: 'UPDATE employees SET manager_id = NULL;', rows: [] },
+      { setup: 'INSERT INTO employees VALUES (10, \'E010\', \'Aaron Lee\', \'aaron@corp.com\', 20, 5, 70000, \'2025-01-01\');', cols: ['manager', 'direct_reports', 'team'], rows: [['Meera Iyer', 3, 'Sara Ali, Tom Baker, Yuki Tanaka'], ['Priya Nair', 2, 'Aaron Lee, James Wu'], ['Ana Souza', 1, 'Kofi Mensah'], ['Tom Baker', 1, 'Leo Novak']] },
+      { setup: 'UPDATE employees SET manager_id = 1 WHERE emp_id IN (5, 7);', cols: ['manager', 'direct_reports', 'team'], rows: [['Meera Iyer', 5, 'Ana Souza, Priya Nair, Sara Ali, Tom Baker, Yuki Tanaka'], ['Ana Souza', 1, 'Kofi Mensah'], ['Priya Nair', 1, 'James Wu'], ['Tom Baker', 1, 'Leo Novak']] },
+      { setup: 'UPDATE employees SET manager_id = 5 WHERE emp_id = 9;', cols: ['manager', 'direct_reports', 'team'], rows: [['Meera Iyer', 2, 'Sara Ali, Tom Baker'], ['Priya Nair', 2, 'James Wu, Yuki Tanaka'], ['Ana Souza', 1, 'Kofi Mensah'], ['Tom Baker', 1, 'Leo Novak']] },
+      { setup: 'INSERT INTO employees VALUES (10, \'E010\', \'Aaron Lee\', \'aaron@corp.com\', 20, 5, 70000, \'2025-01-01\');INSERT INTO employees VALUES (11, \'E011\', \'Zed Zee\', \'zed@corp.com\', 30, 7, 70000, \'2025-01-02\');', cols: ['manager', 'direct_reports', 'team'], rows: [['Meera Iyer', 3, 'Sara Ali, Tom Baker, Yuki Tanaka'], ['Ana Souza', 2, 'Kofi Mensah, Zed Zee'], ['Priya Nair', 2, 'Aaron Lee, James Wu'], ['Tom Baker', 1, 'Leo Novak']] }
+    ] },
     solution: {
       approach: `<p>A self-join turns the self-referencing FK into manager/report pairs, then GROUP BY manager counts them. Everything happens in one round trip.</p>`,
       code: { lang: 'sql', db: 'company', code: `SELECT manager,
@@ -2330,6 +2660,18 @@ SELECT "table", rowid, parent FROM pragma_foreign_key_check('orders');   -- orph
       `<p>Hint 2: RESTRICT means "children first": delete Elena's orders (their items go by CASCADE), then delete Elena (her loyalty card goes by CASCADE).</p>`,
       `<p>Hint 3: wrap both DELETEs in <code>BEGIN … COMMIT</code> so a failure halfway leaves nothing half-erased; verify with COUNTs and <code>pragma_foreign_key_check</code>.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['customers_left', 'orders_left', 'items_left', 'cards_left', 'fk_violations'], rows: [[0, 0, 0, 0, 0]] },
+      { setup: 'INSERT INTO orders VALUES (1007, 5, \'2026-03-10\', \'placed\'); INSERT INTO order_items VALUES (1007, 11, 1, 25.5);', cols: ['customers_left', 'orders_left', 'items_left', 'cards_left', 'fk_violations'], rows: [[0, 0, 0, 0, 0]] },
+      { setup: 'DELETE FROM loyalty_cards WHERE customer_id = 5;', cols: ['customers_left', 'orders_left', 'items_left', 'cards_left', 'fk_violations'], rows: [[0, 0, 0, 0, 0]] },
+      { after: 'SELECT COUNT(*) FROM orders', rows: [[5]] },
+      { after: 'SELECT COUNT(*) FROM customers', rows: [[4]] },
+      { after: 'SELECT COUNT(*) FROM order_items', rows: [[9]] },
+      { after: 'SELECT COUNT(*) FROM loyalty_cards', rows: [[2]] },
+      { setup: 'INSERT INTO orders VALUES (1007, 5, \'2026-03-10\', \'placed\'); INSERT INTO order_items VALUES (1007, 11, 1, 25.5);', after: 'SELECT COUNT(*) FROM order_items', rows: [[9]] },
+      { setup: 'INSERT INTO orders VALUES (1007, 5, \'2026-03-10\', \'placed\'); INSERT INTO order_items VALUES (1007, 11, 1, 25.5);', after: 'SELECT COUNT(*) FROM orders WHERE customer_id = 5', rows: [[0]] },
+      { after: 'SELECT customer_id FROM customers ORDER BY customer_id', rows: [[1], [2], [3], [4]] }
+    ] },
     solution: {
       approach: `<p>Respect the declared actions instead of fighting them: one transaction, children with RESTRICT deleted explicitly, CASCADE doing the rest. (Real systems often keep anonymised order rows for tax law — that would be an UPDATE that blanks personal data instead of a DELETE.)</p>`,
       code: { lang: 'sql', db: 'shop', code: `-- Before
@@ -2372,6 +2714,19 @@ SELECT student_id FROM club_signups_raw WHERE clubs LIKE '%drama%';   -- include
       `<p>Hint 2: clean every item with <code>trim()</code> and drop empty ones. Insert <code>DISTINCT</code> names into clubs first (parents first!), then memberships via a join on the club name.</p>`,
       `<p>Hint 3: <code>INSERT OR IGNORE</code> (or DISTINCT) handles "chess,chess" because the PK (student_id, club_id) rejects the duplicate pair. Wrap the migration in a transaction. Recipe: split → clean → clubs → memberships → verify.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['club', 'members'], rows: [['chess', 3], ['drama', 3], ['melodrama', 1], ['robotics', 1]] },
+      { after: 'SELECT s.student_id FROM memberships m JOIN clubs c ON c.club_id = m.club_id JOIN students s ON s.student_id = m.student_id WHERE c.name = \'drama\' ORDER BY 1', rows: [[1], [2], [3]] },
+      { after: 'SELECT c.name FROM memberships m JOIN clubs c ON c.club_id = m.club_id WHERE m.student_id = 3 ORDER BY c.name', rows: [['chess'], ['drama'], ['robotics']] },
+      { after: 'SELECT c.name FROM memberships m JOIN clubs c ON c.club_id = m.club_id WHERE m.student_id = 4 ORDER BY c.name', rows: [['melodrama']] },
+      { after: 'SELECT c.name FROM memberships m JOIN clubs c ON c.club_id = m.club_id WHERE m.student_id = 5 ORDER BY c.name', rows: [] },
+      { after: 'SELECT c.name FROM memberships m JOIN clubs c ON c.club_id = m.club_id WHERE m.student_id = 6 ORDER BY c.name', rows: [['chess']] },
+      { after: 'SELECT COUNT(*) FROM memberships', rows: [[8]] },
+      { after: 'SELECT COUNT(*) FROM clubs', rows: [[4]] },
+      { after: 'INSERT INTO memberships VALUES (1, (SELECT club_id FROM clubs WHERE name = \'chess\'))', error: 'UNIQUE|PRIMARY|duplicate' },
+      { after: 'INSERT INTO memberships VALUES (999, (SELECT MIN(club_id) FROM clubs))', error: 'FOREIGN KEY' },
+      { after: 'INSERT INTO clubs (name) VALUES (\'chess\')', error: 'UNIQUE|duplicate' }
+    ] },
     solution: {
       approach: `<p>Normalise in three moves inside one transaction: (1) split each text value into items with <code>json_each</code>, trimming and skipping blanks; (2) insert distinct club names into the parent table; (3) insert (student, club) pairs into the junction table, letting the composite PK absorb duplicates. Afterwards exact questions become plain equality joins. (The JSON trick assumes names contain no double quotes; a recursive CTE splitter, module 5, avoids that.)</p>`,
       code: { lang: 'sql', db: 'school', code: `CREATE TABLE club_signups_raw (student_id INTEGER, clubs TEXT);
@@ -2427,7 +2782,7 @@ ORDER BY c.name;` },
     title: 'Discover the Composite Candidate Keys of a Timetable',
     level: 'Hard', tags: ['candidate key', 'composite key', 'GROUP BY HAVING'], companies: ['Google', 'Microsoft', 'Oracle'],
     statement: `<p>A timetable table <code>timetable(room, day, slot, course, teacher)</code> has no declared keys. Using the data, test these column sets for uniqueness: (room, day), (room, slot), (day, slot), (teacher, day), (room, day, slot), (teacher, day, slot), (course, day, slot). Report how many duplicate groups each has, decide which are <b>candidate keys</b> (unique AND minimal), then lock them in with constraints.</p>`,
-    constraints: `Self-contained. Data: (R1,Mon,1,CS101,Rao), (R2,Mon,1,MA101,Okafor), (R1,Mon,2,CS102,Fernandes), (LAB1,Mon,2,CS101,Rao), (LAB2,Mon,2,CS101,Lee), (R2,Tue,1,MA101,Okafor), (R1,Tue,1,PH101,Lindqvist), (R1,Tue,2,CS101,Rao).`,
+    constraints: `Self-contained. The report is the last result, with columns <code>column_set, duplicate_groups, verdict</code> ('unique' or 'not unique'), one row per listed set. Data: (R1,Mon,1,CS101,Rao), (R2,Mon,1,MA101,Okafor), (R1,Mon,2,CS102,Fernandes), (LAB1,Mon,2,CS101,Rao), (LAB2,Mon,2,CS101,Lee), (R2,Tue,1,MA101,Okafor), (R1,Tue,1,PH101,Lindqvist), (R1,Tue,2,CS101,Rao).`,
     example: `${H.table(['column_set', 'duplicate_groups', 'verdict'], [['(room, day)', '2', 'not unique'], ['(room, day, slot)', '0', H.c('g', 'unique')], ['(teacher, day, slot)', '0', H.c('g', 'unique')], ['(course, day, slot)', '1', H.c('r', 'not unique: CS101 lab has two sections at Mon-2')]])}<p>Both 3-column sets are unique and all their 2-column subsets repeat ⇒ both are ${H.c('p', 'candidate keys')}.</p>`,
     brute: {
       why: `<p>Checking one combination by listing the whole table sorted by those columns and scanning for repeats by eye. Seven combinations means seven sorts read manually; with thousands of rows it is hopeless and easy to get wrong.</p>`,
@@ -2444,26 +2799,22 @@ SELECT room, day, slot FROM timetable ORDER BY room, day, slot;` }
       `<p>Hint 2: put each test in its own scalar subquery and stack them with <code>UNION ALL</code> in a CTE, then use CASE for the verdict.</p>`,
       `<p>Hint 3: minimality — a unique 3-column set is a candidate key only if each of its 2-column subsets has duplicates. Then enforce with <code>CREATE UNIQUE INDEX</code> (or rebuild with PRIMARY KEY + UNIQUE). Remember: data only gives evidence; confirm with the scheduling rules ("a room hosts one class per slot", "a teacher teaches one class per slot").</p>`
     ],
+    tests: { engine: 'sqlite', cmp: 'set', cases: [
+      { cols: ['column_set', 'duplicate_groups', 'verdict'], rows: [['(room, day)', 2, 'not unique'], ['(room, slot)', 3, 'not unique'], ['(day, slot)', 3, 'not unique'], ['(teacher, day)', 1, 'not unique'], ['(room, day, slot)', 0, 'unique'], ['(teacher, day, slot)', 0, 'unique'], ['(course, day, slot)', 1, 'not unique']] },
+      { after: 'INSERT INTO timetable VALUES (\'R1\', \'Mon\', 1, \'HI101\', \'Haddad\')', error: 'UNIQUE|duplicate' },
+      { after: 'INSERT INTO timetable VALUES (\'R9\', \'Mon\', 1, \'HI101\', \'Rao\')', error: 'UNIQUE|duplicate' },
+      { after: 'INSERT INTO timetable VALUES (\'R9\', \'Wed\', 1, \'CS101\', \'Rao\'); SELECT COUNT(*) FROM timetable', rows: [[9]] },
+      { after: 'INSERT INTO timetable VALUES (\'LAB3\', \'Mon\', 2, \'CS101\', \'Kim\'); SELECT COUNT(*) FROM timetable', rows: [[9]] },
+      { after: 'INSERT INTO timetable VALUES (\'R2\', \'Tue\', 2, \'MA101\', \'Okafor\'); SELECT COUNT(*) FROM timetable', rows: [[9]] },
+      { after: 'INSERT INTO timetable VALUES (\'LAB1\', \'Mon\', 2, \'PH101\', \'Kim\')', error: 'UNIQUE|duplicate' },
+      { after: 'SELECT COUNT(*) FROM timetable', rows: [[8]] }
+    ] },
     solution: {
       approach: `<p>Profile uniqueness with GROUP BY … HAVING for each candidate column set, read off minimality from the subsets, and then turn the business rules into constraints so future rows cannot break them. Both (room, day, slot) and (teacher, day, slot) are candidate keys; pick one as the identity (or add a surrogate id) and declare the other UNIQUE.</p>`,
       code: { lang: 'sql', code: `CREATE TABLE timetable (room TEXT, day TEXT, slot INTEGER, course TEXT, teacher TEXT);
 INSERT INTO timetable VALUES ('R1','Mon',1,'CS101','Rao'), ('R2','Mon',1,'MA101','Okafor'),
   ('R1','Mon',2,'CS102','Fernandes'), ('LAB1','Mon',2,'CS101','Rao'), ('LAB2','Mon',2,'CS101','Lee'),
   ('R2','Tue',1,'MA101','Okafor'), ('R1','Tue',1,'PH101','Lindqvist'), ('R1','Tue',2,'CS101','Rao');
-
-WITH tests(column_set, duplicate_groups) AS (
-  SELECT '(room, day)',          (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY room, day HAVING COUNT(*) > 1))
-  UNION ALL SELECT '(room, slot)', (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY room, slot HAVING COUNT(*) > 1))
-  UNION ALL SELECT '(day, slot)',  (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY day, slot HAVING COUNT(*) > 1))
-  UNION ALL SELECT '(teacher, day)', (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY teacher, day HAVING COUNT(*) > 1))
-  UNION ALL SELECT '(teacher, slot)', (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY teacher, slot HAVING COUNT(*) > 1))
-  UNION ALL SELECT '(room, day, slot)', (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY room, day, slot HAVING COUNT(*) > 1))
-  UNION ALL SELECT '(teacher, day, slot)', (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY teacher, day, slot HAVING COUNT(*) > 1))
-  UNION ALL SELECT '(course, day, slot)', (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY course, day, slot HAVING COUNT(*) > 1))
-)
-SELECT column_set, duplicate_groups,
-       CASE WHEN duplicate_groups = 0 THEN 'unique' ELSE 'not unique' END AS verdict
-FROM tests;
 
 -- Which rows break (course, day, slot)?
 SELECT course, day, slot, group_concat(room || '/' || teacher, ', ') AS clashing_rows
@@ -2473,7 +2824,21 @@ FROM timetable GROUP BY course, day, slot HAVING COUNT(*) > 1;
 CREATE UNIQUE INDEX uq_room_day_slot    ON timetable(room, day, slot);
 CREATE UNIQUE INDEX uq_teacher_day_slot ON timetable(teacher, day, slot);
 INSERT OR IGNORE INTO timetable VALUES ('R1','Mon',1,'HI101','Haddad');   -- room double-booked: refused
-SELECT COUNT(*) AS rows_now FROM timetable;                                -- still 8` },
+SELECT COUNT(*) AS rows_now FROM timetable;                                -- still 8
+
+-- The report (final result): duplicate groups per column set
+WITH tests(column_set, duplicate_groups) AS (
+  SELECT '(room, day)',          (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY room, day HAVING COUNT(*) > 1))
+  UNION ALL SELECT '(room, slot)', (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY room, slot HAVING COUNT(*) > 1))
+  UNION ALL SELECT '(day, slot)',  (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY day, slot HAVING COUNT(*) > 1))
+  UNION ALL SELECT '(teacher, day)', (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY teacher, day HAVING COUNT(*) > 1))
+  UNION ALL SELECT '(room, day, slot)', (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY room, day, slot HAVING COUNT(*) > 1))
+  UNION ALL SELECT '(teacher, day, slot)', (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY teacher, day, slot HAVING COUNT(*) > 1))
+  UNION ALL SELECT '(course, day, slot)', (SELECT COUNT(*) FROM (SELECT 1 FROM timetable GROUP BY course, day, slot HAVING COUNT(*) > 1))
+)
+SELECT column_set, duplicate_groups,
+       CASE WHEN duplicate_groups = 0 THEN 'unique' ELSE 'not unique' END AS verdict
+FROM tests;` },
       complexity: `<p>Each test is a GROUP BY: O(N log N) by sorting or O(N) by hashing. k tests ⇒ k passes. The unique indexes then make every future insert check O(log N).</p>`,
       followUps: ['With n columns there are 2<sup>n</sup> − 1 sets: how would you prune the search? (test small sets first; skip supersets of known keys)', 'Should the PK be (room, day, slot) or a surrogate id? Argue both.']
     }
@@ -2482,7 +2847,7 @@ SELECT COUNT(*) AS rows_now FROM timetable;                                -- st
   practice.push({
     title: 'Full Referential-Integrity Audit of a Schema',
     level: 'Hard', tags: ['foreign key', 'anti-join', 'catalogue', 'data quality'], companies: ['Amazon', 'Snowflake', 'Goldman Sachs'],
-    statement: `<p>A weekend batch job ran against the company database with foreign keys <b>off</b> and inserted bad rows. Produce one report that lists, for <b>every</b> foreign key in the schema, each broken reference: child table, FK column, the bad value, and the parent table it should exist in. Then cross-check the total with SQLite's built-in checker.</p>`,
+    statement: `<p>A weekend batch job ran against the company database with foreign keys <b>off</b> and inserted bad rows. Produce one report that lists, for <b>every</b> foreign key in the schema, each broken reference: child table, FK column, the bad value, and the parent table it should exist in. Also cross-check the total with SQLite's built-in checker; the report itself must be the last result.</p>`,
     constraints: `<code>db: company</code>. Setup (run first): <code>PRAGMA foreign_keys = OFF;</code> then insert employee (20,'E020','Ghost Worker','ghost@corp.com', dept 99, manager 55, 50000,'2026-01-01'), assignment (2, project 999,'developer',10), parking spot ('P3-01', 3, emp 77), project (105,'Orphan Project', dept 50, 1000).`,
     example: `${H.table(['child_table', 'fk_column', 'bad_value', 'parent_table'], [['assignments', 'project_id', '999', 'projects'], ['employees', 'dept_id', '99', 'departments'], ['employees', 'manager_id', '55', 'employees'], ['parking_spots', 'emp_id', '77', 'employees'], ['projects', 'dept_id', '50', 'departments']])}<p>5 broken references — the built-in checker also reports ${H.c('g', '5')}.</p>`,
     brute: {
@@ -2501,6 +2866,15 @@ SELECT emp_id, dept_id FROM employees WHERE dept_id NOT IN (SELECT dept_id FROM 
       `<p>Hint 2: write one anti-join per FK (<code>WHERE fk IS NOT NULL AND NOT EXISTS (SELECT 1 FROM parent WHERE parent.key = child.fk)</code>), label each with literal table/column names, and UNION ALL them.</p>`,
       `<p>Hint 3: cross-check with <code>SELECT COUNT(*) FROM pragma_foreign_key_check</code> (no argument = whole database). Equal counts give confidence your manual report covers every FK.</p>`
     ],
+    tests: { engine: 'sqlite', cmp: 'set', cases: [
+      { cols: ['child_table', 'fk_column', 'bad_value', 'parent_table'], rows: [['employees', 'dept_id', 99, 'departments'], ['employees', 'manager_id', 55, 'employees'], ['parking_spots', 'emp_id', 77, 'employees'], ['projects', 'dept_id', 50, 'departments'], ['assignments', 'project_id', 999, 'projects']] },
+      { setup: 'PRAGMA foreign_keys = OFF; DELETE FROM departments WHERE dept_id = 40;', cols: ['child_table', 'fk_column', 'bad_value', 'parent_table'], rows: [['employees', 'dept_id', 99, 'departments'], ['employees', 'manager_id', 55, 'employees'], ['parking_spots', 'emp_id', 77, 'employees'], ['projects', 'dept_id', 40, 'departments'], ['projects', 'dept_id', 50, 'departments'], ['assignments', 'project_id', 999, 'projects']] },
+      { setup: 'PRAGMA foreign_keys = OFF; UPDATE employees SET manager_id = 999 WHERE emp_id = 4;', cols: ['child_table', 'fk_column', 'bad_value', 'parent_table'], rows: [['employees', 'dept_id', 99, 'departments'], ['employees', 'manager_id', 999, 'employees'], ['employees', 'manager_id', 55, 'employees'], ['parking_spots', 'emp_id', 77, 'employees'], ['projects', 'dept_id', 50, 'departments'], ['assignments', 'project_id', 999, 'projects']] },
+      { setup: 'PRAGMA foreign_keys = OFF; INSERT INTO assignments VALUES (4, 999, \'qa\', 5);', cols: ['child_table', 'fk_column', 'bad_value', 'parent_table'], rows: [['employees', 'dept_id', 99, 'departments'], ['employees', 'manager_id', 55, 'employees'], ['parking_spots', 'emp_id', 77, 'employees'], ['projects', 'dept_id', 50, 'departments'], ['assignments', 'project_id', 999, 'projects'], ['assignments', 'project_id', 999, 'projects']] },
+      { setup: 'PRAGMA foreign_keys = OFF; DELETE FROM departments WHERE dept_id = 10;', cols: ['child_table', 'fk_column', 'bad_value', 'parent_table'], rows: [['employees', 'dept_id', 10, 'departments'], ['employees', 'dept_id', 10, 'departments'], ['employees', 'dept_id', 10, 'departments'], ['employees', 'dept_id', 10, 'departments'], ['employees', 'dept_id', 99, 'departments'], ['employees', 'manager_id', 55, 'employees'], ['parking_spots', 'emp_id', 77, 'employees'], ['projects', 'dept_id', 10, 'departments'], ['projects', 'dept_id', 10, 'departments'], ['projects', 'dept_id', 50, 'departments'], ['assignments', 'project_id', 999, 'projects']] },
+      { setup: 'PRAGMA foreign_keys = OFF; DELETE FROM employees WHERE emp_id = 1;', cols: ['child_table', 'fk_column', 'bad_value', 'parent_table'], rows: [['employees', 'dept_id', 99, 'departments'], ['employees', 'manager_id', 1, 'employees'], ['employees', 'manager_id', 1, 'employees'], ['employees', 'manager_id', 1, 'employees'], ['employees', 'manager_id', 55, 'employees'], ['parking_spots', 'emp_id', 1, 'employees'], ['parking_spots', 'emp_id', 77, 'employees'], ['projects', 'dept_id', 50, 'departments'], ['assignments', 'emp_id', 1, 'employees'], ['assignments', 'project_id', 999, 'projects']] },
+      { setup: 'PRAGMA foreign_keys = OFF; DELETE FROM projects; DELETE FROM parking_spots;', cols: ['child_table', 'fk_column', 'bad_value', 'parent_table'], rows: [['employees', 'dept_id', 99, 'departments'], ['employees', 'manager_id', 55, 'employees'], ['parking_spots', 'emp_id', 77, 'employees'], ['projects', 'dept_id', 50, 'departments'], ['assignments', 'project_id', 100, 'projects'], ['assignments', 'project_id', 100, 'projects'], ['assignments', 'project_id', 999, 'projects'], ['assignments', 'project_id', 101, 'projects'], ['assignments', 'project_id', 100, 'projects'], ['assignments', 'project_id', 101, 'projects'], ['assignments', 'project_id', 102, 'projects'], ['assignments', 'project_id', 102, 'projects'], ['assignments', 'project_id', 103, 'projects'], ['assignments', 'project_id', 103, 'projects'], ['assignments', 'project_id', 101, 'projects']] }
+    ] },
     solution: {
       approach: `<p>Step 1: enumerate the FKs from the catalogue so none is forgotten. Step 2: one anti-join per FK, all stacked into one report. Step 3: compare with the engine's own checker. In a real system you would generate step 2 from step 1 automatically (a script reading <code>information_schema.referential_constraints</code>) and run it nightly.</p>`,
       code: { lang: 'sql', db: 'company', code: `PRAGMA foreign_keys = OFF;
@@ -2515,7 +2889,10 @@ FROM sqlite_master m, pragma_foreign_key_list(m.name) f
 WHERE m.type = 'table'
 ORDER BY 1, 2;
 
--- 2) One anti-join per FK, stacked
+-- 2) Cross-check the total with the engine (expect 5)
+SELECT COUNT(*) AS builtin_violations FROM pragma_foreign_key_check;
+
+-- 3) One anti-join per FK, stacked: the final report
 SELECT 'employees' AS child_table, 'dept_id' AS fk_column, e.dept_id AS bad_value, 'departments' AS parent_table
 FROM employees e WHERE e.dept_id IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM departments d WHERE d.dept_id = e.dept_id)
@@ -2538,8 +2915,7 @@ SELECT 'assignments', 'project_id', a.project_id, 'projects'
 FROM assignments a WHERE NOT EXISTS (SELECT 1 FROM projects p WHERE p.project_id = a.project_id)
 ORDER BY 1, 2;
 
--- 3) Cross-check with the engine
-SELECT COUNT(*) AS builtin_violations FROM pragma_foreign_key_check;` },
+` },
       complexity: `<p>Each anti-join is O(C log P) using the parent's PK index; total O(sum of child rows × log parent rows). Fine nightly even for large tables; for billions of rows, run it per partition or on a replica.</p>`,
       followUps: ['Generate the UNION ALL query automatically from step 1 (dynamic SQL / a script).', 'Decide per orphan type: delete, reassign to a placeholder parent, or create the missing parent?', 'How would this audit work if departments lived in a different service\'s database?']
     }
@@ -2549,7 +2925,7 @@ SELECT COUNT(*) AS builtin_violations FROM pragma_foreign_key_check;` },
     title: 'Design the Core E-commerce Schema From a Story',
     level: 'Hard', tags: ['schema design', 'keys', 'relationships', 'DDL'], companies: ['Amazon', 'Shopify', 'Walmart Global Tech'],
     statement: `<p>Story: <i>"Customers register with a unique email. A customer can save several addresses. A customer places orders; each order ships to one of that customer's addresses. An order contains several products with a quantity and the price paid at that moment. Each order has at most one payment record. Products have a unique SKU and a non-negative price. Deleting an order must remove its lines; customers with orders must never be deleted."</i> Write the DDL with every key, relationship and referential action, insert a small sample, and output each order's total.</p>`,
-    constraints: `Self-contained. Money in integer cents. Output: <code>order_id, customer, items, total_cents</code> ordered by order_id.`,
+    constraints: `Self-contained. Money in integer cents. Tables: <code>customers(customer_id, email, full_name)</code>, <code>addresses(address_id, customer_id, line1, city)</code>, <code>products(product_id, sku, name, price_cents)</code>, <code>orders(order_id, customer_id, ship_address_id, placed_at)</code>, <code>order_items(order_id, product_id, qty, unit_price_cents)</code>, <code>payments(payment_id, order_id, amount_cents, method)</code>. Output (the last result): <code>order_id, customer, items, total_cents</code> ordered by order_id.`,
     example: `${H.table(['order_id', 'customer', 'items', 'total_cents'], [['1', 'asha@mail.com', '2', '14000'], ['2', 'ben@mail.com', '1', '3200']])}<p>Order 1 = 1 × 8900 + 2 × 2550 = ${H.c('g', '14000')}. Relationships: customers 1:N addresses, customers 1:N orders, orders N:M products (order_items), orders 1:1 payments.</p>`,
     brute: {
       why: `<p>One wide <code>orders</code> table with customer email, address text, product names and a total typed in by the app: customer and product facts repeat on every row (update anomalies), totals drift from line items, nothing prevents shipping to another customer's address, and a payment can be recorded twice.</p>`,
@@ -2565,6 +2941,18 @@ SELECT order_ref, COUNT(*) AS versions, SUM(total) AS double_counted FROM orders
       `<p>Hint 2: orders N:M products ⇒ <code>order_items(order_id, product_id, qty, unit_price_cents)</code> with PK pair and ON DELETE CASCADE from orders. orders 1:1 payments ⇒ <code>payments.order_id UNIQUE</code>. customers → orders is RESTRICT.</p>`,
       `<p>Hint 3: the "same customer's address" rule needs a composite FK: <code>FOREIGN KEY (customer_id, ship_address_id) REFERENCES addresses(customer_id, address_id)</code>, which requires <code>UNIQUE (customer_id, address_id)</code> on addresses. Totals are derived: SUM(qty × unit_price_cents).</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['order_id', 'customer', 'items', 'total_cents'], rows: [[1, 'asha@mail.com', 2, 14000], [2, 'ben@mail.com', 1, 3200]] },
+      { after: 'INSERT INTO customers (email, full_name) VALUES (\'asha@mail.com\', \'Another Asha\')', error: 'UNIQUE|duplicate' },
+      { after: 'INSERT INTO products (sku, name, price_cents) VALUES (\'X1\', \'Bad\', -1)', error: 'CHECK' },
+      { after: 'INSERT INTO products (sku, name, price_cents) VALUES (\'KB-001\', \'Dup\', 1)', error: 'UNIQUE|duplicate' },
+      { after: 'INSERT INTO orders (customer_id, ship_address_id) VALUES (1, 20)', error: 'FOREIGN KEY' },
+      { after: 'INSERT INTO payments (order_id, amount_cents, method) VALUES (1, 100, \'card\')', error: 'UNIQUE|duplicate' },
+      { after: 'DELETE FROM customers WHERE customer_id = 1', error: 'FOREIGN KEY' },
+      { after: 'DELETE FROM orders WHERE order_id = 2; SELECT COUNT(*) FROM order_items', rows: [[2]] },
+      { after: 'INSERT INTO addresses (customer_id, line1, city) VALUES (1, \'1 Third St\', \'Delhi\'); SELECT COUNT(*) FROM addresses WHERE customer_id = 1', rows: [[3]] },
+      { after: 'INSERT INTO customers (customer_id, email, full_name) VALUES (3, \'c@mail.com\', \'C\'); DELETE FROM customers WHERE customer_id = 3; SELECT COUNT(*) FROM customers', rows: [[2]] }
+    ] },
     solution: {
       approach: `<p>Translate each sentence into a structure: entities get surrogate PKs plus UNIQUE natural keys (email, SKU); "several" puts the FK on the many side; N:M becomes order_items carrying qty and the historical price; "at most one payment" is UNIQUE on payments.order_id; delete rules become ON DELETE CASCADE / RESTRICT; the address-ownership rule becomes a composite FK. Totals are computed, never stored by hand, so they cannot drift.</p>`,
       code: { lang: 'sql', code: `PRAGMA foreign_keys = ON;
@@ -2636,7 +3024,7 @@ ORDER BY o.order_id;` },
     title: 'Tighten an Existing Table Safely (SQLite Rebuild Migration)',
     level: 'Hard', tags: ['DDL', 'ALTER TABLE', 'transaction', 'migration'], companies: ['Apple', 'Notion', 'Dropbox'],
     statement: `<p>The school's <code>students</code> table is too loose: <code>city</code> may be NULL and <code>email</code> has no format rule. A bad email <code>'farid-at-mail'</code> has crept in. Change the table so <code>city</code> is NOT NULL (default 'Unknown') and <code>email</code> must look like an email (or be NULL), <b>without losing any row or breaking the FKs</b> from <code>id_cards</code> and <code>enrollments</code>.</p>`,
-    constraints: `<code>db: school</code>. First run <code>UPDATE students SET email = 'farid-at-mail' WHERE student_id = 6;</code>. SQLite cannot add a CHECK or NOT NULL to an existing column with ALTER TABLE.`,
+    constraints: `<code>db: school</code>. First run <code>UPDATE students SET email = 'farid-at-mail' WHERE student_id = 6;</code>. SQLite cannot add a CHECK or NOT NULL to an existing column with ALTER TABLE. Change nothing else: other columns keep their rules. The last result lists <code>student_id, name, email, city</code> ordered by student_id.`,
     example: `${H.table(['student_id', 'name', 'email', 'city'], [['3', 'Chen Wei', 'NULL', 'Shanghai'], ['6', 'Farid Khan', H.c('y', 'NULL (bad value cleared)'), H.c('y', 'Unknown')], ['…', '…', '…', '…']])}<p>All 8 students and all 14 enrolments survive; <code>pragma_foreign_key_check</code> returns ${H.c('g', '0')} problems.</p>`,
     brute: {
       why: `<p>Dropping the table and re-creating it from scratch, then re-typing the data, loses every row (or every FK-linked child row with FKs on). Alternatively "just leave it" and validate in the app — the bad email proves that does not work.</p>`,
@@ -2651,6 +3039,21 @@ SELECT student_id, name, email, city FROM students WHERE student_id IN (6, 7);` 
       `<p>Hint 2: clean while copying: <code>COALESCE(city, 'Unknown')</code>, and <code>CASE WHEN email LIKE '%_@_%._%' THEN email END</code> turns a bad email into NULL instead of failing the CHECK.</p>`,
       `<p>Hint 3: after the rename, child FKs that say <code>REFERENCES students</code> point at the new table automatically. Run <code>SELECT COUNT(*) FROM pragma_foreign_key_check</code> before COMMIT — it must be 0.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['student_id', 'name', 'email', 'city'], rows: [[1, 'Asha Verma', 'asha@mail.com', 'Pune'], [2, 'Ben Carter', 'ben@mail.com', 'Leeds'], [3, 'Chen Wei', null, 'Shanghai'], [4, 'Diya Shah', 'diya@mail.com', 'Pune'], [5, 'Elena Rossi', 'elena@mail.com', 'Milan'], [6, 'Farid Khan', null, 'Unknown'], [7, 'Grace Lee', null, 'Seoul'], [8, 'Hugo Martin', 'hugo@mail.com', 'Lyon']] },
+      { setup: 'UPDATE students SET city = NULL WHERE student_id IN (1, 3, 8);', cols: ['student_id', 'name', 'email', 'city'], rows: [[1, 'Asha Verma', 'asha@mail.com', 'Unknown'], [2, 'Ben Carter', 'ben@mail.com', 'Leeds'], [3, 'Chen Wei', null, 'Unknown'], [4, 'Diya Shah', 'diya@mail.com', 'Pune'], [5, 'Elena Rossi', 'elena@mail.com', 'Milan'], [6, 'Farid Khan', null, 'Unknown'], [7, 'Grace Lee', null, 'Seoul'], [8, 'Hugo Martin', 'hugo@mail.com', 'Unknown']] },
+      { setup: 'UPDATE students SET email = \'hugo-at-mail\' WHERE student_id = 8;', cols: ['student_id', 'name', 'email', 'city'], rows: [[1, 'Asha Verma', 'asha@mail.com', 'Pune'], [2, 'Ben Carter', 'ben@mail.com', 'Leeds'], [3, 'Chen Wei', null, 'Shanghai'], [4, 'Diya Shah', 'diya@mail.com', 'Pune'], [5, 'Elena Rossi', 'elena@mail.com', 'Milan'], [6, 'Farid Khan', null, 'Unknown'], [7, 'Grace Lee', null, 'Seoul'], [8, 'Hugo Martin', null, 'Lyon']] },
+      { setup: 'UPDATE students SET joined_on = NULL WHERE student_id = 2;', cols: ['student_id', 'name', 'email', 'city'], rows: [[1, 'Asha Verma', 'asha@mail.com', 'Pune'], [2, 'Ben Carter', 'ben@mail.com', 'Leeds'], [3, 'Chen Wei', null, 'Shanghai'], [4, 'Diya Shah', 'diya@mail.com', 'Pune'], [5, 'Elena Rossi', 'elena@mail.com', 'Milan'], [6, 'Farid Khan', null, 'Unknown'], [7, 'Grace Lee', null, 'Seoul'], [8, 'Hugo Martin', 'hugo@mail.com', 'Lyon']] },
+      { setup: 'UPDATE students SET city = \'\' WHERE student_id = 4;', cols: ['student_id', 'name', 'email', 'city'], rows: [[1, 'Asha Verma', 'asha@mail.com', 'Pune'], [2, 'Ben Carter', 'ben@mail.com', 'Leeds'], [3, 'Chen Wei', null, 'Shanghai'], [4, 'Diya Shah', 'diya@mail.com', ''], [5, 'Elena Rossi', 'elena@mail.com', 'Milan'], [6, 'Farid Khan', null, 'Unknown'], [7, 'Grace Lee', null, 'Seoul'], [8, 'Hugo Martin', 'hugo@mail.com', 'Lyon']] },
+      { setup: 'INSERT INTO students (student_id, roll_no, name, email, city, joined_on) VALUES (9, \'R2024-009\', \'Ivy Chen\', \'ivy@mail.com\', NULL, \'2024-08-03\');', cols: ['student_id', 'name', 'email', 'city'], rows: [[1, 'Asha Verma', 'asha@mail.com', 'Pune'], [2, 'Ben Carter', 'ben@mail.com', 'Leeds'], [3, 'Chen Wei', null, 'Shanghai'], [4, 'Diya Shah', 'diya@mail.com', 'Pune'], [5, 'Elena Rossi', 'elena@mail.com', 'Milan'], [6, 'Farid Khan', null, 'Unknown'], [7, 'Grace Lee', null, 'Seoul'], [8, 'Hugo Martin', 'hugo@mail.com', 'Lyon'], [9, 'Ivy Chen', 'ivy@mail.com', 'Unknown']] },
+      { after: 'INSERT INTO students (roll_no, name, email, joined_on) VALUES (\'R2026-001\', \'Test\', \'nope\', \'2026-01-01\')', error: 'CHECK' },
+      { after: 'INSERT INTO students (roll_no, name, city, joined_on) VALUES (\'R2026-002\', \'Test\', NULL, \'2026-01-01\')', error: 'NOT NULL' },
+      { after: 'INSERT INTO students (roll_no, name, joined_on) VALUES (\'R2026-003\', \'Test\', \'2026-01-01\'); SELECT city, email FROM students WHERE roll_no = \'R2026-003\'', rows: [['Unknown', null]] },
+      { after: 'SELECT COUNT(*) FROM pragma_foreign_key_check', rows: [[0]] },
+      { after: 'SELECT COUNT(*) FROM id_cards c JOIN students s ON s.student_id = c.student_id', rows: [[5]] },
+      { after: 'SELECT COUNT(*) FROM enrollments e JOIN students s ON s.student_id = e.student_id', rows: [[14]] },
+      { after: 'INSERT INTO students (roll_no, name, email, joined_on) VALUES (\'R2026-004\', \'Dup\', \'asha@mail.com\', \'2026-01-01\')', error: 'UNIQUE|duplicate' }
+    ] },
     solution: {
       approach: `<p>Rebuild-and-swap inside one transaction: create <code>students_new</code> with the stricter rules, copy every row through a cleaning SELECT, drop the old table, rename the new one into place, verify referential integrity, commit, re-enable enforcement. In PostgreSQL the same goal is two ALTERs: <code>ALTER COLUMN city SET NOT NULL</code> and <code>ADD CONSTRAINT … CHECK (…) NOT VALID</code> + <code>VALIDATE CONSTRAINT</code>.</p>`,
       code: { lang: 'sql', db: 'school', code: `UPDATE students SET email = 'farid-at-mail' WHERE student_id = 6;   -- the bad row
@@ -2664,7 +3067,7 @@ CREATE TABLE students_new (
   email      TEXT UNIQUE CHECK (email IS NULL OR email LIKE '%_@_%._%'),
   city       TEXT NOT NULL DEFAULT 'Unknown',
   dept_id    INTEGER REFERENCES departments(dept_id),
-  joined_on  TEXT NOT NULL
+  joined_on  TEXT
 );
 INSERT INTO students_new (student_id, roll_no, name, email, city, dept_id, joined_on)
 SELECT student_id, roll_no, name,
@@ -2679,12 +3082,13 @@ COMMIT;
 PRAGMA foreign_keys = ON;
 
 -- Verify data and rules
-SELECT student_id, name, email, city FROM students ORDER BY student_id;
 SELECT COUNT(*) AS enrollments_still_linked
 FROM enrollments e JOIN students s ON s.student_id = e.student_id;   -- 14
 INSERT OR IGNORE INTO students (roll_no, name, email, joined_on)
 VALUES ('R2026-001', 'Test', 'nope', '2026-01-01');                -- refused by the new CHECK
-SELECT COUNT(*) AS students_now FROM students;                      -- still 8` },
+SELECT COUNT(*) AS students_now FROM students;                      -- still 8
+
+SELECT student_id, name, email, city FROM students ORDER BY student_id;   -- the final result` },
       complexity: `<p>O(N) to copy N rows plus rebuilding indexes O(N log N). The table is locked for the duration — on a big production table use an online migration (shadow table + backfill + swap) instead.</p>`,
       followUps: ['What would break if a VIEW or TRIGGER referenced students? (they must be recreated in the same transaction)', 'Write the PostgreSQL version with NOT VALID / VALIDATE CONSTRAINT and explain why it avoids a long lock.', 'Store the bad emails you nulled in an audit table before clearing them.']
     }

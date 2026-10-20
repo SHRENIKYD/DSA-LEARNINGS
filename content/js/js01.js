@@ -410,6 +410,32 @@ function detectRuntimeNaive() {
 ` } },
       mcq: { q: 'Which expression is safe to evaluate in ANY runtime, even if <code>window</code> was never declared?', options: ['<code>window !== undefined</code>', '<code>typeof window !== "undefined"</code>', '<code>window == null</code>', '<code>!!window</code>'], answer: 1, explain: '<code>typeof</code> is the only operator allowed on an undeclared name — it returns "undefined" instead of throwing. All the others READ the variable and throw ReferenceError.' },
       hints: [`<p>Reading an undeclared variable throws, but <code>typeof undeclaredName</code> returns the string "undefined" — it never throws.</p>`, `<p>Alternatively look things up as <b>properties</b> of <code>globalThis</code>: a missing property is just <code>undefined</code>, not an error.</p>`, `<p>Recipe: if typeof window is not "undefined" and window.document exists → browser; else if typeof process is not "undefined" and process.versions has a node string → node; else unknown. Optional chaining <code>?.</code> keeps property reads safe.</p>`],
+      tests: { sig: 'string -> string', fn: 'envCase', harness: { js: `function envCase(kind) {
+  const g = globalThis;
+  const keep = { window: Object.getOwnPropertyDescriptor(g, 'window'), process: Object.getOwnPropertyDescriptor(g, 'process') };
+  const set = (k, v) => Object.defineProperty(g, k, { value: v, configurable: true, writable: true });
+  try {
+    if (kind === 'browser') { set('window', { document: {} }); set('process', undefined); }
+    else if (kind === 'browser-with-process-shim') set('window', { document: {} });
+    else if (kind === 'window-without-document') set('window', {});
+    else if (kind === 'worker') set('process', undefined);
+    else if (kind === 'bare') { set('process', undefined); }
+    else if (kind === 'process-without-versions') set('process', {});
+    else if (kind === 'process-numeric-node') set('process', { versions: { node: 18 } });
+    return detectRuntime();
+  } finally {
+    for (const k of ['window', 'process']) { if (keep[k]) Object.defineProperty(g, k, keep[k]); else delete g[k]; }
+  }
+}` }, cases: [
+        [["real"],"node"],
+        [["browser"],"browser"],
+        [["browser-with-process-shim"],"browser"],
+        [["window-without-document"],"node"],
+        [["worker"],"unknown"],
+        [["bare"],"unknown"],
+        [["process-without-versions"],"unknown"],
+        [["process-numeric-node"],"unknown"]
+      ] },
       solution: {
         approach: `<p>Use <code>typeof</code> (never throws on undeclared names) plus optional chaining for nested properties. Check for a <i>specific</i> fingerprint (<code>window.document</code>, <code>process.versions.node</code>) rather than just the global, because some tools fake one global.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -588,6 +614,9 @@ console.log("arithmetic swap:", a, b);   // not exactly 0.2 and 0.1
 ` } },
       mcq: { q: 'You write <code>const a = 1; const b = 2; [a, b] = [b, a];</code>. What happens?', options: ['They swap', 'TypeError: Assignment to constant variable', 'SyntaxError before anything runs', 'Nothing changes, silently'], answer: 1, explain: 'Destructuring assignment REASSIGNS a and b. Both are const, so assigning throws a TypeError at run time. Use let for values you plan to swap.' },
       hints: [`<p>The problem: after <code>a = b</code>, the old value of <code>a</code> is gone. Save it somewhere first.</p>`, `<p>A temp variable (<code>const tmp = a</code>) works for every type. JavaScript also has <b>array destructuring</b>: build a little array of the new values, then unpack it into the names.</p>`, `<p>Recipe: <code>[a, b] = [b, a];</code>. The right side is fully evaluated first (creating <code>[oldB, oldA]</code>), then unpacked left to right. Careful: if the previous line has no semicolon, a line starting with <code>[</code> glues onto it (ASI trap).</p>`],
+      tests: { io: true, cases: [
+        {"stdin":"","stdout":"temp swap: right left\ndestructuring swap: 0.2 0.1\nobjects: 2 1"}
+      ] },
       solution: {
         approach: `<p>Use <code>let</code> (we reassign). The temp-variable swap is universal and explicit. The destructuring swap is idiomatic modern JS: the right-hand array snapshot <code>[b, a]</code> is created before any assignment happens, so nothing is lost.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -748,7 +777,7 @@ console.log(new String("a") === "a", String("a") === "a"); // false true
       <p><b>Where AI goes wrong:</b> generated code often writes <code>typeof x === "object"</code> and forgets that null passes, or uses <code>x instanceof Array</code> which fails across iframes/realms, or treats <code>NaN</code> as "not a number type". <b>What you must still own:</b> the 8-type mental model, value vs reference semantics, and choosing the right check — runtime data from APIs is untyped even in TypeScript code.</p>`,
     problems: [{
       title: 'A Better typeOf()', level: 'Medium', tags: ['typeof', 'types', 'Object.prototype.toString'], companies: ['Google', 'Atlassian', 'Flipkart'],
-      statement: `<p>Write <code>typeOf(x)</code> that fixes typeof's blind spots. It returns a lowercase name: <code>"null"</code> for null, <code>"array"</code> for arrays, <code>"nan"</code> for NaN, <code>"date"</code> for Date objects, <code>"regexp"</code> for regular expressions, and otherwise the normal typeof answer (<code>"string"</code>, <code>"number"</code>, <code>"object"</code>, <code>"function"</code>…).</p>`,
+      statement: `<p>Write <code>typeOf(x)</code> that fixes typeof's blind spots. It returns a lowercase name: <code>"null"</code> for null, <code>"array"</code> for arrays, <code>"nan"</code> for NaN, <code>"date"</code> for Date objects, <code>"regexp"</code> for regular expressions, and otherwise the normal typeof answer for non-objects (<code>"string"</code>, <code>"number"</code>, <code>"function"</code>, <code>"bigint"</code>…). Other objects get their lowercase built-in tag: <code>"object"</code> for plain objects, <code>"map"</code>, <code>"set"</code>, <code>"error"</code>…</p>`,
       constraints: `Must not throw for any input (including Object.create(null)). Must not mis-classify a plain object as array.`,
       example: `<p><code>typeOf(null)</code> → ${H.c('g', '"null"')} (typeof says "object") · <code>typeOf([1])</code> → ${H.c('g', '"array"')} · <code>typeOf(NaN)</code> → ${H.c('g', '"nan"')} · <code>typeOf(new Date())</code> → ${H.c('g', '"date"')} · <code>typeOf({})</code> → ${H.c('g', '"object"')}</p>`,
       brute: { why: `<p>Plain <code>typeof</code> returns "object" for null, arrays, dates and regexps, and "number" for NaN — four different things collapse into the same answer. Chaining many <code>instanceof</code> checks is long and breaks for objects that come from another iframe/realm.</p>`, code: { lang: 'js', run: true, code: `
@@ -757,6 +786,40 @@ console.log(typeOfNaive(null), typeOfNaive([]), typeOfNaive(NaN), typeOfNaive(ne
 ` } },
       mcq: { q: 'What does <code>Object.prototype.toString.call([])</code> return?', options: ['<code>"[object Object]"</code>', '<code>"[object Array]"</code>', '<code>""</code>', '<code>"array"</code>'], answer: 1, explain: 'The generic Object.prototype.toString reads the internal class tag: "[object Array]". Array.prototype.toString (used by String([])) would instead join the elements and give "".' },
       hints: [`<p>Handle the special cases first: null (only value equal to null with ===) and NaN (the only value not equal to itself).</p>`, `<p>For objects, <code>Object.prototype.toString.call(x)</code> gives "[object Type]". Slice out <code>Type</code> and lowercase it.</p>`, `<p>Recipe: if x === null → "null"; if typeof x is "number" and Number.isNaN(x) → "nan"; if typeof x is not "object" → return typeof x; else take toString tag "[object Date]" → slice(8, -1) → "Date" → lowercase.</p>`],
+      tests: { sig: 'string -> string', fn: 'typeCase', harness: { js: `function typeCase(label) {
+  const m = {
+    null: () => null, undef: () => undefined, arr: () => [1, 2], emptyArr: () => [], nan: () => NaN, int: () => 42, negzero: () => -0,
+    inf: () => Infinity, str: () => 'hi', date: () => new Date(0), re: () => /ab+c/g, obj: () => ({}), nullproto: () => Object.create(null),
+    fn: () => () => 1, arrow: () => function* () {}, big: () => 5n, map: () => new Map(), set: () => new Set(), sym: () => Symbol('s'),
+    bool: () => true, err: () => new Error('x'), boxed: () => new Number(5), instance: () => new (class A {})(), promise: () => Promise.resolve(1)
+  };
+  return typeOf(m[label]());
+}` }, cases: [
+        [["null"],"null"],
+        [["undef"],"undefined"],
+        [["arr"],"array"],
+        [["emptyArr"],"array"],
+        [["nan"],"nan"],
+        [["int"],"number"],
+        [["negzero"],"number"],
+        [["inf"],"number"],
+        [["str"],"string"],
+        [["date"],"date"],
+        [["re"],"regexp"],
+        [["obj"],"object"],
+        [["nullproto"],"object"],
+        [["fn"],"function"],
+        [["arrow"],"function"],
+        [["big"],"bigint"],
+        [["map"],"map"],
+        [["set"],"set"],
+        [["sym"],"symbol"],
+        [["bool"],"boolean"],
+        [["err"],"error"],
+        [["boxed"],"number"],
+        [["instance"],"object"],
+        [["promise"],"promise"]
+      ] },
       solution: {
         approach: `<p>Short-circuit the two primitive oddities (null, NaN), return typeof for every other primitive and functions, and only for objects read the internal tag via the generic <code>Object.prototype.toString</code>. Calling it through <code>.call</code> avoids objects that override or lack their own <code>toString</code> (like <code>Object.create(null)</code>).</p>`,
         code: { lang: 'js', run: true, code: `
@@ -945,6 +1008,24 @@ console.log(isPalindromeCopy("A man, a plan, a canal: Panama"), isPalindromeCopy
 ` } },
       mcq: { q: 'Two pointers L=0 and R=s.length−1. s[L] is ",". What should you do?', options: ['Return false', 'Move L right (skip it)', 'Move R left', 'Compare it with s[R] anyway'], answer: 1, explain: 'Non-alphanumeric characters are ignored, so skip them by moving that pointer inward. Only compare when both pointers sit on letters/digits.' },
       hints: [`<p>A palindrome compares the first with the last, the second with the second-last… — two pointers walking toward each other.</p>`, `<p>Skip characters that are not letters/digits with a small helper (a regex test <code>/[a-z0-9]/i</code> or char-code ranges). Compare lower-cased characters.</p>`, `<p>Recipe: L = 0, R = n − 1. While L &lt; R: move L right while it is a symbol; move R left while it is a symbol; if lower(s[L]) !== lower(s[R]) return false; L++, R−−. Return true. Empty/only-symbols strings are palindromes.</p>`],
+      tests: { sig: 'string -> bool', fn: 'isPalindrome', cases: [
+        [["A man, a plan, a canal: Panama"],true],
+        [["race a car"],false],
+        [[" .,"],true],
+        [["a"],true],
+        [["ab"],false],
+        [["0P"],false],
+        [["Aa"],true],
+        [["ab@a"],true],
+        [["ab_a"],true],
+        [["No 'x' in Nixon"],true],
+        [["12 21"],true],
+        [["1a2"],false],
+        [[{"$rep":"a","n":200000}],true],
+        [[{"$concat":[{"$rep":"a","n":100000},"b",{"$rep":"a","n":100000}]}],true],
+        [[{"$concat":[{"$rep":"a","n":100000},"b",{"$rep":"a","n":99998},"c"]}],false],
+        [[{"$concat":[{"$rep":".","n":100000},"x",{"$rep":",","n":100000}]}],true]
+      ] },
       solution: {
         approach: `<p>Two pointers, no copies: skip non-alphanumerics from both ends and compare case-insensitively. Stops at the first mismatch.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -1144,6 +1225,20 @@ console.log(cartTotalFloat([{ price: "0.10", qty: 1 }, { price: "0.20", qty: 1 }
 ` } },
       mcq: { q: 'What is the safest way to turn the price string "19.9" into cents?', options: ['<code>Math.round(parseFloat("19.9") * 100)</code> — always exact', 'Split on ".", pad the fraction to 2 digits, combine as integers: 19 * 100 + 90', '<code>parseInt("19.9") * 100</code>', '<code>Number("19.9") | 0</code>'], answer: 1, explain: 'Splitting the TEXT never goes through binary fractions, so it is exact by construction. Math.round(x*100) is usually right but relies on the error being smaller than 0.5 cents; parseInt and |0 drop the fraction.' },
       hints: [`<p>Floats cannot hold 0.1 exactly, but integers up to 2<sup>53</sup> are exact. Convert everything to <b>cents</b> (integers) first.</p>`, `<p>The price arrives as text — you can parse the whole part and the fractional part separately as integers, without ever creating a fraction: "5.5" → whole "5", frac "5" → pad to "50".</p>`, `<p>Recipe: for each line, cents = whole * 100 + Number(frac.padEnd(2, "0")); total += cents * qty. At the end: units = Math.floor(total / 100), rest = total % 100 → \`units.rest\` with rest padded to 2 digits.</p>`],
+      tests: { sig: 'string[] int[] -> string', fn: 'cart', harness: { js: `function cart(prices, qtys) { return cartTotal(prices.map((p, i) => ({ price: p, qty: qtys[i] }))); }` }, cases: [
+        [[["0.10","0.20"],[1,1]],"0.30"],
+        [[["19.99"],[3]],"59.97"],
+        [[["5","5.5"],[2,1]],"15.50"],
+        [[{"$rep":"0.01","n":1000},{"$rep":1,"n":1000}],"10.00"],
+        [[["0"],[1]],"0.00"],
+        [[["0.07"],[3]],"0.21"],
+        [[["100"],[1000]],"100000.00"],
+        [[["0.99"],[1000]],"990.00"],
+        [[["0.5","0.5"],[1,1]],"1.00"],
+        [[["3.1"],[1]],"3.10"],
+        [[{"$rep":"999999.99","n":10000},{"$rep":1000,"n":10000}],"9999999900000.00"],
+        [[{"$rep":"0.10","n":10000},{"$rep":3,"n":10000}],"3000.00"]
+      ] },
       solution: {
         approach: `<p>Exact integer arithmetic in cents. Parsing the price string by hand means no binary fraction is ever created; sums of integers stay exact while below 2<sup>53</sup> (≈ 90 trillion dollars in cents — plenty). Formatting happens once, at the end.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -1304,6 +1399,21 @@ console.log(sumFieldsBuggy(["10", " 20 ", "", null, "2.5"]));   // "010 20 null2
 ` } },
       mcq: { q: 'Which conversion rejects <code>"12px"</code> but accepts <code>" 20 "</code>?', options: ['<code>parseInt(v, 10)</code>', '<code>parseFloat(v)</code>', '<code>Number(v)</code> / unary <code>+v</code>', '<code>v | 0</code>'], answer: 2, explain: 'Number() requires the whole string (after trimming whitespace) to be numeric: " 20 " → 20, "12px" → NaN. parseInt/parseFloat accept the leading digits of "12px"; | 0 also truncates decimals.' },
       hints: [`<p>The bug: <code>+</code> concatenates as soon as one side is a string. Convert each value to a number <b>before</b> adding.</p>`, `<p>Handle blank/null first (<code>v == null || String(v).trim() === ""</code> → 0), because <code>Number("")</code> is 0 but <code>Number(null)</code> is also 0 — make the intent explicit. Then use strict <code>Number(v)</code> and check <code>Number.isFinite</code>.</p>`, `<p>Recipe: total = 0; for each v: if null or blank → continue; n = Number(v); if !Number.isFinite(n) → throw new Error(\`Bad value: \${v}\`) ; total += n. Return total.</p>`.replace(/\$\{/g, '&#36;{').replace(/`/g, '&#96;')],
+      tests: { sig: 'string[] -> string', fn: 'sumSafe', check: `(args, out, exp) => typeof exp === 'number' ? out === exp : (typeof out === 'string' && out.startsWith('throws:') && out.includes(exp))`, harness: { js: `function sumSafe(values) { try { return sumFields(values); } catch (e) { return 'throws:' + e.message; } }` }, cases: [
+        [[["10"," 20 ","",null,"2.5"]],32.5],
+        [[[]],0],
+        [[["5","12px"]],"12px"],
+        [[[null,null]],0],
+        [[[1,2,3]],6],
+        [[["-3","3"]],0],
+        [[["abc"]],"abc"],
+        [[["   "]],0],
+        [[["1e3"]],1000],
+        [[["10",5]],15],
+        [[["Infinity"]],"Infinity"],
+        [[["2","x1","y2"]],"x1"],
+        [[{"$rep":"1","n":100000}],100000]
+      ] },
       solution: {
         approach: `<p>Normalise every input to a real number before any <code>+</code>: treat null/blank explicitly, convert with the strict <code>Number()</code>, reject anything not finite (NaN, Infinity). The accumulator stays a number the whole time.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -1453,6 +1563,21 @@ console.log(JSON.stringify(withDefaultsBuggy({ volume: 0, notifications: false }
 ` } },
       mcq: { q: '<code>options.retries = 0</code>. Which expression keeps 0?', options: ['<code>options.retries || 3</code>', '<code>options.retries ?? 3</code>', '<code>!!options.retries || 3</code>', '<code>options.retries &amp;&amp; 3</code>'], answer: 1, explain: '?? only falls back for null and undefined, so 0 survives. || treats 0 as falsy and returns 3; the other two return booleans/3.' },
       hints: [`<p>The question is not "is it falsy?" but "is it missing?" — and in JavaScript "missing" means <code>null</code> or <code>undefined</code>.</p>`, `<p><code>??</code> (nullish coalescing) is exactly "use the right side only for null/undefined". For a possibly-undefined <code>options</code>, read fields with optional chaining <code>options?.volume</code>.</p>`, `<p>Recipe: build a NEW object: <code>{ volume: options?.volume ?? 50, nickname: options?.nickname ?? "guest", ... }</code>. No mutation, unknown keys ignored automatically because you only copy known ones.</p>`],
+      tests: { sig: 'string -> string', fn: 'wd', harness: { js: `function wd(json) {
+  const o = json === '' ? undefined : JSON.parse(json);
+  const before = JSON.stringify(o);
+  const r = withDefaults(o);
+  return JSON.stringify(r) + (JSON.stringify(o) === before ? '' : ' MUTATED');
+}` }, cases: [
+        [["{}"],"{\"volume\":50,\"nickname\":\"guest\",\"notifications\":true,\"retries\":3}"],
+        [[""],"{\"volume\":50,\"nickname\":\"guest\",\"notifications\":true,\"retries\":3}"],
+        [["null"],"{\"volume\":50,\"nickname\":\"guest\",\"notifications\":true,\"retries\":3}"],
+        [["{\"volume\":0,\"notifications\":false}"],"{\"volume\":0,\"nickname\":\"guest\",\"notifications\":false,\"retries\":3}"],
+        [["{\"nickname\":\"\",\"retries\":null,\"extra\":1}"],"{\"volume\":50,\"nickname\":\"\",\"notifications\":true,\"retries\":3}"],
+        [["{\"volume\":10,\"nickname\":\"bob\",\"notifications\":false,\"retries\":0}"],"{\"volume\":10,\"nickname\":\"bob\",\"notifications\":false,\"retries\":0}"],
+        [["{\"volume\":null,\"nickname\":null,\"notifications\":null,\"retries\":null}"],"{\"volume\":50,\"nickname\":\"guest\",\"notifications\":true,\"retries\":3}"],
+        [["{\"extra\":{\"a\":1}}"],"{\"volume\":50,\"nickname\":\"guest\",\"notifications\":true,\"retries\":3}"]
+      ] },
       solution: {
         approach: `<p>Use nullish coalescing per field, optional chaining for the possibly-missing options object, and build a fresh object so the input is untouched. A defaults table keeps the code data-driven.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -1720,6 +1845,23 @@ console.log(fizzBuzzWrongOrder(15).slice(-1));     // ["Fizz"] — wrong
 ` } },
       mcq: { q: 'Which ordering of checks is correct for FizzBuzz using else-if?', options: ['%3, %5, %15', '%15, %3, %5', '%5, %3, %15', 'Order does not matter with else-if'], answer: 1, explain: 'With an else-if chain, the first true condition wins. The most specific rule (divisible by 15) must come first, otherwise multiples of 15 are captured by the %3 or %5 branch.' },
       hints: [`<p>"Divisible by k" means <code>i % k === 0</code>. Divisible by both 3 and 5 is the same as divisible by 15.</p>`, `<p>In an if / else if chain, the first true branch wins and the rest are skipped. Put the most specific condition first.</p>`, `<p>Alternative without ordering issues: build the word: <code>let s = ""; if (i % 3 === 0) s += "Fizz"; if (i % 5 === 0) s += "Buzz"; out.push(s || String(i));</code> — note the <code>||</code> default works because "" is falsy.</p>`],
+      tests: { sig: 'int -> string[]', fn: 'fbCase', harness: { js: `function fbCase(n) {
+  const r = fizzBuzz(n);
+  if (n <= 30) return r;
+  let fizz = 0, buzz = 0, both = 0, num = 0;
+  for (const s of r) { if (s === 'FizzBuzz') both++; else if (s === 'Fizz') fizz++; else if (s === 'Buzz') buzz++; else num++; }
+  return { len: r.length, fizz, buzz, both, num, first: r[0], last: r[r.length - 1], at99: r[98], at100: r[99] };
+}` }, cases: [
+        [[1],["1"]],
+        [[2],["1","2"]],
+        [[3],["1","2","Fizz"]],
+        [[5],["1","2","Fizz","4","Buzz"]],
+        [[15],["1","2","Fizz","4","Buzz","Fizz","7","8","Fizz","Buzz","11","Fizz","13","14","FizzBuzz"]],
+        [[16],["1","2","Fizz","4","Buzz","Fizz","7","8","Fizz","Buzz","11","Fizz","13","14","FizzBuzz","16"]],
+        [[30],["1","2","Fizz","4","Buzz","Fizz","7","8","Fizz","Buzz","11","Fizz","13","14","FizzBuzz","16","17","Fizz","19","Buzz","Fizz","22","23","Fizz","Buzz","26","Fizz","28","29","FizzBuzz"]],
+        [[100],{"len":100,"fizz":27,"buzz":14,"both":6,"num":53,"first":"1","last":"Buzz","at99":"Fizz","at100":"Buzz"}],
+        [[10000],{"len":10000,"fizz":2667,"buzz":1334,"both":666,"num":5333,"first":"1","last":"Buzz","at99":"Fizz","at100":"Buzz"}]
+      ] },
       solution: {
         approach: `<p>Loop 1…n with an if/else-if chain ordered from most to least specific, or the string-building variant which scales to more rules (e.g. 7 → "Bazz") without combinatorial cases.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -1773,6 +1915,21 @@ console.log(tableNaive(-10, 10, 10).join("\\n"));
 ` } },
     mcq: { q: 'What does <code>(32).toFixed(1)</code> return?', options: ['<code>32</code> (number)', '<code>"32.0"</code> (string)', '<code>32.0</code> (number)', '<code>"32"</code>'], answer: 1, explain: 'toFixed always returns a STRING with exactly the requested number of decimals. JavaScript numbers have no concept of "32.0" — only strings can show trailing zeros.' },
     hints: [`<p>A classic counting loop: <code>for (let c = start; c &lt;= end; c += step)</code> — note the <code>&lt;=</code> because end is inclusive.</p>`, `<p>Compute F with the formula, then format: <code>toFixed(1)</code> for one decimal, <code>padStart(width)</code> to right-align. Convert C to a string first with <code>String(c)</code>.</p>`, `<p>Recipe: line = String(c).padStart(4) + "°C = " + f.toFixed(1).padStart(6) + "°F". Template literals make it cleaner.</p>`],
+    tests: { sig: 'int int int -> string[]', fn: 'table', cases: [
+      [[-10,10,10],[" -10°C =   14.0°F","   0°C =   32.0°F","  10°C =   50.0°F"]],
+      [[0,0,1],["   0°C =   32.0°F"]],
+      [[-100,-100,1],["-100°C = -148.0°F"]],
+      [[100,100,1],[" 100°C =  212.0°F"]],
+      [[37,37,1],["  37°C =   98.6°F"]],
+      [[-40,-40,1],[" -40°C =  -40.0°F"]],
+      [[1,1,1],["   1°C =   33.8°F"]],
+      [[-3,-3,1],["  -3°C =   26.6°F"]],
+      [[0,100,50],["   0°C =   32.0°F","  50°C =  122.0°F"," 100°C =  212.0°F"]],
+      [[-100,100,50],["-100°C = -148.0°F"," -50°C =  -58.0°F","   0°C =   32.0°F","  50°C =  122.0°F"," 100°C =  212.0°F"]],
+      [[4,4,50],["   4°C =   39.2°F"]],
+      [[-100,100,1],["-100°C = -148.0°F"," -99°C = -146.2°F"," -98°C = -144.4°F"," -97°C = -142.6°F"," -96°C = -140.8°F"," -95°C = -139.0°F"," -94°C = -137.2°F"," -93°C = -135.4°F"," -92°C = -133.6°F"," -91°C = -131.8°F"," -90°C = -130.0°F"," -89°C = -128.2°F"," -88°C = -126.4°F"," -87°C = -124.6°F"," -86°C = -122.8°F"," -85°C = -121.0°F"," -84°C = -119.2°F"," -83°C = -117.4°F"," -82°C = -115.6°F"," -81°C = -113.8°F"," -80°C = -112.0°F"," -79°C = -110.2°F"," -78°C = -108.4°F"," -77°C = -106.6°F"," -76°C = -104.8°F"," -75°C = -103.0°F"," -74°C = -101.2°F"," -73°C =  -99.4°F"," -72°C =  -97.6°F"," -71°C =  -95.8°F"," -70°C =  -94.0°F"," -69°C =  -92.2°F"," -68°C =  -90.4°F"," -67°C =  -88.6°F"," -66°C =  -86.8°F"," -65°C =  -85.0°F"," -64°C =  -83.2°F"," -63°C =  -81.4°F"," -62°C =  -79.6°F"," -61°C =  -77.8°F"," -60°C =  -76.0°F"," -59°C =  -74.2°F"," -58°C =  -72.4°F"," -57°C =  -70.6°F"," -56°C =  -68.8°F"," -55°C =  -67.0°F"," -54°C =  -65.2°F"," -53°C =  -63.4°F"," -52°C =  -61.6°F"," -51°C =  -59.8°F"," -50°C =  -58.0°F"," -49°C =  -56.2°F"," -48°C =  -54.4°F"," -47°C =  -52.6°F"," -46°C =  -50.8°F"," -45°C =  -49.0°F"," -44°C =  -47.2°F"," -43°C =  -45.4°F"," -42°C =  -43.6°F"," -41°C =  -41.8°F"," -40°C =  -40.0°F"," -39°C =  -38.2°F"," -38°C =  -36.4°F"," -37°C =  -34.6°F"," -36°C =  -32.8°F"," -35°C =  -31.0°F"," -34°C =  -29.2°F"," -33°C =  -27.4°F"," -32°C =  -25.6°F"," -31°C =  -23.8°F"," -30°C =  -22.0°F"," -29°C =  -20.2°F"," -28°C =  -18.4°F"," -27°C =  -16.6°F"," -26°C =  -14.8°F"," -25°C =  -13.0°F"," -24°C =  -11.2°F"," -23°C =   -9.4°F"," -22°C =   -7.6°F"," -21°C =   -5.8°F"," -20°C =   -4.0°F"," -19°C =   -2.2°F"," -18°C =   -0.4°F"," -17°C =    1.4°F"," -16°C =    3.2°F"," -15°C =    5.0°F"," -14°C =    6.8°F"," -13°C =    8.6°F"," -12°C =   10.4°F"," -11°C =   12.2°F"," -10°C =   14.0°F","  -9°C =   15.8°F","  -8°C =   17.6°F","  -7°C =   19.4°F","  -6°C =   21.2°F","  -5°C =   23.0°F","  -4°C =   24.8°F","  -3°C =   26.6°F","  -2°C =   28.4°F","  -1°C =   30.2°F","   0°C =   32.0°F","   1°C =   33.8°F","   2°C =   35.6°F","   3°C =   37.4°F","   4°C =   39.2°F","   5°C =   41.0°F","   6°C =   42.8°F","   7°C =   44.6°F","   8°C =   46.4°F","   9°C =   48.2°F","  10°C =   50.0°F","  11°C =   51.8°F","  12°C =   53.6°F","  13°C =   55.4°F","  14°C =   57.2°F","  15°C =   59.0°F","  16°C =   60.8°F","  17°C =   62.6°F","  18°C =   64.4°F","  19°C =   66.2°F","  20°C =   68.0°F","  21°C =   69.8°F","  22°C =   71.6°F","  23°C =   73.4°F","  24°C =   75.2°F","  25°C =   77.0°F","  26°C =   78.8°F","  27°C =   80.6°F","  28°C =   82.4°F","  29°C =   84.2°F","  30°C =   86.0°F","  31°C =   87.8°F","  32°C =   89.6°F","  33°C =   91.4°F","  34°C =   93.2°F","  35°C =   95.0°F","  36°C =   96.8°F","  37°C =   98.6°F","  38°C =  100.4°F","  39°C =  102.2°F","  40°C =  104.0°F","  41°C =  105.8°F","  42°C =  107.6°F","  43°C =  109.4°F","  44°C =  111.2°F","  45°C =  113.0°F","  46°C =  114.8°F","  47°C =  116.6°F","  48°C =  118.4°F","  49°C =  120.2°F","  50°C =  122.0°F","  51°C =  123.8°F","  52°C =  125.6°F","  53°C =  127.4°F","  54°C =  129.2°F","  55°C =  131.0°F","  56°C =  132.8°F","  57°C =  134.6°F","  58°C =  136.4°F","  59°C =  138.2°F","  60°C =  140.0°F","  61°C =  141.8°F","  62°C =  143.6°F","  63°C =  145.4°F","  64°C =  147.2°F","  65°C =  149.0°F","  66°C =  150.8°F","  67°C =  152.6°F","  68°C =  154.4°F","  69°C =  156.2°F","  70°C =  158.0°F","  71°C =  159.8°F","  72°C =  161.6°F","  73°C =  163.4°F","  74°C =  165.2°F","  75°C =  167.0°F","  76°C =  168.8°F","  77°C =  170.6°F","  78°C =  172.4°F","  79°C =  174.2°F","  80°C =  176.0°F","  81°C =  177.8°F","  82°C =  179.6°F","  83°C =  181.4°F","  84°C =  183.2°F","  85°C =  185.0°F","  86°C =  186.8°F","  87°C =  188.6°F","  88°C =  190.4°F","  89°C =  192.2°F","  90°C =  194.0°F","  91°C =  195.8°F","  92°C =  197.6°F","  93°C =  199.4°F","  94°C =  201.2°F","  95°C =  203.0°F","  96°C =  204.8°F","  97°C =  206.6°F","  98°C =  208.4°F","  99°C =  210.2°F"," 100°C =  212.0°F"]],
+      [[-99,99,7],[" -99°C = -146.2°F"," -92°C = -133.6°F"," -85°C = -121.0°F"," -78°C = -108.4°F"," -71°C =  -95.8°F"," -64°C =  -83.2°F"," -57°C =  -70.6°F"," -50°C =  -58.0°F"," -43°C =  -45.4°F"," -36°C =  -32.8°F"," -29°C =  -20.2°F"," -22°C =   -7.6°F"," -15°C =    5.0°F","  -8°C =   17.6°F","  -1°C =   30.2°F","   6°C =   42.8°F","  13°C =   55.4°F","  20°C =   68.0°F","  27°C =   80.6°F","  34°C =   93.2°F","  41°C =  105.8°F","  48°C =  118.4°F","  55°C =  131.0°F","  62°C =  143.6°F","  69°C =  156.2°F","  76°C =  168.8°F","  83°C =  181.4°F","  90°C =  194.0°F","  97°C =  206.6°F"]]
+    ] },
     solution: {
       approach: `<p>Loop with the given step, compute Fahrenheit, format each column with <code>toFixed</code> + <code>padStart</code>, collect lines.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1810,6 +1967,19 @@ console.log(countVowelsSlow("Hello World"));
 ` } },
     mcq: { q: 'Which is the cleanest membership test for a vowel?', options: ['<code>"aeiou".includes(ch.toLowerCase())</code>', '<code>ch == "aeiou"</code>', '<code>"aeiou".indexOf(ch) &gt; 0</code>', '<code>ch in "aeiou"</code>'], answer: 0, explain: 'includes checks whether the vowel string contains the character. indexOf(...) &gt; 0 misses "a" at index 0; == compares the whole string; the in operator checks property keys, not characters.' },
     hints: [`<p>Lower-case the string <b>once</b> before the loop, or lower-case each character.</p>`, `<p>Keep the vowels in a string <code>"aeiou"</code> (or a Set) and test membership with <code>includes</code> / <code>has</code>.</p>`, `<p>Recipe: let count = 0; for (const ch of s.toLowerCase()) if ("aeiou".includes(ch)) count++; return count.</p>`],
+    tests: { sig: 'string -> int', fn: 'countVowels', cases: [
+      [["Hello World"],3],
+      [["RHYTHM"],0],
+      [[""],0],
+      [["aeiouAEIOU"],10],
+      [["xyz"],0],
+      [["Programming in JavaScript"],7],
+      [["y"],0],
+      [["Éa"],1],
+      [[{"$rep":"a","n":100000}],100000],
+      [[{"$concat":[{"$rep":"b","n":99999},"U"]}],1],
+      [[{"$rep":"xyz","n":33333}],0]
+    ] },
     solution: {
       approach: `<p>One pass with <code>for...of</code> over the lower-cased string, membership test via a Set of vowels (O(1) lookup).</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1843,6 +2013,30 @@ console.log(parityNaive(-3), parityNaive(2.5), parityNaive(NaN));   // even even
 ` } },
     mcq: { q: 'What is <code>-7 % 2</code> in JavaScript?', options: ['1', '-1', '0', 'NaN'], answer: 1, explain: 'JavaScript % is a remainder that takes the sign of the dividend (left side): -7 = 2 × (-3) + (-1). Test oddness with x % 2 !== 0 instead of === 1.' },
     hints: [`<p>First normalise: convert strings with <code>Number()</code> (strict), and reject anything that is not an integer with <code>Number.isInteger</code> (false for NaN, Infinity and 2.5).</p>`, `<p>The remainder of a negative odd number is −1, so test <code>n % 2 === 0</code> for even and treat everything else as odd.</p>`, `<p>Recipe: n = typeof x === "string" ? (x.trim() === "" ? NaN : Number(x)) : x; if (!Number.isInteger(n)) return "not an integer"; return n % 2 === 0 ? "even" : "odd".</p>`],
+    tests: { sig: 'string -> string', fn: 'par', harness: { js: `function par(spec) { const v = spec.slice(2); return parity(spec[0] === 'n' ? Number(v) : v); }` }, cases: [
+      [["n:4"],"even"],
+      [["n:-3"],"odd"],
+      [["n:0"],"even"],
+      [["n:-0"],"even"],
+      [["n:1"],"odd"],
+      [["n:-7"],"odd"],
+      [["n:2.5"],"not an integer"],
+      [["n:NaN"],"not an integer"],
+      [["n:Infinity"],"not an integer"],
+      [["n:-Infinity"],"not an integer"],
+      [["s:8"],"even"],
+      [["s:abc"],"not an integer"],
+      [["s:"],"not an integer"],
+      [["s:   "],"not an integer"],
+      [["s: 7 "],"odd"],
+      [["s:3.5"],"not an integer"],
+      [["s:-3"],"odd"],
+      [["s:1e3"],"even"],
+      [["s:Infinity"],"not an integer"],
+      [["n:9007199254740991"],"odd"],
+      [["n:9007199254740992"],"even"],
+      [["n:1e21"],"even"]
+    ] },
     solution: {
       approach: `<p>Normalise strings strictly (blank → invalid), validate with <code>Number.isInteger</code>, then compare the remainder with 0 (sign-proof).</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1875,6 +2069,18 @@ console.log(r.length, [...r].map((c) => c.codePointAt(0).toString(16)).join(" ")
 ` } },
     mcq: { q: 'Which expression iterates a string by code point (keeping 😀 whole)?', options: ['<code>s.split("")</code>', '<code>[...s]</code>', '<code>s.charAt(i)</code> in a loop', '<code>Object.keys(s)</code>'], answer: 1, explain: 'The string iterator (used by spread, for...of, Array.from) walks code points, so surrogate pairs stay together. split("") and charAt work on UTF-16 code units.' },
     hints: [`<p><code>"😀".length</code> is 2: it is stored as two UTF-16 code units (a surrogate pair). Anything that walks by index will split it.</p>`, `<p>The string <b>iterator</b> (<code>for...of</code>, spread <code>[...s]</code>, <code>Array.from(s)</code>) walks by code point instead.</p>`, `<p>Recipe: <code>[...s].reverse().join("")</code>, or build the result with a for...of loop prepending each character. For full grapheme safety (👨‍👩‍👧, 🇮🇳) use <code>Intl.Segmenter</code>.</p>`],
+    tests: { sig: 'string -> string', fn: 'reverse', cases: [
+      [["hello"],"olleh"],
+      [["ab😀"],"😀ba"],
+      [[""],""],
+      [["a"],"a"],
+      [["🚀😀"],"😀🚀"],
+      [["racecar"],"racecar"],
+      [["a😀b🚀c"],"c🚀b😀a"],
+      [[{"$rep":"ab","n":50000}],{"$rep":"ba","n":50000}],
+      [[{"$concat":["x",{"$rep":"y","n":99999}]}],{"$concat":[{"$rep":"y","n":99999},"x"]}],
+      [[{"$rep":"😀","n":50000}],{"$rep":"😀","n":50000}]
+    ] },
     solution: {
       approach: `<p>Spread the string into code points, reverse, join. For the strict "what a human sees" version, segment into graphemes with <code>Intl.Segmenter</code> first.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1912,6 +2118,23 @@ console.log(isLeapBuggy(1900));   // true — wrong
 ` } },
     mcq: { q: 'How does JS group <code>a || b &amp;&amp; c</code>?', options: ['<code>(a || b) &amp;&amp; c</code>', '<code>a || (b &amp;&amp; c)</code>', 'left to right, no precedence', 'SyntaxError'], answer: 1, explain: '&& has higher precedence than ||, just like * binds tighter than +. Use parentheses whenever you mix them to make the intent obvious.' },
     hints: [`<p>Spell out the rule: leap if (divisible by 4 AND NOT divisible by 100) OR (divisible by 400).</p>`, `<p><code>&amp;&amp;</code> binds tighter than <code>||</code>, but add parentheses anyway — the reader shouldn't need a precedence table.</p>`, `<p>Recipe: <code>return (y % 4 === 0 &amp;&amp; y % 100 !== 0) || y % 400 === 0;</code>. Test 1900, 2000, 2024, 2023.</p>`],
+    tests: { sig: 'int -> bool', fn: 'isLeap', cases: [
+      [[2024],true],
+      [[1900],false],
+      [[2000],true],
+      [[2023],false],
+      [[1],false],
+      [[4],true],
+      [[100],false],
+      [[400],true],
+      [[2100],false],
+      [[1000000],true],
+      [[999999],false],
+      [[1996],true],
+      [[2400],true],
+      [[1800],false],
+      [[999996],true]
+    ] },
     solution: {
       approach: `<p>Translate the rule directly into one boolean expression with explicit parentheses; verify on the four classic test years and against the built-in Date (Feb 29 exists?).</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1947,6 +2170,25 @@ console.log(formatHack(3725), formatHack(86400));   // 01:02:05 00:00:00 — wra
 ` } },
     mcq: { q: 'What is <code>Math.floor(3725 / 60) % 60</code>?', options: ['2', '62', '5', '1'], answer: 0, explain: '3725 / 60 = 62.08… → floor 62 total minutes; 62 % 60 = 2 minutes left over after removing whole hours.' },
     hints: [`<p>Hours = how many full 3600-second blocks fit: <code>Math.floor(s / 3600)</code>.</p>`, `<p>Minutes = full minutes modulo 60: <code>Math.floor(s / 60) % 60</code>; seconds = <code>s % 60</code> (after flooring the input).</p>`, `<p>Recipe: validate with Number.isFinite and s ≥ 0; s = Math.floor(s); build \`h:mm:ss\` with String(x).padStart(2, "0") for mm and ss.</p>`.replace(/`/g, '&#96;')],
+    tests: { sig: 'string -> string', fn: 'hmsCase', harness: { js: `function hmsCase(s) { try { return hms(Number(s)); } catch (e) { return e.name; } }` }, cases: [
+      [["3725"],"1:02:05"],
+      [["59.9"],"0:00:59"],
+      [["86400"],"24:00:00"],
+      [["0"],"0:00:00"],
+      [["-1"],"RangeError"],
+      [["NaN"],"RangeError"],
+      [["Infinity"],"RangeError"],
+      [["-Infinity"],"RangeError"],
+      [["-0.5"],"RangeError"],
+      [["1000000000"],"277777:46:40"],
+      [["59"],"0:00:59"],
+      [["60"],"0:01:00"],
+      [["3599"],"0:59:59"],
+      [["3600"],"1:00:00"],
+      [["0.999"],"0:00:00"],
+      [["86399.99"],"23:59:59"],
+      [["-0"],"0:00:00"]
+    ] },
     solution: {
       approach: `<p>Integer arithmetic with floor and modulo, then format with <code>padStart</code>. Validate first so NaN or negatives cannot leak through.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1980,6 +2222,23 @@ console.log(compareNaive("1.10.0", "1.9.3"));   // -1 — wrong (should be 1)
 ` } },
     mcq: { q: 'Why is <code>"10" &lt; "9"</code> true?', options: ['JS converts both to numbers', 'Strings compare character by character by code unit, and "1" &lt; "9"', 'Because 10 has more digits', 'It is a bug in V8'], answer: 1, explain: 'When BOTH operands are strings, relational operators compare lexicographically by UTF-16 code units. Only when one side is a number do they convert to numbers.' },
     hints: [`<p>Split each version on <code>"."</code> and convert each part to a <b>number</b> so 10 &gt; 9 numerically.</p>`, `<p>Walk up to the longer length; a missing part is 0 (<code>parts[i] ?? 0</code>).</p>`, `<p>Recipe: A = a.split(".").map(Number), B likewise; for i in 0..max-1: x = A[i] ?? 0, y = B[i] ?? 0; if x &gt; y return 1; if x &lt; y return -1. Return 0.</p>`],
+    tests: { sig: 'string string -> int', fn: 'compareVersions', cases: [
+      [["1.10.0","1.9.3"],1],
+      [["1.2","1.2.0"],0],
+      [["1.01","1.1"],0],
+      [["1.9.3","1.10.0"],-1],
+      [["1","1"],0],
+      [["0","0.0.0"],0],
+      [["1.0.1","1"],1],
+      [["1","1.0.1"],-1],
+      [["2.0","10.0"],-1],
+      [["007","7"],0],
+      [["9007199254740991","9007199254740990"],1],
+      [["1.0.0.0.0.1","1"],1],
+      [[{"$concat":["1",{"$rep":".0","n":249}]},"1"],0],
+      [[{"$concat":["1",{"$rep":".0","n":248},".1"]},"1"],1],
+      [["1",{"$concat":["1",{"$rep":".0","n":248},".1"]}],-1]
+    ] },
     solution: {
       approach: `<p>Split, convert parts to numbers, compare position by position, padding the shorter one with zeros via <code>??</code>.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2019,6 +2278,21 @@ console.log(shiftBuggy("abc", -1));   // "\`ab" — 'a' became the backtick char
 ` } },
     mcq: { q: 'Which expression always gives a result in 0..25 for any integer x?', options: ['<code>x % 26</code>', '<code>Math.abs(x) % 26</code>', '<code>((x % 26) + 26) % 26</code>', '<code>x &amp; 26</code>'], answer: 2, explain: 'x % 26 lies in -25..25; adding 26 moves it into 1..51; a second % 26 maps that into 0..25. Math.abs flips direction for negatives (wrong letter).' },
     hints: [`<p>Letters are consecutive in Unicode: 'a' is 97 … 'z' is 122; 'A' is 65 … 'Z' is 90. Convert with <code>charCodeAt</code> / <code>String.fromCharCode</code>.</p>`, `<p>Normalise k once: <code>k = ((k % 26) + 26) % 26</code>, which also turns huge or negative shifts into 0..25.</p>`, `<p>Recipe: for each char: if a–z: base = 97, else if A–Z: base = 65, else keep; new = base + (code − base + k) % 26. Build with an array and join (or replace with a callback).</p>`],
+    tests: { sig: 'string int -> string', fn: 'caesar', cases: [
+      [["Hello, World!",3],"Khoor, Zruog!"],
+      [["abc",-1],"zab"],
+      [["",5],""],
+      [["xyz",3],"abc"],
+      [["Zz",1],"Aa"],
+      [["abc",26],"abc"],
+      [["abc",-27],"zab"],
+      [["Hello",1000000000],"Tqxxa"],
+      [["Hello",-1000000000],"Vszzc"],
+      [["123 !?",5],"123 !?"],
+      [["é😀",3],"é😀"],
+      [["abc",0],"abc"],
+      [[{"$rep":"a","n":100000},1],{"$rep":"b","n":100000}]
+    ] },
     solution: {
       approach: `<p>Normalise the shift with a "true modulo", then map each letter relative to its case base. Non-letters pass through. One pass, no repeated shifting.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2058,6 +2332,31 @@ console.log(input.filter(Boolean).map(String));   // ["0"," ","x"] — lost 0, f
 ` } },
     mcq: { q: 'Which test correctly detects NaN inside a filter?', options: ['<code>v !== NaN</code>', '<code>v === NaN</code>', '<code>Number.isNaN(v)</code>', '<code>isNaN(v)</code>'], answer: 2, explain: 'NaN is not equal to anything, itself included, so === / !== never detect it. Global isNaN converts first, so isNaN("x") is true — wrong for strings. Number.isNaN is true only for the actual NaN value.' },
     hints: [`<p>Define "empty" explicitly instead of relying on truthiness: null/undefined, NaN, or a string whose <code>trim()</code> is "".</p>`, `<p><code>v == null</code> covers both null and undefined; <code>Number.isNaN(v)</code> catches NaN without misfiring on strings.</p>`, `<p>Recipe: <code>const isEmpty = (v) =&gt; v == null || Number.isNaN(v) || (typeof v === "string" &amp;&amp; v.trim() === "");</code> then <code>arr.filter((v) =&gt; !isEmpty(v))</code>.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'cmpt', harness: { js: `function cmpt(tokens) {
+  const mk = (t) => {
+    if (t === 'null') return null; if (t === 'undef') return undefined; if (t === 'NaN') return NaN; if (t === 'false') return false;
+    if (t === 'true') return true; if (t === 'obj') return {}; if (t === 'arr') return [];
+    if (t.startsWith('n:')) return Number(t.slice(2)); if (t.startsWith('s:')) return t.slice(2); if (t.startsWith('big:')) return BigInt(t.slice(4));
+  };
+  const show = (v) => v === null ? 'null' : v === undefined ? 'undef' : typeof v === 'bigint' ? 'big:' + v : typeof v === 'string' ? 's:' + v :
+    typeof v === 'number' ? (Number.isNaN(v) ? 'NaN' : 'n:' + (Object.is(v, -0) ? '-0' : v)) : typeof v === 'boolean' ? String(v) : Array.isArray(v) ? 'arr' : 'obj';
+  const input = tokens.map(mk);
+  const r = compact(input);
+  if (r === input) return ['SAME ARRAY'];
+  return r.map(show);
+}` }, cases: [
+      [[["n:0","s:","s: ","null","false","s:0","NaN","undef","s:x","big:0"]],["n:0","false","s:0","s:x","big:0"]],
+      [[[]],[]],
+      [[["null","undef","NaN"]],[]],
+      [[["s:   ","s:\t\n"]],[]],
+      [[["n:-0"]],["n:-0"]],
+      [[["false","false"]],["false","false"]],
+      [[["obj","arr","n:0"]],["obj","arr","n:0"]],
+      [[["s:NaN","s:null","s:undefined"]],["s:NaN","s:null","s:undefined"]],
+      [[["true","big:-5","n:Infinity"]],["true","big:-5","n:Infinity"]],
+      [[{"$rep":"n:1","n":100000}],{"$rep":"n:1","n":100000}],
+      [[{"$concat":[{"$rep":"null","n":50000},{"$rep":"n:2","n":50000}]}],{"$rep":"n:2","n":50000}]
+    ] },
     solution: {
       approach: `<p>An explicit <code>isEmpty</code> predicate that encodes the business definition, used with <code>filter</code> (which returns a new array).</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2098,6 +2397,22 @@ console.log(encodeWrong("aaab"));        // a3a2a1b1 — wrong
 ` } },
     mcq: { q: 'In the run-scanning loop, after counting a run from i to j (exclusive), where should i go next?', options: ['i + 1', 'j', 'j + 1', '0'], answer: 1, explain: 'j is the first index of the NEXT run. Jumping i to j makes each character visited once: O(n). i + 1 re-counts inside the same run.' },
     hints: [`<p>A run starts at i; advance j while <code>s[j] === s[i]</code>. The run length is <code>j − i</code>.</p>`, `<p>After appending, jump <code>i = j</code> so every character is read once. Collect pieces in an array and <code>join("")</code>.</p>`, `<p>Decode: scan a letter, then read all following digits (while the char is between "0" and "9") to build the count; append <code>letter.repeat(count)</code>.</p>`],
+    tests: { sig: 'string string -> string', fn: 'rle', harness: { js: `function rle(mode, s) { return mode === 'e' ? encode(s) : mode === 'd' ? decode(s) : decode(encode(s)); }` }, cases: [
+      [["e","aaabccdddd"],"a3b1c2d4"],
+      [["d","x12y1"],"xxxxxxxxxxxxy"],
+      [["e",""],""],
+      [["d",""],""],
+      [["e","a"],"a1"],
+      [["e","abc"],"a1b1c1"],
+      [["e","aaaaaaaaaaaa"],"a12"],
+      [["d","a12"],"aaaaaaaaaaaa"],
+      [["e","  ##"]," 2#2"],
+      [["e","aabbaa"],"a2b2a2"],
+      [["r","hello world"],"hello world"],
+      [["e",{"$rep":"z","n":100000}],"z100000"],
+      [["d","z100000"],{"$rep":"z","n":100000}],
+      [["r",{"$rep":"ab","n":50000}],{"$rep":"ab","n":50000}]
+    ] },
     solution: {
       approach: `<p>Two pointers mark each run; parts collected in an array. Decoding reads a character then a multi-digit number with a small inner loop.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2151,6 +2466,35 @@ console.log(naive(NaN, NaN), naive(0, -0), naive(1, "1"), naive({}, {}));   // t
 ` } },
     mcq: { q: 'Which expression is true ONLY when x is NaN?', options: ['<code>x === NaN</code>', '<code>x !== x</code>', '<code>typeof x === "number"</code>', '<code>!x</code>'], answer: 1, explain: 'NaN is the only JavaScript value that is not equal to itself, so x !== x is a complete NaN test. x === NaN is always false.' },
     hints: [`<p>Start from <code>a === b</code>. When it is true, the only wrong case is +0 vs -0. When it is false, the only wrong case is NaN vs NaN.</p>`, `<p>NaN test: <code>x !== x</code>. Zero sign test: when a === b === 0, compare <code>1 / a === 1 / b</code> (Infinity vs -Infinity).</p>`, `<p>Recipe: if (a === b) return a !== 0 || 1 / a === 1 / b; return a !== a &amp;&amp; b !== b;</p>`],
+    tests: { sig: 'string string -> bool', fn: 'sv', harness: { js: `function sv(a, b) {
+  const o1 = {}, o2 = {};
+  const mk = (t) => ({ NaN: NaN, '0': 0, '-0': -0, '1': 1, inf: Infinity, '-inf': -Infinity, '': '', o1, o2, null: null, undef: undefined, big1: 1n, 'true': true, 'false': false })[t] ?? (t.startsWith('s:') ? t.slice(2) : (t === 'null' ? null : undefined));
+  return sameValue(mk(a), mk(b));
+}` }, cases: [
+      [["NaN","NaN"],true],
+      [["0","-0"],false],
+      [["-0","0"],false],
+      [["-0","-0"],true],
+      [["0","0"],true],
+      [["1","1"],true],
+      [["1","s:1"],false],
+      [["o1","o2"],false],
+      [["o1","o1"],true],
+      [["null","undef"],false],
+      [["s:a","s:a"],true],
+      [["undef","undef"],true],
+      [["null","null"],true],
+      [["inf","inf"],true],
+      [["inf","-inf"],false],
+      [["NaN","s:NaN"],false],
+      [["NaN","0"],false],
+      [["0","NaN"],false],
+      [["big1","big1"],true],
+      [["big1","1"],false],
+      [["","0"],false],
+      [["true","true"],true],
+      [["true","false"],false]
+    ] },
     solution: {
       approach: `<p>Split on the result of <code>===</code>. Equal: still distinguish +0/−0 via the sign of the infinity you get from dividing 1. Not equal: report true only if both are NaN (self-inequality). This is the actual polyfill used by core-js.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2186,6 +2530,62 @@ console.log(viaNumber(null, 0), viaNumber("", 0), viaNumber(undefined, null));  
 ` } },
     mcq: { q: 'In the == algorithm, what happens first when comparing <code>true == "1"</code>?', options: ['"1" becomes a boolean', 'true becomes the number 1', 'Both become strings', 'It returns false: different types'], answer: 1, explain: 'Any boolean operand is converted with ToNumber first (true → 1). Then 1 == "1" applies the number-vs-string rule: "1" → 1, and 1 === 1.' },
     hints: [`<p>Write a small <code>type(x)</code> helper (null → "null", functions → "object", otherwise typeof). If both types are equal → return <code>a === b</code>.</p>`, `<p>Then apply the rules in order: null/undefined pair → true; any other null/undefined → false; number vs string → Number(string); bigint vs string → BigInt(string) in try/catch; boolean → Number(boolean) and recurse; object vs non-object → ToPrimitive and recurse; bigint vs number → compare mathematically.</p>`, `<p>ToPrimitive(o): try <code>o[Symbol.toPrimitive]("default")</code>, else <code>valueOf()</code>, then <code>toString()</code>, taking the first primitive result. Dates use the string order for the default hint. Bigint vs number: false if the number is not an integer, otherwise BigInt(n) === big.</p>`],
+    tests: { sig: 'string string -> string', fn: 'le', harness: { js: `function mkPair(ta, tb) {
+  const sym = Symbol('s'), objs = {};
+  const table = {
+    '0': () => 0, '-0': () => -0, '1': () => 1, '2': () => 2, NaN: () => NaN, inf: () => Infinity, 'e': () => '', 's0': () => '0', 's1': () => '1',
+    'sp1': () => ' 1 ', 'sa': () => 'a', 's12': () => '1,2', 'true': () => true, 'false': () => false, 'null': () => null, 'undef': () => undefined,
+    'arr': () => [], 'arr0': () => [0], 'arr1': () => [1], 'arr12': () => [1, 2], 'obj': () => ({}), 'big0': () => 0n, 'big1': () => 1n,
+    'big2': () => 2n, 'sym': () => sym, 'date': () => new Date(0), 'vo1': () => ({ valueOf() { return 1; } })
+  };
+  const get = (t) => (t in objs ? objs[t] : (objs[t] = table[t]()));
+  return [get(ta), get(tb)];
+}
+function le(ta, tb) {
+  if (ta === 'ALL') {
+    const names = ['0', '-0', '1', '2', 'NaN', 'inf', 'e', 's0', 's1', 'sp1', 'sa', 's12', 'true', 'false', 'null', 'undef', 'arr', 'arr0', 'arr1', 'arr12', 'obj', 'big0', 'big1', 'big2', 'sym', 'date', 'vo1'];
+    let bad = 0;
+    for (const x of names) for (const y of names) { const [a, b] = mkPair(x, y); if (looseEquals(a, b) !== (a == b)) bad++; }
+    return bad;
+  }
+  const [a, b] = mkPair(ta, tb);
+  return looseEquals(a, b);
+}` }, cases: [
+      [["arr","false"],true],
+      [["null","0"],false],
+      [["s1","true"],true],
+      [["big1","s1"],true],
+      [["null","undef"],true],
+      [["undef","undef"],true],
+      [["0","e"],true],
+      [["0","-0"],true],
+      [["NaN","NaN"],false],
+      [["arr0","false"],true],
+      [["arr","e"],true],
+      [["arr12","s12"],true],
+      [["obj","obj"],true],
+      [["obj","arr"],false],
+      [["sym","sym"],true],
+      [["sym","sa"],false],
+      [["date","sa"],false],
+      [["date","0"],false],
+      [["vo1","1"],true],
+      [["vo1","s1"],true],
+      [["vo1","true"],true],
+      [["big1","1"],true],
+      [["big1","inf"],false],
+      [["big0","e"],true],
+      [["big2","2"],true],
+      [["sp1","1"],true],
+      [["e","false"],true],
+      [["sa","false"],false],
+      [["arr1","big1"],true],
+      [["null","false"],false],
+      [["undef","0"],false],
+      [["1","true"],true],
+      [["2","true"],false],
+      [["ALL",""],0]
+    ] },
     solution: {
       approach: `<p>Direct transcription of the spec's IsLooselyEqual with recursion for the "convert and retry" steps, plus a faithful ToPrimitive (default hint). A brute-force cross-check against the real == over every pair of a value table proves equivalence.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2260,6 +2660,55 @@ console.log(["42", "-1.5e3", ".5", " 7 ", "0x1F", ""].map(naive).join(" "));   /
 ` } },
     mcq: { q: 'What is <code>Number("-0x10")</code>?', options: ['-16', '16', 'NaN', '0'], answer: 2, explain: 'The StringNumericLiteral grammar allows a sign only before DECIMAL literals. Hex/binary/octal literals must be unsigned, so "-0x10" → NaN (although parseInt("-0x10") gives -16!).' },
     hints: [`<p>Trim first (<code>s.trim()</code> removes the same whitespace and line terminators Number does). Empty after trimming → true.</p>`, `<p>Prefixed integers: <code>/^0[xX][0-9a-fA-F]+$/</code>, <code>/^0[bB][01]+$/</code>, <code>/^0[oO][0-7]+$/</code> — no sign allowed. Otherwise parse a decimal literal by hand (or a careful regex): sign? digits* ("." digits*)? with at least one digit, then optional exponent.</p>`, `<p>A tiny state machine: i = 0; skip one + or −; count digits; if "." count more digits; require count ≥ 1; if "e"/"E": skip sign, require ≥ 1 digit; must end exactly at the string end. Finite check: very large exponents (1e999) overflow to Infinity — handle by computing the decimal magnitude (digits before the point + exponent) and comparing with 308/309 carefully, or accept the documented limitation and test it.</p>`],
+    tests: { sig: 'string -> bool', fn: 'isFiniteNumeric', cases: [
+      [["  42 "],true],
+      [[""],true],
+      [["   "],true],
+      [["-1.5e3"],true],
+      [[".5"],true],
+      [["5."],true],
+      [["+.5e-2"],true],
+      [["0x1F"],true],
+      [["-0x1F"],false],
+      [["0b102"],false],
+      [["0o17"],true],
+      [["1_000"],false],
+      [["Infinity"],false],
+      [["-Infinity"],false],
+      [["12px"],false],
+      [["."],false],
+      [["e5"],false],
+      [["1e"],false],
+      [["1e+"],false],
+      [["1e308"],true],
+      [["1.7976931348623157e308"],true],
+      [["1.7976931348623158e308"],true],
+      [["1.7976931348623159e308"],false],
+      [["1e309"],false],
+      [["0.0001e312"],true],
+      [["1e-400"],true],
+      [["007"],true],
+      [["0000.0000"],true],
+      [["\n 3 \t"],true],
+      [["+"],false],
+      [["-"],false],
+      [["1e+5"],true],
+      [["1E5"],true],
+      [["1.e2"],true],
+      [["0b101"],true],
+      [["0xg"],false],
+      [[{"$concat":["1",{"$rep":"0","n":9999}]}],false],
+      [[{"$concat":["0.",{"$rep":"0","n":9990},"1"]}],true],
+      [[{"$rep":"9","n":309}],false],
+      [[{"$concat":["1",{"$rep":"0","n":308}]}],true],
+      [[{"$concat":["1",{"$rep":"0","n":309}]}],false],
+      [[{"$rep":"0","n":10000}],true],
+      [[{"$concat":["1e",{"$rep":"0","n":9990},"5"]}],true],
+      [[{"$concat":["0x",{"$rep":"F","n":200}]}],true],
+      [[{"$concat":["1e",{"$rep":"9","n":7}]}],false],
+      [[{"$concat":["1e-",{"$rep":"9","n":7}]}],true],
+      [[{"$concat":[{"$rep":" ","n":5000},"5",{"$rep":" ","n":4999}]}],true]
+    ] },
     solution: {
       approach: `<p>Trim, handle blank, handle the three unsigned prefixed forms with regexes, then run a hand-written scanner for decimal literals. For finiteness, estimate the order of magnitude: the position of the first non-zero digit relative to the decimal point plus the exponent; anything above 10<sup>308</sup> needs a precise check, which we do by comparing the normalised digit string with the digits of Number.MAX_VALUE (1.7976931348623157e308) plus half an ulp — the rounding boundary is 1.797693134862315807…e308.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2335,6 +2784,23 @@ console.log(naive("123456789012345678901234", "1"));                      // 1.2
 ` } },
     mcq: { q: 'Before adding digit by digit, what must you do with "123.45" and "0.555"?', options: ['Nothing, add from the left', 'Align the decimal points by padding the fractions to equal length (with zeros on the right) and the integer parts (zeros on the left)', 'Remove the dots and add', 'Convert to numbers'], answer: 1, explain: 'Column addition only works when digits of the same place value line up: pad fractions on the right ("450" vs "555") and integer parts on the left ("123" vs "000").' },
     hints: [`<p>Split each number into integer and fraction parts on ".". Pad the fractions on the right with zeros to the same length, and the integer parts on the left.</p>`, `<p>Now concatenate int+frac for each and add from the rightmost digit with a carry, like on paper. Digit value = <code>s.charCodeAt(i) - 48</code>.</p>`, `<p>Finally re-insert the "." at (length − fracLen), remove trailing zeros from the fraction (and the "." if nothing is left), remove leading zeros from the integer part (keep at least one "0").</p>`],
+    tests: { sig: 'string string -> string', fn: 'addDecimalStrings', cases: [
+      [["123.45","0.555"],"124.005"],
+      [["0.1","0.2"],"0.3"],
+      [["1.5","1.5"],"3"],
+      [["99999999999999999999","1"],"100000000000000000000"],
+      [["0","0"],"0"],
+      [["0.0","0.00"],"0"],
+      [["5","5"],"10"],
+      [["0.5","0.5"],"1"],
+      [["9.99","0.01"],"10"],
+      [["1","0.001"],"1.001"],
+      [["100","0.0"],"100"],
+      [["0.05","0.05"],"0.1"],
+      [[{"$concat":[{"$rep":"9","n":100000}]},"1"],{"$concat":["1",{"$rep":"0","n":100000}]}],
+      [[{"$concat":["0.",{"$rep":"9","n":99998}]},{"$concat":["0.",{"$rep":"0","n":99997},"1"]}],"1"],
+      [[{"$rep":"1","n":100000},{"$rep":"1","n":100000}],{"$rep":"2","n":100000}]
+    ] },
     solution: {
       approach: `<p>Align by place value, then classic right-to-left addition with carry over the combined digit strings (collect digits in an array, reverse once at the end). Normalise the result's zeros. Verified against BigInt in the tests (allowed only for checking).</p>`,
       code: { lang: 'js', run: true, code: `

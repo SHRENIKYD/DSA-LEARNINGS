@@ -47,7 +47,7 @@
       '"container ignores SIGTERM" → your app is PID 1 with no handler (kernel gives PID 1 no default signal actions) → use <code>tini</code>/<code>--init</code>'
     ],
     code: [
-      R`// signal_demo.cpp - a polite C++ service: catch SIGTERM/SIGINT, finish, exit cleanly.
+      { lang: 'cpp', code: R`// signal_demo.cpp - a polite C++ service: catch SIGTERM/SIGINT, finish, exit cleanly.
 #include <signal.h>
 #include <unistd.h>
 #include <cstdio>
@@ -88,8 +88,8 @@ int main() {
     }
     printf("SIGTERM received: flushing buffers, closing sockets, bye\n");
     return 0;                                  // exit code 0 = clean shutdown
-}`,
-      R`// reap_children.cpp - avoid zombies by reaping inside a SIGCHLD handler.
+}` },
+      { lang: 'cpp', code: R`// reap_children.cpp - avoid zombies by reaping inside a SIGCHLD handler.
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -119,7 +119,7 @@ int main() {
     sleep(1);                                  // while we sleep, SIGCHLD fires and the handler reaps all 3
     printf("no zombies left - check with: ps -o pid,stat,cmd --ppid %d\n", getpid());
     return 0;
-}`,
+}` },
       R`#!/usr/bin/env bash
 # graceful.sh - a shell script that cleans up after itself on Ctrl+C, kill, or normal exit.
 set -u
@@ -909,7 +909,7 @@ sysctl vm.swappiness                    # same as: cat /proc/sys/vm/swappiness
 sudo sysctl -w vm.swappiness=10         # until reboot
 echo 'vm.swappiness = 10' | sudo tee /etc/sysctl.d/90-swap.conf   # persistent
 sudo sysctl --system                    # reload all sysctl files`,
-      R`// proc_rss.cpp - read your own memory use from /proc/self/status (what top/ps do internally)
+      { lang: 'cpp', code: R`// proc_rss.cpp - read your own memory use from /proc/self/status (what top/ps do internally)
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -933,7 +933,7 @@ int main() {
     std::cout << "VmRSS after : " << read_status_kb("VmRSS:") << " kB (about +51200)\n";
     std::cout << "VmSize      : " << read_status_kb("VmSize:") << " kB (virtual, always >= RSS)\n";
     return big[123] == 1 ? 0 : 1;                      // keep 'big' alive
-}`,
+}` },
       `# --- Real tasks done through /proc ---
 # 1) Which program is hogging memory? (VmRSS, biggest first)
 for p in /proc/[0-9]*; do

@@ -421,7 +421,7 @@ int longestNonDecreasing(const vector<int>& a) {
       example: `${H.arr([0, 1, 0, 3, 2, 3], { label: 'nums', hl: { 0: 'g', 1: 'g', 4: 'g', 5: 'g' } })}<p>Output <b>4</b>: ${H.c('g', '0, 1, 2, 3')} (indices 0, 1, 4, 5). [7,7,7,7] → 1 because equal values are not strictly increasing.</p>`,
       brute: {
         why: `<p>Try every subset of indices (pick / skip each element) and keep the longest increasing one: 2<sup>N</sup> subsets. Already at N = 40 that is 10<sup>12</sup>. The waste: the best run ending at index i is recomputed again and again inside different subsets — classic overlapping subproblems.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     // pick / skip recursion: prev = index of last picked element (-1 = none yet)
     int best(int[] a, int i, int prev) {
         if (i == a.length) return 0;
@@ -431,7 +431,43 @@ int longestNonDecreasing(const vector<int>& a) {
         return Math.max(skip, take);
     }
     public int lengthOfLIS(int[] nums) { return best(nums, 0, -1); }
-}`
+}`, alt: [
+          { lang: 'python', code: `def length_of_lis(nums):
+    # pick / skip recursion: prev = index of last picked element (-1 = none yet)
+    def best(i, prev):
+        if i == len(nums):
+            return 0
+        skip = best(i + 1, prev)
+        take = 0
+        if prev == -1 or nums[prev] < nums[i]:
+            take = 1 + best(i + 1, i)
+        return max(skip, take)
+
+    return best(0, -1)` },
+          { lang: 'js', code: `function lengthOfLIS(nums) {
+  // pick / skip recursion: prev = index of last picked element (-1 = none yet)
+  function best(i, prev) {
+    if (i === nums.length) return 0;
+    const skip = best(i + 1, prev);
+    let take = 0;
+    if (prev === -1 || nums[prev] < nums[i]) take = 1 + best(i + 1, i);
+    return Math.max(skip, take);
+  }
+  return best(0, -1);
+}` },
+          { lang: 'cpp', code: `class Brute {
+    // pick / skip recursion: prev = index of last picked element (-1 = none yet)
+    int best(vector<int>& a, int i, int prev) {
+        if (i == (int)a.size()) return 0;
+        int skip = best(a, i + 1, prev);
+        int take = 0;
+        if (prev == -1 || a[prev] < a[i]) take = 1 + best(a, i + 1, i);
+        return max(skip, take);
+    }
+public:
+    int lengthOfLIS(vector<int>& nums) { return best(nums, 0, -1); }
+};` }
+        ] }
       },
       mcq: { q: 'tails = [2, 5, 9] and the next number is 6. What happens?', options: ['6 replaces 9 (first tail ≥ 6)', '6 is appended → [2, 5, 9, 6]', '6 replaces 5', 'Nothing — 6 is ignored'], answer: 0, explain: 'Lower bound of 6 in [2,5,9] is index 2 (value 9). A run of length 3 can now end at 6 instead of 9 — cheaper, so we replace.' },
       hints: [
@@ -863,7 +899,7 @@ print(all_palindrome_partitions("aab"))                                         
       example: `<p>s = ${H.c('b', '"applepenapple"')}, wordDict = [apple, pen] → <b>true</b>: ${H.c('g', 'apple | pen | apple')} (apple reused). s = "catsandog", [cats, dog, sand, and, cat] → <b>false</b> — every route gets stuck at "og".</p>`,
       brute: {
         why: `<p>Recursively try every word that matches at the current position and recurse on the rest. The same suffix is solved again and again: for s = "aaaa…ab" with {a, aa, aaa} the recursion tree is exponential before it discovers the final "b" can never match.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     boolean canBreak(String s, int start, Set<String> dict) {
         if (start == s.length()) return true;
         for (int end = start + 1; end <= s.length(); end++) {
@@ -874,7 +910,45 @@ print(all_palindrome_partitions("aab"))                                         
     public boolean wordBreak(String s, List<String> wordDict) {
         return canBreak(s, 0, new HashSet<>(wordDict));
     }
-}`
+}`, alt: [
+          { lang: 'python', code: `def word_break(s, word_dict):
+    words = set(word_dict)
+
+    def can_break(start):
+        if start == len(s):
+            return True
+        for end in range(start + 1, len(s) + 1):
+            if s[start:end] in words and can_break(end):
+                return True
+        return False   # the same 'start' gets re-solved many times -> exponential
+
+    return can_break(0)` },
+          { lang: 'js', code: `function wordBreak(s, wordDict) {
+  const dict = new Set(wordDict);
+  function canBreak(start) {
+    if (start === s.length) return true;
+    for (let end = start + 1; end <= s.length; end++) {
+      if (dict.has(s.substring(start, end)) && canBreak(end)) return true;
+    }
+    return false;   // the same 'start' gets re-solved many times -> exponential
+  }
+  return canBreak(0);
+}` },
+          { lang: 'cpp', code: `class Brute {
+    bool canBreak(const string& s, int start, unordered_set<string>& dict) {
+        if (start == (int)s.size()) return true;
+        for (int end = start + 1; end <= (int)s.size(); end++) {
+            if (dict.count(s.substr(start, end - start)) && canBreak(s, end, dict)) return true;
+        }
+        return false;   // the same 'start' gets re-solved many times -> exponential
+    }
+public:
+    bool wordBreak(string s, vector<string>& wordDict) {
+        unordered_set<string> dict(wordDict.begin(), wordDict.end());
+        return canBreak(s, 0, dict);
+    }
+};` }
+        ] }
       },
       mcq: { q: 'dp[i] means “s[0..i) can be segmented”. Which condition makes dp[i] true?', options: ['Some j &lt; i with dp[j] true AND s[j..i) in the dictionary', 'dp[i−1] true AND s[i−1] is a word', 'Any dictionary word is a substring of s[0..i)', 'All dp[j] for j &lt; i are true'], answer: 0, explain: 'The last word must be s[j..i) for some start j, and everything before it — s[0..j) — must already be splittable (dp[j]).' },
       hints: [
@@ -972,7 +1046,7 @@ public:
       example: `<p>s = ${H.c('b', '"aab"')} → <b>1</b> (${H.c('g', 'aa | b')}). s = "a" → 0. s = "ab" → 1. s = "abccbc" → 2 (a | bccb | c).</p>`,
       brute: {
         why: `<p>Recursively try every palindromic first piece and recurse on the rest; checking each piece costs O(N) and the number of partitions is up to 2<sup>N−1</sup>. Even with memo on the start index, re-checking palindromes inside the loop gives O(N³).</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     boolean isPal(String s, int l, int r) {
         while (l < r) if (s.charAt(l++) != s.charAt(r--)) return false;
         return true;
@@ -986,7 +1060,58 @@ public:
         return best;   // exponential: same 'start' recomputed many times
     }
     public int minCut(String s) { return minCutFrom(s, 0); }
-}`
+}`, alt: [
+          { lang: 'python', code: `def is_pal(s, l, r):
+    while l < r:
+        if s[l] != s[r]:
+            return False
+        l += 1
+        r -= 1
+    return True
+
+def min_cut_from(s, start):
+    if start == len(s) or is_pal(s, start, len(s) - 1):
+        return 0
+    best = float('inf')
+    for end in range(start, len(s) - 1):
+        if is_pal(s, start, end):
+            best = min(best, 1 + min_cut_from(s, end + 1))
+    return best   # exponential: same 'start' recomputed many times
+
+def min_cut(s):
+    return min_cut_from(s, 0)` },
+          { lang: 'js', code: `function isPal(s, l, r) {
+  while (l < r) if (s[l++] !== s[r--]) return false;
+  return true;
+}
+
+function minCutFrom(s, start) {
+  if (start === s.length || isPal(s, start, s.length - 1)) return 0;
+  let best = Infinity;
+  for (let end = start; end < s.length - 1; end++) {
+    if (isPal(s, start, end)) best = Math.min(best, 1 + minCutFrom(s, end + 1));
+  }
+  return best;   // exponential: same 'start' recomputed many times
+}
+
+function minCut(s) { return minCutFrom(s, 0); }` },
+          { lang: 'cpp', code: `class Brute {
+    bool isPal(const string& s, int l, int r) {
+        while (l < r) if (s[l++] != s[r--]) return false;
+        return true;
+    }
+    int minCutFrom(const string& s, int start) {
+        if (start == (int)s.size() || isPal(s, start, s.size() - 1)) return 0;
+        int best = INT_MAX;
+        for (int end = start; end < (int)s.size() - 1; end++) {
+            if (isPal(s, start, end)) best = min(best, 1 + minCutFrom(s, end + 1));
+        }
+        return best;   // exponential: same 'start' recomputed many times
+    }
+public:
+    int minCut(string s) { return minCutFrom(s, 0); }
+};` }
+        ] }
       },
       mcq: { q: 'Why precompute pal[j][i] instead of checking each piece with two pointers?', options: ['It turns each palindrome check into O(1), so the whole dp is O(N²) instead of O(N³)', 'Two pointers give wrong answers for even lengths', 'It saves memory', 'Strings cannot be scanned with two pointers'], answer: 0, explain: 'There are O(N²) (j, i) pairs. A two-pointer check is O(N) each → O(N³). The table answers each check in O(1) using pal[j+1][i−1].' },
       hints: [
@@ -1434,7 +1559,7 @@ print(max_coins([1, 5]))                 # 10
       example: `${H.arr([3, 1, 5, 8], { label: 'nums' })}<p>Output <b>167</b>: burst 1 → 3·1·5 = 15, then 5 → 3·5·8 = 120, then 3 → 1·3·8 = 24, then 8 → 1·8·1 = 8. Total ${H.c('g', '167')}.</p>`,
       brute: {
         why: `<p>Try every bursting order: n! permutations (300! is absurd, even 10! = 3.6 million). The wasted work: after some balloons are gone, the same remaining <b>set</b> is reached through many different orders and solved again each time.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     int best(List<Integer> list) {
         if (list.isEmpty()) return 0;
         int ans = 0;
@@ -1452,7 +1577,53 @@ print(max_coins([1, 5]))                 # 10
         for (int x : nums) list.add(x);
         return best(list);
     }
-}`
+}`, alt: [
+          { lang: 'python', code: `def best(lst):
+    if not lst:
+        return 0
+    ans = 0
+    for i in range(len(lst)):
+        left = lst[i - 1] if i > 0 else 1
+        right = lst[i + 1] if i + 1 < len(lst) else 1
+        mid = lst[i]
+        rest = lst[:i] + lst[i + 1:]                  # burst balloon i now
+        ans = max(ans, left * mid * right + best(rest))
+    return ans
+
+def max_coins(nums):
+    return best(list(nums))` },
+          { lang: 'js', code: `function best(list) {
+  if (list.length === 0) return 0;
+  let ans = 0;
+  for (let i = 0; i < list.length; i++) {
+    const left = i > 0 ? list[i - 1] : 1;
+    const right = i + 1 < list.length ? list[i + 1] : 1;
+    const rest = [...list];
+    const mid = rest.splice(i, 1)[0];                 // burst balloon i now
+    ans = Math.max(ans, left * mid * right + best(rest));
+  }
+  return ans;
+}
+
+function maxCoins(nums) { return best([...nums]); }` },
+          { lang: 'cpp', code: `class Brute {
+    int best(vector<int> list) {
+        if (list.empty()) return 0;
+        int ans = 0;
+        for (int i = 0; i < (int)list.size(); i++) {
+            int left = i > 0 ? list[i - 1] : 1;
+            int right = i + 1 < (int)list.size() ? list[i + 1] : 1;
+            vector<int> rest = list;
+            int mid = rest[i];
+            rest.erase(rest.begin() + i);             // burst balloon i now
+            ans = max(ans, left * mid * right + best(rest));
+        }
+        return ans;
+    }
+public:
+    int maxCoins(vector<int>& nums) { return best(nums); }
+};` }
+        ] }
       },
       mcq: { q: 'In range [i..j], balloon k bursts LAST. Who are its neighbours at that moment?', options: ['nums[i−1] and nums[j+1] (just outside the range)', 'nums[k−1] and nums[k+1]', 'The largest balloons in the range', 'Always 1 and 1'], answer: 0, explain: 'All other balloons in [i..j] are gone, so k touches the first balloons outside the range, which are still standing by definition of the sub-problem.' },
       hints: [
@@ -1897,7 +2068,7 @@ print(max_path_sum(build([-3])))                      # -3
       example: `<p>Tree [3, 2, 3, null, 3, null, 1] → <b>7</b> = ${H.c('g', '3 (root) + 3 + 1')} (the two grandchildren). Tree [3, 4, 5, 1, 3, null, 1] → <b>9</b> = ${H.c('g', '4 + 5')}.</p>`,
       brute: {
         why: `<p>For each node either rob it (then jump to its 4 grandchildren) or skip it (recurse on 2 children). Grandchildren get recomputed from two different ancestors, so the call count grows exponentially with depth.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     public int rob(TreeNode root) {
         if (root == null) return 0;
         int take = root.val;
@@ -1906,7 +2077,34 @@ print(max_path_sum(build([-3])))                      # -3
         int skip = rob(root.left) + rob(root.right);   // children recomputed again later
         return Math.max(take, skip);
     }
-}`
+}`, alt: [
+          { lang: 'python', code: `def rob(root):
+    if root is None:
+        return 0
+    take = root.val
+    if root.left is not None:
+        take += rob(root.left.left) + rob(root.left.right)
+    if root.right is not None:
+        take += rob(root.right.left) + rob(root.right.right)
+    skip = rob(root.left) + rob(root.right)   # children recomputed again later
+    return max(take, skip)` },
+          { lang: 'js', code: `function rob(root) {
+  if (root === null) return 0;
+  let take = root.val;
+  if (root.left !== null) take += rob(root.left.left) + rob(root.left.right);
+  if (root.right !== null) take += rob(root.right.left) + rob(root.right.right);
+  const skip = rob(root.left) + rob(root.right);   // children recomputed again later
+  return Math.max(take, skip);
+}` },
+          { lang: 'cpp', code: `int rob(TreeNode* root) {
+    if (root == nullptr) return 0;
+    int take = root->val;
+    if (root->left != nullptr) take += rob(root->left->left) + rob(root->left->right);
+    if (root->right != nullptr) take += rob(root->right->left) + rob(root->right->right);
+    int skip = rob(root->left) + rob(root->right);   // children recomputed again later
+    return max(take, skip);
+}` }
+        ] }
       },
       mcq: { q: 'A node returns [rob, skip]. Its parent is being ROBBED. Which child value must the parent use?', options: ['The child\'s skip value', 'max(rob, skip) of the child', 'The child\'s rob value', 'Zero'], answer: 0, explain: 'Parent and child are directly linked, so if the parent is robbed the child cannot be — only skip is allowed.' },
       hints: [
@@ -2018,7 +2216,7 @@ private:
       example: `<p>Tree [−10, 9, 20, null, null, 15, 7] → <b>42</b> via ${H.c('g', '15 → 20 → 7')}. Tree [1, 2, 3] → 6 (2 → 1 → 3). Tree [−3] → −3.</p>`,
       brute: {
         why: `<p>Treat every node as the “top” (bend point) of the path and, for each one, compute the best downward chains on both sides by a fresh DFS: O(N) per node → O(N²). The waste: the best downward chain from a node is recomputed for every ancestor.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     int down(TreeNode n) {                     // best downward chain starting at n (recomputed a lot)
         if (n == null) return 0;
         return n.val + Math.max(0, Math.max(down(n.left), down(n.right)));
@@ -2031,7 +2229,56 @@ private:
         visit(n.right);
     }
     public int maxPathSum(TreeNode root) { visit(root); return best; }
-}`
+}`, alt: [
+          { lang: 'python', code: `def max_path_sum(root):
+    best = float('-inf')
+
+    def down(n):                       # best downward chain starting at n (recomputed a lot)
+        if n is None:
+            return 0
+        return n.val + max(0, max(down(n.left), down(n.right)))
+
+    def visit(n):
+        nonlocal best
+        if n is None:
+            return
+        best = max(best, n.val + max(0, down(n.left)) + max(0, down(n.right)))
+        visit(n.left)
+        visit(n.right)
+
+    visit(root)
+    return best` },
+          { lang: 'js', code: `function maxPathSum(root) {
+  let best = -Infinity;
+  function down(n) {                   // best downward chain starting at n (recomputed a lot)
+    if (n === null) return 0;
+    return n.val + Math.max(0, Math.max(down(n.left), down(n.right)));
+  }
+  function visit(n) {
+    if (n === null) return;
+    best = Math.max(best, n.val + Math.max(0, down(n.left)) + Math.max(0, down(n.right)));
+    visit(n.left);
+    visit(n.right);
+  }
+  visit(root);
+  return best;
+}` },
+          { lang: 'cpp', code: `class Brute {
+    int down(TreeNode* n) {                    // best downward chain starting at n (recomputed a lot)
+        if (n == nullptr) return 0;
+        return n->val + max(0, max(down(n->left), down(n->right)));
+    }
+    int best = INT_MIN;
+    void visit(TreeNode* n) {
+        if (n == nullptr) return;
+        best = max(best, n->val + max(0, down(n->left)) + max(0, down(n->right)));
+        visit(n->left);
+        visit(n->right);
+    }
+public:
+    int maxPathSum(TreeNode* root) { visit(root); return best; }
+};` }
+        ] }
       },
       mcq: { q: 'Why does gain() return node.val + max(left, right) instead of node.val + left + right?', options: ['A parent extending the path can continue down only ONE side; using both would make the path branch', 'Because left + right might overflow', 'Because the right child is always smaller', 'To make the code shorter'], answer: 0, explain: 'If the parent attached itself to a path that already uses both children of this node, the node would have three path neighbours — not a path anymore.' },
       hints: [
@@ -2516,7 +2763,7 @@ console.log(sell2);                   // 6` }, { lang: 'cpp', code: `int main() 
       example: `<p>prices = [1, 2, 3, 0, 2] → <b>3</b>: ${H.c('g', 'buy 1, sell 2, cooldown, buy 0, sell 2')}. Selling at 3 instead (+2) forces the cooldown on the day of price 0, so the second trade is lost.</p>`,
       brute: {
         why: `<p>Recursively decide each day: buy / sell / do nothing, tracking whether we hold a share and whether we are in cooldown. That is up to 3<sup>N</sup> paths; the same (day, holding, cooldown) situation is reached through many histories and solved again every time.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     int go(int[] p, int day, boolean holding) {
         if (day >= p.length) return 0;
         int best = go(p, day + 1, holding);                              // do nothing
@@ -2525,7 +2772,41 @@ console.log(sell2);                   // 6` }, { lang: 'cpp', code: `int main() 
         return best;
     }
     public int maxProfit(int[] prices) { return go(prices, 0, false); }
-}`
+}`, alt: [
+          { lang: 'python', code: `def max_profit(prices):
+    def go(day, holding):
+        if day >= len(prices):
+            return 0
+        best = go(day + 1, holding)                              # do nothing
+        if holding:
+            best = max(best, prices[day] + go(day + 2, False))   # sell, skip next day
+        else:
+            best = max(best, -prices[day] + go(day + 1, True))   # buy
+        return best
+
+    return go(0, False)` },
+          { lang: 'js', code: `function maxProfit(prices) {
+  function go(day, holding) {
+    if (day >= prices.length) return 0;
+    let best = go(day + 1, holding);                                   // do nothing
+    if (holding) best = Math.max(best, prices[day] + go(day + 2, false)); // sell, skip next day
+    else best = Math.max(best, -prices[day] + go(day + 1, true));         // buy
+    return best;
+  }
+  return go(0, false);
+}` },
+          { lang: 'cpp', code: `class Brute {
+    int go(vector<int>& p, int day, bool holding) {
+        if (day >= (int)p.size()) return 0;
+        int best = go(p, day + 1, holding);                                  // do nothing
+        if (holding) best = max(best, p[day] + go(p, day + 2, false));       // sell, skip next day
+        else best = max(best, -p[day] + go(p, day + 1, true));               // buy
+        return best;
+    }
+public:
+    int maxProfit(vector<int>& prices) { return go(prices, 0, false); }
+};` }
+        ] }
       },
       mcq: { q: 'In the cooldown machine, from which mode is “buy today” allowed?', options: ['rest only', 'sold or rest', 'hold', 'any mode'], answer: 0, explain: 'If you sold yesterday you are in cooldown today. Only the rest mode (no share, not cooling down) can buy.' },
       hints: [
@@ -2995,7 +3276,7 @@ print(wildcard("adceb", "*a*b"), wildcard("acdcb", "a*c?b"))                # Tr
       example: `<p>s = ${H.c('b', '"rabbbit"')}, t = "rabbit" → <b>3</b>: the three b’s give three ways to drop exactly one b (ra${H.c('r', 'b')}bbit, rab${H.c('r', 'b')}bit, rabb${H.c('r', 'b')}it with the red b removed). s = "babgbag", t = "bag" → 5.</p>`,
       brute: {
         why: `<p>Enumerate all 2<sup>m</sup> subsequences of s and count those equal to t (or recurse “use / skip” on each character). The same (i, j) — “first i letters of s, first j of t” — is reached via many different choices and recounted each time.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     int count(String s, String t, int i, int j) {
         if (j == t.length()) return 1;          // matched all of t
         if (i == s.length()) return 0;          // ran out of s
@@ -3004,7 +3285,41 @@ print(wildcard("adceb", "*a*b"), wildcard("acdcb", "a*c?b"))                # Tr
         return ways;                            // exponential without memo
     }
     public int numDistinct(String s, String t) { return count(s, t, 0, 0); }
-}`
+}`, alt: [
+          { lang: 'python', code: `def num_distinct(s, t):
+    def count(i, j):
+        if j == len(t):
+            return 1                         # matched all of t
+        if i == len(s):
+            return 0                         # ran out of s
+        ways = count(i + 1, j)               # skip s[i]
+        if s[i] == t[j]:
+            ways += count(i + 1, j + 1)      # use s[i]
+        return ways                          # exponential without memo
+
+    return count(0, 0)` },
+          { lang: 'js', code: `function numDistinct(s, t) {
+  function count(i, j) {
+    if (j === t.length) return 1;            // matched all of t
+    if (i === s.length) return 0;            // ran out of s
+    let ways = count(i + 1, j);              // skip s[i]
+    if (s[i] === t[j]) ways += count(i + 1, j + 1);   // use s[i]
+    return ways;                             // exponential without memo
+  }
+  return count(0, 0);
+}` },
+          { lang: 'cpp', code: `class Brute {
+    int count(const string& s, const string& t, int i, int j) {
+        if (j == (int)t.size()) return 1;    // matched all of t
+        if (i == (int)s.size()) return 0;    // ran out of s
+        int ways = count(s, t, i + 1, j);    // skip s[i]
+        if (s[i] == t[j]) ways += count(s, t, i + 1, j + 1);   // use s[i]
+        return ways;                         // exponential without memo
+    }
+public:
+    int numDistinct(string s, string t) { return count(s, t, 0, 0); }
+};` }
+        ] }
       },
       mcq: { q: 's[i−1] equals t[j−1]. What is dp[i][j]?', options: ['dp[i−1][j] + dp[i−1][j−1]', 'dp[i−1][j−1] + 1', 'max(dp[i−1][j], dp[i][j−1])', 'dp[i−1][j−1]'], answer: 0, explain: 'We may skip s[i−1] (dp[i−1][j] ways) or use it to match t[j−1] (dp[i−1][j−1] ways). The two groups are disjoint, so we add.' },
       hints: [
@@ -3204,7 +3519,7 @@ public:
     example: `${H.arr([1, 3, 5, 4, 7], { label: 'nums', hl: { 0: 'g', 1: 'g', 2: 'g' } })}<p>Output <b>3</b> (${H.c('g', '1, 3, 5')}). 1, 3, 5, 7 is longer but 4 sits between 5 and 7, so it is not contiguous. [2, 2, 2] → 1.</p>`,
     brute: {
       why: `<p>Check every start index and walk right while the values increase: O(N²) in the worst case (a sorted array re-walks the same run from every start). The run ending at i only depends on whether nums[i−1] &lt; nums[i] — no need to restart.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     public int findLengthOfLCIS(int[] nums) {
         int best = 0;
         for (int i = 0; i < nums.length; i++) {
@@ -3214,7 +3529,34 @@ public:
         }
         return best;
     }
-}`
+}`, alt: [
+          { lang: 'python', code: `def find_length_of_lcis(nums):
+    best = 0
+    for i in range(len(nums)):
+        j = i
+        while j + 1 < len(nums) and nums[j] < nums[j + 1]:
+            j += 1                              # extend from i
+        best = max(best, j - i + 1)
+    return best` },
+          { lang: 'js', code: `function findLengthOfLCIS(nums) {
+  let best = 0;
+  for (let i = 0; i < nums.length; i++) {
+    let j = i;
+    while (j + 1 < nums.length && nums[j] < nums[j + 1]) j++;   // extend from i
+    best = Math.max(best, j - i + 1);
+  }
+  return best;
+}` },
+          { lang: 'cpp', code: `int findLengthOfLCIS(vector<int>& nums) {
+    int best = 0;
+    for (int i = 0; i < (int)nums.size(); i++) {
+        int j = i;
+        while (j + 1 < (int)nums.size() && nums[j] < nums[j + 1]) j++;   // extend from i
+        best = max(best, j - i + 1);
+    }
+    return best;
+}` }
+        ] }
     },
     mcq: { q: 'dp[i] = length of the increasing run ENDING at i. If nums[i−1] ≥ nums[i], dp[i] is…', options: ['1', 'dp[i−1]', 'dp[i−1] + 1', '0'], answer: 0, explain: 'The run is broken, so a new run starts with nums[i] alone.' },
     hints: [
@@ -3283,7 +3625,7 @@ public:
     example: `${H.arr([7, 1, 5, 3, 6, 4], { label: 'prices', hl: { 1: 'g', 4: 'g' } })}<p>Output <b>5</b>: buy at ${H.c('g', '1')} (day 1), sell at ${H.c('g', '6')} (day 4). Selling at 7 is impossible because day 0 comes before the buy.</p>`,
     brute: {
       why: `<p>Try every (buy, sell) pair with buy &lt; sell: N²/2 pairs = 5·10<sup>9</sup> for N = 10<sup>5</sup>. Wasted work: for each sell day, only the <b>cheapest earlier</b> price matters, and that can be carried forward.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     public int maxProfit(int[] prices) {
         int best = 0;
         for (int i = 0; i < prices.length; i++)
@@ -3291,7 +3633,28 @@ public:
                 best = Math.max(best, prices[j] - prices[i]);
         return best;
     }
-}`
+}`, alt: [
+          { lang: 'python', code: `def max_profit(prices):
+    best = 0
+    for i in range(len(prices)):
+        for j in range(i + 1, len(prices)):
+            best = max(best, prices[j] - prices[i])
+    return best` },
+          { lang: 'js', code: `function maxProfit(prices) {
+  let best = 0;
+  for (let i = 0; i < prices.length; i++)
+    for (let j = i + 1; j < prices.length; j++)
+      best = Math.max(best, prices[j] - prices[i]);
+  return best;
+}` },
+          { lang: 'cpp', code: `int maxProfit(vector<int>& prices) {
+    int best = 0;
+    for (int i = 0; i < (int)prices.size(); i++)
+        for (int j = i + 1; j < (int)prices.size(); j++)
+            best = max(best, prices[j] - prices[i]);
+    return best;
+}` }
+        ] }
     },
     mcq: { q: 'In the two-mode state machine (hold, cash) for ONE transaction, the buy arrow is…', options: ['hold = max(hold, −p)', 'hold = max(hold, cash − p)', 'cash = max(cash, hold − p)', 'hold = hold + p'], answer: 0, explain: 'With only one transaction allowed, a buy always starts from zero profit, so hold = max(hold, 0 − p). Using cash − p would allow repeated trades (that is Stock II).' },
     hints: [
@@ -3359,7 +3722,7 @@ public:
     example: `<p>s = ${H.c('g', '"abc"')}, t = "a<b>h</b>b<b>gd</b>c" → <b>true</b> (a, b, c appear in order). s = "axc" → <b>false</b> (no x in t).</p>`,
     brute: {
       why: `<p>The LCS grid answers it (s is a subsequence iff LCS(s, t) == |s|) but costs O(|s|·|t|) time and memory — overkill. A greedy match is enough: matching each letter of s as early as possible never hurts.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     public boolean isSubsequence(String s, String t) {
         int m = s.length(), n = t.length();
         int[][] dp = new int[m + 1][n + 1];          // LCS grid
@@ -3368,7 +3731,34 @@ public:
                 dp[i][j] = s.charAt(i - 1) == t.charAt(j - 1) ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
         return dp[m][n] == m;
     }
-}`
+}`, alt: [
+          { lang: 'python', code: `def is_subsequence(s, t):
+    m, n = len(s), len(t)
+    dp = [[0] * (n + 1) for _ in range(m + 1)]        # LCS grid
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            if s[i - 1] == t[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1] + 1
+            else:
+                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+    return dp[m][n] == m` },
+          { lang: 'js', code: `function isSubsequence(s, t) {
+  const m = s.length, n = t.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));   // LCS grid
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = s[i - 1] === t[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+  return dp[m][n] === m;
+}` },
+          { lang: 'cpp', code: `bool isSubsequence(string s, string t) {
+    int m = s.size(), n = t.size();
+    vector<vector<int>> dp(m + 1, vector<int>(n + 1, 0));   // LCS grid
+    for (int i = 1; i <= m; i++)
+        for (int j = 1; j <= n; j++)
+            dp[i][j] = s[i - 1] == t[j - 1] ? dp[i - 1][j - 1] + 1 : max(dp[i - 1][j], dp[i][j - 1]);
+    return dp[m][n] == m;
+}` }
+        ] }
     },
     mcq: { q: 'For 10<sup>9</sup> queries against one long t, the best preprocessing is…', options: ['For each letter, the sorted list of its positions in t; binary search the next position per query letter', 'Build the LCS grid once', 'Sort t', 'Hash every substring of t'], answer: 0, explain: 'Each query letter jumps to the next occurrence after the current position in O(log |t|), so a query costs O(|s| log |t|) with no rescanning of t.' },
     hints: [
@@ -3443,7 +3833,7 @@ public:
     example: `<p>nums = [1, 3, 5, 4, 7] → <b>2</b>: ${H.c('g', '1, 3, 4, 7')} and ${H.c('g', '1, 3, 5, 7')}. nums = [2, 2, 2, 2, 2] → 5 (each single element is a longest subsequence of length 1).</p>`,
     brute: {
       why: `<p>DFS every increasing subsequence and tally lengths: the number of increasing subsequences can be 2<sup>N</sup> (sorted input). The same “runs ending at j” are rebuilt for every prefix that reaches j.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     int bestLen = 0, count = 0;
     void dfs(int[] a, int last, int len) {               // last = index of last picked element
         if (len > bestLen) { bestLen = len; count = 1; }
@@ -3455,7 +3845,50 @@ public:
         for (int i = 0; i < nums.length; i++) dfs(nums, i, 1);
         return count;
     }
-}`
+}`, alt: [
+          { lang: 'python', code: `def find_number_of_lis(nums):
+    best_len = count = 0
+
+    def dfs(last, length):                  # last = index of last picked element
+        nonlocal best_len, count
+        if length > best_len:
+            best_len = length
+            count = 1
+        elif length == best_len:
+            count += 1
+        for j in range(last + 1, len(nums)):
+            if nums[j] > nums[last]:
+                dfs(j, length + 1)
+
+    for i in range(len(nums)):
+        dfs(i, 1)
+    return count` },
+          { lang: 'js', code: `function findNumberOfLIS(nums) {
+  let bestLen = 0, count = 0;
+  function dfs(last, len) {                 // last = index of last picked element
+    if (len > bestLen) { bestLen = len; count = 1; }
+    else if (len === bestLen) count++;
+    for (let j = last + 1; j < nums.length; j++)
+      if (nums[j] > nums[last]) dfs(j, len + 1);
+  }
+  for (let i = 0; i < nums.length; i++) dfs(i, 1);
+  return count;
+}` },
+          { lang: 'cpp', code: `class Brute {
+    int bestLen = 0, count = 0;
+    void dfs(vector<int>& a, int last, int len) {        // last = index of last picked element
+        if (len > bestLen) { bestLen = len; count = 1; }
+        else if (len == bestLen) count++;
+        for (int j = last + 1; j < (int)a.size(); j++)
+            if (a[j] > a[last]) dfs(a, j, len + 1);
+    }
+public:
+    int findNumberOfLIS(vector<int>& nums) {
+        for (int i = 0; i < (int)nums.size(); i++) dfs(nums, i, 1);
+        return count;
+    }
+};` }
+        ] }
     },
     mcq: { q: 'While computing index i, you find j with a[j] &lt; a[i] and len[j] + 1 == len[i]. What do you do with cnt[i]?', options: ['cnt[i] += cnt[j]', 'cnt[i] = cnt[j]', 'cnt[i]++', 'nothing'], answer: 0, explain: 'Another group of runs reaches the same best length at i, so their counts add. When len[j] + 1 is strictly larger, you reset: cnt[i] = cnt[j].' },
     hints: [
@@ -3552,7 +3985,7 @@ public:
     example: `<p>nums = [1, 2, 4, 8, 3] → ${H.c('g', '[1, 2, 4, 8]')} (each divides the next). nums = [1, 2, 3] → [1, 2] or [1, 3].</p>`,
     brute: {
       why: `<p>Check all 2<sup>N</sup> subsets and verify every pair: hopeless beyond N ≈ 20. The key waste: once sorted, a valid subset is a <b>chain</b>, and the best chain ending at a given number is reused by many larger numbers.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     public List<Integer> largestDivisibleSubset(int[] nums) {
         int n = nums.length;
         List<Integer> best = new ArrayList<>();
@@ -3567,7 +4000,50 @@ public:
         }
         return best;
     }
-}`
+}`, alt: [
+          { lang: 'python', code: `def largest_divisible_subset(nums):
+    n = len(nums)
+    k = min(n, 20)
+    best = []
+    for mask in range(1, 1 << k):
+        pick = [nums[i] for i in range(k) if mask >> i & 1]
+        ok = True
+        for a in range(len(pick)):
+            for b in range(a + 1, len(pick)):
+                if pick[a] % pick[b] != 0 and pick[b] % pick[a] != 0:
+                    ok = False
+        if ok and len(pick) > len(best):
+            best = pick
+    return best` },
+          { lang: 'js', code: `function largestDivisibleSubset(nums) {
+  const n = nums.length;
+  let best = [];
+  for (let mask = 1; mask < (1 << Math.min(n, 20)); mask++) {
+    const pick = [];
+    for (let i = 0; i < n && i < 20; i++) if ((mask >> i & 1) === 1) pick.push(nums[i]);
+    let ok = true;
+    for (let a = 0; a < pick.length && ok; a++)
+      for (let b = a + 1; b < pick.length && ok; b++)
+        if (pick[a] % pick[b] !== 0 && pick[b] % pick[a] !== 0) ok = false;
+    if (ok && pick.length > best.length) best = pick;
+  }
+  return best;
+}` },
+          { lang: 'cpp', code: `vector<int> largestDivisibleSubset(vector<int>& nums) {
+    int n = nums.size();
+    vector<int> best;
+    for (int mask = 1; mask < (1 << min(n, 20)); mask++) {
+        vector<int> pick;
+        for (int i = 0; i < n && i < 20; i++) if ((mask >> i & 1) == 1) pick.push_back(nums[i]);
+        bool ok = true;
+        for (int a = 0; a < (int)pick.size() && ok; a++)
+            for (int b = a + 1; b < (int)pick.size() && ok; b++)
+                if (pick[a] % pick[b] != 0 && pick[b] % pick[a] != 0) ok = false;
+        if (ok && pick.size() > best.size()) best = pick;
+    }
+    return best;
+}` }
+        ] }
     },
     mcq: { q: 'Why is it enough (after sorting) to check only that nums[i] % nums[j] == 0 for the PREVIOUS chain element j?', options: ['Divisibility is transitive: if c | b and b | a then c | a', 'Because all numbers are prime', 'Because the array is distinct', 'It is not enough; all pairs must be checked'], answer: 0, explain: 'In a sorted chain where each element divides the next, every earlier element divides every later one by transitivity — so the whole subset is pairwise divisible.' },
     hints: [
@@ -3666,7 +4142,7 @@ public:
     example: `<p>prices = [1, 3, 2, 8, 4, 9], fee = 2 → <b>8</b>: ${H.c('g', 'buy 1 sell 8 (+7−2) and buy 4 sell 9 (+5−2)')}. Trading every rise (1→3, 2→8, 4→9) would pay the fee three times: 2+6+5−6 = 7.</p>`,
     brute: {
       why: `<p>Recursively decide buy / sell / wait each day while tracking whether you hold a share: 2 choices per day → 2<sup>N</sup> paths. The future only depends on (day, holding), so there are just 2N distinct situations.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     int go(int[] p, int fee, int day, boolean holding) {
         if (day == p.length) return 0;
         int wait = go(p, fee, day + 1, holding);
@@ -3675,7 +4151,41 @@ public:
         return Math.max(wait, act);
     }
     public int maxProfit(int[] prices, int fee) { return go(prices, fee, 0, false); }
-}`
+}`, alt: [
+          { lang: 'python', code: `def max_profit(prices, fee):
+    def go(day, holding):
+        if day == len(prices):
+            return 0
+        wait = go(day + 1, holding)
+        if holding:
+            act = prices[day] - fee + go(day + 1, False)
+        else:
+            act = -prices[day] + go(day + 1, True)
+        return max(wait, act)
+
+    return go(0, False)` },
+          { lang: 'js', code: `function maxProfit(prices, fee) {
+  function go(day, holding) {
+    if (day === prices.length) return 0;
+    const wait = go(day + 1, holding);
+    const act = holding ? prices[day] - fee + go(day + 1, false)
+                        : -prices[day] + go(day + 1, true);
+    return Math.max(wait, act);
+  }
+  return go(0, false);
+}` },
+          { lang: 'cpp', code: `class Brute {
+    int go(vector<int>& p, int fee, int day, bool holding) {
+        if (day == (int)p.size()) return 0;
+        int wait = go(p, fee, day + 1, holding);
+        int act = holding ? p[day] - fee + go(p, fee, day + 1, false)
+                          : -p[day] + go(p, fee, day + 1, true);
+        return max(wait, act);
+    }
+public:
+    int maxProfit(vector<int>& prices, int fee) { return go(prices, fee, 0, false); }
+};` }
+        ] }
     },
     mcq: { q: 'Where should the fee be subtracted in the 2-mode machine?', options: ['On exactly one arrow per round trip (e.g. the sell arrow)', 'On both the buy and the sell arrow', 'Every day you hold a share', 'Only at the very end'], answer: 0, explain: 'The fee is per transaction. Charging it on both arrows would double-charge each round trip.' },
     hints: [
@@ -3744,7 +4254,7 @@ public:
     example: `<p>s = ${H.c('b', '"aab"')} → ${H.c('g', '[["a","a","b"], ["aa","b"]]')}. s = "a" → [["a"]].</p>`,
     brute: {
       why: `<p>Enumerate all 2<sup>N−1</sup> ways to place cuts and check every piece with two pointers. Correct but each piece is re-checked in O(N) many times; many cut patterns are generated even though an early piece is already not a palindrome.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     boolean pal(String s) { return new StringBuilder(s).reverse().toString().equals(s); }
     public List<List<String>> partition(String s) {
         List<List<String>> res = new ArrayList<>();
@@ -3765,7 +4275,68 @@ public:
         }
         return res;
     }
-}`
+}`, alt: [
+          { lang: 'python', code: `def partition(s):
+    def pal(x):
+        return x == x[::-1]
+
+    res = []
+    n = len(s)
+    for mask in range(1 << (n - 1)):                   # bit i set = cut after char i
+        parts = []
+        start = 0
+        ok = True
+        for i in range(n):
+            if ok and (i == n - 1 or (mask >> i & 1) == 1):
+                piece = s[start:i + 1]
+                if not pal(piece):
+                    ok = False
+                parts.append(piece)
+                start = i + 1
+        if ok:
+            res.append(parts)
+    return res` },
+          { lang: 'js', code: `function partition(s) {
+  const pal = (x) => [...x].reverse().join('') === x;
+  const res = [];
+  const n = s.length;
+  for (let mask = 0; mask < (1 << (n - 1)); mask++) {     // bit i set = cut after char i
+    const parts = [];
+    let start = 0;
+    let ok = true;
+    for (let i = 0; i < n && ok; i++) {
+      if (i === n - 1 || (mask >> i & 1) === 1) {
+        const piece = s.substring(start, i + 1);
+        if (!pal(piece)) ok = false;
+        parts.push(piece);
+        start = i + 1;
+      }
+    }
+    if (ok) res.push(parts);
+  }
+  return res;
+}` },
+          { lang: 'cpp', code: `vector<vector<string>> partition(string s) {
+    auto pal = [](const string& x) { return string(x.rbegin(), x.rend()) == x; };
+    vector<vector<string>> res;
+    int n = s.size();
+    for (int mask = 0; mask < (1 << (n - 1)); mask++) {    // bit i set = cut after char i
+        vector<string> parts;
+        int start = 0;
+        bool ok = true;
+        for (int i = 0; i < n && ok; i++) {
+            if (i == n - 1 || (mask >> i & 1) == 1) {
+                string piece = s.substr(start, i + 1 - start);
+                if (!pal(piece)) ok = false;
+                parts.push_back(piece);
+                start = i + 1;
+            }
+        }
+        if (ok) res.push_back(parts);
+    }
+    return res;
+}` }
+        ] }
     },
     mcq: { q: 'Why can this problem NOT be solved in polynomial time in general?', options: ['The output itself can contain 2<sup>N−1</sup> partitions (e.g. "aaaa…")', 'Palindrome checks are exponential', 'Backtracking is always exponential', 'It can; dp gives O(N²)'], answer: 0, explain: 'A string of N equal letters has every cut pattern valid, so just printing the answer is exponential. We can only make each output step cheap (O(1) palindrome checks, no dead branches).' },
     hints: [
@@ -3880,7 +4451,7 @@ private:
     example: `<p>s = ${H.c('b', '"bbbab"')} → <b>4</b> (${H.c('g', '"bbbb"')}). s = "cbbd" → 2 ("bb").</p>`,
     brute: {
       why: `<p>Plain recursion on (i, j): if ends match take both, otherwise branch into dropping either end. Without memo the two branches overlap heavily (dropping left then right = dropping right then left), giving O(2<sup>N</sup>).</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     int lps(String s, int i, int j) {
         if (i > j) return 0;
         if (i == j) return 1;
@@ -3888,7 +4459,38 @@ private:
         return Math.max(lps(s, i + 1, j), lps(s, i, j - 1));   // overlapping subproblems
     }
     public int longestPalindromeSubseq(String s) { return lps(s, 0, s.length() - 1); }
-}`
+}`, alt: [
+          { lang: 'python', code: `def longest_palindrome_subseq(s):
+    def lps(i, j):
+        if i > j:
+            return 0
+        if i == j:
+            return 1
+        if s[i] == s[j]:
+            return 2 + lps(i + 1, j - 1)
+        return max(lps(i + 1, j), lps(i, j - 1))     # overlapping subproblems
+
+    return lps(0, len(s) - 1)` },
+          { lang: 'js', code: `function longestPalindromeSubseq(s) {
+  function lps(i, j) {
+    if (i > j) return 0;
+    if (i === j) return 1;
+    if (s[i] === s[j]) return 2 + lps(i + 1, j - 1);
+    return Math.max(lps(i + 1, j), lps(i, j - 1));   // overlapping subproblems
+  }
+  return lps(0, s.length - 1);
+}` },
+          { lang: 'cpp', code: `class Brute {
+    int lps(const string& s, int i, int j) {
+        if (i > j) return 0;
+        if (i == j) return 1;
+        if (s[i] == s[j]) return 2 + lps(s, i + 1, j - 1);
+        return max(lps(s, i + 1, j), lps(s, i, j - 1));   // overlapping subproblems
+    }
+public:
+    int longestPalindromeSubseq(string s) { return lps(s, 0, s.size() - 1); }
+};` }
+        ] }
     },
     mcq: { q: 'Which identity gives an alternative solution?', options: ['LPS(s) = LCS(s, reverse(s))', 'LPS(s) = n − LCS(s, s)', 'LPS(s) = longest palindromic substring', 'LPS(s) = LIS of character codes'], answer: 0, explain: 'A palindromic subsequence reads the same in s and reversed s, so it is a common subsequence of both; the longest common one is a palindrome of maximal length.' },
     hints: [
@@ -3977,7 +4579,7 @@ public:
     example: `<p>values = [3, 7, 4, 5] → <b>144</b>: triangles (3,7,5) + (4,5,7) = 105 + 140 = 245, or (3,4,5) + (3,4,7) = 60 + 84 = ${H.c('g', '144')}. values = [1, 3, 1, 4, 1, 5] → 13.</p>`,
     brute: {
       why: `<p>Recursion over the third vertex of the triangle on edge (i, j) without memo: the number of triangulations is a Catalan number (≈ 4<sup>n</sup>/n<sup>1.5</sup>), and the same sub-polygon (i, j) is solved repeatedly.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     int best(int[] v, int i, int j) {
         if (j - i < 2) return 0;                      // fewer than 3 vertices: no triangle
         int res = Integer.MAX_VALUE;
@@ -3986,7 +4588,39 @@ public:
         return res;
     }
     public int minScoreTriangulation(int[] values) { return best(values, 0, values.length - 1); }
-}`
+}`, alt: [
+          { lang: 'python', code: `def min_score_triangulation(values):
+    def best(i, j):
+        if j - i < 2:
+            return 0                                  # fewer than 3 vertices: no triangle
+        res = float('inf')
+        for k in range(i + 1, j):
+            res = min(res, best(i, k) + best(k, j) + values[i] * values[k] * values[j])
+        return res
+
+    return best(0, len(values) - 1)` },
+          { lang: 'js', code: `function minScoreTriangulation(values) {
+  function best(i, j) {
+    if (j - i < 2) return 0;                          // fewer than 3 vertices: no triangle
+    let res = Infinity;
+    for (let k = i + 1; k < j; k++)
+      res = Math.min(res, best(i, k) + best(k, j) + values[i] * values[k] * values[j]);
+    return res;
+  }
+  return best(0, values.length - 1);
+}` },
+          { lang: 'cpp', code: `class Brute {
+    int best(vector<int>& v, int i, int j) {
+        if (j - i < 2) return 0;                      // fewer than 3 vertices: no triangle
+        int res = INT_MAX;
+        for (int k = i + 1; k < j; k++)
+            res = min(res, best(v, i, k) + best(v, k, j) + v[i] * v[k] * v[j]);
+        return res;
+    }
+public:
+    int minScoreTriangulation(vector<int>& values) { return best(values, 0, values.size() - 1); }
+};` }
+        ] }
     },
     mcq: { q: 'Why does every triangulation of polygon i..j contain exactly one triangle using edge (i, j)?', options: ['Edge (i, j) is a side of the sub-polygon, and every side belongs to exactly one triangle', 'Because i and j are adjacent in the original array', 'Because the polygon is convex, all triangles use vertex 0', 'It does not; some use two'], answer: 0, explain: 'In a triangulation every polygon side lies in exactly one triangle. Its third vertex k splits the rest into polygons i..k and k..j — the interval split point.' },
     hints: [
@@ -4071,7 +4705,7 @@ public:
     example: `<p>[[5,4], [6,4], [6,7], [2,3]] → <b>3</b>: ${H.c('g', '[2,3] → [5,4] → [6,7]')}. [[1,1], [1,1], [1,1]] → 1.</p>`,
     brute: {
       why: `<p>Sort by width and run the O(N²) LIS-style dp checking both dimensions: correct but 10<sup>10</sup> steps at N = 10<sup>5</sup>. The fix is to reduce to a 1D LIS so the tails + binary search trick applies.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     public int maxEnvelopes(int[][] env) {
         Arrays.sort(env, (a, b) -> a[0] - b[0]);
         int n = env.length, best = 0;
@@ -4084,7 +4718,45 @@ public:
         }
         return best;
     }
-}`
+}`, alt: [
+          { lang: 'python', code: `def max_envelopes(env):
+    env = sorted(env, key=lambda e: e[0])
+    n = len(env)
+    best = 0
+    dp = [0] * n
+    for i in range(n):
+        dp[i] = 1
+        for j in range(i):
+            if env[j][0] < env[i][0] and env[j][1] < env[i][1]:
+                dp[i] = max(dp[i], dp[j] + 1)
+        best = max(best, dp[i])
+    return best` },
+          { lang: 'js', code: `function maxEnvelopes(env) {
+  env.sort((a, b) => a[0] - b[0]);
+  const n = env.length;
+  let best = 0;
+  const dp = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    dp[i] = 1;
+    for (let j = 0; j < i; j++)
+      if (env[j][0] < env[i][0] && env[j][1] < env[i][1]) dp[i] = Math.max(dp[i], dp[j] + 1);
+    best = Math.max(best, dp[i]);
+  }
+  return best;
+}` },
+          { lang: 'cpp', code: `int maxEnvelopes(vector<vector<int>>& env) {
+    sort(env.begin(), env.end(), [](const vector<int>& a, const vector<int>& b) { return a[0] < b[0]; });
+    int n = env.size(), best = 0;
+    vector<int> dp(n, 0);
+    for (int i = 0; i < n; i++) {
+        dp[i] = 1;
+        for (int j = 0; j < i; j++)
+            if (env[j][0] < env[i][0] && env[j][1] < env[i][1]) dp[i] = max(dp[i], dp[j] + 1);
+        best = max(best, dp[i]);
+    }
+    return best;
+}` }
+        ] }
     },
     mcq: { q: 'After sorting by width ascending, how must equal widths be ordered for the height-LIS to be correct?', options: ['Height descending', 'Height ascending', 'Any order', 'Remove duplicates of width'], answer: 0, explain: 'Envelopes with the same width cannot nest. Sorting their heights in decreasing order makes it impossible for a strictly increasing height subsequence to take two of them.' },
     hints: [
@@ -4173,7 +4845,7 @@ public:
     example: `<p>k = 2, prices = [3, 2, 6, 5, 0, 3] → <b>7</b>: ${H.c('g', 'buy 2 sell 6 (+4), buy 0 sell 3 (+3)')}. k = 1 on the same prices → 4.</p>`,
     brute: {
       why: `<p>Recursion over (day, transactions left, holding) with choices wait / buy / sell — exponential without memo, even though there are only N·k·2 distinct situations.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     int go(int[] p, int day, int left, boolean holding) {
         if (day == p.length || (left == 0 && !holding)) return 0;
         int best = go(p, day + 1, left, holding);                                   // wait
@@ -4182,7 +4854,41 @@ public:
         return best;
     }
     public int maxProfit(int k, int[] prices) { return go(prices, 0, k, false); }
-}`
+}`, alt: [
+          { lang: 'python', code: `def max_profit(k, prices):
+    def go(day, left, holding):
+        if day == len(prices) or (left == 0 and not holding):
+            return 0
+        best = go(day + 1, left, holding)                                   # wait
+        if holding:
+            best = max(best, prices[day] + go(day + 1, left - 1, False))    # sell completes one
+        else:
+            best = max(best, -prices[day] + go(day + 1, left, True))        # buy
+        return best
+
+    return go(0, k, False)` },
+          { lang: 'js', code: `function maxProfit(k, prices) {
+  function go(day, left, holding) {
+    if (day === prices.length || (left === 0 && !holding)) return 0;
+    let best = go(day + 1, left, holding);                                  // wait
+    if (holding) best = Math.max(best, prices[day] + go(day + 1, left - 1, false)); // sell completes one
+    else best = Math.max(best, -prices[day] + go(day + 1, left, true));             // buy
+    return best;
+  }
+  return go(0, k, false);
+}` },
+          { lang: 'cpp', code: `class Brute {
+    int go(vector<int>& p, int day, int left, bool holding) {
+        if (day == (int)p.size() || (left == 0 && !holding)) return 0;
+        int best = go(p, day + 1, left, holding);                                      // wait
+        if (holding) best = max(best, p[day] + go(p, day + 1, left - 1, false));       // sell completes one
+        else best = max(best, -p[day] + go(p, day + 1, left, true));                   // buy
+        return best;
+    }
+public:
+    int maxProfit(int k, vector<int>& prices) { return go(prices, 0, k, false); }
+};` }
+        ] }
     },
     mcq: { q: 'Why can you switch to the greedy “sum of all rises” when k ≥ n/2?', options: ['There can be at most ⌊n/2⌋ non-overlapping profitable trades, so the limit never binds', 'Because greedy is always optimal for stocks', 'Because k is too large for an array', 'Because the dp becomes incorrect'], answer: 0, explain: 'Each trade needs a distinct buy day and later sell day, so at most n/2 useful trades exist. If k is at least that, the problem is the unlimited version.' },
     hints: [
@@ -4284,7 +4990,7 @@ public:
     example: `<p>n = 7, cuts = [1, 3, 4, 5] → <b>16</b>: ${H.c('g', 'cut 3 (7), cut 5 (4), cut 1 (3), cut 4 (2)')}. The given order 1, 3, 4, 5 costs 7 + 6 + 4 + 3 = 20.</p>`,
     brute: {
       why: `<p>Try all m! cut orders, or recurse “which cut first” on each piece without memo. The state is just (left boundary, right boundary) — at most (m+2)² pairs — but the plain recursion recomputes each pair many times.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     int best(int[] c, int i, int j) {                 // cuts strictly between c[i] and c[j]
         if (j - i < 2) return 0;
         int res = Integer.MAX_VALUE;
@@ -4299,7 +5005,49 @@ public:
         c[c.length - 1] = n;
         return best(c, 0, c.length - 1);
     }
-}`
+}`, alt: [
+          { lang: 'python', code: `def min_cost(n, cuts):
+    c = [0] + sorted(cuts) + [n]
+
+    def best(i, j):                                   # cuts strictly between c[i] and c[j]
+        if j - i < 2:
+            return 0
+        res = float('inf')
+        for k in range(i + 1, j):
+            res = min(res, c[j] - c[i] + best(i, k) + best(k, j))
+        return res
+
+    return best(0, len(c) - 1)` },
+          { lang: 'js', code: `function minCost(n, cuts) {
+  const c = [0, ...[...cuts].sort((a, b) => a - b), n];
+  function best(i, j) {                               // cuts strictly between c[i] and c[j]
+    if (j - i < 2) return 0;
+    let res = Infinity;
+    for (let k = i + 1; k < j; k++)
+      res = Math.min(res, c[j] - c[i] + best(i, k) + best(k, j));
+    return res;
+  }
+  return best(0, c.length - 1);
+}` },
+          { lang: 'cpp', code: `class Brute {
+    int best(vector<int>& c, int i, int j) {          // cuts strictly between c[i] and c[j]
+        if (j - i < 2) return 0;
+        int res = INT_MAX;
+        for (int k = i + 1; k < j; k++)
+            res = min(res, c[j] - c[i] + best(c, i, k) + best(c, k, j));
+        return res;
+    }
+public:
+    int minCost(int n, vector<int>& cuts) {
+        vector<int> c(cuts.size() + 2);
+        vector<int> s = cuts;
+        sort(s.begin(), s.end());
+        for (int i = 0; i < (int)s.size(); i++) c[i + 1] = s[i];
+        c[c.size() - 1] = n;
+        return best(c, 0, c.size() - 1);
+    }
+};` }
+        ] }
     },
     mcq: { q: 'Why is the state built on cut INDICES (after sorting and adding 0 and n) rather than on stick positions 0..n?', options: ['n can be 10<sup>6</sup> but there are at most 102 boundaries, so (m+2)² states is tiny', 'Positions are not integers', 'Sorting is required by the language', 'Because cuts must happen left to right'], answer: 0, explain: 'Only boundaries that are cut points (plus the ends) can ever be piece ends, so the state space depends on m, not n.' },
     hints: [
@@ -4394,7 +5142,7 @@ public:
     example: `<p>A root with one child that has two children ([0, 0, null, 0, 0]) → <b>1</b> camera on ${H.c('g', 'the middle node')}. A chain of 5 nodes → 2 cameras.</p>`,
     brute: {
       why: `<p>Try every subset of nodes as camera positions and check coverage: 2<sup>N</sup> subsets × O(N) check. Each subtree’s situation only matters through a tiny summary (covered? has camera? needs cover?), which is what tree DP exploits.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     List<TreeNode> nodes = new ArrayList<>();
     Map<TreeNode, TreeNode> parent = new HashMap<>();
     void collect(TreeNode n, TreeNode p) {
@@ -4418,7 +5166,93 @@ public:
         }
         return best;
     }
-}`
+}`, alt: [
+          { lang: 'python', code: `def min_camera_cover(root):
+    nodes, parent = [], {}
+
+    def collect(n, p):
+        if n is None:
+            return
+        nodes.append(n)
+        parent[n] = p
+        collect(n.left, n)
+        collect(n.right, n)
+
+    collect(root, None)
+    n = min(len(nodes), 20)                          # only feasible for tiny trees
+    best = float('inf')
+    for mask in range(1 << n):
+        seen = set()
+        for i in range(n):
+            if mask >> i & 1:
+                c = nodes[i]
+                seen.add(c)
+                if parent[c] is not None:
+                    seen.add(parent[c])
+                if c.left is not None:
+                    seen.add(c.left)
+                if c.right is not None:
+                    seen.add(c.right)
+        if len(seen) == len(nodes):
+            best = min(best, bin(mask).count('1'))
+    return best` },
+          { lang: 'js', code: `function minCameraCover(root) {
+  const nodes = [];
+  const parent = new Map();
+  function collect(n, p) {
+    if (n === null) return;
+    nodes.push(n);
+    parent.set(n, p);
+    collect(n.left, n);
+    collect(n.right, n);
+  }
+  collect(root, null);
+  const n = Math.min(nodes.length, 20);              // only feasible for tiny trees
+  let best = Infinity;
+  for (let mask = 0; mask < (1 << n); mask++) {
+    const seen = new Set();
+    let cams = 0;
+    for (let i = 0; i < n; i++) if ((mask >> i & 1) === 1) {
+      const c = nodes[i];
+      cams++;
+      seen.add(c);
+      if (parent.get(c) !== null) seen.add(parent.get(c));
+      if (c.left !== null) seen.add(c.left);
+      if (c.right !== null) seen.add(c.right);
+    }
+    if (seen.size === nodes.length) best = Math.min(best, cams);
+  }
+  return best;
+}` },
+          { lang: 'cpp', code: `class Brute {
+    vector<TreeNode*> nodes;
+    unordered_map<TreeNode*, TreeNode*> parent;
+    void collect(TreeNode* n, TreeNode* p) {
+        if (n == nullptr) return;
+        nodes.push_back(n);
+        parent[n] = p;
+        collect(n->left, n);
+        collect(n->right, n);
+    }
+public:
+    int minCameraCover(TreeNode* root) {
+        collect(root, nullptr);
+        int n = min((int)nodes.size(), 20), best = INT_MAX;   // only feasible for tiny trees
+        for (int mask = 0; mask < (1 << n); mask++) {
+            unordered_set<TreeNode*> seen;
+            for (int i = 0; i < n; i++) if ((mask >> i & 1) == 1) {
+                TreeNode* c = nodes[i];
+                seen.insert(c);
+                if (parent[c] != nullptr) seen.insert(parent[c]);
+                if (c->left != nullptr) seen.insert(c->left);
+                if (c->right != nullptr) seen.insert(c->right);
+            }
+            if (seen.size() == nodes.size()) best = min(best, __builtin_popcount(mask));
+        }
+        return best;
+    }
+};` }
+        ] }
     },
     mcq: { q: 'A node reports state 0 = “I am NOT covered, my parent must cover me”. What must the parent do?', options: ['Place a camera on itself', 'Report 0 as well', 'Ignore it — the grandparent will handle it', 'Place a camera on the child'], answer: 0, explain: 'Only the node itself, its children or its parent can cover it. Its children already decided, so the parent must hold a camera.' },
     hints: [
@@ -4523,7 +5357,7 @@ private:
     example: `<p>s = "catsanddog", dict = [cat, cats, and, sand, dog] → ${H.c('g', '["cats and dog", "cat sand dog"]')}. s = "catsandog" → [].</p>`,
     brute: {
       why: `<p>Plain backtracking: at each start try every dictionary prefix and recurse. On "aaaaaaaaaaaaaaaaaaab" with {a, aa, aaa} it explores an exponential tree only to find nothing at the end. Suffix results are recomputed for each way of reaching the same start.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     public List<String> wordBreak(String s, List<String> wordDict) {
         List<String> res = new ArrayList<>();
         go(s, 0, new HashSet<>(wordDict), new ArrayList<>(), res);
@@ -4536,7 +5370,59 @@ private:
             if (dict.contains(w)) { cur.add(w); go(s, end, dict, cur, res); cur.remove(cur.size() - 1); }
         }
     }
-}`
+}`, alt: [
+          { lang: 'python', code: `def word_break(s, word_dict):
+    words = set(word_dict)
+    res = []
+
+    def go(start, cur):
+        if start == len(s):
+            res.append(" ".join(cur))
+            return
+        for end in range(start + 1, len(s) + 1):
+            w = s[start:end]
+            if w in words:
+                cur.append(w)
+                go(end, cur)
+                cur.pop()
+
+    go(0, [])
+    return res` },
+          { lang: 'js', code: `function wordBreak(s, wordDict) {
+  const dict = new Set(wordDict);
+  const res = [];
+  function go(start, cur) {
+    if (start === s.length) { res.push(cur.join(" ")); return; }
+    for (let end = start + 1; end <= s.length; end++) {
+      const w = s.substring(start, end);
+      if (dict.has(w)) { cur.push(w); go(end, cur); cur.pop(); }
+    }
+  }
+  go(0, []);
+  return res;
+}` },
+          { lang: 'cpp', code: `class Brute {
+    void go(const string& s, int start, unordered_set<string>& dict, vector<string>& cur, vector<string>& res) {
+        if (start == (int)s.size()) {
+            string line;
+            for (int i = 0; i < (int)cur.size(); i++) line += (i ? " " : "") + cur[i];
+            res.push_back(line);
+            return;
+        }
+        for (int end = start + 1; end <= (int)s.size(); end++) {
+            string w = s.substr(start, end - start);
+            if (dict.count(w)) { cur.push_back(w); go(s, end, dict, cur, res); cur.pop_back(); }
+        }
+    }
+public:
+    vector<string> wordBreak(string s, vector<string>& wordDict) {
+        vector<string> res, cur;
+        unordered_set<string> dict(wordDict.begin(), wordDict.end());
+        go(s, 0, dict, cur, res);
+        return res;
+    }
+};` }
+        ] }
     },
     mcq: { q: 'What does memoising on the start index store?', options: ['The list of all sentences that complete the suffix s[start..]', 'Only whether the suffix can be completed', 'The longest word starting at start', 'The number of words used so far'], answer: 0, explain: 'All sentences for a suffix are the same no matter how we reached that start, so we compute them once and prepend the current word for each caller.' },
     hints: [
@@ -4643,7 +5529,7 @@ private:
     example: `<p>s = "aa", p = "a" → false. s = "aa", p = ${H.c('b', '"a*"')} → <b>true</b>. s = "ab", p = ".*" → true. s = "aab", p = ${H.c('b', '"c*a*b"')} → <b>true</b> (c* matches zero c’s, a* matches "aa").</p>`,
     brute: {
       why: `<p>Plain recursion: match the first character, and for <code>x*</code> branch into “skip x* entirely” or “consume one char and stay on x*”. Without memo, patterns like "a*a*a*a*b" against "aaaaaaaa" branch exponentially, revisiting the same (i, j) pairs.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     public boolean isMatch(String s, String p) {
         if (p.isEmpty()) return s.isEmpty();
         boolean first = !s.isEmpty() && (p.charAt(0) == s.charAt(0) || p.charAt(0) == '.');
@@ -4653,7 +5539,34 @@ private:
         }
         return first && isMatch(s.substring(1), p.substring(1));
     }
-}`
+}`, alt: [
+          { lang: 'python', code: `def is_match(s, p):
+    if not p:
+        return not s
+    first = bool(s) and (p[0] == s[0] or p[0] == '.')
+    if len(p) >= 2 and p[1] == '*':
+        return (is_match(s, p[2:])                    # x* matches zero chars
+                or (first and is_match(s[1:], p)))    # x* eats one char, stays
+    return first and is_match(s[1:], p[1:])` },
+          { lang: 'js', code: `function isMatch(s, p) {
+  if (p.length === 0) return s.length === 0;
+  const first = s.length > 0 && (p[0] === s[0] || p[0] === '.');
+  if (p.length >= 2 && p[1] === '*') {
+    return isMatch(s, p.substring(2))                 // x* matches zero chars
+        || (first && isMatch(s.substring(1), p));     // x* eats one char, stays
+  }
+  return first && isMatch(s.substring(1), p.substring(1));
+}` },
+          { lang: 'cpp', code: `bool isMatch(string s, string p) {
+    if (p.empty()) return s.empty();
+    bool first = !s.empty() && (p[0] == s[0] || p[0] == '.');
+    if (p.size() >= 2 && p[1] == '*') {
+        return isMatch(s, p.substr(2))                // x* matches zero chars
+            || (first && isMatch(s.substr(1), p));    // x* eats one char, stays
+    }
+    return first && isMatch(s.substr(1), p.substr(1));
+}` }
+        ] }
     },
     mcq: { q: 'p[j−1] == \'*\'. Which two options define dp[i][j] (prefixes s[0..i), p[0..j))?', options: ['dp[i][j−2] (zero copies) OR (s[i−1] matches p[j−2] AND dp[i−1][j])', 'dp[i][j−1] OR dp[i−1][j]', 'dp[i−1][j−1] only', 'dp[i][j−2] AND dp[i−1][j]'], answer: 0, explain: 'In regex the star belongs to the previous element: drop the pair "x*" (j−2), or, if s’s last char matches x, let the star eat it and stay at j. dp[i][j−1] OR dp[i−1][j] is the WILDCARD rule.' },
     hints: [

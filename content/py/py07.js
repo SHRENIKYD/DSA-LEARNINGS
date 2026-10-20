@@ -214,6 +214,77 @@ print(isinstance(Squares(), Iterable))   # False, yet it IS loopable` } }
 print(list(StepRange(2, 11, 3)))` },
       mcq: { q: 'Where should the "current position" live so that two nested loops over the same StepRange do not interfere?', options: ['In a separate iterator object created by each __iter__ call', 'In the StepRange object itself (self.current)', 'In a global variable', 'In a class attribute'], answer: 0, explain: 'Each loop calls iter() once. If __iter__ returns a NEW iterator holding its own position, the loops are independent. Storing the position on self makes the object one-shot and nested loops break.' },
       hints: [`<p>Hint 1: Book vs bookmark — <code>StepRange</code> is the book; it should only store start/stop/step.</p>`, `<p>Hint 2: <code>__iter__</code> must return a new object each call. The quickest way: make <code>__iter__</code> a generator function (it contains <code>yield</code>), which returns a fresh generator every call.</p>`, `<p>Hint 3: Recipe: <code>x = start; while x &lt; stop: yield x; x += step</code>. Edge cases: start ≥ stop → empty; huge stop → still O(1) memory. Bonus: add <code>__len__</code> with ceil division <code>max(0, (stop - start + step - 1) // step)</code>.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_val',
+        cases: [
+          [['(lambda r: [list(r), list(r), len(r)])(StepRange(2, 11, 3))'], [[2, 5, 8], [2, 5, 8], 3]],
+          [['(lambda r: [list(r), list(r), len(r)])(StepRangeGen(2, 11, 3))'], [[2, 5, 8], [2, 5, 8], 3]],
+          [['(lambda r: [list(r), list(r), len(r)])(StepRange(0, 0, 1))'], [[], [], 0]],
+          [['(lambda r: [list(r), list(r), len(r)])(StepRangeGen(0, 0, 1))'], [[], [], 0]],
+          [['(lambda r: [list(r), list(r), len(r)])(StepRange(5, 5, 1))'], [[], [], 0]],
+          [['(lambda r: [list(r), list(r), len(r)])(StepRangeGen(5, 5, 1))'], [[], [], 0]],
+          [['(lambda r: [list(r), list(r), len(r)])(StepRange(10, 5, 3))'], [[], [], 0]],
+          [['(lambda r: [list(r), list(r), len(r)])(StepRangeGen(10, 5, 3))'], [[], [], 0]],
+          [['(lambda r: [list(r), list(r), len(r)])(StepRange(0, 5, 10))'], [[0], [0], 1]],
+          [['(lambda r: [list(r), list(r), len(r)])(StepRangeGen(0, 5, 10))'], [[0], [0], 1]],
+          [['(lambda r: [list(r), list(r), len(r)])(StepRange(0, 10, 3))'], [[0, 3, 6, 9], [0, 3, 6, 9], 4]],
+          [
+            ['(lambda r: [list(r), list(r), len(r)])(StepRangeGen(0, 10, 3))'],
+            [[0, 3, 6, 9], [0, 3, 6, 9], 4]
+          ],
+          [
+            ['(lambda r: [list(r), list(r), len(r)])(StepRange(-5, 5, 2))'],
+            [[-5, -3, -1, 1, 3], [-5, -3, -1, 1, 3], 5]
+          ],
+          [
+            ['(lambda r: [list(r), list(r), len(r)])(StepRangeGen(-5, 5, 2))'],
+            [[-5, -3, -1, 1, 3], [-5, -3, -1, 1, 3], 5]
+          ],
+          [['(lambda r: [list(r), list(r), len(r)])(StepRange(0, 1, 1))'], [[0], [0], 1]],
+          [['(lambda r: [list(r), list(r), len(r)])(StepRangeGen(0, 1, 1))'], [[0], [0], 1]],
+          [
+            ['(lambda r: [list(r), list(r), len(r)])(StepRange(0, 100, 7))'],
+            [
+              [0, 7, 14, 21, 28, 35, 42, 49, 56, 63, 70, 77, 84, 91, 98],
+              [0, 7, 14, 21, 28, 35, 42, 49, 56, 63, 70, 77, 84, 91, 98],
+              15
+            ]
+          ],
+          [
+            ['(lambda r: [list(r), list(r), len(r)])(StepRangeGen(0, 100, 7))'],
+            [
+              [0, 7, 14, 21, 28, 35, 42, 49, 56, 63, 70, 77, 84, 91, 98],
+              [0, 7, 14, 21, 28, 35, 42, 49, 56, 63, 70, 77, 84, 91, 98],
+              15
+            ]
+          ],
+          [['(lambda r: [list(r), list(r), len(r)])(StepRange(3, 4, 1000000000))'], [[3], [3], 1]],
+          [['(lambda r: [list(r), list(r), len(r)])(StepRangeGen(3, 4, 1000000000))'], [[3], [3], 1]],
+          [['len([(a, b) for r in [StepRange(2, 11, 3)] for a in r for b in r])'], 9],
+          [
+            ['(lambda r: (lambda i, j: [next(i), next(i), next(j)])(iter(r), iter(r)))(StepRange(2, 11, 3))'],
+            [2, 5, 2]
+          ],
+          [['(lambda r: [next(i) for i in [iter(r)]])(StepRange(0, 10**12))'], [0]],
+          [['len(StepRange(0, 10**12))'], 1000000000000],
+          [['len(StepRange(0, 10**12, 10**9))'], 1000],
+          [['list(StepRange(2, 11))'], [2, 3, 4, 5, 6, 7, 8, 9, 10]],
+          [['StepRange(0, 5, 0)'], '!ValueError'],
+          [['StepRange(0, 5, -1)'], '!ValueError'],
+          [['sum(StepRange(0, 10**6, 1))'], 499999500000],
+          [['sum(StepRangeGen(0, 10**6, 3))'], 166666833333],
+          [['(lambda r: [list(r), list(r)])(StepRangeGen(2, 11, 3))'], [[2, 5, 8], [2, 5, 8]]],
+          [['(lambda r: [r.start, r.stop, r.step])(StepRange(4, 9, 2))'], [4, 9, 2]]
+        ],
+        harness: {
+          python: 'def t_val(src):\n' +
+            '    try:\n' +
+            '        return eval(src)\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Keep only the three numbers. Return a fresh iterator from <code>__iter__</code>. We show both styles: an explicit iterator class (what interviewers want to see you understand) and a generator-based <code>__iter__</code> (what you would write in production). <code>__len__</code> is O(1) maths.</p>`,
         code: { lang: 'python', run: true, code: `class StepRangeIterator:
@@ -475,6 +546,35 @@ def primes_trial():
 print(list(islice(primes_trial(), 10)))` },
       mcq: { q: 'You need "the next prime" forever without a known limit. Which structure lets you cross off multiples lazily?', options: ['A dict mapping each upcoming composite number to the primes that will hit it', 'A boolean array of size 10**6', 'A sorted list re-sorted every step', 'Recursion with memoisation'], answer: 0, explain: 'The incremental sieve keeps only the NEXT multiple of each known prime in a dict. When the counter reaches a key, that number is composite; move each of its primes forward to its next multiple. Unknown numbers are prime.' },
       hints: [`<p>Hint 1: A sieve marks multiples of each prime. You do not need all multiples at once — only the <b>next</b> upcoming multiple of each prime.</p>`, `<p>Hint 2: Keep <code>composites = {}</code> mapping number → list of primes that divide it. Walk n = 2, 3, 4, …: if n is not a key, it is prime → yield it and schedule <code>n*n</code> (smaller multiples are already covered by smaller primes).</p>`, `<p>Hint 3: If n is a key, it is composite: pop it, and for each prime p in its list, push p to <code>n + p</code>. Recipe: <code>for n in count(2): if n not in d: yield n; d[n*n] = [n] else: for p in d.pop(n): d.setdefault(n+p, []).append(p)</code>.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_val',
+        cases: [
+          [['list(islice(primes(), 10))'], [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]],
+          [['next(islice(primes(), 999, None))'], 7919],
+          [['next(primes())'], 2],
+          [['list(islice(primes(), 1))'], [2]],
+          [['list(islice(primes(), 0))'], []],
+          [['(lambda a, b: [next(a), next(a), next(b)])(primes(), primes())'], [2, 3, 2]],
+          [['next(islice(primes(), 99999, None))'], 1299709],
+          [['list(islice(primes(), 25))[-1]'], 97],
+          [
+            ['(lambda ps: [ps[-1], sum(ps), len(ps)])(list(islice(primes(), 200000)))'],
+            [2750159, 264129169599, 200000]
+          ],
+          [
+            ['all(p > 1 and all(p % d for d in range(2, int(p ** 0.5) + 1)) for p in islice(primes(), 2000))'],
+            true
+          ]
+        ],
+        harness: {
+          python: 'def t_val(src):\n' +
+            '    try:\n' +
+            '        return eval(src)\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Incremental Sieve of Eratosthenes (from the Python Cookbook). The dict holds "next multiple to cross off" for every prime seen. The generator is infinite, the caller limits it with <code>islice</code>. Starting each prime's schedule at p² is the same optimisation as the classic sieve.</p>`,
         code: { lang: 'python', run: true, code: `from itertools import count, islice
@@ -709,6 +809,100 @@ print(len(out), out[:3])` } }
 print(flatten_list([1, [2, ['ab', [3]], []], 4]))` },
       mcq: { q: 'The input can be 100,000 levels deep. What do you choose?', options: ['An explicit stack of iterators inside one generator', 'Recursive yield from with sys.setrecursionlimit(10**6)', 'Convert to a string and parse the brackets', 'Recursion with lru_cache'], answer: 0, explain: 'A stack of iterators uses heap memory, no recursion limit, and O(1) work per atom. Raising the recursion limit risks crashing the interpreter and still costs O(depth) per yielded value.' },
       hints: [`<p>Hint 1: The elegant answer is a recursive generator: lists → <code>yield from flatten(x)</code>, atoms → <code>yield x</code>. Use <code>isinstance(x, list)</code> so strings stay whole.</p>`, `<p>Hint 2: For huge depth, replace the call stack with your own: <code>stack = [iter(nested)]</code>. Look at the top iterator; if its next item is a list, push <code>iter(item)</code>; if it is an atom, yield it; if the top is exhausted, pop.</p>`, `<p>Hint 3: Use <code>for x in stack[-1]: … break</code> with a <code>for/else</code> to detect exhaustion, or <code>next(stack[-1], sentinel)</code>. Edge cases: empty lists, empty input, strings, depth 10<sup>5</sup>.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              'result = repr([list(flatten([1, [2, [\'ab\', [3]], []], 4])), list(flatten_rec([1, [2, [\'ab\', [3]], []], 4]))])'
+            ],
+            '[[1, 2, \'ab\', 3, 4], [1, 2, \'ab\', 3, 4]]'
+          ],
+          [['result = repr([list(flatten([])), list(flatten_rec([]))])'], '[[], []]'],
+          [['result = repr([list(flatten([[]])), list(flatten_rec([[]]))])'], '[[], []]'],
+          [['result = repr([list(flatten([[[[1]]]])), list(flatten_rec([[[[1]]]]))])'], '[[1], [1]]'],
+          [
+            ['result = repr([list(flatten([\'ab\', [\'cd\']])), list(flatten_rec([\'ab\', [\'cd\']]))])'],
+            '[[\'ab\', \'cd\'], [\'ab\', \'cd\']]'
+          ],
+          [
+            ['result = repr([list(flatten([(1, 2), [3]])), list(flatten_rec([(1, 2), [3]]))])'],
+            '[[(1, 2), 3], [(1, 2), 3]]'
+          ],
+          [
+            ['result = repr([list(flatten([None, [None, [0]]])), list(flatten_rec([None, [None, [0]]]))])'],
+            '[[None, None, 0], [None, None, 0]]'
+          ],
+          [
+            ['result = repr([list(flatten([[], [[]], [[], [1]]])), list(flatten_rec([[], [[]], [[], [1]]]))])'],
+            '[[1], [1]]'
+          ],
+          [
+            ['result = repr([list(flatten([\'\', [\'\']])), list(flatten_rec([\'\', [\'\']]))])'],
+            '[[\'\', \'\'], [\'\', \'\']]'
+          ],
+          [
+            ['result = repr([list(flatten([{\'a\': 1}, [2]])), list(flatten_rec([{\'a\': 1}, [2]]))])'],
+            '[[{\'a\': 1}, 2], [{\'a\': 1}, 2]]'
+          ],
+          [
+            [
+              'deep = [\'bottom\']\n' +
+                'for _ in range(100000):\n' +
+                '    deep = [deep]\n' +
+                'result = list(flatten(deep))'
+            ],
+            ['bottom']
+          ],
+          [
+            [
+              'deep = [0]\n' +
+                'for i in range(1, 100001):\n' +
+                '    deep = [deep, i]\n' +
+                'r = list(flatten(deep))\n' +
+                'result = [len(r), r[:3], r[-1]]'
+            ],
+            [100001, [0, 1, 2], 100000]
+          ],
+          [
+            [
+              'deep = [0]\n' +
+                'for i in range(1, 500):\n' +
+                '    deep = [deep, i]\n' +
+                'result = list(flatten_rec(deep)) == list(range(500))'
+            ],
+            true
+          ],
+          [
+            [
+              'class Boom(list):\n' +
+                '    def __iter__(self):\n' +
+                '        raise RuntimeError(\'touched\')\n' +
+                'result = [next(flatten([1, Boom()])), next(flatten([[2], Boom()]))]'
+            ],
+            [1, 2]
+          ],
+          [['result = sum(1 for _ in flatten([list(range(1000)) for _ in range(1000)]))'], 1000000],
+          [
+            [
+              'g = flatten([1, [2]])\n' +
+                'result = [next(g), next(g), next(g, \'end\')]'
+            ],
+            [1, 2, 'end']
+          ],
+          [['result = list(flatten([\'abc\']))'], ['abc']]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Two versions. The recursive one is the readable interview opener. The iterative one keeps a stack of iterators (bookmarks), so each atom costs O(1) and depth is limited only by memory. A sentinel object lets us use <code>next(it, sentinel)</code> without try/except.</p>`,
         code: { lang: 'python', run: true, code: `def flatten_rec(nested):
@@ -974,6 +1168,99 @@ def top_failing_brute(f, k):
 print(top_failing_brute(io.StringIO('t ERROR a x\\nt ERROR a y\\nt INFO b z\\n'), 1))` },
       mcq: { q: 'Which piece of the solution is allowed to grow with the input size?', options: ['Only the Counter of services (bounded by distinct services)', 'A list of all ERROR lines', 'A list of all lines', 'Nothing may grow at all, not even counts'], answer: 0, explain: 'Lines stream through generators one at a time. The only accumulated state is the per-service count, which is bounded by the number of distinct services (10^4), not by the 10^9 lines.' },
       hints: [`<p>Hint 1: A file object is already a lazy iterator of lines. Never call <code>read()</code> or <code>readlines()</code>.</p>`, `<p>Hint 2: Stages: <code>parse</code> (split with maxsplit=3, skip malformed lines) → <code>filter</code> level == 'ERROR' → <code>map</code> to service → sink <code>Counter</code>. <code>Counter(iterable)</code> consumes the pipeline.</p>`, `<p>Hint 3: <code>counter.most_common(k)</code> uses a heap internally (O(m log k)). Edge cases: blank lines, lines with extra spaces in the message (maxsplit keeps them together), lowercase levels if the format is messy.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              'import io\n' +
+                'log = io.StringIO(\'t1 ERROR payments card declined\\nt2 ERROR auth bad token\\nt3 INFO search ok\\nt4 ERROR payments timeout\\ngarbage\\nt5 ERROR search index missing\\n\')\n' +
+                'result = top_failing(log, 2)'
+            ],
+            [['payments', 2], ['auth', 1]]
+          ],
+          [['import io\nlog = io.StringIO(\'\')\nresult = top_failing(log, 3)'], []],
+          [
+            [
+              'import io\n' +
+                'log = io.StringIO(\'garbage\\nalso bad\\n\')\n' +
+                'result = top_failing(log, 2)'
+            ],
+            []
+          ],
+          [
+            [
+              'import io\n' +
+                'log = io.StringIO(\'t ERROR a x\\n\')\n' +
+                'result = top_failing(log, 5)'
+            ],
+            [['a', 1]]
+          ],
+          [
+            [
+              'import io\n' +
+                'log = io.StringIO(\'t ERROR a x\\nt error a x\\nt WARN a x\\n\')\n' +
+                'result = top_failing(log, 3)'
+            ],
+            [['a', 1]]
+          ],
+          [
+            [
+              'import io\n' +
+                'log = io.StringIO(\'t ERROR a\\nt ERROR b msg with many words here\\n\')\n' +
+                'result = top_failing(log, 2)'
+            ],
+            [['b', 1]]
+          ],
+          [
+            [
+              'import io\n' +
+                'log = io.StringIO(\'t ERROR b m\\nt ERROR a m\\nt ERROR a m\\nt ERROR c m\\nt ERROR c m\\nt ERROR b m\\n\')\n' +
+                'result = top_failing(log, 3)'
+            ],
+            [['b', 2], ['a', 2], ['c', 2]]
+          ],
+          [
+            [
+              'import io\n' +
+                'log = io.StringIO(\'t ERROR a m\\nt ERROR a m\\nt ERROR a m\\nt ERROR a m\\nt ERROR a m\\nt ERROR b m\\nt ERROR b m\\nt ERROR b m\\n\')\n' +
+                'result = top_failing(log, 1)'
+            ],
+            [['a', 5]]
+          ],
+          [
+            ['result = top_failing((\'t ERROR s%d msg\\n\' % (i % 100) for i in range(10**6)), 3)'],
+            [['s0', 10000], ['s1', 10000], ['s2', 10000]]
+          ],
+          [
+            ['result = top_failing([\'t ERROR a x\\n\', \'t ERROR b x\\n\', \'t ERROR b x\\n\'], 100)'],
+            [['b', 2], ['a', 1]]
+          ],
+          [
+            [
+              'result = top_failing(((\'t ERROR s%d m\\n\' % (i % 10000)) if i % 3 else \'junk\\n\' for i in range(300000)), 1)[0][1] > 0'
+            ],
+            true
+          ],
+          [
+            [
+              'import io\n' +
+                'result = top_failing(io.StringIO(\'t ERROR a m\\n\' * 1000 + \'t ERROR b m\'), 2)'
+            ],
+            [['a', 1000], ['b', 1]]
+          ]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Three small generator stages and a Counter sink. Each line is split once, inspected and dropped. Memory is O(distinct services). <code>most_common(k)</code> picks the top k with a heap.</p>`,
         code: { lang: 'python', run: true, code: `import io
@@ -1188,6 +1475,43 @@ print(list(pairwise(gen())))   # pairwise uses the same trick internally` } }
 print(encode_brute('aaabccdddd'))` },
       mcq: { q: 'Which tool finds "runs of the same character" in one lazy pass?', options: ['groupby(s)', 'Counter(s)', 'combinations(s, 2)', 'accumulate(s)'], answer: 0, explain: 'groupby groups CONSECUTIVE equal items — exactly a run. Counter would merge all a\'s anywhere in the string, which breaks RLE.' },
       hints: [`<p>Hint 1: <code>groupby(s)</code> yields <code>(char, run_iterator)</code> for each run; the run length is <code>sum(1 for _ in run)</code>.</p>`, `<p>Hint 2: Build pieces in a generator and <code>''.join(...)</code> them — O(n). For decoding, a regex <code>([^0-9])([0-9]+)</code> splits t into (char, count) pairs; or use groupby with <code>key=str.isdigit</code> to separate letters from digit runs.</p>`, `<p>Hint 3: Decode = <code>''.join(ch * int(n) for ch, n in pairs)</code> or <code>chain.from_iterable(repeat(ch, int(n)) …)</code>. Edge cases: empty string, single char, multi-digit counts like 12.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_val',
+        cases: [
+          [['encode(\'aaabccdddd\')'], 'a3b1c2d4'],
+          [['encode(\'\')'], ''],
+          [['encode(\'a\')'], 'a1'],
+          [['encode(\'xxxxxxxxxxxxy\')'], 'x12y1'],
+          [['encode(\'aA\')'], 'a1A1'],
+          [['encode(\'ab\')'], 'a1b1'],
+          [['encode(\'zzzzzzzzzz\')'], 'z10'],
+          [['encode(\'!!  ??\')'], '!2 2?2'],
+          [['encode(\'ééé\')'], 'é3'],
+          [['decode(\'x12y1\')'], 'xxxxxxxxxxxxy'],
+          [['decode(\'\')'], ''],
+          [['decode(\'a1\')'], 'a'],
+          [['decode(\'a3b1c2d4\')'], 'aaabccdddd'],
+          [['decode(\'z10\')'], 'zzzzzzzzzz'],
+          [['decode(\'!2 2\')'], '!!  '],
+          [['decode(\'a0b2\')'], 'bb'],
+          [['decode(encode(\'a\' * 500000 + \'b\' * 500000)) == \'a\' * 500000 + \'b\' * 500000'], true],
+          [['encode(\'ab\' * 500000) == \'a1b1\' * 500000'], true],
+          [['encode(\'a\' * 1000000)'], 'a1000000'],
+          [['decode(\'a1000000\') == \'a\' * 1000000'], true],
+          [
+            ['all(decode(encode(s)) == s for s in [\'abc\', \'aabbcc\', \'zzzzzzzzzzzz\', \'a b\', \'xyzzy\'])'],
+            true
+          ]
+        ],
+        harness: {
+          python: 'def t_val(src):\n' +
+            '    try:\n' +
+            '        return eval(src)\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p><b>Encode:</b> groupby gives each run; emit char + length. <b>Decode:</b> groupby with <code>key=str.isdigit</code> alternates letter-groups and digit-groups, so pairing them gives (char, count). Both are single O(n) passes.</p>`,
         code: { lang: 'python', run: true, code: `from itertools import groupby, chain, repeat
@@ -1507,6 +1831,190 @@ run_with_debug(lambda: print('debug is', cfg.debug))
 print('restored:', cfg.debug)` },
       mcq: { q: 'In the @contextmanager version, where must the restore code go?', options: ['In a finally block around the yield', 'Right after the yield, no try needed', 'Before the yield', 'In an except block that returns True'], answer: 0, explain: 'Exceptions from the body are thrown into the generator AT the yield. Only a finally around the yield guarantees the restore runs; an except that swallows would also hide the caller\'s error.' },
       hints: [`<p>Hint 1: Before changing anything, save the old state. Use a sentinel object to remember "did not exist": <code>getattr(obj, name, MISSING)</code>.</p>`, `<p>Hint 2: Restore in reverse order inside <code>finally</code> (or <code>__exit__</code>): if the saved value is MISSING → <code>delattr</code>, else <code>setattr</code>. Return False/None from <code>__exit__</code> so errors propagate.</p>`, `<p>Hint 3: Nesting works automatically if each <code>with</code> saves its own snapshot on entry. Test: normal exit, exception exit, new attribute, nested override of the same attribute.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [
+            [
+              'from types import SimpleNamespace\n' +
+                'res = []\n' +
+                'for impl in (override, override_gen):\n' +
+                '    cfg = SimpleNamespace(debug=False)\n' +
+                '    with impl(cfg, debug=True, trace=\'x\'):\n' +
+                '        inside = [cfg.debug, cfg.trace]\n' +
+                '    res.append([inside, cfg.debug, hasattr(cfg, \'trace\')])\n' +
+                'result = res'
+            ],
+            [[[true, 'x'], false, false], [[true, 'x'], false, false]]
+          ],
+          [
+            [
+              'from types import SimpleNamespace\n' +
+                'res = []\n' +
+                'for impl in (override, override_gen):\n' +
+                '    cfg = SimpleNamespace(debug=False)\n' +
+                '    try:\n' +
+                '        with impl(cfg, debug=True, trace=\'x\'):\n' +
+                '            raise RuntimeError(\'boom\')\n' +
+                '    except RuntimeError:\n' +
+                '        pass\n' +
+                '    res.append([cfg.debug, hasattr(cfg, \'trace\')])\n' +
+                'result = res'
+            ],
+            [[false, false], [false, false]]
+          ],
+          [
+            [
+              'from types import SimpleNamespace\n' +
+                'res = []\n' +
+                'for impl in (override, override_gen):\n' +
+                '    cfg = SimpleNamespace(debug=False)\n' +
+                '    with impl(cfg, debug=True, trace=\'x\'):\n' +
+                '        with impl(cfg, debug=\'nested\'):\n' +
+                '            a = cfg.debug\n' +
+                '        b = [cfg.debug, cfg.trace]\n' +
+                '    res.append([a, b, cfg.debug, hasattr(cfg, \'trace\')])\n' +
+                'result = res'
+            ],
+            [['nested', [true, 'x'], false, false], ['nested', [true, 'x'], false, false]]
+          ],
+          [
+            [
+              'from types import SimpleNamespace\n' +
+                'res = []\n' +
+                'for impl in (override, override_gen):\n' +
+                '    cfg = SimpleNamespace(debug=False)\n' +
+                '    with impl(cfg, debug=True) as o:\n' +
+                '        same = o is cfg\n' +
+                '    res.append(same)\n' +
+                'result = res'
+            ],
+            [true, true]
+          ],
+          [
+            [
+              'from types import SimpleNamespace\n' +
+                'res = []\n' +
+                'for impl in (override, override_gen):\n' +
+                '    cfg = SimpleNamespace(debug=False)\n' +
+                '    try:\n' +
+                '        with impl(cfg, debug=True):\n' +
+                '            raise ValueError(\'x\')\n' +
+                '    except ValueError as e:\n' +
+                '        res.append(str(e))\n' +
+                'result = res'
+            ],
+            ['x', 'x']
+          ],
+          [
+            [
+              'from types import SimpleNamespace\n' +
+                'res = []\n' +
+                'for impl in (override, override_gen):\n' +
+                '    cfg = SimpleNamespace(debug=False)\n' +
+                '    with impl(cfg):\n' +
+                '        pass\n' +
+                '    res.append(vars(cfg))\n' +
+                'result = res'
+            ],
+            [{ debug: false }, { debug: false }]
+          ],
+          [
+            [
+              'from types import SimpleNamespace\n' +
+                'res = []\n' +
+                'for impl in (override, override_gen):\n' +
+                '    cfg = SimpleNamespace(debug=False)\n' +
+                '    with impl(cfg, **{\'a%d\' % i: i for i in range(1000)}):\n' +
+                '        inside = sum(getattr(cfg, \'a%d\' % i) for i in range(1000))\n' +
+                '    res.append([inside, sorted(vars(cfg))])\n' +
+                'result = res'
+            ],
+            [[499500, ['debug']], [499500, ['debug']]]
+          ],
+          [
+            [
+              'from types import SimpleNamespace\n' +
+                'res = []\n' +
+                'for impl in (override, override_gen):\n' +
+                '    cfg = SimpleNamespace(debug=False)\n' +
+                '    with impl(cfg, x=1, y=2):\n' +
+                '        with impl(cfg, y=3, z=4):\n' +
+                '            a = [cfg.x, cfg.y, cfg.z]\n' +
+                '        b = [cfg.x, cfg.y, hasattr(cfg, \'z\')]\n' +
+                '    res.append([a, b, sorted(vars(cfg))])\n' +
+                'result = res'
+            ],
+            [[[1, 3, 4], [1, 2, false], ['debug']], [[1, 3, 4], [1, 2, false], ['debug']]]
+          ],
+          [
+            [
+              'from types import SimpleNamespace\n' +
+                'res = []\n' +
+                'for impl in (override, override_gen):\n' +
+                '    cfg = SimpleNamespace(debug=False)\n' +
+                '    try:\n' +
+                '        with impl(cfg, debug=1):\n' +
+                '            with impl(cfg, debug=2):\n' +
+                '                raise KeyError(\'k\')\n' +
+                '    except KeyError:\n' +
+                '        pass\n' +
+                '    res.append(cfg.debug)\n' +
+                'result = res'
+            ],
+            [false, false]
+          ],
+          [
+            [
+              'from types import SimpleNamespace\n' +
+                'res = []\n' +
+                'for impl in (override, override_gen):\n' +
+                '    cfg = SimpleNamespace(debug=False)\n' +
+                '    for i in range(10000):\n' +
+                '        with impl(cfg, debug=i):\n' +
+                '            pass\n' +
+                '    res.append(cfg.debug)\n' +
+                'result = res'
+            ],
+            [false, false]
+          ],
+          [
+            [
+              'from types import SimpleNamespace\n' +
+                'res = []\n' +
+                'for impl in (override, override_gen):\n' +
+                '    cfg = SimpleNamespace(debug=False)\n' +
+                '    with impl(cfg, debug=None):\n' +
+                '        inside = cfg.debug\n' +
+                '    res.append([inside, cfg.debug])\n' +
+                'result = res'
+            ],
+            [[null, false], [null, false]]
+          ],
+          [
+            [
+              'from types import SimpleNamespace\n' +
+                'cfg = SimpleNamespace(debug=False)\n' +
+                'cm = override(cfg, debug=True)\n' +
+                'cm.__enter__()\n' +
+                'r = cfg.debug\n' +
+                'returned = cm.__exit__(None, None, None)\n' +
+                'result = [r, cfg.debug, returned]'
+            ],
+            [true, false, false]
+          ]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Snapshot on enter (with a sentinel for "absent"), apply changes, and undo in <code>finally</code>/<code>__exit__</code>. The class version stores the snapshot on the instance; the generator version keeps it in a local variable. Neither suppresses exceptions. This is a mini version of <code>unittest.mock.patch.object</code>.</p>`,
         code: { lang: 'python', run: true, code: `from contextlib import contextmanager
@@ -1580,6 +2088,35 @@ for impl in (override, override_gen):
 print(stats(x for x in [4, 9, 1]))` },
     mcq: { q: 'Why does the original code fail only for generators?', options: ['min() exhausts the iterator, so max() receives an empty one', 'Generators cannot be compared', 'min() and max() need indexes', 'Generators are immutable'], answer: 0, explain: 'A list gives a fresh iterator to each call. A generator is its own iterator: after min() walks it, it is exhausted, and max() of nothing raises ValueError.' },
     hints: [`<p>Hint 1: Lists are iterables (fresh iterator each time); generators are one-shot iterators. Which one did the tests use?</p>`, `<p>Hint 2: Track both the smallest and largest seen so far in one loop. Start from the first item: <code>it = iter(readings); first = next(it, sentinel)</code>.</p>`, `<p>Hint 3: If the first item is the sentinel, raise <code>ValueError('stats() of empty input')</code>. Then loop over the rest updating lo/hi.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['stats(x for x in [4, 9, 1])'], [1, 9]],
+        [['stats([7])'], [7, 7]],
+        [['stats([])'], '!ValueError'],
+        [['stats(x for x in [])'], '!ValueError'],
+        [['stats([\'b\', \'a\', \'c\'])'], ['a', 'c']],
+        [['stats(iter([3, 1, 2]))'], [1, 3]],
+        [['stats([5, 5, 5])'], [5, 5]],
+        [['stats([-3, -9, -1])'], [-9, -1]],
+        [['stats([1.5, 0.5, 2.5])'], [0.5, 2.5]],
+        [['stats(i for i in range(10**6))'], [0, 999999]],
+        [['stats(i for i in range(10**6, 0, -1))'], [1, 1000000]],
+        [['stats([2, 1])'], [1, 2]],
+        [['stats((x * x for x in range(-5, 6)))'], [0, 25]],
+        [['stats({3, 1, 2})'], [1, 3]],
+        [['stats(range(1))'], [0, 0]],
+        [['(lambda g: [stats(g), list(g)])(iter([2, 1, 3]))'], [[1, 3], []]]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Take the first item to initialise lo and hi (handles empty input explicitly), then one pass over the rest of the same iterator. O(1) memory, works for lists, generators, files, anything iterable.</p>`,
       code: { lang: 'python', run: true, code: `def stats_broken(readings):
@@ -1625,6 +2162,33 @@ ids = order_ids_list('ORD-')
 print(ids[:3])` },
     mcq: { q: 'How do you take items 9,998–10,000 from an infinite generator?', options: ['islice(gen, 9997, 10000)', 'gen[9997:10000]', 'list(gen)[9997:10000]', 'gen.slice(9997, 10000)'], answer: 0, explain: 'Generators do not support indexing; islice skips (consumes) the first 9,997 lazily and stops after 3 more. list(gen) would never finish on an infinite generator.' },
     hints: [`<p>Hint 1: <code>itertools.count(start)</code> yields start, start+1, … forever.</p>`, `<p>Hint 2: f-string width formatting: <code>f'{n:0{width}d}'</code> pads with zeros to at least width digits and never truncates.</p>`, `<p>Hint 3: Recipe: <code>for n in count(start): yield f'{prefix}{n:0{width}d}'</code>; consume with <code>islice(gen, start, stop)</code>.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['list(islice(order_ids(\'ORD-\'), 3))'], ['ORD-0001', 'ORD-0002', 'ORD-0003']],
+        [['list(islice(order_ids(\'ORD-\'), 9997, 10000))'], ['ORD-9998', 'ORD-9999', 'ORD-10000']],
+        [['next(order_ids(\'X\', 5, 2))'], 'X05'],
+        [['next(order_ids(\'A\', 0))'], 'A0000'],
+        [['next(order_ids(\'W\', 7, 12))'], 'W000000000007'],
+        [['next(order_ids(\'P\', 10**12, 4))'], 'P1000000000000'],
+        [['next(order_ids(\'P\'))'], 'P0001'],
+        [['next(islice(order_ids(\'I-\'), 10**6, None))'], 'I-1000001'],
+        [['list(islice(order_ids(\'\', 99, 1), 3))'], ['99', '100', '101']],
+        [
+          ['(lambda a, b: [next(a), next(a), next(b)])(order_ids(\'A\'), order_ids(\'B\'))'],
+          ['A0001', 'A0002', 'B0001']
+        ],
+        [['list(islice(order_ids(\'Z\', 9, 2), 3))'], ['Z09', 'Z10', 'Z11']]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>An infinite generator built on <code>count</code>. Formatting is done per item, on demand. The caller decides how many to take.</p>`,
       code: { lang: 'python', run: true, code: `from itertools import count, islice
@@ -1657,6 +2221,34 @@ print(next(gen), next(gen))` },
 print(changes_brute([100, 102, 101, 105, 105]))` },
     mcq: { q: 'What does pairwise([100, 102, 101]) yield?', options: ['(100, 102), (102, 101)', '(100, 102), (101,)', '(100,), (102,), (101,)', '(100, 101)'], answer: 0, explain: 'pairwise yields overlapping consecutive pairs: n items give n − 1 pairs.' },
     hints: [`<p>Hint 1: "Compare each element with the next" is the phrase for <code>itertools.pairwise</code> (3.10+) or <code>zip(p, p[1:])</code>.</p>`, `<p>Hint 2: <code>[b - a for a, b in pairwise(prices)]</code> gives the changes; <code>sum(c &gt; 0 for c in changes)</code> counts ups (True counts as 1).</p>`, `<p>Hint 3: With one price there are zero changes. pairwise works on any iterable, including a generator reading a CSV.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['price_changes([100, 102, 101, 105, 105])'], [[2, -1, 4, 0], 2]],
+        [['price_changes([42])'], [[], 0]],
+        [['price_changes([])'], [[], 0]],
+        [['price_changes([1.5, 1.0])'], [[-0.5], 0]],
+        [['price_changes([5, 4, 3, 2, 1])'], [[-1, -1, -1, -1], 0]],
+        [['price_changes([1, 2, 3, 4])'], [[1, 1, 1], 3]],
+        [['price_changes([10, 10, 10])'], [[0, 0], 0]],
+        [['price_changes([100, 50, 100])'], [[-50, 50], 1]],
+        [['price_changes(iter([1, 3, 6]))'], [[2, 3], 2]],
+        [
+          ['(lambda r: [len(r[0]), r[1], sum(r[0])])(price_changes(list(range(1, 10**6 + 1))))'],
+          [999999, 999999, 999999]
+        ],
+        [['(lambda r: [len(r[0]), r[1]])(price_changes([i % 3 for i in range(10**6)]))'], [999999, 666666]],
+        [['price_changes(x for x in [3, 1, 2])'], [[-2, 1], 1]]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p><code>pairwise</code> provides overlapping pairs lazily, so this also works on a stream. Booleans sum as integers.</p>`,
       code: { lang: 'python', run: true, code: `from itertools import pairwise
@@ -1694,6 +2286,124 @@ p = os.path.join(d, 'a.tmp'); open(p, 'w').close()
 print(cleanup_brute([p, os.path.join(d, 'missing.tmp')]))` },
     mcq: { q: 'Which line ignores ONLY missing files?', options: ['with suppress(FileNotFoundError): os.remove(p)', 'try: os.remove(p)\nexcept: pass', 'with suppress(Exception): os.remove(p)', 'if os.path.exists(p): os.remove(p)'], answer: 0, explain: 'suppress takes exact exception types. A bare except or suppress(Exception) would also hide PermissionError and real bugs; exists() has a race condition.' },
     hints: [`<p>Hint 1: EAFP — "easier to ask forgiveness than permission": just try to remove, and handle the specific failure.</p>`, `<p>Hint 2: <code>contextlib.suppress(FileNotFoundError)</code> is a context manager whose <code>__exit__</code> returns True only for that type.</p>`, `<p>Hint 3: To count deletions, increment after <code>os.remove</code> <b>inside</b> the with block — if remove raises, the increment is skipped. Or use <code>pathlib.Path.unlink(missing_ok=True)</code> (3.8+).</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'import os, tempfile\n' +
+              'd = tempfile.mkdtemp()\n' +
+              'paths = [os.path.join(d, n) for n in (\'a.tmp\', \'b.tmp\', \'c.tmp\')]\n' +
+              'for p in (paths[0], paths[2]):\n' +
+              '    open(p, \'w\').close()\n' +
+              'result = [cleanup(paths), cleanup(paths), os.listdir(d)]'
+          ],
+          [2, 0, []]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'd = tempfile.mkdtemp()\n' +
+              'result = [cleanup([]), cleanup([os.path.join(d, \'nope\')])]'
+          ],
+          [0, 0]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'd = tempfile.mkdtemp()\n' +
+              'p = os.path.join(d, \'x\')\n' +
+              'open(p, \'w\').close()\n' +
+              'result = [cleanup([p, p]), os.path.exists(p)]'
+          ],
+          [1, false]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'd = tempfile.mkdtemp()\n' +
+              'sub = os.path.join(d, \'sub\')\n' +
+              'os.mkdir(sub)\n' +
+              'try:\n' +
+              '    cleanup([sub])\n' +
+              '    result = \'no error\'\n' +
+              'except OSError as e:\n' +
+              '    result = type(e).__name__'
+          ],
+          'IsADirectoryError'
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'd = tempfile.mkdtemp()\n' +
+              'a = os.path.join(d, \'a\')\n' +
+              'open(a, \'w\').close()\n' +
+              'sub = os.path.join(d, \'sub\')\n' +
+              'os.mkdir(sub)\n' +
+              'try:\n' +
+              '    cleanup([a, sub])\n' +
+              'except OSError:\n' +
+              '    pass\n' +
+              'result = os.path.exists(a)'
+          ],
+          false
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'd = tempfile.mkdtemp()\n' +
+              'result = cleanup([os.path.join(d, \'no\', \'such\', \'dir\', \'f\')])'
+          ],
+          0
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'd = tempfile.mkdtemp()\n' +
+              'ps = []\n' +
+              'for i in range(20000):\n' +
+              '    p = os.path.join(d, \'f%d\' % i)\n' +
+              '    open(p, \'w\').close()\n' +
+              '    ps.append(p)\n' +
+              'missing = [os.path.join(d, \'m%d\' % i) for i in range(80000)]\n' +
+              'result = [cleanup(ps + missing), len(os.listdir(d))]'
+          ],
+          [20000, 0]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'd = tempfile.mkdtemp()\n' +
+              'a = os.path.join(d, \'a\')\n' +
+              'b = os.path.join(d, \'b\')\n' +
+              'open(a, \'w\').close()\n' +
+              'open(b, \'w\').close()\n' +
+              'result = [cleanup([a, os.path.join(d, \'gone\'), b]), os.listdir(d)]'
+          ],
+          [2, []]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'd = tempfile.mkdtemp()\n' +
+              'p = os.path.join(d, \'k\')\n' +
+              'open(p, \'w\').write(\'data\')\n' +
+              'result = [cleanup((x for x in [p])), os.path.exists(p)]'
+          ],
+          [1, false]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>EAFP with <code>suppress</code>: the counter line is skipped automatically when the file is missing, because the exception jumps to <code>__exit__</code>. Other errors propagate.</p>`,
       code: { lang: 'python', run: true, code: `import os, tempfile
@@ -1732,6 +2442,340 @@ os.rmdir(d)` },
 print(moving_avg_brute([1, 2, 3, 4, 5], 3))` },
     mcq: { q: 'Which structure gives an O(1) "push right, drop left" window?', options: ['collections.deque(maxlen=k)', 'list with pop(0)', 'a tuple rebuilt each step', 'a set'], answer: 0, explain: 'deque appends and pops at both ends in O(1); with maxlen=k it automatically drops the oldest item. list.pop(0) is O(k).' },
     hints: [`<p>Hint 1: Keep the current window in <code>deque(maxlen=k)</code>; once it is full, every new item produces a window.</p>`, `<p>Hint 2: For the average, keep a running sum: add the new item, subtract the item that falls out (read it as <code>window[0]</code> <b>before</b> appending when the deque is full).</p>`, `<p>Hint 3: Fill the first k − 1 items with <code>islice</code>, then loop over the rest of the same iterator. Yield <code>tuple(window)</code> so callers do not see later mutation.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = list(windows([1, 2, 3, 4, 5], 3))'
+          ],
+          [[1, 2, 3], [2, 3, 4], [3, 4, 5]]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = list(moving_average([1, 2, 3, 4, 5], 3))'
+          ],
+          [2, 3, 4]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = list(windows([1, 2], 5))'
+          ],
+          []
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = list(moving_average([1, 2], 5))'
+          ],
+          []
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = list(windows([], 1))'
+          ],
+          []
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = list(windows([7, 8, 9], 1))'
+          ],
+          [[7], [8], [9]]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = list(moving_average([7, 8, 9], 1))'
+          ],
+          [7, 8, 9]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = list(windows(\'abcd\', 2))'
+          ],
+          [['a', 'b'], ['b', 'c'], ['c', 'd']]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = list(windows([1, 2, 3], 3))'
+          ],
+          [[1, 2, 3]]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = list(islice(windows(count(), 3), 2))'
+          ],
+          [[0, 1, 2], [1, 2, 3]]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = list(islice(moving_average(count(), 4), 3))'
+          ],
+          [1.5, 2.5, 3.5]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = list(windows((x for x in range(4)), 2))'
+          ],
+          [[0, 1], [1, 2], [2, 3]]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = list(moving_average((x for x in [10, 20, 30]), 2))'
+          ],
+          [15, 25]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = (lambda r: [len(r), r[0], r[-1]])(list(moving_average(range(10**6), 1000)))'
+          ],
+          [999001, 499.5, 999499.5]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = (lambda r: [len(r), r[0], r[-1], len(r[0])])(list(windows(range(100000), 100)))'
+          ],
+          [
+            99901,
+            [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39,
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47,
+              48,
+              49,
+              50,
+              51,
+              52,
+              53,
+              54,
+              55,
+              56,
+              57,
+              58,
+              59,
+              60,
+              61,
+              62,
+              63,
+              64,
+              65,
+              66,
+              67,
+              68,
+              69,
+              70,
+              71,
+              72,
+              73,
+              74,
+              75,
+              76,
+              77,
+              78,
+              79,
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87,
+              88,
+              89,
+              90,
+              91,
+              92,
+              93,
+              94,
+              95,
+              96,
+              97,
+              98,
+              99
+            ],
+            [
+              99900,
+              99901,
+              99902,
+              99903,
+              99904,
+              99905,
+              99906,
+              99907,
+              99908,
+              99909,
+              99910,
+              99911,
+              99912,
+              99913,
+              99914,
+              99915,
+              99916,
+              99917,
+              99918,
+              99919,
+              99920,
+              99921,
+              99922,
+              99923,
+              99924,
+              99925,
+              99926,
+              99927,
+              99928,
+              99929,
+              99930,
+              99931,
+              99932,
+              99933,
+              99934,
+              99935,
+              99936,
+              99937,
+              99938,
+              99939,
+              99940,
+              99941,
+              99942,
+              99943,
+              99944,
+              99945,
+              99946,
+              99947,
+              99948,
+              99949,
+              99950,
+              99951,
+              99952,
+              99953,
+              99954,
+              99955,
+              99956,
+              99957,
+              99958,
+              99959,
+              99960,
+              99961,
+              99962,
+              99963,
+              99964,
+              99965,
+              99966,
+              99967,
+              99968,
+              99969,
+              99970,
+              99971,
+              99972,
+              99973,
+              99974,
+              99975,
+              99976,
+              99977,
+              99978,
+              99979,
+              99980,
+              99981,
+              99982,
+              99983,
+              99984,
+              99985,
+              99986,
+              99987,
+              99988,
+              99989,
+              99990,
+              99991,
+              99992,
+              99993,
+              99994,
+              99995,
+              99996,
+              99997,
+              99998,
+              99999
+            ],
+            100
+          ]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'result = list(moving_average([-1, -2, -3, -4], 2))'
+          ],
+          [-1.5, -2.5, -3.5]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>A deque with maxlen holds the last k items; a running sum turns each average into O(1). Both functions are generators, so the stream can be infinite.</p>`,
       code: { lang: 'python', run: true, code: `from collections import deque
@@ -1780,6 +2824,44 @@ print(list(islice(moving_average(count(), 4), 3)))  # infinite input is fine` },
 print(list(roundrobin_brute('ABC', 'D', 'EF')))` },
     mcq: { q: 'How do you remove an exhausted iterator from the rotation cheaply?', options: ['Keep iterators in a deque; popleft, try next(), and only append back if it produced a value', 'Rebuild a list of live iterators every round', 'Use zip()', 'Catch StopIteration and restart from the first iterator'], answer: 0, explain: 'A deque rotation gives O(1) per step; an exhausted iterator simply is not re-appended. zip stops at the shortest input.' },
     hints: [`<p>Hint 1: Store <code>iter(x)</code> for each input in a <code>deque</code> — the queue of "whose turn is it".</p>`, `<p>Hint 2: Loop while the deque is not empty: <code>it = q.popleft()</code>; try <code>yield next(it)</code>; on success append it back to the right.</p>`, `<p>Hint 3: On <code>StopIteration</code> just do not re-append. Careful: do not let StopIteration escape the generator (PEP 479) — catch it. Alternative from the docs recipes uses <code>cycle</code> + <code>islice</code>.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['list(roundrobin(\'ABC\', \'D\', \'EF\'))'], ['A', 'D', 'E', 'B', 'F', 'C']],
+        [['list(roundrobin())'], []],
+        [['list(roundrobin([]))'], []],
+        [['list(roundrobin([], (x * x for x in range(3)), \'z\'))'], [0, 'z', 1, 4]],
+        [['list(roundrobin([1, 2, 3]))'], [1, 2, 3]],
+        [['list(roundrobin(\'AB\', \'CD\'))'], ['A', 'C', 'B', 'D']],
+        [['list(roundrobin(\'A\', \'BCDE\'))'], ['A', 'B', 'C', 'D', 'E']],
+        [['list(roundrobin([], [], []))'], []],
+        [
+          ['list(roundrobin(range(3), range(10, 12), range(20, 25)))'],
+          [0, 10, 20, 1, 11, 21, 2, 22, 23, 24]
+        ],
+        [['list(roundrobin(*[[i] for i in range(10**4)])) == list(range(10**4))'], true],
+        [
+          [
+            '(lambda r: [len(r), r[:4], r[-1]])(list(roundrobin(*[range(i * 10**5, (i + 1) * 10**5) for i in range(10)])))'
+          ],
+          [1000000, [0, 100000, 200000, 300000], 999999]
+        ],
+        [['list(roundrobin(\'ab\', iter(\'cde\')))'], ['a', 'c', 'b', 'd', 'e']],
+        [
+          ['list(roundrobin(*[range(i) for i in range(1, 6)]))'],
+          [0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 3, 4]
+        ],
+        [['next(roundrobin(iter(()), iter((9,))))'], 9]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>A queue of live iterators. Each step serves the iterator at the front and puts it at the back if it is still alive. Every item costs O(1), and exhausted iterators disappear once.</p>`,
       code: { lang: 'python', run: true, code: `from collections import deque
@@ -1825,6 +2907,86 @@ p = PeekableList(iter([1, 2, 3]))
 print(p.peek(), next(p), list(p))` },
     mcq: { q: 'How do you peek without losing the value?', options: ['Pull it with next() and cache it in a buffer slot until it is consumed', 'Call next() and then "un-next" the iterator', 'Copy the iterator with copy.copy', 'Use itertools.tee every time'], answer: 0, explain: 'Iterators cannot go back. Pull one item ahead and store it (with a sentinel meaning "nothing cached"); next() returns the cached item first.' },
     hints: [`<p>Hint 1: Keep one cached item in <code>self._buf</code>, using a private sentinel for "empty cache" (None might be a real value!).</p>`, `<p>Hint 2: <code>peek()</code>: if cache empty, fill it with <code>next(self._it)</code> (StopIteration propagates — or accept a default). <code>__next__</code>: if cache full, return it and clear; else delegate.</p>`, `<p>Hint 3: <code>has_next()</code> = try to peek, return False on StopIteration. Add <code>__iter__</code> returning self and <code>__bool__</code> for convenience.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'p = Peekable([1, 2, 3])\n' +
+              'result = [p.peek(), p.peek(), next(p), next(p), p.has_next(), list(p), p.has_next()]'
+          ],
+          [1, 1, 1, 2, true, [3], false]
+        ],
+        [
+          [
+            'from itertools import count\n' +
+              'q = Peekable(count(10))\n' +
+              'result = [q.peek(), next(q), next(q)]'
+          ],
+          [10, 10, 11]
+        ],
+        [
+          [
+            'r = Peekable([None, 0])\n' +
+              'result = [r.peek(), r.has_next(), list(r)]'
+          ],
+          [null, true, [null, 0]]
+        ],
+        [['p = Peekable([])\nresult = p.peek()'], '!StopIteration'],
+        [['p = Peekable([])\nresult = [p.has_next(), p.peek(\'dflt\')]'], [false, 'dflt']],
+        [['p = Peekable([1])\nnext(p)\nresult = next(p)'], '!StopIteration'],
+        [['p = Peekable(\'ab\')\nresult = [x for x in p]'], ['a', 'b']],
+        [['p = Peekable([5, 6])\np.peek()\np.peek()\nresult = list(p)'], [5, 6]],
+        [
+          [
+            'p = Peekable(x for x in [1, 2, 3])\n' +
+              'result = [p.has_next(), next(p), p.peek(), next(p), next(p), p.has_next()]'
+          ],
+          [true, 1, 2, 2, 3, false]
+        ],
+        [
+          [
+            'p = Peekable(range(10**6))\n' +
+              'n = 0\n' +
+              'while p.has_next():\n' +
+              '    n += p.peek() == next(p)\n' +
+              'result = n'
+          ],
+          1000000
+        ],
+        [
+          [
+            'p = Peekable([1, 2])\n' +
+              'result = [p.peek(99), p.peek(), next(p)]'
+          ],
+          [1, 1, 1]
+        ],
+        [
+          [
+            'p = Peekable([1])\n' +
+              'result = [iter(p) is p, p.has_next(), p.has_next()]'
+          ],
+          [true, true, true]
+        ],
+        [
+          [
+            'p = Peekable([0, \'\', False])\n' +
+              'result = [p.has_next(), next(p), p.has_next(), next(p), p.has_next(), next(p), p.has_next()]'
+          ],
+          [true, 0, true, '', true, false, false]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>A one-item look-ahead buffer with a sentinel. Every operation is O(1) and the wrapped iterator is consumed lazily, so infinite sources work.</p>`,
       code: { lang: 'python', run: true, code: `from itertools import count
@@ -1883,6 +3045,129 @@ print(r.peek(), r.has_next(), list(r))  # None True [None, 0]` },
 print(chunks_brute(range(7), 3))` },
     mcq: { q: 'What makes repeated islice calls continue where the previous one stopped?', options: ['Calling iter() once and slicing the SAME iterator each time', 'Passing step=n to islice', 'Wrapping the input in list()', 'Using range instead of a generator'], answer: 0, explain: 'islice consumes from whatever iterator it is given. With one shared iterator, each islice picks up where the last one ended; with an iterable like range, each call creates a fresh iterator from the start.' },
     hints: [`<p>Hint 1: Call <code>it = iter(iterable)</code> exactly once.</p>`, `<p>Hint 2: Loop: <code>chunk = list(islice(it, n))</code>; if the chunk is empty, stop; else yield it.</p>`, `<p>Hint 3: Python 3.8+ walrus makes it a 2-liner: <code>while chunk := list(islice(it, n)): yield chunk</code>. Validate n ≥ 1: with n = 0, <code>islice(it, 0)</code> is always empty, so the loop would end at once and silently yield nothing.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'from itertools import islice\n' +
+              'result = list(chunks(range(7), 3))'
+          ],
+          [[0, 1, 2], [3, 4, 5], [6]]
+        ],
+        [['from itertools import islice\nresult = list(chunks([], 3))'], []],
+        [
+          [
+            'from itertools import islice\n' +
+              'result = list(chunks([1, 2, 3], 1))'
+          ],
+          [[1], [2], [3]]
+        ],
+        [
+          [
+            'from itertools import islice\n' +
+              'result = list(chunks([1, 2, 3], 3))'
+          ],
+          [[1, 2, 3]]
+        ],
+        [
+          [
+            'from itertools import islice\n' +
+              'result = list(chunks([1, 2, 3], 10))'
+          ],
+          [[1, 2, 3]]
+        ],
+        [
+          [
+            'from itertools import islice\n' +
+              'result = list(chunks(range(6), 3))'
+          ],
+          [[0, 1, 2], [3, 4, 5]]
+        ],
+        [
+          [
+            'from itertools import islice\n' +
+              'result = list(chunks((x * x for x in range(5)), 2))'
+          ],
+          [[0, 1], [4, 9], [16]]
+        ],
+        [
+          [
+            'from itertools import islice\n' +
+              'result = list(chunks(\'abcde\', 2))'
+          ],
+          [['a', 'b'], ['c', 'd'], ['e']]
+        ],
+        [['from itertools import islice\nresult = list(chunks([1], 0))'], '!ValueError'],
+        [['from itertools import islice\nresult = list(chunks([1], -2))'], '!ValueError'],
+        [
+          [
+            'from itertools import islice\n' +
+              'result = [list(islice(range(7), 3)) for _ in range(3)]'
+          ],
+          [[0, 1, 2], [0, 1, 2], [0, 1, 2]]
+        ],
+        [
+          [
+            'from itertools import islice\n' +
+              'result = (lambda it: [list(islice(it, 3)) for _ in range(3)])(iter(range(7)))'
+          ],
+          [[0, 1, 2], [3, 4, 5], [6]]
+        ],
+        [
+          [
+            'from itertools import islice\n' +
+              'result = (lambda it: [next(chunks(it, 4)), next(it)])(iter(range(10)))'
+          ],
+          [[0, 1, 2, 3], 4]
+        ],
+        [
+          [
+            'from itertools import islice\n' +
+              'result = (lambda cs: [len(cs), sum(len(c) for c in cs), len(cs[0]), len(cs[-1])])(list(chunks(range(10**6), 1000)))'
+          ],
+          [1000, 1000000, 1000, 1000]
+        ],
+        [
+          [
+            'from itertools import islice\n' +
+              'result = (lambda cs: [len(cs), len(cs[0])])(list(chunks(range(10**6), 10**6)))'
+          ],
+          [1, 1000000]
+        ],
+        [
+          [
+            'from itertools import islice\n' +
+              'result = (lambda cs: [len(cs), len(cs[-1])])(list(chunks(range(10**6 + 1), 1000)))'
+          ],
+          [1001, 1]
+        ],
+        [
+          [
+            'from itertools import islice\n' +
+              'result = list(chunks([[1], [2]], 1))'
+          ],
+          [[[1]], [[2]]]
+        ],
+        [
+          [
+            'from itertools import islice\n' +
+              'result = list(chunks([0, 0, 0], 2))'
+          ],
+          [[0, 0], [0]]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>One shared iterator + repeated <code>islice</code>. Each chunk is built with O(n) memory and the stream advances exactly once. The walrus operator keeps the loop compact.</p>`,
       code: { lang: 'python', run: true, code: `from itertools import islice
@@ -1927,6 +3212,210 @@ except RuntimeError:
 print(open(p).read())               # '{"v' -> corrupted!` },
     mcq: { q: 'Why write to a temp file in the SAME directory and then os.replace?', options: ['os.replace is atomic only within one filesystem; readers see either the old or the new file', 'Temp files are faster', 'os.replace compresses the file', 'It avoids needing a with statement'], answer: 0, explain: 'A rename within one filesystem is atomic on POSIX and Windows (os.replace). Across filesystems it degrades to copy+delete, which is not atomic.' },
     hints: [`<p>Hint 1: <code>tempfile.NamedTemporaryFile('w', dir=os.path.dirname(path), delete=False)</code> creates the temp file next to the target.</p>`, `<p>Hint 2: Use <code>@contextmanager</code>: yield the temp file; after the yield (success path) flush, <code>os.fsync</code>, close, then <code>os.replace(tmp, path)</code>.</p>`, `<p>Hint 3: Wrap in <code>try/except BaseException</code>: on error close and <code>os.unlink(tmp)</code>, then <code>raise</code>. Do not swallow the exception.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'import os, tempfile\n' +
+              'folder = tempfile.mkdtemp()\n' +
+              'cfg = os.path.join(folder, \'config.txt\')\n' +
+              'rd = lambda p: open(p).read()\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'{"v": 1}\')\n' +
+              'try:\n' +
+              '    with atomic_write(cfg) as f:\n' +
+              '        f.write(\'{"v\')\n' +
+              '        raise RuntimeError(\'crash\')\n' +
+              'except RuntimeError:\n' +
+              '    pass\n' +
+              'result = [rd(cfg), sorted(os.listdir(folder))]'
+          ],
+          ['{"v": 1}', ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'folder = tempfile.mkdtemp()\n' +
+              'cfg = os.path.join(folder, \'config.txt\')\n' +
+              'rd = lambda p: open(p).read()\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'v2\')\n' +
+              'result = [rd(cfg), sorted(os.listdir(folder))]'
+          ],
+          ['v2', ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'folder = tempfile.mkdtemp()\n' +
+              'cfg = os.path.join(folder, \'config.txt\')\n' +
+              'rd = lambda p: open(p).read()\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'v1\')\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'v2\')\n' +
+              'result = [rd(cfg), sorted(os.listdir(folder))]'
+          ],
+          ['v2', ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'folder = tempfile.mkdtemp()\n' +
+              'cfg = os.path.join(folder, \'config.txt\')\n' +
+              'rd = lambda p: open(p).read()\n' +
+              'try:\n' +
+              '    with atomic_write(cfg) as f:\n' +
+              '        f.write(\'x\')\n' +
+              '        raise ValueError(\'no\')\n' +
+              'except ValueError:\n' +
+              '    pass\n' +
+              'result = [os.path.exists(cfg), sorted(os.listdir(folder))]'
+          ],
+          [false, []]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'folder = tempfile.mkdtemp()\n' +
+              'cfg = os.path.join(folder, \'config.txt\')\n' +
+              'rd = lambda p: open(p).read()\n' +
+              'p = os.path.join(folder, \'blob.bin\')\n' +
+              'with atomic_write(p, \'wb\') as f:\n' +
+              '    f.write(bytes([1, 2, 3]))\n' +
+              'result = [list(open(p, \'rb\').read()), sorted(os.listdir(folder))]'
+          ],
+          [[1, 2, 3], ['blob.bin']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'folder = tempfile.mkdtemp()\n' +
+              'cfg = os.path.join(folder, \'config.txt\')\n' +
+              'rd = lambda p: open(p).read()\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'old\')\n' +
+              'try:\n' +
+              '    with atomic_write(cfg) as f:\n' +
+              '        f.write(\'zz\')\n' +
+              '        raise KeyboardInterrupt()\n' +
+              'except KeyboardInterrupt:\n' +
+              '    pass\n' +
+              'result = [rd(cfg), sorted(os.listdir(folder))]'
+          ],
+          ['old', ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'folder = tempfile.mkdtemp()\n' +
+              'cfg = os.path.join(folder, \'config.txt\')\n' +
+              'rd = lambda p: open(p).read()\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'old\')\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'new\')\n' +
+              '    f.flush()\n' +
+              '    seen = rd(cfg)\n' +
+              'result = [seen, rd(cfg)]'
+          ],
+          ['old', 'new']
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'folder = tempfile.mkdtemp()\n' +
+              'cfg = os.path.join(folder, \'config.txt\')\n' +
+              'rd = lambda p: open(p).read()\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'x\' * 5000000)\n' +
+              'result = [len(rd(cfg)), sorted(os.listdir(folder))]'
+          ],
+          [5000000, ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'folder = tempfile.mkdtemp()\n' +
+              'cfg = os.path.join(folder, \'config.txt\')\n' +
+              'rd = lambda p: open(p).read()\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    pass\n' +
+              'result = [rd(cfg), sorted(os.listdir(folder))]'
+          ],
+          ['', ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'folder = tempfile.mkdtemp()\n' +
+              'cfg = os.path.join(folder, \'config.txt\')\n' +
+              'rd = lambda p: open(p).read()\n' +
+              'with atomic_write(cfg) as f:\n' +
+              '    f.write(\'héllo €\')\n' +
+              'result = open(cfg, encoding=\'utf-8\').read()'
+          ],
+          'héllo €'
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'folder = tempfile.mkdtemp()\n' +
+              'cfg = os.path.join(folder, \'config.txt\')\n' +
+              'rd = lambda p: open(p).read()\n' +
+              'old = os.getcwd()\n' +
+              'os.chdir(folder)\n' +
+              'try:\n' +
+              '    with atomic_write(\'rel.txt\') as f:\n' +
+              '        f.write(\'rel\')\n' +
+              'finally:\n' +
+              '    os.chdir(old)\n' +
+              'result = [rd(os.path.join(folder, \'rel.txt\')), sorted(os.listdir(folder))]'
+          ],
+          ['rel', ['rel.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'folder = tempfile.mkdtemp()\n' +
+              'cfg = os.path.join(folder, \'config.txt\')\n' +
+              'rd = lambda p: open(p).read()\n' +
+              'for i in range(200):\n' +
+              '    with atomic_write(cfg) as f:\n' +
+              '        f.write(str(i))\n' +
+              'result = [rd(cfg), sorted(os.listdir(folder))]'
+          ],
+          ['199', ['config.txt']]
+        ],
+        [
+          [
+            'import os, tempfile\n' +
+              'folder = tempfile.mkdtemp()\n' +
+              'cfg = os.path.join(folder, \'config.txt\')\n' +
+              'rd = lambda p: open(p).read()\n' +
+              'class Boom(Exception):\n' +
+              '    pass\n' +
+              'try:\n' +
+              '    with atomic_write(cfg) as f:\n' +
+              '        raise Boom()\n' +
+              'except Boom:\n' +
+              '    result = \'propagated\''
+          ],
+          'propagated'
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Write everything to a sibling temp file; only when the with-body succeeds, fsync and atomically rename over the target. On failure remove the temp file and re-raise. Readers never observe a partial file.</p>`,
       code: { lang: 'python', run: true, code: `import os, tempfile
@@ -1935,8 +3424,8 @@ from contextlib import contextmanager
 @contextmanager
 def atomic_write(path, mode='w', encoding='utf-8'):
     directory = os.path.dirname(os.path.abspath(path))
-    tmp = tempfile.NamedTemporaryFile(mode, dir=directory, delete=False,
-                                      encoding=encoding, suffix='.tmp')
+    tmp = tempfile.NamedTemporaryFile(mode, dir=directory, delete=False, suffix='.tmp',
+                                      encoding=None if 'b' in mode else encoding)   # binary modes take no encoding
     try:
         yield tmp                        # caller writes here
         tmp.flush()
@@ -1978,6 +3467,183 @@ def merge_brute(*iterators):
 print(merge_brute(iter([1, 4, 7]), iter([2, 5]), iter([0, 6, 8, 9])))` },
     mcq: { q: 'What should the heap contain at any moment?', options: ['One (current value, stream index, iterator) entry per non-exhausted stream', 'All items read so far', 'Only the global minimum', 'The last item of each stream'], answer: 0, explain: 'Each stream contributes only its current head. Pop the smallest head, yield it, then push that stream\'s next item. The heap never exceeds k entries.' },
     hints: [`<p>Hint 1: The next output is always the smallest of the k current heads. A min-heap gives that in O(log k).</p>`, `<p>Hint 2: Push tuples <code>(value, i, it)</code>. The index <code>i</code> breaks ties so Python never tries to compare two iterator objects (which raises TypeError).</p>`, `<p>Hint 3: Recipe: seed the heap with each stream's first item (skip empty streams). Loop: pop (v, i, it), yield v, <code>nxt = next(it, END)</code>; if not END push (nxt, i, it). Use <code>heapreplace</code> to pop+push in one step.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = list(merge_sorted([1, 4, 7], [2, 5], [0, 6, 8, 9]))'
+          ],
+          [0, 1, 2, 4, 5, 6, 7, 8, 9]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = list(merge_sorted())'
+          ],
+          []
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = list(merge_sorted([3, 4]))'
+          ],
+          [3, 4]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = list(merge_sorted([], [1], []))'
+          ],
+          [1]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = list(merge_sorted([], []))'
+          ],
+          []
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = list(merge_sorted([1, 1], [1]))'
+          ],
+          [1, 1, 1]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = list(merge_sorted([-3, 0], [-5, 5], [-4]))'
+          ],
+          [-5, -4, -3, 0, 5]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = list(merge_sorted([1, 2.5], [2, 3]))'
+          ],
+          [1, 2, 2.5, 3]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = list(merge_sorted(\'ace\', \'bdf\'))'
+          ],
+          ['a', 'b', 'c', 'd', 'e', 'f']
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = list(islice(merge_sorted(count(0, 2), count(1, 2)), 8))'
+          ],
+          [0, 1, 2, 3, 4, 5, 6, 7]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = list(merge_sorted((x for x in [1, 3]), iter([2, 4])))'
+          ],
+          [1, 2, 3, 4]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = list(merge_sorted([1, 2, 3], [4, 5, 6]))'
+          ],
+          [1, 2, 3, 4, 5, 6]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = list(merge_sorted([4, 5, 6], [1, 2, 3]))'
+          ],
+          [1, 2, 3, 4, 5, 6]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = list(merge_sorted(*[range(i, 10**6, 10**4) for i in range(10**4)])) == list(range(10**6))'
+          ],
+          true
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'import heapq, random\n' +
+              'result = (lambda s: list(merge_sorted(*s)) == list(heapq.merge(*s)))([sorted(random.Random(i).sample(range(1000), 50)) for i in range(40)])'
+          ],
+          true
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'counts = [0, 0, 0]\n' +
+              'def src(i, data):\n' +
+              '    for x in data:\n' +
+              '        counts[i] += 1\n' +
+              '        yield x\n' +
+              'g = merge_sorted(src(0, [1, 4, 7]), src(1, [2, 5]), src(2, [0, 6, 8, 9]))\n' +
+              'first = next(g)\n' +
+              'result = [first, list(counts)]'
+          ],
+          [0, [1, 1, 1]]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'counts = [0, 0, 0]\n' +
+              'def src(i, data):\n' +
+              '    for x in data:\n' +
+              '        counts[i] += 1\n' +
+              '        yield x\n' +
+              'g = merge_sorted(src(0, [1, 4, 7]), src(1, [2, 5]), src(2, [0, 6, 8, 9]))\n' +
+              'a = next(g)\n' +
+              'b = next(g)\n' +
+              'result = [a, b, list(counts)]'
+          ],
+          [0, 1, [1, 1, 2]]
+        ],
+        [
+          [
+            'from itertools import count, islice\n' +
+              'counts = [0, 0, 0]\n' +
+              'def src(i, data):\n' +
+              '    for x in data:\n' +
+              '        counts[i] += 1\n' +
+              '        yield x\n' +
+              'g = merge_sorted(src(0, [1, 4, 7]), src(1, [2, 5]), src(2, [0, 6, 8, 9]))\n' +
+              'result = [x for x in g]'
+          ],
+          [0, 1, 2, 4, 5, 6, 7, 8, 9]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Classic k-way merge with a heap of stream heads. Laziness comes for free: we only pull from the stream whose item was just emitted. Same algorithm as <code>heapq.merge</code> and the merge phase of external sort.</p>`,
       code: { lang: 'python', run: true, code: `import heapq
@@ -2037,6 +3703,132 @@ it = BSTIteratorList(Node(7, Node(3), Node(15, Node(9), Node(20))))
 print(it.next(), it.next(), it.has_next())` },
     mcq: { q: 'What does the stack hold in the O(h) solution?', options: ['The path of nodes whose left subtree is done but which have not been returned yet', 'All nodes of the tree', 'Only leaf nodes', 'The values already returned'], answer: 0, explain: 'Push the leftmost path. next() pops the top (the smallest unreturned node), then pushes the leftmost path of its right child. The stack never holds more than one root-to-leaf path.' },
     hints: [`<p>Hint 1: The smallest value is reached by going left as far as possible. Push every node on that path.</p>`, `<p>Hint 2: <code>next()</code>: pop node n, then push the left spine of <code>n.right</code>. <code>has_next()</code>: stack not empty. Each node is pushed and popped once → amortised O(1).</p>`, `<p>Hint 3: For the Python protocol, add <code>__iter__</code> returning self and <code>__next__</code> raising StopIteration when the stack is empty. Bonus: an iterative generator version is only ~8 lines.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'tree = Node(7, Node(3), Node(15, Node(9), Node(20)))\n' +
+              'it = BSTIterator(tree)\n' +
+              'result = [it.next(), it.next(), it.has_next(), it.next(), it.next(), it.next(), it.has_next()]'
+          ],
+          [3, 7, true, 9, 15, 20, false]
+        ],
+        [
+          [
+            'tree = Node(7, Node(3), Node(15, Node(9), Node(20)))\n' +
+              'result = [list(BSTIterator(tree)), list(inorder_gen(tree))]'
+          ],
+          [[3, 7, 9, 15, 20], [3, 7, 9, 15, 20]]
+        ],
+        [
+          [
+            'tree = Node(7, Node(3), Node(15, Node(9), Node(20)))\n' +
+              'it = BSTIterator(tree)\n' +
+              'it.next(); it.next()\n' +
+              'result = [it.has_next(), list(it), it.has_next()]'
+          ],
+          [true, [9, 15, 20], false]
+        ],
+        [
+          ['result = [BSTIterator(None).has_next(), list(BSTIterator(None)), list(inorder_gen(None))]'],
+          [false, [], []]
+        ],
+        [['result = [list(BSTIterator(Node(5))), BSTIterator(Node(5)).next()]'], [[5], 5]],
+        [
+          [
+            't = None\n' +
+              'for v in range(1, 1001):\n' +
+              '    t = Node(v, left=t)\n' +
+              'result = list(BSTIterator(t)) == list(range(1, 1001))'
+          ],
+          true
+        ],
+        [
+          [
+            't = None\n' +
+              'for v in range(1, 100001):\n' +
+              '    t = Node(v, left=t)\n' +
+              'result = [sum(BSTIterator(t)), next(inorder_gen(t))]'
+          ],
+          [5000050000, 1]
+        ],
+        [
+          [
+            't = None\n' +
+              'for v in range(100000, 0, -1):\n' +
+              '    t = Node(v, right=t)\n' +
+              'result = [sum(BSTIterator(t)), next(iter(BSTIterator(t))), sum(inorder_gen(t))]'
+          ],
+          [5000050000, 1, 5000050000]
+        ],
+        [
+          [
+            'import random\n' +
+              'rnd = random.Random(4)\n' +
+              'vals = rnd.sample(range(10**6), 5000)\n' +
+              'root = None\n' +
+              'def insert(root, v):\n' +
+              '    if root is None:\n' +
+              '        return Node(v)\n' +
+              '    cur = root\n' +
+              '    while True:\n' +
+              '        side = \'left\' if v < cur.val else \'right\'\n' +
+              '        nxt = getattr(cur, side)\n' +
+              '        if nxt is None:\n' +
+              '            setattr(cur, side, Node(v))\n' +
+              '            return root\n' +
+              '        cur = nxt\n' +
+              'for v in vals:\n' +
+              '    root = insert(root, v)\n' +
+              'result = [list(BSTIterator(root)) == sorted(vals), list(inorder_gen(root)) == sorted(vals)]'
+          ],
+          [true, true]
+        ],
+        [
+          [
+            'def build(lo, hi):\n' +
+              '    if lo > hi:\n' +
+              '        return None\n' +
+              '    mid = (lo + hi) // 2\n' +
+              '    return Node(mid, build(lo, mid - 1), build(mid + 1, hi))\n' +
+              't = build(1, 100000)\n' +
+              'it = BSTIterator(t)\n' +
+              'out = []\n' +
+              'while it.has_next():\n' +
+              '    out.append(it.next())\n' +
+              'result = [out == list(range(1, 100001)), len(it._stack)]'
+          ],
+          [true, 0]
+        ],
+        [
+          [
+            'tree = Node(7, Node(3), Node(15, Node(9), Node(20)))\n' +
+              'it = BSTIterator(tree)\n' +
+              'result = [x for x in it] == [3, 7, 9, 15, 20]'
+          ],
+          true
+        ],
+        [
+          [
+            't = Node(2, Node(1), Node(3))\n' +
+              'it = BSTIterator(t)\n' +
+              'result = [next(it), next(it), next(it), next(it, \'done\')]'
+          ],
+          [1, 2, 3, 'done']
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Controlled iterative in-order traversal: the explicit stack replaces the call stack, so there is no recursion limit, memory is O(h), and each node is pushed/popped exactly once. We also show the equivalent generator.</p>`,
       code: { lang: 'python', run: true, code: `class Node:
@@ -2113,6 +3905,174 @@ print(sum(BSTIterator(skewed)), next(inorder_gen(skewed)))` },
 print([(k, list(g)) for k, g in groupby_buffered('aaabccaa')])` },
     mcq: { q: 'How can an old group "know" that the outer iterator has moved on?', options: ['Each group remembers an id; the outer generator bumps a shared counter for every new group, and an old group stops when ids differ', 'Groups check the length of the input', 'The outer generator deletes the group object', 'It cannot; itertools copies the data'], answer: 0, explain: 'A shared, monotonically increasing group id (read through a closure) lets every inner generator detect it is stale and return immediately.' },
     hints: [`<p>Hint 1: Keep shared state in the outer generator: the current item <code>cur</code>, its key <code>cur_key</code>, and a <code>group_id</code>. Inner generators read/modify it via <code>nonlocal</code>.</p>`, `<p>Hint 2: Inner <code>grouper(my_id, target)</code>: while it is still the active group and <code>cur_key == target</code>: yield cur, then advance cur. After each resume, re-check <code>my_id == group_id</code>.</p>`, `<p>Hint 3: Outer loop: bump group_id, yield (target, grouper(...)); when resumed, skip any items still having key == target (the consumer may not have read them). Use a sentinel for "input exhausted".</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'import itertools\n' +
+              'result = [[(k, list(g)) for k, g in my_groupby(\'aaabccaa\')], [(k, list(g)) for k, g in itertools.groupby(\'aaabccaa\')]]'
+          ],
+          [
+            [['a', ['a', 'a', 'a']], ['b', ['b']], ['c', ['c', 'c']], ['a', ['a', 'a']]],
+            [['a', ['a', 'a', 'a']], ['b', ['b']], ['c', ['c', 'c']], ['a', ['a', 'a']]]
+          ]
+        ],
+        [
+          [
+            'g = list(my_groupby(\'aab\'))\n' +
+              'result = [[list(grp) for _, grp in g]]'
+          ],
+          [[[], []]]
+        ],
+        [
+          [
+            'partial = my_groupby(\'xxxyy\')\n' +
+              'k1, g1 = next(partial)\n' +
+              'result = [next(g1), next(partial)[0], list(g1)]'
+          ],
+          ['x', 'y', []]
+        ],
+        [
+          ['result = [(k, list(g)) for k, g in my_groupby([1, 3, 5, 2, 4, 7], key=lambda x: x % 2)]'],
+          [[1, [1, 3, 5]], [0, [2, 4]], [1, [7]]]
+        ],
+        [['result = list(my_groupby(\'\'))'], []],
+        [['result = [(k, len(list(g))) for k, g in my_groupby(\'aaaa\')]'], [['a', 4]]],
+        [
+          ['result = [(k, len(list(g))) for k, g in my_groupby(\'abcd\')]'],
+          [['a', 1], ['b', 1], ['c', 1], ['d', 1]]
+        ],
+        [['result = [k for k, _ in my_groupby(\'aabbcc\')]'], ['a', 'b', 'c']],
+        [
+          [
+            'result = [(k, list(g)) for k, g in my_groupby([(1, \'a\'), (1, \'b\'), (2, \'c\')], key=lambda t: t[0])]'
+          ],
+          [[1, [[1, 'a'], [1, 'b']]], [2, [[2, 'c']]]]
+        ],
+        [['result = [k for k, _ in my_groupby(iter([0, 0, 1, 1, 0]))]'], [0, 1, 0]],
+        [['result = sum(1 for _ in my_groupby(range(10**6), key=lambda x: x // 10))'], 100000],
+        [['result = sum(len(list(g)) for _, g in my_groupby((x // 3 for x in range(10**6))))'], 1000000],
+        [
+          [
+            'calls = []\n' +
+              'result = [k for k, _ in my_groupby(\'aabb\', key=lambda x: calls.append(x) or x)]'
+          ],
+          ['a', 'b']
+        ],
+        [
+          [
+            'g = my_groupby(\'aabbb\')\n' +
+              'k, grp = next(g)\n' +
+              'result = [k, next(g)[0], list(grp)]'
+          ],
+          ['a', 'b', []]
+        ],
+        [
+          [
+            'import random, itertools\n' +
+              'def drive(gb, data, ops, key):\n' +
+              '    out = []\n' +
+              '    outer = gb(data, key)\n' +
+              '    cur = []\n' +
+              '    for op in ops:\n' +
+              '        if op[0] == \'o\':\n' +
+              '            try:\n' +
+              '                k, g = next(outer)\n' +
+              '                cur.append(g)\n' +
+              '                out.append([\'k\', k])\n' +
+              '            except StopIteration:\n' +
+              '                out.append(\'end\')\n' +
+              '        elif cur:\n' +
+              '            g = cur[op[1] % len(cur)]\n' +
+              '            out.append([\'t\', [next(g, None) for _ in range(op[2])]])\n' +
+              '    return out\n' +
+              'rnd = random.Random(1)\n' +
+              'ok = True\n' +
+              'for trial in range(300):\n' +
+              '    data = [rnd.randrange(6) for _ in range(rnd.randrange(0, 40))]\n' +
+              '    data.sort(key=lambda x: x if rnd.random() < 0.7 else 0)\n' +
+              '    ops = [(\'o\',) if rnd.random() < 0.45 else (\'t\', rnd.randrange(5), rnd.randrange(0, 4)) for _ in range(30)]\n' +
+              '    key = (lambda x: x // 2) if trial % 2 else None\n' +
+              '    ok = ok and drive(my_groupby, list(data), ops, key) == drive(itertools.groupby, list(data), ops, key)\n' +
+              'result = ok'
+          ],
+          true
+        ],
+        [
+          [
+            'import random, itertools\n' +
+              'def drive(gb, data, ops, key):\n' +
+              '    out = []\n' +
+              '    outer = gb(data, key)\n' +
+              '    cur = []\n' +
+              '    for op in ops:\n' +
+              '        if op[0] == \'o\':\n' +
+              '            try:\n' +
+              '                k, g = next(outer)\n' +
+              '                cur.append(g)\n' +
+              '                out.append([\'k\', k])\n' +
+              '            except StopIteration:\n' +
+              '                out.append(\'end\')\n' +
+              '        elif cur:\n' +
+              '            g = cur[op[1] % len(cur)]\n' +
+              '            out.append([\'t\', [next(g, None) for _ in range(op[2])]])\n' +
+              '    return out\n' +
+              'rnd = random.Random(2)\n' +
+              'ok = True\n' +
+              'for trial in range(300):\n' +
+              '    data = [rnd.randrange(3) for _ in range(rnd.randrange(0, 40))]\n' +
+              '    data.sort(key=lambda x: x if rnd.random() < 0.7 else 0)\n' +
+              '    ops = [(\'o\',) if rnd.random() < 0.45 else (\'t\', rnd.randrange(5), rnd.randrange(0, 4)) for _ in range(30)]\n' +
+              '    key = (lambda x: x // 2) if trial % 2 else None\n' +
+              '    ok = ok and drive(my_groupby, list(data), ops, key) == drive(itertools.groupby, list(data), ops, key)\n' +
+              'result = ok'
+          ],
+          true
+        ],
+        [
+          [
+            'import random, itertools\n' +
+              'def drive(gb, data, ops, key):\n' +
+              '    out = []\n' +
+              '    outer = gb(data, key)\n' +
+              '    cur = []\n' +
+              '    for op in ops:\n' +
+              '        if op[0] == \'o\':\n' +
+              '            try:\n' +
+              '                k, g = next(outer)\n' +
+              '                cur.append(g)\n' +
+              '                out.append([\'k\', k])\n' +
+              '            except StopIteration:\n' +
+              '                out.append(\'end\')\n' +
+              '        elif cur:\n' +
+              '            g = cur[op[1] % len(cur)]\n' +
+              '            out.append([\'t\', [next(g, None) for _ in range(op[2])]])\n' +
+              '    return out\n' +
+              'rnd = random.Random(3)\n' +
+              'ok = True\n' +
+              'for trial in range(200):\n' +
+              '    data = [rnd.randrange(30) for _ in range(rnd.randrange(0, 40))]\n' +
+              '    data.sort(key=lambda x: x if rnd.random() < 0.7 else 0)\n' +
+              '    ops = [(\'o\',) if rnd.random() < 0.45 else (\'t\', rnd.randrange(5), rnd.randrange(0, 4)) for _ in range(30)]\n' +
+              '    key = (lambda x: x // 2) if trial % 2 else None\n' +
+              '    ok = ok and drive(my_groupby, list(data), ops, key) == drive(itertools.groupby, list(data), ops, key)\n' +
+              'result = ok'
+          ],
+          true
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Outer generator + inner generator sharing state through a closure. The group id implements invalidation; the skip loop handles partially consumed groups. Every item is read exactly once from the input, and memory is O(1).</p>`,
       code: { lang: 'python', run: true, code: `import itertools
@@ -2198,6 +4158,232 @@ except ValueError:
 print(s.data)` },
     mcq: { q: 'What should be recorded to roll back in O(changes)?', options: ['An undo log of (key, previous value or MISSING) per write, one log per open transaction', 'A full copy of the dict per write', 'Only the keys written, without old values', 'Nothing — re-read from disk'], answer: 0, explain: 'Replaying old values in reverse order restores the exact previous state. A MISSING sentinel distinguishes "key did not exist" (delete it) from "key was None".' },
     hints: [`<p>Hint 1: Keep a stack of undo logs, one per open transaction. Every write appends <code>(key, old_value_or_MISSING)</code> to the <b>innermost</b> log.</p>`, `<p>Hint 2: On error: pop the log and replay it <b>in reverse</b> (MISSING → delete the key, else restore the value), then re-raise.</p>`, `<p>Hint 3: On success of a nested transaction: pop its log and <b>append it to the parent's log</b> — so if the parent later fails, it can undo the child's changes too. On success of the outermost, just drop the log.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [
+          [
+            'store = TxDict({\'a\': 1})\n' +
+              'try:\n' +
+              '    with store.transaction():\n' +
+              '        store[\'b\'] = 2\n' +
+              '        try:\n' +
+              '            with store.transaction():\n' +
+              '                store[\'a\'] = 99\n' +
+              '                del store[\'b\']\n' +
+              '                raise ValueError(\'inner fails\')\n' +
+              '        except ValueError:\n' +
+              '            mid = [store[\'a\'], store[\'b\']]\n' +
+              '        with store.transaction():\n' +
+              '            store[\'c\'] = 3\n' +
+              '        before = sorted(store._data.items())\n' +
+              '        raise RuntimeError(\'outer fails\')\n' +
+              'except RuntimeError:\n' +
+              '    pass\n' +
+              'result = [mid, before, sorted(store._data.items())]'
+          ],
+          [[1, 2], [['a', 1], ['b', 2], ['c', 3]], [['a', 1]]]
+        ],
+        [
+          [
+            'store = TxDict({\'a\': 1})\n' +
+              'with store.transaction():\n' +
+              '    store[\'a\'] = 2\n' +
+              '    store[\'n\'] = 5\n' +
+              'result = [store[\'a\'], store[\'n\']]'
+          ],
+          [2, 5]
+        ],
+        [
+          [
+            'store = TxDict({\'a\': 1})\n' +
+              'try:\n' +
+              '    with store.transaction():\n' +
+              '        store[\'a\'] = 2\n' +
+              '        raise ValueError()\n' +
+              'except ValueError:\n' +
+              '    pass\n' +
+              'result = store[\'a\']'
+          ],
+          1
+        ],
+        [
+          [
+            'store = TxDict({\'a\': 1, \'b\': 2})\n' +
+              'try:\n' +
+              '    with store.transaction():\n' +
+              '        del store[\'a\']\n' +
+              '        raise ValueError()\n' +
+              'except ValueError:\n' +
+              '    pass\n' +
+              'result = [\'a\' in store, store[\'a\']]'
+          ],
+          [true, 1]
+        ],
+        [
+          [
+            'store = TxDict()\n' +
+              'try:\n' +
+              '    with store.transaction():\n' +
+              '        store[\'n\'] = 1\n' +
+              '        raise ValueError()\n' +
+              'except ValueError:\n' +
+              '    pass\n' +
+              'result = \'n\' in store'
+          ],
+          false
+        ],
+        [
+          [
+            'store = TxDict({\'a\': 1})\n' +
+              'try:\n' +
+              '    with store.transaction():\n' +
+              '        store[\'a\'] = 2\n' +
+              '        store[\'a\'] = 3\n' +
+              '        del store[\'a\']\n' +
+              '        store[\'a\'] = 4\n' +
+              '        raise ValueError()\n' +
+              'except ValueError:\n' +
+              '    pass\n' +
+              'result = store[\'a\']'
+          ],
+          1
+        ],
+        [
+          [
+            'store = TxDict({\'a\': 1})\n' +
+              'try:\n' +
+              '    with store.transaction():\n' +
+              '        raise KeyError(\'x\')\n' +
+              'except KeyError as e:\n' +
+              '    result = \'propagated\''
+          ],
+          'propagated'
+        ],
+        [
+          [
+            'store = TxDict()\n' +
+              'store[\'x\'] = 1\n' +
+              'result = [store[\'x\'], \'x\' in store, \'y\' in store]'
+          ],
+          [1, true, false]
+        ],
+        [['store = TxDict({\'a\': 1})\nresult = store.__delitem__(\'zz\')'], '!KeyError'],
+        [
+          [
+            'store = TxDict({\'a\': 1})\n' +
+              'with store.transaction() as s:\n' +
+              '    r = s is store\n' +
+              'result = r'
+          ],
+          true
+        ],
+        [['store = TxDict({\'a\': 1})\nresult = repr(store)'], 'TxDict({\'a\': 1})'],
+        [
+          [
+            'store = TxDict({\'k\': 0})\n' +
+              'try:\n' +
+              '    with store.transaction():\n' +
+              '        store[\'k\'] = 1\n' +
+              '        with store.transaction():\n' +
+              '            store[\'k\'] = 2\n' +
+              '            with store.transaction():\n' +
+              '                store[\'k\'] = 3\n' +
+              '            r1 = store[\'k\']\n' +
+              '            raise ValueError()\n' +
+              'except ValueError:\n' +
+              '    pass\n' +
+              'result = [r1, store[\'k\']]'
+          ],
+          [3, 0]
+        ],
+        [
+          [
+            'store = TxDict({\'k\': 0})\n' +
+              'with store.transaction():\n' +
+              '    store[\'k\'] = 1\n' +
+              '    try:\n' +
+              '        with store.transaction():\n' +
+              '            store[\'k\'] = 2\n' +
+              '            raise ValueError()\n' +
+              '    except ValueError:\n' +
+              '        pass\n' +
+              '    r = store[\'k\']\n' +
+              'result = [r, store[\'k\']]'
+          ],
+          [1, 1]
+        ],
+        [
+          [
+            'store = TxDict({i: i for i in range(10**6)})\n' +
+              'try:\n' +
+              '    with store.transaction():\n' +
+              '        for i in range(5):\n' +
+              '            store[i] = -1\n' +
+              '        store[\'new\'] = 1\n' +
+              '        raise ValueError()\n' +
+              'except ValueError:\n' +
+              '    pass\n' +
+              'result = [len(store._data), store[0], store[4], store[999999], \'new\' in store]'
+          ],
+          [1000000, 0, 4, 999999, false]
+        ],
+        [
+          [
+            'store = TxDict({\'a\': 1})\n' +
+              'for _ in range(3000):\n' +
+              '    try:\n' +
+              '        with store.transaction():\n' +
+              '            store[\'a\'] += 1\n' +
+              '            raise ValueError()\n' +
+              '    except ValueError:\n' +
+              '        pass\n' +
+              'result = store[\'a\']'
+          ],
+          1
+        ],
+        [
+          [
+            'store = TxDict()\n' +
+              'with store.transaction():\n' +
+              '    with store.transaction():\n' +
+              '        store[\'z\'] = 1\n' +
+              'try:\n' +
+              '    with store.transaction():\n' +
+              '        store[\'y\'] = 2\n' +
+              '        raise ValueError()\n' +
+              'except ValueError:\n' +
+              '    pass\n' +
+              'result = [store[\'z\'], \'y\' in store]'
+          ],
+          [1, false]
+        ],
+        [
+          [
+            'store = TxDict({\'a\': 1})\n' +
+              'try:\n' +
+              '    with store.transaction():\n' +
+              '        with store.transaction():\n' +
+              '            store[\'a\'] = 5\n' +
+              '        raise ValueError()\n' +
+              'except ValueError:\n' +
+              '    pass\n' +
+              'result = store[\'a\']'
+          ],
+          1
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Undo logging (the technique databases use for rollback and savepoints). Writes go through <code>__setitem__</code>/<code>__delitem__</code>, which record the previous state. The context manager owns one log level; success merges into the parent, failure replays in reverse.</p>`,
       code: { lang: 'python', run: true, code: `from contextlib import contextmanager
@@ -2290,6 +4476,53 @@ def window_max_brute(stream, k):
 print(list(window_max_brute([1, 3, -1, -3, 5, 3, 6, 7], 3)))` },
     mcq: { q: 'When a new value x arrives, which stored values can be thrown away forever?', options: ['All values ≤ x that arrived before x', 'All values ≥ x', 'Only the oldest value', 'None until the window slides'], answer: 0, explain: 'An older value that is ≤ x will leave the window before x does and can never beat x, so it can never be a maximum again. Removing them keeps the deque decreasing.' },
     hints: [`<p>Hint 1: Keep a deque of (index, value) whose values are strictly <b>decreasing</b> from front to back. The front is always the current window max.</p>`, `<p>Hint 2: For each new (i, x): pop from the back while the back value ≤ x; append (i, x); pop from the front if its index ≤ i − k (it slid out).</p>`, `<p>Hint 3: Yield <code>dq[0][1]</code> once i ≥ k − 1. Each element is appended once and popped at most once → amortised O(1). Use <code>enumerate(stream)</code> for indices so it works on any iterator.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['list(window_max([1, 3, -1, -3, 5, 3, 6, 7], 3))'], [3, 3, 5, 5, 6, 7]],
+        [['list(window_max([9, 8, 7], 1))'], [9, 8, 7]],
+        [['list(window_max([1], 1))'], [1]],
+        [['list(window_max([1, 2, 3], 3))'], [3]],
+        [['list(window_max([3, 2, 1], 3))'], [3]],
+        [['list(window_max([5, 5, 5, 5], 2))'], [5, 5, 5]],
+        [['list(window_max([-1, -2, -3], 2))'], [-1, -2]],
+        [['list(window_max([1], 2))'], []],
+        [['list(window_max([4, 2, 12, 3], 2))'], [4, 12, 12]],
+        [['list(window_max([7, 2, 4], 2))'], [7, 4]],
+        [['list(window_max([0, 0, 0], 3))'], [0]],
+        [['list(window_max([2, 1], 5))'], []],
+        [['list(islice(window_max(__import__(\'itertools\').count(), 3), 5))'], [2, 3, 4, 5, 6]],
+        [['list(window_max((x for x in [3, 1, 2]), 2))'], [3, 2]],
+        [
+          [
+            '(lambda d: list(window_max(iter(d), 50)) == [max(d[i:i + 50]) for i in range(len(d) - 49)])(list(islice(readings(), 2000)))'
+          ],
+          true
+        ],
+        [
+          [
+            '(lambda r: [len(r), r[0], r[-1], sum(r)])(list(window_max(((i * 7919) % 100003 for i in range(10**6)), 1000)))'
+          ],
+          [999001, 99984, 99910, 99851760537]
+        ],
+        [
+          ['(lambda r: [len(r), r[0], r[-1]])(list(window_max(range(10**6), 100000)))'],
+          [900001, 99999, 999999]
+        ],
+        [
+          ['(lambda r: [len(r), r[0], r[-1]])(list(window_max(range(10**6, 0, -1), 100000)))'],
+          [900001, 1000000, 100000]
+        ]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Monotonic deque inside a generator. The generator form means it plugs straight into a pipeline (<code>window_max(read_cpu(), 60)</code>) and works on infinite streams with O(k) memory.</p>`,
       code: { lang: 'python', run: true, code: `from collections import deque

@@ -212,6 +212,7 @@
         }` },
       mcq: { q: 'You must produce one result per column, but memory is row-major. What is the best plan?', options: ['Walk rows outside, columns inside, and accumulate into a sums array of size C', 'Transpose the matrix first, always', 'Use a std::map from column to sum', 'Parallelise the column loop; the cache does not matter'], answer: 0, explain: 'Keep the inner loop contiguous and move the "per column" bookkeeping into a small array (C × 8 bytes) that itself stays hot in cache. A transpose costs a full extra pass.' },
       hints: [`<p>Hint 1: The order you <b>produce</b> results does not have to match the order you <b>read</b> input. You can update all C partial sums while scanning one row.</p>`, `<p>Hint 2: Keep a <code>vector&lt;long long&gt; sum(C)</code>. For each row r, for each column c, <code>sum[c] += a[r*C + c]</code>. Both <code>a</code> and <code>sum</code> are now read sequentially.</p>`, `<p>Hint 3: Use <code>size_t</code> for <code>r*C</code> (10<sup>8</sup> fits in int, but bigger inputs overflow — signed overflow is UB). Use <code>long long</code> sums: 10<sup>4</sup> rows × 2·10<sup>9</sup> overflows <code>int</code>. Take a row pointer to help the compiler vectorise.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"5 7 9\n10\n7 8\n-4 6\n20000000000000\n3000 0"}]},
       solution: {
         approach: `<p><b>Loop interchange.</b> Scan the matrix in memory order (row outer, column inner) and add each element into <code>sum[c]</code>. Every cache line of <code>a</code> is loaded once and fully used; the <code>sum</code> array (C × 8 bytes = 80 KB at most) stays in L1/L2. The inner loop is "add vector to vector", which the compiler auto-vectorises with SIMD at <code>-O2</code>/<code>-O3</code>.</p>`,
         code: R`
@@ -231,6 +232,21 @@
                                     4, 5, 6};
               for (long long s : colSums(a, 2, 3)) std::printf("%lld ", s);   // 5 7 9
               std::printf("\n");
+              for (long long s : colSums({1, 2, 3, 4}, 4, 1)) std::printf("%lld ", s);   // 10  (one column)
+              std::printf("\n");
+              for (long long s : colSums({7, 8}, 1, 2)) std::printf("%lld ", s);         // 7 8  (one row)
+              std::printf("\n");
+              for (long long s : colSums({-1, 2, -3, 4}, 2, 2)) std::printf("%lld ", s); // -4 6
+              std::printf("\n");
+              std::printf("%lld\n", colSums(std::vector<int>(10000, 2000000000), 10000, 1)[0]);   // 20000000000000 (needs 64 bits)
+              const int R = 3000, C = 3000;
+              std::vector<int> big(static_cast<size_t>(R) * C);
+              for (int r = 0; r < R; ++r)
+                  for (int c = 0; c < C; ++c) big[static_cast<size_t>(r) * C + c] = c;   // every column is constant
+              auto sums = colSums(big, R, C);
+              int bad = 0;
+              for (int c = 0; c < C; ++c) if (sums[c] != 1LL * R * c) ++bad;
+              std::printf("%zu %d\n", sums.size(), bad);                                 // 3000 0
           }`,
         dry: { head: ['step', 'r', 'c', 'byte offset read', 'sum after'], rows: [
           ['1', '0', '0', '0', '[1, 0, 0]'], ['2', '0', '1', '4 (same line)', '[1, 2, 0]'], ['3', '0', '2', '8 (same line)', '[1, 2, 3]'],
@@ -435,6 +451,7 @@
         }` },
       mcq: { q: 'Which single rule removes almost all padding from a struct of scalar members?', options: ['Declare members from largest alignment to smallest', 'Declare members alphabetically', 'Put all chars first', 'Add #pragma pack(1)'], answer: 0, explain: 'Descending alignment means every member starts on a boundary that is already a multiple of the alignments of all later (smaller) members, so only tail padding can remain. pack(1) removes padding too, but makes access misaligned and slower.' },
       hints: [`<p>Hint 1: Walk the members keeping a running offset. Before each member, round the offset up to a multiple of its alignment; after it, add its size.</p>`, `<p>Hint 2: Do not forget the end: the struct's alignment is the largest member alignment (8 here), and sizeof is rounded up to it.</p>`, `<p>Hint 3: For the reorder, list members by alignment 8, 4, 2, 1, 1. Then write <code>static_assert(sizeof(Order) == 32)</code>, <code>static_assert(offsetof(Order, qty) == 20)</code> and <code>static_assert(sizeof(Order2) == 16)</code> — if your arithmetic is wrong, the build fails.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"old 1600 MB, new 800 MB\n32 16 8 8 12 14 15"}]},
       solution: {
         approach: `<p>Compute the layout with the three rules, then sort members by descending alignment. Both results are locked in with compile-time checks so a future edit that re-introduces padding breaks the build instead of silently doubling memory.</p>`,
         code: R`
@@ -450,9 +467,15 @@
           static_assert(sizeof(Order)  == 32);           // 26 rounded up to a multiple of 8
           static_assert(sizeof(Order2) == 16);           // 8+4+2+1+1, no padding at all
 
+          static_assert(offsetof(Order2, qty) == 8 && offsetof(Order2, venue) == 12);
+          static_assert(offsetof(Order2, side) == 14 && offsetof(Order2, type) == 15);
+          static_assert(alignof(Order) == 8 && alignof(Order2) == 8);
+
           int main() {
               const double millions = 50;
               std::printf("old %.0f MB, new %.0f MB\n", millions * sizeof(Order), millions * sizeof(Order2));
+              std::printf("%zu %zu %zu %zu %zu %zu %zu\n", sizeof(Order), sizeof(Order2), alignof(Order),
+                          offsetof(Order2, qty), offsetof(Order2, venue), offsetof(Order2, side), offsetof(Order2, type));   // 32 16 8 8 12 14 15
           }`,
         dry: { head: ['member', 'offset before', 'align', 'padding', 'placed at', 'offset after'], rows: [
           ['char side', '0', '1', '0', '0', '1'], ['double price', '1', '8', '<span class="c-r">7</span>', '8', '16'], ['char type', '16', '1', '0', '16', '17'],
@@ -626,9 +649,11 @@
         }` },
       mcq: { q: 'The comparison <code>x &gt;= T</code> is random on real data. What is the most robust fix?', options: ['Add the comparison result (0 or 1) to the count — no branch at all', 'Mark the branch [[likely]]', 'Sort the data first, every time', 'Use a std::map to count'], answer: 0, explain: 'A bool converts to 0/1, so count += (x >= T) does the same work with setcc/SIMD instructions and has no branch to mispredict. [[likely]] only changes code layout; sorting costs O(N log N).' },
       hints: [`<p>Hint 1: The comparison already produces a 0 or 1. You do not need to <b>jump</b> on it — you can <b>add</b> it.</p>`, `<p>Hint 2: <code>count += (x &gt;= T);</code> becomes <code>setge</code>/<code>adc</code> in scalar code and a packed compare + subtract (the compare gives −1 for true) in SIMD code: 8 ints per instruction with AVX2.</p>`, `<p>Hint 3: Use <code>long long</code> for the count (N up to 10<sup>8</sup> fits in int, but be safe), iterate with a raw pointer or range-for, compile with <code>-O2 -march=native</code>, and verify with <code>perf stat -e branch-misses</code> that misses are ~0 and timing is identical for sorted and shuffled input.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"2\n0\n3 0\n3\n3 1\n5000000\n500000"}]},
       solution: {
         approach: `<p>Replace the control dependency (a jump) with a data dependency (an add of a boolean). The loop body becomes straight-line code that the predictor never has to guess and the vectoriser can process many elements per instruction. Performance is now independent of the data order.</p>`,
         code: R`
+          #include <climits>
           #include <cstdio>
           #include <vector>
           long long countBig(const std::vector<int>& v, int T) {
@@ -640,6 +665,16 @@
           int main() {
               std::vector<int> v = {200, 15, 130, 90};
               std::printf("%lld\n", countBig(v, 128));   // 2
+              std::printf("%lld\n", countBig({}, 0));                              // 0
+              std::printf("%lld %lld\n", countBig({5, 5, 5}, 5), countBig({5, 5, 5}, 6));   // 3 0
+              std::printf("%lld\n", countBig({-5, -1, 0, 3}, -1));                 // 3
+              std::printf("%lld %lld\n", countBig({INT_MIN, INT_MAX, 0}, INT_MIN), countBig({INT_MIN, INT_MAX, 0}, INT_MAX));   // 3 1
+              std::vector<int> alt(10000000);
+              for (size_t i = 0; i < alt.size(); ++i) alt[i] = i % 2 ? 200 : 15;
+              std::printf("%lld\n", countBig(alt, 128));                           // 5000000
+              std::vector<int> up(1000000);
+              for (int i = 0; i < 1000000; ++i) up[i] = i + 1;
+              std::printf("%lld\n", countBig(up, 500001));                         // 500000
           }`,
         dry: { head: ['x', 'x >= 128', 'count before', 'count after', 'branch?'], rows: [
           ['200', '1', '0', '1', 'none'], ['15', '0', '1', '1', 'none'], ['130', '1', '1', '2', 'none'], ['90', '0', '2', '<b>2</b>', 'none — 0 mispredictions']] },
@@ -857,9 +892,11 @@
         }` },
       mcq: { q: 'Why is the -O2 timing near zero?', options: ['The calls have no observable effect, so the as-if rule lets the compiler delete them', 'The CPU caches the function result', 'steady_clock is broken at -O2', 'The hash function is too simple to measure'], answer: 0, explain: 'Nothing observable depends on h, and mix() is pure and visible, so removing the loop does not change the program\'s observable behaviour. The fix is to make the results observable.' },
       hints: [`<p>Hint 1: The compiler is allowed to remove anything whose result nobody can observe. Make each call's result matter.</p>`, `<p>Hint 2: Combine results into a checksum (<code>acc ^= mix(i)</code> or <code>acc += …</code>) and print it at the end. Feed inputs that depend on something the compiler cannot know (e.g. <code>argc</code>, or a value passed through an optimisation barrier) so the loop cannot be folded at compile time.</p>`, `<p>Hint 3: An inline-asm barrier <code>asm volatile("" : : "r,m"(v) : "memory")</code> (what <code>benchmark::DoNotOptimize</code> does) marks a value as used without adding real work. Also: warm up, repeat several runs, report the median, and pin the CPU frequency if you can.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"0\n","stdout":"checksum=0"},{"stdin":"1\n","stdout":"checksum=12994781566227106604"},{"stdin":"2\n","stdout":"checksum=10297927895968139467"},{"stdin":"10\n","stdout":"checksum=4259132847451516404"},{"stdin":"1000\n","stdout":"checksum=9163595225118762675"},{"stdin":"100000\n","stdout":"checksum=10925438547154730353"}]},
       solution: {
         approach: `<p>Make every result observable with a cheap combining operation (XOR into an accumulator, printed at the end), start from an input the compiler cannot constant-fold, and keep a barrier for values you cannot print. The measured time now includes the real hash work; the XOR adds well under 1 cycle per call and runs in parallel with the next hash.</p>`,
         code: R`
+          #include <iostream>
           #include <chrono>
           #include <cstdint>
           #include <cstdio>
@@ -872,15 +909,16 @@
               return x ^ (x >> 33);
           }
           int main(int argc, char**) {
-              const std::uint64_t N = 100'000'000;
+              std::uint64_t N = 100'000'000;
+              if (!(std::cin >> N)) N = 100'000'000;               // optional: how many calls to time
               std::uint64_t seed = static_cast<std::uint64_t>(argc);   // unknown at compile time
               std::uint64_t acc = 0;
               auto t0 = std::chrono::steady_clock::now();
               for (std::uint64_t i = 0; i < N; ++i) acc ^= mix(i + seed);   // every result is used
               auto t1 = std::chrono::steady_clock::now();
               doNotOptimize(acc);
-              std::printf("checksum=%llu  %.2f ns/call\n", static_cast<unsigned long long>(acc),
-                          std::chrono::duration<double, std::nano>(t1 - t0).count() / N);
+              std::printf("checksum=%llu\n", static_cast<unsigned long long>(acc));
+              std::fprintf(stderr, "%.2f ns/call\n", std::chrono::duration<double, std::nano>(t1 - t0).count() / N);
           }`,
         dry: { head: ['version', 'what the optimizer sees', 'what it does', 'measured'], rows: [
           ['h = mix(i), h unused', 'pure calls, result dead', 'deletes loop', '<span class="c-r">~0 ns (fake)</span>'],
@@ -1134,6 +1172,7 @@
         }` },
       mcq: { q: 'Which approach is guaranteed free of UB for all 32-bit inputs?', options: ['Compute in long long (64-bit) and range-check before narrowing', 'Compute in int and compare with INT_MAX afterwards', 'Compute in unsigned and cast back to int without checking', 'Use volatile int for the result'], answer: 0, explain: 'A 32×32 product always fits in 64 bits, so the multiplication itself cannot overflow; then a range check decides whether it fits in int. The other options either overflow first or silently produce wrong values.' },
       hints: [`<p>Hint 1: The danger is performing the overflowing operation at all. Find a type in which the operation <b>cannot</b> overflow, or check the operands <b>before</b> multiplying.</p>`, `<p>Hint 2: |a|, |b| ≤ 2<sup>31</sup>, so |a·b| ≤ 2<sup>62</sup>, which fits in <code>long long</code>. Multiply as <code>static_cast&lt;long long&gt;(a) * b</code>, then compare with <code>INT_MIN</code>/<code>INT_MAX</code>.</p>`, `<p>Hint 3: For 64-bit inputs there is no wider standard type: use <code>__builtin_mul_overflow</code> (GCC/Clang), <code>__int128</code>, or divide-before-multiply checks (<code>a &gt; INT64_MAX / b</code> with careful sign cases). Test INT_MIN×−1, INT_MAX×1, 0×anything, −1×INT_MIN.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"0\n1 -2147395600\n0\n1 0\n1 2147483647\n1 -2147483647\n1 -2147483648\n0 0\n1 0\n0 0\n1 -2147483648\n1 2147395600\n0 0\n0 0\n0 0\n1 2147483646\n0 0\n1 -2147483648\n1 -63\n1 9223372030926249001\n0"}]},
       solution: {
         approach: `<p>Widen, compute, range-check, narrow. The 64-bit product of two 32-bit values is exact, so no step can overflow; the narrowing cast happens only when the value is known to fit. The builtin version is the idiomatic production choice and also works for 64-bit types.</p>`,
         code: R`
@@ -1151,8 +1190,21 @@
           int main() {
               int r = 0;
               std::printf("%d\n", checkedMul(46341, 46341, r));            // 0 (overflow)
-              std::printf("%d %d\n", checkedMul(-46340, 46340, r), r);     // 1 -2147395600
+              bool ok = checkedMul(-46340, 46340, r);                      // separate statement: argument order is unspecified
+              std::printf("%d %d\n", ok, r);                               // 1 -2147395600
               std::printf("%d\n", checkedMul(INT_MIN, -1, r));             // 0
+              const int cases[][2] = {{0, 0}, {INT_MAX, 1}, {INT_MAX, -1}, {INT_MIN, 1}, {-1, INT_MIN}, {INT_MIN, 0},
+                                      {65536, 32768}, {65536, -32768}, {46340, 46340}, {-46341, 46341}, {INT_MAX, INT_MAX},
+                                      {INT_MIN, INT_MIN}, {2, 1073741823}, {2, 1073741824}, {-2, 1073741824}, {7, -9}};
+              for (auto& c : cases) {
+                  r = 12345;
+                  bool good = checkedMul(c[0], c[1], r);
+                  std::printf("%d %d\n", good, good ? r : 0);
+              }
+              long long w = 0;
+              bool b1 = checkedMulBuiltin(3037000499LL, 3037000499LL, w);
+              std::printf("%d %lld\n", b1, b1 ? w : 0LL);                  // 1 9223372030926249001
+              std::printf("%d\n", checkedMulBuiltin(3037000500LL, 3037000500LL, w));   // 0
           }`,
         dry: { head: ['a', 'b', 'p (64-bit)', 'fits in int?', 'returns'], rows: [
           ['46341', '46341', '2147488281', 'no (&gt; 2147483647)', '<span class="c-r">false</span>'],
@@ -1374,6 +1426,7 @@ allocated by thread T0 here: ... prefix.cpp:3</pre><p>Explain each line of the r
         }` },
       mcq: { q: '"0 bytes to the right of 32-byte region" for a vector&lt;long long&gt; of size 4 means…', options: ['The bad access started exactly at index 4, one past the last element', 'The vector was 0 bytes long', 'The access was 32 elements too far', 'The memory was freed'], answer: 0, explain: '32 bytes = 4 × 8. An access starting 0 bytes after the end of the region is the element at index 4 — the classic off-by-one.' },
       hints: [`<p>Hint 1: Decode the report: region size ÷ element size = number of elements; "N bytes to the right" ÷ element size = how many elements past the end.</p>`, `<p>Hint 2: <code>out</code> has n+1 slots (indices 0..n). The loop writes <code>out[i+1]</code>, so <code>i</code> may go only up to n−1. The loop condition must be <code>i &lt; n</code>.</p>`, `<p>Hint 3: Better still, remove index arithmetic: use <code>std::partial_sum</code> or <code>std::inclusive_scan</code> into <code>out.begin() + 1</code>. Test n = 0 (out = {0}), n = 1, and run the tests under ASan with <code>-D_GLIBCXX_ASSERTIONS</code> too.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"0 3 4 8\n0\n0 5\n0 -1 -3 0\n0 2000000000 4000000000 6000000000\n1000001 1000000\n1"}]},
       solution: {
         approach: `<p>Fix the loop bound to <code>i &lt; n</code> so the highest write is <code>out[n]</code> and the highest read is <code>a[n-1]</code>. Alternatively let a standard algorithm do the iteration. Keep the ASan job in CI so the regression is caught automatically.</p>`,
         code: R`
@@ -1395,6 +1448,18 @@ allocated by thread T0 here: ... prefix.cpp:3</pre><p>Explain each line of the r
           int main() {
               for (long long x : prefixSums({3, 1, 4})) std::printf("%lld ", x);   // 0 3 4 8
               std::printf("\n");
+              for (long long x : prefixSums({})) std::printf("%lld ", x);          // 0   (n = 0: one element, no overflow)
+              std::printf("\n");
+              for (long long x : prefixSums({5})) std::printf("%lld ", x);         // 0 5
+              std::printf("\n");
+              for (long long x : prefixSums({-1, -2, 3})) std::printf("%lld ", x); // 0 -1 -3 0
+              std::printf("\n");
+              for (long long x : prefixSums({2000000000, 2000000000, 2000000000})) std::printf("%lld ", x);   // 0 2000000000 4000000000 6000000000
+              std::printf("\n");
+              auto big = prefixSums(std::vector<int>(1000000, 1));
+              std::printf("%zu %lld\n", big.size(), big.back());                   // 1000001 1000000
+              std::vector<int> ten = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+              std::printf("%d\n", prefixSums(ten) == prefixSumsStd(ten));          // 1
           }`,
         dry: { head: ['i', 'reads a[i]', 'writes out[i+1]', 'in bounds?'], rows: [
           ['0', 'a[0] = 3', 'out[1] = 3', 'yes'], ['1', 'a[1] = 1', 'out[2] = 4', 'yes'], ['2', 'a[2] = 4', 'out[3] = 8', 'yes'],
@@ -1596,6 +1661,7 @@ hyperfine --warmup 3 './app input.txt'`, title: 'perf and friends: the command-l
         }` },
       mcq: { q: 'Part X is 15% of the run. You make it 20× faster. Overall speed-up is about…', options: ['1.17×', '20×', '3×', '1.5×'], answer: 0, explain: '1 / (0.85 + 0.15/20) = 1 / 0.8575 ≈ 1.17×. The untouched 85% dominates.' },
       hints: [`<p>Hint 1: New time = untouched parts + improved part / s. Overall speed-up = old time / new time.</p>`, `<p>Hint 2: In fractions: speed-up = 1 / ((1 − p) + p / s). Compute it for each option and sort descending.</p>`, `<p>Hint 3: Also compute "speed-up per day of effort" — engineering prioritisation is payoff ÷ cost. Remember the ceiling: even infinite speed-up of a part with fraction p gives at most 1/(1 − p).</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"A: computeScores 10x overall 1.37x new time 73.00 s gain/day 0.037\nB: parseInput 2x overall 1.33x new time 75.00 s gain/day 0.167\nC: writeOutput 20x overall 1.17x new time 85.75 s gain/day 0.166\n0 options: 100.00 s, 1.00x\n2 options: 48.00 s, 2.08x\n3 options: 33.75 s, 2.96x\n1.00"}]},
       solution: {
         approach: `<p>Apply Amdahl's law per option, rank by overall speed-up, and (as a tie-breaker) by speed-up gained per day of effort. The math says A wins on absolute gain, B on gain per effort; C is a poor use of time despite its impressive local factor.</p>`,
         code: R`
@@ -1605,11 +1671,18 @@ hyperfine --warmup 3 './app input.txt'`, title: 'perf and friends: the command-l
           #include <vector>
           struct Option { std::string name; double fraction; double factor; double days; };
           double amdahl(double p, double s) { return 1.0 / ((1.0 - p) + p / s); }
+          double combined(const std::vector<Option>& chosen) {      // new total time (of 100 s) when several are applied
+              double t = 100.0;
+              for (const auto& o : chosen) t -= 100.0 * o.fraction * (1.0 - 1.0 / o.factor);
+              return t;
+          }
+
           int main() {
               std::vector<Option> opts = {
                   {"A: computeScores 10x", 0.30, 10.0, 10},
                   {"B: parseInput 2x",     0.50,  2.0,  2},
                   {"C: writeOutput 20x",   0.15, 20.0,  1}};
+              auto all = opts;
               std::sort(opts.begin(), opts.end(), [](const Option& a, const Option& b) {
                   return amdahl(a.fraction, a.factor) > amdahl(b.fraction, b.factor);
               });
@@ -1618,6 +1691,11 @@ hyperfine --warmup 3 './app input.txt'`, title: 'perf and friends: the command-l
                   std::printf("%-22s overall %.2fx  new time %.2f s  gain/day %.3f\n",
                               o.name.c_str(), s, 100.0 / s, (s - 1.0) / o.days);
               }
+              for (auto chosen : {std::vector<Option>{}, std::vector<Option>{all[0], all[1]}, all}) {
+                  double t = combined(chosen);
+                  std::printf("%zu options: %.2f s, %.2fx\n", chosen.size(), t, 100.0 / t);
+              }
+              std::printf("%.2f\n", amdahl(0.5, 1.0));                            // 1.00: a factor of 1 changes nothing
           }`,
         dry: { head: ['option', 'p', 's', '(1−p) + p/s', 'overall', 'gain per day'], rows: [
           ['A', '0.30', '10', '0.70 + 0.03 = 0.73', '<b>1.37×</b>', '0.037'],
@@ -1648,6 +1726,7 @@ hyperfine --warmup 3 './app input.txt'`, title: 'perf and friends: the command-l
       }` },
     mcq: { q: 'In <code>g[i][j]</code> (row-major), which index should the innermost loop vary?', options: ['j — the last index', 'i — the first index', 'It does not matter at -O2', 'Whichever has the larger bound'], answer: 0, explain: 'Consecutive j values are adjacent in memory. The compiler rarely interchanges loops for you (it must prove it is legal and profitable), so write the right order yourself.' },
     hints: [`<p>Hint 1: Draw the memory: row 0 then row 1 then row 2. Which loop walks along that line?</p>`, `<p>Hint 2: Each cache miss brings 16 ints. Row order uses all 16; column order uses 1 before moving on.</p>`, `<p>Hint 3: Write <code>for i: for j: s += g[i][j]</code>, accumulate in <code>long long</code>. Bonus: the compiler can vectorise the contiguous inner loop with SIMD.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"2048\n2098 1\n4194304\n0"}]},
     solution: {
       approach: `<p>Row-outer, column-inner traversal reads memory sequentially, so every cache line is used fully and the hardware prefetcher streams lines ahead of the loop. The inner loop is also contiguous, enabling SIMD.</p>`,
       code: R`
@@ -1660,9 +1739,22 @@ hyperfine --warmup 3 './app input.txt'`, title: 'perf and friends: the command-l
                     s += g[i][j];
             return s;
         }
+        long long sumB() {
+            long long s = 0;
+            for (int j = 0; j < 2048; ++j)        // column outside: 8 KB jumps
+                for (int i = 0; i < 2048; ++i)
+                    s += g[i][j];
+            return s;
+        }
         int main() {
             for (int i = 0; i < 2048; ++i) g[i][i] = 1;
             std::printf("%lld\n", sumA());        // 2048
+            g[0][2047] = 100; g[2047][0] = -50;
+            std::printf("%lld %d\n", sumA(), sumA() == sumB());   // 2098 1
+            for (auto& row : g) for (int& x : row) x = 1;
+            std::printf("%lld\n", sumA());        // 4194304
+            for (auto& row : g) for (int& x : row) x = 0;
+            std::printf("%lld\n", sumA());        // 0
         }`,
       dry: { head: ['access', 'address (bytes)', 'line', 'sumA result'], rows: [['g[0][0]', '0', 'L0', 'miss'], ['g[0][1]', '4', 'L0', 'hit'], ['g[0][15]', '60', 'L0', 'hit'], ['g[0][16]', '64', 'L1', 'miss (often prefetched)']] },
       complexity: `<p>O(N²) time for both; memory traffic N²/16 lines for sumA vs up to N² for sumB — typically 5–10× faster.</p>`,
@@ -1684,9 +1776,11 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
       constexpr int naiveP3 = 3 + 2 + 8;   // 13, real answer 16` },
     mcq: { q: 'Why does P1 end with 7 bytes of tail padding?', options: ['So that in an array P1 x[2], x[1].b is 8-byte aligned', 'Because bool must be 8 bytes', 'Because the compiler rounds every struct to 8', 'For the vtable pointer'], answer: 0, explain: 'sizeof must be a multiple of the struct alignment (8, from long long) so every array element is properly aligned.' },
     hints: [`<p>Hint 1: Track an offset. Before each member round it up to the member's alignment.</p>`, `<p>Hint 2: For arrays like <code>char tag[3]</code>, size is 3 and alignment is that of char (1).</p>`, `<p>Hint 3: Finish by rounding the total up to the largest member alignment. Then write <code>static_assert(sizeof(P1) == 24)</code> etc. — the compiler will confirm.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"24 8 16 16\n8 4 8"}]},
     solution: {
       approach: `<p>Apply the three layout rules member by member, then lock the answers in with compile-time checks (they are evaluated by the compiler, so a wrong answer fails the build).</p>`,
       code: R`
+        #include <cstdio>
         #include <cstddef>
         struct P1 { bool a; long long b; bool c; };
         struct P2 { short s; char c; int i; };
@@ -1696,7 +1790,13 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
         static_assert(offsetof(P3, s) == 4 && offsetof(P3, d) == 8 && sizeof(P3) == 16);
         struct P1Better { long long b; bool a; bool c; };      // reordered: 8 + 1 + 1 + 6 tail = 16
         static_assert(sizeof(P1Better) == 16);
-        int main() { return 0; }`,
+        static_assert(offsetof(P1Better, a) == 8 && offsetof(P1Better, c) == 9);
+        static_assert(alignof(P1) == 8 && alignof(P2) == 4 && alignof(P3) == 8);
+        int main() {
+            std::printf("%zu %zu %zu %zu\n", sizeof(P1), sizeof(P2), sizeof(P3), sizeof(P1Better));   // 24 8 16 16
+            std::printf("%zu %zu %zu\n", alignof(P1), alignof(P2), alignof(P3));                       // 8 4 8
+            return 0;
+        }`,
       dry: { head: ['struct', 'layout', 'data bytes', 'sizeof'], rows: [['P1', 'a | 7 pad | b×8 | c | 7 tail', '10', '24'], ['P2', 's s | c | 1 pad | i×4', '7', '8'], ['P3', 'tag×3 | 1 pad | s s | 2 pad | d×8', '13', '16']] },
       complexity: `<p>O(members) by hand. P1 wastes 58% of its bytes; reordering it saves 8 bytes per object.</p>`,
       followUps: ['What is sizeof(P1) on 32-bit x86 Linux (long long aligned to 4 inside structs)?', 'How does <code>alignas(16)</code> on P2 change its size?']
@@ -1722,9 +1822,11 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
       }                                    // UB 2: no return on this path` },
     mcq: { q: 'Which compiler flag set would have warned about two of these bugs?', options: ['-Wall (includes -Wreturn-type and -Wuninitialized/-Wmaybe-uninitialized)', '-O0', '-std=c++20', '-fno-exceptions'], answer: 0, explain: '-Wall enables both warnings (uninitialised detection is better with optimisation on). Many teams add -Werror=return-type so the missing return is a hard error.' },
     hints: [`<p>Hint 1: Look for: values read before written, paths that end without <code>return</code>, arithmetic that can exceed the type.</p>`, `<p>Hint 2: Initialise at declaration; make every path return; widen the accumulator to <code>long long</code>.</p>`, `<p>Hint 3: Decide what "sum" means when it does not fit in the return type — return <code>long long</code>, or clamp. Test: empty, all negative, huge values.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"7 0 4000000000\n0 15\n2000000000000000\n2147483647 0"}]},
     solution: {
       approach: `<p>Initialise the accumulator, use a wide type so 10<sup>5</sup> values up to 2·10<sup>9</sup> cannot overflow, and return on every path (here a single return at the end makes that obvious).</p>`,
       code: R`
+        #include <climits>
         #include <cstdio>
         #include <vector>
         long long sumPositive(const std::vector<int>& v) {
@@ -1736,6 +1838,9 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
         int main() {
             std::printf("%lld %lld %lld\n", sumPositive({3, -1, 4}), sumPositive({-5}),
                         sumPositive({2000000000, 2000000000}));   // 7 0 4000000000
+            std::printf("%lld %lld\n", sumPositive({}), sumPositive({1, 2, 3, 4, 5}));   // 0 15
+            std::printf("%lld\n", sumPositive(std::vector<int>(1000000, 2000000000)));   // 2000000000000000
+            std::printf("%lld %lld\n", sumPositive({INT_MIN, INT_MAX, 0}), sumPositive({0, 0}));   // 2147483647 0
         }`,
       complexity: `<p>O(n) time, O(1) space.</p>`,
       followUps: ['What would C++26 "erroneous behaviour" change about bug 1?', 'Why is falling off the end of <code>main</code> fine but not of other functions?']
@@ -1757,16 +1862,32 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
       }` },
     mcq: { q: 'What is the cost of returning <code>std::string</code> by value here?', options: ['Essentially none: NRVO constructs it directly in the caller (or it is moved)', 'A full copy of the characters every time', 'A heap allocation per caller per byte', 'It is UB too'], answer: 0, explain: 'Named return value optimisation is applied by all major compilers; if not, the string is moved (3 pointer copies). No characters are copied.' },
     hints: [`<p>Hint 1: Who owns the string after the function returns? A reference never owns anything.</p>`, `<p>Hint 2: Return by value. C++ guarantees elision for prvalues and compilers apply NRVO to named locals; otherwise a move happens.</p>`, `<p>Hint 3: Watch the same bug in disguise: returning <code>std::string_view</code> or <code>const char*</code> (<code>msg.c_str()</code>) into a local string.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"Hello, Ana\n[Hello, ]\n10007\n1"}]},
     solution: {
       approach: `<p>Return the string by value. Ownership transfers to the caller, NRVO makes it free, and there is no shared state.</p>`,
       code: R`
+        #include <thread>
+        #include <vector>
         #include <iostream>
         #include <string>
         std::string greet(const std::string& name) {
             std::string msg = "Hello, " + name;
             return msg;                       // NRVO or move: no character copy
         }
-        int main() { std::cout << greet("Ana") << "\n"; }`,
+        int main() {
+            std::cout << greet("Ana") << "\n";
+            std::cout << '[' << greet("") << "]\n";                       // [Hello, ]
+            std::cout << greet(std::string(10000, 'x')).size() << "\n";   // 10007
+            std::vector<std::string> res(8);
+            {
+                std::vector<std::thread> ts;
+                for (int t = 0; t < 8; ++t) ts.emplace_back([&res, t] { res[t] = greet("n" + std::to_string(t)); });
+                for (auto& th : ts) th.join();
+            }
+            bool ok = true;
+            for (int t = 0; t < 8; ++t) ok = ok && res[t] == "Hello, n" + std::to_string(t);
+            std::cout << ok << "\n";                                      // 1
+        }`,
       complexity: `<p>O(length) to build the string, O(1) to return it.</p>`,
       followUps: ['Is <code>const std::string&amp; r = greet("x");</code> safe with the fixed version? (lifetime extension)', 'Why is <code>auto&amp; s = std::max(std::string("a"), std::string("b"));</code> dangling?']
     }
@@ -1795,6 +1916,7 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
       }` },
     mcq: { q: 'Under the given constraints, the minimum size equals…', options: ['sum of sizes rounded up to the maximum alignment', 'sum of sizes', 'number of members × max alignment', 'declared size minus the largest padding gap'], answer: 0, explain: 'Descending-alignment order has zero internal padding, and sizeof must be a multiple of the max alignment, so roundUp(sum, maxAlign) is both achievable and a lower bound.' },
     hints: [`<p>Hint 1: Simulate the declared order: <code>off = roundUp(off, align); off += size;</code> then round the end up to the max alignment.</p>`, `<p>Hint 2: For the optimum, think about what padding is <i>unavoidable</i>. Is there an order with no internal padding at all?</p>`, `<p>Hint 3: roundUp(x, a) = (x + a − 1) / a · a (a is a power of two, so also <code>(x + a - 1) &amp; ~(a - 1)</code>). Use <code>long long</code> for sums of 10<sup>5</sup> × 1024.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"32 16"},{"stdin":"1\n1 1\n","stdout":"1 1"},{"stdin":"2\n1 1\n8 8\n","stdout":"16 16"},{"stdin":"2\n4 4\n1 1\n","stdout":"8 8"},{"stdin":"3\n16 16\n1 1\n16 16\n","stdout":"48 48"},{"stdin":"2\n1024 1\n8 8\n","stdout":"1032 1032"},{"stdin":"4\n2 2\n1 1\n2 2\n1 1\n","stdout":"8 6"},{"stdin":"3\n3 1\n4 4\n3 1\n","stdout":"12 12"},{"stdin":"5\n1 1\n8 8\n1 1\n4 4\n2 2\n","stdout":"32 16"},{"stdin":{"$concat":["100000\n",{"$rep":"1 1\n8 8\n","n":50000}]},"stdout":"800000 450000"}]},
     solution: {
       approach: `<p>Declared size: one pass simulation. Optimal size: the lower bound roundUp(Σsize, maxAlign) is achieved by sorting by descending alignment, so no sort is even needed — just sum and round.</p>`,
       code: R`
@@ -1813,8 +1935,16 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
             return {roundUp(off, maxA), roundUp(sum, maxA)};   // {declared, optimal}
         }
         int main() {
-            auto [declared, optimal] = structSizes({{1,1},{8,8},{1,1},{4,4},{2,2}});
-            std::printf("%lld %lld\n", declared, optimal);   // 32 16
+            int n = 0;
+            std::vector<std::pair<int,int>> m;
+            if (std::scanf("%d", &n) == 1) {                    // members as "size align" lines (demo data when no input)
+                m.resize(n);
+                for (auto& [sz, al] : m) std::scanf("%d %d", &sz, &al);
+            } else {
+                m = {{1,1},{8,8},{1,1},{4,4},{2,2}};
+            }
+            auto [declared, optimal] = structSizes(m);
+            std::printf("%lld %lld\n", declared, optimal);   // 32 16 for the demo data
         }`,
       dry: { head: ['member (size,align)', 'off before', 'padded to', 'off after'], rows: [['(1,1)', '0', '0', '1'], ['(8,8)', '1', '8', '16'], ['(1,1)', '16', '16', '17'], ['(4,4)', '17', '20', '24'], ['(2,2)', '24', '24', '26 → tail → <b>32</b>']] },
       complexity: `<p>O(n) time, O(1) extra space.</p>`,
@@ -1832,6 +1962,7 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
       void onRequestPacked(int tid) { hitsPacked[tid].fetch_add(1, std::memory_order_relaxed); }` },
     mcq: { q: 'Which change removes false sharing here?', options: ['Pad/align each counter to its own cache line', 'Use memory_order_seq_cst', 'Mark the array volatile', 'Use int instead of long'], answer: 0, explain: 'The problem is spatial (same line), not ordering. Separate lines with alignas(64) or std::hardware_destructive_interference_size.' },
     hints: [`<p>Hint 1: Draw the 64-byte line and mark which thread writes which 8 bytes.</p>`, `<p>Hint 2: Wrap the atomic in a struct with <code>alignas(64)</code>; an array of those has stride 64.</p>`, `<p>Hint 3: <code>total()</code> just loads each slot with relaxed ordering and sums (an approximate snapshot is fine). Even better for pure counting: a thread-local plain <code>long</code> flushed periodically.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"4000000\n64 64\n640000 10000 0 1\n64"}]},
     solution: {
       approach: `<p>Give every slot its own cache line. The struct's alignment of 64 forces sizeof to 64, so array elements never share a line. Increments become uncontended L1 operations; the rare reader pays 8 cache misses.</p>`,
       code: R`
@@ -1856,6 +1987,16 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
                 pool.emplace_back([t] { for (int i = 0; i < 1'000'000; ++i) onRequest(t); });
             for (auto& th : pool) th.join();
             std::printf("%ld\n", total(4));        // 4000000
+            std::printf("%zu %zu\n", sizeof(PaddedCounter), alignof(PaddedCounter));   // 64 64
+            for (int t = 0; t < 64; ++t) hits[t].value.store(0);
+            pool.clear();
+            for (int t = 0; t < 64; ++t)
+                pool.emplace_back([t] { for (int i = 0; i < 10000; ++i) onRequest(t); });
+            for (auto& th : pool) th.join();
+            bool each = true;
+            for (int t = 0; t < 64; ++t) each = each && hits[t].value.load() == 10000;
+            std::printf("%ld %ld %ld %d\n", total(64), total(1), total(0), each);      // 640000 10000 0 1
+            std::printf("%d\n", static_cast<int>(reinterpret_cast<char*>(&hits[1]) - reinterpret_cast<char*>(&hits[0])));   // 64
         }`,
       complexity: `<p>Increment O(1) uncontended; total O(threads). Memory 64 B per slot instead of 8 B — a fine trade for hot counters.</p>`,
       followUps: ['How would you detect false sharing in an existing binary? (<code>perf c2c</code>)', 'Why might 128-byte alignment be better on some Intel CPUs (adjacent-line prefetcher)?']
@@ -1879,6 +2020,7 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
       }` },
     mcq: { q: 'Why does doing the abs trick in <code>unsigned</code> fix the UB?', options: ['Unsigned arithmetic wraps modulo 2^32 by definition', 'Unsigned values cannot be negative so the trick is not needed', 'The compiler ignores overflow in unsigned', 'It does not fix it'], answer: 0, explain: 'Unsigned overflow is defined wrap-around, so (u ^ m) - m with m = 0xFFFFFFFF yields 2^31 for INT_MIN exactly.' },
     hints: [`<p>Hint 1: <code>std::min</code>/<code>std::max</code> on ints compile to <code>cmov</code> (x86) or <code>csel</code>/<code>smin</code> (ARM) — no jumps.</p>`, `<p>Hint 2: For abs, convert to unsigned first, build the mask from the sign (<code>0u - (x &lt; 0)</code>), then apply <code>(u ^ m) - m</code> in unsigned.</p>`, `<p>Hint 3: Verify on Compiler Explorer that there is no <code>jl</code>/<code>jg</code> in the output, and test INT_MIN, INT_MAX, 0, −1, lo == hi.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"10 0 7 2147483648\n5 0 10 -2147483648 2147483647 -5 5 3\n0 1 1 2147483647 2147483647 123456"}]},
     solution: {
       approach: `<p>Clamp = min(max(x, lo), hi) — both are conditional-select instructions. Abs = conditional negate done in unsigned arithmetic, where wrap-around is defined, so INT_MIN maps to 2<sup>31</sup> correctly.</p>`,
       code: R`
@@ -1896,6 +2038,11 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
         int main() {
             std::printf("%d %d %u %u\n", clampI(15, 0, 10), clampI(-3, 0, 10), absU(-7), absU(INT_MIN));
             // 10 0 7 2147483648
+            std::printf("%d %d %d %d %d %d %d %d\n", clampI(5, 0, 10), clampI(0, 0, 10), clampI(10, 0, 10), clampI(INT_MIN, INT_MIN, INT_MAX),
+                        clampI(INT_MAX, INT_MIN, INT_MAX), clampI(INT_MIN, -5, 5), clampI(INT_MAX, -5, 5), clampI(3, 3, 3));
+            // 5 0 10 -2147483648 2147483647 -5 5 3
+            std::printf("%u %u %u %u %u %u\n", absU(0), absU(1), absU(-1), absU(INT_MAX), absU(INT_MIN + 1), absU(-123456));
+            // 0 1 1 2147483647 2147483647 123456
         }`,
       dry: { head: ['x', 'u', 'm', '(u ^ m) - m'], rows: [['-7', '0xFFFFFFF9', '0xFFFFFFFF', '0x00000006 + 1 = 7'], ['5', '5', '0', '5'], ['INT_MIN', '0x80000000', '0xFFFFFFFF', '0x7FFFFFFF + 1 = 2147483648']] },
       complexity: `<p>O(1), 2–4 instructions, zero branches.</p>`,
@@ -1915,6 +2062,7 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
       }` },
     mcq: { q: 'What is the main reason SoA is faster for this loop?', options: ['It streams only the fields used, densely, enabling full-width SIMD loads', 'It uses fewer instructions per particle in theory', 'Struct member access is slow in C++', 'std::vector of structs is not contiguous'], answer: 0, explain: 'A vector of structs is contiguous, but each line mixes used and unused fields. SoA makes each needed field a dense stream — less traffic and natural SIMD.' },
     hints: [`<p>Hint 1: Group data by how it is <b>accessed</b>, not by what object it "belongs" to.</p>`, `<p>Hint 2: <code>struct Particles { std::vector&lt;float&gt; x, y, z, vx, vy, vz; std::vector&lt;int&gt; id; std::vector&lt;float&gt; mass; };</code> — keep all vectors the same length.</p>`, `<p>Hint 3: Write three simple loops (or one loop over i updating x, y, z) — both vectorise. Provide an accessor that returns a lightweight proxy if other code wants "particle i" semantics.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"0.5 3.5\n2.5 1.5\n1.0 4.0\n1.0 3\n9.0 9 1.0\n1000000 0"}]},
     solution: {
       approach: `<p>Struct-of-Arrays: one dense vector per field. The update streams exactly the six arrays it needs; each inner loop is a textbook vectorisable loop (8 floats per AVX2 instruction). Cold fields live in their own arrays and never pollute the cache during the update.</p>`,
       code: R`
@@ -1941,6 +2089,22 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
             for (int i = 0; i < 4; ++i) ps.add(static_cast<float>(i), 1.0f, i);
             ps.update(0.5f);
             std::printf("%.1f %.1f\n", ps.x[0], ps.x[3]);   // 0.5 3.5
+            std::printf("%.1f %.1f\n", ps.y[2], ps.z[1]);   // 2.5 1.5
+            ps.update(0.5f);
+            std::printf("%.1f %.1f\n", ps.x[0], ps.x[3]);   // 1.0 4.0
+            ps.update(0.0f);                                 // dt = 0 changes nothing
+            std::printf("%.1f %d\n", ps.x[0], ps.id[3]);     // 1.0 3
+            Particles q;
+            q.add(10.0f, -2.0f, 9);
+            q.update(0.5f);
+            std::printf("%.1f %d %.1f\n", q.x[0], q.id[0], q.mass[0]);   // 9.0 9 1.0
+            Particles big;
+            for (int i = 0; i < 1000000; ++i) big.add(static_cast<float>(i % 1000), 2.0f, i);
+            big.update(0.25f);
+            int bad = 0;
+            for (int i = 0; i < 1000000; ++i)
+                if (big.x[i] != static_cast<float>(i % 1000) + 0.5f || big.y[i] != big.x[i] || big.z[i] != big.x[i] || big.id[i] != i) ++bad;
+            std::printf("%zu %d\n", big.x.size(), bad);     // 1000000 0
         }`,
       complexity: `<p>O(n) per frame either way; memory traffic drops from 32 to 24 bytes per particle and SIMD width is fully used — typically 1.5–3× faster when memory-bound, more when the AoS loop failed to vectorise.</p>`,
       followUps: ['What is AoSoA (array of small SoA blocks) and why do some engines prefer it?', 'When is AoS the better choice? (random access to whole objects)']
@@ -1965,9 +2129,11 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
       }` },
     mcq: { q: 'What is the C++20 way to reinterpret the bits of a float as a 32-bit integer?', options: ['std::bit_cast&lt;std::uint32_t&gt;(f)', 'reinterpret_cast&lt;std::uint32_t&amp;&gt;(f)', 'A union with float and uint32_t members', '*(int*)&amp;f with -O0'], answer: 0, explain: 'bit_cast copies the object representation into a new object of the target type — defined, constexpr, and compiled to a single register move. The union trick is UB in C++ (fine in C).' },
     hints: [`<p>Hint 1: List the types involved and their sizes on LP64: float 4, long 8.</p>`, `<p>Hint 2: Use fixed-width <code>std::uint32_t</code> and <code>std::bit_cast</code> (or <code>std::memcpy</code> pre-C++20) in both directions.</p>`, `<p>Hint 3: Keep the magic constant and Newton step. Bonus: note that modern CPUs have <code>rsqrtss</code> and compilers emit fast reciprocal sqrt with appropriate flags — this trick is historical.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"0.4992\n0.998307\n1.996614\n0.249577\n0.099845\n31.585064\n0.008993\n1"}]},
     solution: {
       approach: `<p>Replace both pointer casts with <code>std::bit_cast</code> on <code>std::uint32_t</code>. Same bits, same arithmetic, no aliasing violation, no over-read, and it even works in <code>constexpr</code>.</p>`,
       code: R`
+        #include <cmath>
         #include <bit>
         #include <cstdint>
         #include <cstdio>
@@ -1980,7 +2146,14 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
             return y;
         }
         static_assert(rsqrt(4.0f) > 0.49f && rsqrt(4.0f) < 0.51f);   // even evaluates at compile time
-        int main() { std::printf("%.4f\n", rsqrt(4.0f)); }               // 0.4992`,
+        int main() {
+            std::printf("%.4f\n", rsqrt(4.0f));              // 0.4992
+            for (float x : {1.0f, 0.25f, 16.0f, 100.0f, 0.001f, 12345.678f}) std::printf("%.6f\n", rsqrt(x));
+            double worst = 0;                                // relative error over 6 decades
+            for (float x = 0.001f; x < 1000000.0f; x *= 1.01f)
+                worst = std::max(worst, std::fabs(rsqrt(x) * std::sqrt(static_cast<double>(x)) - 1.0));
+            std::printf("%d\n", worst < 0.002);               // 1
+        }               // 0.4992`,
       complexity: `<p>O(1): a few integer and float ops. The bit_casts compile to <code>movd</code> or nothing.</p>`,
       followUps: ['Why is <code>memcpy</code>-based punning free at -O2?', 'Which types may legally alias anything? (char, unsigned char, std::byte)']
     }
@@ -2003,6 +2176,7 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
       }` },
     mcq: { q: 'What is the cleanest fix?', options: ['Check p &lt;= n / 2 before doubling (or use a 64-bit p)', 'Compile with -O0', 'Declare p as volatile', 'Use p += p instead of p *= 2'], answer: 0, explain: 'Either guarantee the next doubling cannot overflow, or do the arithmetic in a type with room (long long p). volatile and -O0 do not remove the overflow; p += p overflows just the same.' },
     hints: [`<p>Hint 1: Find the exact iteration where the arithmetic leaves the range of <code>int</code>.</p>`, `<p>Hint 2: Option A: <code>long long p</code>. Option B: count first, then stop before doubling if <code>p &gt; n / 2</code>.</p>`, `<p>Hint 3: Or skip the loop: the answer is ⌊log₂ n⌋ + 1 = <code>std::bit_width(static_cast&lt;unsigned&gt;(n))</code> (C++20 &lt;bit&gt;).</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"4 31 31\n1 2 2 3 3 4 30 30 31\n0"}]},
     solution: {
       approach: `<p>Avoid ever computing an out-of-range value: test whether doubling is safe before doing it. Or compute the answer directly with <code>std::bit_width</code>, which counts the bits needed to represent n.</p>`,
       code: R`
@@ -2018,6 +2192,13 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
         int main() {
             std::printf("%d %d %d\n", countPowers(10), countPowers(INT_MAX), countPowersBits(INT_MAX));
             // 4 31 31
+            for (int n : {1, 2, 3, 4, 7, 8, 1000000000, 1073741823, 1073741824})
+                std::printf("%d ", countPowers(n));          // 1 2 2 3 3 4 30 30 31
+            std::printf("\n");
+            int mismatches = 0;
+            for (int n = 1; n <= 100000; ++n) mismatches += countPowers(n) != countPowersBits(n);
+            for (int n = INT_MAX - 1000; n < INT_MAX; ++n) mismatches += countPowers(n) != countPowersBits(n);
+            std::printf("%d\n", mismatches);                 // 0
         }`,
       dry: { head: ['p', 'p <= n/2 (n=10 → 5)?', 'count'], rows: [['1', 'yes → p=2', '2'], ['2', 'yes → p=4', '3'], ['4', 'yes → p=8', '4'], ['8', 'no, stop', '<b>4</b>']] },
       complexity: `<p>O(log n) loop or O(1) with bit_width (a single <code>lzcnt</code>).</p>`,
@@ -2045,6 +2226,7 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
       }` },
     mcq: { q: 'After switching to i-k-j order, which access is the innermost loop\'s stride-1 stream?', options: ['B[k][j] and C[i][j] along row j', 'A[i][k] down column k', 'B[k][j] down column j', 'None — all accesses are random'], answer: 0, explain: 'With i and k fixed, the inner j loop does C[i][j] += a * B[k][j]: both rows are contiguous, and a = A[i][k] lives in a register.' },
     hints: [`<p>Hint 1: For each loop order ask: in the innermost loop, which index changes? Is that the last index of every array accessed?</p>`, `<p>Hint 2: i-k-j makes the inner loop <code>C[i][*] += A[i][k] * B[k][*]</code> — a contiguous "axpy" that vectorises. But for large N, row k of B is evicted before it is reused by the next i.</p>`, `<p>Hint 3: Tile all three loops with block size Bs (e.g. 64): for each (ii, kk, jj) block, run i-k-j inside the block. Three 64×64 double tiles = 96 KB fit in L2, so every loaded line is reused ~64 times. Handle edges with <code>std::min(ii + Bs, N)</code>.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"1 5 9\n19 22 43 50\n19 22 43 50\n1 1 1\n2 1 1\n5 1 1\n17 1 1\n64 1 1\n65 1 1\n130 1 1"}]},
     solution: {
       approach: `<p>Step 1 — loop interchange to i-k-j: all inner accesses become stride-1 and the compiler vectorises the inner loop. Step 2 — blocking: iterate over tiles so the working set (one tile each of A, B and C) stays in L1/L2 while it is reused. Arithmetic is unchanged; only the order of the same multiply-adds changes (so rounding may differ in the last bits).</p>`,
       code: R`
@@ -2076,11 +2258,35 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
                             }
                     }
         }
+        void naive(const std::vector<double>& A, const std::vector<double>& B, std::vector<double>& C, int N) {
+            for (int i = 0; i < N; ++i)
+                for (int j = 0; j < N; ++j) {
+                    double s = 0;
+                    for (int k = 0; k < N; ++k) s += A[(size_t)i * N + k] * B[(size_t)k * N + j];
+                    C[(size_t)i * N + j] = s;
+                }
+        }
+
         int main() {
             const int N = 3;
             std::vector<double> A = {1,2,3, 4,5,6, 7,8,9}, B = {1,0,0, 0,1,0, 0,0,1}, C(N * N);
             matmulTiled(A, B, C, N, 2);                           // tiny tiles to exercise the edges
             std::printf("%.0f %.0f %.0f\n", C[0], C[4], C[8]);    // 1 5 9
+            std::vector<double> P = {1,2,3,4}, Q = {5,6,7,8}, S(4);
+            matmulIKJ(P, Q, S, 2);
+            std::printf("%.0f %.0f %.0f %.0f\n", S[0], S[1], S[2], S[3]);   // 19 22 43 50
+            matmulTiled(P, Q, S, 2, 64);                          // tile bigger than the matrix
+            std::printf("%.0f %.0f %.0f %.0f\n", S[0], S[1], S[2], S[3]);   // 19 22 43 50
+            for (int n : {1, 2, 5, 17, 64, 65, 130}) {            // small integers: every product is exact
+                std::vector<double> X((size_t)n * n), Y((size_t)n * n), r0((size_t)n * n), r1((size_t)n * n), r2((size_t)n * n);
+                unsigned s = 12345u + n;
+                for (auto& x : X) { s = s * 1103515245u + 12345u; x = (s >> 16) % 7 - 3; }
+                for (auto& y : Y) { s = s * 1103515245u + 12345u; y = (s >> 16) % 7 - 3; }
+                naive(X, Y, r0, n);
+                matmulIKJ(X, Y, r1, n);
+                matmulTiled(X, Y, r2, n, 8);
+                std::printf("%d %d %d\n", n, r0 == r1, r0 == r2);   // n 1 1
+            }
         }`,
       dry: { head: ['order', 'inner-loop accesses', 'misses per inner iteration (approx)', 'N=2048 time (typical)'], rows: [['i-j-k', 'A row (stride 1), B column (stride N)', '~1.1', '~60 s'], ['i-k-j', 'B row, C row (both stride 1)', '~0.25 (2 streams / 8 doubles per line)', '~6 s'], ['tiled i-k-j, Bs = 64', 'same, but tiles reused from L2', '~0.02', '~2.5 s']] },
       complexity: `<p>Still O(N³) flops and O(N²) memory. Memory traffic drops from O(N³) cache lines to about O(N³ / (Bs · 8)). Production BLAS (OpenBLAS, MKL, BLIS) adds register blocking, packing and SIMD micro-kernels to reach 80–90% of peak.</p>`,
@@ -2107,6 +2313,7 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
       }` },
     mcq: { q: 'Why does gshare predict an alternating branch well while bimodal does not?', options: ['The global history makes "after T" and "after N" use different counters', 'gshare has more bits per counter', 'gshare resets counters every branch', 'Bimodal cannot index by pc'], answer: 0, explain: 'XOR-ing the history into the index separates contexts, so each counter sees a constant outcome and saturates to the right prediction.' },
     hints: [`<p>Hint 1: Store counters in a <code>std::vector&lt;std::uint8_t&gt;</code>; update with <code>c = taken ? min(3, c+1) : max(0, c−1)</code>.</p>`, `<p>Hint 2: Keep <code>ghr</code> as an unsigned masked to h bits: <code>ghr = ((ghr &lt;&lt; 1) | taken) &amp; ((1u &lt;&lt; h) − 1)</code>. Careful: h can be 0, and shifting by 32 would be UB — h ≤ 16 here so the mask is safe.</p>`, `<p>Hint 3: Write one function parameterised by h; bimodal is simply h = 0. Test: loop pattern (TTTN)*, alternating (TN)*, and random — print miss rates.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"2\nbimodal 100, gshare 3"},{"stdin":"4 0 4\n0 1\n0 1\n0 0\n0 1\n","stdout":"bimodal 2, gshare 2"},{"stdin":"16 4 100\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n7 1\n7 0\n","stdout":"bimodal 100, gshare 3"},{"stdin":"1 0 1\n0 1\n","stdout":"bimodal 1, gshare 1"},{"stdin":"2 3 2\n5 0\n5 0\n","stdout":"bimodal 0, gshare 0"},{"stdin":"64 6 2000\n4 1\n4 0\n5 1\n6 0\n0 0\n1 1\n7 1\n3 1\n0 1\n7 0\n5 1\n4 1\n1 0\n0 0\n1 1\n5 0\n6 0\n6 0\n0 1\n1 1\n3 1\n6 1\n6 1\n1 1\n4 1\n2 0\n4 1\n5 1\n3 1\n1 1\n4 1\n3 1\n3 1\n6 1\n0 0\n4 1\n7 1\n3 1\n5 1\n1 1\n4 1\n2 0\n6 1\n2 1\n2 1\n6 1\n4 1\n7 1\n3 1\n6 1\n1 1\n6 1\n0 1\n0 0\n2 1\n4 0\n5 0\n2 1\n3 1\n6 1\n7 0\n4 0\n3 1\n7 1\n2 0\n7 0\n1 1\n2 1\n1 1\n6 1\n4 1\n1 1\n5 0\n7 1\n5 1\n6 1\n2 1\n0 0\n2 1\n4 1\n4 0\n3 0\n0 1\n5 1\n4 0\n4 1\n7 1\n3 0\n6 1\n7 1\n0 1\n0 0\n6 1\n0 1\n6 1\n1 1\n1 1\n4 1\n5 1\n6 1\n7 1\n2 1\n5 1\n5 1\n0 1\n0 1\n0 0\n2 1\n1 1\n3 1\n7 0\n4 1\n2 0\n6 1\n0 0\n5 1\n0 1\n1 1\n5 1\n6 1\n6 1\n1 1\n4 1\n6 0\n4 1\n7 1\n7 1\n7 0\n7 0\n4 1\n5 1\n4 1\n7 1\n6 0\n0 1\n0 1\n0 1\n1 1\n6 0\n7 1\n6 1\n4 1\n4 1\n0 1\n0 1\n2 1\n4 0\n4 1\n7 0\n7 1\n5 1\n1 1\n7 1\n0 1\n6 0\n5 0\n3 1\n1 1\n5 1\n4 1\n2 1\n7 0\n0 1\n2 0\n7 1\n1 1\n5 1\n4 0\n1 1\n7 0\n5 1\n4 0\n5 1\n6 1\n0 1\n7 0\n7 1\n1 1\n2 0\n5 1\n7 1\n1 0\n0 1\n2 1\n6 1\n4 1\n4 1\n3 1\n1 1\n2 1\n0 0\n4 0\n7 0\n1 0\n1 1\n2 1\n0 1\n3 1\n7 1\n5 1\n4 1\n1 1\n5 1\n4 0\n5 1\n1 1\n0 1\n0 1\n4 1\n3 1\n7 1\n2 1\n7 0\n0 1\n6 1\n1 0\n7 1\n6 1\n6 1\n5 1\n6 1\n2 0\n7 1\n1 1\n4 1\n3 1\n7 1\n7 1\n3 1\n7 1\n2 1\n2 0\n7 1\n5 0\n2 0\n4 1\n0 1\n4 1\n5 0\n2 1\n3 1\n2 1\n1 0\n1 1\n4 1\n5 0\n7 0\n2 1\n5 1\n5 0\n0 1\n0 1\n2 0\n2 0\n7 1\n5 1\n2 0\n5 1\n4 1\n3 1\n2 0\n0 1\n6 1\n7 0\n5 1\n0 1\n3 1\n3 1\n2 0\n7 1\n1 1\n0 0\n4 1\n2 1\n0 1\n4 1\n0 0\n3 1\n3 1\n2 1\n2 1\n5 0\n5 1\n2 0\n0 1\n6 1\n5 1\n1 1\n2 0\n4 0\n1 1\n2 0\n6 1\n7 1\n4 1\n0 1\n0 1\n5 1\n2 0\n6 0\n2 1\n4 1\n0 0\n3 1\n4 1\n1 1\n2 1\n3 1\n0 1\n1 1\n3 1\n3 1\n3 1\n5 0\n6 1\n4 1\n6 1\n6 1\n1 1\n0 1\n5 0\n6 1\n4 1\n4 1\n1 1\n1 0\n3 0\n5 1\n1 1\n6 1\n2 1\n3 1\n5 1\n3 1\n0 1\n1 1\n4 1\n5 1\n3 0\n4 1\n4 1\n4 0\n4 1\n5 1\n3 1\n4 1\n6 1\n6 0\n3 0\n7 1\n2 1\n0 1\n6 1\n7 0\n7 1\n7 1\n7 1\n6 0\n4 0\n5 1\n3 0\n5 1\n7 1\n1 1\n5 1\n1 0\n2 1\n6 0\n0 1\n2 0\n2 1\n0 1\n1 1\n5 1\n4 0\n3 0\n1 1\n0 1\n0 0\n7 1\n2 1\n6 0\n5 1\n3 0\n4 1\n1 0\n6 0\n6 0\n1 1\n5 1\n0 0\n6 1\n4 0\n5 0\n5 1\n0 1\n5 0\n3 1\n7 1\n1 1\n4 1\n2 1\n3 1\n0 0\n5 1\n2 1\n2 1\n0 0\n1 0\n1 0\n2 1\n6 1\n2 1\n6 0\n0 0\n0 0\n4 0\n5 1\n4 0\n1 1\n1 0\n4 0\n3 1\n0 1\n5 1\n0 0\n5 1\n7 0\n6 1\n3 1\n4 1\n6 1\n1 0\n4 1\n3 1\n5 0\n2 0\n1 1\n5 0\n3 1\n1 1\n7 1\n2 0\n5 1\n2 1\n4 0\n0 0\n3 1\n3 1\n2 0\n3 1\n0 1\n6 0\n5 1\n1 1\n6 0\n0 1\n1 1\n2 0\n3 1\n5 1\n0 1\n7 1\n2 1\n5 1\n5 1\n1 1\n1 1\n2 1\n0 1\n0 1\n7 1\n6 1\n2 1\n1 1\n5 0\n4 1\n5 1\n6 0\n2 1\n5 0\n6 1\n5 0\n6 0\n6 1\n7 1\n5 0\n4 0\n0 1\n0 1\n7 0\n7 1\n2 1\n2 0\n4 1\n5 1\n6 1\n5 1\n5 1\n0 0\n2 0\n3 1\n7 1\n0 1\n7 1\n6 1\n1 1\n6 1\n1 1\n5 0\n4 1\n3 1\n1 1\n4 1\n0 1\n7 0\n0 1\n0 1\n7 1\n2 1\n3 0\n7 0\n0 1\n4 1\n2 1\n5 1\n4 1\n3 0\n5 1\n7 0\n4 1\n4 1\n7 1\n7 1\n1 1\n0 1\n6 1\n0 1\n3 1\n2 1\n1 0\n3 1\n0 0\n2 1\n2 0\n7 1\n2 1\n6 1\n1 1\n4 1\n6 1\n6 1\n0 1\n4 0\n2 1\n4 1\n3 1\n2 0\n3 1\n4 1\n5 0\n1 1\n0 1\n4 1\n1 1\n0 1\n6 0\n2 1\n0 1\n4 1\n3 1\n5 1\n2 0\n2 1\n5 1\n5 0\n0 0\n6 1\n3 0\n0 0\n6 0\n1 0\n3 1\n1 0\n6 1\n6 0\n0 1\n0 1\n5 0\n1 1\n3 1\n7 1\n4 0\n7 1\n6 1\n5 1\n6 1\n5 1\n5 1\n1 0\n7 0\n6 0\n1 1\n6 0\n3 1\n5 1\n5 1\n0 1\n5 1\n0 0\n6 1\n4 1\n7 0\n2 0\n4 1\n2 1\n2 0\n7 0\n3 1\n0 1\n7 1\n4 0\n5 1\n3 1\n5 1\n3 1\n1 0\n0 0\n0 1\n2 1\n5 0\n6 1\n1 1\n7 0\n4 1\n7 1\n6 0\n5 0\n4 0\n5 1\n2 0\n2 1\n3 1\n7 1\n5 1\n2 1\n4 1\n2 1\n4 1\n0 1\n4 1\n2 0\n5 1\n2 1\n5 1\n2 0\n0 0\n7 1\n3 1\n5 0\n6 0\n1 1\n7 0\n5 0\n5 0\n7 1\n6 0\n6 0\n5 0\n2 0\n2 0\n4 1\n2 1\n7 1\n2 0\n1 1\n0 1\n3 0\n6 0\n5 1\n2 1\n1 0\n6 0\n4 0\n1 0\n5 1\n5 1\n0 0\n7 1\n5 1\n3 0\n1 1\n0 1\n6 0\n1 0\n3 0\n4 1\n4 0\n4 0\n0 1\n2 1\n3 1\n3 0\n4 1\n1 1\n4 0\n1 0\n3 1\n2 1\n3 1\n0 1\n5 1\n7 1\n5 1\n2 1\n6 1\n0 1\n4 1\n2 1\n5 1\n1 1\n5 1\n4 1\n2 1\n4 1\n1 0\n1 0\n5 0\n1 1\n4 0\n6 0\n0 0\n5 1\n5 0\n5 1\n4 1\n3 1\n1 0\n6 1\n1 1\n5 1\n1 1\n7 0\n2 1\n7 1\n2 0\n0 1\n4 1\n3 1\n7 1\n5 0\n6 0\n5 1\n0 1\n4 1\n6 1\n6 0\n2 1\n2 1\n5 0\n5 1\n4 1\n7 0\n3 1\n3 1\n0 1\n0 1\n1 0\n7 1\n3 0\n3 0\n4 1\n5 0\n1 1\n6 1\n6 1\n4 1\n5 1\n6 0\n6 0\n7 1\n1 1\n4 1\n3 1\n1 1\n1 0\n5 1\n0 0\n6 1\n5 1\n5 1\n6 0\n7 1\n3 1\n5 1\n3 1\n6 1\n0 1\n1 1\n0 1\n7 1\n3 0\n0 0\n7 1\n5 1\n7 1\n2 1\n5 0\n3 1\n0 1\n1 1\n1 1\n0 1\n2 1\n4 0\n3 1\n5 1\n3 1\n5 1\n1 1\n4 1\n3 0\n6 1\n1 1\n2 0\n5 0\n1 0\n6 1\n4 1\n0 1\n6 1\n5 1\n4 1\n3 1\n3 1\n4 1\n3 0\n6 1\n6 1\n7 1\n7 0\n2 1\n6 0\n2 1\n4 1\n4 1\n7 0\n5 1\n1 1\n1 1\n5 1\n1 0\n4 1\n6 0\n7 1\n2 1\n6 1\n1 1\n2 1\n3 0\n7 1\n7 1\n4 1\n6 1\n2 1\n5 1\n6 0\n5 1\n0 1\n1 1\n6 0\n4 1\n1 0\n4 1\n3 1\n6 1\n0 1\n2 0\n5 1\n3 1\n1 1\n3 1\n2 1\n7 1\n2 0\n3 1\n1 1\n0 1\n5 1\n6 0\n6 0\n5 0\n1 1\n5 0\n3 1\n6 1\n6 1\n3 1\n4 1\n2 0\n5 0\n4 1\n2 1\n7 1\n4 1\n2 0\n5 0\n7 1\n5 1\n5 0\n4 1\n7 0\n3 1\n4 1\n5 0\n5 1\n4 1\n6 1\n0 1\n3 1\n6 1\n5 1\n1 1\n6 0\n6 1\n1 1\n4 1\n0 1\n3 1\n6 1\n5 1\n4 0\n0 0\n6 1\n6 1\n4 1\n4 1\n4 1\n5 0\n0 0\n5 1\n5 0\n6 1\n6 1\n0 1\n0 0\n5 0\n6 1\n4 0\n5 1\n4 1\n5 1\n3 1\n2 0\n6 0\n7 1\n3 1\n5 1\n5 1\n5 0\n7 1\n4 1\n4 1\n1 1\n5 1\n7 1\n0 1\n6 1\n0 1\n4 1\n7 1\n0 0\n7 0\n2 0\n4 1\n0 0\n0 1\n0 1\n2 1\n0 1\n5 1\n6 1\n1 1\n5 1\n5 1\n2 1\n6 1\n5 0\n5 1\n3 1\n2 0\n3 1\n1 1\n7 1\n6 1\n5 0\n7 1\n2 1\n5 1\n4 1\n1 1\n0 1\n7 1\n1 0\n0 1\n2 1\n0 1\n2 0\n3 1\n3 1\n1 1\n2 1\n7 1\n4 1\n6 1\n1 1\n0 1\n4 1\n6 1\n3 0\n5 1\n6 1\n6 1\n7 0\n5 1\n4 1\n3 0\n2 1\n2 0\n1 1\n2 1\n6 1\n1 1\n5 1\n2 1\n4 1\n0 1\n4 1\n1 1\n7 1\n1 1\n7 0\n6 0\n3 1\n3 1\n7 1\n7 1\n4 1\n6 1\n0 0\n1 1\n6 1\n7 1\n2 1\n0 1\n5 1\n0 1\n0 1\n6 1\n7 0\n2 1\n0 1\n7 0\n1 1\n1 0\n4 1\n6 1\n0 1\n1 0\n3 1\n6 1\n4 1\n6 0\n5 1\n2 1\n7 0\n6 1\n7 1\n2 1\n0 1\n7 1\n3 1\n3 0\n5 1\n6 0\n7 1\n3 1\n2 1\n7 1\n3 0\n1 0\n2 1\n1 0\n6 1\n3 1\n0 1\n4 1\n4 0\n2 0\n1 0\n0 1\n7 0\n7 1\n7 1\n6 0\n4 1\n3 0\n7 1\n4 1\n5 1\n0 1\n4 0\n3 1\n0 0\n0 1\n5 1\n7 1\n3 0\n3 0\n5 1\n1 0\n6 1\n5 1\n1 1\n7 1\n1 1\n5 1\n2 1\n2 0\n4 0\n0 1\n0 0\n7 0\n5 1\n0 0\n2 1\n4 1\n1 1\n2 1\n3 1\n2 1\n2 1\n0 1\n3 1\n4 1\n2 1\n3 0\n1 1\n7 1\n5 1\n2 0\n2 1\n4 0\n2 1\n7 1\n2 0\n3 1\n3 1\n7 0\n3 1\n1 0\n5 1\n1 1\n5 1\n1 1\n0 1\n1 1\n1 1\n0 1\n7 0\n1 1\n0 0\n7 1\n2 1\n6 1\n5 1\n2 0\n4 0\n5 1\n5 1\n0 1\n6 1\n4 1\n5 1\n5 0\n5 0\n3 1\n2 0\n7 1\n2 1\n6 0\n2 1\n3 1\n0 1\n6 1\n7 1\n2 0\n2 1\n3 1\n1 1\n1 0\n2 1\n3 1\n3 0\n4 1\n3 1\n7 1\n0 1\n6 1\n1 0\n3 1\n0 1\n3 1\n1 0\n4 1\n6 1\n7 1\n2 1\n2 0\n3 1\n5 1\n6 1\n4 1\n7 1\n3 0\n0 0\n4 1\n2 1\n0 1\n6 0\n4 0\n2 1\n6 1\n0 1\n1 0\n2 1\n7 0\n3 1\n7 1\n6 1\n2 1\n5 0\n6 0\n5 1\n1 1\n2 1\n0 1\n0 1\n3 1\n2 0\n3 1\n5 1\n7 1\n7 1\n6 1\n6 0\n6 1\n5 1\n5 1\n0 0\n6 1\n7 1\n5 1\n0 0\n4 1\n0 0\n2 1\n0 1\n2 0\n0 1\n4 1\n2 0\n7 0\n1 1\n5 0\n4 1\n7 0\n5 0\n6 0\n2 0\n6 0\n0 0\n0 1\n0 1\n4 1\n1 1\n2 1\n5 1\n4 1\n6 0\n3 1\n6 1\n3 1\n6 1\n0 0\n4 1\n5 1\n1 1\n3 1\n0 0\n6 1\n0 1\n0 1\n6 1\n5 1\n6 1\n3 1\n5 1\n2 1\n5 0\n1 1\n7 1\n0 0\n3 1\n1 1\n5 1\n6 1\n3 0\n0 0\n6 1\n7 0\n2 0\n5 0\n4 1\n5 1\n1 1\n1 1\n2 1\n5 0\n7 1\n4 1\n3 1\n1 1\n2 1\n5 1\n3 1\n7 0\n4 1\n3 1\n7 1\n0 1\n3 0\n2 1\n6 0\n3 0\n1 1\n7 0\n5 1\n5 0\n1 0\n7 0\n4 1\n2 1\n4 0\n4 1\n0 1\n0 0\n5 1\n0 1\n6 0\n2 1\n2 1\n6 1\n2 0\n6 0\n7 0\n1 0\n7 1\n6 0\n6 1\n3 1\n2 0\n1 1\n6 1\n6 0\n0 0\n2 1\n5 1\n4 1\n0 1\n1 1\n2 1\n3 1\n4 1\n6 0\n4 1\n7 1\n3 1\n3 1\n0 0\n5 0\n3 0\n3 1\n4 0\n7 1\n6 1\n4 1\n2 1\n4 0\n5 1\n3 1\n7 1\n5 1\n1 1\n2 1\n3 1\n2 1\n5 1\n0 1\n6 1\n2 1\n6 1\n6 1\n1 0\n0 1\n5 0\n7 1\n5 1\n7 1\n7 1\n1 0\n3 1\n5 1\n0 1\n3 1\n4 0\n3 1\n1 1\n6 1\n3 1\n7 1\n7 1\n1 1\n4 1\n7 1\n7 1\n1 0\n2 1\n1 1\n2 1\n0 1\n2 0\n1 1\n3 1\n2 1\n2 1\n6 1\n1 1\n5 1\n5 1\n5 1\n6 0\n3 1\n4 1\n4 0\n6 1\n0 1\n2 0\n5 1\n5 1\n5 1\n7 1\n5 0\n0 0\n0 1\n4 0\n1 1\n1 1\n5 0\n3 1\n0 0\n0 0\n0 1\n5 1\n7 0\n4 0\n6 1\n0 1\n1 1\n6 1\n5 0\n3 0\n3 0\n3 1\n7 0\n7 0\n2 0\n7 1\n6 0\n1 1\n7 1\n5 1\n0 1\n2 0\n1 1\n7 1\n3 1\n7 1\n2 1\n0 1\n7 0\n2 0\n7 0\n1 1\n2 0\n6 1\n6 0\n2 1\n7 1\n1 1\n6 1\n7 0\n1 1\n3 1\n5 1\n5 1\n2 1\n0 1\n5 1\n5 1\n0 1\n3 0\n1 1\n5 1\n3 1\n5 1\n4 1\n0 1\n7 0\n7 1\n4 1\n0 1\n1 1\n2 1\n4 1\n6 1\n0 1\n1 1\n5 0\n2 0\n4 1\n4 1\n1 0\n4 1\n7 0\n0 1\n7 1\n6 1\n4 0\n3 0\n0 1\n7 1\n7 1\n3 1\n4 1\n6 1\n7 0\n0 0\n0 1\n4 0\n4 1\n6 1\n2 0\n3 0\n2 1\n2 0\n0 1\n2 1\n2 1\n7 1\n5 0\n7 1\n7 1\n2 1\n3 1\n6 1\n2 1\n7 1\n7 0\n5 1\n3 1\n2 1\n3 1\n0 0\n3 0\n2 0\n6 1\n0 0\n2 1\n1 1\n0 1\n4 0\n0 1\n7 1\n0 0\n0 1\n1 1\n5 1\n4 0\n0 1\n0 1\n1 1\n1 0\n1 1\n4 0\n1 1\n7 1\n0 1\n5 1\n5 1\n0 1\n7 1\n3 1\n3 0\n5 1\n4 1\n6 1\n2 1\n3 1\n6 1\n6 1\n7 1\n3 1\n6 1\n6 1\n2 1\n0 1\n3 0\n0 1\n2 1\n7 1\n2 1\n0 1\n7 0\n1 1\n6 1\n6 1\n4 1\n4 0\n3 1\n1 1\n3 1\n2 1\n3 1\n3 1\n5 0\n7 1\n3 1\n0 0\n6 1\n0 1\n5 1\n7 0\n7 1\n4 1\n2 1\n7 1\n3 1\n7 1\n6 0\n7 0\n1 1\n2 0\n3 0\n7 1\n1 0\n5 0\n1 1\n2 1\n7 1\n5 1\n4 1\n0 1\n5 1\n5 1\n6 0\n3 1\n2 1\n1 0\n5 1\n5 1\n5 1\n5 1\n4 1\n6 1\n0 0\n5 0\n2 1\n6 0\n2 1\n5 0\n7 1\n3 1\n0 1\n7 0\n4 0\n2 1\n4 0\n0 0\n6 1\n7 1\n0 1\n2 1\n5 0\n0 1\n4 1\n3 1\n1 1\n2 0\n7 1\n4 1\n5 0\n5 1\n5 1\n2 1\n1 1\n1 1\n0 1\n3 1\n2 0\n4 1\n5 1\n6 1\n4 1\n0 1\n5 1\n1 1\n0 1\n6 1\n2 1\n0 0\n7 1\n7 1\n4 1\n3 1\n1 0\n7 1\n2 1\n6 1\n2 1\n4 0\n7 1\n4 1\n1 0\n6 0\n3 0\n1 1\n4 0\n3 0\n3 1\n7 1\n3 1\n0 0\n0 0\n2 1\n0 1\n1 1\n2 1\n0 1\n7 0\n3 1\n7 1\n6 1\n4 1\n2 1\n2 1\n3 1\n2 1\n3 1\n2 1\n7 1\n3 1\n4 1\n0 1\n3 0\n0 0\n7 1\n7 1\n2 1\n0 1\n7 1\n1 1\n0 0\n2 0\n2 1\n3 1\n0 1\n7 1\n1 1\n0 0\n2 1\n0 1\n7 1\n5 0\n0 1\n1 0\n2 1\n2 1\n7 1\n7 1\n5 1\n2 0\n7 0\n5 1\n0 1\n2 1\n3 1\n0 1\n7 0\n6 1\n1 0\n1 0\n6 0\n4 0\n5 1\n0 1\n1 0\n1 0\n7 1\n3 1\n2 1\n6 1\n4 1\n4 1\n6 1\n6 0\n6 1\n3 0\n5 0\n1 0\n3 1\n2 1\n2 0\n4 1\n1 0\n3 1\n6 1\n2 1\n4 1\n6 1\n1 1\n1 0\n2 1\n5 1\n2 1\n0 0\n1 1\n1 1\n7 1\n7 0\n4 0\n3 0\n2 0\n3 0\n3 1\n4 1\n2 1\n0 1\n0 0\n6 0\n2 1\n6 1\n7 1\n5 1\n5 1\n3 1\n0 1\n1 1\n4 1\n1 1\n5 0\n1 1\n6 0\n1 0\n7 1\n4 1\n4 1\n5 0\n3 1\n5 1\n6 1\n0 1\n7 1\n0 0\n3 1\n0 1\n4 1\n6 1\n3 1\n4 1\n0 1\n6 1\n5 1\n6 0\n3 1\n1 1\n4 0\n6 1\n0 1\n7 0\n5 0\n3 1\n3 0\n3 0\n3 0\n0 0\n6 0\n0 0\n5 1\n0 1\n1 1\n1 1\n7 1\n1 1\n3 0\n6 0\n0 0\n7 1\n0 1\n6 0\n1 1\n1 1\n1 1\n6 1\n7 0\n0 0\n2 0\n1 1\n5 1\n6 1\n6 1\n2 1\n5 1\n1 1\n2 1\n5 1\n3 1\n4 1\n4 1\n4 0\n3 1\n2 1\n2 1\n1 0\n7 1\n2 1\n7 1\n5 1\n0 0\n4 1\n4 0\n7 0\n7 0\n7 0\n7 0\n1 1\n0 1\n6 1\n5 1\n5 1\n3 1\n5 1\n5 0\n0 1\n4 1\n4 1\n5 1\n5 0\n2 1\n5 0\n0 1\n7 1\n5 0\n2 0\n5 1\n2 1\n1 0\n6 1\n6 1\n2 0\n2 1\n3 1\n5 1\n2 1\n5 1\n4 1\n5 1\n4 0\n2 0\n3 1\n1 1\n2 0\n0 1\n1 0\n1 0\n3 1\n6 1\n4 1\n5 1\n0 1\n","stdout":"bimodal 681, gshare 761"},{"stdin":"1024 16 2000\n4 1\n4 0\n5 1\n6 0\n0 0\n1 1\n7 1\n3 1\n0 1\n7 0\n5 1\n4 1\n1 0\n0 0\n1 1\n5 0\n6 0\n6 0\n0 1\n1 1\n3 1\n6 1\n6 1\n1 1\n4 1\n2 0\n4 1\n5 1\n3 1\n1 1\n4 1\n3 1\n3 1\n6 1\n0 0\n4 1\n7 1\n3 1\n5 1\n1 1\n4 1\n2 0\n6 1\n2 1\n2 1\n6 1\n4 1\n7 1\n3 1\n6 1\n1 1\n6 1\n0 1\n0 0\n2 1\n4 0\n5 0\n2 1\n3 1\n6 1\n7 0\n4 0\n3 1\n7 1\n2 0\n7 0\n1 1\n2 1\n1 1\n6 1\n4 1\n1 1\n5 0\n7 1\n5 1\n6 1\n2 1\n0 0\n2 1\n4 1\n4 0\n3 0\n0 1\n5 1\n4 0\n4 1\n7 1\n3 0\n6 1\n7 1\n0 1\n0 0\n6 1\n0 1\n6 1\n1 1\n1 1\n4 1\n5 1\n6 1\n7 1\n2 1\n5 1\n5 1\n0 1\n0 1\n0 0\n2 1\n1 1\n3 1\n7 0\n4 1\n2 0\n6 1\n0 0\n5 1\n0 1\n1 1\n5 1\n6 1\n6 1\n1 1\n4 1\n6 0\n4 1\n7 1\n7 1\n7 0\n7 0\n4 1\n5 1\n4 1\n7 1\n6 0\n0 1\n0 1\n0 1\n1 1\n6 0\n7 1\n6 1\n4 1\n4 1\n0 1\n0 1\n2 1\n4 0\n4 1\n7 0\n7 1\n5 1\n1 1\n7 1\n0 1\n6 0\n5 0\n3 1\n1 1\n5 1\n4 1\n2 1\n7 0\n0 1\n2 0\n7 1\n1 1\n5 1\n4 0\n1 1\n7 0\n5 1\n4 0\n5 1\n6 1\n0 1\n7 0\n7 1\n1 1\n2 0\n5 1\n7 1\n1 0\n0 1\n2 1\n6 1\n4 1\n4 1\n3 1\n1 1\n2 1\n0 0\n4 0\n7 0\n1 0\n1 1\n2 1\n0 1\n3 1\n7 1\n5 1\n4 1\n1 1\n5 1\n4 0\n5 1\n1 1\n0 1\n0 1\n4 1\n3 1\n7 1\n2 1\n7 0\n0 1\n6 1\n1 0\n7 1\n6 1\n6 1\n5 1\n6 1\n2 0\n7 1\n1 1\n4 1\n3 1\n7 1\n7 1\n3 1\n7 1\n2 1\n2 0\n7 1\n5 0\n2 0\n4 1\n0 1\n4 1\n5 0\n2 1\n3 1\n2 1\n1 0\n1 1\n4 1\n5 0\n7 0\n2 1\n5 1\n5 0\n0 1\n0 1\n2 0\n2 0\n7 1\n5 1\n2 0\n5 1\n4 1\n3 1\n2 0\n0 1\n6 1\n7 0\n5 1\n0 1\n3 1\n3 1\n2 0\n7 1\n1 1\n0 0\n4 1\n2 1\n0 1\n4 1\n0 0\n3 1\n3 1\n2 1\n2 1\n5 0\n5 1\n2 0\n0 1\n6 1\n5 1\n1 1\n2 0\n4 0\n1 1\n2 0\n6 1\n7 1\n4 1\n0 1\n0 1\n5 1\n2 0\n6 0\n2 1\n4 1\n0 0\n3 1\n4 1\n1 1\n2 1\n3 1\n0 1\n1 1\n3 1\n3 1\n3 1\n5 0\n6 1\n4 1\n6 1\n6 1\n1 1\n0 1\n5 0\n6 1\n4 1\n4 1\n1 1\n1 0\n3 0\n5 1\n1 1\n6 1\n2 1\n3 1\n5 1\n3 1\n0 1\n1 1\n4 1\n5 1\n3 0\n4 1\n4 1\n4 0\n4 1\n5 1\n3 1\n4 1\n6 1\n6 0\n3 0\n7 1\n2 1\n0 1\n6 1\n7 0\n7 1\n7 1\n7 1\n6 0\n4 0\n5 1\n3 0\n5 1\n7 1\n1 1\n5 1\n1 0\n2 1\n6 0\n0 1\n2 0\n2 1\n0 1\n1 1\n5 1\n4 0\n3 0\n1 1\n0 1\n0 0\n7 1\n2 1\n6 0\n5 1\n3 0\n4 1\n1 0\n6 0\n6 0\n1 1\n5 1\n0 0\n6 1\n4 0\n5 0\n5 1\n0 1\n5 0\n3 1\n7 1\n1 1\n4 1\n2 1\n3 1\n0 0\n5 1\n2 1\n2 1\n0 0\n1 0\n1 0\n2 1\n6 1\n2 1\n6 0\n0 0\n0 0\n4 0\n5 1\n4 0\n1 1\n1 0\n4 0\n3 1\n0 1\n5 1\n0 0\n5 1\n7 0\n6 1\n3 1\n4 1\n6 1\n1 0\n4 1\n3 1\n5 0\n2 0\n1 1\n5 0\n3 1\n1 1\n7 1\n2 0\n5 1\n2 1\n4 0\n0 0\n3 1\n3 1\n2 0\n3 1\n0 1\n6 0\n5 1\n1 1\n6 0\n0 1\n1 1\n2 0\n3 1\n5 1\n0 1\n7 1\n2 1\n5 1\n5 1\n1 1\n1 1\n2 1\n0 1\n0 1\n7 1\n6 1\n2 1\n1 1\n5 0\n4 1\n5 1\n6 0\n2 1\n5 0\n6 1\n5 0\n6 0\n6 1\n7 1\n5 0\n4 0\n0 1\n0 1\n7 0\n7 1\n2 1\n2 0\n4 1\n5 1\n6 1\n5 1\n5 1\n0 0\n2 0\n3 1\n7 1\n0 1\n7 1\n6 1\n1 1\n6 1\n1 1\n5 0\n4 1\n3 1\n1 1\n4 1\n0 1\n7 0\n0 1\n0 1\n7 1\n2 1\n3 0\n7 0\n0 1\n4 1\n2 1\n5 1\n4 1\n3 0\n5 1\n7 0\n4 1\n4 1\n7 1\n7 1\n1 1\n0 1\n6 1\n0 1\n3 1\n2 1\n1 0\n3 1\n0 0\n2 1\n2 0\n7 1\n2 1\n6 1\n1 1\n4 1\n6 1\n6 1\n0 1\n4 0\n2 1\n4 1\n3 1\n2 0\n3 1\n4 1\n5 0\n1 1\n0 1\n4 1\n1 1\n0 1\n6 0\n2 1\n0 1\n4 1\n3 1\n5 1\n2 0\n2 1\n5 1\n5 0\n0 0\n6 1\n3 0\n0 0\n6 0\n1 0\n3 1\n1 0\n6 1\n6 0\n0 1\n0 1\n5 0\n1 1\n3 1\n7 1\n4 0\n7 1\n6 1\n5 1\n6 1\n5 1\n5 1\n1 0\n7 0\n6 0\n1 1\n6 0\n3 1\n5 1\n5 1\n0 1\n5 1\n0 0\n6 1\n4 1\n7 0\n2 0\n4 1\n2 1\n2 0\n7 0\n3 1\n0 1\n7 1\n4 0\n5 1\n3 1\n5 1\n3 1\n1 0\n0 0\n0 1\n2 1\n5 0\n6 1\n1 1\n7 0\n4 1\n7 1\n6 0\n5 0\n4 0\n5 1\n2 0\n2 1\n3 1\n7 1\n5 1\n2 1\n4 1\n2 1\n4 1\n0 1\n4 1\n2 0\n5 1\n2 1\n5 1\n2 0\n0 0\n7 1\n3 1\n5 0\n6 0\n1 1\n7 0\n5 0\n5 0\n7 1\n6 0\n6 0\n5 0\n2 0\n2 0\n4 1\n2 1\n7 1\n2 0\n1 1\n0 1\n3 0\n6 0\n5 1\n2 1\n1 0\n6 0\n4 0\n1 0\n5 1\n5 1\n0 0\n7 1\n5 1\n3 0\n1 1\n0 1\n6 0\n1 0\n3 0\n4 1\n4 0\n4 0\n0 1\n2 1\n3 1\n3 0\n4 1\n1 1\n4 0\n1 0\n3 1\n2 1\n3 1\n0 1\n5 1\n7 1\n5 1\n2 1\n6 1\n0 1\n4 1\n2 1\n5 1\n1 1\n5 1\n4 1\n2 1\n4 1\n1 0\n1 0\n5 0\n1 1\n4 0\n6 0\n0 0\n5 1\n5 0\n5 1\n4 1\n3 1\n1 0\n6 1\n1 1\n5 1\n1 1\n7 0\n2 1\n7 1\n2 0\n0 1\n4 1\n3 1\n7 1\n5 0\n6 0\n5 1\n0 1\n4 1\n6 1\n6 0\n2 1\n2 1\n5 0\n5 1\n4 1\n7 0\n3 1\n3 1\n0 1\n0 1\n1 0\n7 1\n3 0\n3 0\n4 1\n5 0\n1 1\n6 1\n6 1\n4 1\n5 1\n6 0\n6 0\n7 1\n1 1\n4 1\n3 1\n1 1\n1 0\n5 1\n0 0\n6 1\n5 1\n5 1\n6 0\n7 1\n3 1\n5 1\n3 1\n6 1\n0 1\n1 1\n0 1\n7 1\n3 0\n0 0\n7 1\n5 1\n7 1\n2 1\n5 0\n3 1\n0 1\n1 1\n1 1\n0 1\n2 1\n4 0\n3 1\n5 1\n3 1\n5 1\n1 1\n4 1\n3 0\n6 1\n1 1\n2 0\n5 0\n1 0\n6 1\n4 1\n0 1\n6 1\n5 1\n4 1\n3 1\n3 1\n4 1\n3 0\n6 1\n6 1\n7 1\n7 0\n2 1\n6 0\n2 1\n4 1\n4 1\n7 0\n5 1\n1 1\n1 1\n5 1\n1 0\n4 1\n6 0\n7 1\n2 1\n6 1\n1 1\n2 1\n3 0\n7 1\n7 1\n4 1\n6 1\n2 1\n5 1\n6 0\n5 1\n0 1\n1 1\n6 0\n4 1\n1 0\n4 1\n3 1\n6 1\n0 1\n2 0\n5 1\n3 1\n1 1\n3 1\n2 1\n7 1\n2 0\n3 1\n1 1\n0 1\n5 1\n6 0\n6 0\n5 0\n1 1\n5 0\n3 1\n6 1\n6 1\n3 1\n4 1\n2 0\n5 0\n4 1\n2 1\n7 1\n4 1\n2 0\n5 0\n7 1\n5 1\n5 0\n4 1\n7 0\n3 1\n4 1\n5 0\n5 1\n4 1\n6 1\n0 1\n3 1\n6 1\n5 1\n1 1\n6 0\n6 1\n1 1\n4 1\n0 1\n3 1\n6 1\n5 1\n4 0\n0 0\n6 1\n6 1\n4 1\n4 1\n4 1\n5 0\n0 0\n5 1\n5 0\n6 1\n6 1\n0 1\n0 0\n5 0\n6 1\n4 0\n5 1\n4 1\n5 1\n3 1\n2 0\n6 0\n7 1\n3 1\n5 1\n5 1\n5 0\n7 1\n4 1\n4 1\n1 1\n5 1\n7 1\n0 1\n6 1\n0 1\n4 1\n7 1\n0 0\n7 0\n2 0\n4 1\n0 0\n0 1\n0 1\n2 1\n0 1\n5 1\n6 1\n1 1\n5 1\n5 1\n2 1\n6 1\n5 0\n5 1\n3 1\n2 0\n3 1\n1 1\n7 1\n6 1\n5 0\n7 1\n2 1\n5 1\n4 1\n1 1\n0 1\n7 1\n1 0\n0 1\n2 1\n0 1\n2 0\n3 1\n3 1\n1 1\n2 1\n7 1\n4 1\n6 1\n1 1\n0 1\n4 1\n6 1\n3 0\n5 1\n6 1\n6 1\n7 0\n5 1\n4 1\n3 0\n2 1\n2 0\n1 1\n2 1\n6 1\n1 1\n5 1\n2 1\n4 1\n0 1\n4 1\n1 1\n7 1\n1 1\n7 0\n6 0\n3 1\n3 1\n7 1\n7 1\n4 1\n6 1\n0 0\n1 1\n6 1\n7 1\n2 1\n0 1\n5 1\n0 1\n0 1\n6 1\n7 0\n2 1\n0 1\n7 0\n1 1\n1 0\n4 1\n6 1\n0 1\n1 0\n3 1\n6 1\n4 1\n6 0\n5 1\n2 1\n7 0\n6 1\n7 1\n2 1\n0 1\n7 1\n3 1\n3 0\n5 1\n6 0\n7 1\n3 1\n2 1\n7 1\n3 0\n1 0\n2 1\n1 0\n6 1\n3 1\n0 1\n4 1\n4 0\n2 0\n1 0\n0 1\n7 0\n7 1\n7 1\n6 0\n4 1\n3 0\n7 1\n4 1\n5 1\n0 1\n4 0\n3 1\n0 0\n0 1\n5 1\n7 1\n3 0\n3 0\n5 1\n1 0\n6 1\n5 1\n1 1\n7 1\n1 1\n5 1\n2 1\n2 0\n4 0\n0 1\n0 0\n7 0\n5 1\n0 0\n2 1\n4 1\n1 1\n2 1\n3 1\n2 1\n2 1\n0 1\n3 1\n4 1\n2 1\n3 0\n1 1\n7 1\n5 1\n2 0\n2 1\n4 0\n2 1\n7 1\n2 0\n3 1\n3 1\n7 0\n3 1\n1 0\n5 1\n1 1\n5 1\n1 1\n0 1\n1 1\n1 1\n0 1\n7 0\n1 1\n0 0\n7 1\n2 1\n6 1\n5 1\n2 0\n4 0\n5 1\n5 1\n0 1\n6 1\n4 1\n5 1\n5 0\n5 0\n3 1\n2 0\n7 1\n2 1\n6 0\n2 1\n3 1\n0 1\n6 1\n7 1\n2 0\n2 1\n3 1\n1 1\n1 0\n2 1\n3 1\n3 0\n4 1\n3 1\n7 1\n0 1\n6 1\n1 0\n3 1\n0 1\n3 1\n1 0\n4 1\n6 1\n7 1\n2 1\n2 0\n3 1\n5 1\n6 1\n4 1\n7 1\n3 0\n0 0\n4 1\n2 1\n0 1\n6 0\n4 0\n2 1\n6 1\n0 1\n1 0\n2 1\n7 0\n3 1\n7 1\n6 1\n2 1\n5 0\n6 0\n5 1\n1 1\n2 1\n0 1\n0 1\n3 1\n2 0\n3 1\n5 1\n7 1\n7 1\n6 1\n6 0\n6 1\n5 1\n5 1\n0 0\n6 1\n7 1\n5 1\n0 0\n4 1\n0 0\n2 1\n0 1\n2 0\n0 1\n4 1\n2 0\n7 0\n1 1\n5 0\n4 1\n7 0\n5 0\n6 0\n2 0\n6 0\n0 0\n0 1\n0 1\n4 1\n1 1\n2 1\n5 1\n4 1\n6 0\n3 1\n6 1\n3 1\n6 1\n0 0\n4 1\n5 1\n1 1\n3 1\n0 0\n6 1\n0 1\n0 1\n6 1\n5 1\n6 1\n3 1\n5 1\n2 1\n5 0\n1 1\n7 1\n0 0\n3 1\n1 1\n5 1\n6 1\n3 0\n0 0\n6 1\n7 0\n2 0\n5 0\n4 1\n5 1\n1 1\n1 1\n2 1\n5 0\n7 1\n4 1\n3 1\n1 1\n2 1\n5 1\n3 1\n7 0\n4 1\n3 1\n7 1\n0 1\n3 0\n2 1\n6 0\n3 0\n1 1\n7 0\n5 1\n5 0\n1 0\n7 0\n4 1\n2 1\n4 0\n4 1\n0 1\n0 0\n5 1\n0 1\n6 0\n2 1\n2 1\n6 1\n2 0\n6 0\n7 0\n1 0\n7 1\n6 0\n6 1\n3 1\n2 0\n1 1\n6 1\n6 0\n0 0\n2 1\n5 1\n4 1\n0 1\n1 1\n2 1\n3 1\n4 1\n6 0\n4 1\n7 1\n3 1\n3 1\n0 0\n5 0\n3 0\n3 1\n4 0\n7 1\n6 1\n4 1\n2 1\n4 0\n5 1\n3 1\n7 1\n5 1\n1 1\n2 1\n3 1\n2 1\n5 1\n0 1\n6 1\n2 1\n6 1\n6 1\n1 0\n0 1\n5 0\n7 1\n5 1\n7 1\n7 1\n1 0\n3 1\n5 1\n0 1\n3 1\n4 0\n3 1\n1 1\n6 1\n3 1\n7 1\n7 1\n1 1\n4 1\n7 1\n7 1\n1 0\n2 1\n1 1\n2 1\n0 1\n2 0\n1 1\n3 1\n2 1\n2 1\n6 1\n1 1\n5 1\n5 1\n5 1\n6 0\n3 1\n4 1\n4 0\n6 1\n0 1\n2 0\n5 1\n5 1\n5 1\n7 1\n5 0\n0 0\n0 1\n4 0\n1 1\n1 1\n5 0\n3 1\n0 0\n0 0\n0 1\n5 1\n7 0\n4 0\n6 1\n0 1\n1 1\n6 1\n5 0\n3 0\n3 0\n3 1\n7 0\n7 0\n2 0\n7 1\n6 0\n1 1\n7 1\n5 1\n0 1\n2 0\n1 1\n7 1\n3 1\n7 1\n2 1\n0 1\n7 0\n2 0\n7 0\n1 1\n2 0\n6 1\n6 0\n2 1\n7 1\n1 1\n6 1\n7 0\n1 1\n3 1\n5 1\n5 1\n2 1\n0 1\n5 1\n5 1\n0 1\n3 0\n1 1\n5 1\n3 1\n5 1\n4 1\n0 1\n7 0\n7 1\n4 1\n0 1\n1 1\n2 1\n4 1\n6 1\n0 1\n1 1\n5 0\n2 0\n4 1\n4 1\n1 0\n4 1\n7 0\n0 1\n7 1\n6 1\n4 0\n3 0\n0 1\n7 1\n7 1\n3 1\n4 1\n6 1\n7 0\n0 0\n0 1\n4 0\n4 1\n6 1\n2 0\n3 0\n2 1\n2 0\n0 1\n2 1\n2 1\n7 1\n5 0\n7 1\n7 1\n2 1\n3 1\n6 1\n2 1\n7 1\n7 0\n5 1\n3 1\n2 1\n3 1\n0 0\n3 0\n2 0\n6 1\n0 0\n2 1\n1 1\n0 1\n4 0\n0 1\n7 1\n0 0\n0 1\n1 1\n5 1\n4 0\n0 1\n0 1\n1 1\n1 0\n1 1\n4 0\n1 1\n7 1\n0 1\n5 1\n5 1\n0 1\n7 1\n3 1\n3 0\n5 1\n4 1\n6 1\n2 1\n3 1\n6 1\n6 1\n7 1\n3 1\n6 1\n6 1\n2 1\n0 1\n3 0\n0 1\n2 1\n7 1\n2 1\n0 1\n7 0\n1 1\n6 1\n6 1\n4 1\n4 0\n3 1\n1 1\n3 1\n2 1\n3 1\n3 1\n5 0\n7 1\n3 1\n0 0\n6 1\n0 1\n5 1\n7 0\n7 1\n4 1\n2 1\n7 1\n3 1\n7 1\n6 0\n7 0\n1 1\n2 0\n3 0\n7 1\n1 0\n5 0\n1 1\n2 1\n7 1\n5 1\n4 1\n0 1\n5 1\n5 1\n6 0\n3 1\n2 1\n1 0\n5 1\n5 1\n5 1\n5 1\n4 1\n6 1\n0 0\n5 0\n2 1\n6 0\n2 1\n5 0\n7 1\n3 1\n0 1\n7 0\n4 0\n2 1\n4 0\n0 0\n6 1\n7 1\n0 1\n2 1\n5 0\n0 1\n4 1\n3 1\n1 1\n2 0\n7 1\n4 1\n5 0\n5 1\n5 1\n2 1\n1 1\n1 1\n0 1\n3 1\n2 0\n4 1\n5 1\n6 1\n4 1\n0 1\n5 1\n1 1\n0 1\n6 1\n2 1\n0 0\n7 1\n7 1\n4 1\n3 1\n1 0\n7 1\n2 1\n6 1\n2 1\n4 0\n7 1\n4 1\n1 0\n6 0\n3 0\n1 1\n4 0\n3 0\n3 1\n7 1\n3 1\n0 0\n0 0\n2 1\n0 1\n1 1\n2 1\n0 1\n7 0\n3 1\n7 1\n6 1\n4 1\n2 1\n2 1\n3 1\n2 1\n3 1\n2 1\n7 1\n3 1\n4 1\n0 1\n3 0\n0 0\n7 1\n7 1\n2 1\n0 1\n7 1\n1 1\n0 0\n2 0\n2 1\n3 1\n0 1\n7 1\n1 1\n0 0\n2 1\n0 1\n7 1\n5 0\n0 1\n1 0\n2 1\n2 1\n7 1\n7 1\n5 1\n2 0\n7 0\n5 1\n0 1\n2 1\n3 1\n0 1\n7 0\n6 1\n1 0\n1 0\n6 0\n4 0\n5 1\n0 1\n1 0\n1 0\n7 1\n3 1\n2 1\n6 1\n4 1\n4 1\n6 1\n6 0\n6 1\n3 0\n5 0\n1 0\n3 1\n2 1\n2 0\n4 1\n1 0\n3 1\n6 1\n2 1\n4 1\n6 1\n1 1\n1 0\n2 1\n5 1\n2 1\n0 0\n1 1\n1 1\n7 1\n7 0\n4 0\n3 0\n2 0\n3 0\n3 1\n4 1\n2 1\n0 1\n0 0\n6 0\n2 1\n6 1\n7 1\n5 1\n5 1\n3 1\n0 1\n1 1\n4 1\n1 1\n5 0\n1 1\n6 0\n1 0\n7 1\n4 1\n4 1\n5 0\n3 1\n5 1\n6 1\n0 1\n7 1\n0 0\n3 1\n0 1\n4 1\n6 1\n3 1\n4 1\n0 1\n6 1\n5 1\n6 0\n3 1\n1 1\n4 0\n6 1\n0 1\n7 0\n5 0\n3 1\n3 0\n3 0\n3 0\n0 0\n6 0\n0 0\n5 1\n0 1\n1 1\n1 1\n7 1\n1 1\n3 0\n6 0\n0 0\n7 1\n0 1\n6 0\n1 1\n1 1\n1 1\n6 1\n7 0\n0 0\n2 0\n1 1\n5 1\n6 1\n6 1\n2 1\n5 1\n1 1\n2 1\n5 1\n3 1\n4 1\n4 1\n4 0\n3 1\n2 1\n2 1\n1 0\n7 1\n2 1\n7 1\n5 1\n0 0\n4 1\n4 0\n7 0\n7 0\n7 0\n7 0\n1 1\n0 1\n6 1\n5 1\n5 1\n3 1\n5 1\n5 0\n0 1\n4 1\n4 1\n5 1\n5 0\n2 1\n5 0\n0 1\n7 1\n5 0\n2 0\n5 1\n2 1\n1 0\n6 1\n6 1\n2 0\n2 1\n3 1\n5 1\n2 1\n5 1\n4 1\n5 1\n4 0\n2 0\n3 1\n1 1\n2 0\n0 1\n1 0\n1 0\n3 1\n6 1\n4 1\n5 1\n0 1\n","stdout":"bimodal 681, gshare 973"},{"stdin":{"$concat":["65536 16 1000000\n",{"$rep":"7 1\n7 0\n","n":500000}]},"stdout":"bimodal 1000000, gshare 9"}]},
     solution: {
       approach: `<p>Direct simulation with a small counter table. Index with pc (bimodal) or pc XOR history (gshare), compare the prediction with the outcome, update the saturating counter, then shift the outcome into the history. Bimodal is the special case h = 0, so one function covers both.</p>`,
       code: R`
@@ -2130,6 +2337,13 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
             return miss;
         }
         int main() {
+            int T = 0, h = 0, n = 0;
+            if (std::scanf("%d %d %d", &T, &h, &n) == 3) {          // "T h n" then n lines "pc taken" (demo traces when no input)
+                std::vector<std::pair<std::uint32_t, bool>> trace(n);
+                for (auto& [pc, taken] : trace) { unsigned p; int t; std::scanf("%u %d", &p, &t); pc = p; taken = t; }
+                std::printf("bimodal %lld, gshare %lld\n", simulate(trace, T, 0), simulate(trace, T, h));
+                return 0;
+            }
             std::vector<std::pair<std::uint32_t, bool>> loop = {{0,true},{0,true},{0,false},{0,true}};
             std::vector<std::pair<std::uint32_t, bool>> alt;
             for (int i = 0; i < 100; ++i) alt.push_back({7, i % 2 == 0});
@@ -2155,6 +2369,7 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
       }` },
     mcq: { q: 'Why does a block size of 16–64 work well for floats?', options: ['A tile row is 1+ full cache lines and two tiles fit in L1', 'It matches the number of CPU registers', 'It makes N divisible by the tile size', 'The compiler requires it for vectorisation'], answer: 0, explain: '16 floats = 64 bytes = one line. With a B×B tile of input and output both resident in L1, every line brought in is used completely before it is evicted.' },
     hints: [`<p>Hint 1: Within a small B×B tile, the column-wise writes only span B distinct lines, which can all stay in L1 while the tile is processed.</p>`, `<p>Hint 2: Loop over tile origins (ii, jj) with step B, then over i in [ii, min(ii+B, N)) and j in [jj, min(jj+B, N)).</p>`, `<p>Hint 3: For power-of-two N, conflict misses persist even with tiles; padding the row length (leading dimension N + 16) or a recursive cache-oblivious split are classic fixes. Measure B ∈ {16, 32, 64}.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"1 4 7 2 5 8 3 6 9\n1 3 2 4\n5\n2 1 1\n31 1 1\n32 1 1\n33 1 1\n64 1 1\n100 1 1\n1000 1 1\n4096 1 1"}]},
     solution: {
       approach: `<p>Process the matrix tile by tile. Inside a tile, reads touch B lines of <code>in</code> and writes touch B lines of <code>out</code>; with B = 32, that is 64 lines (4 KB) — comfortably in L1 — so each line is fetched once and fully used. Edge tiles are clipped with <code>std::min</code>.</p>`,
       code: R`
@@ -2176,6 +2391,24 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
             transposeBlocked(in, out, N, 2);                   // tile 2 on N = 3 exercises the edges
             for (float x : out) std::printf("%.0f ", x);       // 1 4 7 2 5 8 3 6 9
             std::printf("\n");
+            std::vector<float> a = {1, 2, 3, 4}, b(4);
+            transposeBlocked(a, b, 2);
+            for (float x : b) std::printf("%.0f ", x);         // 1 3 2 4
+            std::printf("\n");
+            std::vector<float> one = {5}, o1(1);
+            transposeBlocked(one, o1, 1);
+            std::printf("%.0f\n", o1[0]);                      // 5
+            for (int n : {2, 31, 32, 33, 64, 100, 1000, 4096}) {   // in[i][j] = i*n + j: exact in float up to 2^24
+                std::vector<float> m((size_t)n * n), t((size_t)n * n), back((size_t)n * n);
+                for (size_t k = 0; k < m.size(); ++k) m[k] = static_cast<float>(k);
+                transposeBlocked(m, t, n);
+                transposeBlocked(t, back, n, 16);
+                bool good = true;
+                for (int i = 0; i < n && good; ++i)
+                    for (int j = 0; j < n; ++j)
+                        if (t[(size_t)j * n + i] != static_cast<float>((size_t)i * n + j)) { good = false; break; }
+                std::printf("%d %d %d\n", n, good, back == m);   // n 1 1
+            }
         }`,
       dry: { head: ['tile (ii, jj)', 'i range', 'j range', 'writes'], rows: [['(0,0)', '0..1', '0..1', 'out[0][0], out[1][0], out[0][1], out[1][1]'], ['(0,2)', '0..1', '2', 'out[2][0], out[2][1]'], ['(2,0)', '2', '0..1', 'out[0][2], out[1][2]'], ['(2,2)', '2', '2', 'out[2][2]']] },
       complexity: `<p>O(N²) time and O(1) extra space beyond the output. Memory traffic falls from ~N² lines for writes to ~N²/16; typical 3–6× faster for N ≥ 2048.</p>`,
@@ -2198,6 +2431,7 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
       }` },
     mcq: { q: 'Which technique handles INT_MIN without UB and without a wider type?', options: ['Accumulate as a negative number and check bounds against INT_MIN before each step', 'Accumulate as positive, then negate', 'Use unsigned and cast back without checks', 'Catch the overflow exception'], answer: 0, explain: 'The negative range is one larger than the positive range, so accumulating negatively can represent INT_MIN. Check "acc < (INT_MIN + d) / 10" before computing acc*10 - d. C++ has no overflow exceptions.' },
     hints: [`<p>Hint 1: Never compute a value and then ask if it overflowed. Check whether the <b>next</b> step would overflow before doing it.</p>`, `<p>Hint 2: Simplest correct approach: accumulate in <code>long long</code> and stop as soon as the magnitude exceeds 2147483648 (so even 10<sup>5</sup> digits cannot overflow the 64-bit accumulator).</p>`, `<p>Hint 3: Without a wider type: accumulate negatively; before <code>acc = acc * 10 - d</code> check <code>acc &lt; (INT_MIN + d) / 10</code>. At the end, if positive, check <code>acc != INT_MIN</code> and negate. Test "", "+", "-0", "  7", "7 ", "-2147483648", "2147483648", "99999999999999999999".</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"'  -42' -> -42\n'2147483647' -> 2147483647\n'-2147483648' -> -2147483648\n'2147483648' -> nullopt\n'12a' -> nullopt\n'' -> nullopt\n'-' -> nullopt\n'+5' -> 5\n'+' -> nullopt\n'-0' -> 0\n'0007' -> 7\n'2147483647 ' -> nullopt\n' ' -> nullopt\n'- 5' -> nullopt\n'--5' -> nullopt\n'+2147483648' -> nullopt\n'-2147483649' -> nullopt\n'99999999999999999999' -> nullopt\n'1e3' -> nullopt\n'00000000002147483648' -> nullopt\n'-00000000002147483648' -> -2147483648\n'   7' -> 7\nzeros -> 0\nzeros7 -> 7\nnines -> nullopt\nspaces -> 5"}]},
     solution: {
       approach: `<p>Parse format first (spaces, sign, digits only). Accumulate the magnitude in a <code>long long</code>, bailing out as soon as it exceeds the largest magnitude any int can have (2<sup>31</sup>) — so the accumulator itself never overflows regardless of length. Then apply the sign and range-check against INT_MIN/INT_MAX before narrowing. Every operation is on values known to be in range.</p>`,
       code: R`
@@ -2224,11 +2458,23 @@ struct P3 { char tag[3]; short s; double d; };</pre><p>Then prove your answers w
             return static_cast<int>(v);
         }
         int main() {
-            const char* tests[] = {"  -42", "2147483647", "-2147483648", "2147483648", "12a", "", "-"};
+            const char* tests[] = {"  -42", "2147483647", "-2147483648", "2147483648", "12a", "", "-",
+                                   "+5", "+", "-0", "0007", "2147483647 ", " ", "- 5", "--5", "+2147483648", "-2147483649",
+                                   "99999999999999999999", "1e3", "00000000002147483648", "-00000000002147483648", "   7"};
             for (const char* t : tests) {
                 auto r = parseInt(t);
                 if (r) std::printf("'%s' -> %d\n", t, *r); else std::printf("'%s' -> nullopt\n", t);
             }
+            std::string zeros(100000, '0');
+            auto z = parseInt(zeros);
+            std::printf("zeros -> %d\n", z ? *z : -1);                               // 0
+            zeros.back() = '7';
+            auto z7 = parseInt(zeros);
+            std::printf("zeros7 -> %d\n", z7 ? *z7 : -1);                            // 7
+            auto nines = parseInt(std::string(100000, '9'));
+            std::printf("nines -> %s\n", nines ? "value" : "nullopt");               // nullopt
+            auto spaces = parseInt(std::string(100000, ' ') + "5");
+            std::printf("spaces -> %d\n", spaces ? *spaces : -1);                    // 5
         }`,
       dry: { head: ['input', 'mag progression', 'final check', 'result'], rows: [['"-2147483648"', '2 → 21 → … → 2147483648 (= LIMIT, ok)', '-2147483648 ≥ INT_MIN', '<span class="c-g">INT_MIN</span>'], ['"2147483648"', '… → 2147483648', '+2147483648 &gt; INT_MAX', '<span class="c-r">nullopt</span>'], ['"99999999999"', '… → 9999999999 &gt; LIMIT', 'stopped early', '<span class="c-r">nullopt</span>'], ['"12a"', '1 → 12 → junk', '—', '<span class="c-r">nullopt</span>']] },
       complexity: `<p>O(|s|) time, O(1) space; stops after at most ~11 significant digits once out of range.</p>`,
