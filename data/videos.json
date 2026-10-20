@@ -2,18 +2,18 @@
  "v": 1,
  "videos": {
   "dsa01-t0": {
-   "t": "Java Syntax for Problem Solving",
-   "id": "ngCos392W4w",
-   "title": "5 Simple Steps for Solving Any Recursive Problem",
-   "channel": "Reducible",
-   "secs": 1263
+   "t": "Core Language Syntax for Problem Solving",
+   "id": "xo7XrRVxH8Y",
+   "title": "8 patterns to solve 80% Leetcode problems",
+   "channel": "Sahil & Sarra",
+   "secs": 450
   },
   "dsa01-t1": {
-   "t": "Fast Input/Output: Scanner vs BufferedReader",
-   "id": "bwHr9G5VIls",
-   "title": "#83 User Input using BufferedReader and Scanner in Java",
-   "channel": "Telusko",
-   "secs": 709
+   "t": "Fast Input/Output: Slow vs Buffered Reading",
+   "id": "2ybLD6_2gKM",
+   "title": "you will never ask about pointers again after watching this video",
+   "channel": "Low Level",
+   "secs": 483
   },
   "dsa01-t2": {
    "t": "Primitive vs Reference Types, Overflow & Casting",
@@ -217,11 +217,11 @@
    "secs": 910
   },
   "dsa05-t0": {
-   "t": "1D and 2D Arrays in Java (How They Sit in Memory)",
-   "id": "9dr2mHYYoug",
-   "title": "Learn Java arrays in 9 minutes! 🍎",
-   "channel": "Bro Code",
-   "secs": 549
+   "t": "1D and 2D Arrays (How They Sit in Memory)",
+   "id": "Bnjbun-hiBk",
+   "title": "1.2 Array Operations - Traversal, Insertion | Explanation with C Program | DSA Course",
+   "channel": "Jenny's Lectures CS IT",
+   "secs": 1731
   },
   "dsa05-t1": {
    "t": "Prefix Sum: Answer Any Range Sum in O(1)",
@@ -375,7 +375,7 @@
    "secs": 807
   },
   "dsa07-t4": {
-   "t": "Custom Comparators in Java (lambdas, Integer[] vs int[], multiple keys, overflow-safe compare)",
+   "t": "Custom Comparators (lambdas, key functions, multiple keys, overflow-safe compare)",
    "id": null
   },
   "dsa07-t5": {
@@ -467,11 +467,11 @@
    "secs": 1391
   },
   "dsa09-t0": {
-   "t": "Strings in Java: Immutability, char Arithmetic (c - 'a') and the String Pool",
-   "id": "vCRD36bG8xQ",
-   "title": "Strings | Lecture 12 | Java Placement Series",
-   "channel": "Apna College",
-   "secs": 1567
+   "t": "Strings Under the Hood: Immutability, char Arithmetic (c - 'a') and the String Pool",
+   "id": "5OJRqkYbK-4",
+   "title": "Stack vs Heap Memory - Simple Explanation",
+   "channel": "Alex Hyett",
+   "secs": 328
   },
   "dsa09-t1": {
    "t": "Palindromes: Two-Pointer Check & Valid Palindrome (ignore non-alphanumerics)",
@@ -481,11 +481,11 @@
    "secs": 843
   },
   "dsa09-t2": {
-   "t": "StringBuilder Efficiency: Why s += c in a Loop Is O(N²)",
-   "id": "v4J2bEQF6jk",
-   "title": "#29 Multi Dimensional Array in Java",
-   "channel": "Telusko",
-   "secs": 788
+   "t": "String Builders: Why s += c in a Loop Is O(N²)",
+   "id": "p5TDnxAYAZY",
+   "title": "Operations on Arrays in Data Structures: Traversal, Insertion, Deletion and Searching",
+   "channel": "CodeWithHarry",
+   "secs": 1725
   },
   "dsa09-t3": {
    "t": "Longest Palindromic Substring: Expand Around Center (odd & even centers)",
@@ -685,11 +685,11 @@
    "secs": 1069
   },
   "dsa13-t0": {
-   "t": "Stack (LIFO) vs Queue (FIFO) — and why Java uses ArrayDeque",
-   "id": "nqXaPZi99JI",
-   "title": "Learn Queue data structures in 10 minutes 🎟️",
-   "channel": "Bro Code",
-   "secs": 607
+   "t": "Stack (LIFO) vs Queue (FIFO) — and which container to use",
+   "id": "wjI1WNcIntg",
+   "title": "Data Structures: Stacks and Queues",
+   "channel": "HackerRank",
+   "secs": 346
   },
   "dsa13-t1": {
    "t": "Balanced Parentheses — matching brackets with a stack",
@@ -1227,6 +1227,559 @@
    "title": "L27. Lowest Common Ancestor in Binary Tree | LCA | C++ | Java",
    "channel": "take U forward",
    "secs": 849
+  },
+  "dsa22-t5": {
+   "t": "Maximum Flow I: Residual Graphs, Ford-Fulkerson & Edmonds-Karp",
+   "id": "oHy3ddI9X3o",
+   "title": "Network Flows: Max-Flow Min-Cut Theorem (& Ford-Fulkerson Algorithm)",
+   "channel": "Back To Back SWE",
+   "secs": 1316
+  },
+  "dsa22-t6": {
+   "t": "Maximum Flow II: Dinic's Algorithm (Level Graph + Blocking Flow)",
+   "id": "3LG-My_MoWc",
+   "title": "Ford Fulkerson algorithm for Maximum Flow Problem  Example",
+   "channel": "TutorialsPoint",
+   "secs": 793
+  },
+  "dsa22-t7": {
+   "t": "Minimum Cut: The Max-Flow Min-Cut Theorem & Modelling with Cuts",
+   "id": "oHy3ddI9X3o",
+   "title": "Network Flows: Max-Flow Min-Cut Theorem (& Ford-Fulkerson Algorithm)",
+   "channel": "Back To Back SWE",
+   "secs": 1316
+  },
+  "dsa22-t8": {
+   "t": "Bipartite Matching: Kuhn's Augmenting Paths, Flow View, Hopcroft-Karp & König's Theorem",
+   "id": "ELcgI_C1mNM",
+   "title": "Can we assign everyone a job? (maximum matchings) | Bipartite Matchings",
+   "channel": "OptWhiz",
+   "secs": 620
+  },
+  "dsa23-t0": {
+   "t": "Bitmask DP: Travelling Salesman (Held-Karp) & the Assignment Problem",
+   "id": "XaXsJJh-Q5Y",
+   "title": "4.7 Traveling Salesperson Problem - Dynamic Programming",
+   "channel": "Abdul Bari",
+   "secs": 925
+  },
+  "dsa23-t1": {
+   "t": "Digit DP: Counting Numbers in [L, R] with a Property",
+   "id": "sCwokuCoQB8",
+   "title": "Digit dynamic programming with a SPOJ example",
+   "channel": "Gaurav Sen",
+   "secs": 801
+  },
+  "dsa23-t2": {
+   "t": "Probability & Expected-Value DP",
+   "id": "ps2ZTj4DAm0",
+   "title": "Probability and Expected values for CP | Basics | For beginners",
+   "channel": "A Code Daily!",
+   "secs": 1821
+  },
+  "dsa23-t3": {
+   "t": "DP Accelerated by Data Structures (Monotonic Deque, Fenwick / Segment Tree, TreeMap)",
+   "id": null
+  },
+  "dsa23-t4": {
+   "t": "Convex Hull Trick & Li Chao Tree: When Every Choice Is a Straight Line",
+   "id": null
+  },
+  "dsa23-t5": {
+   "t": "Divide & Conquer Optimization: Monotone Split Points",
+   "id": "q6IEA26hvXc",
+   "title": "Median of Two Sorted Arrays - Binary Search - Leetcode 4",
+   "channel": "NeetCode",
+   "secs": 1342
+  },
+  "dsa23-t6": {
+   "t": "Knuth Optimization: Interval DP from O(N³) to O(N²)",
+   "id": "prx1psByp7U",
+   "title": "4.3 Matrix Chain Multiplication - Dynamic Programming",
+   "channel": "Abdul Bari",
+   "secs": 1380
+  },
+  "dsa23-t7": {
+   "t": "SOS DP (Sum over Subsets): Aggregating Over All Submasks in O(n·2ⁿ)",
+   "id": null
+  },
+  "dsa24-t0": {
+   "t": "Manacher’s Algorithm: Every Palindrome in O(N)",
+   "id": "V-sEwsca1ak",
+   "title": "Longest Palindromic Substring Manacher's Algorithm",
+   "channel": "Tushar Roy - Coding Made Simple",
+   "secs": 1006
+  },
+  "dsa24-t1": {
+   "t": "Suffix Array: Sorting Every Ending (Prefix Doubling) + Pattern Search",
+   "id": "QzZ7nmouLTI",
+   "title": "Two Pointers in 7 minutes | LeetCode Pattern",
+   "channel": "AlgoMasterIO",
+   "secs": 441
+  },
+  "dsa24-t2": {
+   "t": "LCP Array with Kasai’s Algorithm (and Range-Min Superpowers)",
+   "id": null
+  },
+  "dsa24-t3": {
+   "t": "Aho–Corasick: Searching for Many Patterns in One Pass",
+   "id": "iTblAHe7s7w",
+   "title": "Aho-Corasick Content Moderator API in Python — Why One Pass Beats 1,000 Regex Checks",
+   "channel": "Fun with Learning Technology",
+   "secs": 441
+  },
+  "dsa24-t4": {
+   "t": "Polynomial Hashing, Double Hashing & Anti-Hash Tests",
+   "id": null
+  },
+  "dsa24-t5": {
+   "t": "Suffix Automaton (Intro): A Tiny Machine That Knows Every Substring",
+   "id": "Y9PwXM6KN34",
+   "title": "Deterministic Finite Automata ( DFA )  with (Type 1: Strings ending with)Examples",
+   "channel": "Anmol Unpacks | Hidden Stories",
+   "secs": 549
+  },
+  "dsa24-t6": {
+   "t": "Applications Playbook: Distinct Substrings, Longest Repeats & Picking the Right Tool",
+   "id": null
+  },
+  "dsa25-t0": {
+   "t": "Extended Euclid: Solving a·x + b·y = gcd(a, b)",
+   "id": "lq285DDdmtw",
+   "title": "Extended Euclidean Algorithm (Solved Example 1)",
+   "channel": "Neso Academy",
+   "secs": 616
+  },
+  "dsa25-t1": {
+   "t": "Modular Inverse: Dividing on a Clock (Fermat + Extended Euclid)",
+   "id": "YwaQ4m1eHQo",
+   "title": "Multiplicative Inverse",
+   "channel": "Neso Academy",
+   "secs": 603
+  },
+  "dsa25-t2": {
+   "t": "Euler's Totient φ(n) and Euler's Theorem",
+   "id": "DwQ7-k9LkJ4",
+   "title": "Euler’s Totient Function (Phi Function)",
+   "channel": "Neso Academy",
+   "secs": 520
+  },
+  "dsa25-t3": {
+   "t": "Chinese Remainder Theorem: Rebuilding a Number from Its Remainders",
+   "id": null
+  },
+  "dsa25-t4": {
+   "t": "Matrix Exponentiation: Fibonacci in O(log N) and Any Linear Recurrence",
+   "id": "EEb6JP3NXBI",
+   "title": "Solving the Fibonacci Sequence with Matrix Exponentiation",
+   "channel": "Gaurav Sen",
+   "secs": 1220
+  },
+  "dsa25-t5": {
+   "t": "Inclusion–Exclusion: Counting Without Double-Counting",
+   "id": "VJkvPTY6kZw",
+   "title": "All of Combinatorics in 30 Minutes",
+   "channel": "Simple Quant",
+   "secs": 2011
+  },
+  "dsa25-t6": {
+   "t": "Catalan Numbers: Brackets, Trees, Mountains and More",
+   "id": "0pTN0qzpt-Y",
+   "title": "10 Questions, 1 concept - Catalan Numbers Applications | Dynamic Programming! ✌️💪",
+   "channel": "Keerti Purswani",
+   "secs": 2353
+  },
+  "dsa25-t7": {
+   "t": "Lucas' Theorem: nCr mod a Small Prime for Gigantic n",
+   "id": null
+  },
+  "dsa25-t8": {
+   "t": "Probability & Expected Value: Linearity, Geometric Waits and Expectation DP",
+   "id": null
+  },
+  "dsa25-t9": {
+   "t": "Game Theory: Winning & Losing Positions, Nim and Sprague–Grundy",
+   "id": "sUGiwe066bA",
+   "title": "Competitive Programming Guide - Math #18 - Impartial Games #1",
+   "channel": "Jonathan Paulson",
+   "secs": 410
+  },
+  "dsa26-t0": {
+   "t": "Vectors, Cross Product & Orientation (the CCW Test)",
+   "id": "bbTqI0oqL5U",
+   "title": "Check if two line segments intersect",
+   "channel": "Techdose",
+   "secs": 726
+  },
+  "dsa26-t1": {
+   "t": "Segment Intersection: Straddle Test, Collinear Cases & the Crossing Point",
+   "id": null
+  },
+  "dsa26-t2": {
+   "t": "Convex Hull: Andrew's Monotone Chain & Graham Scan",
+   "id": "B2AJoQSZf4M",
+   "title": "Convex Hull Algorithm - Graham Scan and Jarvis March tutorial",
+   "channel": "Stable Sort",
+   "secs": 444
+  },
+  "dsa26-t3": {
+   "t": "Polygon Area with the Shoelace Formula (plus Convexity, Pick's Theorem & Point-in-Polygon)",
+   "id": null
+  },
+  "dsa26-t4": {
+   "t": "Reservoir Sampling: Fair Random Picks from a Stream of Unknown Length",
+   "id": "QE5835KO5K0",
+   "title": "LeetCode #382: Linked List Random Node, Reservoir Sampling in One Pass",
+   "channel": "Brute To Best",
+   "secs": 716
+  },
+  "dsa26-t5": {
+   "t": "Randomized Algorithms: Fisher–Yates Shuffle & Randomized Quickselect",
+   "id": "VjoH-MC9xhY",
+   "title": "Algorithms: Shuffling an Array Using Sorting",
+   "channel": "Logic Lambda",
+   "secs": 231
+  },
+  "dsa26-t6": {
+   "t": "Amortized Analysis: Dynamic Arrays, Binary Counters, Monotonic Stacks & Union-Find",
+   "id": null
+  },
+  "dsa26-t7": {
+   "t": "Skip Lists: Express Lanes over a Sorted Linked List",
+   "id": "NDGpsfwAaqo",
+   "title": "Skip Lists",
+   "channel": "Algorithms Lab",
+   "secs": 936
+  },
+  "dsa27-t0": {
+   "t": "LRU Cache: HashMap + Doubly Linked List, and Its Real-World Variants",
+   "id": null
+  },
+  "dsa27-t1": {
+   "t": "LFU Cache: Frequency Buckets + minFreq for O(1) Eviction",
+   "id": "a3y6EEgN84E",
+   "title": "LFU Cache (Frequency Buckets and minFreq) | Data Structures for Interview Preparation",
+   "channel": "Live To Code",
+   "secs": 1726
+  },
+  "dsa27-t2": {
+   "t": "Skip List: A Sorted Linked List with Express Lanes",
+   "id": "bulshf14nSY",
+   "title": "Skip List in Datastructure | Explaned in Telugu ",
+   "channel": "The CSE School",
+   "secs": 1519
+  },
+  "dsa27-t3": {
+   "t": "Bloom Filter: \"Definitely Not\" or \"Probably Yes\" in a Few Bits",
+   "id": "HxAnFcEn0K4",
+   "title": "Bloom Filters, Visualized (Definitely No or Probably Yes)",
+   "channel": "Generalist Programmer",
+   "secs": 646
+  },
+  "dsa27-t4": {
+   "t": "Consistent-Hash Ring: Add or Remove Servers Without Reshuffling Everything",
+   "id": null
+  },
+  "dsa27-t5": {
+   "t": "Time-Based Key-Value Store: Versions + Binary Search for \"As Of\" Reads",
+   "id": "fu2cD_6E8Hw",
+   "title": "Time Based Key-Value Store - Leetcode 981 - Python",
+   "channel": "NeetCode",
+   "secs": 1036
+  },
+  "dsa27-t6": {
+   "t": "Designing Iterators: Peeking, Flatten (2D & Nested), Zigzag and BST",
+   "id": null
+  },
+  "dsa27-t7": {
+   "t": "Hit Counter: Counting Events in a Sliding Time Window (and Rate Limiters)",
+   "id": null
+  },
+  "dsa27-t8": {
+   "t": "Autocomplete System: Trie + Top-K Suggestions per Prefix",
+   "id": "oobqoCJlHA0",
+   "title": "Implement Trie (Prefix Tree) - Leetcode 208",
+   "channel": "NeetCode",
+   "secs": 1136
+  },
+  "dsa27-t9": {
+   "t": "Choosing the Design: Trade-offs, Complexity Cheat Sheet and Eviction Showdown",
+   "id": null
+  },
+  "dsa28-t0": {
+   "t": "The Master Pattern Map: Clue → Technique",
+   "id": "vUj-kUEC_oA",
+   "title": "Lec-60: All Types of SQL Commands with Example | DDL, DML, DCL, TCL and CONSTRAINTS | DBMS",
+   "channel": "Gate Smashers",
+   "secs": 632
+  },
+  "dsa28-t1": {
+   "t": "Reading Constraints: The Complexity Budget",
+   "id": "1nENigGr-a0",
+   "title": "System Design Was HARD - Until You Knew the Trade-Offs",
+   "channel": "ByteByteGo",
+   "secs": 309
+  },
+  "dsa28-t2": {
+   "t": "How to Approach an Unseen Problem",
+   "id": "uzo_gpWtvI4",
+   "title": "SOLVE any DSA QUESTION using this 7-STEP Strategy",
+   "channel": "Love Babbar",
+   "secs": 609
+  },
+  "dsa28-t3": {
+   "t": "Mixed Timed Problem Sets: Practising Like the Real Thing",
+   "id": "gOMW_n2-2Mw",
+   "title": "Python lists, sets, and tuples explained 🍍",
+   "channel": "Bro Code",
+   "secs": 906
+  },
+  "dsa28-t4": {
+   "t": "Mock Interview Walkthroughs: What a Strong Round Sounds Like",
+   "id": "1t1_a1BZ04o",
+   "title": "How to NOT Fail a Technical Interview",
+   "channel": "Fireship",
+   "secs": 506
+  },
+  "dsa28-t5": {
+   "t": "Debugging Under Pressure",
+   "id": null
+  },
+  "dsa28-t6": {
+   "t": "Communicating Trade-offs Like a Senior Engineer",
+   "id": "1nENigGr-a0",
+   "title": "System Design Was HARD - Until You Knew the Trade-Offs",
+   "channel": "ByteByteGo",
+   "secs": 309
+  },
+  "dsa28-t7": {
+   "t": "Common Mistakes (and the Habit That Prevents Each)",
+   "id": "i_wDa2AS_8w",
+   "title": "31 nooby C++ habits you need to ditch",
+   "channel": "mCoding",
+   "secs": 978
+  },
+  "dsa28-t8": {
+   "t": "Final Revision Checklists & Your Last-Week Plan",
+   "id": "ayZppqJAUcc",
+   "title": "90 Days Roadmap | PLACEMENT GUARANTEED | Software Engineer | FAANG and Startups",
+   "channel": "Striver",
+   "secs": 734
+  },
+  "java01-t0": {
+   "t": "Installing the JDK & Compile vs Run (javac → bytecode → java)",
+   "id": "KctLuhwFEQ8",
+   "title": "JVM, JRE, and JDK - Fully Explained in 5 Minutes",
+   "channel": "Coding with John",
+   "secs": 328
+  },
+  "java01-t1": {
+   "t": "JDK vs JRE vs JVM — and What Lives Inside the JVM",
+   "id": "KctLuhwFEQ8",
+   "title": "JVM, JRE, and JDK - Fully Explained in 5 Minutes",
+   "channel": "Coding with John",
+   "secs": 328
+  },
+  "java01-t2": {
+   "t": "The main Method, Command-Line Arguments & Exit Codes",
+   "id": "P-_Nzi_mCRo",
+   "title": "Java Main Method Explained - What Does All That Stuff Mean?",
+   "channel": "Coding with John",
+   "secs": 430
+  },
+  "java01-t3": {
+   "t": "Primitive Types, Ranges, Literals & Defaults",
+   "id": "WQ7mvQFSmYc",
+   "title": "Primitives Data Types In Java - All the Primitives And What They Do",
+   "channel": "Coding with John",
+   "secs": 624
+  },
+  "java01-t4": {
+   "t": "Type Casting: Widening, Narrowing & Numeric Promotion",
+   "id": "CPk8pffKV64",
+   "title": "#8 Type Conversion in Java",
+   "channel": "Telusko",
+   "secs": 753
+  },
+  "java01-t5": {
+   "t": "Operators: Arithmetic, ++/--, Logical, Bitwise, Shifts & Precedence",
+   "id": null
+  },
+  "java01-t6": {
+   "t": "Integer Overflow: Wrap-Around, Detection & Prevention",
+   "id": "uSF26_lzxtc",
+   "title": "Integer Overflow",
+   "channel": "Abdur Rakib",
+   "secs": 535
+  },
+  "java01-t7": {
+   "t": "char, ASCII & Unicode (UTF-16, Code Points, Emoji)",
+   "id": "ut74oHojxqo",
+   "title": "Unicode, in friendly terms: ASCII, UTF-8, code points, character encodings, and more",
+   "channel": "Studying With Alex",
+   "secs": 654
+  },
+  "java02-t0": {
+   "t": "Decisions: if/else, the Ternary Operator, switch & Switch Expressions",
+   "id": "MY03bt_0JQI",
+   "title": "Java if statements 🚧【6 minutes】",
+   "channel": "Bro Code",
+   "secs": 372
+  },
+  "java02-t1": {
+   "t": "Loops: for, while, do-while and the Enhanced for-each",
+   "id": null
+  },
+  "java02-t2": {
+   "t": "Jumping Out Early: break, continue and Labelled Loops",
+   "id": "RGKlTSrv8X4",
+   "title": "BREAK || CONTINUE || LABELLED BREAK || LABELLED CONTINUE|| RETURN || EXAMPLES|| JAVA PROGRAMMING",
+   "channel": "T V Nagaraju Technical",
+   "secs": 880
+  },
+  "java02-t3": {
+   "t": "Methods, the Call Stack and Why Java Is Always Pass-by-Value",
+   "id": "-5NC5_sI-vQ",
+   "title": "Java is ALWAYS Pass By Value. Here's Why",
+   "channel": "Coding with John",
+   "secs": 322
+  },
+  "java02-t4": {
+   "t": "Method Overloading and Varargs (int... args)",
+   "id": "2knxgAFqwKk",
+   "title": "Learn VARARGS in 6 minutes! 💬",
+   "channel": "Bro Code",
+   "secs": 390
+  },
+  "java02-t5": {
+   "t": "1D Arrays, 2D Arrays and Jagged Arrays",
+   "id": "alwukGslBG8",
+   "title": "Java 2D arrays 🚚",
+   "channel": "Bro Code",
+   "secs": 486
+  },
+  "java02-t6": {
+   "t": "The java.util.Arrays Toolbox (sort, binarySearch, fill, copyOf, equals, asList…)",
+   "id": null
+  },
+  "java02-t7": {
+   "t": "String Basics: The Everyday Methods (and Their Traps)",
+   "id": "P9hEmbfdiuc",
+   "title": "Java String methods 💬",
+   "channel": "Bro Code",
+   "secs": 378
+  },
+  "java03-t0": {
+   "t": "Defining Classes & Creating Objects",
+   "id": "pgBk8HC7jbU",
+   "title": "Java Constructors - Full Tutorial",
+   "channel": "Coding with John",
+   "secs": 458
+  },
+  "java03-t1": {
+   "t": "References: Stack vs Heap, Aliasing, null & Pass-by-Value",
+   "id": "2ybLD6_2gKM",
+   "title": "you will never ask about pointers again after watching this video",
+   "channel": "Low Level",
+   "secs": 483
+  },
+  "java03-t2": {
+   "t": "Constructors & Constructor Chaining",
+   "id": "pgBk8HC7jbU",
+   "title": "Java Constructors - Full Tutorial",
+   "channel": "Coding with John",
+   "secs": 458
+  },
+  "java03-t3": {
+   "t": "The this Keyword",
+   "id": "ETLHbHenW44",
+   "title": "This Keyword in Java Full Tutorial - How to Use \"this\"",
+   "channel": "Coding with John",
+   "secs": 459
+  },
+  "java03-t4": {
+   "t": "static: Fields, Methods & Blocks",
+   "id": "-Y67pdWHr9Y",
+   "title": "Static vs Non-Static Variables and Methods In Java - Full Simple Tutorial",
+   "channel": "Coding with John",
+   "secs": 689
+  },
+  "java03-t5": {
+   "t": "Initialization Order: static, instance, constructor",
+   "id": "pgBk8HC7jbU",
+   "title": "Java Constructors - Full Tutorial",
+   "channel": "Coding with John",
+   "secs": 458
+  },
+  "java03-t6": {
+   "t": "Access Modifiers & Packages",
+   "id": "T632kAJ_9VA",
+   "title": "Java access modifiers: (public, protected, private) 🔒",
+   "channel": "Bro Code",
+   "secs": 613
+  },
+  "java04-t0": {
+   "t": "Encapsulation: Private Data, Public Behaviour, Guarded Invariants",
+   "id": "SCbWyagwHMA",
+   "title": "Lec-53: Encapsulation vs Data Hiding vs Abstraction in OOPS | Explanation with Real Life Examples",
+   "channel": "Gate Smashers",
+   "secs": 399
+  },
+  "java04-t1": {
+   "t": "Inheritance, extends & super: Reusing a Parent and Building Objects Layer by Layer",
+   "id": "IUqKuGNasdM",
+   "title": "Java Classes & Objects",
+   "channel": "Keep On Coding",
+   "secs": 696
+  },
+  "java04-t2": {
+   "t": "Method Overriding Rules: Signature, Return Type, Access, Exceptions, @Override",
+   "id": "CLzgS08equQ",
+   "title": "#52 Method Overriding in Java",
+   "channel": "Telusko",
+   "secs": 477
+  },
+  "java04-t3": {
+   "t": "Polymorphism: Compile-Time (Overloading) vs Runtime (Dynamic Dispatch)",
+   "id": "jhDUxynEQRI",
+   "title": "Java Polymorphism Fully Explained In 7 Minutes",
+   "channel": "Coding with John",
+   "secs": 436
+  },
+  "java04-t4": {
+   "t": "Abstract Classes: Half-Built Blueprints and the Template Method",
+   "id": "AGWyx96lP8U",
+   "title": "How I Plan My Coding Projects - 9 Steps",
+   "channel": "Tech With Tim",
+   "secs": 1037
+  },
+  "java04-t5": {
+   "t": "Interfaces: Contracts, default & static Methods, and the Diamond Rules",
+   "id": "A1uqgEz3hB0",
+   "title": "#65 What is Interface in Java",
+   "channel": "Telusko",
+   "secs": 483
+  },
+  "java04-t6": {
+   "t": "final: Variables, References, Methods and Classes",
+   "id": "-Y67pdWHr9Y",
+   "title": "Static vs Non-Static Variables and Methods In Java - Full Simple Tutorial",
+   "channel": "Coding with John",
+   "secs": 689
+  },
+  "java04-t7": {
+   "t": "Composition vs Inheritance: HAS-A Beats IS-A (Most of the Time)",
+   "id": "PnlwE3INM-M",
+   "title": "I don't like Object Oriented Programming (OOP) 1/2",
+   "channel": "Shai UI",
+   "secs": 1249
+  },
+  "java04-t8": {
+   "t": "The Object Class: equals, hashCode, toString, getClass, clone, wait/notify, finalize",
+   "id": "dCt9sfZV8Sg",
+   "title": "#58 Object Class equals toString hashcode in Java",
+   "channel": "Telusko",
+   "secs": 720
   }
  }
 }
