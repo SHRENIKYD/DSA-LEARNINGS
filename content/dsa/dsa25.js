@@ -1,6 +1,20 @@
 (function () {
   var topics = [], practice = [], quiz = [], interview = [];
 
+  // Alternative-language versions of the Java code panes shown by the visualizers (same lines, same highlights).
+  var EXTGCD_ALT = {
+    python: { code: 'r = ext_gcd(b, a % b)\nreturn g, r[2], r[1] - (a // b) * r[2]', map: {} },
+    js: { code: 'const r = extGcd(b, a % b);\nreturn [g, r[2], r[1] - Math.floor(a / b) * r[2]];', map: {} },
+    cpp: { code: 'auto r = extGcd(b, a % b);\nreturn {g, r[2], r[1] - (a / b) * r[2]};', map: {} } };
+  var POWBIT_ALT = {
+    python: { code: 'if exp & 1: result = result * base % m\nbase = base * base % m\nexp >>= 1', map: {} },
+    js: { code: 'if (exp & 1) result = result * base % m;\nbase = base * base % m;\nexp >>= 1;', map: {} },
+    cpp: { code: 'if (exp & 1) result = result * base % m;\nbase = base * base % m;\nexp >>= 1;', map: {} } };
+  var PHI_ALT = {
+    python: { code: 'while n % p == 0: n //= p\nresult -= result // p', map: {} },
+    js: { code: 'while (n % p === 0) n /= p;\nresult -= result / p;', map: {} },
+    cpp: { code: 'while (n % p == 0) n /= p;\nresult -= result / p;', map: {} } };
+
   // ---------- small shared helpers for the visualizers ----------
   function nums(input, minC, maxC, fmt) {
     var t = String(input === undefined || input === null ? '' : input).trim();
@@ -192,7 +206,7 @@ for a, b in [(240, 46), (5, 3), (35, 15), (17, 0), (1000000007, 998244353)]:
           frames.push({ narr: 'Row (' + rows[i][0] + ', ' + rows[i][1] + '): new x = old y = <b>' + nx + '</b>; new y = old x − q·old y = ' + x + ' − ' + qq + '·(' + y + ') = <b>' + ny + '</b>. Check: ' + rows[i][0] + '·(' + nx + ') + ' + rows[i][1] + '·(' + ny + ') = ' + (rows[i][0] * nx + rows[i][1] * ny) + ' ✓', parts: [
             { type: 'table', label: 'Phase 2: building x, y back up', columns: cols, rows: cp(rows), hl: one(i, 'ok') },
             { type: 'vars', vals: { q: qq, 'old x': x, 'old y': y, 'new x': nx, 'new y': ny }, hl: { 'new x': 'ok', 'new y': 'ok' } },
-            { type: 'code', label: 'the only line that matters', lang: 'java', code: 'long[] r = extGcd(b, a % b);\nreturn new long[]{g, r[2], r[1] - (a / b) * r[2]};', hl: { 2: 'cur' } }
+            { type: 'code', label: 'the only line that matters', lang: 'java', code: 'long[] r = extGcd(b, a % b);\nreturn new long[]{g, r[2], r[1] - (a / b) * r[2]};', hl: { 2: 'cur' }, alt: EXTGCD_ALT }
           ] });
           x = nx; y = ny;
         }
@@ -231,13 +245,34 @@ print(ext_gcd(240, 46))   # (2, -9, 47)` } },
       statement: `<p>Given positive integers <code>a</code>, <code>b</code> and a non-negative integer <code>c</code>, find integers <code>x</code>, <code>y</code> with <code>a·x + b·y = c</code> such that <code>x</code> is the <b>smallest non-negative</b> value possible (y may be negative). Return <code>[x, y]</code>, or <code>[-1, -1]</code> if no integer solution exists.</p>`,
       constraints: `1 ≤ a, b ≤ 10<sup>9</sup>, 0 ≤ c ≤ 10<sup>9</sup>`,
       example: `<p>a = 6, b = 9, c = 21 → ${H.c('g', '[2, 1]')} because 6·2 + 9·1 = 21 and x = 0 or 1 cannot work (21 and 15 are not multiples of 9).</p><p>a = 6, b = 9, c = 20 → ${H.c('r', '[-1, -1]')} because gcd 3 does not divide 20.</p>`,
-      brute: { why: `<p>Try x = 0, 1, 2, … and check whether <code>(c − a·x)</code> is divisible by b. The answer x is always below b/g, but for b = 10<sup>9</sup> that is up to 10<sup>9</sup> tries per query — too slow when there are many queries, and it teaches nothing about <i>why</i> some c are impossible.</p>`, code: `static long[] brute(long a, long b, long c) {
+      brute: { why: `<p>Try x = 0, 1, 2, … and check whether <code>(c − a·x)</code> is divisible by b. The answer x is always below b/g, but for b = 10<sup>9</sup> that is up to 10<sup>9</sup> tries per query — too slow when there are many queries, and it teaches nothing about <i>why</i> some c are impossible.</p>`, code: { lang: 'java', code: `static long[] brute(long a, long b, long c) {
     for (long x = 0; x < b; x++) {                 // x repeats its behaviour every b/g, so b tries suffice
         long rest = c - a * x;
         if (rest % b == 0) return new long[]{x, rest / b};
     }
     return new long[]{-1, -1};
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def solve(a, b, c):
+    for x in range(b):                                # x repeats its behaviour every b/g, so b tries suffice
+        rest = c - a * x
+        if rest % b == 0:
+            return [x, rest // b]
+    return [-1, -1]` }, { lang: 'js', code: String.raw`
+function solve(a, b, c) {
+  const A = BigInt(a), B = BigInt(b), C = BigInt(c);  // a * x can reach 1e18, past 2^53
+  for (let x = 0n; x < B; x++) {                      // x repeats its behaviour every b/g, so b tries suffice
+    const rest = C - A * x;
+    if (rest % B === 0n) return [x, rest / B];
+  }
+  return [-1n, -1n];
+}` }, { lang: 'cpp', code: String.raw`
+vector<long long> solve(long long a, long long b, long long c) {
+    for (long long x = 0; x < b; x++) {               // x repeats its behaviour every b/g, so b tries suffice
+        long long rest = c - a * x;
+        if (rest % b == 0) return {x, rest / b};
+    }
+    return {-1, -1};
+}` }] } },
       mcq: { q: 'You found one solution (x₀, y₀) of 6x + 9y = 21. Which step moves to the next solution while keeping the sum 21?', options: ['x + 3, y − 2', 'x + 9, y − 6 only', 'x + 1, y − 1', 'x + 6, y + 9'], answer: 0, explain: 'Step is b/g = 9/3 = 3 for x and a/g = 6/3 = 2 for y: 6·3 − 9·2 = 0, so the total is unchanged. (x + 9, y − 6) also works but skips solutions.' },
       hints: [`<p>Hint 1: The left side is always a multiple of g = gcd(a, b). So if g does not divide c, return [-1, -1] immediately.</p>`, `<p>Hint 2: Extended Euclid gives a·x + b·y = g. Multiply both by c/g to get one solution (x₀, y₀). All solutions are x₀ + k·(b/g), y₀ − k·(a/g).</p>`, `<p>Hint 3: The smallest non-negative x is <code>x₀ mod (b/g)</code>, taken in [0, b/g). Then y = (c − a·x) / b exactly. Recipe: g, x, y = extGcd(a, b) → check c % g → step = b/g → x = (x·(c/g)) mod step, made non-negative → y = (c − a·x)/b. Use a 64-bit integer: |x·(c/g)| ≤ 10<sup>9</sup>·10<sup>9</sup> fits (JavaScript needs BigInt here).</p>`],
       tests: { sig: 'long long long -> long[]', fn: 'solve', cases: [
@@ -643,7 +678,7 @@ long long nCr(int n, int r) {
           frames.push({ narr: 'Bit ' + bit + ' is <b>' + (set ? '1' : '0') + '</b>. ' + (set ? 'Multiply it in: result = ' + before + ' × ' + base + ' mod ' + p + ' = <b>' + res + '</b>.' : 'Skip — this power of the base is not part of the exponent.') + ' Then square the base for the next bit.', parts: [
             { type: 'bits', label: 'exponent p − 2', value: e, width: width, hl: one(bit, set ? 'ok' : 'cur') },
             { type: 'vars', vals: { bit: bit, 'base (= a^(2^bit))': base, result: res }, hl: set ? { result: 'ok' } : { 'base (= a^(2^bit))': 'cur' } },
-            { type: 'code', lang: 'java', code: 'if ((exp & 1) == 1) result = result * base % m;\nbase = base * base % m;\nexp >>= 1;', hl: set ? { 1: 'ok' } : { 2: 'cur' } }
+            { type: 'code', lang: 'java', code: 'if ((exp & 1) == 1) result = result * base % m;\nbase = base * base % m;\nexp >>= 1;', hl: set ? { 1: 'ok' } : { 2: 'cur' }, alt: POWBIT_ALT }
           ] });
           base = mulModJ(base, base, p); ex = Math.floor(ex / 2); bit++;
         }
@@ -685,7 +720,7 @@ print(pow(2, -1, P) == inv2)          # Python 3.8+ can do modular inverse direc
       statement: `<p>You are given Q queries, each a pair (n, r). For each, print <code>C(n, r) mod 1,000,000,007</code> (0 if r &gt; n).</p>`,
       constraints: `1 ≤ Q ≤ 10<sup>5</sup>, 0 ≤ r, n ≤ 10<sup>6</sup>`,
       example: `<p>Queries (5, 2), (10, 3), (4, 7) → ${H.c('g', '10, 120, 0')}. C(5,2) = 10 subsets of size 2 from 5; C(4,7) = 0 because you cannot pick 7 from 4.</p>`,
-      brute: { why: `<p>Compute each answer by multiplying n·(n−1)·…·(n−r+1) and dividing by r!. The division is illegal mod p, and doing it with big-number arithmetic costs O(r) big-number multiplications per query → up to 10<sup>5</sup> × 10<sup>6</sup> operations. A full Pascal triangle needs 10<sup>12</sup> cells. Both are hopeless.</p>`, code: `// Pascal's triangle: correct but O(N^2) time and memory - only fine for N <= ~5000
+      brute: { why: `<p>Compute each answer by multiplying n·(n−1)·…·(n−r+1) and dividing by r!. The division is illegal mod p, and doing it with big-number arithmetic costs O(r) big-number multiplications per query → up to 10<sup>5</sup> × 10<sup>6</sup> operations. A full Pascal triangle needs 10<sup>12</sup> cells. Both are hopeless.</p>`, code: { lang: 'java', code: `// Pascal's triangle: correct but O(N^2) time and memory - only fine for N <= ~5000
 static long[][] pascal(int n, long mod) {
     long[][] c = new long[n + 1][n + 1];
     for (int i = 0; i <= n; i++) {
@@ -693,7 +728,33 @@ static long[][] pascal(int n, long mod) {
         for (int j = 1; j <= i; j++) c[i][j] = (c[i - 1][j - 1] + c[i - 1][j]) % mod;
     }
     return c;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+# Pascal's triangle: correct but O(N^2) time and memory - only fine for N <= ~5000
+def pascal(n, mod):
+    c = [[0] * (n + 1) for _ in range(n + 1)]
+    for i in range(n + 1):
+        c[i][0] = 1
+        for j in range(1, i + 1):
+            c[i][j] = (c[i - 1][j - 1] + c[i - 1][j]) % mod
+    return c` }, { lang: 'js', code: String.raw`
+// Pascal's triangle: correct but O(N^2) time and memory - only fine for N <= ~5000
+function pascal(n, mod) {
+  const c = Array.from({ length: n + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= n; i++) {
+    c[i][0] = 1;
+    for (let j = 1; j <= i; j++) c[i][j] = (c[i - 1][j - 1] + c[i - 1][j]) % mod;
+  }
+  return c;
+}` }, { lang: 'cpp', code: String.raw`
+// Pascal's triangle: correct but O(N^2) time and memory - only fine for N <= ~5000
+vector<vector<long long>> pascal(int n, long long mod) {
+    vector<vector<long long>> c(n + 1, vector<long long>(n + 1, 0));
+    for (int i = 0; i <= n; i++) {
+        c[i][0] = 1;
+        for (int j = 1; j <= i; j++) c[i][j] = (c[i - 1][j - 1] + c[i - 1][j]) % mod;
+    }
+    return c;
+}` }] } },
       mcq: { q: 'Which is the cheapest correct way to fill invFact[0..N] mod a prime?', options: ['One Fermat inverse of fact[N], then invFact[i−1] = invFact[i]·i', 'A separate Fermat inverse for every fact[i]', 'invFact[i] = 1 / fact[i] using floating point', 'Extended Euclid on each i, then multiply them'], answer: 0, explain: 'One O(log p) exponentiation plus N multiplications. Option 2 is correct but N times slower; option 3 is wrong (floating point); option 4 also works but is slower and more code.' },
       hints: [`<p>Hint 1: C(n, r) = n! / (r!·(n−r)!). Division mod a prime = multiplication by an inverse.</p>`, `<p>Hint 2: Precompute fact[0..10<sup>6</sup>] and invFact[0..10<sup>6</sup>] once. Only fact[MAX] needs a real Fermat inverse; the rest come from invFact[i−1] = invFact[i]·i.</p>`, `<p>Hint 3: Handle r &lt; 0 or r &gt; n → 0. Reduce mod p after every single multiplication. Use fast output (build one string or buffer and print once) for 10<sup>5</sup> lines.</p>`],
       tests: { sig: 'int[][] -> long[]', fn: 'answer', cases: [
@@ -983,7 +1044,7 @@ print("7^222 mod 10 =", pow(7, 222 % phi(10), 10), "check", pow(7, 222, 10))` }]
           var cnt = 0; while (m % p === 0) { m /= p; cnt++; }
           var before = result; result -= result / p;
           var P = p;
-          frames.push({ narr: 'Found prime <b>' + p + '</b> (it appears ' + cnt + ' time' + (cnt > 1 ? 's' : '') + ' in n — the count does not matter). The bouncer removes every guest divisible by ' + p + ': result = ' + before + ' − ' + before + '/' + p + ' = <b>' + result + '</b>.', parts: (draw ? [{ type: 'array', label: 'red = divisible by ' + p + ', leaving now', values: vals.slice(), hl: hlAlive(function (x) { return x % P === 0; }) }] : []).concat([{ type: 'vars', vals: { p: p, 'n left to factor': m, result: result }, hl: { result: 'ok', p: 'cur' } }, { type: 'code', lang: 'java', code: 'while (n % p == 0) n /= p;\nresult -= result / p;', hl: { 2: 'cur' } }]) });
+          frames.push({ narr: 'Found prime <b>' + p + '</b> (it appears ' + cnt + ' time' + (cnt > 1 ? 's' : '') + ' in n — the count does not matter). The bouncer removes every guest divisible by ' + p + ': result = ' + before + ' − ' + before + '/' + p + ' = <b>' + result + '</b>.', parts: (draw ? [{ type: 'array', label: 'red = divisible by ' + p + ', leaving now', values: vals.slice(), hl: hlAlive(function (x) { return x % P === 0; }) }] : []).concat([{ type: 'vars', vals: { p: p, 'n left to factor': m, result: result }, hl: { result: 'ok', p: 'cur' } }, { type: 'code', lang: 'java', code: 'while (n % p == 0) n /= p;\nresult -= result / p;', hl: { 2: 'cur' }, alt: PHI_ALT }]) });
           for (i = 0; i < vals.length; i++) if (vals[i] % p === 0) alive[i] = false;
         }
         if (m > 1) {
@@ -1019,14 +1080,38 @@ print("7^222 mod 10 =", pow(7, 222 % phi(10), 10), "check", pow(7, 222, 10))` }]
       statement: `<p>A reduced proper fraction is n/d with 1 ≤ n &lt; d and gcd(n, d) = 1. Given N, count all reduced proper fractions with denominator d ≤ N.</p>`,
       constraints: `2 ≤ N ≤ 10<sup>7</sup>. The answer can exceed 2<sup>31</sup> — use a 64-bit integer.`,
       example: `<p>N = 8 → ${H.c('g', '21')}: 1/2; 1/3 2/3; 1/4 3/4; 1/5 … 4/5; 1/6 5/6; 1/7 … 6/7; 1/8 3/8 5/8 7/8 → 1 + 2 + 2 + 4 + 2 + 6 + 4 = 21.</p>`,
-      brute: { why: `<p>Check every pair (n, d) with a gcd: about N²/2 pairs × O(log N) each. For N = 10<sup>7</sup> that is 5·10<sup>13</sup> gcd calls — days of CPU. The waste: we recompute coprimality from scratch for each pair instead of counting per denominator.</p>`, code: `static long brute(int N) {
+      brute: { why: `<p>Check every pair (n, d) with a gcd: about N²/2 pairs × O(log N) each. For N = 10<sup>7</sup> that is 5·10<sup>13</sup> gcd calls — days of CPU. The waste: we recompute coprimality from scratch for each pair instead of counting per denominator.</p>`, code: { lang: 'java', code: `static long brute(int N) {
     long count = 0;
     for (int d = 2; d <= N; d++)
         for (int n = 1; n < d; n++)
             if (gcd(n, d) == 1) count++;
     return count;
 }
-static int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }` },
+static int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }`, alt: [{ lang: 'python', code: String.raw`
+from math import gcd
+
+def count_fractions(N):
+    count = 0
+    for d in range(2, N + 1):
+        for n in range(1, d):
+            if gcd(n, d) == 1:
+                count += 1
+    return count` }, { lang: 'js', code: String.raw`
+function countFractions(N) {
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  let count = 0;
+  for (let d = 2; d <= N; d++)
+    for (let n = 1; n < d; n++)
+      if (gcd(n, d) === 1) count++;
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+long long countFractions(int N) {
+    long long count = 0;
+    for (int d = 2; d <= N; d++)
+        for (int n = 1; n < d; n++)
+            if (gcd(n, d) == 1) count++;
+    return count;
+}` }] } },
       mcq: { q: 'For a fixed denominator d, how many reduced proper fractions n/d exist?', options: ['φ(d)', 'd − 1', 'number of divisors of d', 'd / 2'], answer: 0, explain: 'n ranges over 1..d−1 with gcd(n, d) = 1, which is exactly φ(d) for d ≥ 2.' },
       hints: [`<p>Hint 1: Fix the denominator d. The numerators that work are exactly the numbers below d that are coprime with d — that is φ(d).</p>`, `<p>Hint 2: So the answer is φ(2) + φ(3) + … + φ(N). Compute all φ values at once with a sieve.</p>`, `<p>Hint 3: phi[i] = i; for each prime p (phi[p] == p) and each multiple j: phi[j] -= phi[j]/p. Sum into a 64-bit integer. Store phi in a 32-bit integer array (10<sup>7</sup> entries = 40 MB), not a 64-bit one.</p>`],
       tests: { sig: 'int -> long', fn: 'countFractions', cases: [
@@ -1377,14 +1462,36 @@ print(crt_merge(1, 4, 2, 6))                    # None` }],
       statement: `<p>Given n congruences x ≡ a_i (mod m_i), find the smallest non-negative x satisfying all of them, or return −1 if none exists. The moduli are <b>not</b> necessarily pairwise coprime.</p>`,
       constraints: `1 ≤ n ≤ 10<sup>5</sup>, 1 ≤ m_i ≤ 10<sup>12</sup>, 0 ≤ a_i &lt; m_i, the lcm of all m_i is guaranteed ≤ 10<sup>18</sup>`,
       example: `<p>(2 mod 3), (3 mod 5), (2 mod 7) → ${H.c('g', '23')}. (2 mod 4), (4 mod 6) → ${H.c('g', '10')}. (1 mod 4), (2 mod 6) → ${H.c('r', '−1')} (odd vs even).</p>`,
-      brute: { why: `<p>Scan x = 0, 1, 2, … and test every congruence. The answer can be as large as the lcm ≈ 10<sup>18</sup>, so this may never finish. The wasted work: we test numbers that already violate the first congruence — the jump idea fixes that but still needs up to m_i jumps per step.</p>`, code: `static long brute(long[] a, long[] m, long limit) {
+      brute: { why: `<p>Scan x = 0, 1, 2, … and test every congruence. The answer can be as large as the lcm ≈ 10<sup>18</sup>, so this may never finish. The wasted work: we test numbers that already violate the first congruence — the jump idea fixes that but still needs up to m_i jumps per step.</p>`, code: { lang: 'java', code: `static long brute(long[] a, long[] m, long limit) {
     for (long x = 0; x < limit; x++) {
         boolean ok = true;
         for (int i = 0; i < a.length && ok; i++) ok = (x % m[i] == a[i]);
         if (ok) return x;
     }
     return -1;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def solve(a, m, limit):
+    for x in range(limit):
+        if all(x % m[i] == a[i] for i in range(len(a))):
+            return x
+    return -1` }, { lang: 'js', code: String.raw`
+function solve(a, m, limit) {
+  const A = a.map(BigInt), M = m.map(BigInt);         // moduli reach 1e12, so BigInt
+  for (let x = 0n; x < BigInt(limit); x++) {
+    let ok = true;
+    for (let i = 0; i < A.length && ok; i++) ok = (x % M[i] === A[i]);
+    if (ok) return x;
+  }
+  return -1n;
+}` }, { lang: 'cpp', code: String.raw`
+long long solve(vector<long long>& a, vector<long long>& m, long long limit) {
+    for (long long x = 0; x < limit; x++) {
+        bool ok = true;
+        for (int i = 0; i < (int)a.size() && ok; i++) ok = (x % m[i] == a[i]);
+        if (ok) return x;
+    }
+    return -1;
+}` }] } },
       mcq: { q: 'Merging x ≡ 3 (mod 8) with x ≡ 7 (mod 12). What happens?', options: ['Solvable: x ≡ 19 (mod 24)', 'No solution because gcd(8,12) = 4 does not divide 4', 'Solvable: x ≡ 19 (mod 96)', 'Need the moduli to be coprime, so CRT does not apply'], answer: 0, explain: 'g = 4 divides 7 − 3 = 4, so a solution exists. Jumping 3, 11, 19: 19 mod 12 = 7 ✓. New modulus is lcm(8, 12) = 24, not 96.' },
       hints: [`<p>Hint 1: Merge two congruences at a time into one: x ≡ a (mod L). After processing all of them you have the full answer.</p>`, `<p>Hint 2: x = a₁ + m₁k, so m₁k ≡ a₂ − a₁ (mod m₂). With g = gcd(m₁, m₂): no solution unless g | (a₂ − a₁); otherwise k ≡ ((a₂−a₁)/g)·(m₁/g)<sup>−1</sup> (mod m₂/g).</p>`, `<p>Hint 3: Start with (0 mod 1). Reduce factors before multiplying and use a safe mulmod (values reach 10<sup>18</sup>). The merged residue a₁ + m₁k is already in [0, lcm).</p>`],
       tests: { sig: 'long[] long[] -> long', fn: 'solve', cases: [
@@ -1768,7 +1875,7 @@ print((T[0][0] * 1 + T[0][1] * 1) % MOD)    # f(5) = 4*2^5 - 3 = 125` }],
       statement: `<p>Tribonacci: T(0) = 0, T(1) = 1, T(2) = 1, and T(n) = T(n−1) + T(n−2) + T(n−3) for n ≥ 3. Given n, return T(n) mod 1,000,000,007.</p>`,
       constraints: `0 ≤ n ≤ 10<sup>18</sup>`,
       example: `<p>n = 4 → ${H.c('g', '4')} (sequence 0, 1, 1, 2, 4). n = 25 → 1389537.</p>`,
-      brute: { why: `<p>A simple loop computes T(n) in O(n) — perfect for the LeetCode version (n ≤ 37), but n = 10<sup>18</sup> would take ~30 years at 10<sup>9</sup> steps per second. The waste: the transition is identical every step, so we are repeating the same "card" instead of squaring it.</p>`, code: `static long brute(long n) {
+      brute: { why: `<p>A simple loop computes T(n) in O(n) — perfect for the LeetCode version (n ≤ 37), but n = 10<sup>18</sup> would take ~30 years at 10<sup>9</sup> steps per second. The waste: the transition is identical every step, so we are repeating the same "card" instead of squaring it.</p>`, code: { lang: 'java', code: `static long brute(long n) {
     final long MOD = 1_000_000_007L;
     if (n == 0) return 0;
     if (n <= 2) return 1;
@@ -1778,7 +1885,40 @@ print((T[0][0] * 1 + T[0][1] * 1) % MOD)    # f(5) = 4*2^5 - 3 = 125` }],
         a = b; b = c; c = d;
     }
     return c;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def tribonacci(n):
+    MOD = 1_000_000_007
+    if n == 0:
+        return 0
+    if n <= 2:
+        return 1
+    a, b, c = 0, 1, 1                                 # T(i-3), T(i-2), T(i-1)
+    for _ in range(3, n + 1):
+        a, b, c = b, c, (a + b + c) % MOD
+    return c` }, { lang: 'js', code: String.raw`
+function tribonacci(n) {
+  const MOD = 1000000007n;
+  n = BigInt(n);
+  if (n === 0n) return 0n;
+  if (n <= 2n) return 1n;
+  let a = 0n, b = 1n, c = 1n;                         // T(i-3), T(i-2), T(i-1)
+  for (let i = 3n; i <= n; i++) {
+    const d = (a + b + c) % MOD;
+    a = b; b = c; c = d;
+  }
+  return c;
+}` }, { lang: 'cpp', code: String.raw`
+long long tribonacci(long long n) {
+    const long long MOD = 1'000'000'007LL;
+    if (n == 0) return 0;
+    if (n <= 2) return 1;
+    long long a = 0, b = 1, c = 1;                    // T(i-3), T(i-2), T(i-1)
+    for (long long i = 3; i <= n; i++) {
+        long long d = (a + b + c) % MOD;
+        a = b; b = c; c = d;
+    }
+    return c;
+}` }] } },
       mcq: { q: 'Which 3×3 matrix M makes [T(n+1), T(n), T(n−1)] = M · [T(n), T(n−1), T(n−2)]?', options: ['[[1,1,1],[1,0,0],[0,1,0]]', '[[1,1,1],[0,1,0],[0,0,1]]', '[[0,1,0],[0,0,1],[1,1,1]]', '[[1,0,0],[1,1,0],[1,1,1]]'], answer: 0, explain: 'Row 1 sums all three previous values; row 2 copies T(n) down; row 3 copies T(n−1) down. Option 3 also describes Tribonacci but for a state written in the opposite order [T(n−2), T(n−1), T(n)].' },
       hints: [`<p>Hint 1: The step from (T(n), T(n−1), T(n−2)) to (T(n+1), T(n), T(n−1)) is the same linear map every time → a 3×3 matrix.</p>`, `<p>Hint 2: With v = [T(2), T(1), T(0)] = [1, 1, 0], M<sup>n</sup>·v = [T(n+2), T(n+1), T(n)]. So T(n) is the last entry: M<sup>n</sup>[2][0]·1 + M<sup>n</sup>[2][1]·1.</p>`, `<p>Hint 3: Binary exponentiation of M, mod after every multiply. n = 0 must return 0 (identity matrix works automatically). Recipe: build M, P = M<sup>n</sup>, answer = (P[2][0] + P[2][1]) % MOD.</p>`],
       tests: { sig: 'long -> long', fn: 'tribonacci', cases: [
@@ -2177,7 +2317,7 @@ print(sum(1 for x in range(1, 31) if gcd(x, 12) == 1))   # 10` } }
       statement: `<p>Given N and an array a of k positive integers, count how many integers x in [1, N] are divisible by <b>at least one</b> a[i].</p>`,
       constraints: `1 ≤ N ≤ 10<sup>18</sup>, 1 ≤ k ≤ 15, 1 ≤ a[i] ≤ 10<sup>9</sup> (values may repeat and need not be coprime)`,
       example: `<p>N = 30, a = [2, 3, 5] → ${H.c('g', '22')} (only 1, 7, 11, 13, 17, 19, 23, 29 are divisible by none: 30 − 8 = 22). N = 12, a = [4, 6] → 3 + 2 − ⌊12/12⌋ = ${H.c('g', '4')} (4, 6, 8, 12).</p>`,
-      brute: { why: `<p>Loop x from 1 to N and test each a[i]: O(N·k). With N = 10<sup>18</sup> this never ends. The waste is enumerating numbers one by one when ⌊N/d⌋ counts all multiples of d in one division.</p>`, code: `static long brute(long N, long[] a) {
+      brute: { why: `<p>Loop x from 1 to N and test each a[i]: O(N·k). With N = 10<sup>18</sup> this never ends. The waste is enumerating numbers one by one when ⌊N/d⌋ counts all multiples of d in one division.</p>`, code: { lang: 'java', code: `static long brute(long N, long[] a) {
     long count = 0;
     for (long x = 1; x <= N; x++) {
         for (long d : a) {
@@ -2185,7 +2325,34 @@ print(sum(1 for x in range(1, 31) if gcd(x, 12) == 1))   # 10` } }
         }
     }
     return count;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def count_any(N, a):
+    count = 0
+    for x in range(1, N + 1):
+        for d in a:
+            if x % d == 0:
+                count += 1
+                break
+    return count` }, { lang: 'js', code: String.raw`
+function countAny(N, a) {
+  const v = a.map(BigInt);                            // N goes up to 1e18, so BigInt
+  let count = 0n;
+  for (let x = 1n; x <= BigInt(N); x++) {
+    for (const d of v) {
+      if (x % d === 0n) { count++; break; }
+    }
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+long long countAny(long long N, vector<long long>& a) {
+    long long count = 0;
+    for (long long x = 1; x <= N; x++) {
+        for (long long d : a) {
+            if (x % d == 0) { count++; break; }
+        }
+    }
+    return count;
+}` }] } },
       mcq: { q: 'N = 12, a = [4, 6]. What is the size of "divisible by both 4 and 6"?', options: ['1 (multiples of lcm 12)', '0 (multiples of 24)', '2', '5'], answer: 0, explain: 'Divisible by both 4 and 6 ⇔ divisible by lcm(4, 6) = 12. Using the product 24 is the classic bug when numbers are not coprime.' },
       hints: [`<p>Hint 1: Multiples of every number in a group = multiples of their lcm; there are ⌊N / lcm⌋ of them.</p>`, `<p>Hint 2: Loop mask over 1..2<sup>k</sup>−1, build the lcm of the chosen numbers, add ⌊N/lcm⌋ for odd group size, subtract for even.</p>`, `<p>Hint 3: Guard overflow: if l / gcd(l, a) &gt; N / a the lcm already exceeds N → term 0, skip. Duplicates in a are handled automatically (lcm(4,4) = 4 makes terms cancel correctly).</p>`],
       tests: { sig: 'long long[] -> long', fn: 'countAny', cases: [
@@ -2506,13 +2673,34 @@ print([brute(n) for n in range(7)])` }],
       statement: `<p>Given n, return the number of structurally unique BSTs that store exactly the values 1 … n. (LeetCode 96.)</p>`,
       constraints: `1 ≤ n ≤ 19 (the answer fits in a 32-bit integer)`,
       example: `<p>n = 3 → ${H.c('g', '5')}. n = 1 → 1. n = 4 → 14.</p>`,
-      brute: { why: `<p>Recursively try every root and multiply the counts of the left and right subtrees — without memoisation the same sizes are recomputed over and over, giving roughly 3<sup>n</sup> calls. n = 19 is about 10<sup>9</sup> calls: too slow, though correct.</p>`, code: `static long countTrees(int n) {
+      brute: { why: `<p>Recursively try every root and multiply the counts of the left and right subtrees — without memoisation the same sizes are recomputed over and over, giving roughly 3<sup>n</sup> calls. n = 19 is about 10<sup>9</sup> calls: too slow, though correct.</p>`, code: { lang: 'java', code: `static long countTrees(int n) {
     if (n <= 1) return 1;                        // empty tree or a single node
     long total = 0;
     for (int root = 1; root <= n; root++)
         total += countTrees(root - 1) * countTrees(n - root);   // recomputes the same sizes many times
     return total;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def num_trees(n):
+    if n <= 1:
+        return 1                                      # empty tree or a single node
+    total = 0
+    for root in range(1, n + 1):
+        total += num_trees(root - 1) * num_trees(n - root)   # recomputes the same sizes many times
+    return total` }, { lang: 'js', code: String.raw`
+function numTrees(n) {
+  if (n <= 1) return 1;                               // empty tree or a single node
+  let total = 0;
+  for (let root = 1; root <= n; root++)
+    total += numTrees(root - 1) * numTrees(n - root); // recomputes the same sizes many times
+  return total;
+}` }, { lang: 'cpp', code: String.raw`
+long long numTrees(int n) {
+    if (n <= 1) return 1;                             // empty tree or a single node
+    long long total = 0;
+    for (int root = 1; root <= n; root++)
+        total += numTrees(root - 1) * numTrees(n - root);   // recomputes the same sizes many times
+    return total;
+}` }] } },
       mcq: { q: 'With n keys and root k, how many keys go into the left subtree?', options: ['k − 1', 'n − k', 'k', 'n / 2'], answer: 0, explain: 'Every key smaller than k must be on the left: 1 … k−1. The right side gets n − k keys.' },
       hints: [`<p>Hint 1: Only the <b>number</b> of keys matters, not which keys. Let G[m] = number of BSTs with m keys.</p>`, `<p>Hint 2: Choose the root k: left side has k−1 keys, right side n−k. So G[n] = ∑ G[k−1]·G[n−k]. That is the Catalan recurrence.</p>`, `<p>Hint 3: G[0] = G[1] = 1. Fill G[2..n] bottom-up in O(n²), or use C(2n, n)/(n+1) with 64-bit integers and careful order of operations.</p>`],
       tests: { sig: 'int -> int', fn: 'numTrees', cases: [
@@ -2820,7 +3008,7 @@ print(sum(comb(n, r) % 2 for r in range(n + 1)), 2 ** bin(n).count("1"))` }],
       statement: `<p>Answer T queries. Each query gives n, r and asks for C(n, r) mod p, where p is a fixed prime given once.</p>`,
       constraints: `p prime, 2 ≤ p ≤ 10<sup>6</sup>; 1 ≤ T ≤ 10<sup>5</sup>; 0 ≤ r, n ≤ 10<sup>18</sup> (C(n, r) = 0 when r &gt; n)`,
       example: `<p>p = 5: (12, 5) → ${H.c('g', '2')}; (10, 3) → 0 (120 mod 5 = 0); (10<sup>18</sup>, 2) → C(10<sup>18</sup>, 2) mod 5 → digits of r are (2, 0, 0, …), n's last digit is 0 &lt; 2 → ${H.c('r', '0')}.</p>`,
-      brute: { why: `<p>Use the factorial formula mod p: fact[n]·inv(fact[r])·inv(fact[n−r]). Two problems: you cannot build fact[] up to 10<sup>18</sup>, and for n ≥ p, fact[n] ≡ 0 while fact[r] may also be 0 (no inverse) — the formula silently returns 0 for nonzero answers. The brute below is exact but only for tiny n.</p>`, code: `// Exact Pascal row by row: O(n * r) - only for very small n
+      brute: { why: `<p>Use the factorial formula mod p: fact[n]·inv(fact[r])·inv(fact[n−r]). Two problems: you cannot build fact[] up to 10<sup>18</sup>, and for n ≥ p, fact[n] ≡ 0 while fact[r] may also be 0 (no inverse) — the formula silently returns 0 for nonzero answers. The brute below is exact but only for tiny n.</p>`, code: { lang: 'java', code: `// Exact Pascal row by row: O(n * r) - only for very small n
 static long brute(int n, int r, int p) {
     if (r > n) return 0;
     long[] row = new long[r + 1];
@@ -2828,7 +3016,35 @@ static long brute(int n, int r, int p) {
     for (int i = 1; i <= n; i++)
         for (int j = Math.min(i, r); j > 0; j--) row[j] = (row[j] + row[j - 1]) % p;
     return row[r];
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+# Exact Pascal row by row: O(n * r) - only for very small n
+def brute(n, r, p):
+    if r > n:
+        return 0
+    row = [0] * (r + 1)
+    row[0] = 1
+    for i in range(1, n + 1):
+        for j in range(min(i, r), 0, -1):
+            row[j] = (row[j] + row[j - 1]) % p
+    return row[r]` }, { lang: 'js', code: String.raw`
+// Exact Pascal row by row: O(n * r) - only for very small n
+function brute(n, r, p) {
+  if (r > n) return 0;
+  const row = new Array(r + 1).fill(0);
+  row[0] = 1;
+  for (let i = 1; i <= n; i++)
+    for (let j = Math.min(i, r); j > 0; j--) row[j] = (row[j] + row[j - 1]) % p;
+  return row[r];
+}` }, { lang: 'cpp', code: String.raw`
+// Exact Pascal row by row: O(n * r) - only for very small n
+long long brute(int n, int r, int p) {
+    if (r > n) return 0;
+    vector<long long> row(r + 1, 0);
+    row[0] = 1;
+    for (int i = 1; i <= n; i++)
+        for (int j = min(i, r); j > 0; j--) row[j] = (row[j] + row[j - 1]) % p;
+    return row[r];
+}` }] } },
       mcq: { q: 'p = 3. Which of these is 0 mod 3?', options: ['C(10, 3) because the middle base-3 digit of r exceeds n\'s', 'C(9, 0)', 'C(4, 1)', 'C(8, 4)'], answer: 0, explain: '10 = 101₃ and 3 = 010₃: digit (0,1) gives C(0,1) = 0. C(9,0) = 1; C(4,1) = 4 ≡ 1; C(8,4) = 70 ≡ 1 (8 = 22₃, 4 = 11₃ → C(2,1)² = 4 ≡ 1).' },
       hints: [`<p>Hint 1: Work digit by digit in base p. Each pair of digits (n_i, r_i) is below p, so a tiny binomial with invertible factorials.</p>`, `<p>Hint 2: Precompute fact[0..p−1] and invFact[0..p−1] once (O(p)). Each query: while n or r &gt; 0, multiply in C(n % p, r % p), then divide both by p.</p>`, `<p>Hint 3: If any r digit &gt; n digit, return 0 immediately. Handle r &gt; n (also 0 — the digit test catches it when you keep looping while r &gt; 0). Use a 64-bit integer for n and r (BigInt in JavaScript).</p>`],
       tests: { cls: 'Solution', sigs: { Solution: 'int', query: 'long long -> long' }, cases: [
@@ -3187,7 +3403,7 @@ print("1 - (5/6)^4 =", round(1 - (5 / 6) ** 4, 4))` }],
       statement: `<p>Alice starts with 0 points and draws numbers while she has <b>fewer than k</b> points. Each draw adds a uniform random integer from [1, maxPts]. She stops as soon as she has k or more points. Return the probability that she ends with <b>n or fewer</b> points. (LeetCode 837.)</p>`,
       constraints: `0 ≤ k ≤ n ≤ 10<sup>4</sup>, 1 ≤ maxPts ≤ 10<sup>4</sup>; answers within 10<sup>−5</sup> are accepted`,
       example: `<p>n = 3, k = 2, maxPts = 3 → ${H.c('g', '0.88889')} (= 8/9). Final totals can be 2, 3 or 4; only 4 is bad, and it happens only via 1 then 3: (1/3)·(1/3) = 1/9.</p><p>n = 6, k = 1, maxPts = 10 → 0.6 (one draw, 6 of 10 values are ≤ 6).</p>`,
-      brute: { why: `<p>dp[x] = probability of ever standing at exactly x = ∑ dp[x−j]/W over j = 1..W with x−j &lt; k. Computing each dp[x] with an inner loop costs O(n·W) = 10<sup>8</sup> — borderline. The waste: consecutive windows share W−1 terms, so we keep re-adding the same numbers.</p>`, code: `static double brute(int n, int k, int W) {
+      brute: { why: `<p>dp[x] = probability of ever standing at exactly x = ∑ dp[x−j]/W over j = 1..W with x−j &lt; k. Computing each dp[x] with an inner loop costs O(n·W) = 10<sup>8</sup> — borderline. The waste: consecutive windows share W−1 terms, so we keep re-adding the same numbers.</p>`, code: { lang: 'java', code: `static double brute(int n, int k, int W) {
     if (k == 0) return 1.0;
     double[] dp = new double[n + 1];
     dp[0] = 1.0;
@@ -3200,7 +3416,49 @@ print("1 - (5/6)^4 =", round(1 - (5 / 6) ** 4, 4))` }],
         if (x >= k) ans += dp[x];                               // she stopped at x <= n
     }
     return ans;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def new21_game(n, k, max_pts):
+    if k == 0:
+        return 1.0
+    dp = [0.0] * (n + 1)
+    dp[0] = 1.0
+    ans = 0.0
+    for x in range(1, n + 1):
+        for j in range(1, max_pts + 1):
+            frm = x - j
+            if 0 <= frm < k:
+                dp[x] += dp[frm] / max_pts            # only totals < k keep drawing
+        if x >= k:
+            ans += dp[x]                              # she stopped at x <= n
+    return ans` }, { lang: 'js', code: String.raw`
+function new21Game(n, k, maxPts) {
+  if (k === 0) return 1.0;
+  const dp = new Array(n + 1).fill(0);
+  dp[0] = 1.0;
+  let ans = 0;
+  for (let x = 1; x <= n; x++) {
+    for (let j = 1; j <= maxPts; j++) {
+      const from = x - j;
+      if (from >= 0 && from < k) dp[x] += dp[from] / maxPts;   // only totals < k keep drawing
+    }
+    if (x >= k) ans += dp[x];                         // she stopped at x <= n
+  }
+  return ans;
+}` }, { lang: 'cpp', code: String.raw`
+double new21Game(int n, int k, int maxPts) {
+    if (k == 0) return 1.0;
+    vector<double> dp(n + 1, 0.0);
+    dp[0] = 1.0;
+    double ans = 0;
+    for (int x = 1; x <= n; x++) {
+        for (int j = 1; j <= maxPts; j++) {
+            int from = x - j;
+            if (from >= 0 && from < k) dp[x] += dp[from] / maxPts;   // only totals < k keep drawing
+        }
+        if (x >= k) ans += dp[x];                     // she stopped at x <= n
+    }
+    return ans;
+}` }] } },
       mcq: { q: 'Which states are allowed to "pass probability forward" into dp[x]?', options: ['Only totals below k (she keeps drawing there)', 'All totals below x', 'Only totals ≥ k', 'Only total 0'], answer: 0, explain: 'At a total ≥ k she stops, so that probability never flows further. That is why the window sum only includes indices < k.' },
       hints: [`<p>Hint 1: dp[x] = probability that her total is ever exactly x. dp[0] = 1. dp[x] = (1/W)·∑ dp[x−j] for j in 1..W, but only over x−j &lt; k.</p>`, `<p>Hint 2: Keep a running window sum of the last W dp values that are &lt; k. Add dp[x] when x &lt; k, subtract dp[x−W] when x−W ≥ 0 and x−W &lt; k.</p>`, `<p>Hint 3: Answer = ∑ dp[x] for k ≤ x ≤ n. Early exit: if k == 0 or n ≥ k − 1 + W, every possible end total is ≤ n → return 1.0.</p>`],
       tests: { sig: 'int int int -> double', fn: 'new21Game', cmp: 'float', cases: [
@@ -3569,7 +3827,7 @@ print("moves {1,3,4}:", grundy(20, (1, 3, 4)))` }],
       statement: `<p>There are n piles. A move: choose one pile and remove exactly s stones from it, where s must belong to a given set S (and the pile must have at least s stones). Players alternate; the player who cannot move loses. Return "First" if the first player wins with perfect play, otherwise "Second".</p>`,
       constraints: `1 ≤ n ≤ 10<sup>5</sup>, 0 ≤ pile ≤ 10<sup>5</sup>, 1 ≤ |S| ≤ 10, 1 ≤ s ≤ 10<sup>5</sup>`,
       example: `<p>S = {1, 3, 4}, piles [5, 6] → g(5) ⊕ g(6) = 3 ⊕ 2 = 1 → ${H.c('g', 'First')}. S = {1, 3, 4}, piles [2, 7] → 0 ⊕ 0 = 0 → ${H.c('r', 'Second')}.</p>`,
-      brute: { why: `<p>Search the full game tree over the tuple of all pile sizes with memoisation. The number of states is the product of (pile + 1) over all piles — astronomically large for 10<sup>5</sup> piles. The waste: the piles are independent, but the brute force treats the whole tuple as one state.</p>`, code: `// Memoised win/lose over the whole tuple: only feasible for 2-3 tiny piles
+      brute: { why: `<p>Search the full game tree over the tuple of all pile sizes with memoisation. The number of states is the product of (pile + 1) over all piles — astronomically large for 10<sup>5</sup> piles. The waste: the piles are independent, but the brute force treats the whole tuple as one state.</p>`, code: { lang: 'java', code: `// Memoised win/lose over the whole tuple: only feasible for 2-3 tiny piles
 static Map<String, Boolean> memo = new HashMap<>();
 static boolean firstWins(int[] piles, int[] S) {
     String key = Arrays.toString(piles);
@@ -3585,7 +3843,64 @@ static boolean firstWins(int[] piles, int[] S) {
             }
     memo.put(key, win);
     return win;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+# Memoised win/lose over the whole tuple: only feasible for 2-3 tiny piles
+memo = {}
+
+def first_wins(piles, S):
+    key = tuple(piles)
+    if key in memo:
+        return memo[key]
+    win = False
+    for i in range(len(piles)):
+        for s in S:
+            if piles[i] >= s:
+                piles[i] -= s
+                opp_wins = first_wins(piles, S)
+                piles[i] += s
+                if not opp_wins:
+                    win = True                        # found a move to a losing position
+                    break
+        if win:
+            break
+    memo[key] = win
+    return win` }, { lang: 'js', code: String.raw`
+// Memoised win/lose over the whole tuple: only feasible for 2-3 tiny piles
+const memo = new Map();
+
+function firstWins(piles, S) {
+  const key = piles.join(",");
+  if (memo.has(key)) return memo.get(key);
+  let win = false;
+  for (let i = 0; i < piles.length && !win; i++)
+    for (const s of S)
+      if (piles[i] >= s) {
+        piles[i] -= s;
+        const oppWins = firstWins(piles, S);
+        piles[i] += s;
+        if (!oppWins) { win = true; break; }          // found a move to a losing position
+      }
+  memo.set(key, win);
+  return win;
+}` }, { lang: 'cpp', code: String.raw`
+// Memoised win/lose over the whole tuple: only feasible for 2-3 tiny piles
+map<vector<int>, bool> memo;
+
+bool firstWins(vector<int>& piles, vector<int>& S) {
+    auto it = memo.find(piles);
+    if (it != memo.end()) return it->second;
+    bool win = false;
+    for (int i = 0; i < (int)piles.size() && !win; i++)
+        for (int s : S)
+            if (piles[i] >= s) {
+                piles[i] -= s;
+                bool oppWins = firstWins(piles, S);
+                piles[i] += s;
+                if (!oppWins) { win = true; break; }  // found a move to a losing position
+            }
+    memo[piles] = win;
+    return win;
+}` }] } },
       mcq: { q: 'g values of three independent piles are 2, 3 and 1. What is the verdict?', options: ['Second player wins (2 ⊕ 3 ⊕ 1 = 0)', 'First player wins (sum 6 ≠ 0)', 'First player wins (max is 3)', 'Cannot tell without the full game tree'], answer: 0, explain: 'Sprague–Grundy: the combined Grundy number is the XOR, 2 ⊕ 3 ⊕ 1 = 0, so the player to move loses. Sum and max mean nothing here.' },
       hints: [`<p>Hint 1: Each pile is its own little game; a move touches exactly one pile. That is a sum of games → Sprague–Grundy.</p>`, `<p>Hint 2: Compute g(0..maxPile) once: g(x) = mex{ g(x − s) : s ∈ S, s ≤ x }. Then XOR g(pile) over all piles.</p>`, `<p>Hint 3: mex ≤ |S|, so a boolean array of size |S|+2 per x suffices → O(maxPile·|S|). XOR ≠ 0 → "First", else "Second". Pile 0 has g = 0 and does not change the XOR.</p>`],
       tests: { sig: 'int[] int[] -> string', fn: 'winner', cases: [
@@ -3690,13 +4005,35 @@ public:
     statement: `<p>There is one heap of n stones. You and a friend alternate turns, <b>you first</b>. Each turn removes 1, 2 or 3 stones. Whoever removes the last stone wins. Both play optimally. Return true if you win.</p>`,
     constraints: `1 ≤ n ≤ 2<sup>31</sup> − 1`,
     example: `<p>n = 4 → ${H.c('r', 'false')}: whatever you take (1, 2 or 3), your friend takes the rest. n = 5 → ${H.c('g', 'true')}: take 1, leaving your friend the losing 4.</p>`,
-    brute: { why: `<p>DP over all n: win[i] = !win[i−1] || !win[i−2] || !win[i−3]. Correct, but O(n) time and memory — 2·10<sup>9</sup> booleans is 2 GB. The table, if you print it, screams a pattern.</p>`, code: `static boolean brute(int n) {
+    brute: { why: `<p>DP over all n: win[i] = !win[i−1] || !win[i−2] || !win[i−3]. Correct, but O(n) time and memory — 2·10<sup>9</sup> booleans is 2 GB. The table, if you print it, screams a pattern.</p>`, code: { lang: 'java', code: `static boolean brute(int n) {
     boolean[] win = new boolean[n + 1];        // win[0] = false: no stones, you already lost
     for (int i = 1; i <= n; i++)
         for (int take = 1; take <= 3 && take <= i; take++)
             if (!win[i - take]) { win[i] = true; break; }
     return win[n];
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def can_win_nim(n):
+    win = [False] * (n + 1)                           # win[0] = False: no stones, you already lost
+    for i in range(1, n + 1):
+        for take in range(1, min(3, i) + 1):
+            if not win[i - take]:
+                win[i] = True
+                break
+    return win[n]` }, { lang: 'js', code: String.raw`
+function canWinNim(n) {
+  const win = new Array(n + 1).fill(false);           // win[0] = false: no stones, you already lost
+  for (let i = 1; i <= n; i++)
+    for (let take = 1; take <= 3 && take <= i; take++)
+      if (!win[i - take]) { win[i] = true; break; }
+  return win[n];
+}` }, { lang: 'cpp', code: String.raw`
+bool canWinNim(int n) {
+    vector<char> win(n + 1, 0);                       // win[0] = false: no stones, you already lost
+    for (int i = 1; i <= n; i++)
+        for (int take = 1; take <= 3 && take <= i; take++)
+            if (!win[i - take]) { win[i] = 1; break; }
+    return win[n];
+}` }] } },
     mcq: { q: 'Which heap sizes are losing for the player to move?', options: ['Multiples of 4', 'Multiples of 3', 'Odd numbers', 'Powers of 2'], answer: 0, explain: 'From 4k every move leaves 4k−1, 4k−2 or 4k−3, and the opponent restores a multiple of 4.' },
     hints: [`<p>Hint 1: Label 0 as losing, then 1, 2, 3 as winning (take everything). What about 4?</p>`, `<p>Hint 2: Every move from 4 lands on 1, 2 or 3 — all winning for the opponent. The pattern repeats every 4.</p>`, `<p>Hint 3: Return n % 4 != 0. Strategy: always take n % 4 stones.</p>`],
     tests: { sig: 'int -> bool', fn: 'canWinNim', cases: [
@@ -3748,11 +4085,27 @@ public:
     statement: `<p>Given an integer a and a prime p, return x in [0, p) with a·x ≡ 1 (mod p), or −1 if it does not exist.</p>`,
     constraints: `−10<sup>18</sup> ≤ a ≤ 10<sup>18</sup>, 2 ≤ p ≤ 2·10<sup>9</sup>, p prime`,
     example: `<p>a = 3, p = 7 → ${H.c('g', '5')} (15 ≡ 1). a = 14, p = 7 → ${H.c('r', '−1')} (14 ≡ 0 has no inverse). a = −2, p = 7 → 3 (−2 ≡ 5, and 5·3 = 15 ≡ 1).</p>`,
-    brute: { why: `<p>Try every x from 1 to p−1: O(p) = 2·10<sup>9</sup> multiplications. Fermat gives the answer directly in about 31 squarings.</p>`, code: `static long brute(long a, long p) {
+    brute: { why: `<p>Try every x from 1 to p−1: O(p) = 2·10<sup>9</sup> multiplications. Fermat gives the answer directly in about 31 squarings.</p>`, code: { lang: 'java', code: `static long brute(long a, long p) {
     long r = Math.floorMod(a, p);
     for (long x = 1; x < p; x++) if (r * x % p == 1) return x;
     return -1;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def inverse(a, p):
+    r = a % p
+    for x in range(1, p):
+        if r * x % p == 1:
+            return x
+    return -1` }, { lang: 'js', code: String.raw`
+function inverse(a, p) {
+  const P = BigInt(p), r = ((BigInt(a) % P) + P) % P; // r * x can pass 2^53, so BigInt
+  for (let x = 1n; x < P; x++) if (r * x % P === 1n) return x;
+  return -1n;
+}` }, { lang: 'cpp', code: String.raw`
+long long inverse(long long a, long long p) {
+    long long r = ((a % p) + p) % p;
+    for (long long x = 1; x < p; x++) if (r * x % p == 1) return x;
+    return -1;
+}` }] } },
     mcq: { q: 'Why must a be reduced into [0, p) before calling power(a, p − 2, p)?', options: ['In Java, JavaScript and C++ the % operator can return a negative value (Python\'s cannot), and a ≡ 0 must be detected', 'Fermat requires a &lt; 10', 'To make p prime', 'It is not necessary'], answer: 0, explain: 'A negative base breaks the "result in [0, p)" contract, and a ≡ 0 (mod p) must return −1 instead of 0.' },
     hints: [`<p>Hint 1: Fermat: a<sup>p−1</sup> ≡ 1 for p ∤ a, so a<sup>p−2</sup> is the inverse.</p>`, `<p>Hint 2: Reduce a first: r = a mod p, made non-negative. If r == 0, there is no inverse.</p>`, `<p>Hint 3: p up to 2·10<sup>9</sup> → products up to 4·10<sup>18</sup> still fit in a signed 64-bit integer (&lt; 9.2·10<sup>18</sup>; JavaScript needs BigInt). Fast power with % after each multiply.</p>`],
     tests: { sig: 'long long -> long', fn: 'inverse', cases: [
@@ -3841,11 +4194,28 @@ public:
     statement: `<p>Given N, A and B, count the integers in [1, N] divisible by A or by B (or both).</p>`,
     constraints: `1 ≤ N ≤ 10<sup>18</sup>, 1 ≤ A, B ≤ 10<sup>9</sup>`,
     example: `<p>N = 20, A = 4, B = 6 → 5 + 3 − ⌊20/12⌋ = ${H.c('g', '7')} (4, 6, 8, 12, 16, 18, 20). Using 24 instead of lcm 12 would wrongly give 8.</p>`,
-    brute: { why: `<p>Loop 1..N testing both divisibilities: O(N) — impossible for N = 10<sup>18</sup>.</p>`, code: `static long brute(long N, long A, long B) {
+    brute: { why: `<p>Loop 1..N testing both divisibilities: O(N) — impossible for N = 10<sup>18</sup>.</p>`, code: { lang: 'java', code: `static long brute(long N, long A, long B) {
     long c = 0;
     for (long x = 1; x <= N; x++) if (x % A == 0 || x % B == 0) c++;
     return c;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def count(N, A, B):
+    c = 0
+    for x in range(1, N + 1):
+        if x % A == 0 or x % B == 0:
+            c += 1
+    return c` }, { lang: 'js', code: String.raw`
+function count(N, A, B) {
+  const a = BigInt(A), b = BigInt(B);                 // N goes up to 1e18, so BigInt
+  let c = 0n;
+  for (let x = 1n; x <= BigInt(N); x++) if (x % a === 0n || x % b === 0n) c++;
+  return c;
+}` }, { lang: 'cpp', code: String.raw`
+long long count(long long N, long long A, long long B) {
+    long long c = 0;
+    for (long long x = 1; x <= N; x++) if (x % A == 0 || x % B == 0) c++;
+    return c;
+}` }] } },
     mcq: { q: 'How many numbers in [1, 20] are divisible by both 4 and 6?', options: ['1', '0', '2', '3'], answer: 0, explain: 'Divisible by both ⇔ divisible by lcm(4, 6) = 12 → only 12.' },
     hints: [`<p>Hint 1: Two overlapping groups: |A ∪ B| = |A| + |B| − |A ∩ B| (do not count the overlap twice).</p>`, `<p>Hint 2: Multiples of A in [1, N]: ⌊N/A⌋. Multiples of both: ⌊N/lcm(A, B)⌋.</p>`, `<p>Hint 3: lcm = A / gcd(A, B) · B (divide first). With A, B ≤ 10<sup>9</sup> the lcm ≤ 10<sup>18</sup> fits in a signed 64-bit integer.</p>`],
     tests: { sig: 'long long long -> long', fn: 'count', cases: [
@@ -3909,12 +4279,31 @@ public:
     statement: `<p>Given n, return φ(n): how many integers in [1, n] have gcd 1 with n.</p>`,
     constraints: `1 ≤ n ≤ 10<sup>12</sup>`,
     example: `<p>n = 36 → ${H.c('g', '12')}. n = 1 → 1. n = 97 → 96 (prime). n = 10<sup>12</sup> = 2<sup>12</sup>·5<sup>12</sup> → 10<sup>12</sup>·½·⅘ = 4·10<sup>11</sup>.</p>`,
-    brute: { why: `<p>Count gcd(i, n) == 1 for all i ≤ n: O(n log n) — 10<sup>12</sup> gcds is hours. The formula only needs the distinct prime factors, found by trial division up to √n = 10<sup>6</sup>.</p>`, code: `static long brute(long n) {
+    brute: { why: `<p>Count gcd(i, n) == 1 for all i ≤ n: O(n log n) — 10<sup>12</sup> gcds is hours. The formula only needs the distinct prime factors, found by trial division up to √n = 10<sup>6</sup>.</p>`, code: { lang: 'java', code: `static long brute(long n) {
     long c = 0;
     for (long i = 1; i <= n; i++) if (gcd(i, n) == 1) c++;
     return c;
 }
-static long gcd(long a, long b) { return b == 0 ? a : gcd(b, a % b); }` },
+static long gcd(long a, long b) { return b == 0 ? a : gcd(b, a % b); }`, alt: [{ lang: 'python', code: String.raw`
+from math import gcd
+
+def phi(n):
+    c = 0
+    for i in range(1, n + 1):
+        if gcd(i, n) == 1:
+            c += 1
+    return c` }, { lang: 'js', code: String.raw`
+function phi(n) {
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  let c = 0;
+  for (let i = 1; i <= n; i++) if (gcd(i, n) === 1) c++;
+  return c;
+}` }, { lang: 'cpp', code: String.raw`
+long long phi(long long n) {
+    long long c = 0;
+    for (long long i = 1; i <= n; i++) if (gcd(i, n) == 1) c++;
+    return c;
+}` }] } },
     mcq: { q: 'After the loop "p·p ≤ n" ends, n is still 97. What does that mean?', options: ['97 is a prime factor of the original n and must be applied', 'n was prime from the start, so φ = n', 'Nothing, ignore it', 'There is a bug'], answer: 0, explain: 'Every prime ≤ √(remaining n) was stripped, so a leftover > 1 is a single prime factor. Apply result −= result / 97.' },
     hints: [`<p>Hint 1: φ(n) = n·∏(1 − 1/p) over distinct primes p | n.</p>`, `<p>Hint 2: Trial divide by p while p·p ≤ n; on a hit, strip all copies of p and do result −= result / p.</p>`, `<p>Hint 3: Do not forget the leftover prime when n &gt; 1 after the loop. Use 64-bit integers everywhere.</p>`],
     tests: { sig: 'long -> long', fn: 'phi', cases: [
@@ -4011,7 +4400,7 @@ public:
     statement: `<p>You have two jugs with capacities x and y litres and unlimited water. Operations: fill a jug, empty a jug, pour one jug into the other until one is empty or the other is full. Can you end with exactly <code>target</code> litres in the two jugs together?</p>`,
     constraints: `1 ≤ x, y, target ≤ 10<sup>3</sup> (the math answer works up to 10<sup>18</sup>)`,
     example: `<p>x = 3, y = 5, target = 4 → ${H.c('g', 'true')} (5·2 − 3·2 = 4). x = 2, y = 6, target = 5 → ${H.c('r', 'false')} (everything stays even).</p>`,
-    brute: { why: `<p>BFS over states (a, b) with 0 ≤ a ≤ x, 0 ≤ b ≤ y and 6 operations each: O(x·y) states = 10<sup>6</sup> — fine here, but useless for big capacities and it hides the elegant reason.</p>`, code: `static boolean brute(int x, int y, int target) {
+    brute: { why: `<p>BFS over states (a, b) with 0 ≤ a ≤ x, 0 ≤ b ≤ y and 6 operations each: O(x·y) states = 10<sup>6</sup> — fine here, but useless for big capacities and it hides the elegant reason.</p>`, code: { lang: 'java', code: `static boolean brute(int x, int y, int target) {
     if (target > x + y) return false;
     boolean[][] seen = new boolean[x + 1][y + 1];
     Deque<int[]> q = new ArrayDeque<>();
@@ -4026,7 +4415,56 @@ public:
             if (!seen[n[0]][n[1]]) { seen[n[0]][n[1]] = true; q.add(n); }
     }
     return false;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+from collections import deque
+
+def can_measure_water(x, y, target):
+    if target > x + y:
+        return False
+    seen = [[False] * (y + 1) for _ in range(x + 1)]
+    q = deque([(0, 0)])
+    seen[0][0] = True
+    while q:
+        a, b = q.popleft()
+        if a + b == target:
+            return True
+        pour_ab, pour_ba = min(a, y - b), min(b, x - a)
+        for na, nb in ((x, b), (a, y), (0, b), (a, 0), (a - pour_ab, b + pour_ab), (a + pour_ba, b - pour_ba)):
+            if not seen[na][nb]:
+                seen[na][nb] = True
+                q.append((na, nb))
+    return False` }, { lang: 'js', code: String.raw`
+function canMeasureWater(x, y, target) {
+  if (target > x + y) return false;
+  const seen = Array.from({ length: x + 1 }, () => new Array(y + 1).fill(false));
+  const q = [[0, 0]];
+  seen[0][0] = true;
+  for (let h = 0; h < q.length; h++) {
+    const [a, b] = q[h];
+    if (a + b === target) return true;
+    const pourAB = Math.min(a, y - b), pourBA = Math.min(b, x - a);
+    const next = [[x, b], [a, y], [0, b], [a, 0], [a - pourAB, b + pourAB], [a + pourBA, b - pourBA]];
+    for (const [na, nb] of next)
+      if (!seen[na][nb]) { seen[na][nb] = true; q.push([na, nb]); }
+  }
+  return false;
+}` }, { lang: 'cpp', code: String.raw`
+bool canMeasureWater(int x, int y, int target) {
+    if (target > x + y) return false;
+    vector<vector<char>> seen(x + 1, vector<char>(y + 1, 0));
+    queue<pair<int, int>> q;
+    q.push({0, 0});
+    seen[0][0] = 1;
+    while (!q.empty()) {
+        auto [a, b] = q.front(); q.pop();
+        if (a + b == target) return true;
+        int pourAB = min(a, y - b), pourBA = min(b, x - a);
+        pair<int, int> next[6] = {{x, b}, {a, y}, {0, b}, {a, 0}, {a - pourAB, b + pourAB}, {a + pourBA, b - pourBA}};
+        for (auto [na, nb] : next)
+            if (!seen[na][nb]) { seen[na][nb] = 1; q.push({na, nb}); }
+    }
+    return false;
+}` }] } },
     mcq: { q: 'x = 6, y = 10. Which target is reachable?', options: ['8', '7', '17', '5'], answer: 0, explain: 'gcd(6, 10) = 2, so only even amounts ≤ 16 are possible: 8 yes; 7 and 5 are odd; 17 > 16.' },
     hints: [`<p>Hint 1: Every operation changes the total by ±x, ±y or 0. So the total is always a·x + b·y for integers a, b.</p>`, `<p>Hint 2: Bezout: a·x + b·y can be exactly the multiples of gcd(x, y).</p>`, `<p>Hint 3: Also the total can never exceed x + y. Answer: target ≤ x + y and target % gcd(x, y) == 0.</p>`],
     tests: { sig: 'int int int -> bool', fn: 'canMeasureWater', cases: [
@@ -4096,13 +4534,36 @@ public:
     statement: `<p>An "ugly number" here is a positive integer divisible by a, b or c. Return the n-th ugly number.</p>`,
     constraints: `1 ≤ n, a, b, c ≤ 10<sup>9</sup>, 1 ≤ a·b·c ≤ 10<sup>18</sup>, the answer is in [1, 2·10<sup>9</sup>]`,
     example: `<p>n = 3, a = 2, b = 3, c = 5 → sequence 2, 3, 4, 5, 6, … → ${H.c('g', '4')}. n = 4, a = 2, b = 3, c = 4 → 2, 3, 4, 6 → ${H.c('g', '6')}.</p>`,
-    brute: { why: `<p>Walk x = 1, 2, 3, … counting ugly numbers until the n-th: up to 2·10<sup>9</sup> steps. Better than nothing, but binary search + an O(1) count is ~31 steps.</p>`, code: `static long brute(int n, long a, long b, long c) {
+    brute: { why: `<p>Walk x = 1, 2, 3, … counting ugly numbers until the n-th: up to 2·10<sup>9</sup> steps. Better than nothing, but binary search + an O(1) count is ~31 steps.</p>`, code: { lang: 'java', code: `static long brute(int n, long a, long b, long c) {
     int found = 0;
     for (long x = 1; ; x++) {
         if (x % a == 0 || x % b == 0 || x % c == 0) found++;
         if (found == n) return x;
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def nth_ugly_number(n, a, b, c):
+    found = 0
+    x = 1
+    while True:
+        if x % a == 0 or x % b == 0 or x % c == 0:
+            found += 1
+        if found == n:
+            return x
+        x += 1` }, { lang: 'js', code: String.raw`
+function nthUglyNumber(n, a, b, c) {
+  let found = 0;
+  for (let x = 1; ; x++) {
+    if (x % a === 0 || x % b === 0 || x % c === 0) found++;
+    if (found === n) return x;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+long long nthUglyNumber(int n, long long a, long long b, long long c) {
+    int found = 0;
+    for (long long x = 1; ; x++) {
+        if (x % a == 0 || x % b == 0 || x % c == 0) found++;
+        if (found == n) return x;
+    }
+}` }] } },
     mcq: { q: 'Why can we binary search on the answer?', options: ['count(x) = how many ugly numbers ≤ x never decreases as x grows', 'The ugly numbers are evenly spaced', 'a, b, c are primes', 'Because n ≤ 10<sup>9</sup>'], answer: 0, explain: 'A monotone count lets us find the smallest x with count(x) ≥ n. That x is the n-th ugly number.' },
     hints: [`<p>Hint 1: count(x) = ⌊x/a⌋ + ⌊x/b⌋ + ⌊x/c⌋ − ⌊x/lcm(a,b)⌋ − ⌊x/lcm(a,c)⌋ − ⌊x/lcm(b,c)⌋ + ⌊x/lcm(a,b,c)⌋.</p>`, `<p>Hint 2: Binary search the smallest x in [1, 2·10<sup>9</sup>] with count(x) ≥ n.</p>`, `<p>Hint 3: lcms can reach 10<sup>18</sup>: compute with 64-bit integers and divide before multiplying.</p>`],
     tests: { sig: 'int int int int -> int', fn: 'nthUglyNumber', cases: [
@@ -4204,14 +4665,40 @@ public:
     statement: `<p>Compute a<sup>b</sup> mod 1337 where b is given as an array of decimal digits (most significant first).</p>`,
     constraints: `1 ≤ a ≤ 2<sup>31</sup> − 1, 1 ≤ b.length ≤ 2000, b has no leading zeros`,
     example: `<p>a = 2, b = [1, 0] → 2<sup>10</sup> mod 1337 = ${H.c('g', '1024')}. a = 2147483647, b = [2, 0, 0] → 1198.</p>`,
-    brute: { why: `<p>Turn b into a number and multiply a by itself b times. b has up to 2000 digits — the loop would outlive the universe, and the number does not even fit in a 64-bit integer.</p>`, code: `static int brute(int a, int[] b) {
+    brute: { why: `<p>Turn b into a number and multiply a by itself b times. b has up to 2000 digits — the loop would outlive the universe, and the number does not even fit in a 64-bit integer.</p>`, code: { lang: 'java', code: `static int brute(int a, int[] b) {
     // only valid when b fits in a long (a handful of digits)
     long e = 0;
     for (int d : b) e = e * 10 + d;
     long r = 1, base = a % 1337;
     for (long i = 0; i < e; i++) r = r * base % 1337;
     return (int) r;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def super_pow(a, b):
+    # only valid when b fits in a long (a handful of digits)
+    e = 0
+    for d in b:
+        e = e * 10 + d
+    r, base = 1, a % 1337
+    for _ in range(e):
+        r = r * base % 1337
+    return r` }, { lang: 'js', code: String.raw`
+function superPow(a, b) {
+  // only valid when b fits in a long (a handful of digits)
+  let e = 0;
+  for (const d of b) e = e * 10 + d;
+  let r = 1;
+  const base = a % 1337;
+  for (let i = 0; i < e; i++) r = r * base % 1337;
+  return r;
+}` }, { lang: 'cpp', code: String.raw`
+int superPow(int a, vector<int>& b) {
+    // only valid when b fits in a long (a handful of digits)
+    long long e = 0;
+    for (int d : b) e = e * 10 + d;
+    long long r = 1, base = a % 1337;
+    for (long long i = 0; i < e; i++) r = r * base % 1337;
+    return (int)r;
+}` }] } },
     mcq: { q: 'If b = 10·q + d, then a<sup>b</sup> equals…', options: ['(a<sup>q</sup>)<sup>10</sup> · a<sup>d</sup>', 'a<sup>q</sup> · a<sup>10d</sup>', '(a<sup>10</sup>)<sup>d</sup> · a<sup>q</sup>', 'a<sup>q+d</sup>'], answer: 0, explain: 'a<sup>10q + d</sup> = (a<sup>q</sup>)<sup>10</sup>·a<sup>d</sup>. Process digits left to right: result = result<sup>10</sup>·a<sup>digit</sup>.' },
     hints: [`<p>Hint 1: Reading digits left to right, b goes q → 10q + d. So result goes r → r<sup>10</sup>·a<sup>d</sup> (Horner's rule for exponents).</p>`, `<p>Hint 2: Each step is two small fast powers mod 1337. Total 2000 steps.</p>`, `<p>Hint 3: Alternative: Euler. 1337 = 7·191, φ = 6·190 = 1140. But gcd(a, 1337) may be &gt; 1, so use the safe form b mod 1140 + 1140 when b ≥ 1140 — the digit method avoids this subtlety.</p>`],
     tests: { sig: 'int int[] -> int', fn: 'superPow', cases: [
@@ -4307,14 +4794,43 @@ public:
     statement: `<p>A knight starts at (row, column) on an n×n board and makes exactly k moves, each chosen uniformly among its 8 knight moves (even ones that leave the board). Once it leaves, it stops. Return the probability that it is still on the board after k moves.</p>`,
     constraints: `1 ≤ n ≤ 25, 0 ≤ k ≤ 100, 0 ≤ row, column &lt; n`,
     example: `<p>n = 3, k = 2, start (0, 0) → ${H.c('g', '0.0625')}: 2 of 8 first moves stay on, and from each of those, 2 of 8 again: (2/8)·(2/8) = 1/16.</p>`,
-    brute: { why: `<p>Enumerate all 8<sup>k</sup> move sequences and count the ones that stay on: for k = 100 that is 8<sup>100</sup>. The waste: many sequences reach the same (cell, steps left) state.</p>`, code: `static final int[][] D = {{1,2},{2,1},{-1,2},{-2,1},{1,-2},{2,-1},{-1,-2},{-2,-1}};
+    brute: { why: `<p>Enumerate all 8<sup>k</sup> move sequences and count the ones that stay on: for k = 100 that is 8<sup>100</sup>. The waste: many sequences reach the same (cell, steps left) state.</p>`, code: { lang: 'java', code: `static final int[][] D = {{1,2},{2,1},{-1,2},{-2,1},{1,-2},{2,-1},{-1,-2},{-2,-1}};
 static double brute(int n, int k, int r, int c) {
     if (r < 0 || c < 0 || r >= n || c >= n) return 0;   // fell off
     if (k == 0) return 1;
     double p = 0;
     for (int[] d : D) p += brute(n, k - 1, r + d[0], c + d[1]) / 8.0;   // exponential
     return p;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+D = [(1, 2), (2, 1), (-1, 2), (-2, 1), (1, -2), (2, -1), (-1, -2), (-2, -1)]
+
+def knight_probability(n, k, row, column):
+    if row < 0 or column < 0 or row >= n or column >= n:
+        return 0                                      # fell off
+    if k == 0:
+        return 1
+    p = 0.0
+    for dr, dc in D:
+        p += knight_probability(n, k - 1, row + dr, column + dc) / 8.0   # exponential
+    return p` }, { lang: 'js', code: String.raw`
+const D = [[1, 2], [2, 1], [-1, 2], [-2, 1], [1, -2], [2, -1], [-1, -2], [-2, -1]];
+
+function knightProbability(n, k, row, column) {
+  if (row < 0 || column < 0 || row >= n || column >= n) return 0;   // fell off
+  if (k === 0) return 1;
+  let p = 0;
+  for (const [dr, dc] of D) p += knightProbability(n, k - 1, row + dr, column + dc) / 8;   // exponential
+  return p;
+}` }, { lang: 'cpp', code: String.raw`
+const int D[8][2] = {{1,2},{2,1},{-1,2},{-2,1},{1,-2},{2,-1},{-1,-2},{-2,-1}};
+
+double knightProbability(int n, int k, int row, int column) {
+    if (row < 0 || column < 0 || row >= n || column >= n) return 0;   // fell off
+    if (k == 0) return 1;
+    double p = 0;
+    for (auto& d : D) p += knightProbability(n, k - 1, row + d[0], column + d[1]) / 8.0;   // exponential
+    return p;
+}` }] } },
     mcq: { q: 'What is the right DP state?', options: ['(steps done, row, col) → probability of being there', '(row, col) only', 'number of moves left only', 'the whole path'], answer: 0, explain: 'Probability mass on each cell after s steps is all we need; the next layer only depends on the current one.' },
     hints: [`<p>Hint 1: Let dp[r][c] = probability of standing on (r, c) after the current number of moves. Start with dp[row][col] = 1.</p>`, `<p>Hint 2: For each move, push dp[r][c]/8 to each on-board knight target. Mass that leaves the board just disappears.</p>`, `<p>Hint 3: After k layers, sum the board. Two n×n arrays suffice. O(k·n²·8).</p>`],
     tests: { sig: 'int int int int -> double', fn: 'knightProbability', cmp: 'float', cases: [
@@ -4430,7 +4946,7 @@ public:
     statement: `<p>An array holds 1..n in order. A derangement is a permutation where no element stays in its original position. Return the number of derangements mod 10<sup>9</sup>+7.</p>`,
     constraints: `1 ≤ n ≤ 10<sup>6</sup>`,
     example: `<p>n = 3 → ${H.c('g', '2')}: [2,3,1] and [3,1,2]. n = 4 → 9.</p>`,
-    brute: { why: `<p>Generate all n! permutations and test each: 10! = 3.6·10<sup>6</sup> is already the limit; n = 10<sup>6</sup> is unthinkable.</p>`, code: `static int brute(int[] perm, int pos, boolean[] used) {
+    brute: { why: `<p>Generate all n! permutations and test each: 10! = 3.6·10<sup>6</sup> is already the limit; n = 10<sup>6</sup> is unthinkable.</p>`, code: { lang: 'java', code: `static int brute(int[] perm, int pos, boolean[] used) {
     int n = perm.length;
     if (pos == n) return 1;
     int count = 0;
@@ -4441,7 +4957,44 @@ public:
         used[v] = false;
     }
     return count;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def brute(perm, pos, used):
+    n = len(perm)
+    if pos == n:
+        return 1
+    count = 0
+    for v in range(1, n + 1):
+        if used[v] or v == pos + 1:
+            continue                                  # value v may not sit at its home index
+        used[v] = True
+        perm[pos] = v
+        count += brute(perm, pos + 1, used)
+        used[v] = False
+    return count` }, { lang: 'js', code: String.raw`
+function brute(perm, pos, used) {
+  const n = perm.length;
+  if (pos === n) return 1;
+  let count = 0;
+  for (let v = 1; v <= n; v++) {
+    if (used[v] || v === pos + 1) continue;           // value v may not sit at its home index
+    used[v] = true; perm[pos] = v;
+    count += brute(perm, pos + 1, used);
+    used[v] = false;
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+int brute(vector<int>& perm, int pos, vector<char>& used) {
+    int n = perm.size();
+    if (pos == n) return 1;
+    int count = 0;
+    for (int v = 1; v <= n; v++) {
+        if (used[v] || v == pos + 1) continue;        // value v may not sit at its home index
+        used[v] = 1; perm[pos] = v;
+        count += brute(perm, pos + 1, used);
+        used[v] = 0;
+    }
+    return count;
+}` }] } },
     mcq: { q: 'In D(n) = (n−1)(D(n−1) + D(n−2)), what does the factor (n−1) count?', options: ['Where element 1 goes (any of the other n−1 positions)', 'The number of fixed points', 'The number of cycles', 'Nothing — it is a coincidence'], answer: 0, explain: 'Element 1 goes to some position k ≠ 1 (n−1 choices). Then either k goes to 1 (swap: D(n−2)) or k may not go to 1 (behaves like a derangement of n−1: D(n−1)).' },
     hints: [`<p>Hint 1: Inclusion–exclusion: D(n) = ∑ (−1)<sup>i</sup> C(n, i)(n − i)! — or the simpler recurrence.</p>`, `<p>Hint 2: Put element 1 at position k (n−1 ways). Case A: k goes to position 1 → D(n−2). Case B: it does not → D(n−1).</p>`, `<p>Hint 3: D(1) = 0, D(2) = 1. Iterate with two variables, mod after every multiply, use 64-bit integers.</p>`],
     tests: { sig: 'int -> int', fn: 'findDerangement', cases: [
@@ -4522,14 +5075,38 @@ public:
     statement: `<p>Given n, count the strings of length 2n made of "(" and ")" that are balanced (every prefix has at least as many "(" as ")", and the totals are equal). Return the count mod 10<sup>9</sup>+7.</p>`,
     constraints: `1 ≤ n ≤ 10<sup>6</sup>`,
     example: `<p>n = 3 → ${H.c('g', '5')}. n = 10 → 16796.</p>`,
-    brute: { why: `<p>The O(n²) Catalan DP needs 10<sup>12</sup> operations for n = 10<sup>6</sup>. Enumerating strings is 2<sup>2n</sup>. The closed form needs only factorials up to 2n.</p>`, code: `static long brute(int n) {
+    brute: { why: `<p>The O(n²) Catalan DP needs 10<sup>12</sup> operations for n = 10<sup>6</sup>. Enumerating strings is 2<sup>2n</sup>. The closed form needs only factorials up to 2n.</p>`, code: { lang: 'java', code: `static long brute(int n) {
     final long MOD = 1_000_000_007L;
     long[] c = new long[n + 1];
     c[0] = 1;
     for (int m = 1; m <= n; m++)
         for (int i = 0; i < m; i++) c[m] = (c[m] + c[i] * c[m - 1 - i]) % MOD;   // O(n^2)
     return c[n];
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def count_balanced(n):
+    MOD = 1_000_000_007
+    c = [0] * (n + 1)
+    c[0] = 1
+    for m in range(1, n + 1):
+        for i in range(m):
+            c[m] = (c[m] + c[i] * c[m - 1 - i]) % MOD   # O(n^2)
+    return c[n]` }, { lang: 'js', code: String.raw`
+function countBalanced(n) {
+  const MOD = 1000000007n;
+  const c = new Array(n + 1).fill(0n);                // products pass 2^53, so BigInt
+  c[0] = 1n;
+  for (let m = 1; m <= n; m++)
+    for (let i = 0; i < m; i++) c[m] = (c[m] + c[i] * c[m - 1 - i]) % MOD;   // O(n^2)
+  return c[n];
+}` }, { lang: 'cpp', code: String.raw`
+long long countBalanced(int n) {
+    const long long MOD = 1'000'000'007LL;
+    vector<long long> c(n + 1, 0);
+    c[0] = 1;
+    for (int m = 1; m <= n; m++)
+        for (int i = 0; i < m; i++) c[m] = (c[m] + c[i] * c[m - 1 - i]) % MOD;   // O(n^2)
+    return c[n];
+}` }] } },
     mcq: { q: 'C_n mod p = ?', options: ['(2n)! · inv(n!) · inv((n+1)!) mod p', '(2n)! / (n! · n!) using integer division', 'C(2n, n) mod p divided by (n+1) with /', '4<sup>n</sup> mod p'], answer: 0, explain: 'C_n = (2n)!/(n!(n+1)!). Under a modulus, every division must become a multiplication by an inverse; integer division on residues is wrong.' },
     hints: [`<p>Hint 1: The count is the Catalan number C_n = C(2n, n)/(n+1).</p>`, `<p>Hint 2: Precompute factorials up to 2n (not n!).</p>`, `<p>Hint 3: Answer = fact[2n]·inv(fact[n])·inv(fact[n+1]) mod p with Fermat inverses. Equivalent: C(2n, n) − C(2n, n+1).</p>`],
     tests: { sig: 'int -> long', fn: 'countBalanced', cases: [
@@ -4631,7 +5208,7 @@ public:
     statement: `<p>Count strings of length n over {a, e, i, o, u} where: 'a' may only be followed by 'e'; 'e' by 'a' or 'i'; 'i' by anything except 'i'; 'o' by 'i' or 'u'; 'u' by 'a'. Return the count mod 10<sup>9</sup>+7.</p>`,
     constraints: `1 ≤ n ≤ 10<sup>18</sup>`,
     example: `<p>n = 1 → 5. n = 2 → ${H.c('g', '10')} (ae, ea, ei, ia, ie, io, iu, oi, ou, ua). n = 5 → 68.</p>`,
-    brute: { why: `<p>The O(n) DP over "count ending in each vowel" is the LeetCode solution (n ≤ 2·10<sup>4</sup>). For n = 10<sup>18</sup> it never finishes. The transition is the same every step → matrix power.</p>`, code: `static long brute(long n) {
+    brute: { why: `<p>The O(n) DP over "count ending in each vowel" is the LeetCode solution (n ≤ 2·10<sup>4</sup>). For n = 10<sup>18</sup> it never finishes. The transition is the same every step → matrix power.</p>`, code: { lang: 'java', code: `static long brute(long n) {
     final long MOD = 1_000_000_007L;
     long a = 1, e = 1, i = 1, o = 1, u = 1;          // strings of length 1 ending in each vowel
     for (long len = 2; len <= n; len++) {
@@ -4643,7 +5220,44 @@ public:
         a = na; e = ne; i = ni; o = no; u = nu;
     }
     return (a + e + i + o + u) % MOD;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def count_vowel_strings(n):
+    MOD = 1_000_000_007
+    a = e = i = o = u = 1                             # strings of length 1 ending in each vowel
+    for _ in range(2, n + 1):
+        na = (e + i + u) % MOD                        # who may precede 'a': e, i, u
+        ne = (a + i) % MOD
+        ni = (e + o) % MOD
+        no = i % MOD
+        nu = (i + o) % MOD
+        a, e, i, o, u = na, ne, ni, no, nu
+    return (a + e + i + o + u) % MOD` }, { lang: 'js', code: String.raw`
+function countVowelStrings(n) {
+  const MOD = 1000000007n;
+  let a = 1n, e = 1n, i = 1n, o = 1n, u = 1n;         // strings of length 1 ending in each vowel
+  for (let len = 2n; len <= BigInt(n); len++) {
+    const na = (e + i + u) % MOD;                     // who may precede 'a': e, i, u
+    const ne = (a + i) % MOD;
+    const ni = (e + o) % MOD;
+    const no = i % MOD;
+    const nu = (i + o) % MOD;
+    a = na; e = ne; i = ni; o = no; u = nu;
+  }
+  return (a + e + i + o + u) % MOD;
+}` }, { lang: 'cpp', code: String.raw`
+long long countVowelStrings(long long n) {
+    const long long MOD = 1'000'000'007LL;
+    long long a = 1, e = 1, i = 1, o = 1, u = 1;      // strings of length 1 ending in each vowel
+    for (long long len = 2; len <= n; len++) {
+        long long na = (e + i + u) % MOD;             // who may precede 'a': e, i, u
+        long long ne = (a + i) % MOD;
+        long long ni = (e + o) % MOD;
+        long long no = i % MOD;
+        long long nu = (i + o) % MOD;
+        a = na; e = ne; i = ni; o = no; u = nu;
+    }
+    return (a + e + i + o + u) % MOD;
+}` }] } },
     mcq: { q: 'With M[x][y] = 1 if y may follow x, the number of length-n strings is…', options: ['the sum of all entries of M<sup>n−1</sup>', 'the trace of M<sup>n</sup>', 'M<sup>n</sup>[0][0]', 'the sum of all entries of M<sup>n</sup>'], answer: 0, explain: 'Entry (x, y) of M<sup>n−1</sup> counts strings of length n starting with x and ending with y (n − 1 transitions). Sum over all starts and ends.' },
     hints: [`<p>Hint 1: Build the 5×5 "may follow" matrix M. Walks of length n−1 in this graph = valid strings of length n.</p>`, `<p>Hint 2: Compute M<sup>n−1</sup> mod p by repeated squaring: O(5³·log n).</p>`, `<p>Hint 3: Answer = sum of all 25 entries of M<sup>n−1</sup>. n = 1 gives the identity → 5 ✓.</p>`],
     tests: { sig: 'long -> long', fn: 'countVowelStrings', cases: [
@@ -4797,13 +5411,34 @@ public:
     statement: `<p>Given N, compute G(N) = ∑<sub>1 ≤ i &lt; j ≤ N</sub> gcd(i, j). Answer many test cases, each with its own N.</p>`,
     constraints: `2 ≤ N ≤ 4·10<sup>6</sup>, up to 100 test cases; the answer fits in a signed 64-bit integer`,
     example: `<p>N = 10 → ${H.c('g', '67')}. N = 100 → 13015.</p>`,
-    brute: { why: `<p>Double loop with gcd: N²/2 · log N ≈ 10<sup>14</sup> operations for N = 4·10<sup>6</sup>. The waste: many pairs share the same gcd and we never group them.</p>`, code: `static long brute(int N) {
+    brute: { why: `<p>Double loop with gcd: N²/2 · log N ≈ 10<sup>14</sup> operations for N = 4·10<sup>6</sup>. The waste: many pairs share the same gcd and we never group them.</p>`, code: { lang: 'java', code: `static long brute(int N) {
     long s = 0;
     for (int j = 2; j <= N; j++)
         for (int i = 1; i < j; i++) s += gcd(i, j);
     return s;
 }
-static int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }` },
+static int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }`, alt: [{ lang: 'python', code: String.raw`
+from math import gcd
+
+def brute(N):
+    s = 0
+    for j in range(2, N + 1):
+        for i in range(1, j):
+            s += gcd(i, j)
+    return s` }, { lang: 'js', code: String.raw`
+function brute(N) {
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  let s = 0;
+  for (let j = 2; j <= N; j++)
+    for (let i = 1; i < j; i++) s += gcd(i, j);
+  return s;
+}` }, { lang: 'cpp', code: String.raw`
+long long brute(int N) {
+    long long s = 0;
+    for (int j = 2; j <= N; j++)
+        for (int i = 1; i < j; i++) s += gcd(i, j);
+    return s;
+}` }] } },
     mcq: { q: 'For fixed j, how many i in [1, j] have gcd(i, j) = d (d | j)?', options: ['φ(j / d)', 'φ(d)', 'j / d', 'd'], answer: 0, explain: 'gcd(i, j) = d ⇔ i = d·t with gcd(t, j/d) = 1 and 1 ≤ t ≤ j/d → φ(j/d) choices.' },
     hints: [`<p>Hint 1: f(j) = ∑<sub>i&lt;j</sub> gcd(i, j) = ∑<sub>d | j, d &lt; j</sub> d·φ(j/d). Then G(N) = f(2) + … + f(N), a prefix sum.</p>`, `<p>Hint 2: Sieve φ up to N. Then for each d and each k ≥ 2 with d·k ≤ N, add d·φ(k) to f[d·k] — a harmonic loop, O(N log N).</p>`, `<p>Hint 3: Prefix-sum f once, answer every test case in O(1). Use 64-bit integers for f and the prefix (values reach ~10<sup>13</sup>).</p>`],
     tests: { cls: 'Solution', sigs: { Solution: 'int', query: 'int -> long' }, cases: [
@@ -4905,13 +5540,34 @@ public:
     statement: `<p>Answer T queries: C(n, r) mod 1001. Note 1001 = 7·11·13 is not prime.</p>`,
     constraints: `1 ≤ T ≤ 10<sup>5</sup>, 0 ≤ r ≤ n ≤ 10<sup>18</sup>`,
     example: `<p>(10, 3) → ${H.c('g', '120')}. (1000, 500) → 949. (100, 50) → 858.</p>`,
-    brute: { why: `<p>Pascal's triangle mod 1001 is exact but needs O(n·r) work — impossible for n = 10<sup>18</sup>. Factorial + inverse fails because 1001 is composite (7! has no inverse mod 1001).</p>`, code: `static int brute(int n, int r) {
+    brute: { why: `<p>Pascal's triangle mod 1001 is exact but needs O(n·r) work — impossible for n = 10<sup>18</sup>. Factorial + inverse fails because 1001 is composite (7! has no inverse mod 1001).</p>`, code: { lang: 'java', code: `static int brute(int n, int r) {
     int[] row = new int[r + 1];
     row[0] = 1;
     for (int i = 1; i <= n; i++)
         for (int j = Math.min(i, r); j > 0; j--) row[j] = (row[j] + row[j - 1]) % 1001;
     return row[r];
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def ncr_mod_1001(n, r):
+    row = [0] * (r + 1)
+    row[0] = 1
+    for i in range(1, n + 1):
+        for j in range(min(i, r), 0, -1):
+            row[j] = (row[j] + row[j - 1]) % 1001
+    return row[r]` }, { lang: 'js', code: String.raw`
+function ncrMod1001(n, r) {
+  const row = new Array(r + 1).fill(0);
+  row[0] = 1;
+  for (let i = 1; i <= n; i++)
+    for (let j = Math.min(i, r); j > 0; j--) row[j] = (row[j] + row[j - 1]) % 1001;
+  return row[r];
+}` }, { lang: 'cpp', code: String.raw`
+int nCrMod1001(int n, int r) {
+    vector<int> row(r + 1, 0);
+    row[0] = 1;
+    for (int i = 1; i <= n; i++)
+        for (int j = min(i, r); j > 0; j--) row[j] = (row[j] + row[j - 1]) % 1001;
+    return row[r];
+}` }] } },
     mcq: { q: 'Why does Lucas + CRT work for 1001 but not for 1000?', options: ['1001 is square-free (7·11·13); 1000 = 2³·5³ has prime powers where Lucas fails', '1000 is even', 'CRT needs an odd modulus', 'Lucas only works below 1001'], answer: 0, explain: 'Lucas gives C mod p for primes p. Square-free means the modulus is a product of distinct primes, so CRT can rebuild the answer. Prime powers need Granville / exLucas.' },
     hints: [`<p>Hint 1: Compute C(n, r) mod 7, mod 11 and mod 13 separately with Lucas.</p>`, `<p>Hint 2: Combine the three residues with CRT (moduli are coprime). Since 1001 is tiny, you can precompute for each prime the "basis" e_p with e_p ≡ 1 (mod p) and ≡ 0 mod the others.</p>`, `<p>Hint 3: Factorial tables up to 12 suffice. answer = (r₇·e₇ + r₁₁·e₁₁ + r₁₃·e₁₃) mod 1001.</p>`],
     tests: { sig: 'long long -> long', fn: 'nCrMod1001', names: { python: 'ncr_mod_1001' }, cases: [
@@ -5095,7 +5751,7 @@ public:
     statement: `<p>Numbers nums are written on a chalkboard. Alice and Bob alternately erase exactly one number, Alice first. If a player's erasure makes the XOR of all remaining numbers equal 0, that player loses. Also, if the XOR is already 0 at the start of a player's turn, that player wins. Return true if Alice wins with optimal play.</p>`,
     constraints: `1 ≤ nums.length ≤ 1000, 0 ≤ nums[i] &lt; 2<sup>16</sup>`,
     example: `<p>[1, 1, 2] → ${H.c('r', 'false')}: XOR = 2 ≠ 0 and n = 3 is odd. If she erases a 1, the rest [1, 2] has XOR 3, Bob erases 1 or 2, and Alice is left with one number (XOR ≠ 0) that she must erase → XOR 0 → she loses. Erasing 2 leaves [1, 1] → XOR 0 → she loses immediately.</p>`,
-    brute: { why: `<p>Minimax over subsets of erased numbers: 2<sup>n</sup> states, fine for n ≤ 20 but n = 1000 is hopeless. The O(1) answer comes from a parity argument.</p>`, code: `// Memoised minimax over the bitmask of erased numbers (n <= 20 only)
+    brute: { why: `<p>Minimax over subsets of erased numbers: 2<sup>n</sup> states, fine for n ≤ 20 but n = 1000 is hopeless. The O(1) answer comes from a parity argument.</p>`, code: { lang: 'java', code: `// Memoised minimax over the bitmask of erased numbers (n <= 20 only)
 static Map<Integer, Boolean> memo = new HashMap<>();
 static boolean wins(int[] a, int erased) {
     if (memo.containsKey(erased)) return memo.get(erased);
@@ -5110,7 +5766,63 @@ static boolean wins(int[] a, int erased) {
     }
     memo.put(erased, res);
     return res;
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+# Memoised minimax over the bitmask of erased numbers (n <= 20 only)
+memo = {}
+
+def wins(a, erased):
+    if erased in memo:
+        return memo[erased]
+    x, left = 0, 0
+    for i in range(len(a)):
+        if not (erased >> i & 1):
+            x ^= a[i]
+            left += 1
+    if x == 0:
+        res = True                                    # XOR already 0 on my turn: I win
+    else:
+        res = False
+        for i in range(len(a)):
+            if not (erased >> i & 1) and (x ^ a[i]) != 0 and not wins(a, erased | (1 << i)):
+                res = True
+                break
+    memo[erased] = res
+    return res` }, { lang: 'js', code: String.raw`
+// Memoised minimax over the bitmask of erased numbers (n <= 20 only)
+const memo = new Map();
+
+function wins(a, erased) {
+  if (memo.has(erased)) return memo.get(erased);
+  let x = 0, left = 0;
+  for (let i = 0; i < a.length; i++) if ((erased >> i & 1) === 0) { x ^= a[i]; left++; }
+  let res;
+  if (x === 0) res = true;                            // XOR already 0 on my turn: I win
+  else {
+    res = false;
+    for (let i = 0; i < a.length && !res; i++)
+      if ((erased >> i & 1) === 0 && (x ^ a[i]) !== 0 && !wins(a, erased | (1 << i))) res = true;
+  }
+  memo.set(erased, res);
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+// Memoised minimax over the bitmask of erased numbers (n <= 20 only)
+unordered_map<int, bool> memo;
+
+bool wins(vector<int>& a, int erased) {
+    auto it = memo.find(erased);
+    if (it != memo.end()) return it->second;
+    int x = 0, left = 0;
+    for (int i = 0; i < (int)a.size(); i++) if ((erased >> i & 1) == 0) { x ^= a[i]; left++; }
+    bool res;
+    if (x == 0) res = true;                           // XOR already 0 on my turn: I win
+    else {
+        res = false;
+        for (int i = 0; i < (int)a.size() && !res; i++)
+            if ((erased >> i & 1) == 0 && (x ^ a[i]) != 0 && !wins(a, erased | (1 << i))) res = true;
+    }
+    memo[erased] = res;
+    return res;
+}` }] } },
     mcq: { q: 'n is even and XOR ≠ 0. Why can the player to move always erase safely?', options: ['If every number equalled the XOR X, the XOR of an even count of X\'s would be 0 — contradiction', 'Because n is even, all numbers are equal', 'Because XOR of an even count is always 0', 'They cannot; it depends on the numbers'], answer: 0, explain: 'A move is unsafe only for a number equal to X (removing it makes XOR 0). If all n numbers equal X with n even, their XOR is 0, contradicting X ≠ 0. So a safe move exists, and parity stays even for her turns.' },
     hints: [`<p>Hint 1: If the starting XOR is 0, Alice wins instantly.</p>`, `<p>Hint 2: Erasing number v is losing only if v equals the current XOR X. When the count is even and X ≠ 0, not all numbers can equal X (their XOR would be 0).</p>`, `<p>Hint 3: So with an even count Alice always has a safe move, and Bob always faces an odd count. Answer: xor == 0 || n % 2 == 0.</p>`],
     tests: { sig: 'int[] -> bool', fn: 'xorGame', cases: [
@@ -5175,7 +5887,7 @@ public:
     statement: `<p>There are several piles. A move: choose one pile and split it into <b>two non-empty piles of different sizes</b>. Piles of size 1 or 2 can never be split. The player who cannot move loses. Return "First" or "Second".</p>`,
     constraints: `1 ≤ number of piles ≤ 10<sup>5</sup>, 1 ≤ pile ≤ 3000`,
     example: `<p>[3] → ${H.c('g', 'First')} (split into 1 + 2, opponent is stuck). [4] → ${H.c('r', 'Second')} (only 1 + 3, then the opponent splits 3). [5, 6] → g = 2 ⊕ 1 = 3 → First.</p>`,
-    brute: { why: `<p>Searching the whole game tree over the multiset of all piles explodes combinatorially — every split creates more piles. Sprague–Grundy lets us analyse one pile at a time.</p>`, code: `// Plain recursion on a multiset of piles - exponential, only for tiny inputs
+    brute: { why: `<p>Searching the whole game tree over the multiset of all piles explodes combinatorially — every split creates more piles. Sprague–Grundy lets us analyse one pile at a time.</p>`, code: { lang: 'java', code: `// Plain recursion on a multiset of piles - exponential, only for tiny inputs
 static boolean firstWins(List<Integer> piles) {
     for (int idx = 0; idx < piles.size(); idx++) {
         int p = piles.get(idx);
@@ -5188,7 +5900,42 @@ static boolean firstWins(List<Integer> piles) {
         }
     }
     return false;                                     // no move or all moves lose
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+# Plain recursion on a multiset of piles - exponential, only for tiny inputs
+def first_wins(piles):
+    for idx, p in enumerate(piles):
+        for a in range(1, (p - 1) // 2 + 1):          # a < p - a: unequal split
+            nxt = piles[:idx] + piles[idx + 1:] + [a, p - a]
+            if not first_wins(nxt):
+                return True                           # move to a losing position
+    return False                                      # no move or all moves lose` }, { lang: 'js', code: String.raw`
+// Plain recursion on a multiset of piles - exponential, only for tiny inputs
+function firstWins(piles) {
+  for (let idx = 0; idx < piles.length; idx++) {
+    const p = piles[idx];
+    for (let a = 1; 2 * a < p; a++) {                 // a < p - a: unequal split
+      const next = piles.slice();
+      next.splice(idx, 1);
+      next.push(a, p - a);
+      if (!firstWins(next)) return true;              // move to a losing position
+    }
+  }
+  return false;                                       // no move or all moves lose
+}` }, { lang: 'cpp', code: String.raw`
+// Plain recursion on a multiset of piles - exponential, only for tiny inputs
+bool firstWins(vector<int> piles) {
+    for (int idx = 0; idx < (int)piles.size(); idx++) {
+        int p = piles[idx];
+        for (int a = 1; 2 * a < p; a++) {             // a < p - a: unequal split
+            vector<int> next = piles;
+            next.erase(next.begin() + idx);
+            next.push_back(a);
+            next.push_back(p - a);
+            if (!firstWins(next)) return true;        // move to a losing position
+        }
+    }
+    return false;                                     // no move or all moves lose
+}` }] } },
     mcq: { q: 'A pile of size 7 is split into 3 and 4. What is the Grundy value of the resulting position?', options: ['g(3) ⊕ g(4)', 'g(3) + g(4)', 'max(g(3), g(4))', 'g(7) − 1'], answer: 0, explain: 'The two new piles are independent games, so their combined Grundy value is the XOR. g(7) is then the mex over all such XORs.' },
     hints: [`<p>Hint 1: g(1) = g(2) = 0 (no moves). A split of n into a and n − a yields the value g(a) ⊕ g(n − a).</p>`, `<p>Hint 2: g(n) = mex{ g(a) ⊕ g(n−a) : 1 ≤ a &lt; n − a }. Compute up to 3000 in O(n²/2) ≈ 4.5·10<sup>6</sup>.</p>`, `<p>Hint 3: XOR g over all piles: non-zero → First. Grundy values here stay small (well below 64), so a small boolean array works for mex.</p>`],
     tests: { sig: 'int[] -> string', fn: 'winner', cases: [

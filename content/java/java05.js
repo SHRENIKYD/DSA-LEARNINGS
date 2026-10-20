@@ -272,6 +272,27 @@ static String normalizeBrute(String s) {
         `<p>Hint 2: Use one <code>StringBuilder</code> and a boolean flag "I have seen a gap since the last word". Write the <code>_</code> lazily — only when the <b>next</b> word starts.</p>`,
         `<p>Hint 3: Recipe — if null return ""; for each char c: if <code>Character.isWhitespace(c)</code> set gap = (builder not empty); else { if gap append '_' and clear gap; append <code>Character.toLowerCase(c)</code> }. Leading gaps are ignored because the builder is empty, trailing gaps are never written.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'normalize', cases: [
+        [["  Asha   Rao "],"asha_rao"],
+        [[null],""],
+        [[""],""],
+        [["   "],""],
+        [["A"],"a"],
+        [["\tJava\n Dev"],"java_dev"],
+        [["ALLCAPS"],"allcaps"],
+        [["a b c"],"a_b_c"],
+        [["  x"],"x"],
+        [["x  "],"x"],
+        [["a\t\n b"],"a_b"],
+        [["Already_Normal"],"already_normal"],
+        [["MiXeD 123 CaSe"],"mixed_123_case"],
+        [["\n\n\n"],""],
+        [["a\r\nb"],"a_b"],
+        [[{"$rep":"A  ","n":33333}],{"$concat":[{"$rep":"a_","n":33332},"a"]}],
+        [[{"$rep":" ","n":100000}],""],
+        [[{"$rep":"Z","n":100000}],{"$rep":"z","n":100000}],
+        [[{"$concat":[" ",{"$rep":"ab \t","n":25000}]}],{"$concat":[{"$rep":"ab_","n":24999},"ab"]}]
+      ] },
       solution: {
         approach: `<p>Single pass with a <code>StringBuilder</code> (a mutable character buffer) and a "pending gap" flag. Because we only emit the underscore when the next word begins, leading and trailing whitespace vanish for free and any run collapses to one underscore.</p>`,
         code: R`
@@ -538,6 +559,26 @@ static boolean sameTextWrong(String a, String b) {
         `<p>Hint 2: Different lengths can never be equal; that check is O(1).</p>`,
         `<p>Hint 3: Recipe — if (a == b) return true; if (a == null || b == null) return false; if lengths differ return false; loop i over 0..n-1 and return false at the first <code>charAt</code> mismatch; return true.</p>`
       ],
+      tests: { sig: 'string string -> bool', fn: 'sameText', cases: [
+        [["java","java"],true],
+        [["java","Java"],false],
+        [[null,null],true],
+        [[null,""],false],
+        [["",null],false],
+        [["",""],true],
+        [["a","ab"],false],
+        [["ab","a"],false],
+        [["abc","abd"],false],
+        [["abc","xbc"],false],
+        [["a b","a b"],true],
+        [["a b","a  b"],false],
+        [["x","x"],true],
+        [["ab","ba"],false],
+        [[{"$rep":"a","n":1000000},{"$rep":"a","n":1000000}],true],
+        [[{"$rep":"a","n":1000000},{"$concat":[{"$rep":"a","n":999999},"b"]}],false],
+        [[{"$concat":["b",{"$rep":"a","n":999999}]},{"$rep":"a","n":1000000}],false],
+        [[{"$rep":"a","n":1000000},{"$rep":"a","n":999999}],false]
+      ] },
       solution: {
         approach: `<p>Mirror what the JDK does: identity shortcut, null guard, length guard, then a left-to-right scan that exits at the first mismatch.</p>`,
         code: R`
@@ -803,6 +844,27 @@ static String compressBrute(String s) {
         `<p>Hint 2: Append <code>c</code> and <code>j - i</code> into one StringBuilder; then jump <code>i = j</code>.</p>`,
         `<p>Hint 3: Edge cases — empty String returns ""; compare lengths at the end (or bail out early once the builder reaches s.length()). Recipe: i=0; while i&lt;n { j=i; while j&lt;n and s[j]==s[i] j++; sb.append(s[i]).append(j-i); i=j } return shorter.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'compress', cases: [
+        [["aabcccccaaa"],"a2b1c5a3"],
+        [["abc"],"abc"],
+        [["aaaaaaaaaaaa"],"a12"],
+        [[""],""],
+        [["a"],"a"],
+        [["aa"],"aa"],
+        [["aaa"],"a3"],
+        [["aabb"],"aabb"],
+        [["aaabb"],"a3b2"],
+        [["aAaA"],"aAaA"],
+        [["aabbcc"],"aabbcc"],
+        [["aaaabbbb"],"a4b4"],
+        [["zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"],"z112"],
+        [["abbbbbbbbbbbbbc"],"a1b13c1"],
+        [[{"$rep":"a","n":100000}],"a100000"],
+        [[{"$rep":"ab","n":50000}],{"$rep":"ab","n":50000}],
+        [[{"$concat":[{"$rep":"a","n":50000},{"$rep":"B","n":50000}]}],"a50000B50000"],
+        [[{"$rep":"aab","n":33333}],{"$rep":"aab","n":33333}],
+        [[{"$concat":[{"$rep":"a","n":10},{"$rep":"b","n":10},{"$rep":"c","n":10},{"$rep":"a","n":10}]}],"a10b10c10a10"]
+      ] },
       solution: {
         approach: `<p>Two-pointer run scan writing into a single <code>StringBuilder</code>. Each character is visited once by <code>j</code>, each append is amortised O(1), and an early exit stops as soon as the compressed form can no longer be shorter.</p>`,
         code: R`
@@ -1058,6 +1120,44 @@ static int parseBrute(String s) {
         `<p>Hint 2: Use a <code>long</code>-free approach by accumulating negatively (like the JDK), or use a limit of 2147483648 for negatives and 2147483647 for positives with a <code>long</code> accumulator that never exceeds 2.2 × 10<sup>9</sup> because you check first.</p>`,
         `<p>Hint 3: Validate: null/empty → throw; sign handling; at least one digit; every char in '0'..'9'. Recipe: neg = first=='-'; limit = neg ? -MIN : MAX (as long); for each digit check overflow then accumulate; return neg ? -r : r.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'psCheck',
+        harness: { java: `class Check { static String psCheck(String s) { try { return String.valueOf(Solution.parseStrict(s)); } catch (NumberFormatException e) { return "NFE"; } } }`, python: `def ps_check(s):
+    try:
+        return str(parse_strict(s))
+    except ValueError:
+        return "NFE"
+` }, cases: [
+        [["-472"],"-472"],
+        [["+7"],"7"],
+        [["-2147483648"],"-2147483648"],
+        [["2147483648"],"NFE"],
+        [["12a"],"NFE"],
+        [["0"],"0"],
+        [["+0"],"0"],
+        [["-0"],"0"],
+        [["007"],"7"],
+        [["-"],"NFE"],
+        [["+"],"NFE"],
+        [[""],"NFE"],
+        [[null],"NFE"],
+        [[" 12"],"NFE"],
+        [["12 "],"NFE"],
+        [["1_000"],"NFE"],
+        [["--1"],"NFE"],
+        [["+-1"],"NFE"],
+        [["2147483647"],"2147483647"],
+        [["-2147483649"],"NFE"],
+        [["99999999999"],"NFE"],
+        [["1.5"],"NFE"],
+        [["٣"],"NFE"],
+        [[{"$concat":[{"$rep":"0","n":99},"5"]}],"5"],
+        [[{"$concat":["-",{"$rep":"0","n":98},"1"]}],"-1"],
+        [[{"$rep":"9","n":100}],"NFE"],
+        [[{"$concat":["-",{"$rep":"0","n":90},"2147483648"]}],"-2147483648"],
+        [["4294967296"],"NFE"],
+        [["2147483650"],"NFE"],
+        [["21474836470"],"NFE"]
+      ] },
       solution: {
         approach: `<p>Validate the shape, then accumulate digit by digit in a <code>long</code> with a <b>pre-check</b> against the side-specific limit (2147483648 for negatives, 2147483647 for positives). Because we check before multiplying, the accumulator never exceeds the limit, so no overflow can hide.</p>`,
         code: R`
@@ -1350,6 +1450,23 @@ class MinStackBrute {
         `<p>Hint 2: Push onto the min-stack when <code>x &lt;= currentMin</code> (the <b>&lt;=</b> handles duplicates). On pop, pop the min-stack only if the popped value <b>equals</b> its top.</p>`,
         `<p>Hint 3: Avoid boxing entirely: unbox into an <code>int</code> local (<code>int v = st.pop();</code>) and compare ints, or store pairs <code>(value, minSoFar)</code> in an <code>int[]</code>-based stack.</p>`
       ],
+      tests: { sig: 'int[] int[] -> string', fn: 'minStackCheck',
+        harness: { java: `class Check { static String minStackCheck(int[] op, int[] val) { MinStack s = new MinStack(); List<String> r = new ArrayList<>(); long h = 0; int k = 0; for (int i = 0; i < op.length; i++) { switch (op[i]) { case 0: s.push(val[i]); break; case 1: s.pop(); break; case 2: { int v = s.top(); r.add("t" + v); h += (long) v * (k++ % 7 + 1); break; } default: { int v = s.getMin(); r.add("m" + v); h += (long) v * (k++ % 7 + 1); } } } return r.size() <= 20 ? String.join(" ", r) : "n=" + r.size() + " h=" + h; } }` }, cases: [
+        [[[0,0,0,1,3],[512,1000,512,0,0]],"m512"],
+        [[[0,0,0,1,1,3],[600,500,500,0,0,0]],"m600"],
+        [[[0,2,3],[7,0,0]],"t7 m7"],
+        [[[0,0,3,1,3],[2147483647,-2147483648,0,0,0]],"m-2147483648 m2147483647"],
+        [[[0,0,0,3,1,3,1,3],[5,3,3,0,0,0,0,0]],"m3 m3 m5"],
+        [[[0,0,0,2,3,1,2,3],[1,2,3,0,0,0,0,0]],"t3 m1 t2 m1"],
+        [[[0,0,0,0,3,1,3,1,3,1,3],[4,3,2,1,0,0,0,0,0,0,0]],"m1 m2 m3 m4"],
+        [[[0,0,0,0,3,1,3,1,3,1,3],[1,2,3,4,0,0,0,0,0,0,0]],"m1 m1 m1 m1"],
+        [[{"$concat":[{"$rep":0,"n":20},[3,2,1,3,2]]},{"$concat":[{"$range":[20,0,-1]},{"$rep":0,"n":5}]}],"m1 t1 m2 t2"],
+        [[[0,0,3,2],[-1,-1,0,0]],"m-1 t-1"],
+        [[[0,3,0,3,1,3],[0,0,-5,0,0,0]],"m0 m-5 m0"],
+        [[{"$concat":[{"$rep":0,"n":15000},[2,3],{"$rep":1,"n":14996},[2,3]]},{"$concat":[{"$range":[15000,0,-1]},{"$rep":0,"n":15000}]}],"t1 m1 t14997 m14997"],
+        [[{"$concat":[{"$rep":0,"n":15000},[3],{"$rep":1,"n":14997},[3,2]]},{"$concat":[{"$range":[0,15000]},{"$rep":0,"n":15000}]}],"m0 m0 t2"],
+        [[{"$concat":[{"$rep":0,"n":10000},[3],{"$rep":0,"n":10000},[3],{"$rep":0,"n":9998},[3,2]]},{"$concat":[{"$range":[5000,15000]},[0],{"$range":[0,10000,1]},[0],{"$range":[-10000,-2,1]},[0,0]]}],"m5000 m0 m-10000 t-3"]
+      ] },
       solution: {
         approach: `<p>Store <code>(value, minSoFar)</code> pairs in two parallel primitive arrays that grow like an ArrayList. No boxing at all, so no reference comparisons and no cache surprises; every operation is O(1).</p>`,
         code: R`
@@ -1693,6 +1810,25 @@ static int countBrute(int[][] pts) {
         `<p>Hint 2: <code>record Pt(int x, int y) {}</code> gives you both methods for free. A hand-written class must override <b>both</b>, using the same fields.</p>`,
         `<p>Hint 3: Recipe — for each row add <code>new Pt(row[0], row[1])</code> to a HashSet; return its size. Alternative key without objects: pack into one long <code>((long) x &lt;&lt; 32) | (y &amp; 0xffffffffL)</code>.</p>`
       ],
+      tests: { sig: 'int[] int[] -> int', fn: 'dpCheck',
+        harness: { java: `class Check { static int dpCheck(int[] xs, int[] ys) { int[][] pts = new int[xs.length][]; for (int i = 0; i < xs.length; i++) pts[i] = new int[]{xs[i], ys[i]}; return Solution.countDistinct(pts); } }`, python: `def dp_check(xs, ys):
+    return count_distinct([[x, y] for x, y in zip(xs, ys)])
+` }, cases: [
+        [[[1,3,1,1,0],[2,4,2,2,0]],3],
+        [[[0],[0]],1],
+        [[[1,2],[2,1]],2],
+        [[[-5,-5],[-5,-5]],1],
+        [[[1000000000,-1000000000,1000000000],[-1000000000,1000000000,-1000000000]],2],
+        [[[0,1],[31,0]],2],
+        [[[1,1,1],[1,2,3]],3],
+        [[[7,7,7],[7,7,7]],1],
+        [[[2147483647,-2147483648,2147483647],[-2147483648,2147483647,-2147483648]],2],
+        [[{"$rep":1,"n":100000},{"$rep":1,"n":100000}],1],
+        [[{"$range":[0,100000]},{"$rep":7,"n":100000}],100000],
+        [[{"$concat":[{"$range":[0,50000]},{"$range":[0,50000]}]},{"$concat":[{"$rep":3,"n":50000},{"$rep":3,"n":50000}]}],50000],
+        [[{"$range":[0,3000]},{"$range":[0,-93000,-31]}],3000],
+        [[{"$range":[0,100000]},{"$range":[100000,0,-1]}],100000]
+      ] },
       solution: {
         approach: `<p>Model the point as a value object with correct <code>equals</code>/<code>hashCode</code> and let <code>HashSet</code> drop duplicates. Each insert is expected O(1). Shown as a hand-written final class (so you can see the contract); a one-line record is equivalent.</p>`,
         code: R`
@@ -1996,6 +2132,22 @@ static int[] frequencySortBrute(int[] nums) {
         `<p>Hint 2: Sort with a comparator: primary key = frequency ascending, tie-breaker = value <b>descending</b>.</p>`,
         `<p>Hint 3: Box into <code>Integer[]</code>, call <code>Arrays.sort(boxed, cmp)</code>, then copy back. Use <code>Integer.compare</code> (never subtraction) and remember map values are boxed — read them with <code>get</code>, which never returns null here because every value was counted.</p>`
       ],
+      tests: { sig: 'int[] -> int[]', fn: 'frequencySort', cases: [
+        [[[1,1,2,2,2,3]],[3,1,1,2,2,2]],
+        [[[2,3,1,3,2]],[1,3,3,2,2]],
+        [[[-1,1,-6,4,5,-6,1,4,1]],[5,-1,4,4,-6,-6,1,1,1]],
+        [[[5]],[5]],
+        [[[7,7,7]],[7,7,7]],
+        [[[3,2,1]],[3,2,1]],
+        [[[1,2,3]],[3,2,1]],
+        [[[0,0,-100,100]],[100,-100,0,0]],
+        [[[-100,-100,100,100,0]],[0,100,100,-100,-100]],
+        [[[4,4,4,5,5,6]],[6,5,5,4,4,4]],
+        [[{"$concat":[{"$rep":5,"n":50000},{"$rep":-100,"n":30000},{"$rep":100,"n":20000}]}],{"$concat":[{"$rep":100,"n":20000},{"$rep":-100,"n":30000},{"$rep":5,"n":50000}]}],
+        [[{"$rep":0,"n":100000}],{"$rep":0,"n":100000}],
+        [[{"$range":[-100,101]}],{"$range":[100,-101,-1]}],
+        [[{"$concat":[{"$rep":1,"n":3},{"$rep":2,"n":3},{"$rep":3,"n":3}]}],{"$concat":[{"$rep":3,"n":3},{"$rep":2,"n":3},{"$rep":1,"n":3}]}]
+      ] },
       solution: {
         approach: `<p>Count once, then sort boxed values with a two-level comparator: <code>comparingInt(freq::get)</code> then <code>reverseOrder</code> on the value. TimSort does O(n log n) comparisons, each O(1) thanks to the precomputed map.</p>`,
         code: R`
@@ -2066,6 +2218,9 @@ System.out.println(a.equals(f));   // true  -> the beginner predicts a == f is t
       `<p>Hint 2: <code>d = c</code> copies a reference, so c and d are the same object. <code>intern()</code> always returns the pooled object for that text.</p>`,
       `<p>Hint 3: <code>part</code> is not final, so <code>part + "at"</code> runs at runtime through StringConcatFactory and produces a new object. equals() compares letters, so the last line is true.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "true\nfalse\ntrue\ntrue\nfalse\ntrue" }
+    ] },
     solution: {
       approach: `<p>Classify each variable: a, b, e → pooled "cat"; c, d → one heap object; f → another heap object. Then <code>==</code> is true only between variables in the same group, and <code>equals</code> is true for all of them.</p>`,
       code: R`
@@ -2115,6 +2270,30 @@ static boolean isPalindromeBrute(String s) {
       `<p>Hint 2: Two pointers L and R: skip non-alphanumeric chars on each side, then compare lower-cased chars.</p>`,
       `<p>Hint 3: Recipe — while L &lt; R: advance L while not letterOrDigit; retreat R likewise; if <code>Character.toLowerCase</code> differs return false; L++, R--. Return true.</p>`
     ],
+    tests: { sig: 'string -> bool', fn: 'isPalindrome', cases: [
+      [["A man, a plan, a canal: Panama"],true],
+      [["race a car"],false],
+      [[" "],true],
+      [["a"],true],
+      [["ab"],false],
+      [["0P"],false],
+      [[".,"],true],
+      [["aa"],true],
+      [["Aa"],true],
+      [["12321"],true],
+      [["1231"],false],
+      [["a.b,a"],true],
+      [["ab_a"],true],
+      [["Was it a car or a cat I saw?"],true],
+      [["No x in Nixon"],true],
+      [["!@#$%^&*()"],true],
+      [["a1b2"],false],
+      [[{"$rep":"a","n":200000}],true],
+      [[{"$concat":[{"$rep":"a","n":100000},"b",{"$rep":"a","n":99999}]}],false],
+      [[{"$rep":"ab, ","n":50000}],false],
+      [[{"$concat":[{"$rep":".","n":100000},"ab",{"$rep":".","n":99998}]}],false],
+      [[{"$concat":[{"$rep":"a","n":99999},". ",{"$rep":"a","n":99999}]}],true]
+    ] },
     solution: {
       approach: `<p>Two pointers moving inward, skipping junk with <code>Character.isLetterOrDigit</code> and comparing with <code>Character.toLowerCase</code>. No new Strings are created.</p>`,
       code: R`
@@ -2168,6 +2347,24 @@ static boolean isAnagramBrute(String s, String t) {
       `<p>Hint 2: Keep <code>int[26] count</code>; add 1 for every char of s and subtract 1 for every char of t (index <code>c - 'a'</code>).</p>`,
       `<p>Hint 3: At the end every count must be 0. No HashMap or boxing needed for a fixed alphabet; use a <code>HashMap&lt;Character, Integer&gt;</code> only for Unicode input.</p>`
     ],
+    tests: { sig: 'string string -> bool', fn: 'isAnagram', cases: [
+      [["anagram","nagaram"],true],
+      [["rat","car"],false],
+      [["a","a"],true],
+      [["a","b"],false],
+      [["ab","a"],false],
+      [["a","ab"],false],
+      [["aab","abb"],false],
+      [["listen","silent"],true],
+      [["aa","aa"],true],
+      [["abc","cba"],true],
+      [["zz","zy"],false],
+      [["abcdefghijklmnopqrstuvwxyz","zyxwvutsrqponmlkjihgfedcba"],true],
+      [[{"$rep":"ab","n":25000},{"$rep":"ba","n":25000}],true],
+      [[{"$rep":"a","n":50000},{"$concat":[{"$rep":"a","n":49999},"b"]}],false],
+      [[{"$rep":"z","n":50000},{"$rep":"z","n":50000}],true],
+      [[{"$rep":"a","n":50000},{"$rep":"a","n":49999}],false]
+    ] },
     solution: {
       approach: `<p>Count letters with a primitive <code>int[26]</code> — no wrapper objects, no sorting. One pass adds for s and subtracts for t; anagrams leave every slot at zero.</p>`,
       code: R`
@@ -2222,6 +2419,9 @@ System.out.println((a == b) + " " + (c == d) + " " + (e == 100));   // true true
       `<p>Hint 2: A wrapper + a primitive with <code>==</code> → unboxing, numeric comparison (with widening if needed: Long vs int compares as long).</p>`,
       `<p>Hint 3: <code>equals</code> on wrappers checks the <b>exact type</b> first, then the value. The argument 100 autoboxes to <code>Integer</code>.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "true\nfalse\ntrue\ntrue\nfalse\ntrue" }
+    ] },
     solution: {
       approach: `<p>Line by line: cached 100 → same object; 200 → two objects; mixed with int → value; equals with same type → value; Long vs Integer → false; Long == int literal → unboxed numeric comparison.</p>`,
       code: R`
@@ -2269,6 +2469,24 @@ static String reverseWordsBrute(String s) {
       `<p>Hint 2: Skip spaces; when you hit a non-space at index j, move i left while it is non-space; the word is <code>s.substring(i + 1, j + 1)</code> (or append chars directly).</p>`,
       `<p>Hint 3: Append a single space <b>before</b> every word except the first (check <code>sb.length() &gt; 0</code>). This handles all extra spaces with no trim.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'reverseWords', cases: [
+      [["the sky is blue"],"blue is sky the"],
+      [["  hello world  "],"world hello"],
+      [["a good   example"],"example good a"],
+      [["a"],"a"],
+      [[" a"],"a"],
+      [["a "],"a"],
+      [["  a  "],"a"],
+      [["a b"],"b a"],
+      [["one"],"one"],
+      [["x  y  z"],"z y x"],
+      [["abc 123 def"],"def 123 abc"],
+      [["    lots   of   space    "],"space of lots"],
+      [[{"$rep":"ab ","n":3333}],"ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab"],
+      [[{"$concat":[{"$rep":" ","n":5000},"x",{"$rep":" ","n":4999}]}],"x"],
+      [[{"$concat":["first",{"$rep":" ","n":9990},"last"]}],"last first"],
+      [[{"$rep":"a ","n":5000}],"a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a"]
+    ] },
     solution: {
       approach: `<p>One backward scan with a <code>StringBuilder</code>: find each word's end, then its start, append it with a separator only between words. Every character is touched O(1) times.</p>`,
       code: R`
@@ -2338,6 +2556,9 @@ System.out.println(guess + " vs " + real);`
       `<p>Hint 2: <code>sb3 = sb1</code> copies the reference; <code>final</code> only stops <code>sb3</code> from being re-assigned. <code>toString()</code> returns a new String that never changes afterwards.</p>`,
       `<p>Hint 3: <code>new StringBuilder(char)</code> does not exist; the char widens to <code>int</code>, selecting <code>StringBuilder(int capacity)</code>.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "false\ntrue\nabc\nabc abcd\nxy\nx\n0" }
+    ] },
     solution: {
       approach: `<p>Draw objects: sb1/sb3 → builder #1, sb2 → builder #2. equals is identity → false; content equal → true; append through sb3 changes builder #1 → "abc"; snap is an immutable copy → "abc abcd"; buf mutated → "xy"; t re-pointed only locally → "x"; capacity constructor → length 0.</p>`,
       code: R`
@@ -2400,6 +2621,22 @@ static List<List<String>> groupBrute(String[] words) {
       `<p>Hint 2: Key = <code>new String(sorted chars)</code> (O(k log k)) or a count signature like "1#0#0#…" (O(k)).</p>`,
       `<p>Hint 3: <code>map.computeIfAbsent(key, x -&gt; new ArrayList&lt;&gt;()).add(word)</code>; return <code>new ArrayList&lt;&gt;(map.values())</code>.</p>`
     ],
+    tests: { sig: 'string[] -> list<list<string>>', fn: 'groupAnagrams', cmp: 'sets', cases: [
+      [[["eat","tea","tan","ate","nat","bat"]],[["eat","tea","ate"],["tan","nat"],["bat"]]],
+      [[[""]],[[""]]],
+      [[["a"]],[["a"]]],
+      [[["",""]],[["",""]]],
+      [[["ab","ba"]],[["ab","ba"]]],
+      [[["ab","cd"]],[["ab"],["cd"]]],
+      [[["a","a","a"]],[["a","a","a"]]],
+      [[["abc","bca","cab","bac","abd"]],[["abc","bca","cab","bac"],["abd"]]],
+      [[["","a",""]],[["",""],["a"]]],
+      [[["listen","silent","enlist","google","gogole"]],[["listen","silent","enlist"],["google","gogole"]]],
+      [[["aab","aba","baa","abb"]],[["aab","aba","baa"],["abb"]]],
+      [[{"$rep":"abc","n":10000}],[{"$rep":"abc","n":10000}]],
+      [[{"$concat":[{"$rep":"ab","n":5000},{"$rep":"ba","n":5000}]}],[{"$concat":[{"$rep":"ab","n":5000},{"$rep":"ba","n":5000}]}]],
+      [[{"$rep":"abcdefghijklmnopqrstuvwxyz","n":100}],[{"$rep":"abcdefghijklmnopqrstuvwxyz","n":100}]]
+    ] },
     solution: {
       approach: `<p>One pass: compute a canonical String key per word and bucket words in a <code>HashMap&lt;String, List&lt;String&gt;&gt;</code>. Works because String's equals/hashCode compare content and Strings are immutable keys.</p>`,
       code: R`
@@ -2460,6 +2697,27 @@ static void permute(List<String> a, int k) {
       `<p>Hint 2: Convert to <code>String[]</code> and sort with <code>(a, b) -&gt; (b + a).compareTo(a + b)</code>.</p>`,
       `<p>Hint 3: Join with a StringBuilder; if the first piece is "0", every piece is 0, so return "0".</p>`
     ],
+    tests: { sig: 'int[] -> string', fn: 'largestNumber', cases: [
+      [[[3,30,34,5,9]],"9534330"],
+      [[[0,0]],"0"],
+      [[[0]],"0"],
+      [[[10,2]],"210"],
+      [[[1]],"1"],
+      [[[1000000000,1000000000]],"10000000001000000000"],
+      [[[0,0,1]],"100"],
+      [[[34323,3432]],"343234323"],
+      [[[121,12]],"12121"],
+      [[[824,938,1399,5607,6973,5703,9609,4398,8247]],"9609938824824769735703560743981399"],
+      [[[999999999,9,99]],"999999999999"],
+      [[[432,43243]],"43243432"],
+      [[[111311,1113]],"1113111311"],
+      [[[20,1]],"201"],
+      [[[8308,8308,830]],"83088308830"],
+      [[{"$rep":0,"n":100}],"0"],
+      [[{"$rep":1000000000,"n":100}],"1000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000100000000010000000001000000000"],
+      [[{"$concat":[{"$rep":9,"n":50},{"$rep":0,"n":49},[1]]}],"9999999999999999999999999999999999999999999999999910000000000000000000000000000000000000000000000000"],
+      [[{"$range":[0,100]}],"9999897969594939291908988887868584838281807978777767574737271706968676666564636261605958575655554535251504948474645444434241403938373635343333231302928272625242322221201918171615141312111100"]
+    ] },
     solution: {
       approach: `<p>Custom comparator on Strings: x goes before y when x + y &gt; y + x. Sorting with it yields the global optimum (exchange argument). Join with a StringBuilder; special-case all zeros.</p>`,
       code: R`
@@ -2515,6 +2773,24 @@ static String frequencySortBrute(String s) {
       `<p>Hint 2: Collect the distinct chars into a <code>List&lt;Character&gt;</code> and sort with <code>Comparator.comparingInt((Character c) -&gt; cnt[c]).reversed()</code>.</p>`,
       `<p>Hint 3: Build the answer with one StringBuilder: for each char append it <code>cnt[c]</code> times. Bucket sort by frequency gives O(n) if you want to avoid the sort.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'frequencySort',
+      check: '(args, out) => { const s = args[0]; if (typeof out !== "string" || out.length !== s.length) return false; const cnt = {}; for (const c of s) cnt[c] = (cnt[c] || 0) + 1; let last = Infinity; const done = {}; for (let i = 0; i < out.length;) { const c = out[i]; if (done[c] || !cnt[c]) return false; for (let k = 0; k < cnt[c]; k++) { if (out[i + k] !== c) return false; } if (cnt[c] > last) return false; last = cnt[c]; done[c] = true; i += cnt[c]; } return true; }', cases: [
+      [["tree"],"eert"],
+      [["Aabb"],"bbAa"],
+      [["a"],"a"],
+      [["aaa"],"aaa"],
+      [["abab"],"aabb"],
+      [["cccaaa"],"aaaccc"],
+      [["112233"],"112233"],
+      [["AaAa"],"AAaa"],
+      [["zzzyyx"],"zzzyyx"],
+      [["xyyzzz"],"zzzyyx"],
+      [["a1b2b2"],"22bb1a"],
+      [["0123456789"],"0123456789"],
+      [[{"$concat":[{"$rep":"a","n":100000},{"$rep":"b","n":200000},{"$rep":"c","n":200000}]}],{"$concat":[{"$rep":"b","n":200000},{"$rep":"c","n":200000},{"$rep":"a","n":100000}]}],
+      [[{"$rep":"x","n":500000}],{"$rep":"x","n":500000}],
+      [[{"$concat":[{"$rep":"A","n":250000},{"$rep":"a","n":250000}]}],{"$concat":[{"$rep":"A","n":250000},{"$rep":"a","n":250000}]}]
+    ] },
     solution: {
       approach: `<p>Count into a primitive array, sort only the (at most 62) distinct characters by count with a comparator, then append runs into a single pre-sized StringBuilder.</p>`,
       code: R`
@@ -2578,6 +2854,9 @@ System.out.println(bagIds.contains(2));                // true  - but HashSet sa
       `<p>Hint 2: contains(new Key(1)) goes to bucket 1, finds k, but k.id is now 2 → equals false.</p>`,
       `<p>Hint 3: remove(k) goes to bucket 2, which now holds the <b>new</b> Key(2); equals says they match (both id 2) → that new object is removed, not k.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "true\nfalse\nfalse\n2\n1 2" }
+    ] },
     solution: {
       approach: `<p>Track buckets: k in bucket 1 (stored hash 1). Mutation makes k's hash 2. contains(k) → bucket 2 empty → false. contains(new Key(1)) → bucket 1, k.id=2 ≠ 1 → false. add(new Key(2)) → bucket 2 empty → added, size 2 (two "id 2" keys!). remove(k) → bucket 2 → removes the new Key(2) → size 1 and the survivor is k with id 2.</p>`,
       code: R`
@@ -2636,6 +2915,25 @@ class MoneyBrute {
       `<p>Hint 2: Base equals and hashCode on the <b>normalised</b> amount and currency; then compareTo (for same currency) returns 0 exactly when equals is true.</p>`,
       `<p>Hint 3: Operations return new instances. Guard every binary operation with a <code>requireSameCurrency</code> helper that throws <code>IllegalArgumentException</code>.</p>`
     ],
+    tests: { sig: 'string string string string string -> string', fn: 'moneyCheck',
+      harness: { java: `class Check { static String moneyCheck(String a1, String c1, String a2, String c2, String op) { try { Money a = new Money(a1, c1), b = new Money(a2, c2); String r; switch (op) { case "equals": { boolean eq = a.equals(b); String ts; try { ts = String.valueOf(new TreeSet<>(List.of(a, b)).size()); } catch (IllegalArgumentException e) { ts = "IAE"; } r = eq + " " + (eq ? String.valueOf(a.hashCode() == b.hashCode()) : "-") + " " + new HashSet<>(List.of(a, b)).size() + " " + ts; break; } case "plus": r = a.plus(b).toString(); break; default: r = String.valueOf(Integer.signum(a.compareTo(b))); } return r + " | a=" + a + " b=" + b; } catch (IllegalArgumentException e) { return "IAE"; } } }` }, cases: [
+      [["10.5","inr","10.50","INR","equals"],"true true 1 1 | a=INR 10.50 b=INR 10.50"],
+      [["0.10","USD","0.20","USD","plus"],"USD 0.30 | a=USD 0.10 b=USD 0.20"],
+      [["10.5","INR","1","USD","compare"],"IAE"],
+      [["1","INR","2","INR","compare"],"-1 | a=INR 1.00 b=INR 2.00"],
+      [["2","INR","1","INR","compare"],"1 | a=INR 2.00 b=INR 1.00"],
+      [["3","INR","3.00","inr","compare"],"0 | a=INR 3.00 b=INR 3.00"],
+      [["1","INR","1","USD","plus"],"IAE"],
+      [["1","INR","1","USD","equals"],"false - 2 IAE | a=INR 1.00 b=USD 1.00"],
+      [["1","INR","2","INR","equals"],"false - 2 2 | a=INR 1.00 b=INR 2.00"],
+      [["-5.5","EUR","5.5","EUR","plus"],"EUR 0.00 | a=EUR -5.50 b=EUR 5.50"],
+      [["-5.5","EUR","-5.5","eur","equals"],"true true 1 1 | a=EUR -5.50 b=EUR -5.50"],
+      [["0","GBP","0.00","GBP","equals"],"true true 1 1 | a=GBP 0.00 b=GBP 0.00"],
+      [["999999999999999.99","JPY","0.01","JPY","plus"],"JPY 1000000000000000.00 | a=JPY 999999999999999.99 b=JPY 0.01"],
+      [["0.1","USD","0.2","USD","plus"],"USD 0.30 | a=USD 0.10 b=USD 0.20"],
+      [["1000000000000000","USD","1000000000000000","USD","compare"],"0 | a=USD 1000000000000000.00 b=USD 1000000000000000.00"],
+      [["0.05","usd","0.05","Usd","equals"],"true true 1 1 | a=USD 0.05 b=USD 0.05"]
+    ] },
     solution: {
       approach: `<p>Immutable final class with a normalised <code>BigDecimal</code> (scale 2, banker's rounding) and an upper-cased currency. Because normal forms are unique, <code>BigDecimal.equals</code>/<code>hashCode</code> become value-based, and <code>compareTo</code> is consistent with equals, so HashSet and TreeSet agree.</p>`,
       code: R`
@@ -2728,6 +3026,24 @@ static List<String> justifyBrute(String[] words, int maxWidth) {
       `<p>Hint 2: For a normal line: <code>spaces = maxWidth − letters</code>, <code>each = spaces / gaps</code>, <code>extra = spaces % gaps</code>; gap g gets <code>each + (g &lt; extra ? 1 : 0)</code>.</p>`,
       `<p>Hint 3: Special cases: last line or single word → single spaces between words, then pad right with <code>" ".repeat(maxWidth − sb.length())</code>.</p>`
     ],
+    tests: { sig: 'string[] int -> list<string>', fn: 'fullJustify', cases: [
+      [[["This","is","an","example","of","text","justification."],16],["This    is    an","example  of text","justification.  "]],
+      [[["What","must","be","acknowledgment","shall","be"],16],["What   must   be","acknowledgment  ","shall be        "]],
+      [[["Science","is","what","we","understand","well","enough","to","explain","to","a","computer.","Art","is","everything","else","we","do"],20],["Science  is  what we","understand      well","enough to explain to","a  computer.  Art is","everything  else  we","do                  "]],
+      [[["a"],1],["a"]],
+      [[["a","b"],1],["a","b"]],
+      [[["hello"],10],["hello     "]],
+      [[["a","b"],3],["a b"]],
+      [[["a","b","c"],5],["a b c"]],
+      [[["ab","cd","ef"],5],["ab cd","ef   "]],
+      [[["aa","bb","cc","dd"],7],["aa   bb","cc dd  "]],
+      [[["a","b","c","d"],3],["a b","c d"]],
+      [[["x","yy","zzz","w"],6],["x   yy","zzz w "]],
+      [[["abcdefghij"],10],["abcdefghij"]],
+      [[{"$rep":"a","n":300},100],["a  a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a","a  a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a","a  a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a","a  a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a","a  a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a","a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a "]],
+      [[{"$rep":"abcde","n":300},100],["abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde  abcde  abcde  abcde  abcde  abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde","abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde abcde                             "]],
+      [[{"$concat":[{"$rep":"word","n":150},{"$rep":"x","n":150}]},100],["word  word word word word word word word word word word word word word word word word word word word","word  word word word word word word word word word word word word word word word word word word word","word  word word word word word word word word word word word word word word word word word word word","word  word word word word word word word word word word word word word word word word word word word","word  word word word word word word word word word word word word word word word word word word word","word  word word word word word word word word word word word word word word word word word word word","word  word word word word word word word word word word word word word word word word word word word","word  word word word word word word word word word x x x x x x x x x x x x x x x x x x x x x x x x x","x  x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x","x  x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x","x x x x x x x x x x x x x x x x x x x x x x x x x                                                   "]]
+    ] },
     solution: {
       approach: `<p>Greedy line packing plus arithmetic space distribution; each line is built in a pre-sized <code>StringBuilder</code> with <code>String.repeat</code> for space runs, so the total work is linear in the output size.</p>`,
       code: R`
@@ -2818,6 +3134,9 @@ System.out.println("12345");                       // wrong: 1 + 2 happens befor
       `<p>Hint 2: In <code>cond ? Integer : Double</code>, both are unboxable numeric types, so binary numeric promotion applies → double. In <code>cond ? Integer : int</code> the type is int → unboxing of null → NPE.</p>`,
       `<p>Hint 3: <code>+</code> is left-associative: 1 + 2 = 3 (int), then "3" + "3" → "33", then "334", "3345". <code>Character + int</code> unboxes and promotes to int: 'a' (97) + 1 = 98.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "long Integer varargs\n1.0\ntrue\n3345\n98\nNPE" }
+    ] },
     solution: {
       approach: `<p>Apply one rule per line: overload phases → "long Integer varargs"; ternary numeric promotion → 1.0; relational unboxing vs reference != → true; left-to-right + → "3345"; char promotion → 98; ternary with int branch unboxes null → NPE.</p>`,
       code: R`
@@ -2883,6 +3202,21 @@ class SlowInterner {
       `<p>Hint 2: <code>String prev = map.putIfAbsent(s, s); return prev == null ? s : prev;</code> — atomic, lock-striped, O(1) expected.</p>`,
       `<p>Hint 3: Memory: the map keeps canonical Strings alive forever. For unbounded inputs consider weak references (Guava <code>Interners.newWeakInterner()</code>) or a size cap; for small fixed sets an <code>enum</code> is even better.</p>`
     ],
+    tests: { sig: 'string[] -> string', fn: 'internCheck',
+      harness: { java: `class Check { static String internCheck(String[] strs) throws Exception { Interner in = new Interner(); List<String> canon = new ArrayList<>(); IdentityHashMap<String, Integer> ids = new IdentityHashMap<>(); StringBuilder sb = new StringBuilder(); int n = 0; try { for (String s : strs) { String c = in.intern(new String(s)); canon.add(c); if (!ids.containsKey(c)) ids.put(c, ids.size()); if (n++ < 20) sb.append(n > 1 ? "," : "").append(ids.get(c)); } } catch (NullPointerException e) { return "NPE"; } ExecutorService ex = Executors.newFixedThreadPool(16); List<Future<Boolean>> fs = new ArrayList<>(); for (int t = 0; t < 16; t++) fs.add(ex.submit(() -> { for (int i = 0; i < strs.length; i++) if (in.intern(new String(strs[i])) != canon.get(i)) return false; return true; })); boolean ok = true; for (Future<Boolean> f : fs) ok &= f.get(); ex.shutdown(); return "ids=" + (strs.length <= 20 ? sb.toString() : "n=" + strs.length) + " canon=" + ids.size() + " threads=" + ok; } }` }, cases: [
+      [[["eu-west","eu-west"]],"ids=0,0 canon=1 threads=true"],
+      [[["a","b","a","c","b"]],"ids=0,1,0,2,1 canon=3 threads=true"],
+      [[[]],"ids= canon=0 threads=true"],
+      [[[""]],"ids=0 canon=1 threads=true"],
+      [[["x"]],"ids=0 canon=1 threads=true"],
+      [[["a",null]],"NPE"],
+      [[[null]],"NPE"],
+      [[["a","A","a"]],"ids=0,1,0 canon=2 threads=true"],
+      [[["",""," "]],"ids=0,0,1 canon=2 threads=true"],
+      [[["svc-1","svc-2","svc-1","svc-3","svc-2","svc-1"]],"ids=0,1,0,2,1,0 canon=3 threads=true"],
+      [[{"$rep":"level","n":100000}],"ids=n=100000 canon=1 threads=true"],
+      [[{"$concat":[{"$rep":"a","n":30000},{"$rep":"b","n":30000},{"$rep":"a","n":30000}]}],"ids=n=90000 canon=2 threads=true"]
+    ] },
     solution: {
       approach: `<p><code>ConcurrentHashMap.putIfAbsent</code> provides an atomic "get the canonical copy or become it" operation. The first thread to insert a value wins; every later caller gets that same reference. String's cached hashCode keeps lookups cheap.</p>`,
       code: R`

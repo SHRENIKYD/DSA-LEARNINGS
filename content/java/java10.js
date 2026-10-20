@@ -308,6 +308,51 @@ System.out.println(nums);           // [30]` },
 }` },
       mcq: { q: 'Why does growing by a constant factor (×1.5) make add() O(1) amortized but growing by +10 does not?', options: ['Geometric growth makes total copies a convergent series ≤ c·N; fixed growth makes copies ~N²/20', 'Because ×1.5 uses less memory', 'Because System.arraycopy is O(1)', 'It does not; both are O(1)'], answer: 0, explain: 'With +10, a grow happens every 10 adds and each copies up to N elements → N/10 · N/2 = O(N²) total. With ×1.5 the copy sizes shrink geometrically going backwards, so the total is linear.' },
       hints: [`<p>Hint 1: keep an <code>int[] data</code> and an <code>int size</code>. Capacity is just <code>data.length</code>; free space is the tail of the array.</p>`, `<p>Hint 2: only grow when <code>size == data.length</code>. New length = data.length == 0 ? 10 : data.length + (data.length &gt;&gt; 1). Copy with <code>Arrays.copyOf</code>.</p>`, `<p>Hint 3: for removeAt(i) validate with <code>Objects.checkIndex(i, size)</code>, save <code>data[i]</code>, then <code>System.arraycopy(data, i + 1, data, i, size - i - 1)</code> and <code>size--</code>. No need to null out ints (no GC references).</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run', harness: { java: `
+class Check {
+  static String[] run(String[] ops) {
+    IntList l = new IntList();
+    List<String> out = new ArrayList<>();
+    for (String op : ops) {
+      try {
+        if (op.startsWith("add:")) l.add(Integer.parseInt(op.substring(4)));
+        else if (op.startsWith("get:")) out.add(String.valueOf(l.get(Integer.parseInt(op.substring(4)))));
+        else if (op.startsWith("rm:")) out.add(String.valueOf(l.removeAt(Integer.parseInt(op.substring(3)))));
+        else if (op.equals("size")) out.add(String.valueOf(l.size()));
+        else if (op.equals("cap")) out.add(String.valueOf(l.capacity()));
+      } catch (IndexOutOfBoundsException e) { out.add("IOOBE"); }
+    }
+    return out.toArray(new String[0]);
+  }
+}`, python: `
+def run(ops):
+    l = IntList()
+    out = []
+    for op in ops:
+        try:
+            if op.startswith('add:'):
+                l.add(int(op[4:]))
+            elif op.startswith('get:'):
+                out.append(str(l.get(int(op[4:]))))
+            elif op.startswith('rm:'):
+                out.append(str(l.removeAt(int(op[3:]))))
+            elif op == 'size':
+                out.append(str(l.size()))
+            elif op == 'cap':
+                out.append(str(l.capacity()))
+        except IndexError:
+            out.append('IOOBE')
+    return out
+` }, cases: [
+          [[['add:1', 'add:2', 'add:3', 'add:4', 'add:5', 'add:6', 'add:7', 'add:8', 'add:9', 'add:10', 'cap', 'add:11', 'cap', 'size', 'rm:0', 'get:0']], ['10', '15', '11', '1', '2']],
+          [[['size', 'cap', 'get:0', 'rm:0', 'get:-1']], ['0', '0', 'IOOBE', 'IOOBE', 'IOOBE']],
+          [[['add:5', 'cap', 'size', 'get:0', 'get:1', 'rm:0', 'size', 'cap', 'get:0']], ['10', '1', '5', 'IOOBE', '5', '0', '10', 'IOOBE']],
+          [[['add:1', 'add:2', 'add:3', 'add:4', 'add:5', 'add:6', 'add:7', 'add:8', 'add:9', 'add:10', 'add:11', 'add:12', 'add:13', 'add:14', 'add:15', 'add:16', 'cap']], ['22']],
+          [[['add:1', 'add:2', 'add:3', 'add:4', 'add:5', 'add:6', 'add:7', 'add:8', 'add:9', 'add:10', 'add:11', 'add:12', 'add:13', 'add:14', 'add:15', 'add:16', 'add:17', 'add:18', 'add:19', 'add:20', 'add:21', 'add:22', 'add:23', 'cap']], ['33']],
+          [[['add:1', 'add:2', 'add:3', 'add:4', 'add:5', 'rm:4', 'rm:1', 'size', 'get:0', 'get:1', 'get:2', 'get:3']], ['5', '2', '3', '1', '3', '4', 'IOOBE']],
+          [[['add:-7', 'add:0', 'add:2147483647', 'get:0', 'get:1', 'get:2']], ['-7', '0', '2147483647']],
+          [[{ $concat: [{ $rep: 'add:7', n: 1000000 }, ['size', 'cap', 'get:999999', 'get:1000000', 'rm:999999', 'size']] }], ['1000000', '1215487', '7', 'IOOBE', '7', '999999']]
+        ] },
       solution: {
         approach: `<p>Mirror ArrayList but with an <code>int[]</code>: lazy allocation, 1.5× geometric growth, arraycopy-based removal. Primitives mean 4 bytes per element and no boxing allocations.</p>`,
         code: `import java.util.Arrays;
@@ -350,22 +395,34 @@ class IntList {
 }`,
         alt: [{ lang: 'python', code: `class IntList:
     def __init__(self):
-        self.data, self.size = [], 0
+        self.data, self._size = [], 0          # list length plays the role of capacity
     def add(self, x):
-        if self.size == len(self.data):
+        if self._size == len(self.data):
             cap = 10 if not self.data else len(self.data) + (len(self.data) >> 1)
-            self.data = self.data + [0] * (cap - len(self.data))
-        self.data[self.size] = x
-        self.size += 1
+            self.data += [0] * (cap - len(self.data))
+        self.data[self._size] = x
+        self._size += 1
     def get(self, i):
-        if not 0 <= i < self.size:
+        if not 0 <= i < self._size:
             raise IndexError(i)
         return self.data[i]
+    def removeAt(self, i):
+        if not 0 <= i < self._size:
+            raise IndexError(i)
+        old = self.data[i]
+        self.data[i:self._size - 1] = self.data[i + 1:self._size]   # slide the tail left
+        self._size -= 1
+        return old
+    def size(self):
+        return self._size
+    def capacity(self):
+        return len(self.data)
 
 l = IntList()
 for v in range(1, 12):
     l.add(v)
-print(l.size, len(l.data))` }],
+print(l.size(), l.capacity())                  # 11 15
+print(l.removeAt(0), l.get(0))                 # 1 2` }],
         dry: { head: ['operation', 'size before', 'capacity before', 'action', 'capacity after'], rows: [['add(1)', '0', '0', 'lazy alloc → new int[10]', '10'], ['add(2..10)', '1..9', '10', 'plain writes', '10'], ['add(11)', '10', '10', H.c('r', 'full → copyOf to 15'), '15'], ['removeAt(0)', '11', '15', 'arraycopy 10 elements left', '15'], ['get(0)', '10', '15', 'returns 2', '15']] },
         complexity: `<p>add: O(1) amortized (≤ 3 copies per element overall). get: O(1). removeAt(i): O(size − i). Space: O(capacity) ≤ 1.5 × size + 10.</p>`,
         followUps: ['Add a shrink policy (halve when size ≤ capacity/4) — why not shrink at capacity/2?', 'Make it Iterable with a fail-fast iterator using a modCount field']
@@ -573,6 +630,36 @@ System.out.println(m.containsKey("k") + " " + m.containsKey("missing"));    // t
 }` },
       mcq: { q: 'You use table length 16 and index = hash & 15. Which choice keeps chains short when keys are multiples of 1024?', options: ['Spread the hash (h ^ h >>> 16) or mix bits before masking', 'Use a bigger load factor', 'Use hash % 16 instead of & 15', 'Store keys sorted inside each bucket'], answer: 0, explain: 'Multiples of 1024 have their low 10 bits all zero, so & 15 sends them all to bucket 0 (and % 16 is identical for non-negative ints). Mixing high bits into low bits is the fix; for keys below 65536 Java\'s simple spread does not help, so production code may use a stronger mixer (e.g. multiply by a large odd constant).' },
       hints: [`<p>Hint 1: an array of linked-list heads is all you need. index = (table.length − 1) &amp; spread(key).</p>`, `<p>Hint 2: put walks the chain: if the key exists, overwrite; otherwise append. After inserting, if ++size &gt; 0.75 × length, double the table and re-place every node using <code>hash &amp; oldCap</code> to choose j or j + oldCap.</p>`, `<p>Hint 3: remove needs the previous node (or a dummy head) to unlink. Edge cases: removing the first node of a chain, removing a missing key, updating without changing size.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run', harness: { java: `
+class Check {
+  static String[] run(String[] ops) {
+    MyHashMap m = new MyHashMap();
+    List<String> out = new ArrayList<>();
+    for (String op : ops) {
+      String[] p = op.split(":");
+      switch (p[0]) {
+        case "put": m.put(Integer.parseInt(p[1]), Integer.parseInt(p[2])); break;
+        case "get": out.add(String.valueOf(m.get(Integer.parseInt(p[1])))); break;
+        case "remove": m.remove(Integer.parseInt(p[1])); break;
+        case "fill": for (int i = 0; i < Integer.parseInt(p[1]); i++) m.put(i, i + 1); break;
+        case "rmEven": for (int i = 0; i < Integer.parseInt(p[1]); i += 2) m.remove(i); break;
+        case "chk": { boolean ok = true; for (int i = 0; i < Integer.parseInt(p[1]); i++) if (m.get(i) != i + 1) ok = false; out.add(ok ? "ok" : "bad"); break; }
+        case "chkOdd": { boolean ok = true; for (int i = 0; i < Integer.parseInt(p[1]); i++) if (m.get(i) != (i % 2 == 0 ? -1 : i + 1)) ok = false; out.add(ok ? "ok" : "bad"); break; }
+      }
+    }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+          [[['put:1:1', 'put:2:2', 'get:1', 'get:3', 'put:2:1', 'get:2', 'remove:2', 'get:2']], ['1', '-1', '1', '-1']],
+          [[['put:0:0', 'get:0', 'remove:0', 'get:0']], ['0', '-1']],
+          [[['remove:5', 'get:5', 'put:5:9', 'get:5']], ['-1', '9']],
+          [[['put:1000000:1000000', 'get:1000000']], ['1000000']],
+          [[['put:7:1', 'put:7:2', 'put:7:3', 'get:7', 'remove:7', 'get:7']], ['3', '-1']],
+          [[['put:16:1', 'put:32:2', 'put:48:3', 'put:64:4', 'remove:32', 'get:16', 'get:32', 'get:48', 'get:64']], ['1', '-1', '3', '4']],
+          [[['fill:100000', 'chk:100000', 'get:99999', 'get:100000']], ['ok', '100000', '-1']],
+          [[['fill:100000', 'rmEven:100000', 'chkOdd:100000', 'get:2', 'get:3']], ['ok', '-1', '4']],
+          [[['fill:1000', 'rmEven:1000', 'fill:1000', 'chk:1000']], ['ok']]
+        ] },
       solution: {
         approach: `<p>Separate chaining with singly linked nodes. Integer keys are mixed with a strong multiplicative hash (golden-ratio constant) so sequential and patterned keys spread well, then masked by <code>length − 1</code>. Resize doubles and splits chains with the single-bit lo/hi trick, exactly like the JDK.</p>`,
         code: `class MyHashMap {
@@ -811,6 +898,22 @@ System.out.println(slow.size() == fast.size());                  // true` },
 }` },
       mcq: { q: 'new HashMap<>(64) then 49 puts. What is the table length?', options: ['128 — threshold of 64 is 48, the 49th put exceeds it', '64 — capacity 64 holds 64 entries', '256', '96'], answer: 0, explain: 'Capacity is not the number of entries it can hold. Threshold = 0.75 × 64 = 48; size 49 > 48 triggers a resize to 128.' },
       hints: [`<p>Hint 1: size only matters when it crosses a threshold. Between resizes nothing interesting happens, so jump straight from threshold to threshold.</p>`, `<p>Hint 2: compute <code>cap = tableSizeFor(initialCapacity)</code>. While <code>n &gt; (int)(cap × 0.75)</code>: double cap and count a resize. That is at most ~30 iterations.</p>`, `<p>Hint 3: edge cases: n = 0 → no table yet (return {0, 0}); initialCapacity 0 or 1 → length 1, threshold 0. Use long math if cap could overflow (cap ≤ 2<sup>30</sup> in the JDK).</p>`],
+      tests: { sig: 'int int -> int[]', fn: 'simulate', cases: [
+          [[16, 13], [32, 1]],
+          [[100, 100], [256, 1]],
+          [[0, 1], [2, 1]],
+          [[16, 1000000], [2097152, 17]],
+          [[16, 0], [0, 0]],
+          [[16, 12], [16, 0]],
+          [[1, 1], [2, 1]],
+          [[1, 3], [4, 2]],
+          [[3, 5], [8, 1]],
+          [[1048576, 1], [1048576, 0]],
+          [[2, 100000], [262144, 17]],
+          [[0, 0], [0, 0]],
+          [[16, 100000000], [134217728, 23]],
+          [[1048576, 100000000], [134217728, 7]]
+        ] },
       solution: {
         approach: `<p>The table only changes when size exceeds the current threshold. Starting from tableSizeFor(initialCapacity), keep doubling while n is above the threshold. Each loop step is one real resize.</p>`,
         code: `class TableSim {
@@ -994,6 +1097,43 @@ System.out.println(out);   // a#bbcc` }
 }` },
       mcq: { q: 'Why a DOUBLY linked list and not a singly linked one?', options: ['To unlink a node in O(1) given only a pointer to it (we need its predecessor)', 'To iterate backwards for printing', 'Because Java has no singly linked list', 'To save memory'], answer: 0, explain: 'The hash map gives you the node directly. Removing it from the middle requires updating prev.next; with only next pointers you would have to search for prev in O(n).' },
       hints: [`<p>Hint 1: two structures: <code>HashMap&lt;Integer, Node&gt;</code> for O(1) find, and a doubly-linked list for recency (head = LRU, tail = MRU).</p>`, `<p>Hint 2: use <b>sentinel</b> head and tail nodes so you never special-case an empty list. Write two helpers: <code>unlink(node)</code> and <code>addLast(node)</code>.</p>`, `<p>Hint 3: get: miss → −1; hit → unlink + addLast. put: existing → update value, unlink + addLast; new → if size == capacity, remove <code>head.next</code> from list AND map; then create, addLast, map.put. Do not forget to delete the evicted key from the map.</p>`],
+      tests: { sig: 'int string[] -> string[]', fn: 'run', harness: { java: `
+class Check {
+  static String[] run(int cap, String[] ops) {
+    LRUCacheManual c = new LRUCacheManual(cap);
+    List<String> out = new ArrayList<>();
+    for (String op : ops) {
+      String[] p = op.split(":");
+      if (p[0].equals("put")) c.put(Integer.parseInt(p[1]), Integer.parseInt(p[2]));
+      else if (p[0].equals("get")) out.add(String.valueOf(c.get(Integer.parseInt(p[1]))));
+      else if (p[0].equals("fill")) for (int i = 0; i < Integer.parseInt(p[1]); i++) c.put(i, i);
+    }
+    return out.toArray(new String[0]);
+  }
+}`, python: `
+def run(cap, ops):
+    c = LRUCacheManual(cap)
+    out = []
+    for op in ops:
+        p = op.split(':')
+        if p[0] == 'put':
+            c.put(int(p[1]), int(p[2]))
+        elif p[0] == 'get':
+            out.append(str(c.get(int(p[1]))))
+        elif p[0] == 'fill':
+            for i in range(int(p[1])):
+                c.put(i, i)
+    return out
+` }, cases: [
+          [[2, ['put:1:1', 'put:2:2', 'get:1', 'put:3:3', 'get:2', 'put:4:4', 'get:1', 'get:3', 'get:4']], ['1', '-1', '-1', '3', '4']],
+          [[1, ['put:1:1', 'put:2:2', 'get:1', 'get:2']], ['-1', '2']],
+          [[2, ['put:1:1', 'put:2:2', 'put:1:10', 'put:3:3', 'get:1', 'get:2']], ['10', '-1']],
+          [[3, ['get:5']], ['-1']],
+          [[2, ['put:0:0', 'get:0', 'get:1']], ['0', '-1']],
+          [[3, ['put:1:1', 'put:2:2', 'put:3:3', 'get:1', 'get:2', 'put:4:4', 'get:3', 'get:1', 'get:2', 'get:4']], ['1', '2', '-1', '1', '2', '4']],
+          [[3000, ['fill:200000', 'get:199999', 'get:197000', 'get:196999', 'get:0']], ['199999', '197000', '-1', '-1']],
+          [[1, ['fill:200000', 'get:199999', 'get:199998']], ['199999', '-1']]
+        ] },
       solution: {
         approach: `<p>HashMap from key to node plus a sentinel-bounded doubly-linked list. Every access moves the node to the tail; eviction takes the node after the head sentinel. This is exactly what LinkedHashMap does internally.</p>`,
         code: `import java.util.HashMap;
@@ -1045,7 +1185,7 @@ class LRUCacheManual {
 }`,
         alt: [{ lang: 'python', code: `from collections import OrderedDict
 
-class LRUCache:
+class LRUCacheManual:
     def __init__(self, capacity):
         self.cap, self.d = capacity, OrderedDict()
     def get(self, key):
@@ -1060,7 +1200,7 @@ class LRUCache:
         if len(self.d) > self.cap:
             self.d.popitem(last=False)
 
-c = LRUCache(2)
+c = LRUCacheManual(2)
 c.put(1, 1); c.put(2, 2); print(c.get(1)); c.put(3, 3); print(c.get(2))` }],
         dry: { head: ['call', 'list head→tail after', 'map keys', 'returns'], rows: [['put(1,1)', '1', '{1}', '-'], ['put(2,2)', '1 ⇄ 2', '{1,2}', '-'], ['get(1)', '2 ⇄ 1', '{1,2}', H.c('g', '1')], ['put(3,3)', H.c('r', 'evict 2') + ' → 1 ⇄ 3', '{1,3}', '-'], ['get(2)', '1 ⇄ 3', '{1,3}', H.c('r', '-1')], ['put(4,4)', H.c('r', 'evict 1') + ' → 3 ⇄ 4', '{3,4}', '-']] },
         complexity: `<p>O(1) per get/put (hash lookup + constant pointer updates). Space O(capacity).</p>`,
@@ -1254,6 +1394,52 @@ System.out.println(window.size());                             // 11` },
 }` },
       mcq: { q: 'Events are stored in a TreeMap&lt;start, end&gt;. Which existing events can possibly overlap a new [s, e)?', options: ['Only floorEntry(s) and ceilingEntry(s) — the neighbours around s', 'All events with start < e', 'Only the first and last events', 'Any event; you must scan them all'], answer: 0, explain: 'Booked events never overlap each other, so they are sorted by start AND by end. The one just before s (floor) might end after s; the one just after s (ceiling) might start before e. Everything else is further away.' },
       hints: [`<p>Hint 1: since stored events never overlap, sorting by start also sorts them by end. Only neighbours of the new start can clash.</p>`, `<p>Hint 2: <code>TreeMap&lt;Integer, Integer&gt;</code> start → end. prev = floorEntry(start), next = ceilingEntry(start).</p>`, `<p>Hint 3: clash if <code>prev != null &amp;&amp; prev.getValue() &gt; start</code> or <code>next != null &amp;&amp; next.getKey() &lt; end</code>. Half-open intervals mean equality is fine. Otherwise put(start, end).</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run', harness: { java: `
+class Check {
+  static String[] run(String[] ops) {
+    MyCalendar c = new MyCalendar();
+    List<String> out = new ArrayList<>();
+    for (String op : ops) {
+      String[] p = op.split(":");
+      if (p[0].equals("book")) out.add(String.valueOf(c.book(Integer.parseInt(p[1]), Integer.parseInt(p[2]))));
+      else {
+        int n = Integer.parseInt(p[1]), ok = 0;
+        for (int i = 0; i < n; i++) {
+          int s = p[0].equals("many") ? i : (int) ((i * 7919L) % n);
+          if (c.book(s, s + 1)) ok++;
+        }
+        out.add(String.valueOf(ok));
+      }
+    }
+    return out.toArray(new String[0]);
+  }
+}`, python: `
+def run(ops):
+    c = MyCalendar()
+    out = []
+    for op in ops:
+        p = op.split(':')
+        if p[0] == 'book':
+            out.append('true' if c.book(int(p[1]), int(p[2])) else 'false')
+        else:
+            n = int(p[1])
+            ok = 0
+            for i in range(n):
+                s = i if p[0] == 'many' else (i * 7919) % n
+                if c.book(s, s + 1):
+                    ok += 1
+            out.append(str(ok))
+    return out
+` }, cases: [
+          [[['book:10:20', 'book:15:25', 'book:20:30', 'book:5:10', 'book:5:11']], ['true', 'false', 'true', 'true', 'false']],
+          [[['book:10:20', 'book:12:15', 'book:5:30', 'book:10:20', 'book:0:1', 'book:0:1000000000']], ['true', 'false', 'false', 'false', 'true', 'false']],
+          [[['book:0:1000000000', 'book:0:1', 'book:999999999:1000000000']], ['true', 'false', 'false']],
+          [[['book:20:30', 'book:10:20', 'book:0:10', 'book:5:6']], ['true', 'true', 'true', 'false']],
+          [[['book:0:5', 'book:10:15', 'book:5:10', 'book:4:6']], ['true', 'true', 'true', 'false']],
+          [[['book:3:4', 'book:3:4', 'book:2:3', 'book:4:5']], ['true', 'false', 'true', 'true']],
+          [[['many:100000', 'book:50000:50001', 'book:100000:100001']], ['100000', 'false', 'true']],
+          [[['perm:50000', 'book:25000:25001', 'book:50000:50001']], ['50000', 'false', 'true']]
+        ] },
       solution: {
         approach: `<p>Keep non-overlapping events in a TreeMap keyed by start. A new interval only needs checking against its floor and ceiling neighbours, each found in O(log n) by walking the red-black tree.</p>`,
         code: `import java.util.Map;
@@ -1509,6 +1695,15 @@ System.out.println(Arrays.toString(dist));             // [0, 3, 1, 4]` },
 }` },
       mcq: { q: 'To track the k-th LARGEST value, which heap do you keep, and of what size?', options: ['A MIN-heap of size k: its root is the smallest of the top k = the answer', 'A MAX-heap of all elements', 'A MAX-heap of size k', 'Two heaps of size k/2'], answer: 0, explain: 'The min-heap holds exactly the k largest values seen so far. Its root is the smallest of them — the k-th largest overall. Anything smaller than the root can be discarded forever.' },
       hints: [`<p>Hint 1: you never need values smaller than the current k-th largest. Keep only the k biggest.</p>`, `<p>Hint 2: a <code>PriorityQueue&lt;Integer&gt;</code> (min-heap). After each offer, if size &gt; k, poll() — that removes the smallest.</p>`, `<p>Hint 3: the constructor just calls add for each initial number. Return <code>peek()</code>. Optimization: if size == k and val ≤ peek(), skip the offer entirely.</p>`],
+      tests: { cls: 'KthLargest', sigs: { KthLargest: 'int int[]', add: 'int -> int' }, cases: [
+          { ops: ['KthLargest', 'add', 'add', 'add', 'add', 'add'], args: [[3, [4, 5, 8, 2]], [3], [5], [10], [9], [4]], out: [null, 4, 5, 5, 8, 8] },
+          { ops: ['KthLargest', 'add', 'add', 'add', 'add'], args: [[1, []], [-1], [-5], [7], [7]], out: [null, -1, -1, 7, 7] },
+          { ops: ['KthLargest', 'add', 'add', 'add'], args: [[2, [5]], [3], [10], [5]], out: [null, 3, 5, 5] },
+          { ops: ['KthLargest', 'add', 'add', 'add'], args: [[2, [4, 4]], [4], [5], [5]], out: [null, 4, 4, 5] },
+          { ops: ['KthLargest', 'add', 'add'], args: [[3, [-1, -2, -3, -4]], [-5], [0]], out: [null, -3, -2] },
+          { ops: ['KthLargest', 'add', 'add'], args: [[1, [-2147483648, 2147483647]], [0], [2147483647]], out: [null, 2147483647, 2147483647] },
+          { ops: ['KthLargest', 'add', 'add', 'add'], args: [[10000, { $range: [0, 100000] }], [0], [95000], [1]], out: [null, 90000, 90001, 90001] }
+        ] },
       solution: {
         approach: `<p>Maintain a min-heap containing the k largest values. Each add is one offer plus at most one poll, both O(log k); the root is always the answer.</p>`,
         code: `import java.util.PriorityQueue;
@@ -1717,6 +1912,21 @@ System.out.println(memo.get(50));   // 12586269025` },
 }` },
       mcq: { q: 'Which update is atomic for a ConcurrentHashMap&lt;String, Long&gt; counts?', options: ['counts.merge(w, 1L, Long::sum)', 'counts.put(w, counts.get(w) + 1)', 'if (!counts.containsKey(w)) counts.put(w, 1L); else counts.put(w, counts.get(w) + 1)', 'counts.put(w, counts.getOrDefault(w, 0L) + 1)'], answer: 0, explain: 'merge performs the read-modify-write while holding the bin lock (or by CAS on an empty bin). All the other options read and write in separate steps, so concurrent threads can overwrite each other.' },
       hints: [`<p>Hint 1: the map can be shared, but every update must be a <b>single atomic call</b> on it.</p>`, `<p>Hint 2: <code>counts.merge(word, 1L, Long::sum)</code>; for extremely hot keys use <code>computeIfAbsent(word, k -&gt; new LongAdder()).increment()</code> and sum at the end.</p>`, `<p>Hint 3: submit one task per chunk of lines (not per line — task overhead). Call <code>shutdown()</code> and <code>awaitTermination</code> (or collect Futures and <code>get()</code> them to surface exceptions) before reading results.</p>`],
+      tests: { sig: 'string[] int -> string', fn: 'run', harness: { java: `
+class Check {
+  static String run(String[] lines, int t) throws Exception { return String.valueOf(WordCount.count(Arrays.asList(lines), t)); }
+}` }, cases: [
+          [[['the cat', 'the dog', 'THE end'], 2], '{cat=1, dog=1, end=1, the=3}'],
+          [[[], 4], '{}'],
+          [[['Hello, hello!world'], 1], '{hello=2, world=1}'],
+          [[['a1b2c'], 3], '{a=1, b=1, c=1}'],
+          [[['', '   ', '123'], 2], '{}'],
+          [[['x'], 64], '{x=1}'],
+          [[['x y', 'y z', 'z x', 'x x'], 3], '{x=4, y=2, z=2}'],
+          [[['a', 'a'], 64], '{a=2}'],
+          [[{ $rep: 'the cat', n: 100000 }, 8], '{cat=100000, the=100000}'],
+          [[{ $rep: 'a', n: 100000 }, 64], '{a=100000}']
+        ] },
       solution: {
         approach: `<p>Split the lines into T chunks; each task tokenizes its chunk and calls <code>merge</code> on a shared ConcurrentHashMap. Different words usually hit different bins, so threads rarely contend; same-word updates are serialized only on that bin.</p>`,
         code: `import java.util.*;
@@ -1900,6 +2110,59 @@ System.out.println(cow.size());                        // 100002` },
 }` },
       mcq: { q: 'Writes are rare, fire() is extremely hot and listeners mutate the list during dispatch. Best structure?', options: ['CopyOnWriteArrayList: fire iterates a snapshot lock-free; rare writes pay the copy', 'Collections.synchronizedList(new ArrayList<>())', 'ConcurrentLinkedQueue with a lock around fire', 'A plain ArrayList with try/catch for CME'], answer: 0, explain: 'The snapshot iterator never throws CME and costs nothing to create, so the hot path is allocation-free. The occasional register/unregister copies a ~100-element array, which is negligible.' },
       hints: [`<p>Hint 1: the hot path (fire) should take no lock and allocate nothing; the cold path (register) can be expensive.</p>`, `<p>Hint 2: store listener records <code>(id, consumer)</code> in a <code>CopyOnWriteArrayList</code>; ids come from an <code>AtomicInteger</code>.</p>`, `<p>Hint 3: unregister = <code>removeIf(r -&gt; r.id == id)</code>. Because fire iterates the snapshot taken at its start, listeners added during a fire are not called, and removed ones already in the snapshot still are — define and document which semantics you want.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run', harness: { java: `
+class Check {
+  static String[] run(String[] ops) throws Exception {
+    Dispatcher d = new Dispatcher();
+    List<String> log = new ArrayList<>(), out = new ArrayList<>();
+    Map<String, Integer> ids = new HashMap<>();
+    AtomicInteger counter = new AtomicInteger();
+    for (String op : ops) {
+      String[] p = op.split(":");
+      switch (p[0]) {
+        case "reg": { String x = p[1]; ids.put(x, d.register(v -> log.add(x + "(" + v + ")"))); break; }
+        case "once": { String x = p[1]; int[] id = {0}; id[0] = d.register(v -> { log.add(x + "(" + v + ")"); d.unregister(id[0]); }); ids.put(x, id[0]); break; }
+        case "spawn": {
+          String x = p[1], y = p[2]; boolean[] done = {false};
+          ids.put(x, d.register(v -> { log.add(x + "(" + v + ")"); if (!done[0]) { done[0] = true; d.register(w -> log.add(y + "(" + w + ")")); } }));
+          break;
+        }
+        case "unreg": d.unregister(ids.get(p[1])); break;
+        case "fire": d.fire(Integer.parseInt(p[1])); break;
+        case "log": out.add(log.toString()); break;
+        case "count": d.register(v -> counter.incrementAndGet()); break;
+        case "total": out.add(String.valueOf(counter.get())); break;
+        case "par": {
+          int T = Integer.parseInt(p[1]), M = Integer.parseInt(p[2]);
+          Thread[] ts = new Thread[T];
+          for (int i = 0; i < T; i++) { ts[i] = new Thread(() -> { for (int k = 0; k < M; k++) d.fire(k); }); ts[i].start(); }
+          for (Thread t : ts) t.join();
+          break;
+        }
+        case "churn": {
+          int N = Integer.parseInt(p[1]);
+          AtomicReference<Throwable> err = new AtomicReference<>();
+          Thread a = new Thread(() -> { try { for (int k = 0; k < 20000; k++) d.fire(k); } catch (Throwable e) { err.set(e); } });
+          Thread b = new Thread(() -> { try { for (int k = 0; k < N; k++) { int id = d.register(v -> { }); d.unregister(id); } } catch (Throwable e) { err.set(e); } });
+          a.start(); b.start(); a.join(); b.join();
+          out.add(err.get() == null ? "ok" : err.get().toString());
+          break;
+        }
+      }
+    }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+          [[['once:L1', 'spawn:L2:L3', 'fire:1', 'fire:2', 'log']], ['[L1(1), L2(1), L2(2), L3(2)]']],
+          [[['fire:5', 'log']], ['[]']],
+          [[['reg:A', 'reg:B', 'reg:C', 'fire:1', 'log']], ['[A(1), B(1), C(1)]']],
+          [[['reg:A', 'reg:B', 'fire:1', 'unreg:A', 'fire:2', 'unreg:A', 'log']], ['[A(1), B(1), B(2)]']],
+          [[['fire:1', 'reg:A', 'fire:2', 'log']], ['[A(2)]']],
+          [[['once:X', 'fire:1', 'fire:2', 'fire:3', 'log']], ['[X(1)]']],
+          [[['reg:A', 'fire:-1', 'fire:0', 'log']], ['[A(-1), A(0)]']],
+          [[['count', 'count', 'par:8:10000', 'total']], ['160000']],
+          [[['count', 'churn:2000', 'total']], ['ok', '20000']]
+        ] },
       solution: {
         approach: `<p>Copy-on-write list of (id, listener) records. fire() iterates the current snapshot with zero locking; register/unregister create a new array. This matches the problem's read/write ratio exactly.</p>`,
         code: `import java.util.ArrayList;
@@ -1975,6 +2238,9 @@ assumedCopy.set(0, 99);
 System.out.println(arr[0]);   // 1 — but the real asList prints 99` },
     mcq: { q: 'Why does view.set(0, 99) change arr[0]?', options: ['Arrays.asList wraps the original array without copying it', 'Autoboxing writes back', 'Integer cache', 'set() copies the list back into the array'], answer: 0, explain: 'Arrays.asList returns Arrays$ArrayList whose field IS your array. set writes into it; add/remove would need to resize the array, so they throw UnsupportedOperationException.' },
     hints: [`<p>Hint 1: <code>Arrays.asList</code> returns a private class <code>Arrays$ArrayList</code> that stores a reference to your array — no copy, no growth.</p>`, `<p>Hint 2: <code>List.of</code> returns <code>ImmutableCollections.ListN</code>/<code>List12</code>: every mutator throws UOE, and <code>contains(null)</code> throws NPE because nulls are banned.</p>`, `<p>Hint 3: <code>new ArrayList&lt;&gt;(view)</code> copies the elements (via toArray) into its own <code>elementData</code>; changing the copy never touches the view or the array.</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: '99\nB: UOE\nC: UOE\nD: NPE\n[99, 2, 3, 4] [99, 2, 3]' }
+      ] },
     solution: {
       approach: `<p>Map each list to its implementation: a write-through fixed-size view, an immutable compact list, and a real ArrayList copy. Then each line follows directly.</p>`,
       code: `import java.util.*;
@@ -2015,6 +2281,9 @@ sorted.sort(Comparator.reverseOrder());
 System.out.println(sorted);   // [5, 4, 3, 2, 1] — what people expect, not what PriorityQueue prints` },
     mcq: { q: 'After offering 3, 1, 2 the array is [3, 1, 2]. Where does 5 end up after offer(5)?', options: ['Index 0 — it bubbles past 1 and then 3', 'Index 3 — new elements stay at the end', 'Index 1', 'Index 2'], answer: 0, explain: '5 starts at index 3, parent index 1 holds 1 (smaller in a max-heap) → swap; then parent index 0 holds 3 → swap. 5 becomes the root.' },
     hints: [`<p>Hint 1: max-heap rule: every parent ≥ its children. New elements start at the end and bubble up.</p>`, `<p>Hint 2: trace: [3] → [3,1] → [3,1,2] → 5 at idx 3 swaps with 1 then 3 → [5,3,2,1] → 4 at idx 4 swaps with 3 (idx 1), stops under 5 → [5,4,2,1,3].</p>`, `<p>Hint 3: poll removes 5, moves the last element (3) to the root, then sifts down toward the LARGER child (4) → [4,3,2,1].</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: 'after offer 3: [3]\nafter offer 1: [3, 1]\nafter offer 2: [3, 1, 2]\nafter offer 5: [5, 3, 2, 1]\nafter offer 4: [5, 4, 2, 1, 3]\n5 [4, 3, 2, 1]' }
+      ] },
     solution: {
       approach: `<p>Simulate the heap array exactly as the JDK does: offers sift up, poll moves the last element to the root and sifts down toward the larger child (because of reverseOrder).</p>`,
       code: `import java.util.*;
@@ -2054,6 +2323,46 @@ class MaxHeapTrace {
 }` },
     mcq: { q: 'Why is (n − 1) & h equal to h mod n only when n is a power of two?', options: ['Then n − 1 is all ones in the low bits, so AND keeps exactly the remainder bits', 'Because AND is always equal to modulo', 'Because h is always positive', 'Because Java rounds negative numbers'], answer: 0, explain: 'For n = 16, n − 1 = 0b1111; AND keeps the low 4 bits, which is the non-negative remainder mod 16. For n = 10 the mask 0b1001 would skip values entirely.' },
     hints: [`<p>Hint 1: for powers of two, <code>x &amp; (n − 1)</code> is the remainder mod n and is never negative, even for negative x.</p>`, `<p>Hint 2: <code>-1 &gt;&gt;&gt; Integer.numberOfLeadingZeros(cap − 1)</code> gives a mask of all ones covering cap − 1; add 1 to get the next power of two.</p>`, `<p>Hint 3: handle requested ≤ 1 → 1, and clamp to 2<sup>30</sup>. In bucketIndex, null maps to hash 0 just like HashMap.</p>`],
+    tests: { sig: 'string string int -> int', fn: 'run', harness: { java: `
+class Check {
+  static int run(String kind, String s, int n) {
+    switch (kind) {
+      case "tsf": return HashMath.tableSizeFor(n);
+      case "str": return HashMath.bucketIndex(s, n);
+      case "int": return HashMath.bucketIndex(Integer.valueOf(s), n);
+      default: return HashMath.bucketIndex(null, n);
+    }
+  }
+}` }, cases: [
+        [['tsf', '', 10], 16],
+        [['tsf', '', 16], 16],
+        [['tsf', '', 17], 32],
+        [['tsf', '', 0], 1],
+        [['tsf', '', 1], 1],
+        [['tsf', '', 2], 2],
+        [['tsf', '', 3], 4],
+        [['tsf', '', -5], 1],
+        [['tsf', '', 1000000], 1048576],
+        [['tsf', '', 1073741823], 1073741824],
+        [['tsf', '', 1073741824], 1073741824],
+        [['tsf', '', 2147483647], 1073741824],
+        [['str', 'apple', 16], 1],
+        [['str', 'apple', 1], 0],
+        [['str', 'apple', 1024], 721],
+        [['str', 'apple', 1073741824], 93030097],
+        [['str', 'banana', 16], 0],
+        [['str', 'a', 16], 1],
+        [['str', '', 16], 0],
+        [['str', 'hello world', 16], 11],
+        [['int', '65536', 16], 1],
+        [['int', '-2147483648', 16], 0],
+        [['int', '-1', 16], 0],
+        [['int', '-1', 1073741824], 1073676288],
+        [['int', '2147483647', 1073741824], 1073709056],
+        [['int', '100000', 1073741824], 100001],
+        [['int', '17', 16], 1],
+        [['null', '', 16], 0]
+      ] },
     solution: {
       approach: `<p>Copy the JDK: a branch-free next-power-of-two via numberOfLeadingZeros, and the spread-then-mask index computation.</p>`,
       code: `class HashMath {
@@ -2100,6 +2409,33 @@ class MaxHeapTrace {
 }` },
     mcq: { q: 'Which single constructor argument turns this FIFO map into an LRU cache?', options: ['accessOrder = true in new LinkedHashMap<>(cap, 0.75f, true)', 'A smaller load factor', 'A TreeMap comparator', 'Overriding get()'], answer: 0, explain: 'With accessOrder = true, get and put of existing keys move the entry to the tail, so the head becomes the least recently used entry instead of the earliest inserted one.' },
     hints: [`<p>Hint 1: the default LinkedHashMap already keeps insertion order and ignores re-puts for ordering.</p>`, `<p>Hint 2: override <code>protected boolean removeEldestEntry(Map.Entry&lt;K,V&gt; eldest)</code> and return <code>size() &gt; maxEntries</code>.</p>`, `<p>Hint 3: do NOT pass accessOrder = true (that would make it LRU). Check: max = 2, put a, put b, get a, put c → a is evicted.</p>`],
+    tests: { sig: 'int string[] -> string[]', fn: 'run', harness: { java: `
+class Check {
+  static String[] run(int max, String[] ops) {
+    FifoMap<String, String> m = new FifoMap<>(max);
+    List<String> out = new ArrayList<>();
+    for (String op : ops) {
+      String[] p = op.split(":");
+      switch (p[0]) {
+        case "put": m.put(p[1], p[2]); break;
+        case "get": out.add(String.valueOf(m.get(p[1]))); break;
+        case "show": out.add(m.toString()); break;
+        case "size": out.add(String.valueOf(m.size())); break;
+        case "fill": for (int i = 0; i < Integer.parseInt(p[1]); i++) m.put(String.valueOf(i), "v"); break;
+      }
+    }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+        [[2, ['put:a:1', 'put:b:2', 'get:a', 'put:c:3', 'show', 'put:b:20', 'show']], ['1', '{b=2, c=3}', '{b=20, c=3}']],
+        [[2, ['put:a:1', 'put:b:2', 'put:a:9', 'put:c:3', 'show']], ['{b=2, c=3}']],
+        [[1, ['put:a:1', 'put:b:2', 'show', 'get:a']], ['{b=2}', 'null']],
+        [[5, ['put:x:1', 'put:y:2', 'show']], ['{x=1, y=2}']],
+        [[3, ['get:q', 'show']], ['null', '{}']],
+        [[2, ['put:a:1', 'put:b:2', 'put:c:3', 'put:a:4', 'show']], ['{c=3, a=4}']],
+        [[3, ['fill:200000', 'show']], ['{199997=v, 199998=v, 199999=v}']],
+        [[100000, ['fill:150000', 'size', 'get:49999', 'get:50000']], ['100000', 'null', 'v']]
+      ] },
     solution: {
       approach: `<p>Insertion-ordered LinkedHashMap with the eviction hook. The head is always the earliest-inserted surviving key, so evicting it is O(1).</p>`,
       code: `import java.util.LinkedHashMap;
@@ -2152,6 +2488,9 @@ class FifoMap<K, V> extends LinkedHashMap<K, V> {
     brute: { why: `<p>The usual belief "removing inside for-each always throws CME" predicts CME for all three. It misses that the check lives in <code>next()</code>, and the loop may end before <code>next()</code> is called again.</p>`, code: `for (int t = 1; t <= 3; t++) System.out.println("t=" + t + " -> CME (assumed)");   // the naive answer` },
     mcq: { q: 'Why does removing the SECOND-TO-LAST element not throw?', options: ['After removal, size equals cursor, so hasNext() returns false and next() (which checks modCount) is never called', 'ArrayList ignores removals of middle elements', 'The JIT optimizes the check away', 'remove(Object) does not change modCount'], answer: 0, explain: 'cursor is 2 after returning the 2nd element; removing makes size 2; hasNext() = (2 != 2) = false, loop exits silently — skipping element 3 without any error.' },
     hints: [`<p>Hint 1: track two numbers: <code>cursor</code> (index of next element to return) and <code>size</code>. The modCount check happens only inside <code>next()</code>.</p>`, `<p>Hint 2: t = 2: after returning 2, cursor = 2; remove → size = 2 → hasNext false. t = 3: after returning 3, cursor = 3; remove → size = 2 → 3 != 2 → hasNext TRUE → next() → CME.</p>`, `<p>Hint 3: note that <code>list.remove(x)</code> with an <code>Integer</code> argument calls remove(Object), not remove(int index). The correct way: <code>list.removeIf(x -&gt; x == t)</code> or an explicit Iterator with <code>it.remove()</code>.</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: 't=1 -> CME | fixed [2, 3]\nt=2 -> [1, 3] | fixed [1, 3]\nt=3 -> CME | fixed [1, 2]' }
+      ] },
     solution: {
       approach: `<p>Simulate cursor/size/modCount. The silent case is a real bug: the loop exits early and would skip any element after the removed one. Always use Iterator.remove or removeIf.</p>`,
       code: `import java.util.*;
@@ -2201,6 +2540,9 @@ int[] s = keys.clone(); Arrays.sort(s);
 System.out.println(Arrays.toString(s));      // sorted order — also NOT what HashMap prints` },
     mcq: { q: 'Which bucket does key 33 go to in a 16-bucket table?', options: ['1, because 33 & 15 = 1', '33', '3, the first digit', '0'], answer: 0, explain: '33 = 0b100001; the low 4 bits are 0001 → bucket 1, the same bucket as 1 and 17.' },
     hints: [`<p>Hint 1: index = key &amp; 15 for these small Integers. Compute it for 100, 3, 17, 33, 1 and 16.</p>`, `<p>Hint 2: 100 → 4, 3 → 3, 17 → 1, 33 → 1, 1 → 1, 16 → 0. Chains keep insertion order (Java 8+ appends at the tail).</p>`, `<p>Hint 3: iteration goes bucket 0, 1, 2, … and walks each chain front to back. Never rely on this in real code — it changes with capacity and Java version.</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: '100 -> bucket 4\n3 -> bucket 3\n17 -> bucket 1\n33 -> bucket 1\n1 -> bucket 1\n[17, 33, 1, 3, 100]\n[16, 17, 33, 1, 3, 100]\n[1, 3, 16, 17, 33, 100]\n[16, 17, 33, 1, 3, 100]' }
+      ] },
     solution: {
       approach: `<p>Compute each key's bucket with <code>key &amp; 15</code>, keep each chain in insertion order, then read buckets in index order.</p>`,
       code: `import java.util.*;
@@ -2243,6 +2585,16 @@ class HashOrder {
 }` },
     mcq: { q: 'Using a heap of size k, which heap and which comparison?', options: ['Min-heap ordered by count; pop when size > k so the least frequent of the candidates leaves', 'Max-heap of all entries, pop k times', 'Min-heap ordered by value', 'Max-heap of size k ordered by count'], answer: 0, explain: 'A size-k min-heap by count keeps the k best seen so far, evicting the weakest in O(log k): O(d log k) total. (A full max-heap also works but is O(d + k log d).)' },
     hints: [`<p>Hint 1: first count frequencies with <code>HashMap.merge(x, 1, Integer::sum)</code> — O(n).</p>`, `<p>Hint 2: push (value, count) into a min-heap by count; when size exceeds k, poll. The heap ends with the k most frequent.</p>`, `<p>Hint 3: O(n) alternative — bucket sort: list[count] holds values with that count (counts ≤ n); scan from n down to 1 until you collect k values.</p>`],
+    tests: { sig: 'int[] int -> int[]', fn: 'topKFrequent', cmp: 'set', names: { python: 'top_k' }, cases: [
+        [[[1, 1, 1, 2, 2, 3], 2], [1, 2]],
+        [[[1], 1], [1]],
+        [[[-1, -1, 2], 1], [-1]],
+        [[[4, 1, 2, 2, 3, 3, 3, 4, 4, 4], 2], [4, 3]],
+        [[[5, 5, 6, 6, 7], 3], [5, 6, 7]],
+        [[[0, 0, 0, 9, 9, 8], 1], [0]],
+        [[{ $concat: [{ $rep: 10000, n: 3 }, { $rep: -10000, n: 2 }, [0]] }, 2], [10000, -10000]],
+        [[{ $concat: [{ $rep: 7, n: 50000 }, { $rep: -9, n: 30000 }, { $range: [0, 10000] }] }, 2], [7, -9]]
+      ] },
     solution: {
       approach: `<p>HashMap for counts, then a size-k min-heap over the distinct values keyed by count. Alternative tab: bucket sort by frequency for O(n).</p>`,
       code: `import java.util.*;
@@ -2304,6 +2656,31 @@ print(top_k([1, 1, 1, 2, 2, 3], 2))` }],
 }` },
     mcq: { q: 'Inside one key\'s history, which TreeMap call answers get(key, t)?', options: ['floorEntry(t)', 'ceilingEntry(t)', 'higherEntry(t)', 'headMap(t).lastKey() always'], answer: 0, explain: 'floorEntry(t) returns the entry with the greatest timestamp ≤ t, or null if every timestamp is larger. (headMap(t, true).lastKey() also works but throws on an empty view.)' },
     hints: [`<p>Hint 1: two-level structure: key → (timestamp → value). The outer level needs exact lookup, the inner needs "greatest ≤ t".</p>`, `<p>Hint 2: <code>HashMap&lt;String, TreeMap&lt;Integer, String&gt;&gt;</code> with <code>computeIfAbsent(key, k -&gt; new TreeMap&lt;&gt;())</code>.</p>`, `<p>Hint 3: get: inner map missing → ""; e = floorEntry(t); return e == null ? "" : e.getValue(). If timestamps arrive strictly increasing, an ArrayList + binary search is even lighter.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run', harness: { java: `
+class Check {
+  static String[] run(String[] ops) {
+    TimeMap tm = new TimeMap();
+    List<String> out = new ArrayList<>();
+    for (String op : ops) {
+      String[] p = op.split(":", -1);
+      switch (p[0]) {
+        case "set": tm.set(p[1], p[2], Integer.parseInt(p[3])); break;
+        case "get": out.add("[" + tm.get(p[1], Integer.parseInt(p[2])) + "]"); break;
+        case "fill": for (int i = 0; i < Integer.parseInt(p[1]); i++) tm.set("k" + (i % 10), "v" + i, 2 * i + 1); break;
+      }
+    }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+        [[['set:foo:bar:1', 'get:foo:1', 'get:foo:3', 'set:foo:bar2:4', 'get:foo:4', 'get:foo:5', 'get:foo:0']], ['[bar]', '[bar]', '[bar2]', '[bar2]', '[]']],
+        [[['get:nope:5']], ['[]']],
+        [[['set:a:x:10', 'set:b:y:5', 'get:a:5', 'get:b:5', 'get:a:10', 'get:b:100']], ['[]', '[y]', '[x]', '[y]']],
+        [[['set:a:late:9', 'set:a:early:2', 'get:a:5', 'get:a:9', 'get:a:1']], ['[early]', '[late]', '[]']],
+        [[['set:a:one:3', 'set:a:two:3', 'get:a:3']], ['[two]']],
+        [[['set:a::7', 'get:a:7', 'get:a:6']], ['[]', '[]']],
+        [[['set:a:v:1000000000', 'get:a:2147483647', 'get:a:999999999']], ['[v]', '[]']],
+        [[['fill:200000', 'get:k3:7', 'get:k3:6', 'get:k0:399999', 'get:k0:2000000000', 'get:k9:18']], ['[v3]', '[]', '[v199990]', '[v199990]', '[]']]
+      ] },
     solution: {
       approach: `<p>HashMap for the key (O(1)), TreeMap per key for timestamps; floorEntry walks the red-black tree in O(log h) where h is that key's history length.</p>`,
       code: `import java.util.*;
@@ -2350,6 +2727,17 @@ class TimeMap {
 }` },
     mcq: { q: 'With a heap of size k, which point should be evicted when a closer one arrives?', options: ['The FARTHEST of the current k — so use a max-heap by distance', 'The closest one', 'A random one', 'The oldest one'], answer: 0, explain: 'You are keeping the k closest; the weakest member is the farthest. A max-heap exposes it at the root in O(1) and removes it in O(log k).' },
     hints: [`<p>Hint 1: compare squared distances x² + y² (no sqrt needed, and use long to be safe).</p>`, `<p>Hint 2: max-heap by distance of size k: offer each point; if size &gt; k, poll (removes the farthest).</p>`, `<p>Hint 3: comparator: <code>(a, b) -&gt; Long.compare(d(b), d(a))</code> — never subtract. O(n) average alternative: Quickselect.</p>`],
+    tests: { sig: 'int[][] int -> int[][]', fn: 'kClosest', check: '(args, out, exp) => JSON.stringify(out.map(p => p.join(",")).sort()) === JSON.stringify(exp.map(p => p.join(",")).sort())', cases: [
+        [[[[3, 3], [5, -1], [-2, 4]], 2], [[3, 3], [-2, 4]]],
+        [[[[1, 3], [-2, 2]], 1], [[-2, 2]]],
+        [[[[0, 0]], 1], [[0, 0]]],
+        [[[[1, 1], [1, 1], [2, 2]], 2], [[1, 1], [1, 1]]],
+        [[[[10000, 10000], [-10000, -10000], [0, 1]], 3], [[10000, 10000], [-10000, -10000], [0, 1]]],
+        [[[[10000, 10000], [-10000, -10000], [0, 1]], 1], [[0, 1]]],
+        [[[[0, 5], [0, -4], [3, 0], [0, 0]], 2], [[0, 0], [3, 0]]],
+        [[{ $concat: [[[0, 0]], { $rep: [100, 100], n: 9999 }] }, 1], [[0, 0]]],
+        [[{ $concat: [[[0, 0]], { $rep: [100, 100], n: 9999 }] }, 2], [[0, 0], [100, 100]]]
+      ] },
     solution: {
       approach: `<p>Max-heap of size k on squared distance. Every point costs O(log k); the heap's contents at the end are the answer.</p>`,
       code: `import java.util.*;
@@ -2392,6 +2780,36 @@ class KClosest {
 }` },
     mcq: { q: 'Why do tombstones count toward the resize threshold?', options: ['They lengthen probe sequences like live keys do; ignoring them can make lookups loop or crawl', 'They hold memory that must be freed', 'They are live keys in disguise', 'They do not; only live keys matter'], answer: 0, explain: 'A lookup must probe past tombstones. A table full of tombstones and no EMPTY slot makes a miss scan the whole table (or loop forever). Counting them and rebuilding on resize cleans them out.' },
     hints: [`<p>Hint 1: three slot states: EMPTY, LIVE, TOMBSTONE (deleted). Use a byte[] state array so any int (even 0) can be a key.</p>`, `<p>Hint 2: contains: probe from the home slot, skip tombstones, stop at EMPTY. add: remember the first tombstone you pass and reuse it if the key is not found.</p>`, `<p>Hint 3: resize by re-inserting only LIVE keys into a fresh table of double capacity — tombstones vanish. Mix the hash (multiply by an odd constant) so sequential keys do not cluster.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run', harness: { java: `
+class Check {
+  static String[] run(String[] ops) {
+    IntHashSet s = new IntHashSet();
+    List<String> out = new ArrayList<>();
+    for (String op : ops) {
+      String[] p = op.split(":");
+      switch (p[0]) {
+        case "add": out.add(String.valueOf(s.add(Integer.parseInt(p[1])))); break;
+        case "has": out.add(String.valueOf(s.contains(Integer.parseInt(p[1])))); break;
+        case "rm": out.add(String.valueOf(s.remove(Integer.parseInt(p[1])))); break;
+        case "size": out.add(String.valueOf(s.size())); break;
+        case "fill": { int c = 0; for (int i = 0; i < Integer.parseInt(p[1]); i++) if (s.add(i)) c++; out.add(String.valueOf(c)); break; }
+        case "rmrange": for (int i = Integer.parseInt(p[1]); i < Integer.parseInt(p[2]); i++) s.remove(i); break;
+        case "cnt": { int c = 0; for (int i = Integer.parseInt(p[1]); i < Integer.parseInt(p[2]); i++) if (s.contains(i)) c++; out.add(String.valueOf(c)); break; }
+        case "cycle": for (int i = 0; i < Integer.parseInt(p[1]); i++) { s.add(i); s.remove(i); } out.add("done"); break;
+      }
+    }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+        [[['add:1', 'add:9', 'add:17', 'add:0', 'add:-5', 'rm:9', 'has:17', 'has:9', 'has:0', 'size']], ['true', 'true', 'true', 'true', 'true', 'true', 'true', 'false', 'true', '4']],
+        [[['add:5', 'add:5', 'size', 'rm:5', 'rm:5', 'size', 'has:5']], ['true', 'false', '1', 'true', 'false', '0', 'false']],
+        [[['add:-2147483648', 'add:2147483647', 'add:0', 'has:-2147483648', 'has:2147483647', 'has:0', 'has:1', 'size']], ['true', 'true', 'true', 'true', 'true', 'true', 'false', '3']],
+        [[['add:3', 'rm:3', 'has:3', 'add:3', 'has:3', 'size']], ['true', 'true', 'false', 'true', 'true', '1']],
+        [[['add:1', 'add:2', 'add:3', 'rm:2', 'has:3', 'has:2']], ['true', 'true', 'true', 'true', 'true', 'false']],
+        [[['fill:100000', 'size', 'cnt:0:100000', 'has:100000', 'has:-1']], ['100000', '100000', '100000', 'false', 'false']],
+        [[['fill:100000', 'rmrange:0:50000', 'cnt:0:100000', 'size', 'has:49999', 'has:50000']], ['100000', '50000', '50000', 'false', 'true']],
+        [[['cycle:1000000', 'size', 'has:0', 'add:0', 'has:0']], ['done', '0', 'false', 'true', 'true']]
+      ] },
     solution: {
       approach: `<p>Linear probing over parallel arrays (int keys + byte states). Deletion writes a tombstone; insertion reuses the first tombstone on its probe path; rebuild on 50% occupancy. This is the design used by many high-performance primitive collections (and Python dicts use a similar idea with perturbation).</p>`,
       code: `class IntHashSet {
@@ -2478,6 +2896,29 @@ class KClosest {
 }` },
     mcq: { q: 'How do you find the eviction victim in O(1)?', options: ['Keep minFreq and a map freq → LinkedHashSet of keys; victim = first key of the set at minFreq', 'Keep a PriorityQueue by frequency', 'Sort keys by frequency on every put', 'Use a TreeMap from frequency to key'], answer: 0, explain: 'Insertion-ordered sets per frequency give LRU order within a frequency for free; minFreq only ever increases by 1 on access or resets to 1 on insert, so it is maintained in O(1). A heap or TreeMap would be O(log n).' },
     hints: [`<p>Hint 1: three maps: key → value, key → freq, freq → <code>LinkedHashSet</code> of keys (insertion order = recency within that frequency). Plus an int <code>minFreq</code>.</p>`, `<p>Hint 2: touch(key): remove it from set[f], add to set[f + 1]; if set[f] became empty and f == minFreq, minFreq++.</p>`, `<p>Hint 3: put of a NEW key when full: victim = set[minFreq].iterator().next(); remove it everywhere; insert the new key with freq 1 and set minFreq = 1. Edge case: capacity 0 → ignore puts.</p>`],
+    tests: { sig: 'int string[] -> string[]', fn: 'run', harness: { java: `
+class Check {
+  static String[] run(int cap, String[] ops) {
+    LFUCache c = new LFUCache(cap);
+    List<String> out = new ArrayList<>();
+    for (String op : ops) {
+      String[] p = op.split(":");
+      if (p[0].equals("put")) c.put(Integer.parseInt(p[1]), Integer.parseInt(p[2]));
+      else if (p[0].equals("get")) out.add(String.valueOf(c.get(Integer.parseInt(p[1]))));
+      else for (int i = 0; i < Integer.parseInt(p[1]); i++) c.put(i, i);
+    }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+        [[2, ['put:1:1', 'put:2:2', 'get:1', 'put:3:3', 'get:2', 'get:3', 'put:4:4', 'get:1', 'get:3', 'get:4']], ['1', '-1', '3', '-1', '3', '4']],
+        [[1, ['put:1:1', 'put:2:2', 'get:1', 'get:2']], ['-1', '2']],
+        [[3, ['put:1:1', 'put:2:2', 'put:3:3', 'get:1', 'get:1', 'get:2', 'put:4:4', 'get:3', 'put:5:5', 'get:4', 'get:1', 'get:2', 'get:5']], ['1', '1', '2', '-1', '-1', '1', '2', '5']],
+        [[2, ['put:1:1', 'put:2:2', 'put:1:10', 'put:3:3', 'get:1', 'get:2']], ['10', '-1']],
+        [[2, ['put:1:1', 'put:2:2', 'put:3:3', 'get:1', 'get:2', 'get:3']], ['-1', '2', '3']],
+        [[2, ['get:9']], ['-1']],
+        [[1000, ['fill:200000', 'get:199999', 'get:199000', 'get:198999']], ['199999', '199000', '-1']],
+        [[2, ['put:0:0', 'get:0', 'put:1:1', 'put:2:2', 'get:0', 'get:1', 'get:2']], ['0', '0', '-1', '2']]
+      ] },
     solution: {
       approach: `<p>Frequency buckets of insertion-ordered key sets. Accesses move a key one bucket up (O(1)); eviction pulls the oldest key from the minimum bucket (O(1)). LinkedHashSet is a LinkedHashMap underneath, so we are reusing the same doubly-linked-list trick as LRU.</p>`,
       code: `import java.util.*;
@@ -2563,6 +3004,52 @@ class LFUCache {
 }` },
     mcq: { q: 'What should the recursive helper return so that each node is visited once?', options: ['The subtree\'s black height, or −1 if the subtree is invalid', 'A boolean only', 'The number of red nodes', 'The subtree size'], answer: 0, explain: 'Returning the black height lets the parent compare left vs right in O(1); −1 propagates failure. Pass (lo, hi) bounds down for the BST check and the parent colour for the red-red check.' },
     hints: [`<p>Hint 1: one DFS can check everything if it carries <b>bounds</b> (lo, hi) down and returns the <b>black height</b> up.</p>`, `<p>Hint 2: <code>int bh(node, lo, hi, parentRed)</code>: null → 1 (null leaves count as black). Fail (−1) if key ∉ (lo, hi), or node.red &amp;&amp; parentRed, or left height ≠ right height.</p>`, `<p>Hint 3: use <code>long</code> bounds starting at Long.MIN_VALUE / Long.MAX_VALUE so keys equal to Integer extremes work. Check root colour separately.</p>`],
+    tests: { sig: 'string -> bool', fn: 'run', harness: { java: `
+class Check {
+  static String s; static int pos;
+  static RBValidator.RBNode node() {
+    if (s.charAt(pos) == 'N') { pos++; return null; }
+    int st = pos; if (s.charAt(pos) == '-') pos++;
+    while (Character.isDigit(s.charAt(pos))) pos++;
+    int key = Integer.parseInt(s.substring(st, pos));
+    boolean red = s.charAt(pos++) == 'R';
+    RBValidator.RBNode l = null, r = null;
+    if (pos < s.length() && s.charAt(pos) == '(') { pos++; l = node(); pos++; r = node(); pos++; }
+    return new RBValidator.RBNode(key, red, l, r);
+  }
+  static RBValidator.RBNode perfect(int lo, int hi) {
+    if (lo > hi) return null;
+    int mid = (lo + hi) >>> 1;
+    return new RBValidator.RBNode(mid, false, perfect(lo, mid - 1), perfect(mid + 1, hi));
+  }
+  static boolean run(String text) {
+    if (text.startsWith("perfect:") || text.startsWith("perfectBad:")) {
+      int h = Integer.parseInt(text.substring(text.indexOf(':') + 1));
+      RBValidator.RBNode root = perfect(1, (1 << h) - 1);
+      if (text.startsWith("perfectBad:")) { RBValidator.RBNode n = root; while (n.left != null) n = n.left; n.key = 1 << 20; }
+      return RBValidator.isValid(root);
+    }
+    if (text.isEmpty()) return RBValidator.isValid(null);
+    s = text; pos = 0;
+    return RBValidator.isValid(node());
+  }
+}` }, cases: [
+        [['20B(10R,30R)'], true],
+        [['20B(10R(5R,N),N)'], false],
+        [['20B(10B,N)'], false],
+        [[''], true],
+        [['5B'], true],
+        [['5R'], false],
+        [['20B(10R(N,25B),30R)'], false],
+        [['10B(10R,N)'], false],
+        [['-2147483648B(N,2147483647R)'], true],
+        [['20B(10B(5R,15R),30B(25R,N))'], true],
+        [['20B(10B,30B(25R,N))'], true],
+        [['20B(10B(5B,N),30B)'], false],
+        [['20B(N,30R(N,40R))'], false],
+        [['perfect:16'], true],
+        [['perfectBad:16'], false]
+      ] },
     solution: {
       approach: `<p>Single post-order DFS: bounds enforce BST order, a parentRed flag enforces "no red-red", and returned black heights must match at every node. Any violation returns −1 all the way up.</p>`,
       code: `class RBValidator {
@@ -2621,6 +3108,20 @@ class LFUCache {
 }` },
     mcq: { q: 'Why store INDEXES in TreeSets instead of values?', options: ['Duplicates: a TreeSet of values would collapse equal numbers; (value, index) pairs are unique and removable in O(log k)', 'Indexes are smaller', 'TreeSet cannot hold ints', 'It makes the median O(1)'], answer: 0, explain: 'A TreeSet treats compare() == 0 as "same element". Ordering indexes by (nums[i], i) keeps duplicates distinct and lets you remove exactly the outgoing element.' },
     hints: [`<p>Hint 1: keep two balanced halves: <code>low</code> (smaller half) and <code>high</code> (larger half), with low.size() == high.size() or one more.</p>`, `<p>Hint 2: use two <code>TreeSet&lt;Integer&gt;</code> of indexes ordered by <code>(nums[i], i)</code>. TreeSet supports remove(any) in O(log k) — a PriorityQueue's remove(Object) is O(k).</p>`, `<p>Hint 3: add: put into low, move low.last() to high, rebalance if high is bigger. Remove the outgoing index from whichever set holds it, then rebalance. Median: low.last() for odd k, average as doubles for even k.</p>`],
+    tests: { sig: 'int[] int -> double[]', fn: 'medianSlidingWindow', cmp: 'float', cases: [
+        [[[1, 3, -1, -3, 5, 3, 6, 7], 3], [1, -1, -1, 3, 5, 6]],
+        [[[1, 3, -1, -3, 5, 3, 6, 7], 4], [0, 1, 1, 4, 5.5]],
+        [[[1, 2, 3, 4], 1], [1, 2, 3, 4]],
+        [[[5], 1], [5]],
+        [[[-2147483648, 2147483647], 2], [-0.5]],
+        [[[2147483647, 2147483647], 2], [2147483647]],
+        [[[4, 4, 4, 1, 9], 5], [4]],
+        [[[-5, -1, -3, -7], 2], [-3, -2, -5]],
+        [[[1, 1, 2, 2, 3, 3], 2], [1, 1.5, 2, 2.5, 3]],
+        [[{ $rep: 5, n: 100000 }, 50000], { $rep: 5, n: 50001 }],
+        [[{ $range: [0, 100000] }, 3], { $range: [1, 99999] }],
+        [[{ $range: [0, 100000] }, 100000], [49999.5]]
+      ] },
     solution: {
       approach: `<p>Two red-black trees (TreeSets) holding the lower and upper halves of the window, keyed by (value, index). Each slide is one insert, one delete and O(1) rebalancing moves — each O(log k).</p>`,
       code: `import java.util.*;
@@ -2682,6 +3183,53 @@ class BrokenRwLru<K, V> {
 }` },
     mcq: { q: 'Why does sharding help throughput?', options: ['Each shard has its own lock, so threads touching different shards never wait for each other', 'It makes get() lock-free', 'It improves the hit rate', 'It reduces memory usage'], answer: 0, explain: 'With one lock, 64 threads serialize on every get (which mutates the LRU list). With S shards, contention drops roughly S-fold. The cost: eviction is LRU within a shard, not globally exact.' },
     hints: [`<p>Hint 1: every operation on an access-ordered LinkedHashMap — including get — needs <b>exclusive</b> access. So use a plain lock, not a read lock.</p>`, `<p>Hint 2: shard = <code>spread(key.hashCode()) &amp; (S − 1)</code>; each shard = LinkedHashMap(accessOrder=true) + its own ReentrantLock (or synchronized). Capacity per shard = ⌈C / S⌉.</p>`, `<p>Hint 3: count hits/misses with <code>LongAdder</code> outside the lock so statistics never add contention. Never call user code (loaders) while holding a shard lock.</p>`],
+    tests: { sig: 'int int string[] -> string[]', fn: 'run', harness: { java: `
+class Check {
+  static String[] run(int cap, int shards, String[] ops) throws Exception {
+    ShardedLruCache<Integer, Integer> c;
+    try { c = new ShardedLruCache<>(cap, shards); } catch (IllegalArgumentException e) { return new String[]{ "IAE" }; }
+    List<String> out = new ArrayList<>();
+    for (String op : ops) {
+      String[] p = op.split(":");
+      switch (p[0]) {
+        case "put": c.put(Integer.parseInt(p[1]), Integer.parseInt(p[2])); break;
+        case "get": out.add(String.valueOf(c.get(Integer.parseInt(p[1])))); break;
+        case "stats": out.add(c.hits() + "," + c.misses()); break;
+        case "par": {
+          int T = Integer.parseInt(p[1]), N = Integer.parseInt(p[2]);
+          AtomicBoolean bad = new AtomicBoolean();
+          Thread[] ts = new Thread[T];
+          for (int t = 0; t < T; t++) {
+            final int id = t;
+            ts[t] = new Thread(() -> {
+              for (int i = 0; i < N; i++) {
+                int k = (i * 31 + id) % 2000;
+                Integer v = c.get(k);
+                if (v == null) c.put(k, k * k); else if (v != k * k) bad.set(true);
+              }
+            });
+            ts[t].start();
+          }
+          for (Thread th : ts) th.join();
+          out.add(!bad.get() && c.hits() + c.misses() == (long) T * N ? "ok" : "bad");
+          break;
+        }
+      }
+    }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+        [[4, 3, []], ['IAE']],
+        [[4, 2, ['put:0:0', 'put:2:2', 'put:4:4', 'put:1:1', 'put:3:3', 'get:0', 'get:2', 'get:4', 'get:1', 'get:3', 'stats']], ['null', '2', '4', '1', '3', '4,1']],
+        [[4, 2, ['put:0:0', 'put:2:2', 'put:1:1', 'put:3:3', 'put:5:5', 'get:0', 'get:2', 'get:1', 'get:3', 'get:5']], ['0', '2', 'null', '3', '5']],
+        [[4, 2, ['put:0:0', 'put:2:2', 'get:0', 'put:4:4', 'get:2', 'get:0', 'get:4']], ['0', 'null', '0', '4']],
+        [[2, 1, ['put:1:1', 'put:1:5', 'get:1', 'stats']], ['5', '1,0']],
+        [[1, 1, ['put:1:1', 'put:2:2', 'get:1', 'get:2']], ['null', '2']],
+        [[8, 4, ['stats']], ['0,0']],
+        [[5, 2, ['put:0:0', 'put:2:2', 'put:4:4', 'put:6:6', 'get:0', 'get:2', 'get:4', 'get:6']], ['null', '2', '4', '6']],
+        [[1000, 16, ['par:8:100000']], ['ok']],
+        [[1000, 16, ['par:64:20000']], ['ok']]
+      ] },
     solution: {
       approach: `<p>Partition keys into S independent LRU shards, each guarded by its own ReentrantLock around an access-ordered LinkedHashMap. Statistics use LongAdder. This is the classic "lock striping" design (similar in spirit to Java 7's ConcurrentHashMap segments); production systems typically use Caffeine, which avoids locking on reads by buffering access events.</p>`,
       code: `import java.util.*;

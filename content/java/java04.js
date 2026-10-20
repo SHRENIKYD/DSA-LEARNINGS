@@ -326,6 +326,73 @@ public class Main {
           `<p>Hint 2: Use <code>private long balance</code>, <code>private final List&lt;String&gt; history</code>, and return <code>Collections.unmodifiableList(history)</code> (or <code>List.copyOf</code>) from the getter.</p>`,
           `<p>Hint 3: Edge cases — non-positive amounts (throw <code>IllegalArgumentException</code>), paying exactly the balance (allowed → 0), blank owner (reject in constructor). Recipe: validate → change → log → return.</p>`
         ],
+        tests: { sig: 'string string[] -> string', fn: 'walletCheck',
+          harness: { java: `class Check {
+  static String fl(List<String> l) { return l.size() <= 10 ? String.join(",", l) : "n=" + l.size() + " last=" + l.get(l.size() - 1); }
+  static String walletCheck(String owner, String[] ops) {
+    Wallet w;
+    try { w = new Wallet(owner); } catch (IllegalArgumentException e) { return "IAE owner"; }
+    List<String> res = new ArrayList<>();
+    int trues = 0;
+    for (String o : ops) {
+      long v = Long.parseLong(o.substring(1));
+      try {
+        if (o.charAt(0) == 'a') { w.addMoney(v); res.add("ok"); }
+        else { boolean b = w.pay(v); if (b) trues++; res.add(String.valueOf(b)); }
+      } catch (IllegalArgumentException e) { res.add("IAE"); }
+    }
+    boolean ro;
+    try { w.history().add("x"); ro = false; } catch (UnsupportedOperationException e) { ro = true; }
+    List<String> h = w.history();
+    String hs = h.size() <= 10 ? h.toString() : "n=" + h.size() + " last=" + h.get(h.size() - 1);
+    return "bal=" + w.balance() + " hist=" + hs + " res=" + fl(res) + " trues=" + trues + " ro=" + ro;
+  }
+}`, python: `def _fl(l):
+    return ",".join(l) if len(l) <= 10 else "n=%d last=%s" % (len(l), l[-1])
+
+def wallet_check(owner, ops):
+    try:
+        w = Wallet(owner)
+    except ValueError:
+        return "IAE owner"
+    res, trues = [], 0
+    for o in ops:
+        v = int(o[1:])
+        try:
+            if o[0] == "a":
+                w.add_money(v)
+                res.append("ok")
+            else:
+                b = w.pay(v)
+                trues += 1 if b else 0
+                res.append("true" if b else "false")
+        except ValueError:
+            res.append("IAE")
+    ro = "true"
+    try:
+        w.history.append("x")
+        ro = "false"
+    except AttributeError:
+        pass
+    h = list(w.history)
+    hs = "[" + ", ".join(h) + "]" if len(h) <= 10 else "n=%d last=%s" % (len(h), h[-1])
+    return "bal=%d hist=%s res=%s trues=%d ro=%s" % (w.balance, hs, _fl(res), trues, ro)
+` }, cases: [
+          [["Ravi",["a500","p120","p1000"]],"bal=380 hist=[+500, -120] res=ok,true,false trues=1 ro=true"],
+          [["Ravi",[]],"bal=0 hist=[] res= trues=0 ro=true"],
+          [["",["a5"]],"IAE owner"],
+          [["  ",["a5"]],"IAE owner"],
+          [["A",["a0","a-5","p0","p-3"]],"bal=0 hist=[] res=IAE,IAE,IAE,IAE trues=0 ro=true"],
+          [["A",["p1"]],"bal=0 hist=[] res=false trues=0 ro=true"],
+          [["A",["a100","p100"]],"bal=0 hist=[+100, -100] res=ok,true trues=1 ro=true"],
+          [["A",["a100","p101","p100","p1"]],"bal=0 hist=[+100, -100] res=ok,false,true,false trues=1 ro=true"],
+          [["A",["a1000000000000","a1000000000000","p1999999999999"]],"bal=1 hist=[+1000000000000, +1000000000000, -1999999999999] res=ok,ok,true trues=1 ro=true"],
+          [["A",["a1","a2","a3","a4","a5","a6","a7","a8","a9","a10"]],"bal=55 hist=[+1, +2, +3, +4, +5, +6, +7, +8, +9, +10] res=ok,ok,ok,ok,ok,ok,ok,ok,ok,ok trues=0 ro=true"],
+          [["A",["a1","a2","a3","a4","a5","a6","a7","a8","a9","a10","a11"]],"bal=66 hist=n=11 last=+11 res=n=11 last=ok trues=0 ro=true"],
+          [["A",{"$concat":[{"$rep":"a1000000000000","n":100000},{"$rep":"p1000000000000","n":50000}]}],"bal=50000000000000000 hist=n=150000 last=-1000000000000 res=n=150000 last=true trues=50000 ro=true"],
+          [["A",{"$concat":[{"$rep":"a1","n":100000}]}],"bal=100000 hist=n=100000 last=+1 res=n=100000 last=ok trues=0 ro=true"],
+          [["A",{"$concat":[{"$rep":"a1","n":50000},{"$rep":"p1","n":50000}]}],"bal=0 hist=n=100000 last=-1 res=n=100000 last=true trues=50000 ro=true"]
+        ] },
         solution: {
           approach: `<p>Make every field private; give the class behaviour methods that check before they change; hand out only a read-only view of the history. The constructor validates too, so no broken Wallet can ever exist.</p>`,
           code: `import java.util.*;
@@ -653,6 +720,9 @@ public class Main {
           `<p>Hint 2: Within construction: the child constructor first calls <code>super()</code>; the parent's instance blocks run, then the parent constructor body; only then the child's instance blocks and constructor body.</p>`,
           `<p>Hint 3: Recipe — static(P), static(C), then for each new: block(P), ctor(P), block(C), ctor(C). Two <code>new</code> → 2 + 4 + 4 = 10 lines.</p>`
         ],
+        tests: { io: true, cases: [
+          { stdin: "", stdout: "Parent static\nChild static\nParent instance block\nParent constructor\nChild instance block\nChild constructor\nParent instance block\nParent constructor\nChild instance block\nChild constructor" }
+        ] },
         solution: {
           approach: `<p>Class initialization happens once, triggered by the first <code>new Child()</code>; initializing <code>Child</code> requires initializing <code>Parent</code> first. Then each construction runs the parent's instance initializers and constructor body before the child's, because the child constructor's very first action is the (implicit) <code>super()</code>, and javac places instance-initializer code right after that call.</p>`,
           code: `class Parent {
@@ -990,6 +1060,17 @@ public class Main {
           `<p>Hint 2: (a) needs <code>protected</code> or <code>public</code>; returning <code>Double</code> (a Number) is fine and you may drop <code>throws IOException</code>. (d) must be <code>static</code> too — and then it is hiding, so no <code>@Override</code>.</p>`,
           `<p>Hint 3: Verify with a parent reference: <code>Shape s = new Circle(2); s.area(); s.copy(); s.draw();</code> must all run Circle's code, while <code>s.kind()</code> still prints "shape" (static: reference type decides).</p>`
         ],
+        tests: { sig: 'double -> double[]', fn: 'circCheck', cmp: 'float',
+          harness: { java: `class Check { static double[] circCheck(double r) throws Exception { Shape s = new Circle(r); double area = s.area().doubleValue(); Shape c = s.copy(); double cr = c instanceof Circle ? ((Circle) c).r : -1; return new double[]{area, cr, Shape.kind().equals("shape") && Circle.kind().equals("circle") ? 1 : 0}; } }` }, cases: [
+          [[2],[12.566370614359172,2,1]],
+          [[1],[3.141592653589793,1,1]],
+          [[0],[0,0,1]],
+          [[0.5],[0.7853981633974483,0.5,1]],
+          [[10000],[314159265.35897934,10000,1]],
+          [[3.5],[38.48451000647496,3.5,1]],
+          [[0.001],[0.0000031415926535897933,0.001,1]],
+          [[7],[153.93804002589985,7,1]]
+        ] },
         solution: {
           approach: `<p>Fix each attempt with the smallest change that satisfies the rules, and put <code>@Override</code> on every true override so the compiler guards them forever. For the static <code>kind()</code>, make the child static too (legal hiding) and remember it is <b>not</b> polymorphic.</p>`,
           code: `import java.io.*;
@@ -1381,6 +1462,36 @@ public class Main {
           `<p>Hint 2: <code>abstract class Employee { abstract double monthlyPay(); }</code> with three subclasses. Total = sum over <code>List&lt;Employee&gt;</code>.</p>`,
           `<p>Hint 3: Edge cases — exactly 160 hours (no overtime), 0 sales, empty list (total 0). Validate negative inputs in constructors.</p>`
         ],
+        tests: { sig: 'string[] -> double', fn: 'payrollCheck', cmp: 'float',
+          harness: { java: `class Check { static double payrollCheck(String[] staff) { List<Employee> list = new ArrayList<>(); for (String s : staff) { String[] p = s.split(":"); if (p[0].equals("S")) list.add(new Salaried("n", Double.parseDouble(p[1]))); else if (p[0].equals("H")) list.add(new Hourly("n", Double.parseDouble(p[1]), Double.parseDouble(p[2]))); else list.add(new Commission("n", Double.parseDouble(p[1]), Double.parseDouble(p[2]), Double.parseDouble(p[3]))); } return Main.total(list); } }`, python: `def payroll_check(staff):
+    emps = []
+    for s in staff:
+        p = s.split(":")
+        if p[0] == "S":
+            emps.append(Salaried("n", float(p[1])))
+        elif p[0] == "H":
+            emps.append(Hourly("n", float(p[1]), float(p[2])))
+        else:
+            emps.append(Commission("n", float(p[1]), float(p[2]), float(p[3])))
+    return sum(e.monthly_pay() for e in emps)
+` }, cases: [
+          [[["S:1200000","H:500:170","C:30000:400000:0.05"]],237500],
+          [[[]],0],
+          [[["S:1200000"]],100000],
+          [[["H:500:170"]],87500],
+          [[["C:30000:400000:0.05"]],50000],
+          [[["H:100:160"]],16000],
+          [[["H:100:161"]],16150],
+          [[["H:100:159"]],15900],
+          [[["H:100:0"]],0],
+          [[["S:0"]],0],
+          [[["C:0:0:0.5"]],0],
+          [[["S:12"]],1],
+          [[["H:12.5:200.5"]],2759.375],
+          [[["C:1000:2500.75:0.075"]],1187.55625],
+          [[{"$rep":"S:1200000","n":100000}],10000000000],
+          [[{"$concat":[{"$rep":"H:10000000:100","n":50000},{"$rep":"C:1:1000000:0.5","n":50000}]}],50025000050000]
+        ] },
         solution: {
           approach: `<p>An abstract <code>Employee</code> declares <code>monthlyPay()</code>; each subclass overrides it with its own formula. The payroll loop depends only on the abstract type, so adding <code>Intern</code> is one new class and zero edits elsewhere — dynamic dispatch picks the right formula for each object.</p>`,
           code: `import java.util.*;
@@ -1732,6 +1843,16 @@ public class Main {
           `<p>Hint 2: <code>abstract class Beverage</code> with <code>final List&lt;String&gt; prepare()</code>, <code>abstract String brew()</code>, <code>abstract String condiment()</code>, and a hook <code>boolean wantsCondiments() { return true; }</code>.</p>`,
           `<p>Hint 3: Coffee overrides the hook to return <code>!black</code>. Recipe: list ← boil; list ← brew(); list ← pour; if hook() list ← "add " + condiment(); return list.</p>`
         ],
+        tests: { sig: 'string -> list<string>', fn: 'bevCheck',
+          harness: { java: `class Check { static List<String> bevCheck(String kind) { Beverage b; switch (kind) { case "tea": b = new Tea(); break; case "coffee-black": b = new Coffee(true); break; case "coffee-milk": b = new Coffee(false); break; case "tea-plain": b = new Tea() { protected boolean wantsCondiments() { return false; } }; break; case "decaf": b = new Beverage() { protected String brew() { return "drip decaf"; } protected String condiment() { return "cream"; } }; break; case "cocoa": b = new Beverage() { protected String brew() { return "stir cocoa"; } protected String condiment() { return "marshmallow"; } }; break; default: b = new Beverage() { protected String brew() { return "stir cocoa"; } protected String condiment() { return "marshmallow"; } protected boolean wantsCondiments() { return false; } }; } return b.prepare(); } }` }, cases: [
+          [["tea"],["boil water","steep tea","pour in cup","add lemon"]],
+          [["coffee-black"],["boil water","drip coffee","pour in cup"]],
+          [["coffee-milk"],["boil water","drip coffee","pour in cup","add milk"]],
+          [["cocoa"],["boil water","stir cocoa","pour in cup","add marshmallow"]],
+          [["cocoa-plain"],["boil water","stir cocoa","pour in cup"]],
+          [["tea-plain"],["boil water","steep tea","pour in cup"]],
+          [["decaf"],["boil water","drip decaf","pour in cup","add cream"]]
+        ] },
         solution: {
           approach: `<p>The abstract parent owns the algorithm in a <code>final</code> template method and calls abstract "step" methods plus one hook. Each drink fills in only what differs. New drinks plug in without editing the recipe, and no drink can reorder it.</p>`,
           code: `import java.util.*;
@@ -2051,6 +2172,13 @@ public class Main {
           `<p>Hint 2: Inside the override you can still reach each default with <code>Switchable.super.status()</code> and <code>Connectable.super.status()</code>.</p>`,
           `<p>Hint 3: Watch the trap: <code>((Switchable) this).status()</code> calls SmartBulb's own override again → <code>StackOverflowError</code>. Recipe: override → join the two super calls with ", ".</p>`
         ],
+        tests: { sig: 'bool bool -> string', fn: 'bulbCheck',
+          harness: { java: `class Check { static String bulbCheck(boolean on, boolean wifi) { SmartBulb b = new SmartBulb(on, wifi); Switchable s = b; Connectable c = b; return b.status() + " | " + s.status() + " | " + c.status(); } }` }, cases: [
+          [[true,false],"power:on, wifi:down | power:on, wifi:down | power:on, wifi:down"],
+          [[false,true],"power:off, wifi:up | power:off, wifi:up | power:off, wifi:up"],
+          [[true,true],"power:on, wifi:up | power:on, wifi:up | power:on, wifi:up"],
+          [[false,false],"power:off, wifi:down | power:off, wifi:down | power:off, wifi:down"]
+        ] },
         solution: {
           approach: `<p>Override <code>status()</code> in SmartBulb (forced by the compiler) and delegate to both interface defaults via <code>X.super.status()</code>. Each format stays owned by its interface; the bulb just composes them.</p>`,
           code: `interface Switchable {
@@ -2372,6 +2500,17 @@ public class Main {
           `<p>Hint 2: <code>this.items = List.copyOf(items);</code> copies in and produces an unmodifiable list, which can then be returned directly. Make the class <code>final</code> so no subclass adds mutable state.</p>`,
           `<p>Hint 3: "Changing" = building a new object: copy into a new <code>ArrayList</code>, add, and pass to the constructor (which copies again). Validate null id.</p>`
         ],
+        tests: { sig: 'string list<string> string -> string', fn: 'orderCheck',
+          harness: { java: `class Check { static String f(List<String> l) { return l.size() <= 10 ? l.toString() : "n=" + l.size() + " last=" + l.get(l.size() - 1); } static String orderCheck(String id, List<String> items, String extra) { Order o = new Order(id, items); items.add("laptop"); boolean ro; try { o.items().add("free tv"); ro = false; } catch (UnsupportedOperationException e) { ro = true; } Order o2 = o.withItem(extra); return o.id() + " " + f(o.items()) + " " + f(o2.items()) + " ro=" + ro; } }` }, cases: [
+          [["A1",["pen"],"ink"],"A1 [pen] [pen, ink] ro=true"],
+          [["B2",[],"x"],"B2 [] [x] ro=true"],
+          [["C3",["a","b","c"],"d"],"C3 [a, b, c] [a, b, c, d] ro=true"],
+          [["D4",["a","a"],"a"],"D4 [a, a] [a, a, a] ro=true"],
+          [["E5",["a","b","c","d","e","f","g","h","i"],"j"],"E5 [a, b, c, d, e, f, g, h, i] [a, b, c, d, e, f, g, h, i, j] ro=true"],
+          [["E5",["a","b","c","d","e","f","g","h","i","j"],"k"],"E5 [a, b, c, d, e, f, g, h, i, j] n=11 last=k ro=true"],
+          [["F6",{"$rep":"x","n":10000},"y"],"F6 n=10000 last=x n=10001 last=y ro=true"],
+          [["G7",["laptop"],"free tv"],"G7 [laptop] [laptop, free tv] ro=true"]
+        ] },
         solution: {
           approach: `<p>Apply the immutability recipe: <code>final</code> class, <code>private final</code> fields, validate and <b>copy in</b> with <code>List.copyOf</code> (unmodifiable, independent snapshot), expose that unmodifiable list directly, no setters, and "modifier" methods that return new instances. Thanks to final-field semantics, the result is thread-safe without locks.</p>`,
           code: `import java.util.*;
@@ -2724,6 +2863,20 @@ public class Main {
           `<p>Hint 2: <code>private final Set&lt;E&gt; inner;</code> passed in through the constructor; each public method forwards to <code>inner</code> after updating the counter.</p>`,
           `<p>Hint 3: Count attempts in both <code>add</code> (+1) and <code>addAll</code> (+c.size()). For a full <code>Set</code> implementation, implement <code>Set&lt;E&gt;</code> and forward every method (or extend a ForwardingSet).</p>`
         ],
+        tests: { sig: 'string[] bool -> string', fn: 'csCheck',
+          harness: { java: `class Check { static String csCheck(String[] ops, boolean tree) { CountingSet<String> s = new CountingSet<>(tree ? new TreeSet<String>() : new HashSet<String>()); List<Boolean> has = new ArrayList<>(); for (String o : ops) { char k = o.charAt(0); String rest = o.substring(2); if (k == 'a') s.add(rest); else if (k == 'A') s.addAll(rest.isEmpty() ? new ArrayList<String>() : Arrays.asList(rest.split(",", -1))); else has.add(s.contains(rest)); } StringBuilder h = new StringBuilder(); if (has.size() <= 10) { for (int i = 0; i < has.size(); i++) { if (i > 0) h.append(','); h.append(has.get(i)); } } else h.append("n=").append(has.size()); return "count=" + s.addCount() + " size=" + s.size() + " has=" + h; } }` }, cases: [
+          [[["a:x","A:a,b,c","a:a"],true],"count=5 size=4 has="],
+          [[["a:x","A:a,b,c","a:a"],false],"count=5 size=4 has="],
+          [[[],true],"count=0 size=0 has="],
+          [[["A:"],false],"count=0 size=0 has="],
+          [[["A:a,a,a"],true],"count=3 size=1 has="],
+          [[["a:p","c:p","c:q"],false],"count=1 size=1 has=true,false"],
+          [[["A:a,b","A:b,c","c:a","c:c","c:d"],true],"count=4 size=3 has=true,true,false"],
+          [[["a:z","a:z","a:z","c:z"],false],"count=3 size=1 has=true"],
+          [[["A:1,2,3,4,5","A:5,4,3,2,1"],true],"count=10 size=5 has="],
+          [[{"$rep":"a:z","n":100000},false],"count=100000 size=1 has="],
+          [[{"$concat":[{"$rep":"a:k","n":50000},["A:k,k,k,m"],{"$rep":"c:m","n":11}]},true],"count=50004 size=2 has=n=11"]
+        ] },
         solution: {
           approach: `<p>Wrap instead of extend: the counter class holds a <code>Set</code> and forwards to it. Because the inner set is a different object, its internal self-calls never reach our overrides, so each attempt is counted exactly once, and the wrapper works with any <code>Set</code> implementation.</p>`,
           code: `import java.util.*;
@@ -3026,6 +3179,18 @@ public class Main {
           `<p>Hint 2: <code>equals</code>: same reference → true; <code>o instanceof Employee e</code>; compare <code>id == e.id</code>. <code>hashCode</code>: <code>Integer.hashCode(id)</code>.</p>`,
           `<p>Hint 3: Make fields <code>final</code> (keys must not change). Add <code>toString</code> for readable output. Which name survives? The first one added — <code>HashSet.add</code> keeps the existing element and returns false.</p>`
         ],
+        tests: { sig: 'int[] string[] -> string', fn: 'empCheck',
+          harness: { java: `class Check { static String empCheck(int[] ids, String[] names) { Set<Employee> set = new HashSet<>(); int added = 0; Employee first = null; for (int i = 0; i < ids.length; i++) { Employee e = new Employee(ids[i], names[i]); if (first == null) first = e; if (set.add(e)) added++; } return "size=" + set.size() + " added=" + added + " first=" + first + " contains=" + set.contains(new Employee(ids[0], "zzz")); } }` }, cases: [
+          [[[7,9,7],["Asha","Ben","ASHA "]],"size=2 added=2 first=Employee{id=7, name=Asha} contains=true"],
+          [[[1],["x"]],"size=1 added=1 first=Employee{id=1, name=x} contains=true"],
+          [[[5,5,5],["a","b","c"]],"size=1 added=1 first=Employee{id=5, name=a} contains=true"],
+          [[[1,2,3],["a","b","c"]],"size=3 added=3 first=Employee{id=1, name=a} contains=true"],
+          [[[3,2,1,2,3],["a","b","c","d","e"]],"size=3 added=3 first=Employee{id=3, name=a} contains=true"],
+          [[[2147483647,2147483647,1],[" pad ","q","r"]],"size=2 added=2 first=Employee{id=2147483647, name=pad} contains=true"],
+          [[[1,1],["  Asha  ","Asha"]],"size=1 added=1 first=Employee{id=1, name=Asha} contains=true"],
+          [[{"$range":[1,1000001]},{"$rep":"n","n":1000000}],"size=1000000 added=1000000 first=Employee{id=1, name=n} contains=true"],
+          [[{"$concat":[{"$range":[1,500001]},{"$range":[1,500001]}]},{"$rep":"m","n":1000000}],"size=500000 added=500000 first=Employee{id=1, name=m} contains=true"]
+        ] },
         solution: {
           approach: `<p>Define equality by <code>id</code> only, and derive <code>hashCode</code> from exactly that field so equal employees always land in the same bucket. Fields are final so a key can never move buckets. <code>toString</code> makes debugging and logs readable.</p>`,
           code: `import java.util.*;
@@ -3141,6 +3306,9 @@ public class Main {
       `<p>Hint 2: <code>p</code> is declared <code>Parent</code>: <code>p.name</code> → Parent's field, <code>p.kind()</code> → Parent.kind(). <code>getName()</code> is overridden → Child's version, which reads Child's own <code>name</code>.</p>`,
       `<p>Hint 3: After the cast, the declared type is <code>Child</code>, so all three resolve to Child's members. The object never changed — only the label did.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "Parent Child P\nChild Child C\nPC" }
+    ] },
     solution: {
       approach: `<p>Separate compile-time binding (fields, statics, overload choice) from runtime dispatch (overridden instance methods). Then fix the design smell: keep fields <code>private</code> and expose them through methods, so the hidden-field confusion cannot happen.</p>`,
       code: `class Parent {
@@ -3207,6 +3375,22 @@ public class Main {
       `<p>Hint 2: <code>sealed interface Shape permits Circle, Rectangle, Triangle { double area(); }</code> with records works nicely; validate in compact constructors.</p>`,
       `<p>Hint 3: <code>totalArea</code> = loop or <code>shapes.stream().mapToDouble(Shape::area).sum()</code>. Empty list → 0.0.</p>`
     ],
+    tests: { sig: 'string[] -> double', fn: 'areaCheck', cmp: 'float',
+      harness: { java: `class Check { record Square(double s) implements Shape { public double area() { return s * s; } } static double areaCheck(String[] specs) { try { List<Shape> list = new ArrayList<>(); for (String s : specs) { String[] p = s.split(":"); double a = Double.parseDouble(p[1]); if (p[0].equals("C")) list.add(new Circle(a)); else if (p[0].equals("R")) list.add(new Rectangle(a, Double.parseDouble(p[2]))); else if (p[0].equals("T")) list.add(new Triangle(a, Double.parseDouble(p[2]))); else list.add(new Square(a)); } return Main.totalArea(list); } catch (IllegalArgumentException e) { return -1; } } }` }, cases: [
+      [[["C:1","R:2:3","T:4:5"]],19.14159265358979],
+      [[[]],0],
+      [[["C:0"]],0],
+      [[["R:0:5"]],0],
+      [[["C:-1"]],-1],
+      [[["R:2:-3"]],-1],
+      [[["T:-4:5"]],-1],
+      [[["T:3:4"]],6],
+      [[["Q:3"]],9],
+      [[["C:1","Q:2"]],7.141592653589793],
+      [[["C:10000","R:10000:10000","T:10000:10000"]],464159265.35897934],
+      [[{"$rep":"R:10000:10000","n":100000}],10000000000000],
+      [[{"$rep":"C:0.5","n":100000}],78539.81633964738]
+    ] },
     solution: {
       approach: `<p>Each shape owns its formula behind a common <code>area()</code> contract; <code>totalArea</code> depends only on that contract, so new shapes plug in without edits. Records keep the data classes tiny and immutable.</p>`,
       code: `import java.util.*;
@@ -3275,6 +3459,9 @@ Object o = "hi";  print(o);  print("hi");</pre>`,
       `<p>Hint 2: <code>char</code> widens to <code>int</code> and to <code>long</code> in phase 1; <code>int</code> is more specific than <code>long</code>. <code>5L</code> fits only <code>long</code> without boxing.</p>`,
       `<p>Hint 3: null → most specific reference type among applicable (String over Object). If there were also <code>print(Integer)</code>, <code>print(null)</code> would be ambiguous.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "String\nint\nlong\nObject\nString\nObject" }
+    ] },
     solution: {
       approach: `<p>For each call, list the applicable overloads in phase 1 (widening only), then pick the most specific. No call here needs boxing or varargs.</p>`,
       code: `public class Main {
@@ -3334,6 +3521,9 @@ public class Main {
       `<p>Hint 2: <code>super.hi()</code> from C: the nearest hi above C is A.hi (B does not override hi). It calls <code>who()</code> — virtual on the C object.</p>`,
       `<p>Hint 3: who() lookup from C: C (no) → B (yes) → "B". So "hi from B" + "!".</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "hi from B!\nhi from B\nhi from A" }
+    ] },
     solution: {
       approach: `<p>Trace each call with two questions: which body runs (super = start lookup at the parent; otherwise start at the object's class), and what is <code>this</code> (always the original object). Every unqualified call inside a method is <code>this.method()</code> → virtual.</p>`,
       code: `class A {
@@ -3402,6 +3592,9 @@ public class Main {
       `<p>Hint 2: <code>describe()</code> in Base() is a virtual call; the object's class is Derived from the very first moment.</p>`,
       `<p>Hint 3: Fix: never call overridable methods from constructors. Make the helper <code>private</code>/<code>final</code>, or move the work to a static factory that runs after construction.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "Base sees: null:0\nDerived sees: box:10\nready: box:10" }
+    ] },
     solution: {
       approach: `<p>Trace: allocate (label=null, size=0) → Derived() calls super() → Base() calls describe() virtually → Derived.describe → "null:0" → Base returns → Derived's field initializers set size=10, label="box" → Derived body prints "box:10". The fix makes construction self-contained and moves "announce" logic to a factory method called after the object is complete.</p>`,
       code: `class Base {
@@ -3482,6 +3675,9 @@ public class Main {
       `<p>Hint 2: byte → long widens (phase 1). Integer → Integer exact. Long → Object widens. double → nothing in phase 1; phase 2 boxes to Double → Object.</p>`,
       `<p>Hint 3: <code>List&lt;Integer&gt;</code> has <code>remove(int index)</code> and <code>remove(Object o)</code>. An int literal matches <code>remove(int)</code> in phase 1.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "long Integer Object Object\n[10]" }
+    ] },
     solution: {
       approach: `<p>Apply the three phases to each call; stop at the first phase with a match and choose the most specific candidate. For the list, overload resolution picks <code>remove(int)</code> for an int argument — use <code>Integer.valueOf</code> (or a cast to <code>Object</code>) to remove by value.</p>`,
       code: `import java.util.*;
@@ -3543,6 +3739,21 @@ public class Main {
       `<p>Hint 2: <code>interface Rentable { long dailyRate(); default long cost(int days) {...} }</code>, <code>interface Insurable { default long insurance(int days) { return 5_000L * days; } }</code>.</p>`,
       `<p>Hint 3: Bike overrides <code>cost</code>. Use integer math: <code>c * 90 / 100</code>. Validate days ≥ 1.</p>`
     ],
+    tests: { sig: 'string int -> long', fn: 'rentCheck',
+      harness: { java: `class Check { static long rentCheck(String kind, int days) { return Main.quote(kind.equals("car") ? new Car() : new Bike(), days); } }` }, cases: [
+      [["car",7],1295000],
+      [["car",3],615000],
+      [["bike",7],350000],
+      [["car",1],205000],
+      [["car",6],1230000],
+      [["car",8],1480000],
+      [["car",365],67525000],
+      [["bike",1],50000],
+      [["bike",6],300000],
+      [["bike",365],18250000],
+      [["bike",8],400000],
+      [["car",14],2590000]
+    ] },
     solution: {
       approach: `<p>Capabilities as interfaces with default methods hold the shared rules once. Classes implement whichever capabilities they have and override only what differs (Bike's cost). <code>quote</code> depends on the interfaces and uses pattern matching for the optional capability.</p>`,
       code: `interface Rentable {
@@ -3633,6 +3844,9 @@ public class Main {
       `<p>Hint 2: Effective Java: you cannot extend an instantiable class, add a value component, and preserve the equals contract. Prefer composition: <code>ColorPoint</code> <b>has</b> a Point and exposes <code>asPoint()</code>.</p>`,
       `<p>Hint 3: With records: <code>record Point(int x, int y)</code> and <code>record ColorPoint(Point point, String color)</code> — generated equals/hashCode are symmetric and consistent automatically.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "false false\ntrue\nfalse true" }
+    ] },
     solution: {
       approach: `<p>Trace each equals call by its receiver: <code>p.equals(red)</code> uses Point's rule (true); <code>red.equals(p)</code> uses ColorPoint's rule (false). <code>HashSet.contains(p)</code> finds the bucket by hash (both hash to 33) and then evaluates <code>p.equals(red)</code> → true, while <code>List.of(p).contains(red)</code> evaluates <code>red.equals(p)</code> → false. Ask the same question from the other side and the answer flips — that is what an asymmetric equals does to collections. The fix is to stop pretending a ColorPoint IS-A Point for equality: compose it (ColorPoint has a Point) and let records generate symmetric, consistent equals/hashCode.</p>`,
       code: `import java.util.*;
@@ -3700,6 +3914,9 @@ public class Main {
       `<p>Hint 2: A: only Polite (which overrides Greeter) → "Hello, please". B: Base.greet exists → "Base".</p>`,
       `<p>Hint 3: C overrides and calls both: <code>Loud.super.greet()</code> = "HEY", <code>Polite.super.greet()</code> = "Hello" + ", please".</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "Hello, please\nBase\nHEY / Hello, please" }
+    ] },
     solution: {
       approach: `<p>Resolve each class with the diamond rules. Note that <code>Greeter.super.greet()</code> is legal inside Polite because Greeter is Polite's direct superinterface; similarly C may name Loud and Polite (its direct superinterfaces) but not Greeter.</p>`,
       code: `interface Greeter { default String greet() { return "Hello"; } }
@@ -3761,6 +3978,22 @@ public class Main {
       `<p>Hint 2: <code>protected abstract T parse(String line)</code>; <code>protected boolean validate(T item) { return true; }</code> as a hook.</p>`,
       `<p>Hint 3: Catch <code>IllegalArgumentException</code> (NumberFormatException is a subclass) per line. Return a small record <code>Result&lt;T&gt;(List&lt;T&gt; accepted, int rejected)</code>.</p>`
     ],
+    tests: { sig: 'string[] -> string', fn: 'impCheck',
+      harness: { java: `class Check { static String impCheck(String[] lines) { Result<User> r = new UserImporter().run(Arrays.asList(lines)); List<User> a = r.accepted(); String s = a.size() <= 10 ? a.toString() : "n=" + a.size() + " first=" + a.get(0) + " last=" + a.get(a.size() - 1); return s + " rejected=" + r.rejected(); } }` }, cases: [
+      [[["asha,31","","ben,x","chen,200","dev,45"]],"[User[name=asha, age=31], User[name=dev, age=45]] rejected=2"],
+      [[[]],"[] rejected=0"],
+      [[["","   ","\t"]],"[] rejected=0"],
+      [[["a,0","b,150"]],"[User[name=a, age=0], User[name=b, age=150]] rejected=0"],
+      [[["a,-1","b,151"]],"[] rejected=2"],
+      [[["a","a,1,2","a,"]],"[] rejected=3"],
+      [[["  x , 5  "]],"[User[name=x, age=5]] rejected=0"],
+      [[["a,1.5","a,2147483648","a,abc","a,"]],"[] rejected=4"],
+      [[["a,+7","b,007"]],"[User[name=a, age=7], User[name=b, age=7]] rejected=0"],
+      [[["a,1","a,1"]],"[User[name=a, age=1], User[name=a, age=1]] rejected=0"],
+      [[["a,99999999999999999999"]],"[] rejected=1"],
+      [[{"$rep":"a,1","n":1000000}],"n=1000000 first=User[name=a, age=1] last=User[name=a, age=1] rejected=0"],
+      [[{"$concat":[{"$rep":"","n":300000},{"$rep":"bad","n":300000},{"$rep":"z,200","n":300000},["ok,5"]]}],"[User[name=ok, age=5]] rejected=600000"]
+    ] },
     solution: {
       approach: `<p>The abstract parent owns the robust loop in a <code>final</code> method; subclasses only describe how to parse one line and (optionally) what makes an item valid. Every future importer automatically gets the same error handling and statistics.</p>`,
       code: `import java.util.*;
@@ -3850,6 +4083,56 @@ public class Main {
       `<p>Hint 2: <code>simplify</code> looks at <b>shapes</b> of subtrees (Neg inside Neg, Num(0) on one side) — a perfect job for a switch with nested record patterns: <code>case Neg(Neg(Expr inner)) -&gt; simplify(inner)</code>.</p>`,
       `<p>Hint 3: Simplify children first (bottom-up), then match on the simplified results. Put the more specific pattern (<code>Neg(Neg(...))</code>) before the general one (<code>Neg(Expr e)</code>) or the compiler reports dominance.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'exprCheck',
+      harness: { java: `class Check {
+  static int pos;
+  static String[] tk;
+  static Expr parse() {
+    String t = tk[pos++];
+    if (t.equals("(")) {
+      String op = tk[pos++];
+      Expr r;
+      if (op.equals("neg")) r = new Neg(parse());
+      else { Expr a = parse(), b = parse(); r = op.equals("+") ? new Add(a, b) : new Mul(a, b); }
+      pos++;
+      return r;
+    }
+    return new Num(Long.parseLong(t));
+  }
+  static String exprCheck(String s) {
+    tk = s.replace("(", " ( ").replace(")", " ) ").trim().split("\\\\s+");
+    pos = 0;
+    Expr e = parse();
+    Expr m = Main.simplify(e);
+    return e.show() + " = " + e.eval() + " -> " + m.show() + " = " + m.eval();
+  }
+}` }, cases: [
+      [["(* (+ 2 3) (neg 4))"],"((2 + 3) * -4) = -20 -> ((2 + 3) * -4) = -20"],
+      [["(* (+ (neg (neg 7)) 0) 1)"],"((--7 + 0) * 1) = 7 -> 7 = 7"],
+      [["5"],"5 = 5 -> 5 = 5"],
+      [["(neg 5)"],"-5 = -5 -> -5 = -5"],
+      [["(neg (neg 5))"],"--5 = 5 -> 5 = 5"],
+      [["(+ 0 9)"],"(0 + 9) = 9 -> 9 = 9"],
+      [["(* 0 (+ 3 4))"],"(0 * (3 + 4)) = 0 -> 0 = 0"],
+      [["(* (+ 3 4) 0)"],"((3 + 4) * 0) = 0 -> 0 = 0"],
+      [["(* 1 (* 1 (* 1 6)))"],"(1 * (1 * (1 * 6))) = 6 -> 6 = 6"],
+      [["(+ (* 1 0) 0)"],"((1 * 0) + 0) = 0 -> 0 = 0"],
+      [["(neg (+ 0 (neg 5)))"],"-(0 + -5) = 5 -> 5 = 5"],
+      [["(neg (neg (neg 5)))"],"---5 = -5 -> -5 = -5"],
+      [["(+ (* 2 3) (* 4 5))"],"((2 * 3) + (4 * 5)) = 26 -> ((2 * 3) + (4 * 5)) = 26"],
+      [["(* (neg 3) (neg 4))"],"(-3 * -4) = 12 -> (-3 * -4) = 12"],
+      [["(neg 0)"],"-0 = 0 -> -0 = 0"],
+      [["(+ 0 0)"],"(0 + 0) = 0 -> 0 = 0"],
+      [["(* 9223372036854775807 2)"],"(9223372036854775807 * 2) = -2 -> (9223372036854775807 * 2) = -2"],
+      [["(+ 9223372036854775807 1)"],"(9223372036854775807 + 1) = -9223372036854775808 -> (9223372036854775807 + 1) = -9223372036854775808"],
+      [["(neg -9223372036854775808)"],"--9223372036854775808 = -9223372036854775808 -> --9223372036854775808 = -9223372036854775808"],
+      [["(neg 9223372036854775807)"],"-9223372036854775807 = -9223372036854775807 -> -9223372036854775807 = -9223372036854775807"],
+      [[{"$concat":[{"$rep":"(neg ","n":1000},"5",{"$rep":")","n":1000}]}],"----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------5 = 5 -> 5 = 5"],
+      [[{"$concat":[{"$rep":"(+ 1 ","n":999},"1",{"$rep":")","n":999}]}],"(1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + 1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) = 1000 -> (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + (1 + 1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) = 1000"],
+      [[{"$concat":[{"$rep":"(* 1 ","n":999},"7",{"$rep":")","n":999}]}],"(1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * (1 * 7))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) = 7 -> 7 = 7"],
+      [[{"$concat":[{"$rep":"(+ 0 ","n":999},"7",{"$rep":")","n":999}]}],"(0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + (0 + 7))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) = 7 -> 7 = 7"],
+      [[{"$concat":[{"$rep":"(* 2 ","n":62},"1",{"$rep":")","n":62}]}],"(2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * 1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) = 4611686018427387904 -> (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * (2 * 2))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) = 4611686018427387904"]
+    ] },
     solution: {
       approach: `<p>Use both styles where each shines: <b>overriding</b> for operations every type implements uniformly (<code>eval</code>, <code>show</code>), and a <b>sealed + pattern-matching switch</b> for a cross-cutting operation that inspects nested shapes (<code>simplify</code>). Records make nodes immutable, so simplified trees can safely share subtrees.</p>`,
       code: `sealed interface Expr permits Num, Add, Mul, Neg {
@@ -3955,6 +4238,9 @@ public class Main {
       `<p>Hint 2: JLS §4.12.4: <code>final</code> + primitive/String + constant-expression initialiser = constant variable. References to it compile to the literal value.</p>`,
       `<p>Hint 3: So in the first call, <code>constant</code>→5 and <code>label</code>→"L" (inlined), <code>computed</code>→0 and <code>boxed</code>→null (real field reads of defaults).</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "5 0 L null\n5 7 L 9" }
+    ] },
     solution: {
       approach: `<p>Combine two rules: (1) the parent constructor's virtual call runs the child method before child fields are initialised, so real field reads see defaults; (2) constant variables are not real reads — javac substitutes their values at compile time. The fix for production code is the same as always: do not call overridable methods from constructors.</p>`,
       code: `class Base {
@@ -4024,6 +4310,47 @@ public class Main {
       `<p>Hint 2: The engine <b>has</b> a <code>List&lt;DiscountRule&gt;</code> (injected) and loops: d = clamp(rule.discount(...), 0, total); total -= d; log it.</p>`,
       `<p>Hint 3: <code>BestOf</code> implements DiscountRule and returns the max of its children for the same running total. Clamp inside the engine so a buggy rule cannot create a negative total.</p>`
     ],
+    tests: { sig: 'string[] string[] -> string', fn: 'priceCheck',
+      harness: { java: `class Check {
+  static DiscountRule rule(String s) {
+    String[] p = s.split(":", 2 + 0);
+    String[] q = s.split(":");
+    if (q[0].equals("B")) return new BulkItemOff(q[1], Integer.parseInt(q[2]), Integer.parseInt(q[3]));
+    if (q[0].equals("P")) return new PercentOff(Integer.parseInt(q[1]));
+    if (q[0].equals("F")) return new FlatOff(Long.parseLong(q[1]), Long.parseLong(q[2]));
+    List<DiscountRule> opts = new ArrayList<>();
+    for (String o : p[1].split("\\\\|")) opts.add(rule(o));
+    return new BestOf(opts);
+  }
+  static String priceCheck(String[] cart, String[] rules) {
+    List<Item> items = new ArrayList<>();
+    for (String c : cart) { String[] p = c.split(":"); items.add(new Item(p[0], Long.parseLong(p[1]), Integer.parseInt(p[2]))); }
+    List<DiscountRule> rs = new ArrayList<>();
+    for (String r : rules) rs.add(rule(r));
+    List<String> log = new ArrayList<>();
+    long total = new PricingEngine(rs).checkout(items, log);
+    return total + " applied=" + log.size();
+  }
+}` }, cases: [
+      [[["shirt:1000:2","socks:100:5"],["B:socks:5:20","X:P:10|F:300:2000"]],"2100 applied=2"],
+      [[[],[]],"0 applied=0"],
+      [[["a:100:1"],[]],"100 applied=0"],
+      [[["a:100:1"],["F:500:0"]],"0 applied=1"],
+      [[["a:100:1"],["P:100","P:50"]],"0 applied=1"],
+      [[["a:100:3"],["B:a:3:50"]],"150 applied=1"],
+      [[["a:100:3"],["B:a:4:50"]],"300 applied=0"],
+      [[["a:100:3"],["B:b:1:50"]],"300 applied=0"],
+      [[["a:99:1"],["P:10"]],"90 applied=1"],
+      [[["a:7:1"],["P:10"]],"7 applied=0"],
+      [[["a:1000:1"],["F:300:1000","F:300:1000","F:300:1000","F:300:1000"]],"700 applied=1"],
+      [[["a:1000:1"],["F:300:1001"]],"1000 applied=0"],
+      [[["a:50:2","a:50:1"],["B:a:2:10"]],"140 applied=1"],
+      [[["a:10:10","b:20:5"],["X:B:a:10:50|B:b:5:10|P:5","P:10","F:1:1"]],"134 applied=3"],
+      [[["a:1:1"],["X:P:0|F:0:0"]],"1 applied=0"],
+      [[{"$rep":"i:1:1","n":10000},["P:10"]],"9000 applied=1"],
+      [[{"$rep":"i:1000000:1000","n":10000},{"$concat":[{"$rep":"P:1","n":25},{"$rep":"F:1000:5","n":25}]}],"7778213569002 applied=50"],
+      [[["a:5:5"],{"$rep":"P:1","n":50}],"25 applied=0"]
+    ] },
     solution: {
       approach: `<p>Strategy + Composite via composition: every promotion is an independent <code>DiscountRule</code>; <code>BestOf</code> is a rule made of rules; the engine owns ordering, clamping and logging and never changes when rules are added. Records keep rules immutable and self-describing (their <code>toString</code> doubles as the log label).</p>`,
       code: `import java.util.*;
@@ -4143,6 +4470,9 @@ public class Main {
       `<p>Hint 2: For each statement decide: reassign b's field (a unaffected) or mutate a shared object (a affected). Order matters: the coach is mutated <i>before</i> b.coach is reassigned.</p>`,
       `<p>Hint 3: Fix with a copy constructor: <code>new ArrayList&lt;&gt;(other.members)</code>, <code>new Coach(other.coach.name)</code>, <code>other.scores.clone()</code>. Strings are immutable, so sharing them is safe.</p>`
     ],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "Lions [x, y] Ravi 1\nTigers [x, y, z] Sam 99" }
+    ] },
     solution: {
       approach: `<p>Classify each field: immutable (String) → share; mutable (List, Coach, int[]) → copy. A copy constructor makes this explicit, works with final fields (clone() cannot assign final fields after <code>super.clone()</code>), and needs no <code>Cloneable</code>, casts or checked exceptions.</p>`,
       code: `import java.util.*;

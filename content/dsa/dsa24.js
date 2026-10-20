@@ -375,7 +375,7 @@ for s in ["abba", "abacabad", "aaaa"]:
       statement: `<p>Given a string <code>s</code>, return the number of palindromic substrings in it. Substrings at different positions count separately even if they have the same letters.</p>`,
       constraints: `1 ≤ |s| ≤ 10<sup>6</sup> (the original LeetCode 647 has 1000 — we push it so O(N<sup>2</sup>) is not enough), lowercase letters`,
       example: `<p>s = <code>"aaa"</code> → <b>6</b>: ${H.c('g', 'a, a, a')} (length 1), ${H.c('b', 'aa, aa')} (length 2), ${H.c('p', 'aaa')} (length 3).</p><p>s = <code>"abc"</code> → <b>3</b>: only the single letters.</p>`,
-      brute: { why: `<p>Check all N(N+1)/2 substrings, each in O(N) → O(N<sup>3</sup>). Even expand-around-center (O(N<sup>2</sup>)) does ~2.5·10<sup>11</sup> steps on <code>"aaa…a"</code> with N = 10<sup>6</sup>. The wasted work: re-discovering the same mirrored characters again and again.</p>`, code: `
+      brute: { why: `<p>Check all N(N+1)/2 substrings, each in O(N) → O(N<sup>3</sup>). Even expand-around-center (O(N<sup>2</sup>)) does ~2.5·10<sup>11</sup> steps on <code>"aaa…a"</code> with N = 10<sup>6</sup>. The wasted work: re-discovering the same mirrored characters again and again.</p>`, code: { lang: 'java', code: `
         class Brute {
             int countSubstrings(String s) {
                 int n = s.length(), count = 0;
@@ -387,7 +387,44 @@ for s in ["abba", "abacabad", "aaaa"]:
                     }
                 return count;
             }
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+class Brute:
+    def countSubstrings(self, s: str) -> int:
+        n, count = len(s), 0
+        for i in range(n):
+            for j in range(i, n):
+                l, r = i, j
+                while l < r and s[l] == s[r]:
+                    l += 1
+                    r -= 1
+                if l >= r:
+                    count += 1                        # s[i..j] is a palindrome
+        return count` }, { lang: 'js', code: String.raw`
+function countSubstrings(s) {
+  const n = s.length;
+  let count = 0;
+  for (let i = 0; i < n; i++)
+    for (let j = i; j < n; j++) {
+      let l = i, r = j;
+      while (l < r && s[l] === s[r]) { l++; r--; }
+      if (l >= r) count++;                            // s[i..j] is a palindrome
+    }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    long long countSubstrings(const string& s) {
+        int n = s.size();
+        long long count = 0;
+        for (int i = 0; i < n; i++)
+            for (int j = i; j < n; j++) {
+                int l = i, r = j;
+                while (l < r && s[l] == s[r]) { l++; r--; }
+                if (l >= r) count++;                  // s[i..j] is a palindrome
+            }
+        return count;
+    }
+};` }] } },
       mcq: { q: 'P over the padded string at some center is 5. How many palindromic substrings share this center?', options: ['5', '3 (lengths 5, 3, 1)', '2', '1'], answer: 1, explain: 'Peeling one character off each end keeps a palindrome: lengths 5, 3, 1 → (5 + 1)/2 = 3.' },
       hints: [`<p>Every palindrome has exactly one center in the <code>#</code>-padded string, and all palindromes with the same center are nested: if the longest has length P, the others have lengths P−2, P−4, …</p>`, `<p>So the answer is Σ ⌈P[i]/2⌉ = Σ (P[i] + 1) / 2 over all centers. You just need every P[i] — Manacher gives all of them in O(N).</p>`, `<p>Use a 64-bit integer (<code>long</code>, <code>long long</code>; Python ints are unbounded) for the total (N = 10<sup>6</sup> all-same letters gives ~5·10<sup>11</sup>). Recipe: build t, run Manacher, sum (p+1)/2.</p>`],
       tests: { sig: 'string -> long', fn: 'countSubstrings', names: { python: 'countSubstrings' }, cases: [
@@ -1029,7 +1066,7 @@ for word in ["banana", "mississippi", "aaaa"]:
       statement: `<p>You are given a fixed text <code>T</code> and <code>Q</code> query patterns. For each pattern <code>P</code>, return how many times it occurs in <code>T</code> (occurrences may overlap).</p>`,
       constraints: `1 ≤ |T| ≤ 2·10<sup>5</sup>, 1 ≤ Q ≤ 10<sup>5</sup>, Σ|P| ≤ 10<sup>6</sup>, lowercase letters`,
       example: `<p>T = <code>"banana"</code>, queries = [<code>"ana"</code>, <code>"na"</code>, <code>"x"</code>, <code>"banana"</code>] → <b>[2, 2, 0, 1]</b>.</p><p>${H.c('g', '"ana"')} starts at 1 and 3 (they overlap — still both count). ${H.c('r', '"x"')} never appears.</p>`,
-      brute: { why: `<p>Scan T for every query: O(|T|·|P|) per query with naive matching, or O(|T| + |P|) with KMP — still O(Q·|T|) = 2·10<sup>10</sup>. The wasted work: re-reading the same text for every query. Build a reusable index once instead.</p>`, code: `
+      brute: { why: `<p>Scan T for every query: O(|T|·|P|) per query with naive matching, or O(|T| + |P|) with KMP — still O(Q·|T|) = 2·10<sup>10</sup>. The wasted work: re-reading the same text for every query. Build a reusable index once instead.</p>`, code: { lang: 'java', code: `
         class Brute {
             int[] count(String t, String[] qs) {
                 int[] ans = new int[qs.length];
@@ -1040,7 +1077,41 @@ for word in ["banana", "mississippi", "aaaa"]:
                 }
                 return ans;
             }
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+def count_all(text, queries):
+    ans = []
+    for p in queries:
+        frm, c = 0, 0
+        while True:
+            frm = text.find(p, frm)
+            if frm == -1:
+                break
+            c += 1
+            frm += 1                                  # overlapping
+        ans.append(c)
+    return ans` }, { lang: 'js', code: String.raw`
+function countAll(text, queries) {
+  const ans = new Array(queries.length).fill(0);
+  for (let q = 0; q < queries.length; q++) {
+    let from = 0, c = 0;
+    while ((from = text.indexOf(queries[q], from)) !== -1) { c++; from++; }   // overlapping
+    ans[q] = c;
+  }
+  return ans;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    vector<int> countAll(string text, vector<string> queries) {
+        vector<int> ans(queries.size(), 0);
+        for (int q = 0; q < (int)queries.size(); q++) {
+            size_t from = 0;
+            int c = 0;
+            while ((from = text.find(queries[q], from)) != string::npos) { c++; from++; }   // overlapping
+            ans[q] = c;
+        }
+        return ans;
+    }
+};` }] } },
       mcq: { q: 'In a suffix array, the suffixes that start with pattern P…', options: ['are scattered randomly', 'form one contiguous block', 'are always the first |P| entries', 'cannot be found without LCP'], answer: 1, explain: 'Sorted order groups all strings that share a prefix, exactly like a dictionary groups words starting with the same letters.' },
       hints: [`<p>An occurrence of P at index i means P is a <b>prefix</b> of suffix i. In sorted order, all suffixes with prefix P are neighbours.</p>`, `<p>Build the suffix array once (O(N log N)). For each query do a lower bound (first suffix ≥ P) and an upper bound (first suffix whose first |P| chars are &gt; P).</p>`, `<p>Compare a suffix and P only on the first |P| characters; if the suffix ends early it is <i>smaller</i>. Answer = upper − lower. Edge cases: P longer than T, P equal to T.</p>`],
       tests: { sig: 'string string[] -> int[]', fn: 'countAll', cases: [
@@ -1718,7 +1789,7 @@ int main() {
       statement: `<p>Given a string <code>s</code>, return <b>any</b> duplicated substring (a substring that occurs at least twice; occurrences may overlap) that has the longest possible length. If there is none, return <code>""</code>.</p>`,
       constraints: `2 ≤ |s| ≤ 3·10<sup>4</sup>, lowercase English letters (LeetCode 1044)`,
       example: `<p>s = <code>"banana"</code> → <b>"ana"</b> (at ${H.c('g', 'index 1')} and ${H.c('b', 'index 3')}, overlapping). s = <code>"abcd"</code> → <b>""</b> (no letter repeats).</p>`,
-      brute: { why: `<p>For every length L from long to short, put all substrings of length L in a hash set → O(N<sup>2</sup>) substrings, each costing O(N) to hash/copy → O(N<sup>3</sup>) ≈ 2.7·10<sup>13</sup>. The waste: re-hashing the same characters for every L and every start.</p>`, code: `
+      brute: { why: `<p>For every length L from long to short, put all substrings of length L in a hash set → O(N<sup>2</sup>) substrings, each costing O(N) to hash/copy → O(N<sup>3</sup>) ≈ 2.7·10<sup>13</sup>. The waste: re-hashing the same characters for every L and every start.</p>`, code: { lang: 'java', code: `
         class Brute {
             String longestDupSubstring(String s) {
                 int n = s.length();
@@ -1731,7 +1802,44 @@ int main() {
                 }
                 return "";
             }
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+class Brute:
+    def longestDupSubstring(self, s: str) -> str:
+        n = len(s)
+        for length in range(n - 1, 0, -1):
+            seen = set()
+            for i in range(n - length + 1):
+                sub = s[i:i + length]                 # O(len) copy each time
+                if sub in seen:
+                    return sub
+                seen.add(sub)
+        return ""` }, { lang: 'js', code: String.raw`
+function longestDupSubstring(s) {
+  const n = s.length;
+  for (let len = n - 1; len >= 1; len--) {
+    const seen = new Set();
+    for (let i = 0; i + len <= n; i++) {
+      const sub = s.substring(i, i + len);            // O(len) copy each time
+      if (seen.has(sub)) return sub;
+      seen.add(sub);
+    }
+  }
+  return "";
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    string longestDupSubstring(string s) {
+        int n = s.size();
+        for (int len = n - 1; len >= 1; len--) {
+            unordered_set<string> seen;
+            for (int i = 0; i + len <= n; i++) {
+                string sub = s.substr(i, len);        // O(len) copy each time
+                if (!seen.insert(sub).second) return sub;
+            }
+        }
+        return "";
+    }
+};` }] } },
       mcq: { q: 'After building SA and the LCP array, the longest duplicated substring has length…', options: ['the minimum LCP', 'the maximum LCP', 'Σ LCP', 'N − max LCP'], answer: 1, explain: 'A repeated substring is a common prefix of two suffixes; the longest such common prefix is attained by some sorted neighbours, i.e. max lcp.' },
       hints: [`<p>A substring occurs twice ⇔ it is a common prefix of two different suffixes. The longest common prefix of any two suffixes is achieved by two suffixes that are <b>neighbours</b> in sorted order.</p>`, `<p>Build the suffix array, then the LCP array with Kasai. Answer = max lcp[r], starting at SA[r]. (Alternative: binary search on length + Rabin–Karp with a strong hash.)</p>`, `<p>Edge cases: all lcp = 0 → return "". Use the O(N log<sup>2</sup> N) builder — N = 3·10<sup>4</sup> is small. Recipe: SA → rank → Kasai with carried h → track argmax → substring.</p>`],
       tests: { sig: 'string -> string', fn: 'longestDupSubstring', names: { python: 'longestDupSubstring' }, check: "(args, out, exp) => { const s = args[0]; if (typeof out !== 'string' || out.length !== exp.length) return false; return out === '' || s.indexOf(out) !== s.lastIndexOf(out); }", cases: [
@@ -2382,7 +2490,7 @@ print(aho_corasick(["a", "aa", "aaa"], "aaaa"))
       statement: `<p>Given a text and a list of words, return an array where entry k is the number of (possibly overlapping) occurrences of <code>words[k]</code> in the text. Words may repeat in the list and may be prefixes/suffixes of each other.</p>`,
       constraints: `1 ≤ |text| ≤ 10<sup>6</sup>, 1 ≤ k ≤ 10<sup>5</sup>, Σ|words| ≤ 10<sup>5</sup>, lowercase letters. Answers need a 64-bit integer.`,
       example: `<p>text = <code>"ahishers"</code>, words = [he, she, his, hers] → <b>[1, 1, 1, 1]</b>.</p><p>text = <code>"aaaa"</code>, words = [a, aa, aaa] → <b>[4, 3, 2]</b> (${H.c('y', 'aa')} starts at 0, 1, 2).</p>`,
-      brute: { why: `<p>For each word, scan the whole text: O(k · N) = 10<sup>11</sup>. Even listing all matches with plain Aho–Corasick can be O(N · k) on nested words like a, aa, aaa, …, because every position matches many words. The waste: walking the same fail chains again and again.</p>`, code: `
+      brute: { why: `<p>For each word, scan the whole text: O(k · N) = 10<sup>11</sup>. Even listing all matches with plain Aho–Corasick can be O(N · k) on nested words like a, aa, aaa, …, because every position matches many words. The waste: walking the same fail chains again and again.</p>`, code: { lang: 'java', code: `
         class Brute {
             long[] count(String text, String[] words) {
                 long[] ans = new long[words.length];
@@ -2392,7 +2500,37 @@ print(aho_corasick(["a", "aa", "aaa"], "aaaa"))
                 }
                 return ans;
             }
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+def count_occurrences(text, words):
+    ans = [0] * len(words)
+    for k, w in enumerate(words):
+        frm = 0
+        while True:
+            frm = text.find(w, frm)
+            if frm == -1:
+                break
+            ans[k] += 1
+            frm += 1
+    return ans` }, { lang: 'js', code: String.raw`
+function countOccurrences(text, words) {
+  const ans = new Array(words.length).fill(0);
+  for (let k = 0; k < words.length; k++) {
+    let from = 0;
+    while ((from = text.indexOf(words[k], from)) !== -1) { ans[k]++; from++; }
+  }
+  return ans;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    vector<long long> countOccurrences(string text, vector<string> words) {
+        vector<long long> ans(words.size(), 0);
+        for (int k = 0; k < (int)words.size(); k++) {
+            size_t from = 0;
+            while ((from = text.find(words[k], from)) != string::npos) { ans[k]++; from++; }
+        }
+        return ans;
+    }
+};` }] } },
       mcq: { q: 'You counted how many text positions ended in each automaton state. How do you get the count for word w?', options: ['Read the count of w’s node only', 'Sum the counts over w’s subtree in the fail tree', 'Sum counts along the path from root to w in the trie', 'Divide by |w|'], answer: 1, explain: 'A position ends an occurrence of w exactly when w is a suffix of the state’s string, i.e. w’s node is on that state’s fail chain — equivalently the state is in w’s fail-subtree.' },
       hints: [`<p>Scan the text through the automaton and just do <code>cnt[state]++</code> at each position. Don’t walk output chains.</p>`, `<p>w occurs ending at a position iff w’s node is an ancestor of that position’s state in the <b>fail tree</b>. So push counts upward: process nodes in <b>reverse BFS order</b> and do <code>cnt[fail[v]] += cnt[v]</code>.</p>`, `<p>Duplicate words share a node — remember each word’s end node and read <code>cnt[end[k]]</code>. Use 64-bit counts. Recipe: trie → BFS (fail + goto) saving BFS order → scan → reverse-BFS accumulation → read answers.</p>`],
       tests: { sig: 'string string[] -> long[]', fn: 'countOccurrences', cases: [
@@ -2981,7 +3119,7 @@ print("Aa ->", java_hash("Aa"), " BB ->", java_hash("BB"))
       statement: `<p>Return the number of <b>distinct</b> non-empty substrings of <code>text</code> that can be written as <code>a + a</code> (some string concatenated with itself).</p>`,
       constraints: `1 ≤ |text| ≤ 2000, lowercase letters (LeetCode 1316)`,
       example: `<p>text = <code>"abcabcabc"</code> → <b>3</b>: ${H.c('g', 'abcabc')}, ${H.c('b', 'bcabca')}, ${H.c('p', 'cabcab')} (the second <code>abcabc</code> at index 3 is not distinct).</p><p>text = <code>"leetcodeleetcode"</code> → <b>2</b>: <code>ee</code> and <code>leetcodeleetcode</code>.</p>`,
-      brute: { why: `<p>For every start i and half-length L, compare the two halves character by character (O(L)) and store the substring in a HashSet&lt;String&gt; (O(L) to copy and hash) → O(N<sup>3</sup>) ≈ 8·10<sup>9</sup> in the worst case (<code>aaaa…</code>, where nearly everything is an echo). The waste: re-reading characters already hashed.</p>`, code: `
+      brute: { why: `<p>For every start i and half-length L, compare the two halves character by character (O(L)) and store the substring in a HashSet&lt;String&gt; (O(L) to copy and hash) → O(N<sup>3</sup>) ≈ 8·10<sup>9</sup> in the worst case (<code>aaaa…</code>, where nearly everything is an echo). The waste: re-reading characters already hashed.</p>`, code: { lang: 'java', code: `
         class Brute {
             int distinctEchoSubstrings(String text) {
                 int n = text.length();
@@ -2992,7 +3130,39 @@ print("Aa ->", java_hash("Aa"), " BB ->", java_hash("BB"))
                             seen.add(text.substring(i, i + 2 * len));
                 return seen.size();
             }
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+class Brute:
+    def distinctEchoSubstrings(self, text: str) -> int:
+        n = len(text)
+        seen = set()
+        for i in range(n):
+            length = 1
+            while i + 2 * length <= n:
+                if text[i:i + length] == text[i + length:i + 2 * length]:
+                    seen.add(text[i:i + 2 * length])
+                length += 1
+        return len(seen)` }, { lang: 'js', code: String.raw`
+function distinctEchoSubstrings(text) {
+  const n = text.length;
+  const seen = new Set();
+  for (let i = 0; i < n; i++)
+    for (let len = 1; i + 2 * len <= n; len++)
+      if (text.substring(i, i + len) === text.substring(i + len, i + 2 * len))
+        seen.add(text.substring(i, i + 2 * len));
+  return seen.size;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    int distinctEchoSubstrings(string text) {
+        int n = text.size();
+        unordered_set<string> seen;
+        for (int i = 0; i < n; i++)
+            for (int len = 1; i + 2 * len <= n; len++)
+                if (text.compare(i, len, text, i + len, len) == 0)
+                    seen.insert(text.substr(i, 2 * len));
+        return seen.size();
+    }
+};` }] } },
       mcq: { q: 'There are about N<sup>2</sup>/4 = 10<sup>6</sup> candidate (start, half) pairs. You store echo hashes in a set with ONE modulus ≈ 10<sup>9</sup>. What is the main risk?', options: ['Overflow', 'Birthday collisions merge different substrings and undercount', 'TLE', 'None'], answer: 1, explain: 'Up to 10<sup>6</sup> hashes in one set with M ≈ 10<sup>9</sup> gives ≈ 500 expected colliding pairs — the answer becomes wrong. Use a double hash (≈ 10<sup>18</sup>).' },
       hints: [`<p>An echo is fixed by (start i, half-length L). Check “left half == right half” in O(1) with prefix hashes instead of comparing letters.</p>`, `<p>To count <b>distinct</b> echoes, insert the hash of the whole substring text[i, i + 2L) into a hash set of 64-bit values. Only substrings of equal length can be equal, so you can also keep one set per length.</p>`, `<p>Use two moduli with random bases and pack them into one 64-bit integer. Recipe: prefix hashes → loop i, L → if get(i, i+L) == get(i+L, i+2L) add get(i, i+2L) → return set size.</p>`],
       tests: { sig: 'string -> int', fn: 'distinctEchoSubstrings', names: { python: 'distinctEchoSubstrings' }, cases: [
@@ -3591,7 +3761,7 @@ print("LCS =", lcs("abcbc", "bcbcab"))                                          
       statement: `<p>Given two strings <code>s</code> and <code>t</code>, return the length of their longest common <b>substring</b> (contiguous).</p>`,
       constraints: `1 ≤ |s|, |t| ≤ 2.5·10<sup>5</sup>, lowercase letters (SPOJ LCS)`,
       example: `<p>s = <code>"abcbc"</code>, t = <code>"bcbcab"</code> → <b>4</b> (${H.c('g', 'bcbc')}).</p><p>s = <code>"xabcdey"</code>, t = <code>"zzbcdq"</code> → <b>3</b> (${H.c('g', 'bcd')}).</p>`,
-      brute: { why: `<p>The textbook DP <code>dp[i][j] = dp[i−1][j−1] + 1</code> if s[i−1] == t[j−1] is O(|s|·|t|) = 6.25·10<sup>10</sup> steps — far too slow (and a 2D table would need 250 GB). The waste: every (i, j) pair is examined even though most cannot extend a match.</p>`, code: `
+      brute: { why: `<p>The textbook DP <code>dp[i][j] = dp[i−1][j−1] + 1</code> if s[i−1] == t[j−1] is O(|s|·|t|) = 6.25·10<sup>10</sup> steps — far too slow (and a 2D table would need 250 GB). The waste: every (i, j) pair is examined even though most cannot extend a match.</p>`, code: { lang: 'java', code: `
         class Brute {
             int lcs(String s, String t) {
                 int n = s.length(), m = t.length(), best = 0;
@@ -3605,7 +3775,43 @@ print("LCS =", lcs("abcbc", "bcbcab"))                                          
                 }
                 return best;
             }
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+def longest_common_substring(s, t):
+    n, m, best = len(s), len(t), 0
+    prev, cur = [0] * (m + 1), [0] * (m + 1)
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            cur[j] = prev[j - 1] + 1 if s[i - 1] == t[j - 1] else 0
+            best = max(best, cur[j])
+        prev, cur = cur, prev
+    return best` }, { lang: 'js', code: String.raw`
+function longestCommonSubstring(s, t) {
+  const n = s.length, m = t.length;
+  let best = 0, prev = new Array(m + 1).fill(0), cur = new Array(m + 1).fill(0);
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      cur[j] = s[i - 1] === t[j - 1] ? prev[j - 1] + 1 : 0;
+      best = Math.max(best, cur[j]);
+    }
+    [prev, cur] = [cur, prev];
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    int longestCommonSubstring(string s, string t) {
+        int n = s.size(), m = t.size(), best = 0;
+        vector<int> prev(m + 1, 0), cur(m + 1, 0);
+        for (int i = 1; i <= n; i++) {
+            for (int j = 1; j <= m; j++) {
+                cur[j] = s[i - 1] == t[j - 1] ? prev[j - 1] + 1 : 0;
+                best = max(best, cur[j]);
+            }
+            swap(prev, cur);
+        }
+        return best;
+    }
+};` }] } },
       mcq: { q: 'While walking t through the SAM of s, the next char has no edge from state v. What do you do?', options: ['Restart from the root with length 0', 'Follow suffix links (setting l = len(v)) until an edge exists or you reach the root', 'Skip the character and keep l', 'Rebuild the automaton'], answer: 1, explain: 'Like Aho–Corasick fail links: the suffix link is the longest shorter suffix with more occurrences; keep as much of the current match as possible.' },
       hints: [`<p>Keep (v, l): the SAM state and length of the longest suffix of t[0..j] that is a substring of s. Answer = max l over j.</p>`, `<p>On character c: while v ≠ root and v has no c-edge, set v = link(v), l = len(v). If an edge exists, take it and l++; otherwise stay at the root with l = 0.</p>`, `<p>Build the SAM of the shorter string to save memory. Each step increases l by ≤ 1 and each fallback decreases it, so the walk is O(|t|). Return best.</p>`],
       tests: { sig: 'string string -> int', fn: 'longestCommonSubstring', cases: [
@@ -4272,7 +4478,7 @@ print("300 random tests: all three methods agree")
       statement: `<p>Given a string <code>s</code>, return the number of <b>distinct</b> non-empty substrings of <code>s</code>. Follow-up: can you do it in O(N log N) or O(N)?</p>`,
       constraints: `1 ≤ |s| ≤ 500 for the original (LeetCode 1698); solve for |s| ≤ 10<sup>5</sup> in the follow-up. Lowercase letters.`,
       example: `<p>s = <code>"aabbaba"</code> → <b>21</b>. s = <code>"abcdefg"</code> → <b>28</b> (all 7·8/2 substrings are different).</p><p>s = <code>"banana"</code> → <b>15</b>: 21 pairs minus Σlcp = 6 repeats (${H.c('r', 'a ×2, an, ana, n, na')}).</p>`,
-      brute: { why: `<p>Insert every substring into a HashSet&lt;String&gt;: O(N<sup>2</sup>) substrings × O(N) to copy and hash → O(N<sup>3</sup>) time and O(N<sup>3</sup>) memory in the worst case. N = 500 is fine (≈ 2·10<sup>7</sup>), N = 10<sup>5</sup> is impossible.</p>`, code: `
+      brute: { why: `<p>Insert every substring into a HashSet&lt;String&gt;: O(N<sup>2</sup>) substrings × O(N) to copy and hash → O(N<sup>3</sup>) time and O(N<sup>3</sup>) memory in the worst case. N = 500 is fine (≈ 2·10<sup>7</sup>), N = 10<sup>5</sup> is impossible.</p>`, code: { lang: 'java', code: `
         class Brute {
             int countDistinct(String s) {
                 Set<String> set = new HashSet<>();
@@ -4281,7 +4487,31 @@ print("300 random tests: all three methods agree")
                         set.add(s.substring(i, j));
                 return set.size();
             }
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+class Brute:
+    def countDistinct(self, s: str) -> int:
+        seen = set()
+        for i in range(len(s)):
+            for j in range(i + 1, len(s) + 1):
+                seen.add(s[i:j])
+        return len(seen)` }, { lang: 'js', code: String.raw`
+function countDistinct(s) {
+  const set = new Set();
+  for (let i = 0; i < s.length; i++)
+    for (let j = i + 1; j <= s.length; j++)
+      set.add(s.substring(i, j));
+  return set.size;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    long long countDistinct(string s) {
+        unordered_set<string> set;
+        for (int i = 0; i < (int)s.size(); i++)
+            for (int j = i + 1; j <= (int)s.size(); j++)
+                set.insert(s.substr(i, j - i));
+        return set.size();
+    }
+};` }] } },
       mcq: { q: 'With SA + LCP, how many NEW distinct substrings does the suffix at rank r contribute?', options: ['n − SA[r]', 'lcp[r]', '(n − SA[r]) − lcp[r]', '1'], answer: 2, explain: 'Its first lcp[r] prefixes were already counted by the suffix right above it; the remaining prefixes are new.' },
       hints: [`<p>Every substring is a prefix of a suffix. If suffixes are sorted, a prefix that repeats must be shared with the <b>neighbour above</b>.</p>`, `<p>Build SA, then LCP with Kasai. Answer = Σ over ranks of (suffix length − lcp[r]) = N(N+1)/2 − Σ lcp.</p>`, `<p>Use a 64-bit integer (N = 10<sup>5</sup> gives ≈ 5·10<sup>9</sup>). Alternative O(N): suffix automaton, Σ len(v) − len(link(v)). Check: <code>aaaa</code> → 4.</p>`],
       tests: { sig: 'string -> long', fn: 'countDistinct', names: { python: 'countDistinct' }, cases: [
@@ -4454,7 +4684,7 @@ public:
     statement: `<p>Given strings <code>haystack</code> and <code>needle</code>, return the index of the first occurrence of <code>needle</code> in <code>haystack</code>, or −1. Solve it with a rolling hash in O(N + M) expected time — and make it impossible to fool.</p>`,
     constraints: `1 ≤ |haystack|, |needle| ≤ 10<sup>4</sup> (LeetCode 28); think about 10<sup>6</sup>.`,
     example: `<p>haystack = <code>"sadbutsad"</code>, needle = <code>"sad"</code> → <b>0</b> (${H.c('g', 'sad')} at 0 and 6; first wins). needle = <code>"leeto"</code> in <code>"leetcode"</code> → <b>−1</b>.</p>`,
-    brute: { why: `<p>Try every start and compare up to M characters: O(N·M) = 10<sup>8</sup> for 10<sup>4</sup> × 10<sup>4</sup>, and worse on inputs like <code>aaaa…ab</code>. The waste: when the window slides by one we throw away everything we learned about the previous window.</p>`, code: `
+    brute: { why: `<p>Try every start and compare up to M characters: O(N·M) = 10<sup>8</sup> for 10<sup>4</sup> × 10<sup>4</sup>, and worse on inputs like <code>aaaa…ab</code>. The waste: when the window slides by one we throw away everything we learned about the previous window.</p>`, code: { lang: 'java', code: `
       class Brute {
           int strStr(String h, String nd) {
               for (int i = 0; i + nd.length() <= h.length(); i++) {
@@ -4464,7 +4694,35 @@ public:
               }
               return -1;
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+class Brute:
+    def strStr(self, haystack: str, needle: str) -> int:
+        for i in range(len(haystack) - len(needle) + 1):
+            k = 0
+            while k < len(needle) and haystack[i + k] == needle[k]:
+                k += 1
+            if k == len(needle):
+                return i
+        return -1` }, { lang: 'js', code: String.raw`
+function strStr(haystack, needle) {
+  for (let i = 0; i + needle.length <= haystack.length; i++) {
+    let k = 0;
+    while (k < needle.length && haystack[i + k] === needle[k]) k++;
+    if (k === needle.length) return i;
+  }
+  return -1;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    int strStr(string haystack, string needle) {
+        for (int i = 0; i + (int)needle.size() <= (int)haystack.size(); i++) {
+            int k = 0;
+            while (k < (int)needle.size() && haystack[i + k] == needle[k]) k++;
+            if (k == (int)needle.size()) return i;
+        }
+        return -1;
+    }
+};` }] } },
     mcq: { q: 'Both window hashes equal the needle’s hashes. What should a robust solution do before returning i?', options: ['Return immediately — two hashes never collide', 'Verify with a direct substring comparison', 'Recompute with a third modulus', 'Nothing; collisions only happen with mod 2^64'], answer: 1, explain: 'A direct comparison costs O(M) and runs only when the hashes agree, so the expected total stays O(N + M) while the answer becomes always correct.' },
     hints: [`<p>Hash the needle once. Hash the first window, then roll: remove the left char’s contribution (·B<sup>M−1</sup>), multiply by B, add the new right char.</p>`, `<p>Use two prime moduli with <b>random</b> bases so nobody can craft collisions, and add M before taking mod after subtraction.</p>`, `<p>On a hash match, confirm with a direct comparison of the two substrings (<code>regionMatches</code>, slice equality, <code>compare</code>). Edge: needle longer than haystack → −1. Recipe: precompute B<sup>M−1</sup>, loop i from 0, check, then roll if i + M &lt; N.</p>`],
     tests: { sig: 'string string -> int', fn: 'strStr', names: { python: 'strStr' }, cases: [
@@ -4588,7 +4846,7 @@ public:
     statement: `<p>Given strings <code>s</code> and <code>goal</code>, return <code>true</code> if <code>s</code> can become <code>goal</code> after some number of left rotations (moving the first character to the end).</p>`,
     constraints: `1 ≤ |s|, |goal| ≤ 100 (LeetCode 796); make it O(N) for 10<sup>6</sup>.`,
     example: `<p>s = <code>"abcde"</code>, goal = <code>"cdeab"</code> → <b>true</b>: ${H.c('b', 'ab')}${H.c('g', 'cde')} → ${H.c('g', 'cde')}${H.c('b', 'ab')}. goal = <code>"abced"</code> → <b>false</b>.</p>`,
-    brute: { why: `<p>Build all N rotations and compare each with goal: O(N<sup>2</sup>). The waste: every rotation is already sitting inside <code>s + s</code>.</p>`, code: `
+    brute: { why: `<p>Build all N rotations and compare each with goal: O(N<sup>2</sup>). The waste: every rotation is already sitting inside <code>s + s</code>.</p>`, code: { lang: 'java', code: `
       class Brute {
           boolean rotateString(String s, String goal) {
               if (s.length() != goal.length()) return false;
@@ -4596,7 +4854,30 @@ public:
                   if ((s.substring(k) + s.substring(0, k)).equals(goal)) return true;
               return false;
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+class Brute:
+    def rotateString(self, s: str, goal: str) -> bool:
+        if len(s) != len(goal):
+            return False
+        for k in range(max(1, len(s))):
+            if s[k:] + s[:k] == goal:
+                return True
+        return False` }, { lang: 'js', code: String.raw`
+function rotateString(s, goal) {
+  if (s.length !== goal.length) return false;
+  for (let k = 0; k < Math.max(1, s.length); k++)
+    if (s.substring(k) + s.substring(0, k) === goal) return true;
+  return false;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    bool rotateString(string s, string goal) {
+        if (s.size() != goal.size()) return false;
+        for (int k = 0; k < max(1, (int)s.size()); k++)
+            if (s.substr(k) + s.substr(0, k) == goal) return true;
+        return false;
+    }
+};` }] } },
     mcq: { q: 'Every rotation of s appears as a substring of…', options: ['reverse(s)', 's + s', 's + reverse(s)', 'only s itself'], answer: 1, explain: 'Rotation by k = s[k..] + s[..k], which is s+s starting at index k.' },
     hints: [`<p>Lengths must match. Then goal is a rotation of s ⇔ goal occurs in <code>s + s</code>.</p>`, `<p>Use a linear matcher: prefix function (KMP) on <code>goal + "#" + s + s</code>; a value equal to |goal| means a match.</p>`, `<p>The separator must not occur in the strings. Edge: both empty → true.</p>`],
     tests: { sig: 'string string -> bool', fn: 'rotateString', names: { python: 'rotateString' }, cases: [
@@ -4685,7 +4966,7 @@ public:
     statement: `<p>Return <code>true</code> if <code>s</code> can be built by repeating one of its proper substrings two or more times.</p>`,
     constraints: `1 ≤ |s| ≤ 10<sup>4</sup> (LeetCode 459)`,
     example: `<p><code>"abab"</code> → <b>true</b> (${H.c('g', 'ab')} × 2). <code>"aba"</code> → <b>false</b>. <code>"abcabcabcabc"</code> → <b>true</b> (${H.c('g', 'abc')} × 4).</p>`,
-    brute: { why: `<p>For every divisor d of N, rebuild <code>s[0..d) × (N/d)</code> and compare: O(N · number of divisors), fine here, but the string-building wastes memory. A period test does it in one pass.</p>`, code: `
+    brute: { why: `<p>For every divisor d of N, rebuild <code>s[0..d) × (N/d)</code> and compare: O(N · number of divisors), fine here, but the string-building wastes memory. A period test does it in one pass.</p>`, code: { lang: 'java', code: `
       class Brute {
           boolean repeatedSubstringPattern(String s) {
               int n = s.length();
@@ -4695,7 +4976,37 @@ public:
               }
               return false;
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+class Brute:
+    def repeatedSubstringPattern(self, s: str) -> bool:
+        n = len(s)
+        for d in range(1, n // 2 + 1):
+            if n % d != 0:
+                continue
+            if s[:d] * (n // d) == s:
+                return True
+        return False` }, { lang: 'js', code: String.raw`
+function repeatedSubstringPattern(s) {
+  const n = s.length;
+  for (let d = 1; d <= Math.floor(n / 2); d++) {
+    if (n % d !== 0) continue;
+    if (s.substring(0, d).repeat(n / d) === s) return true;
+  }
+  return false;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    bool repeatedSubstringPattern(const string& s) {
+        int n = s.size();
+        for (int d = 1; d <= n / 2; d++) {
+            if (n % d != 0) continue;
+            string built;
+            for (int r = 0; r < n / d; r++) built += s.substr(0, d);
+            if (built == s) return true;
+        }
+        return false;
+    }
+};` }] } },
     mcq: { q: 'The longest proper border (prefix = suffix) of s has length b. The smallest period is…', options: ['b', 'n − b', 'n / b', 'n + b'], answer: 1, explain: 'If s[0..b) = s[n−b..n), shifting s by n − b lines it up with itself, so n − b is a period, and the longest border gives the smallest period.' },
     hints: [`<p>s is a repetition ⇔ its smallest period p divides n and p &lt; n.</p>`, `<p>Prefix function: b = π[n−1] is the longest border; smallest period p = n − b.</p>`, `<p>Return b &gt; 0 && n % (n − b) == 0. Check: <code>"abcab"</code> has b = 2, p = 3, 5 % 3 ≠ 0 → false.</p>`],
     tests: { sig: 'string -> bool', fn: 'repeatedSubstringPattern', names: { python: 'repeatedSubstringPattern' }, cases: [
@@ -4778,7 +5089,7 @@ public:
     statement: `<p>Return the longest palindromic substring of <code>s</code> (any one if several).</p>`,
     constraints: `1 ≤ |s| ≤ 1000 on LeetCode 5; your solution should handle 10<sup>6</sup>.`,
     example: `<p><code>"babad"</code> → <b>"bab"</b> (or "aba"). <code>"cbbd"</code> → <b>"bb"</b> (even length, centered on a gap).</p>`,
-    brute: { why: `<p>Check all O(N<sup>2</sup>) substrings in O(N) each → O(N<sup>3</sup>). Expand-around-center is O(N<sup>2</sup>) — accepted at N = 1000 but 10<sup>12</sup> steps at 10<sup>6</sup> on <code>"aaa…a"</code>.</p>`, code: `
+    brute: { why: `<p>Check all O(N<sup>2</sup>) substrings in O(N) each → O(N<sup>3</sup>). Expand-around-center is O(N<sup>2</sup>) — accepted at N = 1000 but 10<sup>12</sup> steps at 10<sup>6</sup> on <code>"aaa…a"</code>.</p>`, code: { lang: 'java', code: `
       class Brute {
           String longestPalindrome(String s) {
               String best = "";
@@ -4790,7 +5101,42 @@ public:
                   }
               return best;
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+class Brute:
+    def longestPalindrome(self, s: str) -> str:
+        best = ""
+        for i in range(len(s)):
+            for j in range(i, len(s)):
+                l, r = i, j
+                while l < r and s[l] == s[r]:
+                    l += 1
+                    r -= 1
+                if l >= r and j - i + 1 > len(best):
+                    best = s[i:j + 1]
+        return best` }, { lang: 'js', code: String.raw`
+function longestPalindrome(s) {
+  let best = "";
+  for (let i = 0; i < s.length; i++)
+    for (let j = i; j < s.length; j++) {
+      let l = i, r = j;
+      while (l < r && s[l] === s[r]) { l++; r--; }
+      if (l >= r && j - i + 1 > best.length) best = s.substring(i, j + 1);
+    }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    string longestPalindrome(const string& s) {
+        string best = "";
+        for (int i = 0; i < (int)s.size(); i++)
+            for (int j = i; j < (int)s.size(); j++) {
+                int l = i, r = j;
+                while (l < r && s[l] == s[r]) { l++; r--; }
+                if (l >= r && j - i + 1 > (int)best.size()) best = s.substr(i, j - i + 1);
+            }
+        return best;
+    }
+};` }] } },
     mcq: { q: 'In the #-padded string, P[i] = 4 at i = 6. The palindrome in s is…', options: ['s[1..4]', 's[3..6]', 's[1..5]', 's[6..10]'], answer: 0, explain: 'Start = (i − P[i]) / 2 = (6 − 4)/2 = 1, length 4 → s[1..4].' },
     hints: [`<p>Pad with <code>#</code> so every palindrome has a center cell; P[i] then equals the palindrome’s length in s.</p>`, `<p>Manacher: keep the rightmost palindrome [C − P[C], R]; inside it start from min(P[2C − i], R − i), then expand.</p>`, `<p>Track the argmax of P; start = (i − P[i]) / 2, length = P[i]. Single character strings return themselves.</p>`],
     tests: { sig: 'string -> string', fn: 'longestPalindrome', names: { python: 'longestPalindrome' }, check: "(args, out, exp) => { const s = args[0]; if (typeof out !== 'string' || out.length !== exp.length) return false; if (s.indexOf(out) < 0) return false; for (let i = 0, j = out.length - 1; i < j; i++, j--) if (out[i] !== out[j]) return false; return true; }", cases: [
@@ -4891,7 +5237,7 @@ public:
     statement: `<p>DNA is a string over <code>A, C, G, T</code>. Return all 10-letter-long sequences that occur more than once (any order).</p>`,
     constraints: `1 ≤ |s| ≤ 10<sup>5</sup> (LeetCode 187)`,
     example: `<p><code>"AAAAACCCCCAAAAACCCCCCAAAAAGGGTTT"</code> → <b>["AAAAACCCCC", "CCCCCAAAAA"]</b>. <code>"AAAAAAAAAAAAA"</code> → <b>["AAAAAAAAAA"]</b> (reported once even though it appears 4 times).</p>`,
-    brute: { why: `<p>Put every 10-letter <code>substring</code> into a hash map of substring to count: correct, but creates 10<sup>5</sup> string objects and hashes 10 chars each time. Works, yet wastes memory and time; the alphabet has only 4 letters, so 10 letters fit in <b>20 bits</b>.</p>`, code: `
+    brute: { why: `<p>Put every 10-letter <code>substring</code> into a hash map of substring to count: correct, but creates 10<sup>5</sup> string objects and hashes 10 chars each time. Works, yet wastes memory and time; the alphabet has only 4 letters, so 10 letters fit in <b>20 bits</b>.</p>`, code: { lang: 'java', code: `
       class Brute {
           List<String> findRepeatedDnaSequences(String s) {
               Map<String, Integer> cnt = new HashMap<>();
@@ -4902,7 +5248,39 @@ public:
               }
               return res;
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+class Brute:
+    def findRepeatedDnaSequences(self, s: str):
+        cnt = {}
+        res = []
+        for i in range(len(s) - 9):
+            sub = s[i:i + 10]
+            cnt[sub] = cnt.get(sub, 0) + 1
+            if cnt[sub] == 2:
+                res.append(sub)
+        return res` }, { lang: 'js', code: String.raw`
+function findRepeatedDnaSequences(s) {
+  const cnt = new Map(), res = [];
+  for (let i = 0; i + 10 <= s.length; i++) {
+    const sub = s.substring(i, i + 10);
+    const c = (cnt.get(sub) || 0) + 1;
+    cnt.set(sub, c);
+    if (c === 2) res.push(sub);
+  }
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    vector<string> findRepeatedDnaSequences(const string& s) {
+        unordered_map<string, int> cnt;
+        vector<string> res;
+        for (int i = 0; i + 10 <= (int)s.size(); i++) {
+            string sub = s.substr(i, 10);
+            if (++cnt[sub] == 2) res.push_back(sub);
+        }
+        return res;
+    }
+};` }] } },
     mcq: { q: 'Why can this rolling hash never collide?', options: ['Because the modulus is prime', 'Because 2 bits per letter × 10 letters = 20 bits encode the window exactly (injective)', 'Because DNA is random', 'It can collide'], answer: 1, explain: 'With base 4 and no modulus overflow (4<sup>10</sup> = 2<sup>20</sup> fits in an int), the hash is just the window written in base 4 — a perfect encoding.' },
     hints: [`<p>Map A, C, G, T to 0..3. A window of 10 letters is a 20-bit number.</p>`, `<p>Roll with <code>mask = ((mask &lt;&lt; 2) | code) &amp; ((1 &lt;&lt; 20) − 1)</code>. Keep a seen-set and an added-set of ints.</p>`, `<p>Report a window when it is seen for the second time only. Strings shorter than 10 → empty list.</p>`],
     tests: { sig: 'string -> list<string>', fn: 'findRepeatedDnaSequences', cmp: 'set', names: { python: 'findRepeatedDnaSequences' }, cases: [
@@ -4998,7 +5376,7 @@ public:
     statement: `<p>A <b>happy prefix</b> is a non-empty prefix that is also a suffix (excluding the whole string). Return the longest happy prefix of <code>s</code>, or <code>""</code>.</p>`,
     constraints: `1 ≤ |s| ≤ 10<sup>5</sup> (LeetCode 1392)`,
     example: `<p><code>"level"</code> → <b>"l"</b>. <code>"ababab"</code> → <b>"abab"</b> (prefix ${H.c('g', 'abab')}ab, suffix ab${H.c('g', 'abab')} — they overlap, that is allowed).</p>`,
-    brute: { why: `<p>For each length L from N−1 down, compare prefix and suffix of length L: O(N<sup>2</sup>) = 10<sup>10</sup> on <code>"aaaa…ab"</code>. The waste: re-comparing the same characters for every L.</p>`, code: `
+    brute: { why: `<p>For each length L from N−1 down, compare prefix and suffix of length L: O(N<sup>2</sup>) = 10<sup>10</sup> on <code>"aaaa…ab"</code>. The waste: re-comparing the same characters for every L.</p>`, code: { lang: 'java', code: `
       class Brute {
           String longestPrefix(String s) {
               int n = s.length();
@@ -5006,7 +5384,29 @@ public:
                   if (s.regionMatches(0, s, n - len, len)) return s.substring(0, len);
               return "";
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+class Brute:
+    def longestPrefix(self, s: str) -> str:
+        n = len(s)
+        for length in range(n - 1, 0, -1):
+            if s[:length] == s[n - length:]:
+                return s[:length]
+        return ""` }, { lang: 'js', code: String.raw`
+function longestPrefix(s) {
+  const n = s.length;
+  for (let len = n - 1; len > 0; len--)
+    if (s.substring(0, len) === s.substring(n - len)) return s.substring(0, len);
+  return "";
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    string longestPrefix(const string& s) {
+        int n = s.size();
+        for (int len = n - 1; len > 0; len--)
+            if (s.compare(0, len, s, n - len, len) == 0) return s.substr(0, len);
+        return "";
+    }
+};` }] } },
     mcq: { q: 'How do you extend the SUFFIX hash from length L−1 to L (new char z = s[n−L] is added on the LEFT)?', options: ['suf = suf·B + z', 'suf = z·B<sup>L−1</sup> + suf', 'suf = suf + z', 'suf = (suf − z)/B'], answer: 1, explain: 'The new leftmost char is the most significant digit of the length-L suffix, so it is multiplied by B<sup>L−1</sup>.' },
     hints: [`<p>Grow the prefix hash on the right (×B + c) and the suffix hash on the left (c·B<sup>L−1</sup> + old) at the same time.</p>`, `<p>Whenever both hashes agree (two moduli, random bases), remember L. The last such L is the answer.</p>`, `<p>Deterministic alternative: π[n−1] from the prefix function is exactly the answer length.</p>`],
     tests: { sig: 'string -> string', fn: 'longestPrefix', names: { python: 'longestPrefix' }, cases: [
@@ -5097,7 +5497,7 @@ public:
     statement: `<p>Given a string <code>s</code> and Q queries <code>[l, r]</code> (0-based, inclusive), answer for each query whether <code>s[l..r]</code> is a palindrome.</p>`,
     constraints: `1 ≤ |s| ≤ 10<sup>6</sup>, 1 ≤ Q ≤ 10<sup>6</sup>`,
     example: `<p>s = <code>"abacaba"</code>, queries [[0,6], [1,5], [0,1], [2,4]] → <b>[true, true, false, true]</b> (${H.c('g', 'abacaba')}, ${H.c('g', 'bacab')}, ${H.c('r', 'ab')}, ${H.c('g', 'aca')}).</p>`,
-    brute: { why: `<p>Two pointers per query: O(r − l) each → up to 10<sup>12</sup> total. The waste: the same palindromes are re-verified across overlapping queries.</p>`, code: `
+    brute: { why: `<p>Two pointers per query: O(r − l) each → up to 10<sup>12</sup> total. The waste: the same palindromes are re-verified across overlapping queries.</p>`, code: { lang: 'java', code: `
       class Brute {
           boolean[] answer(String s, int[][] qs) {
               boolean[] res = new boolean[qs.length];
@@ -5108,7 +5508,36 @@ public:
               }
               return res;
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def answer(s, queries):
+    res = []
+    for l, r in queries:
+        while l < r and s[l] == s[r]:
+            l += 1
+            r -= 1
+        res.append(l >= r)
+    return res` }, { lang: 'js', code: String.raw`
+function answer(s, queries) {
+  const res = new Array(queries.length);
+  for (let k = 0; k < queries.length; k++) {
+    let [l, r] = queries[k];
+    while (l < r && s[l] === s[r]) { l++; r--; }
+    res[k] = l >= r;
+  }
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    vector<bool> answer(const string& s, const vector<vector<int>>& queries) {
+        vector<bool> res(queries.size());
+        for (int k = 0; k < (int)queries.size(); k++) {
+            int l = queries[k][0], r = queries[k][1];
+            while (l < r && s[l] == s[r]) { l++; r--; }
+            res[k] = l >= r;
+        }
+        return res;
+    }
+};` }] } },
     mcq: { q: 'Which index of the #-padded P array decides query [l, r]?', options: ['l + r', 'l + r + 1', '2l + 1', '(l + r) / 2'], answer: 1, explain: 's[k] sits at t[2k + 1], so the center of s[l..r] in t is (2l + 1 + 2r + 1)/2 = l + r + 1.' },
     hints: [`<p>Run Manacher once. Every query is about a fixed center in the padded string.</p>`, `<p>s[l..r] is a palindrome ⇔ the maximal palindrome at its center is at least as long: P[l + r + 1] ≥ r − l + 1.</p>`, `<p>Use fast I/O for 10<sup>6</sup> queries. Single-character queries are always true (P ≥ 1 at letter cells).</p>`],
     tests: { sig: 'string int[][] -> bool[]', fn: 'answer', cases: [
@@ -5203,7 +5632,7 @@ public:
     statement: `<p>Return the lexicographically smallest string among all rotations of <code>s</code> (canonical form of a necklace — used to compare cyclic strings).</p>`,
     constraints: `1 ≤ |s| ≤ 10<sup>6</sup>, lowercase letters`,
     example: `<p><code>"bca"</code> → <b>"abc"</b>. <code>"baabaa"</code> → <b>"aabaab"</b> (starts at index 1; index 4 gives the same string).</p>`,
-    brute: { why: `<p>Build all N rotations and keep the minimum: N comparisons of length N → O(N<sup>2</sup>) = 10<sup>12</sup>. The waste: when two candidate starts agree on k letters and then differ, we learn that k + 1 starts are hopeless — brute force ignores this.</p>`, code: `
+    brute: { why: `<p>Build all N rotations and keep the minimum: N comparisons of length N → O(N<sup>2</sup>) = 10<sup>12</sup>. The waste: when two candidate starts agree on k letters and then differ, we learn that k + 1 starts are hopeless — brute force ignores this.</p>`, code: { lang: 'java', code: `
       class Brute {
           String minRotation(String s) {
               String best = s;
@@ -5213,7 +5642,34 @@ public:
               }
               return best;
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+class Brute:
+    def minRotation(self, s: str) -> str:
+        best = s
+        for k in range(1, len(s)):
+            r = s[k:] + s[:k]
+            if r < best:
+                best = r
+        return best` }, { lang: 'js', code: String.raw`
+function minRotation(s) {
+  let best = s;
+  for (let k = 1; k < s.length; k++) {
+    const r = s.substring(k) + s.substring(0, k);
+    if (r < best) best = r;
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    string minRotation(const string& s) {
+        string best = s;
+        for (int k = 1; k < (int)s.size(); k++) {
+            string r = s.substr(k) + s.substr(0, k);
+            if (r < best) best = r;
+        }
+        return best;
+    }
+};` }] } },
     mcq: { q: 'Candidates i and j agree on k letters and then s[i+k] &gt; s[j+k]. Which starts can you discard?', options: ['only i', 'i, i+1, …, i+k', 'j..j+k', 'none'], answer: 1, explain: 'For any d ≤ k, rotation i+d is beaten by rotation j+d (they share the same next letters until the bigger letter). So i jumps to i + k + 1.' },
     hints: [`<p>SA view: the answer is the smallest suffix of <code>s + s</code> that starts before |s|. But there is a simpler O(N) two-pointer trick.</p>`, `<p>Keep two candidates i &lt; j and a match length k. Compare s[(i+k) mod n] and s[(j+k) mod n]; on a mismatch, the loser jumps past the compared block.</p>`, `<p>If i == j after a jump, move j forward. Stop when any of i, j, k reaches n; answer starts at min(i, j).</p>`],
     tests: { sig: 'string -> string', fn: 'minRotation', names: { python: 'minRotation' }, cases: [
@@ -5317,7 +5773,7 @@ public:
     statement: `<p>You may add characters only <b>in front of</b> <code>s</code>. Return the shortest palindrome you can make.</p>`,
     constraints: `0 ≤ |s| ≤ 5·10<sup>4</sup> (LeetCode 214); aim for O(N).`,
     example: `<p><code>"aacecaaa"</code> → <b>"aaacecaaa"</b>: the longest palindromic prefix is ${H.c('g', 'aacecaa')}; reverse the leftover ${H.c('r', 'a')} and put it in front.</p><p><code>"abcd"</code> → <b>"dcbabcd"</b> (longest palindromic prefix is just <code>a</code>).</p>`,
-    brute: { why: `<p>For each prefix length from N down, test whether it is a palindrome: O(N) tests × O(N) each = O(N<sup>2</sup>) = 2.5·10<sup>9</sup> on <code>"aaa…ab"</code>-like inputs. The waste: palindrome checks restart from scratch every time.</p>`, code: `
+    brute: { why: `<p>For each prefix length from N down, test whether it is a palindrome: O(N) tests × O(N) each = O(N<sup>2</sup>) = 2.5·10<sup>9</sup> on <code>"aaa…ab"</code>-like inputs. The waste: palindrome checks restart from scratch every time.</p>`, code: { lang: 'java', code: `
       class Brute {
           String shortestPalindrome(String s) {
               int n = s.length();
@@ -5328,7 +5784,39 @@ public:
               }
               return s;
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+class Brute:
+    def shortestPalindrome(self, s: str) -> str:
+        n = len(s)
+        for length in range(n, -1, -1):
+            l, r = 0, length - 1
+            while l < r and s[l] == s[r]:
+                l += 1
+                r -= 1
+            if l >= r:
+                return s[length:][::-1] + s
+        return s` }, { lang: 'js', code: String.raw`
+function shortestPalindrome(s) {
+  const n = s.length;
+  for (let len = n; len >= 0; len--) {
+    let l = 0, r = len - 1;
+    while (l < r && s[l] === s[r]) { l++; r--; }
+    if (l >= r) return s.substring(len).split("").reverse().join("") + s;
+  }
+  return s;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    string shortestPalindrome(const string& s) {
+        int n = s.size();
+        for (int len = n; len >= 0; len--) {
+            int l = 0, r = len - 1;
+            while (l < r && s[l] == s[r]) { l++; r--; }
+            if (l >= r) return string(s.rbegin(), s.rend() - len) + s;
+        }
+        return s;
+    }
+};` }] } },
     mcq: { q: 'In the padded Manacher array, a palindrome centered at i is a PREFIX of s when…', options: ['i + P[i] == 2n', 'i − P[i] == 0', 'P[i] == n', 'i is even'], answer: 1, explain: 'The palindrome spans t[i − P[i] .. i + P[i]]; it starts at the very beginning when i − P[i] = 0.' },
     hints: [`<p>The answer is reverse(s[L..]) + s where L is the length of the <b>longest palindromic prefix</b>.</p>`, `<p>Manacher gives every center’s radius. A center i yields a palindromic prefix of length P[i] exactly when i − P[i] == 0.</p>`, `<p>Take the maximum such P[i] (at least 1 when s is non-empty). Alternative: prefix function of s + "#" + reverse(s). Empty s → "".</p>`],
     tests: { sig: 'string -> string', fn: 'shortestPalindrome', names: { python: 'shortestPalindrome' }, cases: [
@@ -5427,7 +5915,7 @@ public:
     statement: `<p>Design <code>StreamChecker(String[] words)</code> with <code>boolean query(char letter)</code>: letters arrive one by one; after each, return <code>true</code> if some suffix of the stream so far equals one of the words.</p>`,
     constraints: `1 ≤ words.length ≤ 2000, 1 ≤ |word| ≤ 200, up to 4·10<sup>4</sup> queries (LeetCode 1032); think about 10<sup>5</sup> words.`,
     example: `<p>words = [<code>"cd"</code>, <code>"f"</code>, <code>"kl"</code>]; stream a, b, c, ${H.c('g', 'd')}, e, ${H.c('g', 'f')}, g, h, i, j, k, ${H.c('g', 'l')} → true exactly at d (“cd”), f, and l (“kl”).</p>`,
-    brute: { why: `<p>Keep the whole stream; after each letter test <code>endsWith(word)</code> for every word: O(k · |word|) per query = 2000 · 200 = 4·10<sup>5</sup> per letter → 1.6·10<sup>10</sup> total. The waste: forgetting what the previous letters already matched.</p>`, code: `
+    brute: { why: `<p>Keep the whole stream; after each letter test <code>endsWith(word)</code> for every word: O(k · |word|) per query = 2000 · 200 = 4·10<sup>5</sup> per letter → 1.6·10<sup>10</sup> total. The waste: forgetting what the previous letters already matched.</p>`, code: { lang: 'java', code: `
       class BruteStreamChecker {
           private final String[] words;
           private final StringBuilder stream = new StringBuilder();
@@ -5438,7 +5926,41 @@ public:
               for (String w : words) if (cur.endsWith(w)) return true;
               return false;
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+class BruteStreamChecker:
+    def __init__(self, words):
+        self.words = words
+        self.stream = []
+
+    def query(self, letter):
+        self.stream.append(letter)
+        cur = "".join(self.stream)
+        return any(cur.endswith(w) for w in self.words)` }, { lang: 'js', code: String.raw`
+class BruteStreamChecker {
+  constructor(words) {
+    this.words = words;
+    this.stream = "";
+  }
+
+  query(letter) {
+    this.stream += letter;
+    return this.words.some((w) => this.stream.endsWith(w));
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class BruteStreamChecker {
+    vector<string> words;
+    string stream;
+
+public:
+    BruteStreamChecker(vector<string> words) : words(words) {}
+
+    bool query(char letter) {
+        stream.push_back(letter);
+        for (auto& w : words)
+            if (stream.size() >= w.size() && stream.compare(stream.size() - w.size(), w.size(), w) == 0) return true;
+        return false;
+    }
+};` }] } },
     mcq: { q: 'After building the Aho–Corasick automaton, what is the extra work per query?', options: ['O(number of words)', 'O(max word length)', 'O(1): one transition + one boolean lookup', 'O(log N)'], answer: 2, explain: 'With the complete goto table and “ends a word somewhere on my fail chain” precomputed as a boolean, each letter is one table lookup.' },
     hints: [`<p>The question “does a suffix of the stream equal a word?” is exactly what an Aho–Corasick state answers: the state is the longest suffix of the stream that is a trie prefix.</p>`, `<p>Precompute <code>term[v] = isWordEnd[v] || term[fail[v]]</code> in BFS order, so you never walk the fail chain at query time.</p>`, `<p>Alternative (shorter to code): a trie of <b>reversed</b> words and walk the last ≤ 200 letters backwards each query — O(maxLen) per query.</p>`],
     tests: { sig: 'string[] string -> long[]', fn: 'runStream', names: { python: 'runStream' }, harness: {
@@ -5659,7 +6181,7 @@ public:
     statement: `<p>Start with an empty string. In one operation you may append <code>words[i]</code> for <code>costs[i]</code>. Return the minimum total cost to build exactly <code>target</code>, or −1 if impossible.</p>`,
     constraints: `1 ≤ |target| ≤ 5·10<sup>4</sup>, 1 ≤ words.length ≤ 5·10<sup>4</sup>, Σ|words[i]| ≤ 5·10<sup>4</sup>, 1 ≤ costs[i] ≤ 10<sup>4</sup> (LeetCode 3213)`,
     example: `<p>target = <code>"abcdef"</code>, words = [abdef, abc, d, def, ef], costs = [100, 1, 1, 10, 5] → <b>7</b>: ${H.c('g', 'abc')} (1) + ${H.c('b', 'd')} (1) + ${H.c('p', 'ef')} (5).</p><p>target = <code>"aaaa"</code>, words = [z, zz, zzz] → <b>−1</b>.</p>`,
-    brute: { why: `<p>dp[i] = min cost to build target[0..i). For each i try every word with <code>startsWith</code>: O(|target| · Σ|words|) = 2.5·10<sup>9</sup> character checks. The waste: re-matching the same words from scratch at every position.</p>`, code: `
+    brute: { why: `<p>dp[i] = min cost to build target[0..i). For each i try every word with <code>startsWith</code>: O(|target| · Σ|words|) = 2.5·10<sup>9</sup> character checks. The waste: re-matching the same words from scratch at every position.</p>`, code: { lang: 'java', code: `
       class Brute {
           int minimumCost(String target, String[] words, int[] costs) {
               int n = target.length();
@@ -5675,7 +6197,47 @@ public:
               }
               return dp[n] >= INF ? -1 : (int) dp[n];
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def minimum_cost(target, words, costs):
+    n = len(target)
+    INF = float("inf")
+    dp = [INF] * (n + 1)
+    dp[0] = 0
+    for i in range(n):
+        if dp[i] == INF:
+            continue
+        for k, w in enumerate(words):
+            if target.startswith(w, i):
+                dp[i + len(w)] = min(dp[i + len(w)], dp[i] + costs[k])
+    return -1 if dp[n] == INF else dp[n]` }, { lang: 'js', code: String.raw`
+function minimumCost(target, words, costs) {
+  const n = target.length;
+  const dp = new Array(n + 1).fill(Infinity);
+  dp[0] = 0;
+  for (let i = 0; i < n; i++) {
+    if (dp[i] === Infinity) continue;
+    for (let k = 0; k < words.length; k++)
+      if (target.startsWith(words[k], i))
+        dp[i + words[k].length] = Math.min(dp[i + words[k].length], dp[i] + costs[k]);
+  }
+  return dp[n] === Infinity ? -1 : dp[n];
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    int minimumCost(string target, vector<string> words, vector<int> costs) {
+        int n = target.size();
+        const long long INF = LLONG_MAX / 4;
+        vector<long long> dp(n + 1, INF);
+        dp[0] = 0;
+        for (int i = 0; i < n; i++) {
+            if (dp[i] == INF) continue;
+            for (int k = 0; k < (int)words.size(); k++)
+                if (target.compare(i, words[k].size(), words[k]) == 0)
+                    dp[i + words[k].size()] = min(dp[i + words[k].size()], dp[i] + costs[k]);
+        }
+        return dp[n] >= INF ? -1 : (int)dp[n];
+    }
+};` }] } },
     mcq: { q: 'At one target position, how many different words can END there (following dictionary links)?', options: ['Up to the number of words (5·10<sup>4</sup>)', 'At most the number of DISTINCT word lengths, which is O(√Σ|words|) ≈ 316', 'Always 1', 'O(log n)'], answer: 1, explain: 'Words ending at the same position are suffixes of each other, so they have distinct lengths; distinct lengths ℓ<sub>1</sub> &lt; ℓ<sub>2</sub> &lt; … need Σ ≥ 1 + 2 + … ⇒ at most ~√(2·5·10<sup>4</sup>).' },
     hints: [`<p>dp[i] = min over words w that END at position i of dp[i − |w|] + cost(w). Aho–Corasick lists exactly the words ending at each position.</p>`, `<p>Duplicate words: keep the minimum cost at the trie node. Use dictionary links (nearest word-ending node on the fail chain) to enumerate matches without walking empty nodes.</p>`, `<p>Each enumerated node has a distinct depth, so ≤ ~316 per position → ~1.6·10<sup>7</sup> steps. Use 64-bit integers for dp, return −1 if dp[n] is infinite.</p>`],
     tests: { sig: 'string string[] int[] -> int', fn: 'minimumCost', cases: [
@@ -5909,7 +6471,7 @@ public:
     statement: `<p>Given <code>s</code> and an integer <code>k</code>, return the length of the longest substring that occurs at least <code>k</code> times in <code>s</code> (occurrences may overlap). Return 0 if none.</p>`,
     constraints: `1 ≤ |s| ≤ 10<sup>5</sup>, 1 ≤ k ≤ |s|, lowercase letters`,
     example: `<p>s = <code>"banana"</code>: k = 2 → <b>3</b> (${H.c('g', 'ana')}); k = 3 → <b>1</b> (${H.c('g', 'a')}). s = <code>"aaaa"</code>, k = 3 → <b>2</b> (aa at 0, 1, 2).</p>`,
-    brute: { why: `<p>For each length L (from long to short), count all substrings of length L in a hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>): O(N) lengths × O(N) substrings × O(N) hashing = O(N<sup>3</sup>). Binary search on L + rolling hash makes it O(N log N) expected — but SA gives a clean deterministic O(N log N).</p>`, code: `
+    brute: { why: `<p>For each length L (from long to short), count all substrings of length L in a hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>): O(N) lengths × O(N) substrings × O(N) hashing = O(N<sup>3</sup>). Binary search on L + rolling hash makes it O(N log N) expected — but SA gives a clean deterministic O(N log N).</p>`, code: { lang: 'java', code: `
       class Brute {
           int longestKRepeat(String s, int k) {
               int n = s.length();
@@ -5920,7 +6482,42 @@ public:
               }
               return 0;
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def longest_k_repeat(s, k):
+    n = len(s)
+    for length in range(n, 0, -1):
+        cnt = {}
+        for i in range(n - length + 1):
+            sub = s[i:i + length]
+            cnt[sub] = cnt.get(sub, 0) + 1
+            if cnt[sub] >= k:
+                return length
+    return 0` }, { lang: 'js', code: String.raw`
+function longestKRepeat(s, k) {
+  const n = s.length;
+  for (let len = n; len >= 1; len--) {
+    const cnt = new Map();
+    for (let i = 0; i + len <= n; i++) {
+      const sub = s.substring(i, i + len);
+      const c = (cnt.get(sub) || 0) + 1;
+      cnt.set(sub, c);
+      if (c >= k) return len;
+    }
+  }
+  return 0;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    int longestKRepeat(string s, int k) {
+        int n = s.size();
+        for (int len = n; len >= 1; len--) {
+            unordered_map<string, int> cnt;
+            for (int i = 0; i + len <= n; i++)
+                if (++cnt[s.substr(i, len)] >= k) return len;
+        }
+        return 0;
+    }
+};` }] } },
     mcq: { q: 'A substring w occurs ≥ k times ⇔ in SA order there are k consecutive suffixes that…', options: ['all have length ≥ |w|', 'pairwise share a prefix of length ≥ |w| (min of the k−1 lcp values ≥ |w|)', 'have increasing SA values', 'are all distinct'], answer: 1, explain: 'All suffixes starting with w form one contiguous SA block; the common prefix of a block equals the minimum lcp inside it.' },
     hints: [`<p>Suffixes sharing a prefix w sit together in SA. A block of k consecutive ranks shares exactly min(lcp[r+1..r+k−1]) letters.</p>`, `<p>Slide a window of k − 1 consecutive lcp values; answer = max over windows of the window minimum. A monotonic deque gives each minimum in amortised O(1) (DSA 13).</p>`, `<p>k = 1 → whole string (length N). k &gt; N → 0. Recipe: SA → Kasai → sliding-window minimum over lcp[1..N−1] with width k − 1 → max.</p>`],
     tests: { sig: 'string int -> int', fn: 'longestKRepeat', cases: [
@@ -6175,7 +6772,7 @@ public:
     statement: `<p>List all <b>distinct</b> non-empty substrings of <code>s</code> in lexicographic order. Return the k-th one (1-based), or <code>""</code> if there are fewer than k.</p>`,
     constraints: `1 ≤ |s| ≤ 10<sup>5</sup>, 1 ≤ k ≤ 10<sup>10</sup> (needs a 64-bit integer)`,
     example: `<p>s = <code>"banana"</code>: sorted distinct substrings are a, an, ana, anan, anana, b, ba, ban, … → k = 4 → <b>"anan"</b>; k = 6 → <b>"b"</b>; k = 16 → <b>""</b> (only 15 exist).</p>`,
-    brute: { why: `<p>Put all substrings into a TreeSet&lt;String&gt; and walk to the k-th: O(N<sup>2</sup>) strings of length up to N → O(N<sup>3</sup>) memory and time. The waste: we materialise ~5·10<sup>9</sup> strings just to count them.</p>`, code: `
+    brute: { why: `<p>Put all substrings into a TreeSet&lt;String&gt; and walk to the k-th: O(N<sup>2</sup>) strings of length up to N → O(N<sup>3</sup>) memory and time. The waste: we materialise ~5·10<sup>9</sup> strings just to count them.</p>`, code: { lang: 'java', code: `
       class Brute {
           String kth(String s, long k) {
               TreeSet<String> set = new TreeSet<>();
@@ -6184,7 +6781,34 @@ public:
               for (String t : set) if (--k == 0) return t;
               return "";
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def kth(s, k):
+    subs = set()
+    for i in range(len(s)):
+        for j in range(i + 1, len(s) + 1):
+            subs.add(s[i:j])
+    for t in sorted(subs):
+        k -= 1
+        if k == 0:
+            return t
+    return ""` }, { lang: 'js', code: String.raw`
+function kth(s, k) {
+  const set = new Set();
+  for (let i = 0; i < s.length; i++)
+    for (let j = i + 1; j <= s.length; j++) set.add(s.substring(i, j));
+  for (const t of [...set].sort()) if (--k === 0) return t;
+  return "";
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    string kth(string s, long long k) {
+        set<string> subs;
+        for (int i = 0; i < (int)s.size(); i++)
+            for (int j = i + 1; j <= (int)s.size(); j++) subs.insert(s.substr(i, j - i));
+        for (auto& t : subs) if (--k == 0) return t;
+        return "";
+    }
+};` }] } },
     mcq: { q: 'Walking ranks in SA order, the new substrings of rank r are its prefixes of lengths lcp[r]+1 … |suffix|. In which order do they appear in the global sorted list?', options: ['Reverse order', 'Exactly in increasing length, right after everything from earlier ranks', 'Random', 'Interleaved with later ranks'], answer: 1, explain: 'A shorter prefix is smaller than a longer one with the same start, and all of rank r’s new prefixes are larger than earlier ranks’ substrings and smaller than later ranks’ new ones.' },
     hints: [`<p>Group the sorted distinct substrings by the first SA rank that owns them (topic 7): rank r owns (n − SA[r]) − lcp[r] consecutive entries.</p>`, `<p>Skip whole ranks while k is larger than their count (subtract). Inside the right rank, the answer is the prefix of length lcp[r] + k.</p>`, `<p>Use a 64-bit integer for k. If k survives all ranks, return "". Multiple queries: prefix sums over rank counts + binary search.</p>`],
     tests: { sig: 'string long -> string', fn: 'kth', cases: [

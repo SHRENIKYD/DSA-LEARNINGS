@@ -228,15 +228,19 @@ public:
         if (!/^\d{1,9}$/.test(s)) throw new Error('Enter a non-negative whole number with at most 9 digits, e.g. 4096');
         var n = parseInt(s, 10), sum = 0, frames = [];
         var CODE = 'int sum = 0;\nwhile (n > 0) {\n    int d = n % 10;\n    sum += d;\n    n /= 10;\n}\nreturn sum;';
+        var PY = 'total = 0\nwhile n > 0:\n    d = n % 10\n    total += d\n    n //= 10\nreturn total',
+            JS = 'let sum = 0;\nwhile (n > 0) {\n    const d = n % 10;\n    sum += d;\n    n = Math.floor(n / 10);\n}\nreturn sum;',
+            CPP = 'int sum = 0;\nwhile (n > 0) {\n    int d = n % 10;\n    sum += d;\n    n /= 10;\n}\nreturn sum;';
+        var ALT = { python: { code: PY, map: { 7: 6 } }, js: { code: JS }, cpp: { code: CPP } };
         var digits = function (x) { return String(x).split(''); };
         frames.push({ narr: 'Start with <b>n = ' + n + '</b> and an empty bucket <b>sum = 0</b>. We will peel the <b>last</b> digit each round.', parts: [
           { type: 'array', label: 'digits of n', values: digits(n) },
           { type: 'vars', vals: { n: n, d: '-', sum: 0 } },
-          { type: 'code', lang: 'java', code: CODE, hl: { 1: 'cur' } }
+          { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 1: 'cur' } }
         ] });
         if (n === 0) {
-          frames.push({ narr: 'n is already 0, so the loop condition <code>n &gt; 0</code> is false right away.', parts: [{ type: 'vars', vals: { n: 0, sum: 0 }, hl: { n: 'bad' } }, { type: 'code', lang: 'java', code: CODE, hl: { 2: 'bad' } }] });
-          frames.push({ narr: 'We never entered the loop, so the answer is <b>0</b>. Zero is the classic edge case for digit loops!', parts: [{ type: 'vars', vals: { n: 0, sum: 0 }, hl: { sum: 'sel' } }, { type: 'code', lang: 'java', code: CODE, hl: { 7: 'ok' } }] });
+          frames.push({ narr: 'n is already 0, so the loop condition <code>n &gt; 0</code> is false right away.', parts: [{ type: 'vars', vals: { n: 0, sum: 0 }, hl: { n: 'bad' } }, { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 2: 'bad' } }] });
+          frames.push({ narr: 'We never entered the loop, so the answer is <b>0</b>. Zero is the classic edge case for digit loops!', parts: [{ type: 'vars', vals: { n: 0, sum: 0 }, hl: { sum: 'sel' } }, { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 7: 'ok' } }] });
           frames.push({ narr: 'Tip: if the question says "count the digits", 0 has <b>one</b> digit — handle it separately.', parts: [{ type: 'text', html: '<b>Edge case:</b> n = 0 → loop runs 0 times.' }] });
           return frames;
         }
@@ -248,13 +252,13 @@ public:
           frames.push({ narr: 'Round ' + round + ': <code>n % 10</code> = <b>' + d + '</b>. The remainder after dividing by 10 is always the last digit.', parts: [
             { type: 'array', label: 'digits of n', values: ds, hl: hl },
             { type: 'vars', vals: { n: n, d: d, sum: sum }, hl: { d: 'cur' } },
-            { type: 'code', lang: 'java', code: CODE, hl: { 3: 'cur' } }
+            { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 3: 'cur' } }
           ] });
           sum += d;
           frames.push({ narr: 'Add it: sum = ' + (sum - d) + ' + ' + d + ' = <b>' + sum + '</b>.', parts: [
             { type: 'array', label: 'digits of n', values: ds, hl: hl },
             { type: 'vars', vals: { n: n, d: d, sum: sum }, hl: { sum: 'ok' } },
-            { type: 'code', lang: 'java', code: CODE, hl: { 4: 'ok' } }
+            { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 4: 'ok' } }
           ] });
           var old = n;
           n = Math.floor(n / 10);
@@ -262,12 +266,12 @@ public:
           frames.push({ narr: '<code>n /= 10</code>: ' + old + ' / 10 = <b>' + n + '</b>. Integer division throws the fraction away, which <b>drops the last digit</b>.', parts: [
             { type: 'array', label: 'digit being removed', values: ds, hl: dh },
             { type: 'vars', vals: { n: n, d: d, sum: sum }, hl: { n: 'cur' } },
-            { type: 'code', lang: 'java', code: CODE, hl: { 5: 'cur' } }
+            { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 5: 'cur' } }
           ] });
         }
         frames.push({ narr: 'n became 0, so <code>n &gt; 0</code> is false and the loop ends after <b>' + round + '</b> rounds (one per digit). Answer: <b>' + sum + '</b>.', parts: [
           { type: 'vars', vals: { n: 0, sum: sum, rounds: round }, hl: { sum: 'sel' } },
-          { type: 'code', lang: 'java', code: CODE, hl: { 7: 'ok' } }
+          { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 7: 'ok' } }
         ] });
         return frames;
       }
@@ -442,7 +446,7 @@ cout << fr << "," << fc << '\n';    // 1,0` }] } }
       statement: `<p>Given a non-negative integer <code>num</code>, repeatedly add all its digits until the result has only one digit, and return it.</p>`,
       constraints: `0 ≤ num ≤ 2<sup>31</sup> − 1`,
       example: `<p>Input: <code>num = 38</code> → Output: ${H.c('g', '2')}</p><p>Why: ${H.c('b', '3 + 8 = 11')}, then ${H.c('b', '1 + 1 = 2')}. 2 has a single digit, so we stop.</p>`,
-      brute: { why: `<p>Simulate exactly what the statement says: peel digits to get a sum, and repeat while the number is ≥ 10. Each pass takes O(digits) and the number shrinks very fast (at most 10 digits → sum ≤ 90 → ≤ 18 → one digit), so this is already fast. It is the "obvious" answer you should write first.</p>`, code: String.raw`
+      brute: { why: `<p>Simulate exactly what the statement says: peel digits to get a sum, and repeat while the number is ≥ 10. Each pass takes O(digits) and the number shrinks very fast (at most 10 digits → sum ≤ 90 → ≤ 18 → one digit), so this is already fast. It is the "obvious" answer you should write first.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public int addDigits(int num) {
         while (num >= 10) {          // more than one digit?
@@ -455,7 +459,40 @@ class Solution {
         }
         return num;
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def add_digits(num):
+    while num >= 10:             # more than one digit?
+        total = 0
+        while num > 0:           # peel every digit
+            total += num % 10
+            num //= 10
+        num = total              # repeat with the digit sum
+    return num` }, { lang: 'js', code: String.raw`
+function addDigits(num) {
+  while (num >= 10) {            // more than one digit?
+    let sum = 0;
+    while (num > 0) {            // peel every digit
+      sum += num % 10;
+      num = Math.floor(num / 10);
+    }
+    num = sum;                   // repeat with the digit sum
+  }
+  return num;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    int addDigits(int num) {
+        while (num >= 10) {          // more than one digit?
+            int sum = 0;
+            while (num > 0) {        // peel every digit
+                sum += num % 10;
+                num /= 10;
+            }
+            num = sum;               // repeat with the digit sum
+        }
+        return num;
+    }
+};` }] } },
       mcq: { q: 'Adding the digits of a number never changes its remainder when divided by…', options: ['9', '10', '2', '7'], answer: 0, explain: 'Because 10 ≡ 1 (mod 9), every power of 10 is ≡ 1, so a number and its digit sum leave the same remainder mod 9. That gives the O(1) "digital root" formula.' },
       hints: [`<p>Hint 1: Write the simulation first — inner loop sums digits, outer loop repeats while the number has 2+ digits.</p>`, `<p>Hint 2: Try a few inputs: 38 → 2, 18 → 9, 27 → 9, 10 → 1. Compare each answer with <code>num % 9</code>. Do you see the pattern?</p>`, `<p>Hint 3: Edge cases: 0 stays 0; multiples of 9 give 9, not 0. Recipe: if num == 0 return 0, else return 1 + (num − 1) % 9.</p>`],
       tests: { sig: 'int -> int', fn: 'addDigits', cases: [
@@ -876,7 +913,7 @@ cout << out;   // one write; also never use endl in a loop (it flushes every tim
       statement: `<p>The first line contains <code>N</code>. The second line contains <code>N</code> integers. Print their sum. The time limit is 1 second.</p>`,
       constraints: `1 ≤ N ≤ 10<sup>6</sup>, −10<sup>9</sup> ≤ a<sub>i</sub> ≤ 10<sup>9</sup>`,
       example: `<p>Input:<br><code>4</code><br><code>1000000000 1000000000 1000000000 -7</code></p><p>Output: ${H.c('g', '2999999993')}</p><p>Why: the true sum is about 3·10<sup>9</sup>, which does ${H.c('r', 'not fit in int')} (max ≈ 2.1·10<sup>9</sup>). A <code>long</code> accumulator is required.</p>`,
-      brute: { why: `<p>Scanner + <code>int</code> sum looks fine and passes tiny tests, but has <b>two</b> problems: (1) Scanner parses 10<sup>6</sup> tokens slowly — risky for a 1 s limit; (2) the <code>int</code> sum overflows and silently prints a wrong negative number.</p>`, code: String.raw`
+      brute: { why: `<p>Slow token-by-token reading (Java <code>Scanner</code>, Python <code>input()</code>, C++ <code>cin</code> with default sync, Node <code>readline</code> events) plus a 32-bit <code>int</code> sum looks fine and passes tiny tests, but has <b>two</b> problems: (1) that style of reading handles 10<sup>6</sup> tokens slowly — risky for a 1 s limit; (2) in Java and C++ the <code>int</code> sum overflows and prints a wrong (often negative) number; Python integers never overflow and JavaScript doubles stay exact at this size, so there only the speed problem remains.</p>`, code: { lang: 'java', code: String.raw`
 import java.util.*;
 
 class Main {
@@ -887,7 +924,31 @@ class Main {
         for (int i = 0; i < n; i++) sum += sc.nextInt();   // slow regex parsing
         System.out.println(sum);
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def main():
+    n = int(input())
+    total = 0                          # Python ints never overflow, so only the slow reading remains
+    for x in input().split():
+        total += int(x)                # input() per line + a list of 10^6 strings: slow on huge input
+    print(total)` }, { lang: 'js', code: String.raw`
+const rl = require('readline').createInterface({ input: process.stdin });
+const lines = [];
+rl.on('line', (l) => lines.push(l));       // one event per line: slow for huge input
+rl.on('close', () => {
+  let sum = 0;                             // doubles stay exact below 2^53, so no overflow at this size
+  for (const x of lines[1].split(' ')) sum += parseInt(x);
+  console.log(sum);
+});` }, { lang: 'cpp', code: String.raw`
+#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    int n;
+    cin >> n;                          // cin still synced with C stdio: slow
+    int sum = 0;                       // BUG: signed overflow past ~2.1e9 (undefined behaviour)
+    for (int i = 0; i < n; i++) { int x; cin >> x; sum += x; }
+    cout << sum << endl;
+}` }] } },
       mcq: { q: 'Your O(N) solution gets TLE on N = 10<sup>6</sup>. What is the most likely culprit?', options: ['Reading input with a slow reader (Scanner in Java, input() per line in Python, synced cin in C++)', 'Using a for loop instead of while', 'Declaring the array as int[]', 'Using long instead of int'], answer: 0, explain: 'The algorithm is already linear; the remaining cost is I/O. Scanner is several times slower than BufferedReader + StringTokenizer on large inputs.' },
       hints: [`<p>Hint 1: The algorithm is trivial — the challenge is reading 10<sup>6</sup> numbers fast and storing a sum that can reach 10<sup>15</sup>.</p>`, `<p>Hint 2: Use your language's fast reader: BufferedReader + StringTokenizer in Java (refill the tokenizer with the next line if the numbers wrap across lines), <code>sys.stdin.buffer.read().split()</code> in Python, <code>fs.readFileSync(0)</code> in Node, <code>cin</code> after <code>ios::sync_with_stdio(false)</code> in C++.</p>`, `<p>Hint 3: Use a 64-bit sum (<code>long</code> in Java, <code>long long</code> in C++; Python ints never overflow; a JS Number is exact up to 2<sup>53</sup> ≈ 9 × 10<sup>15</sup>, which is enough here). Recipe: read N → loop N times: sum += nextInt() → print sum. Max |sum| = 10<sup>6</sup> × 10<sup>9</sup> = 10<sup>15</sup>, safely inside long.</p>`],
       tests: { io: true, cases: [
@@ -1253,14 +1314,32 @@ cout << pos << ' ' << next << ' ' << digit << ' ' << upper << '\n';` }] } }
       statement: `<p>Given an array <code>a</code> of positive integers, return the product of all elements modulo <code>1,000,000,007</code>.</p>`,
       constraints: `1 ≤ N ≤ 10<sup>5</sup>, 1 ≤ a[i] ≤ 10<sup>9</sup>`,
       example: `<p>Input: <code>a = [100000, 100000, 3]</code> → Output: ${H.c('g', '999999797')}</p><p>Why: the true product is 3 × 10<sup>10</sup>. First 10<sup>10</sup> mod M = 999,999,937 (since 10<sup>10</sup> = 9 × 1,000,000,007 + 999,999,937). Then 999,999,937 × 3 = 2,999,999,811, and subtracting 2M leaves ${H.c('g', '999,999,797')}.</p>`,
-      brute: { why: `<p>Multiply everything in an <code>int</code> (or even a <code>long</code>) and take the modulo only at the end. The product of 10<sup>5</sup> numbers of size 10<sup>9</sup> has ~900,000 digits, so any fixed-size type overflows almost immediately. BigInteger would be correct but painfully slow (each multiply grows the number).</p>`, code: String.raw`
+      brute: { why: `<p>Multiply everything in a fixed-size integer (Java <code>int</code>/<code>long</code>, C++ <code>long long</code>, a JavaScript double) and take the modulo only at the end. The product of 10<sup>5</sup> numbers of size 10<sup>9</sup> has ~900,000 digits, so any fixed-size type overflows almost immediately. A big-number type (Java <code>BigInteger</code>, Python's built-in <code>int</code>, JavaScript <code>BigInt</code>) would be correct but painfully slow (each multiply grows the number).</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public int productMod(int[] a) {
         long p = 1;
         for (int v : a) p *= v;                 // overflows after 2-3 elements
         return (int) (p % 1_000_000_007L);      // garbage in, garbage out
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def product_mod(a):
+    p = 1
+    for v in a:
+        p *= v                       # never overflows, but p grows to ~900,000 digits
+    return p % 1_000_000_007         # correct, but painfully slow` }, { lang: 'js', code: String.raw`
+function productMod(a) {
+  let p = 1;
+  for (const v of a) p *= v;                 // BUG: a double loses precision after 2^53, then hits Infinity
+  return p % 1_000_000_007;                  // garbage in, garbage out
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    int productMod(vector<int>& a) {
+        long long p = 1;
+        for (int v : a) p *= v;                 // overflows after 2-3 elements
+        return (int) (p % 1000000007LL);        // garbage in, garbage out
+    }
+};` }] } },
       mcq: { q: 'Both p and a[i] are below M = 10<sup>9</sup>+7. What is the largest possible value of p × a[i] before taking %?', options: ['About 10<sup>18</sup> — fits in long', 'About 10<sup>9</sup> — fits in int', 'About 10<sup>27</sup> — needs BigInteger', 'Exactly M'], answer: 0, explain: '(10<sup>9</sup>)·(10<sup>9</sup>) = 10<sup>18</sup> &lt; 9.22·10<sup>18</sup>, so a long holds it. That is exactly why the modulus is chosen around 10<sup>9</sup>.' },
       hints: [`<p>Hint 1: (x · y) mod M = ((x mod M) · (y mod M)) mod M. You can take the modulo after <b>every</b> multiplication without changing the final answer.</p>`, `<p>Hint 2: Keep the running product in a 64-bit integer (<code>long</code> / <code>long long</code>) and reduce it right away, so it always stays below M. In JavaScript, p × v can reach 10<sup>18</sup> &gt; 2<sup>53</sup>, so use <code>BigInt</code>. Python ints never overflow, but reducing keeps them small and fast.</p>`, `<p>Hint 3: Edge: a[i] can be up to 10<sup>9</sup> which is already &lt; M, but reduce it anyway for safety. Recipe: p = 1; for v: p = p * (v % M) % M; return (int) p.</p>`],
       tests: { sig: 'int[] -> int', fn: 'productMod', cases: [
@@ -1732,7 +1811,7 @@ ${H.table(['Thing', 'Approx. bytes'], [['object header', '12 (padded to multiple
       statement: `<p>Write <code>reverse(a)</code> (Java: <code>void reverse(int[] a)</code>, C++: <code>void reverse(vector&lt;int&gt;&amp; a)</code>) that reverses the array <b>in place</b>: after the call, the caller's array must hold the elements in reverse order. Use O(1) extra space.</p>`,
       constraints: `0 ≤ N ≤ 10<sup>6</sup>, −10<sup>9</sup> ≤ a[i] ≤ 10<sup>9</sup>`,
       example: `${H.arr([1, 2, 3, 4, 5], { label: 'before' })}${H.arr([5, 4, 3, 2, 1], { label: 'after', hl: { 0: 'g', 4: 'g', 1: 'b', 3: 'b', 2: 'y' } })}<p>Why: pairs (0,4) and (1,3) are swapped; the middle element (index 2) stays put.</p>`,
-      brute: { why: `<p>Build a brand-new reversed array and then re-point the parameter to it: <code>a = rev;</code>. It even "works" when printed inside the method — but the <b>caller's</b> array is unchanged, because only the local copy of the address moved. Copying back element by element fixes correctness but uses O(N) extra memory.</p>`, code: String.raw`
+      brute: { why: `<p>Build a brand-new reversed array and then re-point the parameter to it: <code>a = rev;</code>. It even "works" when printed inside the method — but the <b>caller's</b> array is unchanged, because only the local copy of the address moved (in C++ a by-value <code>vector</code> parameter is a full copy, so assigning to it is just as invisible). Copying back element by element fixes correctness but uses O(N) extra memory.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     void reverse(int[] a) {
         int[] rev = new int[a.length];
@@ -1740,7 +1819,26 @@ class Solution {
         a = rev;   // BUG: only the local reference changes; caller sees nothing
         // correct-but-wasteful fix: System.arraycopy(rev, 0, a, 0, a.length);
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def reverse(a):
+    rev = [a[len(a) - 1 - i] for i in range(len(a))]
+    a = rev   # BUG: only the local name is re-pointed; caller sees nothing
+    # correct-but-wasteful fix: a[:] = rev (copy back into the caller's list)` }, { lang: 'js', code: String.raw`
+function reverse(a) {
+  const rev = new Array(a.length);
+  for (let i = 0; i < a.length; i++) rev[i] = a[a.length - 1 - i];
+  a = rev;   // BUG: only the local variable is re-pointed; caller sees nothing
+  // correct-but-wasteful fix: a.splice(0, a.length, ...rev) (copy back into the caller's array)
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    void reverse(vector<int> a) {            // BUG: by value, so a is a full copy of the caller's vector
+        vector<int> rev(a.size());
+        for (int i = 0; i < (int) a.size(); i++) rev[i] = a[a.size() - 1 - i];
+        a = rev;   // changes only the local copy; caller sees nothing
+        // correct-but-wasteful fix: take vector<int>& a and copy rev back element by element
+    }
+};` }] } },
       mcq: { q: 'Inside <code>reverse(int[] a)</code> you write <code>a = newArray;</code>. What does the caller see?', options: ['The original array, unchanged', 'The new array', 'null', 'A compile error'], answer: 0, explain: 'Java copied the address into a. Re-pointing the local copy does not touch the caller\'s variable. Only writes through the address (a[i] = …) are visible.' },
       hints: [`<p>Hint 1: The first and last elements trade places, then the second and second-to-last, and so on. You never need a second array.</p>`, `<p>Hint 2: Two indices: <code>i</code> from the left, <code>j</code> from the right. Swap <code>a[i]</code> and <code>a[j]</code> through the array reference, then move both inward.</p>`, `<p>Hint 3: Stop when <code>i &gt;= j</code> (handles odd length, length 0 and 1). Recipe: i = 0, j = n−1; while i &lt; j: swap(a, i, j); i++; j−−.</p>`],
       tests: { sig: 'int[] -> void', fn: 'reverse', mutate: 0, cases: [
@@ -2031,9 +2129,13 @@ cout << (bool)isdigit('7') << " " << (bool)isalpha('x') << " " << (char)toupper(
         var s = p[0], t = p[1], cnt = [], i, frames = [], L = [];
         for (i = 0; i < 26; i++) { cnt.push(0); L.push(String.fromCharCode(97 + i)); }
         var CODE = 'int[] cnt = new int[26];\nfor (char c : s.toCharArray()) cnt[c - \'a\']++;\nfor (char c : t.toCharArray()) cnt[c - \'a\']--;\nfor (int x : cnt) if (x != 0) return false;\nreturn true;';
+        var PY = 'cnt = [0] * 26\nfor c in s:\n    cnt[ord(c) - ord(\'a\')] += 1\nfor c in t:\n    cnt[ord(c) - ord(\'a\')] -= 1\nif any(x != 0 for x in cnt):\n    return False\nreturn True',
+            JS = 'const cnt = new Array(26).fill(0);\nfor (const c of s) cnt[c.charCodeAt(0) - 97]++;\nfor (const c of t) cnt[c.charCodeAt(0) - 97]--;\nif (cnt.some((x) => x !== 0)) return false;\nreturn true;',
+            CPP = 'int cnt[26] = {0};\nfor (char c : s) cnt[c - \'a\']++;\nfor (char c : t) cnt[c - \'a\']--;\nfor (int x : cnt) if (x != 0) return false;\nreturn true;';
+        var ALT = { python: { code: PY, map: { 2: 3, 3: 5, 4: 6, 5: 8 } }, js: { code: JS }, cpp: { code: CPP } };
         frames.push({ narr: 'One locker per letter: index 0 = \'a\', 1 = \'b\', … 25 = \'z\'. All start at 0. ' + (s.length !== t.length ? '<span class="c-y">(Lengths differ, so the real code could return false immediately — we will still count to show the idea.)</span>' : ''), parts: [
           { type: 'array', label: 'cnt[26]', values: cnt.slice(), idxLabels: L },
-          { type: 'code', lang: 'java', code: CODE, hl: { 1: 'cur' } }
+          { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 1: 'cur' } }
         ] });
         for (i = 0; i < s.length; i++) {
           var k = s.charCodeAt(i) - 97; cnt[k]++;
@@ -2041,7 +2143,7 @@ cout << (bool)isdigit('7') << " " << (bool)isalpha('x') << " " << (char)toupper(
           frames.push({ narr: 'First word: char <b>\'' + s[i] + '\'</b> → index <code>\'' + s[i] + '\' - \'a\'</code> = ' + k + '. Increment: cnt[' + k + '] = ' + cnt[k] + '.', parts: [
             { type: 'array', label: 'first word', values: s.split(''), hl: sh },
             { type: 'array', label: 'cnt[26]', values: cnt.slice(), idxLabels: L, hl: h },
-            { type: 'code', lang: 'java', code: CODE, hl: { 2: 'cur' } }
+            { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 2: 'cur' } }
           ] });
         }
         for (i = 0; i < t.length; i++) {
@@ -2050,14 +2152,14 @@ cout << (bool)isdigit('7') << " " << (bool)isalpha('x') << " " << (char)toupper(
           frames.push({ narr: 'Second word: char <b>\'' + t[i] + '\'</b> → decrement cnt[' + k2 + '] to ' + cnt[k2] + '. ' + (cnt[k2] < 0 ? '<span class="c-r">Negative: the second word has more \'' + t[i] + '\'s than the first.</span>' : 'It cancels one copy from the first word.'), parts: [
             { type: 'array', label: 'second word', values: t.split(''), hl: th },
             { type: 'array', label: 'cnt[26]', values: cnt.slice(), idxLabels: L, hl: h2 },
-            { type: 'code', lang: 'java', code: CODE, hl: { 3: 'cur' } }
+            { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 3: 'cur' } }
           ] });
         }
         var bad = {}, ok = true;
         for (i = 0; i < 26; i++) if (cnt[i] !== 0) { bad[i] = 'bad'; ok = false; }
         frames.push({ narr: ok ? 'Every locker is back to <b>0</b>: each letter appeared equally often in both words → <span class="c-g"><b>anagrams</b></span>. Total work: one pass over each word + 26 checks = O(N).' : 'Some lockers are not 0 (red) → letter counts differ → <span class="c-r"><b>not anagrams</b></span>.', parts: [
           { type: 'array', label: 'cnt[26]', values: cnt.slice(), idxLabels: L, hl: bad },
-          { type: 'code', lang: 'java', code: CODE, hl: ok ? { 5: 'ok' } : { 4: 'bad' } }
+          { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: ok ? { 5: 'ok' } : { 4: 'bad' } }
         ] });
         return frames;
       }
@@ -2204,7 +2306,7 @@ cout << boolalpha << pal << '\n';   // true` }] } }
       statement: `<p>Given two strings <code>s</code> and <code>t</code>, return <code>true</code> if <code>t</code> is an anagram of <code>s</code> (same letters, same counts, any order), otherwise <code>false</code>.</p>`,
       constraints: `1 ≤ s.length, t.length ≤ 5 × 10<sup>4</sup>; s and t consist of lowercase English letters.`,
       example: `<p><code>s = "anagram", t = "nagaram"</code> → ${H.c('g', 'true')} (a×3, n×1, g×1, r×1, m×1 in both).</p><p><code>s = "rat", t = "car"</code> → ${H.c('r', 'false')} ('t' vs 'c').</p>`,
-      brute: { why: `<p>For each character of <code>s</code>, search for it in a list of <code>t</code>'s characters and remove it. Each search/removal scans up to N characters, so the total is O(N²) ≈ 2.5 × 10<sup>9</sup> steps for N = 5 × 10<sup>4</sup> — too slow. The wasted work: we re-scan <code>t</code> again and again just to ask "how many of this letter are left?" — a question a counter answers in O(1).</p>`, code: String.raw`
+      brute: { why: `<p>For each character of <code>s</code>, search for it in a list of <code>t</code>'s characters and remove it. Each search/removal scans up to N characters, so the total is O(N²) ≈ 2.5 × 10<sup>9</sup> steps for N = 5 × 10<sup>4</sup> — too slow. The wasted work: we re-scan <code>t</code> again and again just to ask "how many of this letter are left?" — a question a counter answers in O(1).</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public boolean isAnagram(String s, String t) {
         if (s.length() != t.length()) return false;
@@ -2215,7 +2317,40 @@ class Solution {
         }
         return true;
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def is_anagram(s, t):
+    if len(s) != len(t):
+        return False
+    pool = list(t)
+    for c in s:
+        try:
+            pool.remove(c)           # O(N) scan + shift
+        except ValueError:
+            return False
+    return True` }, { lang: 'js', code: String.raw`
+function isAnagram(s, t) {
+  if (s.length !== t.length) return false;
+  const pool = t.split('');
+  for (const c of s) {
+    const i = pool.indexOf(c);       // O(N) scan
+    if (i < 0) return false;
+    pool.splice(i, 1);               // O(N) shift
+  }
+  return true;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    bool isAnagram(const string& s, const string& t) {
+        if (s.size() != t.size()) return false;
+        string pool = t;
+        for (char c : s) {
+            size_t i = pool.find(c);           // O(N) scan
+            if (i == string::npos) return false;
+            pool.erase(i, 1);                  // O(N) shift
+        }
+        return true;
+    }
+};` }] } },
       mcq: { q: 'Input is guaranteed to be lowercase English letters. Which structure counts letters most efficiently?', options: ['int[26] indexed by c - \'a\'', 'HashMap&lt;Character, Integer&gt;', 'Sorting both strings', 'A List&lt;Character&gt;'], answer: 0, explain: 'A fixed 26-cell array gives O(1) access with no hashing or boxing. HashMap works too but is slower; sorting is O(N log N).' },
       hints: [`<p>Hint 1: Two strings are anagrams exactly when every letter appears the same number of times in both. Order does not matter at all.</p>`, `<p>Hint 2: One <code>int[26]</code>: +1 for each letter of s, −1 for each letter of t. If they are anagrams, every cell returns to 0.</p>`, `<p>Hint 3: Early exit when lengths differ. Recipe: if lengths differ → false; for i: cnt[s[i]−'a']++, cnt[t[i]−'a']−−; return all cells == 0. Unicode follow-up → use a hash map (<code>HashMap</code> / <code>dict</code> or <code>Counter</code> / <code>Map</code> / <code>unordered_map</code>).</p>`],
       tests: { sig: 'string string -> bool', fn: 'isAnagram', cases: [
@@ -2493,18 +2628,22 @@ int main() {
         if (!/^[1-9]\d{0,5}$/.test(s)) throw new Error('Enter a positive whole number with 1 to 6 digits, e.g. 153 or 9474');
         var n = parseInt(s, 10), frames = [], k = s.length;
         var CODE = 'static boolean isArmstrong(int n) {\n    int k = countDigits(n);\n    long sum = 0;\n    for (int m = n; m > 0; m /= 10)\n        sum += power(m % 10, k);\n    return sum == n;\n}';
+        var PY = 'def is_armstrong(n):\n    k = count_digits(n)\n    total = 0\n    m = n\n    while m > 0:\n        total += power(m % 10, k)\n        m //= 10\n    return total == n',
+            JS = 'function isArmstrong(n) {\n    const k = countDigits(n);\n    let sum = 0;\n    for (let m = n; m > 0; m = Math.floor(m / 10))\n        sum += power(m % 10, k);\n    return sum === n;\n}',
+            CPP = 'bool isArmstrong(int n) {\n    int k = countDigits(n);\n    long long sum = 0;\n    for (int m = n; m > 0; m /= 10)\n        sum += power(m % 10, k);\n    return sum == n;\n}';
+        var ALT = { python: { code: PY, map: { 4: 7, 5: 6, 6: 8 } }, js: { code: JS }, cpp: { code: CPP } };
         frames.push({ narr: '<code>main</code> calls <code>isArmstrong(' + n + ')</code>. Java pushes a new frame with its own copy of n. main is <b>paused</b>, waiting for a boolean.', parts: [
           { type: 'stack', label: 'Call stack', items: ['main', 'isArmstrong(n=' + n + ')'], hl: { 1: 'cur' } },
-          { type: 'code', lang: 'java', code: CODE, hl: { 1: 'cur' } }
+          { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 1: 'cur' } }
         ] });
         frames.push({ narr: 'First line calls the helper <code>countDigits(' + n + ')</code>: another frame on top. isArmstrong pauses mid-line.', parts: [
           { type: 'stack', label: 'Call stack', items: ['main', 'isArmstrong(n=' + n + ')', 'countDigits(' + n + ')'], hl: { 2: 'cur' } },
-          { type: 'code', lang: 'java', code: CODE, hl: { 2: 'cur' } }
+          { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 2: 'cur' } }
         ] });
         frames.push({ narr: 'countDigits finishes and <b>returns ' + k + '</b>. Its frame is popped; isArmstrong resumes and stores k = ' + k + '.', parts: [
           { type: 'stack', label: 'Call stack', items: ['main', 'isArmstrong(n=' + n + ')'], hl: { 1: 'ok' } },
           { type: 'vars', vals: { n: n, k: k, sum: 0 }, hl: { k: 'ok' } },
-          { type: 'code', lang: 'java', code: CODE, hl: { 2: 'ok', 3: 'cur' } }
+          { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 2: 'ok', 3: 'cur' } }
         ] });
         var sum = 0, m = n;
         while (m > 0) {
@@ -2512,21 +2651,21 @@ int main() {
           frames.push({ narr: 'Digit <b>' + d + '</b>: call <code>power(' + d + ', ' + k + ')</code>. A fresh frame computes ' + d + '<sup>' + k + '</sup> = ' + pw + ' and returns it.', parts: [
             { type: 'stack', label: 'Call stack', items: ['main', 'isArmstrong(n=' + n + ')', 'power(' + d + ', ' + k + ') → ' + pw], hl: { 2: 'cur' } },
             { type: 'vars', vals: { m: m, digit: d, k: k, sum: sum }, hl: { digit: 'cur' } },
-            { type: 'code', lang: 'java', code: CODE, hl: { 5: 'cur' } }
+            { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 5: 'cur' } }
           ] });
           sum += pw;
           m = Math.floor(m / 10);
           frames.push({ narr: 'power returned; its frame is gone. sum += ' + pw + ' → <b>' + sum + '</b>. Drop the digit: m = ' + m + '.', parts: [
             { type: 'stack', label: 'Call stack', items: ['main', 'isArmstrong(n=' + n + ')'], hl: { 1: 'cur' } },
             { type: 'vars', vals: { m: m, k: k, sum: sum }, hl: { sum: 'ok' } },
-            { type: 'code', lang: 'java', code: CODE, hl: { 4: 'cur' } }
+            { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 4: 'cur' } }
           ] });
         }
         var ans = sum === n;
         frames.push({ narr: 'Loop done. <code>return sum == n</code> → ' + sum + (ans ? ' == ' : ' ≠ ') + n + ' → <b>' + ans + '</b>. ' + (ans ? n + ' is an Armstrong number!' : n + ' is not an Armstrong number. Try 153, 370, 371, 407, 1634, 8208, 9474 or 54748.'), parts: [
           { type: 'stack', label: 'Call stack', items: ['main'], hl: { 0: ans ? 'ok' : 'bad' } },
           { type: 'vars', vals: { n: n, sum: sum, result: String(ans) }, hl: { result: ans ? 'sel' : 'bad' } },
-          { type: 'code', lang: 'java', code: CODE, hl: { 6: ans ? 'ok' : 'bad' } }
+          { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 6: ans ? 'ok' : 'bad' } }
         ] });
         return frames;
       }
@@ -2752,7 +2891,7 @@ int main() {
       statement: `<p>A number with <code>k</code> digits is an <b>Armstrong number</b> if the sum of each digit raised to the power <code>k</code> equals the number itself (e.g. 153 = 1³ + 5³ + 3³). Return all Armstrong numbers in the range <code>[lo, hi]</code>, in increasing order.</p>`,
       constraints: `1 ≤ lo ≤ hi ≤ 10<sup>6</sup>`,
       example: `<p><code>lo = 100, hi = 500</code> → ${H.c('g', '[153, 370, 371, 407]')}</p><p>Why 370: 3³ + 7³ + 0³ = 27 + 343 + 0 = ${H.c('g', '370')}. Why not 154: 1 + 125 + 64 = 190 ≠ 154.</p>`,
-      brute: { why: `<p>One long loop body that converts each number to a String to count digits, then calls <code>Math.pow(digit, k)</code> (a <b>double</b>) for every digit and casts back. It works, but it is hard to read, allocates a String per number, recomputes the same small powers millions of times, and relies on double rounding being exact. Nothing is reusable or testable on its own.</p>`, code: String.raw`
+      brute: { why: `<p>One long loop body that converts each number to a String to count digits, then calls a floating-point power function (<code>Math.pow</code> / <code>math.pow</code> / <code>pow</code>, which return a <b>double</b>) for every digit and converts back. It works, but it is hard to read, allocates a string per number, recomputes the same small powers millions of times, and relies on double rounding being exact. Nothing is reusable or testable on its own.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public List<Integer> armstrong(int lo, int hi) {
         List<Integer> out = new ArrayList<>();
@@ -2767,7 +2906,49 @@ class Solution {
         }
         return out;
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+import math
+
+def armstrong(lo, hi):
+    out = []
+    for n in range(lo, hi + 1):
+        k = len(str(n))                          # allocates a string every time
+        total, m = 0, n
+        while m > 0:
+            total += int(math.pow(m % 10, k))    # float math for integer powers
+            m //= 10
+        if total == n:
+            out.append(n)
+    return out` }, { lang: 'js', code: String.raw`
+function armstrong(lo, hi) {
+  const out = [];
+  for (let n = lo; n <= hi; n++) {
+    const k = String(n).length;                  // allocates a string every time
+    let sum = 0, m = n;
+    while (m > 0) {
+      sum += Math.pow(m % 10, k);                // float math for integer powers
+      m = Math.floor(m / 10);
+    }
+    if (sum === n) out.push(n);
+  }
+  return out;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    vector<int> armstrong(int lo, int hi) {
+        vector<int> out;
+        for (int n = lo; n <= hi; n++) {
+            int k = to_string(n).size();             // allocates a string every time
+            int sum = 0, m = n;
+            while (m > 0) {
+                sum += (int) pow(m % 10, k);         // double math for integer powers
+                m /= 10;
+            }
+            if (sum == n) out.push_back(n);
+        }
+        return out;
+    }
+};` }] } },
       mcq: { q: 'Why is <code>(int) Math.pow(d, k)</code> considered risky for integer powers in general?', options: ['It computes in double and can round below the true value for large results', 'It is a compile error', 'It only accepts positive bases', 'It always returns 0 for k &gt; 3'], answer: 0, explain: 'Math.pow returns a double. For small values it is exact, but large integer powers may not be representable exactly, and casting truncates. Integer loops or precomputed tables are exact.' },
       hints: [`<p>Hint 1: Split the job into tiny questions: "how many digits does n have?", "what is d<sup>k</sup>?", "is n Armstrong?". Each is a helper.</p>`, `<p>Hint 2: Only digits 0–9 are ever raised to a power, and k ≤ 7. Precompute <code>pow[k][d]</code> once with integer multiplication.</p>`, `<p>Hint 3: Remember 1-digit numbers are all Armstrong (d¹ = d). Recipe: build pow table → for n in [lo, hi]: k = countDigits(n); if digitPowerSum(n, k) == n add n.</p>`],
       tests: { sig: 'int int -> list<int>', fn: 'armstrong', cases: [
@@ -3152,7 +3333,7 @@ ${H.table(['Structure', 'Size', 'Memory'], [['int[]', '10<sup>7</sup>', '40 MB']
       statement: `<p>Given an array <code>a</code> of N integers and a target <code>K</code>, count pairs of indexes <code>(i, j)</code> with <code>i &lt; j</code> and <code>a[i] + a[j] == K</code>.</p>`,
       constraints: `1 ≤ N ≤ 10<sup>5</sup>, 0 ≤ a[i] ≤ 10<sup>6</sup>, 0 ≤ K ≤ 2 · 10<sup>6</sup>`,
       example: `${H.arr([1, 5, 7, 1, 5], { label: 'a', hl: { 0: 'b', 1: 'g', 3: 'b', 4: 'g' } })}<p>K = 6 → Output ${H.c('g', '4')}. The pairs (i &lt; j) are (0, 1): 1 + 5, (0, 4): 1 + 5, (1, 3): 5 + 1 and (3, 4): 1 + 5. The 7 has no partner because 6 − 7 = −1 is not a possible value.</p>`,
-      brute: { why: `<p>Check all N(N−1)/2 pairs with a double loop. For N = 10<sup>5</sup> that is 5 × 10<sup>9</sup> checks — about 50 seconds at 10<sup>8</sup>/s. The wasted work: for each <code>a[j]</code>, we re-scan all earlier elements just to ask "how many of them equal K − a[j]?" — a question a counter can answer instantly.</p>`, code: String.raw`
+      brute: { why: `<p>Check all N(N−1)/2 pairs with a double loop. For N = 10<sup>5</sup> that is 5 × 10<sup>9</sup> checks — about 50 seconds at 10<sup>8</sup>/s. The wasted work: for each <code>a[j]</code>, we re-scan all earlier elements just to ask "how many of them equal K − a[j]?" — a question a counter can answer instantly.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public long countPairs(int[] a, int k) {
         long count = 0;
@@ -3161,7 +3342,31 @@ class Solution {
                 if (a[i] + a[j] == k) count++;
         return count;                 // correct, but O(N^2)
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def count_pairs(a, k):
+    count = 0
+    for i in range(len(a)):
+        for j in range(i + 1, len(a)):
+            if a[i] + a[j] == k:
+                count += 1
+    return count                  # correct, but O(N^2)` }, { lang: 'js', code: String.raw`
+function countPairs(a, k) {
+  let count = 0;
+  for (let i = 0; i < a.length; i++)
+    for (let j = i + 1; j < a.length; j++)
+      if (a[i] + a[j] === k) count++;
+  return count;                 // correct, but O(N^2)
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    long long countPairs(vector<int>& a, int k) {
+        long long count = 0;
+        for (int i = 0; i < (int) a.size(); i++)
+            for (int j = i + 1; j < (int) a.size(); j++)
+                if (a[i] + a[j] == k) count++;
+        return count;                 // correct, but O(N^2)
+    }
+};` }] } },
       mcq: { q: 'Values are at most 10<sup>6</sup>. What does that constraint unlock?', options: ['Using the value itself as an index into a counting array', 'Sorting in O(N)', 'Using int for the answer', 'Skipping the i &lt; j condition'], answer: 0, explain: 'An int[1_000_001] costs only ~4 MB, so freq[v] gives O(1) "how many times have I seen v?" with no hashing.' },
       hints: [`<p>Hint 1: Walk left to right. When you are at index j, the partners that make a valid pair are earlier elements equal to <code>K − a[j]</code>.</p>`, `<p>Hint 2: Keep <code>freq[v]</code> = how many times value v appeared <b>before</b> j. Add <code>freq[K − a[j]]</code> to the answer, then increment <code>freq[a[j]]</code>.</p>`, `<p>Hint 3: K − a[j] can be negative or above 10<sup>6</sup> → skip it. The answer can reach ~5 × 10<sup>9</sup> → use a 64-bit count (<code>long</code> / <code>long long</code>; Python ints and JS Numbers hold it exactly). Updating freq <i>after</i> counting enforces i &lt; j and avoids pairing an element with itself.</p>`],
       tests: { sig: 'int[] int -> long', fn: 'countPairs', cases: [
@@ -3518,10 +3723,14 @@ int main() {
         if (a.length > 8) throw new Error('Use at most 8 numbers so the frames stay readable');
         var n = a.length, frames = [], best = -Infinity, bi = -1, bj = -1, checked = 0;
         var CODE = 'long best = Long.MIN_VALUE;\nfor (int i = 0; i < n; i++) {\n    long sum = 0;\n    for (int j = i; j < n; j++) {\n        sum += a[j];\n        best = Math.max(best, sum);\n    }\n}';
+        var PY = 'best = float(\'-inf\')\nfor i in range(n):\n    total = 0\n    for j in range(i, n):\n        total += a[j]\n        best = max(best, total)',
+            JS = 'let best = -Infinity;\nfor (let i = 0; i < n; i++) {\n    let sum = 0;\n    for (let j = i; j < n; j++) {\n        sum += a[j];\n        best = Math.max(best, sum);\n    }\n}',
+            CPP = 'long long best = LLONG_MIN;\nfor (int i = 0; i < n; i++) {\n    long long sum = 0;\n    for (int j = i; j < n; j++) {\n        sum += a[j];\n        best = max(best, sum);\n    }\n}';
+        var ALT = { python: { code: PY }, js: { code: JS }, cpp: { code: CPP } };
         frames.push({ narr: 'Candidates = every subarray a[i..j]. There are N(N+1)/2 = <b>' + (n * (n + 1) / 2) + '</b> of them. For each start i we extend j one step at a time, so the sum is updated in O(1) instead of re-added from scratch.', parts: [
           { type: 'array', label: 'a', values: a },
           { type: 'vars', vals: { best: '-∞', checked: 0 } },
-          { type: 'code', lang: 'java', code: CODE, hl: { 1: 'cur' } }
+          { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: { 1: 'cur' } }
         ] });
         for (var i = 0; i < n; i++) {
           var sum = 0;
@@ -3535,7 +3744,7 @@ int main() {
             frames.push({ narr: 'Subarray [' + i + '..' + j + ']: sum = previous sum + a[' + j + '] = <b>' + sum + '</b>. ' + (improved ? '<span class="c-g">New best!</span>' : 'Not better than best = ' + best + '.'), parts: [
               { type: 'array', label: 'a', values: a, range: [i, j], hl: hl, ptr: ptr },
               { type: 'vars', vals: { i: i, j: j, sum: sum, best: best, 'best range': '[' + bi + '..' + bj + ']', checked: checked }, hl: improved ? { best: 'ok', sum: 'ok' } : { sum: 'cur' } },
-              { type: 'code', lang: 'java', code: CODE, hl: improved ? { 5: 'cur', 6: 'ok' } : { 5: 'cur' } }
+              { type: 'code', lang: 'java', code: CODE, alt: ALT, hl: improved ? { 5: 'cur', 6: 'ok' } : { 5: 'cur' } }
             ] });
           }
         }
@@ -3727,7 +3936,7 @@ cout << pairs << '\n';   // 4: (1,3) (1,4) (1,8) (3,4)` }] } }
       statement: `<p>Given an integer array <code>a</code>, find the contiguous non-empty subarray with the largest sum and return that sum.</p>`,
       constraints: `1 ≤ N ≤ 2000, −10<sup>9</sup> ≤ a[i] ≤ 10<sup>9</sup>`,
       example: `${H.arr([-2, 1, -3, 4, -1, 2, 1, -5, 4], { label: 'a', hl: { 3: 'g', 4: 'g', 5: 'g', 6: 'g' } })}<p>Output: ${H.c('g', '6')} from [4, −1, 2, 1]. Note the subarray may contain negative numbers if they connect two good parts. If all numbers are negative, the answer is the largest single element.</p>`,
-      brute: { why: `<p>Three loops: choose i, choose j, then add a[i..j] from scratch. About N<sup>3</sup>/6 ≈ 1.3 × 10<sup>9</sup> additions for N = 2000 — too slow. The wasted work: sum(i..j) and sum(i..j+1) share all but one element, yet we re-add everything.</p>`, code: String.raw`
+      brute: { why: `<p>Three loops: choose i, choose j, then add a[i..j] from scratch. About N<sup>3</sup>/6 ≈ 1.3 × 10<sup>9</sup> additions for N = 2000 — too slow. The wasted work: sum(i..j) and sum(i..j+1) share all but one element, yet we re-add everything.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public long maxSubArray(int[] a) {
         long best = Long.MIN_VALUE;
@@ -3739,7 +3948,39 @@ class Solution {
             }
         return best;
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def max_sub_array(a):
+    best = float('-inf')
+    for i in range(len(a)):
+        for j in range(i, len(a)):
+            s = 0
+            for k in range(i, j + 1):
+                s += a[k]                   # recomputed every time
+            best = max(best, s)
+    return best` }, { lang: 'js', code: String.raw`
+function maxSubArray(a) {
+  let best = -Infinity;
+  for (let i = 0; i < a.length; i++)
+    for (let j = i; j < a.length; j++) {
+      let sum = 0;
+      for (let k = i; k <= j; k++) sum += a[k];   // recomputed every time
+      best = Math.max(best, sum);
+    }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    long long maxSubArray(vector<int>& a) {
+        long long best = LLONG_MIN;
+        for (int i = 0; i < (int) a.size(); i++)
+            for (int j = i; j < (int) a.size(); j++) {
+                long long sum = 0;
+                for (int k = i; k <= j; k++) sum += a[k];   // recomputed every time
+                best = max(best, sum);
+            }
+        return best;
+    }
+};` }] } },
       mcq: { q: 'You know sum(i..j) = 5 and a[j+1] = −2. What is sum(i..j+1)?', options: ['3 — just add a[j+1]', 'Need to re-add from i', '−2', '7'], answer: 0, explain: 'Extending a subarray by one element only adds that element. This O(1) update turns O(N³) into O(N²).' },
       hints: [`<p>Hint 1: Fix the start i. As j moves right, the subarray grows by exactly one element each step.</p>`, `<p>Hint 2: Keep a running <code>sum</code> that resets to 0 for each new i and adds a[j] for each j. Update <code>best</code> after every addition.</p>`, `<p>Hint 3: Initialise best to the smallest possible value (<code>Long.MIN_VALUE</code>, <code>LLONG_MIN</code>, <code>-Infinity</code>, or simply a[0]) — not 0! — so all-negative arrays work. Use a 64-bit sum (<code>long</code> / <code>long long</code>): a sum of 2000 values of 10<sup>9</sup> is 2 × 10<sup>12</sup>.</p>`],
       tests: { sig: 'int[] -> long', fn: 'maxSubArray', cases: [
@@ -3825,7 +4066,7 @@ public:
     statement: `<p>Given an array of positive integers, return the <b>second largest distinct</b> value. If it does not exist (all elements equal), return <code>-1</code>.</p>`,
     constraints: `1 ≤ N ≤ 10<sup>5</sup>, 1 ≤ a[i] ≤ 10<sup>9</sup>`,
     example: `${H.arr([12, 35, 1, 10, 34, 35], { hl: { 1: 'g', 5: 'g', 4: 'b' } })}<p>Output ${H.c('b', '34')}. The largest is ${H.c('g', '35')} (appearing twice — duplicates do not count as "second"), and the next distinct value is 34. For <code>[7, 7, 7]</code> the answer is ${H.c('r', '-1')}.</p>`,
-    brute: { why: `<p>Sort a copy, then walk from the end skipping values equal to the maximum. Correct and simple, but sorting costs O(N log N) and O(N) extra memory just to find two numbers — we order <b>all</b> elements when we only care about the top two.</p>`, code: String.raw`
+    brute: { why: `<p>Sort a copy, then walk from the end skipping values equal to the maximum. Correct and simple, but sorting costs O(N log N) and O(N) extra memory just to find two numbers — we order <b>all</b> elements when we only care about the top two.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public int secondLargest(int[] a) {
         int[] b = a.clone();
@@ -3834,7 +4075,30 @@ class Solution {
         for (int i = b.length - 2; i >= 0; i--) if (b[i] != max) return b[i];
         return -1;
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def second_largest(a):
+    b = sorted(a)                                  # O(N log N), plus a copy
+    mx = b[-1]
+    for i in range(len(b) - 2, -1, -1):
+        if b[i] != mx:
+            return b[i]
+    return -1` }, { lang: 'js', code: String.raw`
+function secondLargest(a) {
+  const b = [...a].sort((x, y) => x - y);          // O(N log N), plus a copy
+  const max = b[b.length - 1];
+  for (let i = b.length - 2; i >= 0; i--) if (b[i] !== max) return b[i];
+  return -1;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    int secondLargest(vector<int>& a) {
+        vector<int> b = a;
+        sort(b.begin(), b.end());                      // O(N log N)
+        int mx = b.back();
+        for (int i = (int) b.size() - 2; i >= 0; i--) if (b[i] != mx) return b[i];
+        return -1;
+    }
+};` }] } },
     mcq: { q: 'Scanning once with variables <code>first</code> and <code>second</code>, what should happen when you see x == first?', options: ['Ignore it (it is a duplicate of the max)', 'Set second = first', 'Set first = x and second = x', 'Return -1'], answer: 0, explain: 'We need the second largest DISTINCT value, so a copy of the current maximum changes nothing.' },
     hints: [`<p>Hint 1: You only need to remember the two best distinct values seen so far — not the whole sorted order.</p>`, `<p>Hint 2: For each x: if x &gt; first → second = first, first = x. Else if x &lt; first and x &gt; second → second = x.</p>`, `<p>Hint 3: Start with first = second = −1 (values are positive). The strict comparisons automatically skip duplicates of the maximum. Return second (still −1 if never set).</p>`],
     tests: { sig: 'int[] -> int', fn: 'secondLargest', cases: [
@@ -3916,7 +4180,7 @@ public:
     statement: `<p>A phrase is a palindrome if, after converting all uppercase letters to lowercase and removing all non-alphanumeric characters, it reads the same forward and backward. Given <code>s</code>, return <code>true</code> if it is a palindrome.</p>`,
     constraints: `1 ≤ s.length ≤ 2 · 10<sup>5</sup>; s consists of printable ASCII characters.`,
     example: `<p><code>"A man, a plan, a canal: Panama"</code> → cleaned ${H.c('b', '"amanaplanacanalpanama"')} → ${H.c('g', 'true')}.</p><p><code>"race a car"</code> → ${H.c('b', '"raceacar"')} → ${H.c('r', 'false')} (r-a-c-e-a-c-a-r reversed is r-a-c-a-e-c-a-r).</p>`,
-    brute: { why: `<p>Build a cleaned lowercase copy with a StringBuilder, build its reverse, and compare. O(N) time but O(N) extra memory for two new strings — fine, yet the interviewer will ask for O(1) space.</p>`, code: String.raw`
+    brute: { why: `<p>Build a cleaned lowercase copy of the string, build a reversed copy of that, and compare. O(N) time but O(N) extra memory for two new strings — fine, yet the interviewer will ask for O(1) space.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public boolean isPalindrome(String s) {
         StringBuilder clean = new StringBuilder();
@@ -3926,7 +4190,27 @@ class Solution {
         String back = clean.reverse().toString();
         return fwd.equals(back);
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def is_palindrome(s):
+    clean = [c.lower() for c in s if c.isalnum()]
+    fwd = "".join(clean)
+    back = fwd[::-1]                 # a second full copy
+    return fwd == back` }, { lang: 'js', code: String.raw`
+function isPalindrome(s) {
+  const fwd = s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const back = fwd.split('').reverse().join('');   // a second full copy
+  return fwd === back;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    bool isPalindrome(const string& s) {
+        string fwd;
+        for (char c : s)
+            if (isalnum((unsigned char) c)) fwd += (char) tolower((unsigned char) c);
+        string back(fwd.rbegin(), fwd.rend());     // a second full copy
+        return fwd == back;
+    }
+};` }] } },
     mcq: { q: 'Which pair of helpers handles the cleaning rules correctly for ASCII input?', options: ['An "is letter or digit" test plus lower-casing both sides (Character.isLetterOrDigit + toLowerCase, str.isalnum + lower, isalnum + tolower)', 'An "is letter" test plus trimming spaces', 'Skipping only spaces and upper-casing one side', 'Splitting into characters and comparing the whole arrays'], answer: 0, explain: 'Digits count as alphanumeric too ("0P" is not a palindrome). Compare both sides after lowering case.' },
     hints: [`<p>Hint 1: Instead of building a cleaned copy, skip unwanted characters on the fly from both ends.</p>`, `<p>Hint 2: Two indexes i (left) and j (right). Move i right while s[i] is not alphanumeric; move j left likewise. Compare lowercase versions.</p>`, `<p>Hint 3: Keep the guard <code>i &lt; j</code> inside the skipping loops so a string of only punctuation does not run off the ends. Empty-after-cleaning counts as a palindrome (true).</p>`],
     tests: { sig: 'string -> bool', fn: 'isPalindrome', cases: [
@@ -4015,7 +4299,7 @@ public:
     statement: `<p>Given a square matrix <code>mat</code> of size n × n, return the sum of the primary diagonal and the secondary diagonal. If n is odd, the centre cell belongs to both diagonals but must be counted <b>once</b>.</p>`,
     constraints: `1 ≤ n ≤ 100, 1 ≤ mat[i][j] ≤ 100`,
     example: `${H.table(['', 'c0', 'c1', 'c2'], [['r0', H.c('g', '1'), '2', H.c('b', '3')], ['r1', '4', H.c('y', '5'), '6'], ['r2', H.c('b', '7'), '8', H.c('g', '9')]])}<p>Output ${H.c('g', '25')} = ${H.c('g', '1 + 9')} + ${H.c('y', '5')} + ${H.c('b', '3 + 7')}. The centre 5 is counted once.</p>`,
-    brute: { why: `<p>Visit all n<sup>2</sup> cells and add those with <code>r == c</code> or <code>r + c == n − 1</code>. Correct (the "or" counts the centre once), but it looks at n<sup>2</sup> cells when only about 2n matter.</p>`, code: String.raw`
+    brute: { why: `<p>Visit all n<sup>2</sup> cells and add those with <code>r == c</code> or <code>r + c == n − 1</code>. Correct (the "or" counts the centre once), but it looks at n<sup>2</sup> cells when only about 2n matter.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public int diagonalSum(int[][] mat) {
         int n = mat.length, sum = 0;
@@ -4024,7 +4308,32 @@ class Solution {
                 if (r == c || r + c == n - 1) sum += mat[r][c];
         return sum;
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def diagonal_sum(mat):
+    n, total = len(mat), 0
+    for r in range(n):
+        for c in range(n):
+            if r == c or r + c == n - 1:
+                total += mat[r][c]
+    return total` }, { lang: 'js', code: String.raw`
+function diagonalSum(mat) {
+  const n = mat.length;
+  let sum = 0;
+  for (let r = 0; r < n; r++)
+    for (let c = 0; c < n; c++)
+      if (r === c || r + c === n - 1) sum += mat[r][c];
+  return sum;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    int diagonalSum(vector<vector<int>>& mat) {
+        int n = mat.size(), sum = 0;
+        for (int r = 0; r < n; r++)
+            for (int c = 0; c < n; c++)
+                if (r == c || r + c == n - 1) sum += mat[r][c];
+        return sum;
+    }
+};` }] } },
     mcq: { q: 'Cell (r, c) is on the secondary (anti-) diagonal of an n × n matrix when…', options: ['r + c == n − 1', 'r == c', 'r − c == 1', 'r + c == n'], answer: 0, explain: 'Top-right is (0, n−1) and bottom-left is (n−1, 0): the indexes always add to n − 1.' },
     hints: [`<p>Hint 1: Row r touches the primary diagonal at column r and the secondary diagonal at column n − 1 − r. That is just two cells per row.</p>`, `<p>Hint 2: Loop r from 0 to n − 1 and add <code>mat[r][r] + mat[r][n - 1 - r]</code>.</p>`, `<p>Hint 3: When n is odd, the middle row adds the centre twice — subtract <code>mat[n/2][n/2]</code> once at the end. n = 1 is the extreme case.</p>`],
     tests: { sig: 'int[][] -> int', fn: 'diagonalSum', cases: [
@@ -4089,7 +4398,7 @@ public:
     statement: `<p>An array <code>a</code> contains <code>n</code> <b>distinct</b> numbers taken from the range <code>[0, n]</code>. Exactly one number of that range is missing. Return it.</p>`,
     constraints: `1 ≤ n ≤ 10<sup>5</sup>; all values distinct and within [0, n].`,
     example: `<p><code>a = [3, 0, 1]</code>, n = 3 → range {0, 1, 2, 3} → missing ${H.c('g', '2')}.</p><p>Check with sums: expected 0 + 1 + 2 + 3 = 6, actual 3 + 0 + 1 = 4, difference ${H.c('g', '2')}.</p>`,
-    brute: { why: `<p>For each candidate v from 0 to n, scan the whole array to see whether v is present. That is (n + 1) × n ≈ 10<sup>10</sup> comparisons for n = 10<sup>5</sup> → TLE. The wasted work: re-scanning the same array for every candidate.</p>`, code: String.raw`
+    brute: { why: `<p>For each candidate v from 0 to n, scan the whole array to see whether v is present. That is (n + 1) × n ≈ 10<sup>10</sup> comparisons for n = 10<sup>5</sup> → TLE. The wasted work: re-scanning the same array for every candidate.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public int missingNumber(int[] a) {
         int n = a.length;
@@ -4100,7 +4409,39 @@ class Solution {
         }
         return -1;   // unreachable for valid input
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def missing_number(a):
+    n = len(a)
+    for v in range(n + 1):
+        found = False
+        for x in a:
+            if x == v:
+                found = True
+                break
+        if not found:
+            return v
+    return -1   # unreachable for valid input` }, { lang: 'js', code: String.raw`
+function missingNumber(a) {
+  const n = a.length;
+  for (let v = 0; v <= n; v++) {
+    let found = false;
+    for (const x of a) if (x === v) { found = true; break; }
+    if (!found) return v;
+  }
+  return -1;   // unreachable for valid input
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    int missingNumber(vector<int>& a) {
+        int n = a.size();
+        for (int v = 0; v <= n; v++) {
+            bool found = false;
+            for (int x : a) if (x == v) { found = true; break; }
+            if (!found) return v;
+        }
+        return -1;   // unreachable for valid input
+    }
+};` }] } },
     mcq: { q: 'Using the formula n(n+1)/2 with n = 10<sup>5</sup>, what type should hold the expected sum to be safe?', options: ['long (to be safe as n grows)', 'byte', 'short', 'char'], answer: 0, explain: 'For n = 10<sup>5</sup> the sum is about 5·10<sup>9</sup> — already above int\'s 2.1·10<sup>9</sup>! Using long avoids overflow. (XOR avoids the issue entirely.)' },
     hints: [`<p>Hint 1: You know exactly which numbers <i>should</i> be there: 0, 1, …, n. Their total is easy to compute.</p>`, `<p>Hint 2: Missing = (0 + 1 + … + n) − (sum of the array) = n(n+1)/2 − sum. Alternatively XOR all indexes and all values — pairs cancel.</p>`, `<p>Hint 3: n(n+1)/2 for n = 10<sup>5</sup> is ≈ 5 × 10<sup>9</sup>: compute it in <code>long</code>. Missing 0 and missing n are the edge cases to test.</p>`],
     tests: { sig: 'int[] -> int', fn: 'missingNumber', cases: [
@@ -4162,7 +4503,7 @@ public:
     statement: `<p>Given a signed 32-bit integer <code>x</code>, return <code>x</code> with its digits reversed. If reversing makes the value go outside the int range [−2<sup>31</sup>, 2<sup>31</sup> − 1], return <code>0</code>. Assume you cannot store 64-bit integers. (Python's ints never overflow, so in Python you may build the value and check the range at the end — but know the pre-check too.)</p>`,
     constraints: `−2<sup>31</sup> ≤ x ≤ 2<sup>31</sup> − 1`,
     example: `<p><code>123</code> → ${H.c('g', '321')}; <code>-120</code> → ${H.c('g', '-21')} (trailing zero becomes a leading zero and disappears); <code>1534236469</code> → reversed 9646324351 is bigger than 2,147,483,647 → ${H.c('r', '0')}.</p>`,
-    brute: { why: `<p>Convert to a String, reverse it with StringBuilder, parse with <code>Long.parseLong</code> and check the range. Works, but it allocates strings, handles the minus sign awkwardly, and it uses a 64-bit long — exactly what the problem forbids. Interviewers want you to detect overflow <b>before</b> it happens.</p>`, code: String.raw`
+    brute: { why: `<p>Convert to a string, reverse it, parse it into a wider number (Java <code>long</code> via <code>Long.parseLong</code>, C++ <code>long long</code> via <code>stoll</code>, a JavaScript double, Python's unbounded <code>int</code>) and check the range. Works, but it allocates strings, handles the minus sign awkwardly, and it relies on a wider-than-32-bit value — exactly what the problem forbids. Interviewers want you to detect overflow <b>before</b> it happens.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public int reverse(int x) {
         String digits = new StringBuilder(String.valueOf(Math.abs((long) x))).reverse().toString();
@@ -4170,7 +4511,29 @@ class Solution {
         if (r > Integer.MAX_VALUE || r < Integer.MIN_VALUE) return 0;
         return (int) r;
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def reverse(x):
+    digits = str(abs(x))[::-1]
+    r = int(digits) * (-1 if x < 0 else 1)     # works on a wider-than-32-bit value (not allowed)
+    if r > 2**31 - 1 or r < -2**31:
+        return 0
+    return r` }, { lang: 'js', code: String.raw`
+function reverse(x) {
+  const digits = String(Math.abs(x)).split('').reverse().join('');
+  const r = Number(digits) * (x < 0 ? -1 : 1);   // works on a wider-than-32-bit value (not allowed)
+  if (r > 2147483647 || r < -2147483648) return 0;
+  return r;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    int reverse(int x) {
+        string digits = to_string(abs((long long) x));
+        std::reverse(digits.begin(), digits.end());
+        long long r = stoll(digits) * (x < 0 ? -1 : 1);     // uses 64-bit (not allowed)
+        if (r > INT_MAX || r < INT_MIN) return 0;
+        return (int) r;
+    }
+};` }] } },
     mcq: { q: 'rev is about to become rev * 10 + d. Which check (for positive numbers) guarantees no overflow?', options: ['rev &gt; Integer.MAX_VALUE / 10 means overflow (or == and d &gt; 7)', 'rev * 10 + d &gt; Integer.MAX_VALUE', 'rev &lt; 0', 'd &gt; 9'], answer: 0, explain: 'Checking rev * 10 + d directly is useless because it already overflowed. Compare rev against MAX/10 = 214748364 first; if equal, the last digit must be ≤ 7.' },
     hints: [`<p>Hint 1: Pop the last digit with <code>x % 10</code>, push it onto the result with <code>rev * 10 + d</code>, drop it with integer division by 10. In Java, C++ and JavaScript, % keeps the sign of x, so negatives work automatically (JavaScript needs <code>Math.trunc(x / 10)</code>). In Python, <code>-7 % 10</code> is 3, so work with <code>abs(x)</code> and put the sign back at the end.</p>`, `<p>Hint 2: Before pushing, check whether <code>rev * 10 + d</code> would leave int range: compare <code>rev</code> with INT_MAX / 10 and INT_MIN / 10 (<code>Integer.MAX_VALUE</code> in Java, <code>INT_MAX</code> in C++). In C++ this check is essential: signed overflow is undefined behaviour.</p>`, `<p>Hint 3: MAX = 2147483647 (last digit 7), MIN = −2147483648 (last digit −8). Recipe: while x != 0: d = x % 10; x /= 10; if rev &gt; MAX/10 or (rev == MAX/10 and d &gt; 7) return 0; same for MIN with −8; rev = rev*10 + d.</p>`],
     tests: { sig: 'int -> int', fn: 'reverse', cases: [
@@ -4254,7 +4617,7 @@ public:
     statement: `<p>Implement <code>myAtoi(String s)</code>: (1) skip leading spaces; (2) read an optional <code>'+'</code> or <code>'-'</code>; (3) read digits until a non-digit or the end; (4) if no digits were read, return 0; (5) clamp the result to [−2<sup>31</sup>, 2<sup>31</sup> − 1].</p>`,
     constraints: `0 ≤ s.length ≤ 200; s consists of English letters, digits, ' ', '+', '-' and '.'`,
     example: `${H.table(['Input', 'Output', 'Why'], [['"42"', '42', 'plain digits'], ['"   -042"', H.c('g', '-42'), 'spaces skipped, sign read, leading zero fine'], ['"1337c0d3"', '1337', 'stops at \'c\''], ['"words 987"', H.c('r', '0'), 'first non-space is not a digit or sign'], ['"-91283472332"', H.c('y', '-2147483648'), 'clamped to int minimum']])}`,
-    brute: { why: `<p>Cut out the numeric prefix with index juggling, then hand it to <code>new BigInteger(...)</code> and clamp. Correct, but it needs a second pass, a big-number object for a 200-char input, and special handling for an empty prefix or a lone sign. The skill being tested is the single careful pass with overflow detection.</p>`, code: String.raw`
+    brute: { why: `<p>Cut out the numeric prefix with index juggling, then hand it to a big-number type (Java <code>BigInteger</code>, Python's <code>int</code>, JavaScript <code>BigInt</code>; C++ has none, so the sketch parses into a <code>long double</code>) and clamp. Correct, but it needs a second pass, a big-number value for a 200-char input, and special handling for an empty prefix or a lone sign. The skill being tested is the single careful pass with overflow detection.</p>`, code: { lang: 'java', code: String.raw`
 import java.math.BigInteger;
 
 class Solution {
@@ -4271,7 +4634,51 @@ class Solution {
         if (v.compareTo(BigInteger.valueOf(Integer.MIN_VALUE)) < 0) return Integer.MIN_VALUE;
         return v.intValue();
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def my_atoi(s):
+    i, n = 0, len(s)
+    while i < n and s[i] == ' ':
+        i += 1
+    start = i
+    if i < n and s[i] in '+-':
+        i += 1
+    digits_start = i
+    while i < n and s[i].isdigit():
+        i += 1
+    if i == digits_start:
+        return 0                                 # no digits
+    v = int(s[start:i])                          # big-number int handles any length
+    return max(-2**31, min(2**31 - 1, v))` }, { lang: 'js', code: String.raw`
+function myAtoi(s) {
+  let i = 0;
+  const n = s.length;
+  while (i < n && s[i] === ' ') i++;
+  const start = i;
+  if (i < n && (s[i] === '+' || s[i] === '-')) i++;
+  const digitsStart = i;
+  while (i < n && s[i] >= '0' && s[i] <= '9') i++;
+  if (i === digitsStart) return 0;               // no digits
+  const v = BigInt(s.slice(start, i));           // handles any length
+  if (v > 2147483647n) return 2147483647;
+  if (v < -2147483648n) return -2147483648;
+  return Number(v);
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    int myAtoi(const string& s) {
+        int i = 0, n = s.size();
+        while (i < n && s[i] == ' ') i++;
+        int start = i;
+        if (i < n && (s[i] == '+' || s[i] == '-')) i++;
+        int digitsStart = i;
+        while (i < n && isdigit((unsigned char) s[i])) i++;
+        if (i == digitsStart) return 0;                          // no digits
+        long double v = stold(s.substr(start, i - start));      // no built-in big integer: a long double holds 200 digits approximately
+        if (v > INT_MAX) return INT_MAX;
+        if (v < INT_MIN) return INT_MIN;
+        return (int) v;
+    }
+};` }] } },
     mcq: { q: 'Input "   +-12". What should myAtoi return?', options: ['0 — after "+", the next char "-" is not a digit', '-12', '12', '-2147483648'], answer: 0, explain: 'Only one optional sign is allowed. After reading "+", the parser expects digits; "-" stops it with no digits read, so the result is 0.' },
     hints: [`<p>Hint 1: Treat it as a tiny state machine: spaces → optional sign → digits → stop. Use one index that only moves forward.</p>`, `<p>Hint 2: Accumulate the absolute value in a 64-bit integer (<code>long</code> / <code>long long</code>), or a 32-bit int with a MAX/10 pre-check. As soon as it exceeds 2<sup>31</sup>, you can clamp and stop reading.</p>`, `<p>Hint 3: Edge cases: empty string, only spaces, sign with no digits, huge digit runs (stop early — never let the accumulator overflow), leading zeros. Apply the sign at the end, then clamp.</p>`],
     tests: { sig: 'string -> int', fn: 'myAtoi', cases: [
@@ -4391,13 +4798,27 @@ public:
     statement: `<p>Given two non-negative integers <code>num1</code> and <code>num2</code> as strings, return their sum as a string. You must not use a big-number type (Java <code>BigInteger</code>, Python's <code>int()</code> on the whole string, JavaScript <code>BigInt</code>) or convert the whole inputs to numbers.</p>`,
     constraints: `1 ≤ num1.length, num2.length ≤ 10<sup>4</sup>; digits only; no leading zeros except "0" itself.`,
     example: `<p><code>"456" + "77"</code> → ${H.c('g', '"533"')}.</p>${H.table(['column', '6 + 7', '5 + 7 + carry 1', '4 + 0 + carry 1'], [['digit / carry', '3 / 1', '3 / 1', '5 / 0']])}<p>Read the digits backwards: 5, 3, 3 → "533".</p>`,
-    brute: { why: `<p><code>Long.parseLong(num1) + Long.parseLong(num2)</code> is the "obvious" attempt — and it fails as soon as a number has more than 18–19 digits (overflow / NumberFormatException), while inputs here have up to 10,000 digits. Fixed-size types cannot represent the input at all.</p>`, code: String.raw`
+    brute: { why: `<p>Converting both strings to a built-in number and adding them (<code>Long.parseLong</code> in Java, <code>stoll</code> in C++, <code>Number</code> in JavaScript, <code>int</code> in Python) is the "obvious" attempt — and it fails on long inputs: past 18–19 digits Java and C++ overflow or throw, JavaScript silently loses precision after about 15 digits, and Python 3.11+ refuses string/int conversions beyond 4300 digits by default. The inputs here have up to 10,000 digits. Fixed-size types cannot represent the input at all.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public String addStrings(String num1, String num2) {
         // Breaks for inputs longer than ~18 digits: long has only 64 bits.
         return String.valueOf(Long.parseLong(num1) + Long.parseLong(num2));
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def add_strings(num1, num2):
+    # Breaks for inputs longer than 4300 digits: Python 3.11+ refuses int<->str conversion beyond that limit.
+    return str(int(num1) + int(num2))` }, { lang: 'js', code: String.raw`
+function addStrings(num1, num2) {
+  // Breaks for inputs longer than ~15 digits: a Number is a double with 53 bits of precision.
+  return String(Number(num1) + Number(num2));
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    string addStrings(const string& num1, const string& num2) {
+        // Breaks for inputs longer than ~18 digits: long long has only 64 bits (stoll throws).
+        return to_string(stoll(num1) + stoll(num2));
+    }
+};` }] } },
     mcq: { q: 'Adding column by column from the right, what is the largest possible carry?', options: ['1', '9', '18', '10'], answer: 0, explain: 'The largest column sum is 9 + 9 + 1 = 19, which gives digit 9 and carry 1. The carry can never exceed 1 in addition.' },
     hints: [`<p>Hint 1: Do exactly what you learned in school: start from the rightmost digits, add with a carry, write the last digit, carry the rest.</p>`, `<p>Hint 2: Two indexes i, j at the ends of the strings. Treat a finished string as contributing 0. Append digits to a builder (StringBuilder, a list, an array, a <code>std::string</code>) and reverse at the end.</p>`, `<p>Hint 3: Do not forget a final carry ("99" + "1" = "100"). Loop condition: i ≥ 0 || j ≥ 0 || carry &gt; 0. Digit value is <code>c - '0'</code> (Python: <code>ord(c) - 48</code>, JavaScript: <code>s.charCodeAt(i) - 48</code>).</p>`],
     tests: { sig: 'string string -> string', fn: 'addStrings', cases: [
@@ -4484,7 +4905,7 @@ public:
     statement: `<p>Read N integers, then Q queries. Each query gives <code>l r</code> (1-indexed, inclusive). For every query print the sum of <code>a[l..r]</code> on its own line. Input comes from standard input; the time limit is 1 second.</p>`,
     constraints: `1 ≤ N, Q ≤ 2 · 10<sup>5</sup>; −10<sup>9</sup> ≤ a[i] ≤ 10<sup>9</sup>; 1 ≤ l ≤ r ≤ N`,
     example: `<p>Input:<br><code>5 3</code><br><code>3 1 4 1 5</code><br><code>1 3</code><br><code>2 5</code><br><code>4 4</code></p><p>Output: ${H.c('g', '8')}, ${H.c('g', '11')}, ${H.c('g', '1')} — e.g. a[2..5] = 1 + 4 + 1 + 5 = 11.</p>`,
-    brute: { why: `<p>Use Scanner and, for each query, loop from l to r adding values, printing with <code>System.out.println</code>. Worst case Q × N = 4 × 10<sup>10</sup> additions — hopeless — plus slow input and 2 × 10<sup>5</sup> separate println calls. Two separate problems: algorithmic (repeated summing) and I/O.</p>`, code: String.raw`
+    brute: { why: `<p>Use slow input (Java <code>Scanner</code>, Python <code>input()</code>, C++ <code>cin</code> with default sync) and, for each query, loop from l to r adding values, printing each answer with its own call (<code>System.out.println</code> / <code>print</code> / <code>console.log</code> / <code>endl</code>). Worst case Q × N = 4 × 10<sup>10</sup> additions — hopeless — plus slow input and 2 × 10<sup>5</sup> separate print calls. Two separate problems: algorithmic (repeated summing) and I/O.</p>`, code: { lang: 'java', code: String.raw`
 import java.util.*;
 
 class Main {
@@ -4500,7 +4921,41 @@ class Main {
             System.out.println(s);                    // one flush-prone call per answer
         }
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def main():
+    n, q = map(int, input().split())          # input() per line: slow for 2*10^5 queries
+    a = [0] + list(map(int, input().split()))
+    for _ in range(q):
+        l, r = map(int, input().split())
+        s = 0
+        for i in range(l, r + 1):
+            s += a[i]                         # O(N) per query
+        print(s)                              # one print call per answer` }, { lang: 'js', code: String.raw`
+const lines = require('fs').readFileSync(0, 'utf8').split('\n');
+const [n, q] = lines[0].split(' ').map(Number);
+const a = [0, ...lines[1].split(' ').map(Number)];
+for (let t = 0; t < q; t++) {
+  const [l, r] = lines[2 + t].split(' ').map(Number);
+  let s = 0;
+  for (let i = l; i <= r; i++) s += a[i];     // O(N) per query
+  console.log(s);                             // one console call per answer
+}` }, { lang: 'cpp', code: String.raw`
+#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    int n, q;
+    cin >> n >> q;                           // cin still synced with C stdio: slow
+    vector<int> a(n + 1);
+    for (int i = 1; i <= n; i++) cin >> a[i];
+    while (q-- > 0) {
+        int l, r;
+        cin >> l >> r;
+        long long s = 0;
+        for (int i = l; i <= r; i++) s += a[i];   // O(N) per query
+        cout << s << endl;                        // endl flushes on every answer
+    }
+}` }] } },
     mcq: { q: 'With prefix sums <code>pre[i] = a[1] + … + a[i]</code>, the sum of a[l..r] equals…', options: ['pre[r] − pre[l − 1]', 'pre[r] − pre[l]', 'pre[r + 1] − pre[l]', 'pre[l] + pre[r]'], answer: 0, explain: 'pre[r] includes a[1..r]; subtracting pre[l−1] removes a[1..l−1], leaving exactly a[l..r]. pre[0] = 0 makes l = 1 work.' },
     hints: [`<p>Hint 1: Every query re-adds overlapping stretches of the same array. Precompute running totals once.</p>`, `<p>Hint 2: A prefix array <code>pre</code> of size N + 1 with pre[0] = 0; answer = pre[r] − pre[l − 1] in O(1). Totals reach 2 × 10<sup>14</sup> → 64-bit (<code>long</code> / <code>long long</code>; a JS Number is still exact below 2<sup>53</sup>).</p>`, `<p>Hint 3: 6 × 10<sup>5</sup> numbers to read and 2 × 10<sup>5</sup> lines to print → the fast reader of your language for input (BufferedReader + StringTokenizer, <code>sys.stdin.buffer.read()</code>, <code>fs.readFileSync(0)</code>, unsynced <code>cin</code>) and one big write for output.</p>`],
     tests: { io: true, cases: [
@@ -4602,7 +5057,7 @@ int main() {
     statement: `<p>Rotate the array <code>nums</code> to the right by <code>k</code> steps <b>in place</b>. Each step moves the last element to the front.</p>`,
     constraints: `1 ≤ N ≤ 10<sup>5</sup>, 0 ≤ k ≤ 10<sup>9</sup>, −2<sup>31</sup> ≤ nums[i] ≤ 2<sup>31</sup> − 1`,
     example: `${H.arr([1, 2, 3, 4, 5, 6, 7], { label: 'before', hl: { 4: 'b', 5: 'b', 6: 'b' } })}${H.arr([5, 6, 7, 1, 2, 3, 4], { label: 'k = 3', hl: { 0: 'b', 1: 'b', 2: 'b' } })}<p>The last 3 elements wrap around to the front. Note k = 10 on 7 elements is the same as k = 3.</p>`,
-    brute: { why: `<p>Rotate by one step, k times: save the last element, shift everything right by one, put it at the front. Each step is O(N), so O(N · k). With k up to 10<sup>9</sup> that is absurd; even after <code>k %= n</code> it is up to 10<sup>10</sup> moves. The wasted work: every element is moved k times instead of once.</p>`, code: String.raw`
+    brute: { why: `<p>Rotate by one step, k times: save the last element, shift everything right by one, put it at the front. Each step is O(N), so O(N · k). With k up to 10<sup>9</sup> that is absurd; even after <code>k %= n</code> it is up to 10<sup>10</sup> moves. The wasted work: every element is moved k times instead of once.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public void rotate(int[] nums, int k) {
         int n = nums.length;
@@ -4613,7 +5068,36 @@ class Solution {
             nums[0] = last;
         }
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def rotate(nums, k):
+    n = len(nums)
+    k %= n                                    # at least avoid useless full cycles
+    for _ in range(k):
+        last = nums[n - 1]
+        for i in range(n - 1, 0, -1):
+            nums[i] = nums[i - 1]             # shift right by one
+        nums[0] = last` }, { lang: 'js', code: String.raw`
+function rotate(nums, k) {
+  const n = nums.length;
+  k %= n;                                     // at least avoid useless full cycles
+  for (let step = 0; step < k; step++) {
+    const last = nums[n - 1];
+    for (let i = n - 1; i > 0; i--) nums[i] = nums[i - 1];   // shift right by one
+    nums[0] = last;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    void rotate(vector<int>& nums, int k) {
+        int n = nums.size();
+        k %= n;                                   // at least avoid useless full cycles
+        for (int step = 0; step < k; step++) {
+            int last = nums[n - 1];
+            for (int i = n - 1; i > 0; i--) nums[i] = nums[i - 1];   // shift right by one
+            nums[0] = last;
+        }
+    }
+};` }] } },
     mcq: { q: 'Why do we start with <code>k %= n</code>?', options: ['Rotating by n returns the original array, so only k mod n matters', 'To make k negative', 'Because k must be even', 'To sort the array'], answer: 0, explain: 'After n single steps every element is back home. k = 10, n = 7 behaves exactly like k = 3, and it also prevents index errors when k ≥ n.' },
     hints: [`<p>Hint 1: The answer is "last k elements, then first n − k elements". Can reversing pieces of the array produce that order?</p>`, `<p>Hint 2: Reverse the whole array, then reverse the first k elements, then reverse the remaining n − k elements.</p>`, `<p>Hint 3: Do <code>k %= n</code> first (k can be 10<sup>9</sup> or ≥ n). Write one helper <code>reverse(a, l, r)</code> and call it three times. k = 0 must leave the array unchanged.</p>`],
     tests: { sig: 'int[] int -> void', fn: 'rotate', mutate: 0, cases: [
@@ -4707,7 +5191,7 @@ public:
     statement: `<p>Each cell of an m × n board is live (1) or dead (0). Compute the next generation <b>in place</b> using the rules, applied to all cells <b>simultaneously</b>: a live cell with 2 or 3 live neighbours stays alive; otherwise it dies. A dead cell with exactly 3 live neighbours becomes alive. Neighbours are the 8 surrounding cells.</p>`,
     constraints: `1 ≤ m, n ≤ 25; board[i][j] is 0 or 1`,
     example: `${H.table(['before', '', ''], [['0', '1', '0'], ['0', '0', '1'], ['1', '1', '1'], ['0', '0', '0']])}${H.table(['after', '', ''], [['0', '0', '0'], ['1', '0', '1'], ['0', '1', '1'], ['0', '1', '0']])}<p>E.g. cell (1, 0) was dead with exactly 3 live neighbours (0,1), (2,0), (2,1) → ${H.c('g', 'born')}. Cell (0, 1) had only 1 live neighbour → ${H.c('r', 'dies')}.</p>`,
-    brute: { why: `<p>Copy the whole board, count neighbours on the copy, write results to the original. Correct and clear, but O(m·n) extra memory. The naive in-place attempt (no copy) is <b>wrong</b>: cells updated early change the neighbour counts of cells processed later — the rules must be simultaneous.</p>`, code: String.raw`
+    brute: { why: `<p>Copy the whole board, count neighbours on the copy, write results to the original. Correct and clear, but O(m·n) extra memory. The naive in-place attempt (no copy) is <b>wrong</b>: cells updated early change the neighbour counts of cells processed later — the rules must be simultaneous.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public void gameOfLife(int[][] board) {
         int m = board.length, n = board[0].length;
@@ -4725,7 +5209,54 @@ class Solution {
                 board[r][c] = (live == 3 || (old[r][c] == 1 && live == 2)) ? 1 : 0;
             }
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def game_of_life(board):
+    m, n = len(board), len(board[0])
+    old = [row[:] for row in board]           # O(m*n) extra memory
+    for r in range(m):
+        for c in range(n):
+            live = 0
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    if dr == 0 and dc == 0:
+                        continue
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < m and 0 <= nc < n:
+                        live += old[nr][nc]
+            board[r][c] = 1 if (live == 3 or (old[r][c] == 1 and live == 2)) else 0` }, { lang: 'js', code: String.raw`
+function gameOfLife(board) {
+  const m = board.length, n = board[0].length;
+  const old = board.map((row) => row.slice());     // O(m*n) extra memory
+  for (let r = 0; r < m; r++)
+    for (let c = 0; c < n; c++) {
+      let live = 0;
+      for (let dr = -1; dr <= 1; dr++)
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const nr = r + dr, nc = c + dc;
+          if (nr >= 0 && nr < m && nc >= 0 && nc < n) live += old[nr][nc];
+        }
+      board[r][c] = (live === 3 || (old[r][c] === 1 && live === 2)) ? 1 : 0;
+    }
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    void gameOfLife(vector<vector<int>>& board) {
+        int m = board.size(), n = board[0].size();
+        vector<vector<int>> old = board;                // O(m*n) extra memory
+        for (int r = 0; r < m; r++)
+            for (int c = 0; c < n; c++) {
+                int live = 0;
+                for (int dr = -1; dr <= 1; dr++)
+                    for (int dc = -1; dc <= 1; dc++) {
+                        if (dr == 0 && dc == 0) continue;
+                        int nr = r + dr, nc = c + dc;
+                        if (nr >= 0 && nr < m && nc >= 0 && nc < n) live += old[nr][nc];
+                    }
+                board[r][c] = (live == 3 || (old[r][c] == 1 && live == 2)) ? 1 : 0;
+            }
+    }
+};` }] } },
     mcq: { q: 'Each cell holds 0 or 1 in an int (32 bits). How can we store the next state without a second board?', options: ['Use bit 1 for the next state and bit 0 for the current state', 'Store it in a String', 'Use negative zero', 'It is impossible in O(1) space'], answer: 0, explain: 'board[r][c] |= nextState &lt;&lt; 1 keeps the current state readable as board[r][c] &amp; 1. Afterwards shift every cell right by 1.' },
     hints: [`<p>Hint 1: The difficulty is that neighbours must see the <b>old</b> state. Can one int cell remember both old and new states?</p>`, `<p>Hint 2: Bit 0 = current state, bit 1 = next state. While counting neighbours, read only <code>board[nr][nc] &amp; 1</code>. Write the new state with <code>board[r][c] |= 2</code> if it will be alive.</p>`, `<p>Hint 3: Second pass: <code>board[r][c] &gt;&gt;= 1</code> makes the next state current. Remember bounds checks on all 8 directions and skip (0, 0).</p>`],
     tests: { sig: 'int[][] -> void', fn: 'gameOfLife', mutate: 0, cases: [
@@ -4832,7 +5363,7 @@ public:
     statement: `<p>Given two non-negative integers <code>num1</code> and <code>num2</code> as strings, return their product as a string. Do not use a big-number type (<code>BigInteger</code>, Python <code>int()</code> on the whole input, JavaScript <code>BigInt</code>) or convert the inputs to integers directly.</p>`,
     constraints: `1 ≤ num1.length, num2.length ≤ 200; digits only; no leading zeros except "0".`,
     example: `<p><code>"123" × "45"</code> → ${H.c('g', '"5535"')}.</p>${H.table(['', 'pos 0', 'pos 1', 'pos 2', 'pos 3', 'pos 4'], [['raw sums', '0', '4', '13', '22', '15'], ['after carries', '0', '5', '5', '3', '5']])}<p>Digit i of num1 times digit j of num2 lands at position <b>i + j + 1</b>. Strip the leading 0 → "5535".</p>`,
-    brute: { why: `<p>Mimic long multiplication with strings: for each digit of num2, build a partial product string (num1 × digit, padded with zeros) and add it to the total with an add-strings helper. O(N·M) arithmetic, but it creates M intermediate strings of length up to N + M and re-copies the growing total each time — lots of allocation and code.</p>`, code: String.raw`
+    brute: { why: `<p>Mimic long multiplication with strings: for each digit of num2, build a partial product string (num1 × digit, padded with zeros) and add it to the total with an add-strings helper. O(N·M) arithmetic, but it creates M intermediate strings of length up to N + M and re-copies the growing total each time — lots of allocation and code.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public String multiply(String num1, String num2) {
         if (num1.equals("0") || num2.equals("0")) return "0";
@@ -4863,7 +5394,99 @@ class Solution {
         }
         return sb.reverse().toString();
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def multiply(num1, num2):
+    if num1 == "0" or num2 == "0":
+        return "0"
+    total = "0"
+    for shift, j in enumerate(range(len(num2) - 1, -1, -1)):
+        d = ord(num2[j]) - 48
+        part = ["0"] * shift                    # place value zeros
+        carry = 0
+        for i in range(len(num1) - 1, -1, -1):
+            p = (ord(num1[i]) - 48) * d + carry
+            part.append(str(p % 10))
+            carry = p // 10
+        if carry > 0:
+            part.append(str(carry))
+        total = add(total, "".join(reversed(part)))     # new string every round
+    return total
+
+def add(a, b):
+    out, i, j, carry = [], len(a) - 1, len(b) - 1, 0
+    while i >= 0 or j >= 0 or carry > 0:
+        s = carry
+        if i >= 0:
+            s += ord(a[i]) - 48
+            i -= 1
+        if j >= 0:
+            s += ord(b[j]) - 48
+            j -= 1
+        out.append(str(s % 10))
+        carry = s // 10
+    return "".join(reversed(out))` }, { lang: 'js', code: String.raw`
+function multiply(num1, num2) {
+  if (num1 === '0' || num2 === '0') return '0';
+  let total = '0';
+  for (let j = num2.length - 1, shift = 0; j >= 0; j--, shift++) {
+    const d = num2.charCodeAt(j) - 48;
+    const part = new Array(shift).fill('0');                 // place value zeros
+    let carry = 0;
+    for (let i = num1.length - 1; i >= 0; i--) {
+      const p = (num1.charCodeAt(i) - 48) * d + carry;
+      part.push(p % 10);
+      carry = Math.floor(p / 10);
+    }
+    if (carry > 0) part.push(carry);
+    total = add(total, part.reverse().join(''));             // new string every round
+  }
+  return total;
+}
+
+function add(a, b) {
+  const out = [];
+  let i = a.length - 1, j = b.length - 1, carry = 0;
+  while (i >= 0 || j >= 0 || carry > 0) {
+    const s = carry + (i >= 0 ? a.charCodeAt(i--) - 48 : 0) + (j >= 0 ? b.charCodeAt(j--) - 48 : 0);
+    out.push(s % 10);
+    carry = Math.floor(s / 10);
+  }
+  return out.reverse().join('');
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    string multiply(const string& num1, const string& num2) {
+        if (num1 == "0" || num2 == "0") return "0";
+        string total = "0";
+        for (int j = num2.size() - 1, shift = 0; j >= 0; j--, shift++) {
+            int d = num2[j] - '0';
+            string part(shift, '0');                         // place value zeros
+            int carry = 0;
+            for (int i = num1.size() - 1; i >= 0; i--) {
+                int p = (num1[i] - '0') * d + carry;
+                part += char('0' + p % 10);
+                carry = p / 10;
+            }
+            if (carry > 0) part += to_string(carry);
+            reverse(part.begin(), part.end());
+            total = add(total, part);                        // new string every round
+        }
+        return total;
+    }
+
+private:
+    string add(const string& a, const string& b) {
+        string sb;
+        int i = a.size() - 1, j = b.size() - 1, carry = 0;
+        while (i >= 0 || j >= 0 || carry > 0) {
+            int s = carry + (i >= 0 ? a[i--] - '0' : 0) + (j >= 0 ? b[j--] - '0' : 0);
+            sb += char('0' + s % 10);
+            carry = s / 10;
+        }
+        reverse(sb.begin(), sb.end());
+        return sb;
+    }
+};` }] } },
     mcq: { q: 'A number with N digits times a number with M digits has at most how many digits?', options: ['N + M', 'N × M', 'max(N, M) + 1', 'N + M + 1'], answer: 0, explain: '10<sup>N</sup> × 10<sup>M</sup> = 10<sup>N+M</sup>, and both factors are smaller, so the product has at most N + M digits. Allocate an int[N + M].' },
     hints: [`<p>Hint 1: Indexing from the left, digit i of num1 (place value 10<sup>N−1−i</sup>) times digit j of num2 contributes to result position i + j + 1 of an array of length N + M.</p>`, `<p>Hint 2: Accumulate all products into <code>int[] res = new int[N + M]</code> first, then sweep once from right to left pushing carries: res[k − 1] += res[k] / 10; res[k] %= 10.</p>`, `<p>Hint 3: Each cell collects at most ~200 products of ≤ 81 — fits easily in int. Skip leading zeros when building the string; if everything is zero, return "0".</p>`],
     tests: { sig: 'string string -> string', fn: 'multiply', cases: [
@@ -4964,14 +5587,32 @@ public:
     statement: `<p>Given <code>N</code>, return <code>N!</code> (1 × 2 × … × N) as a string of digits. Do not use a big-number type (<code>BigInteger</code>, Python's unbounded int on the whole value, JavaScript <code>BigInt</code>); C++ has none built in anyway.</p>`,
     constraints: `0 ≤ N ≤ 1000 (1000! has 2,568 digits)`,
     example: `<p><code>N = 25</code> → ${H.c('g', '"15511210043330985984000000"')} (26 digits).</p><p>Why a <code>long</code> fails: 20! = 2,432,902,008,176,640,000 is the largest factorial that fits; ${H.c('r', '21! overflows')} 9.22 × 10<sup>18</sup>.</p>`,
-    brute: { why: `<p>Multiply into a <code>long</code>. It is correct up to N = 20, then silently overflows to garbage (no exception). Using <code>BigInteger</code> would be correct but is banned here — and the interviewer wants to see that you can do big-number arithmetic with arrays yourself.</p>`, code: String.raw`
+    brute: { why: `<p>Multiply into a fixed-size integer (<code>long</code> in Java, <code>long long</code> in C++). It is correct up to N = 20, then silently overflows to garbage (no exception); a JavaScript double loses precision from 23! on, and Python's built-in <code>int</code> would simply work. Using a big-number type (<code>BigInteger</code>, Python <code>int</code>, <code>BigInt</code>) would be correct but is banned here — and the interviewer wants to see that you can do big-number arithmetic with arrays yourself.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public String factorial(int n) {
         long f = 1;
         for (int i = 2; i <= n; i++) f *= i;   // overflows silently for n >= 21
         return String.valueOf(f);
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def factorial(n):
+    f = 1
+    for i in range(2, n + 1):
+        f *= i          # Python's int is already a big number; in other languages this overflows silently
+    return str(f)` }, { lang: 'js', code: String.raw`
+function factorial(n) {
+  let f = 1;
+  for (let i = 2; i <= n; i++) f *= i;   // loses precision past 22!, and becomes Infinity for n >= 171
+  return String(f);
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    string factorial(int n) {
+        long long f = 1;
+        for (int i = 2; i <= n; i++) f *= i;   // overflows silently for n >= 21
+        return to_string(f);
+    }
+};` }] } },
     mcq: { q: 'You store digits least-significant first in an int array and multiply by i ≤ 1000. What is the largest value of digit × i + carry in one step?', options: ['A few thousand (9 × 1000 + carry) — fits in int', 'More than 2<sup>31</sup>', 'Exactly 9', 'It depends on the number of digits'], answer: 0, explain: 'digit ≤ 9, i ≤ 1000, carry ≤ ~1000, so the product is ≤ ~10<sup>4</sup>. Plain int arithmetic is perfectly safe.' },
     hints: [`<p>Hint 1: Store the number as an array of digits, <b>least significant first</b> (units at index 0). That makes carries flow toward higher indexes and lets the array grow at the end.</p>`, `<p>Hint 2: To multiply the whole number by i: for each digit, <code>prod = digit * i + carry</code>; store <code>prod % 10</code>; <code>carry = prod / 10</code>. After the last digit, append carry digit by digit.</p>`, `<p>Hint 3: Allocate 3000 digit cells (enough for 1000!) and track <code>len</code>, or use a growable list/vector. 0! = 1! = 1. Build the answer by reading digits from the most significant end.</p>`],
     tests: { sig: 'int -> string', fn: 'factorial', cases: [
@@ -5080,7 +5721,7 @@ public:
     statement: `<p>Convert a non-negative integer <code>num</code> to its English words representation, e.g. 1234567 → "One Million Two Hundred Thirty Four Thousand Five Hundred Sixty Seven". Words are separated by single spaces with no leading or trailing spaces.</p>`,
     constraints: `0 ≤ num ≤ 2<sup>31</sup> − 1`,
     example: `${H.table(['Input', 'Output'], [['123', '"One Hundred Twenty Three"'], ['12345', '"Twelve Thousand Three Hundred Forty Five"'], ['1000010', '"One Million Ten"'], ['0', H.c('y', '"Zero"')]])}<p>Notice the pattern: the number splits into groups of three digits (billions, millions, thousands, units), and each group is spoken the same way, followed by its scale word. Empty groups (000) are skipped entirely.</p>`,
-    brute: { why: `<p>A recursive function that concatenates Strings at every level with <code>+ " " +</code> and then calls <code>trim()</code> to clean up extra spaces. It is correct, but it builds and copies many temporary strings and relies on trimming to hide spacing bugs — a design that breaks easily when requirements change (e.g. adding "and" in British English).</p>`, code: String.raw`
+    brute: { why: `<p>A recursive function that concatenates strings at every level with <code>+ " " +</code> and then calls <code>trim()</code> to clean up extra spaces. It is correct, but it builds and copies many temporary strings and relies on trimming to hide spacing bugs — a design that breaks easily when requirements change (e.g. adding "and" in British English).</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     private static final String[] ONES = {"", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
         "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"};
@@ -5100,7 +5741,69 @@ class Solution {
         if (n < 1_000_000_000) return (words(n / 1_000_000) + " Million " + words(n % 1_000_000)).trim();
         return (words(n / 1_000_000_000) + " Billion " + words(n % 1_000_000_000)).trim();
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+        "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"]
+TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
+
+def number_to_words(num):
+    if num == 0:
+        return "Zero"
+    return words(num).strip()
+
+def words(n):
+    if n == 0: return ""
+    if n < 20: return ONES[n]
+    if n < 100: return (TENS[n // 10] + " " + words(n % 10)).strip()
+    if n < 1000: return (ONES[n // 100] + " Hundred " + words(n % 100)).strip()
+    if n < 1_000_000: return (words(n // 1000) + " Thousand " + words(n % 1000)).strip()
+    if n < 1_000_000_000: return (words(n // 1_000_000) + " Million " + words(n % 1_000_000)).strip()
+    return (words(n // 1_000_000_000) + " Billion " + words(n % 1_000_000_000)).strip()` }, { lang: 'js', code: String.raw`
+const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+  'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+function numberToWords(num) {
+  if (num === 0) return 'Zero';
+  return words(num).trim();
+}
+
+function words(n) {
+  if (n === 0) return '';
+  if (n < 20) return ONES[n];
+  if (n < 100) return (TENS[Math.floor(n / 10)] + ' ' + words(n % 10)).trim();
+  if (n < 1000) return (ONES[Math.floor(n / 100)] + ' Hundred ' + words(n % 100)).trim();
+  if (n < 1000000) return (words(Math.floor(n / 1000)) + ' Thousand ' + words(n % 1000)).trim();
+  if (n < 1000000000) return (words(Math.floor(n / 1000000)) + ' Million ' + words(n % 1000000)).trim();
+  return (words(Math.floor(n / 1000000000)) + ' Billion ' + words(n % 1000000000)).trim();
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    string numberToWords(int num) {
+        if (num == 0) return "Zero";
+        return trim(words(num));
+    }
+
+private:
+    const vector<string> ONES = {"", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+        "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"};
+    const vector<string> TENS = {"", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"};
+
+    string trim(const string& s) {
+        size_t a = s.find_first_not_of(' '), b = s.find_last_not_of(' ');
+        return a == string::npos ? "" : s.substr(a, b - a + 1);
+    }
+
+    string words(int n) {
+        if (n == 0) return "";
+        if (n < 20) return ONES[n];
+        if (n < 100) return trim(TENS[n / 10] + " " + words(n % 10));
+        if (n < 1000) return trim(ONES[n / 100] + " Hundred " + words(n % 100));
+        if (n < 1000000) return trim(words(n / 1000) + " Thousand " + words(n % 1000));
+        if (n < 1000000000) return trim(words(n / 1000000) + " Million " + words(n % 1000000));
+        return trim(words(n / 1000000000) + " Billion " + words(n % 1000000000));
+    }
+};` }] } },
     mcq: { q: 'How should the group "000" in 1,000,010 be handled?', options: ['Skip it completely — no "Thousand" word', 'Say "Zero Thousand"', 'Say "Thousand" alone', 'Throw an exception'], answer: 0, explain: '1,000,010 is "One Million Ten". A scale word is spoken only when its 3-digit group is non-zero.' },
     hints: [`<p>Hint 1: Every number is just 3-digit groups with scale words: [Billion, Million, Thousand, ""]. Write one helper <code>three(int n)</code> for 1–999 and reuse it for all groups.</p>`, `<p>Hint 2: three(n): hundreds digit → ONES[h] + " Hundred"; the remaining 0–99: if &lt; 20 use ONES directly (handles Eleven…Nineteen), else TENS[t] plus ONES[u] if u &gt; 0.</p>`, `<p>Hint 3: Peel groups with <code>% 1000</code> and <code>/ 1000</code> from the lowest scale upward (or divide by 10<sup>9</sup>, 10<sup>6</sup>, 10<sup>3</sup> from the top). Skip zero groups. Join non-empty pieces with single spaces. Special-case 0 → "Zero".</p>`],
     tests: { sig: 'int -> string', fn: 'numberToWords', cases: [
@@ -5248,7 +5951,7 @@ public:
     statement: `<p>Given an array of <code>words</code> and a width <code>maxWidth</code>, format the text so each line has exactly <code>maxWidth</code> characters and is fully justified. Pack as many words as possible into each line (greedy). Distribute extra spaces between words as evenly as possible; if they do not divide evenly, the <b>left</b> gaps get more. A line with one word is left-justified (padded on the right). The <b>last line</b> is left-justified with single spaces between words, padded on the right.</p>`,
     constraints: `1 ≤ words.length ≤ 300; 1 ≤ words[i].length ≤ 20; words[i].length ≤ maxWidth ≤ 100`,
     example: `<p><code>words = ["This", "is", "an", "example", "of", "text", "justification."]</code>, maxWidth = 16:</p>${H.table(['Line', 'Why'], [['<code>"This&nbsp;&nbsp;&nbsp;&nbsp;is&nbsp;&nbsp;&nbsp;&nbsp;an"</code>', '8 letters, 8 spaces over 2 gaps → 4 + 4'], ['<code>"example&nbsp;&nbsp;of&nbsp;text"</code>', '13 letters, 3 spaces over 2 gaps → ' + H.c('b', '2 + 1 (left gap gets the extra)')], ['<code>"justification.&nbsp;&nbsp;"</code>', H.c('y', 'last line: left-justified, padded right')]])}`,
-    brute: { why: `<p>Build each line by appending words, then insert extra spaces <b>one at a time</b> in round-robin order across the gaps using repeated String concatenation. It produces the right answer, but each insertion copies the line (O(maxWidth) per space → O(maxWidth<sup>2</sup>) per line), and round-robin logic plus special cases (one word, last line) gets tangled. Arithmetic can place all spaces in one go.</p>`, code: String.raw`
+    brute: { why: `<p>Build each line by appending words, then insert extra spaces <b>one at a time</b> in round-robin order across the gaps using repeated String concatenation. It produces the right answer, but each insertion copies the line (O(maxWidth) per space → O(maxWidth<sup>2</sup>) per line), and round-robin logic plus special cases (one word, last line) gets tangled. Arithmetic can place all spaces in one go.</p>`, code: { lang: 'java', code: String.raw`
 class Solution {
     public List<String> fullJustify(String[] words, int maxWidth) {
         List<String> res = new ArrayList<>();
@@ -5269,7 +5972,66 @@ class Solution {
         }
         return res;
     }
-}` },
+}`, alt: [{ lang: 'python', code: String.raw`
+def full_justify(words, max_width):
+    res = []
+    i = 0
+    while i < len(words):
+        j, length = i, 0
+        while j < len(words) and length + len(words[j]) + (j - i) <= max_width:
+            length += len(words[j])
+            j += 1
+        gaps = [" " if j == len(words) else ""] * max(1, j - i - 1)
+        if j < len(words) and j - i > 1:
+            for s in range(max_width - length):
+                gaps[s % (j - i - 1)] += " "          # one space at a time
+        line = words[i]
+        for k in range(i + 1, j):
+            line += gaps[k - i - 1] + words[k]
+        while len(line) < max_width:
+            line += " "                               # pad right
+        res.append(line)
+        i = j
+    return res` }, { lang: 'js', code: String.raw`
+function fullJustify(words, maxWidth) {
+  const res = [];
+  let i = 0;
+  while (i < words.length) {
+    let j = i, len = 0;
+    while (j < words.length && len + words[j].length + (j - i) <= maxWidth) len += words[j++].length;
+    const gaps = new Array(Math.max(1, j - i - 1)).fill(j === words.length ? ' ' : '');
+    if (j < words.length && j - i > 1) {
+      for (let s = 0; s < maxWidth - len; s++) gaps[s % (j - i - 1)] += ' ';   // one space at a time
+    }
+    let line = words[i];
+    for (let k = i + 1; k < j; k++) line += gaps[k - i - 1] + words[k];
+    while (line.length < maxWidth) line += ' ';                                // pad right
+    res.push(line);
+    i = j;
+  }
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    vector<string> fullJustify(vector<string>& words, int maxWidth) {
+        vector<string> res;
+        int i = 0, n = words.size();
+        while (i < n) {
+            int j = i, len = 0;
+            while (j < n && len + (int) words[j].size() + (j - i) <= maxWidth) len += words[j++].size();
+            vector<string> gaps(max(1, j - i - 1), j == n ? " " : "");
+            if (j < n && j - i > 1) {
+                for (int s = 0; s < maxWidth - len; s++) gaps[s % (j - i - 1)] += " ";   // one space at a time
+            }
+            string line = words[i];
+            for (int k = i + 1; k < j; k++) line += gaps[k - i - 1] + words[k];
+            while ((int) line.size() < maxWidth) line += " ";                          // pad right
+            res.push_back(line);
+            i = j;
+        }
+        return res;
+    }
+};` }] } },
     mcq: { q: 'A line has 3 words with 13 letters in total and maxWidth = 20. How are the 7 spaces split over the 2 gaps?', options: ['4 then 3', '3 then 4', '3.5 and 3.5', '7 then 0'], answer: 0, explain: '7 / 2 = 3 remainder 1. Every gap gets 3, and the leftmost 1 gap gets one extra: 4, 3.' },
     hints: [`<p>Hint 1: Split the job into two helpers: (a) <b>choose</b> the words for a line greedily — keep adding while total letters + minimum single spaces ≤ maxWidth; (b) <b>render</b> the line.</p>`, `<p>Hint 2: For a normal line with g = count − 1 gaps and S = maxWidth − letters spaces: each gap gets S / g, and the first S % g gaps get one extra.</p>`, `<p>Hint 3: Special cases: a line with one word, and the last line → words joined with single spaces, then pad with spaces on the right to maxWidth. Repeat spaces with <code>" ".repeat(k)</code> (Java, JS), <code>" " * k</code> (Python) or <code>string(k, ' ')</code> (C++); <code>ljust</code> / <code>padEnd</code> pad the right side.</p>`],
     tests: { sig: 'string[] int -> list<string>', fn: 'fullJustify', cases: [
@@ -5407,19 +6169,19 @@ public:
      QUIZ
      ====================================================================== */
   quiz.push(
-    { q: 'What does <code>System.out.println(7 / 2 + 7 % 2);</code> print?', options: ['4', '3.5', '4.5', '3'], answer: 0, explain: '7 / 2 is integer division = 3, and 7 % 2 = 1. 3 + 1 = 4.' },
-    { q: 'What does <code>System.out.println(-7 % 3);</code> print in Java?', options: ['-1', '2', '1', '-2'], answer: 0, explain: 'Java\'s remainder takes the sign of the left operand: -7 = 3 × (-2) + (-1). Use Math.floorMod(-7, 3) to get 2.' },
-    { q: 'a and b are <code>int</code> values up to 10<sup>5</sup>. Which line stores their product correctly?', options: ['<code>long p = (long) a * b;</code>', '<code>long p = a * b;</code>', '<code>int p = a * b;</code>', '<code>long p = (long) (a * b);</code>'], answer: 0, explain: 'The cast must happen before the multiplication. In (long)(a * b) and a * b, the int multiplication has already overflowed (10<sup>10</sup> &gt; 2.1 × 10<sup>9</sup>).' },
-    { q: 'Your O(N) solution gets Time Limit Exceeded on a HackerRank test with 10<sup>6</sup> input numbers. What is the first thing to check?', options: ['Whether you read input with Scanner instead of BufferedReader', 'Whether you used a for loop', 'Whether the class is public', 'Whether you used int instead of long'], answer: 0, explain: 'With a linear algorithm, I/O often dominates. Scanner parses each token with regular expressions and is several times slower than BufferedReader + StringTokenizer.' },
-    { q: 'What is printed?<br><code>int[] a = {1, 2, 3}; int[] b = a; b[0] = 9; System.out.println(a[0]);</code>', options: ['9', '1', '0', 'Compile error'], answer: 0, explain: 'b = a copies the reference (address), not the array. Both names refer to the same object, so the write through b is visible through a.' },
-    { q: 'Inside <code>void f(int[] arr)</code> you write <code>arr = new int[5]; arr[0] = 7;</code>. What does the caller\'s array look like afterwards?', options: ['Unchanged', 'Its first element is 7', 'It now has length 5', 'It becomes null'], answer: 0, explain: 'Java passes a copy of the reference. Re-pointing the local parameter to a new array does not affect the caller; the write goes into the new array only.' },
-    { q: 'Which comparison is correct for checking whether two Strings have the same text?', options: ['<code>s.equals(t)</code>', '<code>s == t</code>', '<code>s.compareTo(t) == 1</code>', '<code>s.hashCode() == t.hashCode()</code> alone'], answer: 0, explain: '== compares references (works by accident for pooled literals). Equal hash codes do not guarantee equal text. equals compares content.' },
+    { q: 'In Java or C++ with <code>int</code> operands, what does <code>7 / 2 + 7 % 2</code> evaluate to? (Python: <code>7 // 2 + 7 % 2</code>.)', options: ['4', '3.5', '4.5', '3'], answer: 0, explain: '7 / 2 is integer division = 3, and 7 % 2 = 1. 3 + 1 = 4.' },
+    { q: 'What does <code>-7 % 3</code> evaluate to in Java, C++ or JavaScript? (Python behaves differently.)', options: ['-1', '2', '1', '-2'], answer: 0, explain: 'In Java, C++ and JavaScript the remainder takes the sign of the left operand: -7 = 3 × (-2) + (-1). To get 2, use Math.floorMod(-7, 3) in Java or ((x % m) + m) % m elsewhere; Python\'s % already returns 2.' },
+    { q: 'a and b are 32-bit <code>int</code> values up to 10<sup>5</sup>. Which line (Java shown; in C++ read <code>long</code> as <code>long long</code>) stores their product correctly?', options: ['<code>long p = (long) a * b;</code>', '<code>long p = a * b;</code>', '<code>int p = a * b;</code>', '<code>long p = (long) (a * b);</code>'], answer: 0, explain: 'The cast must happen before the multiplication. In (long)(a * b) and a * b, the int multiplication has already overflowed (10<sup>10</sup> &gt; 2.1 × 10<sup>9</sup>).' },
+    { q: 'Your O(N) solution gets Time Limit Exceeded on a HackerRank test with 10<sup>6</sup> input numbers. What is the first thing to check?', options: ['Whether you read input with a slow reader (Java Scanner, Python input() per line, C++ cin without sync_with_stdio(false)) instead of a buffered one', 'Whether you used a for loop', 'Whether the class is public', 'Whether you used int instead of long'], answer: 0, explain: 'With a linear algorithm, I/O often dominates. Java\'s Scanner parses each token with regular expressions and is several times slower than BufferedReader + StringTokenizer; the same trap exists as per-line input() in Python and unsynced cin in C++.' },
+    { q: 'What is printed in Java? (Python lists and JavaScript arrays behave the same way.)<br><code>int[] a = {1, 2, 3}; int[] b = a; b[0] = 9; System.out.println(a[0]);</code>', options: ['9', '1', '0', 'Compile error'], answer: 0, explain: 'b = a copies the reference (address), not the array. Both names refer to the same object, so the write through b is visible through a.' },
+    { q: 'In Java (Python and JavaScript behave the same), inside <code>void f(int[] arr)</code> you write <code>arr = new int[5]; arr[0] = 7;</code>. What does the caller\'s array look like afterwards?', options: ['Unchanged', 'Its first element is 7', 'It now has length 5', 'It becomes null'], answer: 0, explain: 'Java passes a copy of the reference. Re-pointing the local parameter to a new array does not affect the caller; the write goes into the new array only.' },
+    { q: 'Which comparison is correct for checking whether two Java Strings have the same text? (Python, JavaScript and C++ strings use <code>==</code>.)', options: ['<code>s.equals(t)</code>', '<code>s == t</code>', '<code>s.compareTo(t) == 1</code>', '<code>s.hashCode() == t.hashCode()</code> alone'], answer: 0, explain: '== compares references (works by accident for pooled literals). Equal hash codes do not guarantee equal text. equals compares content.' },
     { q: 'Constraints say N ≤ 10<sup>5</sup>. Which complexity is the safe target?', options: ['O(N log N) or better', 'O(N<sup>2</sup>)', 'O(2<sup>N</sup>)', 'O(N<sup>3</sup>)'], answer: 0, explain: 'N log N ≈ 1.7 × 10<sup>6</sup> steps — comfortable. N<sup>2</sup> = 10<sup>10</sup> would take ~100 seconds at 10<sup>8</sup> steps per second.' },
-    { q: 'Constraints say N ≤ 20. What does that most likely hint?', options: ['Trying all 2<sup>N</sup> subsets is intended', 'You must use O(log N)', 'Use a HashMap', 'Read input with Scanner'], answer: 0, explain: '2<sup>20</sup> ≈ 10<sup>6</sup>, so exponential enumeration (bitmasks/backtracking) fits easily. Setters choose tiny N exactly to allow that.' },
+    { q: 'Constraints say N ≤ 20. What does that most likely hint?', options: ['Trying all 2<sup>N</sup> subsets is intended', 'You must use O(log N)', 'Use a hash map (HashMap / dict / Map / unordered_map)', 'Read input with a slow reader such as Scanner'] , answer: 0, explain: '2<sup>20</sup> ≈ 10<sup>6</sup>, so exponential enumeration (bitmasks/backtracking) fits easily. Setters choose tiny N exactly to allow that.' },
     { q: 'How many subarrays does an array of length N have?', options: ['N(N+1)/2', 'N<sup>2</sup>', '2<sup>N</sup>', 'N!'], answer: 0, explain: 'Choose a start i and an end j ≥ i: N + (N−1) + … + 1 = N(N+1)/2. Subsets (not necessarily contiguous) would be 2<sup>N</sup>.' },
-    { q: 'Why is <code>result += piece;</code> on a String inside a loop of 10<sup>5</sup> iterations a problem?', options: ['Each += copies the whole string, making it O(N<sup>2</sup>) overall', 'Strings cannot be longer than 1000 chars', 'It causes a compile error', 'It changes the original String object'], answer: 0, explain: 'Strings are immutable, so every concatenation creates a new String and copies all previous characters. StringBuilder appends in amortised O(1).' },
+    { q: 'Why is <code>result += piece;</code> on an immutable String (Java, Python, JavaScript) inside a loop of 10<sup>5</sup> iterations a problem?', options: ['Each += copies the whole string, making it O(N<sup>2</sup>) overall', 'Strings cannot be longer than 1000 chars', 'It causes a compile error', 'It changes the original String object'], answer: 0, explain: 'Strings are immutable, so every concatenation creates a new String and copies all previous characters. StringBuilder appends in amortised O(1).' },
     { q: '<code>Integer x = 1000, y = 1000;</code> What does <code>x == y</code> usually return?', options: ['false', 'true', 'It throws an exception', 'It does not compile'], answer: 0, explain: 'Only values in −128…127 are guaranteed to be cached. 1000 autoboxes into two distinct Integer objects, and == compares references. Use equals or compare int values.' },
-    { q: 'A recursive DFS on a path-shaped tree with 10<sup>6</sup> nodes crashes with StackOverflowError. Why?', options: ['Each call adds a stack frame, and the default thread stack holds far fewer than 10<sup>6</sup> frames', 'The heap is full of nodes', 'Recursion is not allowed in Java', 'The tree has a cycle'], answer: 0, explain: 'Recursion depth equals the path length. Frames live on the thread stack (often ~512 KB–1 MB by default). Fix: iterative DFS with an explicit stack, or run in a Thread with a larger stack size.' }
+    { q: 'A recursive DFS on a path-shaped tree with 10<sup>6</sup> nodes crashes with a stack overflow (StackOverflowError in Java, RecursionError in Python, RangeError in JavaScript, a segfault in C++). Why?', options: ['Each call adds a stack frame, and the default thread stack holds far fewer than 10<sup>6</sup> frames', 'The heap is full of nodes', 'Recursion is not allowed on judges', 'The tree has a cycle'], answer: 0, explain: 'Recursion depth equals the path length. Frames live on the thread stack (often ~512 KB–1 MB by default). Fix: iterative DFS with an explicit stack, or run in a Thread with a larger stack size.' }
   );
 
   /* ======================================================================
@@ -5427,19 +6189,19 @@ public:
      ====================================================================== */
   interview.push(
     { q: 'Is Java pass-by-value or pass-by-reference?', level: 'B', a: `<p>Java is <b>always pass-by-value</b>. For primitives, the value (e.g. the number 5) is copied into the parameter. For objects, the value being copied is the <b>reference</b> (the address). That is why a method can <b>mutate</b> the object the caller passed (both copies of the address point to the same object), but <b>re-assigning</b> the parameter (<code>arr = new int[3]</code>) never affects the caller's variable. A classic proof: a <code>swap(Integer a, Integer b)</code> method cannot swap the caller's variables.</p>`, followUps: ['How would you let a method "return" two values?', 'What does this mean for Strings, given they are immutable?'] },
-    { q: 'What is the difference between the stack and the heap in Java?', level: 'B', a: `<p>The <b>stack</b> (one per thread) holds a <b>frame</b> per active method call: parameters, local primitives and local references. Frames are pushed on call and popped on return — very fast, automatically sized, but small (often ~512 KB–1 MB), so very deep recursion causes <code>StackOverflowError</code>. The <b>heap</b> is shared memory where every object created with <code>new</code> lives (arrays, Strings, collections). Objects live as long as they are reachable; the <b>garbage collector</b> frees unreachable ones. Running out of heap gives <code>OutOfMemoryError</code>.</p>`, followUps: ['Where does a local int[] variable live, and where does the array live?', 'What is escape analysis?'] },
-    { q: 'Why is Scanner slow and what do you use instead in coding assessments?', level: 'B', a: `<p><code>Scanner</code> tokenises input with <b>regular expressions</b>, validates each token (including locale handling) and uses a small buffer, so each <code>nextInt()</code> is relatively expensive. With 10<sup>5</sup>–10<sup>6</sup> numbers this can cost close to a second. I use <code>BufferedReader</code> (large buffered chunks) with <code>StringTokenizer</code> and <code>Integer.parseInt</code>, or a custom byte reader over <code>DataInputStream</code> for 10<sup>7</sup>-scale inputs. For output I collect results in a <code>StringBuilder</code> or a <code>PrintWriter</code> and flush once at the end.</p>`, followUps: ['What happens if you forget to flush a PrintWriter?', 'Explain the nextInt() then nextLine() bug.'] },
-    { q: 'How do you decide between int and long for a problem?', level: 'B', a: `<p>I read the constraints and compute the <b>largest intermediate value</b>, not just the inputs. int holds about ±2.1 × 10<sup>9</sup>; long about ±9.2 × 10<sup>18</sup>. If values are up to 10<sup>9</sup> and I <b>sum</b> 10<sup>5</sup> of them (10<sup>14</sup>) or <b>multiply</b> two (10<sup>18</sup>), I use long for the accumulator — and I cast <i>before</i> the arithmetic: <code>(long) a * b</code>. Counting pairs among 10<sup>5</sup> elements (up to ~5 × 10<sup>9</sup>) also needs long. When even long can overflow (products of two longs), I use modular arithmetic, <code>Math.multiplyHigh</code>, or <code>BigInteger</code>.</p>`, followUps: ['What does Integer.MAX_VALUE + 1 evaluate to?', 'How do you detect overflow without using long?'] },
+    { q: 'What is the difference between the stack and the heap (in Java, and how do the other languages differ)?', level: 'B', a: `<p>The <b>stack</b> (one per thread) holds a <b>frame</b> per active method call: parameters, local primitives and local references. Frames are pushed on call and popped on return — very fast, automatically sized, but small (often ~512 KB–1 MB), so very deep recursion causes <code>StackOverflowError</code>. The <b>heap</b> is shared memory where every object created with <code>new</code> lives (arrays, Strings, collections). Objects live as long as they are reachable; the <b>garbage collector</b> frees unreachable ones. Running out of heap gives <code>OutOfMemoryError</code>. Python and JavaScript work the same way: every object lives on the heap and variables hold references, with a garbage collector. C++ lets you choose: locals (and the small control block of a <code>vector</code>) live on the stack, while the elements, <code>new</code> objects and <code>make_unique</code> allocations live on the heap and are freed by destructors, not a collector.</p>`, followUps: ['Where does a local int[]  variable live, and where does the array live?', 'What is escape analysis?'] },
+    { q: 'Why is Java\'s Scanner slow, and what do you use instead (in any language) in coding assessments?', level: 'B', a: `<p><code>Scanner</code> tokenises input with <b>regular expressions</b>, validates each token (including locale handling) and uses a small buffer, so each <code>nextInt()</code> is relatively expensive. With 10<sup>5</sup>–10<sup>6</sup> numbers this can cost close to a second. I use <code>BufferedReader</code> (large buffered chunks) with <code>StringTokenizer</code> and <code>Integer.parseInt</code>, or a custom byte reader over <code>DataInputStream</code> for 10<sup>7</sup>-scale inputs. For output I collect results in a <code>StringBuilder</code> or a <code>PrintWriter</code> and flush once at the end. The same ladder exists elsewhere: in Python read everything with <code>sys.stdin.buffer.read().split()</code> and print once with <code>"\\n".join</code>; in Node use <code>fs.readFileSync(0, "utf8")</code>; in C++ start with <code>ios::sync_with_stdio(false); cin.tie(nullptr);</code> and print <code>'\\n'</code> instead of <code>endl</code>.</p>`, followUps: ['What happens if you forget to flush  a PrintWriter?', 'Explain the nextInt() then nextLine() bug.'] },
+    { q: 'How do you decide between int and long for a problem?', level: 'B', a: `<p>I read the constraints and compute the <b>largest intermediate value</b>, not just the inputs. int holds about ±2.1 × 10<sup>9</sup>; long about ±9.2 × 10<sup>18</sup>. If values are up to 10<sup>9</sup> and I <b>sum</b> 10<sup>5</sup> of them (10<sup>14</sup>) or <b>multiply</b> two (10<sup>18</sup>), I use long for the accumulator — and I cast <i>before</i> the arithmetic: <code>(long) a * b</code>. Counting pairs among 10<sup>5</sup> elements (up to ~5 × 10<sup>9</sup>) also needs long. When even long can overflow (products of two longs), I use modular arithmetic, <code>Math.multiplyHigh</code>, or <code>BigInteger</code>. In C++ the same rule applies to <code>int</code> versus <code>long long</code> (and signed overflow is undefined behaviour); Python integers never overflow; JavaScript numbers are exact only up to 2<sup>53</sup>, so use <code>BigInt</code> beyond that.</p>`, followUps: ['What does Integer.MAX_VALUE + 1 evaluate to?', 'How do you detect overflow without using long?'] },
     { q: 'Explain the Integer cache pitfall with ==.', level: 'I', a: `<p>Autoboxing uses <code>Integer.valueOf</code>, which returns <b>cached</b> objects for values from −128 to 127 (guaranteed by the language spec). So <code>Integer a = 100, b = 100; a == b</code> is true (same cached object), but with 1000 two separate objects are created and <code>==</code> (reference comparison) is false. This bites in code like <code>map.get(x) == map.get(y)</code> or comparing elements of a <code>List&lt;Integer&gt;</code>. Fix: use <code>.equals</code>, <code>Integer.compare</code>, or unbox to int. Also beware unboxing <code>null</code> → NullPointerException.</p>`, followUps: ['Can the cache upper bound be changed?', 'Why might boxing hurt performance in a HashMap-heavy solution?'] },
-    { q: 'Why does String concatenation in a loop hurt performance, and what does the compiler do about it?', level: 'I', a: `<p>Strings are immutable, so <code>s += x</code> inside a loop creates a <b>new</b> String each time and copies all existing characters, giving O(N<sup>2</sup>) total work for N appends. Since Java 9 the compiler turns a <b>single</b> concatenation expression into an efficient <code>invokedynamic</code> call (StringConcatFactory), but it cannot merge appends across loop iterations. The fix is an explicit <code>StringBuilder</code> (amortised O(1) append because its internal array grows geometrically), then <code>toString()</code> once.</p>`, followUps: ['StringBuilder vs StringBuffer?', 'What is the time complexity of sb.insert(0, c) repeated N times?'] },
-    { q: 'You are given a problem with N ≤ 10<sup>5</sup>. Walk me through how constraints shape your approach.', level: 'I', a: `<p>First I convert the constraint into a budget: roughly 10<sup>8</sup> simple operations per second, so O(N<sup>2</sup>) = 10<sup>10</sup> is out and I target O(N log N) or O(N). That suggests sorting, binary search, heaps, hashing, two pointers or prefix sums. Next I check <b>value ranges</b>: values up to 10<sup>9</sup> mean sums need <code>long</code>; values up to 10<sup>6</sup> allow counting arrays. Then <b>hidden multipliers</b>: number of test cases, number of queries, string lengths. Finally edge cases implied by the bounds: N = 1, negatives, duplicates. I say all of this out loud before coding.</p>`, followUps: ['What would change if N ≤ 20?', 'How do you handle "sum of N over all test cases ≤ 2·10^5"?'] },
+    { q: 'Why does String concatenation in a loop hurt performance, and what does the compiler do about it?', level: 'I', a: `<p>Strings are immutable, so <code>s += x</code> inside a loop creates a <b>new</b> String each time and copies all existing characters, giving O(N<sup>2</sup>) total work for N appends. Since Java 9 the compiler turns a <b>single</b> concatenation expression into an efficient <code>invokedynamic</code> call (StringConcatFactory), but it cannot merge appends across loop iterations. The fix is an explicit <code>StringBuilder</code> (amortised O(1) append because its internal array grows geometrically), then <code>toString()</code> once. Python and JavaScript have the same problem in principle (collect pieces in a list or array and <code>join</code> once), while C++ <code>std::string</code> is mutable and <code>+=</code> is amortised O(1).</p>`, followUps: ['StringBuilder vs StringBuffer?', 'What is the time complexity of sb.insert(0, c) repeated N times?'] },
+    { q: 'You are given a problem with N ≤ 10<sup>5</sup>. Walk me through how constraints shape your approach.', level: 'I', a: `<p>First I convert the constraint into a budget: roughly 10<sup>8</sup> simple operations per second, so O(N<sup>2</sup>) = 10<sup>10</sup> is out and I target O(N log N) or O(N). That suggests sorting, binary search, heaps, hashing, two pointers or prefix sums. Next I check <b>value ranges</b>: values up to 10<sup>9</sup> mean sums need a 64-bit type (<code>long</code> / <code>long long</code>);  values up to 10<sup>6</sup> allow counting arrays. Then <b>hidden multipliers</b>: number of test cases, number of queries, string lengths. Finally edge cases implied by the bounds: N = 1, negatives, duplicates. I say all of this out loud before coding.</p>`, followUps: ['What would change if N ≤ 20?', 'How do you handle "sum of N over all test cases ≤ 2·10^5"?'] },
     { q: 'What is the value of writing a brute-force solution first in an interview?', level: 'B', a: `<p>It proves I understand the problem and gives a <b>correct baseline</b> within minutes, so I am never left with nothing. Stating its complexity against the constraints shows exactly why we need something better and <b>where the repeated work is</b> (e.g. re-summing subarrays), which usually points to the optimisation. It also doubles as a <b>test oracle</b>: I can compare the optimised version against it on small inputs. I keep it short — describe it in a sentence, code it only if the interviewer wants or if N is small enough that it is the final answer.</p>`, followUps: ['When is the brute force the final answer?', 'How would you stress test your optimised solution?'] },
     { q: 'How would you stress test a solution?', level: 'I', a: `<p>I write three pieces: a <b>brute-force</b> solution that is obviously correct (no cleverness), a <b>random generator</b> with a fixed seed producing small inputs (e.g. N ≤ 8, values −10…10, including duplicates and negatives), and a loop that runs both solutions thousands of times and stops at the first mismatch, printing the input. Small inputs keep failures readable; the fixed seed makes them reproducible. Then I shrink the failing case by hand, fix the bug and rerun. It is the same principle as property-based and differential testing in industry.</p>`, followUps: ['Why small values rather than random 10^9 values?', 'How do you test for TLE rather than correctness?'] },
     { q: 'What does Arrays.sort use internally, and does it matter in interviews?', level: 'A', a: `<p>For primitive arrays (<code>int[]</code>, <code>long[]</code>…) Java uses <b>dual-pivot quicksort</b> — fast in practice, not stable. Newer JDKs guard against pathological recursion depth by falling back to heapsort, but on older judges crafted inputs could trigger slow cases, so competitive programmers sometimes shuffle first or sort boxed/long arrays. For object arrays (<code>Integer[]</code>, <code>int[][]</code>, <code>String[]</code>) and <code>Collections.sort</code>, Java uses <b>TimSort</b>: stable, O(N log N) worst case, adaptive on partially sorted data. Stability matters when sorting by one key after another; comparators should use <code>Integer.compare</code> rather than subtraction to avoid overflow.</p>`, followUps: ['Why is a - b a dangerous comparator?', 'What does stability mean and when do you need it?'] },
-    { q: 'How do you avoid StackOverflowError for deep recursion in Java?', level: 'A', a: `<p>First, estimate depth: recursion on a linked structure or a path-shaped tree can reach N (10<sup>5</sup>–10<sup>6</sup>), while the default thread stack fits only ~10<sup>4</sup>–10<sup>5</sup> frames depending on frame size. Options: (1) rewrite the recursion iteratively with an explicit <code>ArrayDeque</code> as the stack — the most robust; (2) run the solver in a <code>new Thread(null, runnable, "main", 1 &lt;&lt; 26)</code> with a larger stack — common on judges; (3) reduce frame size (fewer locals/parameters). Tail calls are not optimised by the JVM, so "tail recursion" does not help.</p>`, followUps: ['Convert recursive inorder traversal to iterative.', 'Does -Xss work on online judges?'] },
-    { q: 'Shallow copy vs deep copy of a 2D array — what is the difference?', level: 'I', a: `<p>A 2D array in Java is an array of references to row arrays. <code>grid.clone()</code> creates a new <b>outer</b> array but copies the row <b>references</b>, so both grids share the same rows — a <b>shallow</b> copy; modifying <code>copy[0][0]</code> changes the original. A <b>deep</b> copy clones each row: <code>for r: copy[r] = grid[r].clone()</code>. This matters for simulations (Game of Life, BFS on a mutated grid), backtracking snapshots and any "return a new board" problem. The same idea applies to <code>List&lt;List&lt;Integer&gt;&gt;</code>: copy inner lists with <code>new ArrayList&lt;&gt;(inner)</code>.</p>`, followUps: ['How does Arrays.copyOf behave for a 2D array?', 'How would you deep-copy a graph?'] },
+    { q: 'How do you avoid a stack overflow (StackOverflowError in Java) for deep recursion?', level: 'A', a: `<p>First, estimate depth: recursion on a linked structure or a path-shaped tree can reach N (10<sup>5</sup>–10<sup>6</sup>), while the default thread stack fits only ~10<sup>4</sup>–10<sup>5</sup> frames depending on frame size. Options: (1) rewrite the recursion iteratively with an explicit <code>ArrayDeque</code> as the stack — the most robust; (2) run the solver in a <code>new Thread(null, runnable, "main", 1 &lt;&lt; 26)</code> with a larger stack — common on judges; (3) reduce frame size (fewer locals/parameters). Tail calls are not optimised by the JVM, so "tail recursion" does not help. Python is stricter (about 1000 frames by default): iterate, or raise <code>sys.setrecursionlimit</code> and run in a <code>threading.Thread</code> with a bigger <code>threading.stack_size</code>. JavaScript allows roughly 10<sup>4</sup> frames, so iterate with an explicit array stack. In C++ use an explicit <code>stack</code>/<code>vector</code> because the typical 8 MB stack is fixed on judges.</p>`, followUps: ['Convert recursive inorder  traversal to iterative.', 'Does -Xss work on online judges?'] },
+    { q: 'Shallow copy vs deep copy of a 2D array — what is the difference?', level: 'I', a: `<p>A 2D array in Java is an array of references to row arrays. <code>grid.clone()</code> creates a new <b>outer</b> array but copies the row <b>references</b>, so both grids share the same rows — a <b>shallow</b> copy; modifying <code>copy[0][0]</code> changes the original. A <b>deep</b> copy clones each row: <code>for r: copy[r] = grid[r].clone()</code>. This matters for simulations (Game of Life, BFS on a mutated grid), backtracking snapshots and any "return a new board" problem. The same idea applies to <code>List&lt;List&lt;Integer&gt;&gt;</code>: copy inner lists with <code>new ArrayList&lt;&gt;(inner)</code>. In Python the equivalent is <code>[row[:] for row in grid]</code> (or <code>copy.deepcopy</code>); in JavaScript <code>grid.map((r) =&gt; r.slice())</code>; in C++ assigning a <code>vector&lt;vector&lt;int&gt;&gt;</code> already copies every row.</p>`, followUps: ['How does Arrays.copyOf behave  for a 2D array?', 'How would you deep-copy a graph?'] },
     { q: 'How do Java Strings store characters, and what does that mean for Unicode problems?', level: 'E', a: `<p>Since Java 9, a String stores a <code>byte[]</code> plus a coder flag: <b>LATIN-1</b> (1 byte per char) when possible, otherwise <b>UTF-16</b> (2 bytes per char) — "compact strings". A Java <code>char</code> is a UTF-16 <b>code unit</b>, so characters outside the Basic Multilingual Plane (emoji, some CJK) occupy <b>two</b> chars (a surrogate pair): <code>"😀".length() == 2</code>. Interview problems usually restrict input to ASCII, so <code>charAt</code> and <code>int[26]</code> are fine; for real text, iterate <code>codePoints()</code> and use int-based Character methods. Strings also cache their hash code, and <code>substring</code> copies (since 7u6), costing O(length).</p>`, followUps: ['How would you reverse a string containing emoji correctly?', 'Why is String a good HashMap key?'] },
-    { q: 'You can only use 256 MB of memory and need a 10<sup>4</sup> × 10<sup>4</sup> table. What do you do?', level: 'A', a: `<p>Estimate first: 10<sup>8</sup> cells × 4 bytes (int) = 400 MB — too big; as <code>long</code> it is 800 MB. Options: (1) check whether only the previous row is needed (rolling arrays / two rows → 80 KB), very common in DP; (2) use a smaller type if values fit (<code>byte</code> or <code>short</code>, or a <code>BitSet</code> for booleans: 12.5 MB); (3) store only non-default cells sparsely (HashMap) if the table is mostly empty; (4) recompute instead of store. I would also double-check whether the intended complexity really needs N × M states at all — such a large table is often a hint that a smarter state definition exists.</p>`, followUps: ['How much memory does ArrayList&lt;Integer&gt; with 10<sup>7</sup> elements take?', 'Show the rolling-array trick for LCS.'] }
+    { q: 'You can only use 256 MB of memory and need a 10<sup>4</sup> × 10<sup>4</sup> table. What do you do?', level: 'A', a: `<p>Estimate first: 10<sup>8</sup> cells × 4 bytes (int) = 400 MB — too big; as <code>long</code> it is 800 MB. Options: (1) check whether only the previous row is needed (rolling arrays / two rows → 80 KB), very common in DP; (2) use a smaller type if values fit (<code>byte</code> or <code>short</code>, or a bitset for booleans: Java <code>BitSet</code>, C++ <code>bitset</code>, Python <code>bytearray</code>: 12.5 MB); (3) store only non-default cells sparsely (HashMap) if the table is mostly empty; (4) recompute instead of store. I would also double-check whether the intended complexity really needs N × M states at all — such a large table is often a hint that a smarter state definition exists.</p>`, followUps: ['How much memory does a list of boxed integers (Java ArrayList&lt;Integer&gt;, Python list of int) with 10<sup>7</sup> elements take?', 'Show the rolling-array trick for LCS.'] }
   );
 
   registerModule({

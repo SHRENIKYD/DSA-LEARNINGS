@@ -351,16 +351,61 @@ LIMIT 1 OFFSET 4;` } },
         `<p>Hint 2: compute <code>DENSE_RANK() OVER (ORDER BY salary DESC)</code> in a CTE, then keep <code>rnk = N</code>. Or use <code>SELECT DISTINCT … LIMIT 1 OFFSET N-1</code>.</p>`,
         `<p>Hint 3: wrap the whole thing as <code>SELECT ( subquery ) AS nth_highest_salary</code> so an empty result becomes NULL. Put N in <code>WITH params(n) AS (SELECT 5)</code>.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { rows: [
+            [140000]
+          ] },
+        { setup: '', after: 'UPDATE params SET n = 1; SELECT * FROM nth_salary', rows: [
+            [300000]
+          ] },
+        { setup: '', after: 'UPDATE params SET n = 2; SELECT * FROM nth_salary', rows: [
+            [220000]
+          ] },
+        { setup: '', after: 'UPDATE params SET n = 4; SELECT * FROM nth_salary', rows: [
+            [150000]
+          ] },
+        { setup: '', after: 'UPDATE params SET n = 13; SELECT * FROM nth_salary', rows: [
+            [70000]
+          ] },
+        { setup: '', after: 'UPDATE params SET n = 14; SELECT * FROM nth_salary', rows: [
+            [null]
+          ] },
+        { setup: '', after: 'UPDATE params SET n = 20; SELECT * FROM nth_salary', rows: [
+            [null]
+          ] },
+        { setup: 'DELETE FROM employees WHERE id NOT IN (1)', after: 'UPDATE params SET n = 1; SELECT * FROM nth_salary', rows: [
+            [300000]
+          ] },
+        { setup: 'DELETE FROM employees WHERE id NOT IN (1)', after: 'UPDATE params SET n = 2; SELECT * FROM nth_salary', rows: [
+            [null]
+          ] },
+        { setup: 'DELETE FROM employees', after: 'UPDATE params SET n = 1; SELECT * FROM nth_salary', rows: [
+            [null]
+          ] },
+        { setup: 'UPDATE employees SET salary = 70000', after: 'UPDATE params SET n = 2; SELECT * FROM nth_salary', rows: [
+            [null]
+          ] },
+        { setup: 'UPDATE employees SET salary = 70000', after: 'UPDATE params SET n = 1; SELECT * FROM nth_salary', rows: [
+            [70000]
+          ] },
+        { setup: 'UPDATE employees SET salary = 220000 WHERE id = 1', after: 'UPDATE params SET n = 3; SELECT * FROM nth_salary', rows: [
+            [150000]
+          ] }
+      ] },
       solution: {
         approach: `<p>Rank distinct salaries with DENSE_RANK, pick rank N, and let a scalar subquery convert "nothing found" into NULL. One sort, one pass.</p>`,
-        code: { lang: 'sql', db: 'hr', code: `WITH params(n) AS (SELECT 5),            -- change N here
-ranked AS (
+        code: { lang: 'sql', db: 'hr', code: `CREATE TEMP TABLE params AS SELECT 5 AS n;            -- change N here
+
+CREATE TEMP VIEW nth_salary AS
+WITH ranked AS (
   SELECT DISTINCT salary,
          DENSE_RANK() OVER (ORDER BY salary DESC) AS rnk
   FROM employees
 )
 SELECT (SELECT r.salary
-        FROM ranked r JOIN params p ON r.rnk = p.n) AS nth_highest_salary;` },
+        FROM ranked r JOIN params p ON r.rnk = p.n) AS nth_highest_salary;
+
+SELECT * FROM nth_salary;` },
         alt: [{ lang: 'sql', db: 'hr', title: 'No window functions', code: `-- Exactly N-1 = 4 distinct salaries are greater than the answer.
 SELECT (SELECT DISTINCT e1.salary
         FROM employees e1
@@ -534,6 +579,115 @@ ORDER BY e1.dept, e1.salary DESC, e1.name;` } },
         `<p>Hint 2: <code>DENSE_RANK() OVER (PARTITION BY dept ORDER BY salary DESC)</code> in a CTE.</p>`,
         `<p>Hint 3: filter <code>WHERE rnk &lt;= 3</code> outside the CTE; departments with fewer levels just return everyone. Remember the final ORDER BY.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { rows: [
+            ['Engineering', 'Ben', 220000],
+            ['Engineering', 'Dev', 150000],
+            ['Engineering', 'Eli', 150000],
+            ['Engineering', 'Fay', 120000],
+            ['Exec', 'Asha', 300000],
+            ['Finance', 'Cara', 210000],
+            ['Finance', 'Jia', 130000],
+            ['Finance', 'Kofi', 98000],
+            ['Finance', 'Lena', 98000],
+            ['Sales', 'Mo', 140000],
+            ['Sales', 'Nia', 90000],
+            ['Sales', 'Omar', 85000],
+            ['Sales', 'Pia', 85000]
+          ] },
+        { setup: 'DELETE FROM employees WHERE id NOT IN (1)', rows: [
+            ['Exec', 'Asha', 300000]
+          ] },
+        { setup: 'UPDATE employees SET salary = 100', rows: [
+            ['Engineering', 'Ben', 100],
+            ['Engineering', 'Dev', 100],
+            ['Engineering', 'Eli', 100],
+            ['Engineering', 'Fay', 100],
+            ['Engineering', 'Gus', 100],
+            ['Engineering', 'Hana', 100],
+            ['Engineering', 'Ivan', 100],
+            ['Exec', 'Asha', 100],
+            ['Finance', 'Cara', 100],
+            ['Finance', 'Jia', 100],
+            ['Finance', 'Kofi', 100],
+            ['Finance', 'Lena', 100],
+            ['Sales', 'Mo', 100],
+            ['Sales', 'Nia', 100],
+            ['Sales', 'Omar', 100],
+            ['Sales', 'Pia', 100],
+            ['Sales', 'Raj', 100]
+          ] },
+        { setup: 'UPDATE employees SET dept = \'Finance\' WHERE id = 2; UPDATE employees SET dept = \'Finance\' WHERE id = 4', rows: [
+            ['Engineering', 'Eli', 150000],
+            ['Engineering', 'Fay', 120000],
+            ['Engineering', 'Gus', 110000],
+            ['Engineering', 'Hana', 110000],
+            ['Exec', 'Asha', 300000],
+            ['Finance', 'Ben', 220000],
+            ['Finance', 'Cara', 210000],
+            ['Finance', 'Dev', 150000],
+            ['Sales', 'Mo', 140000],
+            ['Sales', 'Nia', 90000],
+            ['Sales', 'Omar', 85000],
+            ['Sales', 'Pia', 85000]
+          ] },
+        { setup: 'UPDATE employees SET salary = 220000 WHERE id = 6; UPDATE employees SET salary = 300000 WHERE id = 7', rows: [
+            ['Engineering', 'Gus', 300000],
+            ['Engineering', 'Ben', 220000],
+            ['Engineering', 'Fay', 220000],
+            ['Engineering', 'Dev', 150000],
+            ['Engineering', 'Eli', 150000],
+            ['Exec', 'Asha', 300000],
+            ['Finance', 'Cara', 210000],
+            ['Finance', 'Jia', 130000],
+            ['Finance', 'Kofi', 98000],
+            ['Finance', 'Lena', 98000],
+            ['Sales', 'Mo', 140000],
+            ['Sales', 'Nia', 90000],
+            ['Sales', 'Omar', 85000],
+            ['Sales', 'Pia', 85000]
+          ] },
+        { setup: 'INSERT INTO employees VALUES (18,\'Zed\',\'Ops\',1,NULL,\'2024-01-01\'); INSERT INTO employees VALUES (19,\'Yan\',\'Ops\',2,NULL,\'2024-01-01\')', rows: [
+            ['Engineering', 'Ben', 220000],
+            ['Engineering', 'Dev', 150000],
+            ['Engineering', 'Eli', 150000],
+            ['Engineering', 'Fay', 120000],
+            ['Exec', 'Asha', 300000],
+            ['Finance', 'Cara', 210000],
+            ['Finance', 'Jia', 130000],
+            ['Finance', 'Kofi', 98000],
+            ['Finance', 'Lena', 98000],
+            ['Ops', 'Yan', 2],
+            ['Ops', 'Zed', 1],
+            ['Sales', 'Mo', 140000],
+            ['Sales', 'Nia', 90000],
+            ['Sales', 'Omar', 85000],
+            ['Sales', 'Pia', 85000]
+          ] },
+        { setup: 'INSERT INTO employees VALUES (18,\'Zed\',\'Ops\',50,NULL,\'2024-01-01\'); INSERT INTO employees VALUES (19,\'Yan\',\'Ops\',50,NULL,\'2024-01-01\'); INSERT INTO employees VALUES (20,\'Xia\',\'Ops\',40,NULL,\'2024-01-01\'); INSERT INTO employees VALUES (21,\'Wu\',\'Ops\',30,NULL,\'2024-01-01\'); INSERT INTO employees VALUES (22,\'Vic\',\'Ops\',20,NULL,\'2024-01-01\')', rows: [
+            ['Engineering', 'Ben', 220000],
+            ['Engineering', 'Dev', 150000],
+            ['Engineering', 'Eli', 150000],
+            ['Engineering', 'Fay', 120000],
+            ['Exec', 'Asha', 300000],
+            ['Finance', 'Cara', 210000],
+            ['Finance', 'Jia', 130000],
+            ['Finance', 'Kofi', 98000],
+            ['Finance', 'Lena', 98000],
+            ['Ops', 'Yan', 50],
+            ['Ops', 'Zed', 50],
+            ['Ops', 'Xia', 40],
+            ['Ops', 'Wu', 30],
+            ['Sales', 'Mo', 140000],
+            ['Sales', 'Nia', 90000],
+            ['Sales', 'Omar', 85000],
+            ['Sales', 'Pia', 85000]
+          ] },
+        { setup: 'DELETE FROM employees', after: 'SELECT count(*) FROM (SELECT 1 FROM employees)', rows: [
+            [0]
+          ] },
+        { setup: 'DELETE FROM employees', rows: [] }
+      ] },
       solution: {
         approach: `<p>Rank salary levels inside each department with DENSE_RANK, then keep levels 1–3. One sort by (dept, salary), one filter.</p>`,
         code: { lang: 'sql', db: 'hr', code: `WITH ranked AS (
@@ -732,6 +886,73 @@ ORDER BY d1.user_id;   -- only answers yes/no for K = 3` } },
         `<p>Hint 2: CTEs: distinct days → key = <code>julianday(day) − ROW_NUMBER()</code> → GROUP BY (user, key) for start/len.</p>`,
         `<p>Hint 3: to pick the longest streak <i>and</i> its start, rank the streaks per user with <code>ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY len DESC, start)</code> and keep rn = 1 where len ≥ 3.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { rows: [
+            [3, 7, '2024-01-02'],
+            [1, 4, '2024-01-08'],
+            [5, 4, '2024-01-30'],
+            [12, 4, '2024-03-20'],
+            [4, 3, '2024-01-10'],
+            [6, 3, '2024-02-02']
+          ] },
+        { setup: 'INSERT INTO logins VALUES (2,\'2023-12-30 10:00:00\'),(2,\'2023-12-31 10:00:00\'),(2,\'2024-01-01 10:00:00\')', rows: [
+            [3, 7, '2024-01-02'],
+            [1, 4, '2024-01-08'],
+            [5, 4, '2024-01-30'],
+            [12, 4, '2024-03-20'],
+            [2, 3, '2023-12-30'],
+            [4, 3, '2024-01-10'],
+            [6, 3, '2024-02-02']
+          ] },
+        { setup: 'DELETE FROM logins', rows: [] },
+        { setup: 'DELETE FROM logins WHERE user_id <> 3', rows: [
+            [3, 7, '2024-01-02']
+          ] },
+        { setup: 'INSERT INTO logins VALUES (8,\'2024-03-01 10:00:00\'),(8,\'2024-03-01 11:00:00\'),(8,\'2024-03-02 10:00:00\')', rows: [
+            [3, 7, '2024-01-02'],
+            [1, 4, '2024-01-08'],
+            [5, 4, '2024-01-30'],
+            [12, 4, '2024-03-20'],
+            [4, 3, '2024-01-10'],
+            [6, 3, '2024-02-02']
+          ] },
+        { setup: 'INSERT INTO logins VALUES (8,\'2024-03-01 10:00:00\'),(8,\'2024-03-02 10:00:00\'),(8,\'2024-03-03 10:00:00\'),(9,\'2024-05-30 10:00:00\'),(9,\'2024-05-31 10:00:00\'),(9,\'2024-06-01 10:00:00\'),(9,\'2024-06-02 10:00:00\')', rows: [
+            [3, 7, '2024-01-02'],
+            [1, 4, '2024-01-08'],
+            [5, 4, '2024-01-30'],
+            [9, 4, '2024-05-30'],
+            [12, 4, '2024-03-20'],
+            [4, 3, '2024-01-10'],
+            [6, 3, '2024-02-02'],
+            [8, 3, '2024-03-01']
+          ] },
+        { setup: 'INSERT INTO logins VALUES (2,\'2024-01-04 12:00:00\'),(2,\'2024-01-06 12:00:00\')', rows: [
+            [3, 7, '2024-01-02'],
+            [2, 5, '2024-01-03'],
+            [1, 4, '2024-01-08'],
+            [5, 4, '2024-01-30'],
+            [12, 4, '2024-03-20'],
+            [4, 3, '2024-01-10'],
+            [6, 3, '2024-02-02']
+          ] },
+        { setup: 'INSERT INTO logins VALUES (1,\'2024-02-02 09:00:00\')', rows: [
+            [3, 7, '2024-01-02'],
+            [1, 4, '2024-01-08'],
+            [5, 4, '2024-01-30'],
+            [12, 4, '2024-03-20'],
+            [4, 3, '2024-01-10'],
+            [6, 3, '2024-02-02']
+          ] },
+        { setup: 'INSERT INTO logins VALUES (11,\'2024-03-09 10:00:00\'),(11,\'2024-03-10 10:00:00\'),(12,\'2024-03-24 21:00:00\'),(12,\'2024-03-25 21:00:00\')', rows: [
+            [3, 7, '2024-01-02'],
+            [12, 6, '2024-03-20'],
+            [1, 4, '2024-01-08'],
+            [5, 4, '2024-01-30'],
+            [4, 3, '2024-01-10'],
+            [6, 3, '2024-02-02'],
+            [11, 3, '2024-03-08']
+          ] }
+      ] },
       solution: {
         approach: `<p>Gaps-and-islands on dates: distinct days, key = day − rn, aggregate streaks, then a top-1-per-user over the streaks (topic 2 pattern) filtered to length ≥ 3.</p>`,
         code: { lang: 'sql', db: 'app', code: `WITH days AS (
@@ -981,6 +1202,68 @@ ORDER BY range_start;` } },
         `<p>Hint 2: subquery computes <code>ticket_id − ROW_NUMBER() OVER (ORDER BY ticket_id)</code>; outer query GROUP BY that key with MIN/MAX.</p>`,
         `<p>Hint 3: for gaps use <code>LEAD(ticket_id)</code>; when the jump is more than 1, report <code>id + 1</code> to <code>next − 1</code>. The last row's LEAD is NULL and is filtered out naturally.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { setup: '', rows: [
+            [1, 3],
+            [6, 7],
+            [10, 12],
+            [15, 16],
+            [20, 20]
+          ], result: 0 },
+        { setup: '', rows: [
+            [4, 5],
+            [8, 9],
+            [13, 14],
+            [17, 19]
+          ] },
+        { setup: 'DELETE FROM tickets; INSERT INTO tickets VALUES (5)', rows: [
+            [5, 5]
+          ], result: 0 },
+        { setup: 'DELETE FROM tickets; INSERT INTO tickets VALUES (5)', rows: [
+            [0]
+          ], after: 'SELECT count(*) FROM (SELECT ticket_id + 1 AS missing_from, next_id - 1 AS missing_to FROM (SELECT ticket_id, LEAD(ticket_id) OVER (ORDER BY ticket_id) AS next_id FROM tickets) WHERE next_id - ticket_id > 1)' },
+        { setup: 'DELETE FROM tickets; INSERT INTO tickets VALUES (1),(2),(3)', rows: [
+            [1, 3]
+          ], result: 0 },
+        { setup: 'DELETE FROM tickets; INSERT INTO tickets VALUES (1),(2),(3)', rows: [
+            [0]
+          ], after: 'SELECT count(*) FROM (SELECT ticket_id + 1 AS missing_from, next_id - 1 AS missing_to FROM (SELECT ticket_id, LEAD(ticket_id) OVER (ORDER BY ticket_id) AS next_id FROM tickets) WHERE next_id - ticket_id > 1)' },
+        { setup: 'DELETE FROM tickets; INSERT INTO tickets VALUES (1),(3),(5)', rows: [
+            [1, 1],
+            [3, 3],
+            [5, 5]
+          ], result: 0 },
+        { setup: 'DELETE FROM tickets; INSERT INTO tickets VALUES (1),(3),(5)', rows: [
+            [2, 2],
+            [4, 4]
+          ] },
+        { setup: 'DELETE FROM tickets; INSERT INTO tickets VALUES (10),(11),(12),(13),(14),(15)', rows: [
+            [10, 15]
+          ], result: 0 },
+        { setup: 'DELETE FROM tickets; INSERT INTO tickets VALUES (10),(11),(12),(13),(14),(15)', rows: [
+            [0]
+          ], after: 'SELECT count(*) FROM (SELECT ticket_id + 1 AS missing_from, next_id - 1 AS missing_to FROM (SELECT ticket_id, LEAD(ticket_id) OVER (ORDER BY ticket_id) AS next_id FROM tickets) WHERE next_id - ticket_id > 1)' },
+        { setup: 'DELETE FROM tickets; INSERT INTO tickets VALUES (100),(1),(50),(2),(51),(3)', rows: [
+            [1, 3],
+            [50, 51],
+            [100, 100]
+          ], result: 0 },
+        { setup: 'DELETE FROM tickets; INSERT INTO tickets VALUES (100),(1),(50),(2),(51),(3)', rows: [
+            [4, 49],
+            [52, 99]
+          ] },
+        { setup: 'DELETE FROM tickets; INSERT INTO tickets VALUES (1),(2),(4),(5),(7),(8),(9),(20)', rows: [
+            [1, 2],
+            [4, 5],
+            [7, 9],
+            [20, 20]
+          ], result: 0 },
+        { setup: 'DELETE FROM tickets; INSERT INTO tickets VALUES (1),(2),(4),(5),(7),(8),(9),(20)', rows: [
+            [3, 3],
+            [6, 6],
+            [10, 19]
+          ] }
+      ] },
       solution: {
         approach: `<p>Technique A for islands (one sort, one GROUP BY) and a LEAD scan for gaps. Both are single passes over the sorted ids.</p>`,
         code: { lang: 'sql', db: 'shop', code: `-- Ranges
@@ -1200,6 +1483,87 @@ ORDER BY e.user_id, e.event_time;` } },
         `<p>Hint 2: <code>LAG</code> → 0/1 flag → running <code>SUM</code> gives session_no; then <code>GROUP BY user_id, session_no</code> for duration and event count.</p>`,
         `<p>Hint 3: rank sessions per user with <code>ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY minutes DESC, events DESC, start)</code>, keep rn = 1, and join the session count. Use integer seconds and add event_id as tie-breaker.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { rows: [
+            [1, 3, 20, 3],
+            [2, 2, 58, 3],
+            [3, 1, 15, 4],
+            [4, 2, 30, 2],
+            [5, 1, 1, 2],
+            [6, 1, 20, 3],
+            [7, 1, 25, 3],
+            [8, 1, 0, 1]
+          ] },
+        { setup: 'DELETE FROM events', rows: [] },
+        { setup: 'DELETE FROM events WHERE user_id <> 2', rows: [
+            [2, 2, 58, 3]
+          ] },
+        { setup: 'INSERT INTO events VALUES (100,8,\'2024-03-01 10:30:00\',\'view_product\'),(101,8,\'2024-03-01 10:30:01\',\'view_product\'),(102,8,\'2024-03-01 11:00:01\',\'search\')', rows: [
+            [1, 3, 20, 3],
+            [2, 2, 58, 3],
+            [3, 1, 15, 4],
+            [4, 2, 30, 2],
+            [5, 1, 1, 2],
+            [6, 1, 20, 3],
+            [7, 1, 25, 3],
+            [8, 1, 60, 4]
+          ] },
+        { setup: 'INSERT INTO events VALUES (100,9,\'2024-03-01 10:00:00\',\'search\'),(101,9,\'2024-03-01 10:00:00\',\'search\'),(102,9,\'2024-03-01 10:30:00\',\'search\')', rows: [
+            [1, 3, 20, 3],
+            [2, 2, 58, 3],
+            [3, 1, 15, 4],
+            [4, 2, 30, 2],
+            [5, 1, 1, 2],
+            [6, 1, 20, 3],
+            [7, 1, 25, 3],
+            [8, 1, 0, 1],
+            [9, 1, 30, 3]
+          ] },
+        { setup: 'INSERT INTO events VALUES (100,9,\'2024-03-01 10:00:00\',\'search\'),(101,9,\'2024-03-01 10:30:00\',\'search\'),(102,9,\'2024-03-01 12:00:00\',\'search\'),(103,9,\'2024-03-01 12:00:30\',\'search\'),(104,9,\'2024-03-01 12:01:00\',\'search\')', rows: [
+            [1, 3, 20, 3],
+            [2, 2, 58, 3],
+            [3, 1, 15, 4],
+            [4, 2, 30, 2],
+            [5, 1, 1, 2],
+            [6, 1, 20, 3],
+            [7, 1, 25, 3],
+            [8, 1, 0, 1],
+            [9, 2, 30, 2]
+          ] },
+        { setup: 'INSERT INTO events VALUES (100,9,\'2023-12-31 23:45:00\',\'search\'),(101,9,\'2024-01-01 00:10:00\',\'search\'),(102,9,\'2024-01-01 00:40:00\',\'search\'),(103,9,\'2024-01-01 00:40:01\',\'search\')', rows: [
+            [1, 3, 20, 3],
+            [2, 2, 58, 3],
+            [3, 1, 15, 4],
+            [4, 2, 30, 2],
+            [5, 1, 1, 2],
+            [6, 1, 20, 3],
+            [7, 1, 25, 3],
+            [8, 1, 0, 1],
+            [9, 1, 55, 4]
+          ] },
+        { setup: 'INSERT INTO events VALUES (100,9,\'2024-03-01 10:00:00\',\'search\'),(101,9,\'2024-03-01 10:30:01\',\'search\')', rows: [
+            [1, 3, 20, 3],
+            [2, 2, 58, 3],
+            [3, 1, 15, 4],
+            [4, 2, 30, 2],
+            [5, 1, 1, 2],
+            [6, 1, 20, 3],
+            [7, 1, 25, 3],
+            [8, 1, 0, 1],
+            [9, 2, 0, 1]
+          ] },
+        { setup: 'INSERT INTO events VALUES (100,9,\'2024-03-01 10:00:59\',\'search\'),(101,9,\'2024-03-01 10:01:30\',\'search\')', rows: [
+            [1, 3, 20, 3],
+            [2, 2, 58, 3],
+            [3, 1, 15, 4],
+            [4, 2, 30, 2],
+            [5, 1, 1, 2],
+            [6, 1, 20, 3],
+            [7, 1, 25, 3],
+            [8, 1, 0, 1],
+            [9, 1, 0, 2]
+          ] }
+      ] },
       solution: {
         approach: `<p>Sessionize (LAG, flag, running SUM), aggregate to one row per session, then a top-1-per-user over sessions plus a COUNT of sessions per user via a window.</p>`,
         code: { lang: 'sql', db: 'app', code: `WITH ordered AS (
@@ -1475,6 +1839,62 @@ FROM events;` } },
         `<p>Hint 2: chain CTEs: <code>c</code> joins events to <code>v</code> with <code>e.event_time &gt; v.t</code> and takes MIN(event_time); repeat for k and p.</p>`,
         `<p>Hint 3: UNION ALL the four counts with a step number, then <code>FIRST_VALUE(users)</code> and <code>LAG(users)</code> over step_no for the two percentages; multiply by 100.0 to avoid integer division.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { rows: [
+            [1, 'view_product', 7, 100, null],
+            [2, 'add_to_cart', 5, 71.4, 71.4],
+            [3, 'checkout', 3, 42.9, 60],
+            [4, 'purchase', 2, 28.6, 66.7]
+          ] },
+        { setup: 'DELETE FROM events', rows: [
+            [1, 'view_product', 0, null, null],
+            [2, 'add_to_cart', 0, null, null],
+            [3, 'checkout', 0, null, null],
+            [4, 'purchase', 0, null, null]
+          ] },
+        { setup: 'INSERT INTO events VALUES (100,9,\'2024-03-01 09:00:00\',\'view_product\'),(101,9,\'2024-03-01 09:00:00\',\'add_to_cart\')', rows: [
+            [1, 'view_product', 8, 100, null],
+            [2, 'add_to_cart', 5, 62.5, 62.5],
+            [3, 'checkout', 3, 37.5, 60],
+            [4, 'purchase', 2, 25, 66.7]
+          ] },
+        { setup: 'INSERT INTO events VALUES (100,9,\'2024-03-01 09:00:00\',\'view_product\'),(101,9,\'2024-03-01 09:01:00\',\'add_to_cart\'),(102,9,\'2024-03-01 09:02:00\',\'checkout\'),(103,9,\'2024-03-01 09:03:00\',\'purchase\')', rows: [
+            [1, 'view_product', 8, 100, null],
+            [2, 'add_to_cart', 6, 75, 75],
+            [3, 'checkout', 4, 50, 66.7],
+            [4, 'purchase', 3, 37.5, 75]
+          ] },
+        { setup: 'INSERT INTO events VALUES (100,9,\'2024-03-01 09:00:00\',\'purchase\'),(101,9,\'2024-03-01 09:01:00\',\'checkout\'),(102,9,\'2024-03-01 09:02:00\',\'add_to_cart\'),(103,9,\'2024-03-01 09:03:00\',\'view_product\')', rows: [
+            [1, 'view_product', 8, 100, null],
+            [2, 'add_to_cart', 5, 62.5, 62.5],
+            [3, 'checkout', 3, 37.5, 60],
+            [4, 'purchase', 2, 25, 66.7]
+          ] },
+        { setup: 'INSERT INTO events VALUES (100,9,\'2024-03-01 09:00:00\',\'view_product\'),(101,9,\'2024-03-01 08:00:00\',\'add_to_cart\'),(102,9,\'2024-03-01 10:00:00\',\'add_to_cart\'),(103,9,\'2024-03-01 11:00:00\',\'checkout\')', rows: [
+            [1, 'view_product', 8, 100, null],
+            [2, 'add_to_cart', 6, 75, 75],
+            [3, 'checkout', 4, 50, 66.7],
+            [4, 'purchase', 2, 25, 50]
+          ] },
+        { setup: 'DELETE FROM events WHERE user_id <> 1', rows: [
+            [1, 'view_product', 1, 100, null],
+            [2, 'add_to_cart', 1, 100, 100],
+            [3, 'checkout', 1, 100, 100],
+            [4, 'purchase', 1, 100, 100]
+          ] },
+        { setup: 'DELETE FROM events WHERE user_id <> 3', rows: [
+            [1, 'view_product', 1, 100, null],
+            [2, 'add_to_cart', 1, 100, 100],
+            [3, 'checkout', 1, 100, 100],
+            [4, 'purchase', 1, 100, 100]
+          ] },
+        { setup: 'INSERT INTO events VALUES (100,9,\'2024-03-01 09:00:00\',\'search\'),(101,10,\'2024-03-01 09:00:00\',\'search\')', rows: [
+            [1, 'view_product', 7, 100, null],
+            [2, 'add_to_cart', 5, 71.4, 71.4],
+            [3, 'checkout', 3, 42.9, 60],
+            [4, 'purchase', 2, 28.6, 66.7]
+          ] }
+      ] },
       solution: {
         approach: `<p>Chain one CTE per step carrying the first qualifying timestamp, count each, and compute both conversion rates with window functions over the tiny 4-row result.</p>`,
         code: { lang: 'sql', db: 'app', code: `WITH v AS (SELECT user_id, MIN(event_time) AS t FROM events
@@ -1680,6 +2100,43 @@ ORDER BY dept;` } },
         `<p>Hint 2: <code>ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary)</code> and <code>COUNT(*) OVER (PARTITION BY dept)</code> in one CTE.</p>`,
         `<p>Hint 3: keep <code>rn IN ((cnt + 1) / 2, (cnt + 2) / 2)</code>, then <code>GROUP BY dept</code> with <code>AVG(salary)</code>; report <code>MAX(cnt)</code> as the count.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { rows: [
+            ['Engineering', 120000, 7],
+            ['Exec', 300000, 1],
+            ['Finance', 114000, 4],
+            ['Sales', 85000, 5]
+          ] },
+        { setup: 'DELETE FROM employees WHERE id NOT IN (1)', rows: [
+            ['Exec', 300000, 1]
+          ] },
+        { setup: 'DELETE FROM employees WHERE id NOT IN (2,4)', rows: [
+            ['Engineering', 185000, 2]
+          ] },
+        { setup: 'DELETE FROM employees WHERE id NOT IN (2,4,5)', rows: [
+            ['Engineering', 150000, 3]
+          ] },
+        { setup: 'UPDATE employees SET salary = 1000', rows: [
+            ['Engineering', 1000, 7],
+            ['Exec', 1000, 1],
+            ['Finance', 1000, 4],
+            ['Sales', 1000, 5]
+          ] },
+        { setup: 'INSERT INTO employees VALUES (18,\'Zed\',\'Ops\',1,NULL,\'2024-01-01\'); INSERT INTO employees VALUES (19,\'Yan\',\'Ops\',2,NULL,\'2024-01-01\'); INSERT INTO employees VALUES (20,\'Xia\',\'Ops\',4,NULL,\'2024-01-01\'); INSERT INTO employees VALUES (21,\'Wu\',\'Ops\',1000001,NULL,\'2024-01-01\')', rows: [
+            ['Engineering', 120000, 7],
+            ['Exec', 300000, 1],
+            ['Finance', 114000, 4],
+            ['Ops', 3, 4],
+            ['Sales', 85000, 5]
+          ] },
+        { setup: 'UPDATE employees SET dept = \'Finance\' WHERE id = 2', rows: [
+            ['Engineering', 115000, 6],
+            ['Exec', 300000, 1],
+            ['Finance', 130000, 5],
+            ['Sales', 85000, 5]
+          ] },
+        { setup: 'DELETE FROM employees', rows: [] }
+      ] },
       solution: {
         approach: `<p>One partitioned sort numbers the salaries and counts each department; integer arithmetic selects the one or two middle rows; AVG combines them.</p>`,
         code: { lang: 'sql', db: 'hr', code: `WITH ordered AS (
@@ -1886,6 +2343,53 @@ FROM (SELECT DISTINCT region FROM quarterly_sales) r;` } },
         `<p>Hint 2: <code>SUM(CASE WHEN quarter = 'Q1' THEN revenue ELSE 0 END)</code> sums duplicates and turns missing into 0.</p>`,
         `<p>Hint 3: compute the pivot in a CTE, then best_quarter with a CASE comparing the four columns (check Q1 ≥ all others first so ties pick the earliest), or unpivot + ROW_NUMBER.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { setup: '', rows: [
+            ['North', 100, 120, 90, 150, 460, 'Q4'],
+            ['West', 75, 70, 65, 85, 295, 'Q4'],
+            ['South', 80, 95, 0, 110, 285, 'Q4']
+          ] },
+        { setup: 'DELETE FROM quarterly_sales', rows: [] },
+        { setup: 'INSERT INTO quarterly_sales VALUES (\'East\',\'Q1\',500)', rows: [
+            ['East', 500, 0, 0, 0, 500, 'Q1'],
+            ['North', 100, 120, 90, 150, 460, 'Q4'],
+            ['West', 75, 70, 65, 85, 295, 'Q4'],
+            ['South', 80, 95, 0, 110, 285, 'Q4']
+          ] },
+        { setup: 'INSERT INTO quarterly_sales VALUES (\'East\',\'Q2\',7),(\'East\',\'Q2\',3),(\'East\',\'Q2\',0)', rows: [
+            ['North', 100, 120, 90, 150, 460, 'Q4'],
+            ['West', 75, 70, 65, 85, 295, 'Q4'],
+            ['South', 80, 95, 0, 110, 285, 'Q4'],
+            ['East', 0, 10, 0, 0, 10, 'Q2']
+          ] },
+        { setup: 'INSERT INTO quarterly_sales VALUES (\'East\',\'Q3\',50),(\'East\',\'Q1\',50)', rows: [
+            ['North', 100, 120, 90, 150, 460, 'Q4'],
+            ['West', 75, 70, 65, 85, 295, 'Q4'],
+            ['South', 80, 95, 0, 110, 285, 'Q4'],
+            ['East', 50, 0, 50, 0, 100, 'Q1']
+          ] },
+        { setup: 'INSERT INTO quarterly_sales VALUES (\'East\',\'Q4\',0)', rows: [
+            ['North', 100, 120, 90, 150, 460, 'Q4'],
+            ['West', 75, 70, 65, 85, 295, 'Q4'],
+            ['South', 80, 95, 0, 110, 285, 'Q4'],
+            ['East', 0, 0, 0, 0, 0, 'Q1']
+          ] },
+        { setup: 'DELETE FROM quarterly_sales WHERE region <> \'North\'', rows: [
+            ['North', 100, 120, 90, 150, 460, 'Q4']
+          ] },
+        { setup: 'INSERT INTO quarterly_sales VALUES (\'East\',\'Q4\',1000000)', rows: [
+            ['East', 0, 0, 0, 1000000, 1000000, 'Q4'],
+            ['North', 100, 120, 90, 150, 460, 'Q4'],
+            ['West', 75, 70, 65, 85, 295, 'Q4'],
+            ['South', 80, 95, 0, 110, 285, 'Q4']
+          ] },
+        { setup: 'INSERT INTO quarterly_sales VALUES (\'Zed\',\'Q3\',460)', rows: [
+            ['North', 100, 120, 90, 150, 460, 'Q4'],
+            ['Zed', 0, 0, 460, 0, 460, 'Q3'],
+            ['West', 75, 70, 65, 85, 295, 'Q4'],
+            ['South', 80, 95, 0, 110, 285, 'Q4']
+          ], set: true }
+      ] },
       solution: {
         approach: `<p>Pivot with conditional SUMs (ELSE 0) in a CTE; in the outer query derive total and the best quarter using SQLite's multi-argument <code>MAX()</code> (GREATEST in other engines) and an ordered CASE for tie-breaking.</p>`,
         code: { lang: 'sql', db: 'shop', code: `WITH p AS (
@@ -2105,6 +2609,72 @@ WHERE m.name = 'Mo';` } },
         `<p>Hint 2: carry <code>level + 1</code> and <code>path || ' &gt; ' || e.name</code>; add <code>WHERE t.level &lt; 30</code> so a cycle cannot loop forever.</p>`,
         `<p>Hint 3: direct_reports is a correlated <code>COUNT(*)</code> on manager_id = id (or a LEFT JOIN to a GROUP BY manager_id). ORDER BY path.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { rows: [
+            ['Mo', 0, 'Mo', 2],
+            ['Nia', 1, 'Mo > Nia', 2],
+            ['Pia', 2, 'Mo > Nia > Pia', 0],
+            ['Raj', 2, 'Mo > Nia > Raj', 0],
+            ['Omar', 1, 'Mo > Omar', 0]
+          ] },
+        { setup: 'INSERT INTO employees VALUES (18,\'Sam\',\'Sales\',1,16,\'2024-01-01\')', rows: [
+            ['Mo', 0, 'Mo', 2],
+            ['Nia', 1, 'Mo > Nia', 2],
+            ['Pia', 2, 'Mo > Nia > Pia', 1],
+            ['Sam', 3, 'Mo > Nia > Pia > Sam', 0],
+            ['Raj', 2, 'Mo > Nia > Raj', 0],
+            ['Omar', 1, 'Mo > Omar', 0]
+          ] },
+        { setup: 'INSERT INTO employees VALUES (18,\'Sam\',\'Sales\',1,16,\'2024-01-01\'); INSERT INTO employees VALUES (19,\'Tia\',\'Sales\',1,18,\'2024-01-01\'); INSERT INTO employees VALUES (20,\'Uma\',\'Sales\',1,19,\'2024-01-01\')', rows: [
+            ['Mo', 0, 'Mo', 2],
+            ['Nia', 1, 'Mo > Nia', 2],
+            ['Pia', 2, 'Mo > Nia > Pia', 1],
+            ['Sam', 3, 'Mo > Nia > Pia > Sam', 1],
+            ['Tia', 4, 'Mo > Nia > Pia > Sam > Tia', 1],
+            ['Uma', 5, 'Mo > Nia > Pia > Sam > Tia > Uma', 0],
+            ['Raj', 2, 'Mo > Nia > Raj', 0],
+            ['Omar', 1, 'Mo > Omar', 0]
+          ] },
+        { setup: 'DELETE FROM employees WHERE id IN (13)', rows: [] },
+        { setup: 'UPDATE employees SET manager_id = 10 WHERE id = 3', rows: [
+            ['Mo', 0, 'Mo', 2],
+            ['Nia', 1, 'Mo > Nia', 2],
+            ['Pia', 2, 'Mo > Nia > Pia', 0],
+            ['Raj', 2, 'Mo > Nia > Raj', 0],
+            ['Omar', 1, 'Mo > Omar', 0]
+          ] },
+        { setup: 'UPDATE employees SET manager_id = 13 WHERE id = 17', rows: [
+            ['Mo', 0, 'Mo', 3],
+            ['Nia', 1, 'Mo > Nia', 1],
+            ['Pia', 2, 'Mo > Nia > Pia', 0],
+            ['Omar', 1, 'Mo > Omar', 0],
+            ['Raj', 1, 'Mo > Raj', 0]
+          ] },
+        { setup: 'UPDATE employees SET manager_id = 2 WHERE id = 14', rows: [
+            ['Mo', 0, 'Mo', 1],
+            ['Omar', 1, 'Mo > Omar', 0]
+          ] },
+        { setup: 'INSERT INTO employees VALUES (18,\'Aaron\',\'Sales\',1,13,\'2024-01-01\')', rows: [
+            ['Mo', 0, 'Mo', 3],
+            ['Aaron', 1, 'Mo > Aaron', 0],
+            ['Nia', 1, 'Mo > Nia', 2],
+            ['Pia', 2, 'Mo > Nia > Pia', 0],
+            ['Raj', 2, 'Mo > Nia > Raj', 0],
+            ['Omar', 1, 'Mo > Omar', 0]
+          ] },
+        { setup: 'INSERT INTO employees VALUES (18,\'Bob\',\'Sales\',1,13,\'2024-01-01\'); INSERT INTO employees VALUES (19,\'Bo\',\'Sales\',1,13,\'2024-01-01\')', rows: [
+            ['Mo', 0, 'Mo', 4],
+            ['Bo', 1, 'Mo > Bo', 0],
+            ['Bob', 1, 'Mo > Bob', 0],
+            ['Nia', 1, 'Mo > Nia', 2],
+            ['Pia', 2, 'Mo > Nia > Pia', 0],
+            ['Raj', 2, 'Mo > Nia > Raj', 0],
+            ['Omar', 1, 'Mo > Omar', 0]
+          ] },
+        { setup: 'DELETE FROM employees WHERE id NOT IN (13)', rows: [
+            ['Mo', 0, 'Mo', 0]
+          ] }
+      ] },
       solution: {
         approach: `<p>Recursive CTE from the chosen manager downward, carrying level and path, with a depth guard; then attach direct-report counts from a grouped subquery.</p>`,
         code: { lang: 'sql', db: 'hr', code: `WITH RECURSIVE sub(id, name, level, path) AS (
@@ -2304,6 +2874,57 @@ SELECT id, email, created_at FROM customers_raw ORDER BY id;` } },
         `<p>Hint 2: <code>ROW_NUMBER() OVER (PARTITION BY LOWER(TRIM(email)) ORDER BY created_at DESC, id DESC)</code> marks the survivor as rn = 1.</p>`,
         `<p>Hint 3: <code>DELETE … WHERE id IN (SELECT id FROM (ranked) WHERE rn &gt; 1)</code>; preview with a SELECT first; end with a SELECT of the table.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { setup: '', rows: [
+            [4, 'ben@mail.com', 'Benjamin Ode', '2024-01-15'],
+            [6, 'asha@mail.com', 'Asha Rao', '2024-02-20'],
+            [7, 'dan@mail.com', 'Dan Wu', '2023-04-04'],
+            [8, 'cara@mail.com', 'Cara Lim', '2023-03-03']
+          ] },
+        { setup: 'INSERT INTO customers_raw VALUES (9,\'asha@mail.com\',\'Asha New\',\'2024-03-01\')', rows: [
+            [4, 'ben@mail.com', 'Benjamin Ode', '2024-01-15'],
+            [7, 'dan@mail.com', 'Dan Wu', '2023-04-04'],
+            [8, 'cara@mail.com', 'Cara Lim', '2023-03-03'],
+            [9, 'asha@mail.com', 'Asha New', '2024-03-01']
+          ] },
+        { setup: 'INSERT INTO customers_raw VALUES (9,\'ASHA@MAIL.COM\',\'Asha New\',\'2020-01-01\')', rows: [
+            [4, 'ben@mail.com', 'Benjamin Ode', '2024-01-15'],
+            [6, 'asha@mail.com', 'Asha Rao', '2024-02-20'],
+            [7, 'dan@mail.com', 'Dan Wu', '2023-04-04'],
+            [8, 'cara@mail.com', 'Cara Lim', '2023-03-03']
+          ] },
+        { setup: 'INSERT INTO customers_raw VALUES (9,\'  eve@mail.com\',\'Eve\',\'2024-01-01\'),(10,\'eve@mail.com  \',\'Eve\',\'2024-01-01\'),(11,\'eve@mail.com\',\'Eve\',\'2024-01-01\')', rows: [
+            [4, 'ben@mail.com', 'Benjamin Ode', '2024-01-15'],
+            [6, 'asha@mail.com', 'Asha Rao', '2024-02-20'],
+            [7, 'dan@mail.com', 'Dan Wu', '2023-04-04'],
+            [8, 'cara@mail.com', 'Cara Lim', '2023-03-03'],
+            [11, 'eve@mail.com', 'Eve', '2024-01-01']
+          ] },
+        { setup: 'DELETE FROM customers_raw', rows: [] },
+        { setup: 'DELETE FROM customers_raw WHERE id > 1', rows: [
+            [1, 'asha@mail.com', 'Asha Rao', '2023-01-05']
+          ] },
+        { setup: 'INSERT INTO customers_raw VALUES (9,\'zed@mail.com\',\'Zed\',\'2024-01-01\'),(10,\'zed.x@mail.com\',\'Zed X\',\'2024-01-02\')', rows: [
+            [4, 'ben@mail.com', 'Benjamin Ode', '2024-01-15'],
+            [6, 'asha@mail.com', 'Asha Rao', '2024-02-20'],
+            [7, 'dan@mail.com', 'Dan Wu', '2023-04-04'],
+            [8, 'cara@mail.com', 'Cara Lim', '2023-03-03'],
+            [9, 'zed@mail.com', 'Zed', '2024-01-01'],
+            [10, 'zed.x@mail.com', 'Zed X', '2024-01-02']
+          ] },
+        { setup: 'INSERT INTO customers_raw VALUES (20,\'cara@mail.com\',\'Cara Lim\',\'2023-03-03\')', rows: [
+            [4, 'ben@mail.com', 'Benjamin Ode', '2024-01-15'],
+            [6, 'asha@mail.com', 'Asha Rao', '2024-02-20'],
+            [7, 'dan@mail.com', 'Dan Wu', '2023-04-04'],
+            [20, 'cara@mail.com', 'Cara Lim', '2023-03-03']
+          ] },
+        { setup: 'INSERT INTO customers_raw VALUES (0,\'cara@mail.com\',\'Cara Lim\',\'2023-03-03\')', rows: [
+            [4, 'ben@mail.com', 'Benjamin Ode', '2024-01-15'],
+            [6, 'asha@mail.com', 'Asha Rao', '2024-02-20'],
+            [7, 'dan@mail.com', 'Dan Wu', '2023-04-04'],
+            [8, 'cara@mail.com', 'Cara Lim', '2023-03-03']
+          ] }
+      ] },
       solution: {
         approach: `<p>Rank copies inside each normalised-email partition (newest first, id as tie-breaker) and delete every id with rank above 1 — one sort, one DELETE by primary key.</p>`,
         code: { lang: 'sql', db: 'shop', code: `DELETE FROM customers_raw
@@ -2339,6 +2960,32 @@ ORDER BY salary DESC
 LIMIT 1 OFFSET 1;          -- breaks on ties at the top and on tiny tables` } },
     mcq: { q: 'Salaries: 100, 100. What should "second highest salary" return?', options: ['NULL', '100', 'No rows', '0'], answer: 0, explain: 'There is only one distinct salary, so no second highest exists: the expected output is one row with NULL.' },
     hints: [`<p>Hint 1: remove duplicate amounts before counting positions.</p>`, `<p>Hint 2: <code>SELECT DISTINCT salary … ORDER BY salary DESC LIMIT 1 OFFSET 1</code>.</p>`, `<p>Hint 3: wrap it as a scalar subquery <code>SELECT ( … ) AS second_highest_salary</code> so "nothing" becomes NULL.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          [220000]
+        ] },
+      { setup: 'DELETE FROM employees WHERE id NOT IN (1)', rows: [
+          [null]
+        ] },
+      { setup: 'UPDATE employees SET salary = 5', rows: [
+          [null]
+        ] },
+      { setup: 'DELETE FROM employees WHERE id NOT IN (1,2)', rows: [
+          [220000]
+        ] },
+      { setup: 'UPDATE employees SET salary = 300000 WHERE id = 2', rows: [
+          [210000]
+        ] },
+      { setup: 'UPDATE employees SET salary = 300000 WHERE id = 2; UPDATE employees SET salary = 300000 WHERE id = 3', rows: [
+          [150000]
+        ] },
+      { setup: 'DELETE FROM employees', rows: [
+          [null]
+        ] },
+      { setup: 'UPDATE employees SET salary = -5 WHERE id = 1; DELETE FROM employees WHERE id NOT IN (1,2,3)', rows: [
+          [210000]
+        ] }
+    ] },
     solution: {
       approach: `<p>Distinct + offset inside a scalar subquery: correct on ties and returns NULL when missing. MAX-below-MAX is an equally valid one-liner.</p>`,
       code: { lang: 'sql', db: 'hr', code: `SELECT (SELECT DISTINCT salary
@@ -2364,10 +3011,44 @@ FROM customers_raw a
 JOIN customers_raw b ON b.email = a.email AND b.id <> a.id;` } },
     mcq: { q: 'Why HAVING and not WHERE for COUNT(*) &gt; 1?', options: ['WHERE runs before grouping, so the count does not exist yet', 'WHERE cannot compare numbers', 'HAVING is faster', 'They are interchangeable'], answer: 0, explain: 'WHERE filters individual rows before GROUP BY; HAVING filters groups after aggregates are computed.' },
     hints: [`<p>Hint 1: one row per email = GROUP BY email.</p>`, `<p>Hint 2: count the rows in each group with COUNT(*).</p>`, `<p>Hint 3: keep groups with <code>HAVING COUNT(*) &gt; 1</code>; add <code>GROUP_CONCAT(id)</code> to see which ids.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          ['asha@mail.com', 2, '1,6'],
+          ['cara@mail.com', 2, '5,8']
+        ] },
+      { setup: 'INSERT INTO customers_raw VALUES (9,\'dan@mail.com\',\'Dan Again\',\'2024-05-01\')', rows: [
+          ['asha@mail.com', 2, '1,6'],
+          ['cara@mail.com', 2, '5,8'],
+          ['dan@mail.com', 2, '7,9']
+        ] },
+      { setup: 'INSERT INTO customers_raw VALUES (9,\'dan@mail.com\',\'Dan Again\',\'2024-05-01\'),(10,\'dan@mail.com\',\'Dan 3\',\'2024-05-02\'),(11,\'dan@mail.com\',\'Dan 4\',\'2024-05-03\')', rows: [
+          ['asha@mail.com', 2, '1,6'],
+          ['cara@mail.com', 2, '5,8'],
+          ['dan@mail.com', 4, '7,9,10,11']
+        ] },
+      { setup: 'DELETE FROM customers_raw', rows: [] },
+      { setup: 'DELETE FROM customers_raw WHERE id IN (6, 8)', rows: [] },
+      { setup: 'INSERT INTO customers_raw VALUES (9,\'ben@mail.com\',\'Ben\',\'2024-05-01\')', rows: [
+          ['asha@mail.com', 2, '1,6'],
+          ['ben@mail.com', 2, '4,9'],
+          ['cara@mail.com', 2, '5,8']
+        ] },
+      { setup: 'INSERT INTO customers_raw VALUES (9,\'BEN@mail.com\',\'Ben\',\'2024-05-01\')', rows: [
+          ['BEN@mail.com', 2, '2,9'],
+          ['asha@mail.com', 2, '1,6'],
+          ['cara@mail.com', 2, '5,8']
+        ] },
+      { setup: 'INSERT INTO customers_raw VALUES (9,\'a@x.com\',\'A\',\'2024-05-01\'),(10,\'b@x.com\',\'B\',\'2024-05-01\'),(11,\'b@x.com\',\'B\',\'2024-05-01\'),(12,\'a@x.com\',\'A\',\'2024-05-01\')', rows: [
+          ['a@x.com', 2, '9,12'],
+          ['asha@mail.com', 2, '1,6'],
+          ['b@x.com', 2, '10,11'],
+          ['cara@mail.com', 2, '5,8']
+        ] }
+    ] },
     solution: {
       approach: `<p>Group by the email, keep groups larger than one.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT email, COUNT(*) AS copies, GROUP_CONCAT(id) AS ids
-FROM customers_raw
+FROM (SELECT * FROM customers_raw ORDER BY id)
 GROUP BY email
 HAVING COUNT(*) > 1
 ORDER BY email;` },
@@ -2388,6 +3069,66 @@ WHERE e.salary = (SELECT MAX(x.salary) FROM employees x WHERE x.dept = e.dept)
 ORDER BY e.dept;` } },
     mcq: { q: 'Which function keeps every tied top earner when you filter "= 1"?', options: ['RANK (or DENSE_RANK)', 'ROW_NUMBER', 'NTILE(1)', 'COUNT'], answer: 0, explain: 'RANK and DENSE_RANK give equal values the same rank, so every tied top earner has rank 1. ROW_NUMBER would pick only one.' },
     hints: [`<p>Hint 1: "per department" → PARTITION BY dept.</p>`, `<p>Hint 2: <code>RANK() OVER (PARTITION BY dept ORDER BY salary DESC)</code>.</p>`, `<p>Hint 3: filter rank = 1 in an outer query (not in WHERE of the same SELECT).</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          ['Engineering', 'Ben', 220000],
+          ['Exec', 'Asha', 300000],
+          ['Finance', 'Cara', 210000],
+          ['Sales', 'Mo', 140000]
+        ] },
+      { setup: 'UPDATE employees SET salary = 220000 WHERE id = 4', rows: [
+          ['Engineering', 'Ben', 220000],
+          ['Engineering', 'Dev', 220000],
+          ['Exec', 'Asha', 300000],
+          ['Finance', 'Cara', 210000],
+          ['Sales', 'Mo', 140000]
+        ] },
+      { setup: 'UPDATE employees SET salary = 1', rows: [
+          ['Engineering', 'Ben', 1],
+          ['Engineering', 'Dev', 1],
+          ['Engineering', 'Eli', 1],
+          ['Engineering', 'Fay', 1],
+          ['Engineering', 'Gus', 1],
+          ['Engineering', 'Hana', 1],
+          ['Engineering', 'Ivan', 1],
+          ['Exec', 'Asha', 1],
+          ['Finance', 'Cara', 1],
+          ['Finance', 'Jia', 1],
+          ['Finance', 'Kofi', 1],
+          ['Finance', 'Lena', 1],
+          ['Sales', 'Mo', 1],
+          ['Sales', 'Nia', 1],
+          ['Sales', 'Omar', 1],
+          ['Sales', 'Pia', 1],
+          ['Sales', 'Raj', 1]
+        ] },
+      { setup: 'DELETE FROM employees WHERE id NOT IN (1)', rows: [
+          ['Exec', 'Asha', 300000]
+        ] },
+      { setup: 'DELETE FROM employees', rows: [] },
+      { setup: 'UPDATE employees SET dept = \'Sales\' WHERE id = 2', rows: [
+          ['Engineering', 'Dev', 150000],
+          ['Engineering', 'Eli', 150000],
+          ['Exec', 'Asha', 300000],
+          ['Finance', 'Cara', 210000],
+          ['Sales', 'Ben', 220000]
+        ] },
+      { setup: 'INSERT INTO employees VALUES (18,\'Zed\',\'Engineering\',220000,2,\'2024-01-01\')', rows: [
+          ['Engineering', 'Ben', 220000],
+          ['Engineering', 'Zed', 220000],
+          ['Exec', 'Asha', 300000],
+          ['Finance', 'Cara', 210000],
+          ['Sales', 'Mo', 140000]
+        ] },
+      { setup: 'UPDATE employees SET salary = 140000 WHERE id = 14; UPDATE employees SET salary = 140000 WHERE id = 15', rows: [
+          ['Engineering', 'Ben', 220000],
+          ['Exec', 'Asha', 300000],
+          ['Finance', 'Cara', 210000],
+          ['Sales', 'Mo', 140000],
+          ['Sales', 'Nia', 140000],
+          ['Sales', 'Omar', 140000]
+        ] }
+    ] },
     solution: {
       approach: `<p>Rank inside each department, keep rank 1. Ties survive automatically.</p>`,
       code: { lang: 'sql', db: 'hr', code: `WITH r AS (
@@ -2414,6 +3155,64 @@ WHERE o.order_date = (SELECT MAX(order_date) FROM orders x WHERE x.customer_id =
 -- drops Finn and can duplicate on equal dates` } },
     mcq: { q: 'Where must the condition rn = 1 go so customers without orders survive?', options: ['In the LEFT JOIN … ON clause', 'In the final WHERE clause', 'In GROUP BY', 'In ORDER BY'], answer: 0, explain: 'A WHERE on a column of the right-hand table removes the NULL-extended rows, turning the LEFT JOIN into an inner join.' },
     hints: [`<p>Hint 1: one row per customer → ROW_NUMBER partitioned by customer_id, newest first.</p>`, `<p>Hint 2: <code>ORDER BY order_date DESC, order_id DESC</code> makes the pick deterministic.</p>`, `<p>Hint 3: start FROM customers and LEFT JOIN the ranked orders ON id match AND rn = 1.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          ['Asha', '2024-03-15', 90],
+          ['Ben', '2024-04-02', 35],
+          ['Cara', '2024-03-18', 150],
+          ['Dan', '2024-04-10', 500],
+          ['Eve', '2024-03-22', 60],
+          ['Finn', null, null]
+        ] },
+      { setup: 'DELETE FROM orders', rows: [
+          ['Asha', null, null],
+          ['Ben', null, null],
+          ['Cara', null, null],
+          ['Dan', null, null],
+          ['Eve', null, null],
+          ['Finn', null, null]
+        ] },
+      { setup: 'INSERT INTO orders VALUES (20,6,\'2024-05-01\',10,\'delivered\')', rows: [
+          ['Asha', '2024-03-15', 90],
+          ['Ben', '2024-04-02', 35],
+          ['Cara', '2024-03-18', 150],
+          ['Dan', '2024-04-10', 500],
+          ['Eve', '2024-03-22', 60],
+          ['Finn', '2024-05-01', 10]
+        ] },
+      { setup: 'INSERT INTO orders VALUES (20,1,\'2024-03-15\',77,\'delivered\')', rows: [
+          ['Asha', '2024-03-15', 77],
+          ['Ben', '2024-04-02', 35],
+          ['Cara', '2024-03-18', 150],
+          ['Dan', '2024-04-10', 500],
+          ['Eve', '2024-03-22', 60],
+          ['Finn', null, null]
+        ] },
+      { setup: 'INSERT INTO orders VALUES (20,1,\'2024-03-15\',77,\'cancelled\'),(19,1,\'2024-03-15\',66,\'delivered\')', rows: [
+          ['Asha', '2024-03-15', 77],
+          ['Ben', '2024-04-02', 35],
+          ['Cara', '2024-03-18', 150],
+          ['Dan', '2024-04-10', 500],
+          ['Eve', '2024-03-22', 60],
+          ['Finn', null, null]
+        ] },
+      { setup: 'DELETE FROM customers WHERE customer_id IN (1, 2)', rows: [
+          ['Cara', '2024-03-18', 150],
+          ['Dan', '2024-04-10', 500],
+          ['Eve', '2024-03-22', 60],
+          ['Finn', null, null]
+        ] },
+      { setup: 'DELETE FROM customers', rows: [] },
+      { setup: 'INSERT INTO customers VALUES (7,\'Gus\',\'Pune\')', rows: [
+          ['Asha', '2024-03-15', 90],
+          ['Ben', '2024-04-02', 35],
+          ['Cara', '2024-03-18', 150],
+          ['Dan', '2024-04-10', 500],
+          ['Eve', '2024-03-22', 60],
+          ['Finn', null, null],
+          ['Gus', null, null]
+        ] }
+    ] },
     solution: {
       approach: `<p>ROW_NUMBER per customer, newest first; LEFT JOIN from customers with rn = 1 in the ON clause.</p>`,
       code: { lang: 'sql', db: 'shop', code: `WITH ranked AS (
@@ -2443,6 +3242,39 @@ JOIN signal_log b ON b.id = a.id + 1 AND b.num = a.num
 JOIN signal_log c ON c.id = a.id + 2 AND c.num = a.num;` } },
     mcq: { q: 'For runs of equal values, which difference is constant inside a run?', options: ['ROW_NUMBER() OVER (ORDER BY id) − ROW_NUMBER() OVER (PARTITION BY num ORDER BY id)', 'id − num', 'num − ROW_NUMBER() OVER (ORDER BY id)', 'LAG(id) − id'], answer: 0, explain: 'Inside a run both counters advance together; when the run is interrupted the overall counter jumps ahead of the per-value one.' },
     hints: [`<p>Hint 1: "three in a row" = the current row equals the previous two rows.</p>`, `<p>Hint 2: <code>LAG(num)</code> and <code>LAG(num, 2)</code> over ORDER BY id.</p>`, `<p>Hint 3: for "at least K" use the island key <code>id − ROW_NUMBER() OVER (PARTITION BY num ORDER BY id)</code> and <code>HAVING COUNT(*) &gt;= K</code>.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          [1],
+          [2]
+        ], set: true },
+      { setup: 'DELETE FROM signal_log', rows: [], set: true },
+      { setup: 'DELETE FROM signal_log WHERE id > 3', rows: [
+          [1]
+        ], set: true },
+      { setup: 'DELETE FROM signal_log WHERE id IN (2)', rows: [
+          [2]
+        ], set: true },
+      { setup: 'UPDATE signal_log SET num = 3 WHERE id IN (8, 9)', rows: [
+          [1],
+          [3]
+        ], set: true },
+      { setup: 'INSERT INTO signal_log VALUES (11,3),(12,3)', rows: [
+          [1],
+          [2],
+          [3]
+        ], set: true },
+      { setup: 'INSERT INTO signal_log VALUES (11,1),(12,1),(13,1),(14,1)', rows: [
+          [1],
+          [2]
+        ], set: true },
+      { setup: 'INSERT INTO signal_log VALUES (11,3),(13,3),(14,3)', rows: [
+          [1],
+          [2]
+        ], set: true },
+      { setup: 'UPDATE signal_log SET num = 7', rows: [
+          [7]
+        ], set: true }
+    ] },
     solution: {
       approach: `<p>Island per (num, key) where key = id − per-value row number; keep islands with at least 3 rows. Works for any K with no extra joins.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT DISTINCT num AS consecutive_num
@@ -2475,6 +3307,45 @@ WHERE num = p1 AND num = p2;` }],
 SELECT dept, salary AS third_salary FROM r WHERE rnk = 3;   -- Exec is missing` } },
     mcq: { q: 'Why start from a list of departments and LEFT JOIN the ranked salaries?', options: ['So departments with no 3rd salary still produce a row (with NULL)', 'To make the query faster', 'Because DENSE_RANK needs it', 'To remove duplicates'], answer: 0, explain: 'The driving table decides which rows exist. LEFT JOIN keeps every department even when no ranked row matches rank 3.' },
     hints: [`<p>Hint 1: rank distinct salaries per department with DENSE_RANK.</p>`, `<p>Hint 2: build the department list with <code>SELECT DISTINCT dept</code>.</p>`, `<p>Hint 3: LEFT JOIN ranked rows <code>ON dept match AND rnk = 3</code> (condition in ON, not WHERE).</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          ['Engineering', 120000],
+          ['Exec', null],
+          ['Finance', 98000],
+          ['Sales', 85000]
+        ] },
+      { setup: 'UPDATE employees SET salary = 10', rows: [
+          ['Engineering', null],
+          ['Exec', null],
+          ['Finance', null],
+          ['Sales', null]
+        ] },
+      { setup: 'DELETE FROM employees WHERE id NOT IN (1)', rows: [
+          ['Exec', null]
+        ] },
+      { setup: 'INSERT INTO employees VALUES (18,\'Zed\',\'Exec\',200000,NULL,\'2024-01-01\'); INSERT INTO employees VALUES (19,\'Yan\',\'Exec\',100000,NULL,\'2024-01-01\')', rows: [
+          ['Engineering', 120000],
+          ['Exec', 100000],
+          ['Finance', 98000],
+          ['Sales', 85000]
+        ] },
+      { setup: 'INSERT INTO employees VALUES (18,\'Zed\',\'Exec\',200000,NULL,\'2024-01-01\'); INSERT INTO employees VALUES (19,\'Yan\',\'Exec\',200000,NULL,\'2024-01-01\'); INSERT INTO employees VALUES (20,\'Xia\',\'Exec\',200000,NULL,\'2024-01-01\')', rows: [
+          ['Engineering', 120000],
+          ['Exec', null],
+          ['Finance', 98000],
+          ['Sales', 85000]
+        ] },
+      { setup: 'UPDATE employees SET dept = \'Finance\' WHERE id = 2; UPDATE employees SET dept = \'Finance\' WHERE id = 4; UPDATE employees SET dept = \'Finance\' WHERE id = 6', rows: [
+          ['Engineering', 95000],
+          ['Exec', null],
+          ['Finance', 150000],
+          ['Sales', 85000]
+        ] },
+      { setup: 'DELETE FROM employees', rows: [] },
+      { setup: 'DELETE FROM employees WHERE id NOT IN (2,4,5,6)', rows: [
+          ['Engineering', 120000]
+        ] }
+    ] },
     solution: {
       approach: `<p>Distinct dense ranks per department, driven by the department list with a LEFT JOIN that carries the rank condition.</p>`,
       code: { lang: 'sql', db: 'hr', code: `WITH depts AS (SELECT DISTINCT dept FROM employees),
@@ -2506,6 +3377,35 @@ WHERE EXISTS (SELECT 1 FROM logins n
   AND date(l.login_ts) = (SELECT MIN(date(x.login_ts)) FROM logins x WHERE x.user_id = l.user_id);` } },
     mcq: { q: 'What should the denominator be?', options: ['Number of distinct users', 'Number of login rows', 'Number of distinct login days', 'Users who logged in twice'], answer: 0, explain: 'The fraction is per player: retained users / all users. Login rows over-count heavy users.' },
     hints: [`<p>Hint 1: compute each user's first day with <code>MIN(date(login_ts))</code> in a CTE.</p>`, `<p>Hint 2: LEFT JOIN logins on <code>date(login_ts) = date(first_day, '+1 day')</code>.</p>`, `<p>Hint 3: <code>COUNT(DISTINCT matched user) * 1.0 / COUNT(*)</code> over the first-day CTE; ROUND to 2.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          [0.58]
+        ] },
+      { setup: 'DELETE FROM logins', rows: [
+          [null]
+        ] },
+      { setup: 'DELETE FROM logins WHERE user_id <> 1', rows: [
+          [1]
+        ] },
+      { setup: 'DELETE FROM logins WHERE user_id <> 2', rows: [
+          [0]
+        ] },
+      { setup: 'INSERT INTO logins VALUES (13,\'2024-05-01 23:59:59\'),(13,\'2024-05-02 00:00:00\')', rows: [
+          [0.62]
+        ] },
+      { setup: 'INSERT INTO logins VALUES (2,\'2024-01-04 08:00:00\')', rows: [
+          [0.67]
+        ] },
+      { setup: 'INSERT INTO logins VALUES (8,\'2024-02-16 08:00:00\'),(11,\'2024-03-09 08:00:00\')', rows: [
+          [0.75]
+        ] },
+      { setup: 'INSERT INTO logins VALUES (8,\'2024-02-14 08:00:00\')', rows: [
+          [0.67]
+        ] },
+      { setup: 'INSERT INTO logins VALUES (8,\'2024-02-16 08:00:00\'),(11,\'2024-03-09 08:00:00\'),(9,\'2024-02-19 12:00:00\'),(7,\'2024-02-09 12:00:00\')', rows: [
+          [0.83]
+        ] }
+    ] },
     solution: {
       approach: `<p>First-day CTE per user, LEFT JOIN to next-day logins, ratio of matched users to all users.</p>`,
       code: { lang: 'sql', db: 'app', code: `WITH first_day AS (
@@ -2534,6 +3434,50 @@ SELECT region, MAX(q1, q2, q3, q4) AS best_revenue
 FROM sales_wide;` } },
     mcq: { q: 'Which operator should glue the unpivot branches together?', options: ['UNION ALL', 'UNION', 'INTERSECT', 'JOIN'], answer: 0, explain: 'UNION ALL keeps every branch row and skips the expensive dedupe; UNION could merge two genuinely different but identical-looking rows.' },
     hints: [`<p>Hint 1: reshape to long (region, quarter, revenue) with four SELECTs and UNION ALL.</p>`, `<p>Hint 2: drop the NULL revenue rows (empty quarters) before ranking.</p>`, `<p>Hint 3: <code>ROW_NUMBER() OVER (PARTITION BY region ORDER BY revenue DESC, quarter)</code> and keep rn = 1.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          ['East', 'Q4', 55],
+          ['North', 'Q4', 150],
+          ['South', 'Q4', 110]
+        ] },
+      { setup: 'INSERT INTO sales_wide VALUES (\'West\',50,50,50,50)', rows: [
+          ['East', 'Q4', 55],
+          ['North', 'Q4', 150],
+          ['South', 'Q4', 110],
+          ['West', 'Q1', 50]
+        ] },
+      { setup: 'INSERT INTO sales_wide VALUES (\'West\',NULL,NULL,NULL,NULL)', rows: [
+          ['East', 'Q4', 55],
+          ['North', 'Q4', 150],
+          ['South', 'Q4', 110]
+        ] },
+      { setup: 'INSERT INTO sales_wide VALUES (\'West\',0,0,0,0)', rows: [
+          ['East', 'Q4', 55],
+          ['North', 'Q4', 150],
+          ['South', 'Q4', 110],
+          ['West', 'Q1', 0]
+        ] },
+      { setup: 'INSERT INTO sales_wide VALUES (\'West\',NULL,7,NULL,NULL)', rows: [
+          ['East', 'Q4', 55],
+          ['North', 'Q4', 150],
+          ['South', 'Q4', 110],
+          ['West', 'Q2', 7]
+        ] },
+      { setup: 'INSERT INTO sales_wide VALUES (\'West\',-5,-3,-9,-3)', rows: [
+          ['East', 'Q4', 55],
+          ['North', 'Q4', 150],
+          ['South', 'Q4', 110],
+          ['West', 'Q2', -3]
+        ] },
+      { setup: 'DELETE FROM sales_wide', rows: [] },
+      { setup: 'INSERT INTO sales_wide VALUES (\'Zone\',1,NULL,NULL,NULL),(\'Apex\',NULL,NULL,2,2)', rows: [
+          ['Apex', 'Q3', 2],
+          ['East', 'Q4', 55],
+          ['North', 'Q4', 150],
+          ['South', 'Q4', 110],
+          ['Zone', 'Q1', 1]
+        ] }
+    ] },
     solution: {
       approach: `<p>Unpivot with UNION ALL, filter NULLs, then top-1 per region with a deterministic tie-breaker.</p>`,
       code: { lang: 'sql', db: 'shop', code: `WITH long AS (
@@ -2571,6 +3515,40 @@ GROUP BY rec
 ORDER BY outage_start;` } },
     mcq: { q: 'In the flag + running SUM method, when is the flag 1?', options: ['When status differs from the previous check (or there is no previous check)', 'When status is down', 'Every 5 minutes', 'When the next check is up'], answer: 0, explain: 'The flag marks the start of a new run; the running SUM of flags then numbers the runs.' },
     hints: [`<p>Hint 1: number the runs with a change flag and a running SUM.</p>`, `<p>Hint 2: carry <code>LEAD(check_time)</code> on each row — for the last row of a run it is the first check of the next run.</p>`, `<p>Hint 3: group by run, keep status = 'down', end = MAX(next_check), minutes from integer seconds.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          ['2024-05-01 10:10', '2024-05-01 10:25', 15],
+          ['2024-05-01 10:35', '2024-05-01 10:40', 5]
+        ] },
+      { setup: 'INSERT INTO server_checks VALUES (\'2024-05-01 10:55\',\'down\'),(\'2024-05-01 11:00\',\'down\')', rows: [
+          ['2024-05-01 10:10', '2024-05-01 10:25', 15],
+          ['2024-05-01 10:35', '2024-05-01 10:40', 5],
+          ['2024-05-01 10:55', null, null]
+        ] },
+      { setup: 'DELETE FROM server_checks', rows: [] },
+      { setup: 'UPDATE server_checks SET status = \'up\'', rows: [] },
+      { setup: 'UPDATE server_checks SET status = \'down\'', rows: [
+          ['2024-05-01 10:00', null, null]
+        ] },
+      { setup: 'INSERT INTO server_checks VALUES (\'2024-05-01 09:55\',\'down\')', rows: [
+          ['2024-05-01 09:55', '2024-05-01 10:00', 5],
+          ['2024-05-01 10:10', '2024-05-01 10:25', 15],
+          ['2024-05-01 10:35', '2024-05-01 10:40', 5]
+        ] },
+      { setup: 'INSERT INTO server_checks VALUES (\'2024-05-01 11:00\',\'up\'),(\'2024-05-01 11:05\',\'down\'),(\'2024-05-01 11:10\',\'up\')', rows: [
+          ['2024-05-01 10:10', '2024-05-01 10:25', 15],
+          ['2024-05-01 10:35', '2024-05-01 10:40', 5],
+          ['2024-05-01 11:05', '2024-05-01 11:10', 5]
+        ] },
+      { setup: 'DELETE FROM server_checks WHERE check_time > \'2024-05-01 10:10\'', rows: [
+          ['2024-05-01 10:10', null, null]
+        ] },
+      { setup: 'INSERT INTO server_checks VALUES (\'2024-05-02 00:00\',\'down\'),(\'2024-05-02 00:05\',\'up\')', rows: [
+          ['2024-05-01 10:10', '2024-05-01 10:25', 15],
+          ['2024-05-01 10:35', '2024-05-01 10:40', 5],
+          ['2024-05-02 00:00', '2024-05-02 00:05', 5]
+        ] }
+    ] },
     solution: {
       approach: `<p>Status islands with flag + running SUM; LEAD supplies the recovery time; aggregate down-runs only.</p>`,
       code: { lang: 'sql', db: 'shop', code: `WITH f AS (
@@ -2583,8 +3561,9 @@ g AS (
   SELECT *, SUM(new_run) OVER (ORDER BY check_time) AS run_id FROM f
 )
 SELECT MIN(check_time) AS outage_start,
-       MAX(next_check) AS outage_end,              -- first check after the run (NULL if still down)
-       (strftime('%s', MAX(next_check)) - strftime('%s', MIN(check_time))) / 60 AS minutes
+       CASE WHEN COUNT(next_check) = COUNT(*) THEN MAX(next_check) END AS outage_end,   -- first check after the run (NULL if still down)
+       CASE WHEN COUNT(next_check) = COUNT(*)
+            THEN (strftime('%s', MAX(next_check)) - strftime('%s', MIN(check_time))) / 60 END AS minutes
 FROM g
 WHERE status = 'down'
 GROUP BY run_id
@@ -2606,6 +3585,58 @@ WHERE o.status = 'delivered'
 GROUP BY c.customer_id, c.name;` } },
     mcq: { q: 'Where must the delivered filter go?', options: ['In WHERE, before the window functions number the rows', 'After the median is computed', 'In HAVING', 'It does not matter'], answer: 0, explain: 'If cancelled rows are numbered too, they shift the middle positions. Filter first, then rank.' },
     hints: [`<p>Hint 1: filter to delivered orders first, before any numbering.</p>`, `<p>Hint 2: <code>ROW_NUMBER()</code> and <code>COUNT(*)</code> both <code>OVER (PARTITION BY customer_id …)</code>.</p>`, `<p>Hint 3: keep <code>rn IN ((cnt+1)/2, (cnt+2)/2)</code>, then AVG per customer.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          ['Asha', 120, 3],
+          ['Ben', 80, 4],
+          ['Cara', 150, 2],
+          ['Dan', 500, 3],
+          ['Eve', 60, 2]
+        ] },
+      { setup: 'DELETE FROM orders', rows: [] },
+      { setup: 'INSERT INTO orders VALUES (20,6,\'2024-05-01\',10,\'delivered\')', rows: [
+          ['Asha', 120, 3],
+          ['Ben', 80, 4],
+          ['Cara', 150, 2],
+          ['Dan', 500, 3],
+          ['Eve', 60, 2],
+          ['Finn', 10, 1]
+        ] },
+      { setup: 'INSERT INTO orders VALUES (20,6,\'2024-05-01\',10,\'returned\')', rows: [
+          ['Asha', 120, 3],
+          ['Ben', 80, 4],
+          ['Cara', 150, 2],
+          ['Dan', 500, 3],
+          ['Eve', 60, 2]
+        ] },
+      { setup: 'INSERT INTO orders VALUES (20,1,\'2024-05-01\',1000,\'delivered\')', rows: [
+          ['Asha', 210, 4],
+          ['Ben', 80, 4],
+          ['Cara', 150, 2],
+          ['Dan', 500, 3],
+          ['Eve', 60, 2]
+        ] },
+      { setup: 'INSERT INTO orders VALUES (20,1,\'2024-05-01\',1,\'delivered\'),(21,1,\'2024-05-02\',2,\'delivered\')', rows: [
+          ['Asha', 90, 5],
+          ['Ben', 80, 4],
+          ['Cara', 150, 2],
+          ['Dan', 500, 3],
+          ['Eve', 60, 2]
+        ] },
+      { setup: 'UPDATE orders SET status = \'delivered\'', rows: [
+          ['Asha', 210, 4],
+          ['Ben', 80, 4],
+          ['Cara', 150, 3],
+          ['Dan', 500, 3],
+          ['Eve', 60, 2]
+        ] },
+      { setup: 'UPDATE orders SET status = \'cancelled\' WHERE customer_id = 4', rows: [
+          ['Asha', 120, 3],
+          ['Ben', 80, 4],
+          ['Cara', 150, 2],
+          ['Eve', 60, 2]
+        ] }
+    ] },
     solution: {
       approach: `<p>Per-customer median with the ROW_NUMBER + COUNT window recipe on the filtered rows.</p>`,
       code: { lang: 'sql', db: 'shop', code: `WITH r AS (
@@ -2640,6 +3671,49 @@ JOIN orders b
 ORDER BY b.customer_id;` } },
     mcq: { q: 'Why partition the LAG by both customer_id and amount?', options: ['So "previous" means the previous order of the same customer with the same amount', 'To make LAG faster', 'Because LAG requires two columns', 'To remove cancelled orders'], answer: 0, explain: 'Partitioning by (customer, amount) makes each partition a list of identical charges; LAG then gives the previous identical charge directly.' },
     hints: [`<p>Hint 1: "same customer and same amount" defines the group.</p>`, `<p>Hint 2: <code>LAG(order_date) OVER (PARTITION BY customer_id, amount ORDER BY order_date, order_id)</code>.</p>`, `<p>Hint 3: keep rows where <code>julianday(order_date) − julianday(prev_date) ≤ 30</code>.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          [2, 5, 80, '2024-01-04', '2024-02-01'],
+          [3, 13, 150, '2024-02-20', '2024-03-18'],
+          [5, 14, 60, '2024-03-01', '2024-03-22']
+        ], set: true },
+      { setup: 'INSERT INTO orders VALUES (20,6,\'2024-05-01\',10,\'delivered\'),(21,6,\'2024-05-31\',10,\'delivered\')', rows: [
+          [2, 5, 80, '2024-01-04', '2024-02-01'],
+          [3, 13, 150, '2024-02-20', '2024-03-18'],
+          [5, 14, 60, '2024-03-01', '2024-03-22'],
+          [6, 21, 10, '2024-05-01', '2024-05-31']
+        ], set: true },
+      { setup: 'INSERT INTO orders VALUES (20,6,\'2024-05-01\',10,\'delivered\'),(21,6,\'2024-06-01\',10,\'delivered\')', rows: [
+          [2, 5, 80, '2024-01-04', '2024-02-01'],
+          [3, 13, 150, '2024-02-20', '2024-03-18'],
+          [5, 14, 60, '2024-03-01', '2024-03-22']
+        ], set: true },
+      { setup: 'INSERT INTO orders VALUES (20,6,\'2024-05-01\',10,\'delivered\'),(21,6,\'2024-05-01\',10,\'delivered\'),(22,6,\'2024-05-20\',10,\'delivered\')', rows: [
+          [2, 5, 80, '2024-01-04', '2024-02-01'],
+          [3, 13, 150, '2024-02-20', '2024-03-18'],
+          [5, 14, 60, '2024-03-01', '2024-03-22'],
+          [6, 21, 10, '2024-05-01', '2024-05-01'],
+          [6, 22, 10, '2024-05-01', '2024-05-20']
+        ], set: true },
+      { setup: 'INSERT INTO orders VALUES (20,6,\'2024-05-01\',10,\'delivered\'),(21,6,\'2024-05-02\',11,\'delivered\')', rows: [
+          [2, 5, 80, '2024-01-04', '2024-02-01'],
+          [3, 13, 150, '2024-02-20', '2024-03-18'],
+          [5, 14, 60, '2024-03-01', '2024-03-22']
+        ], set: true },
+      { setup: 'DELETE FROM orders', rows: [], set: true },
+      { setup: 'INSERT INTO orders VALUES (20,1,\'2024-03-15\',90,\'delivered\')', rows: [
+          [1, 20, 90, '2024-03-15', '2024-03-15'],
+          [2, 5, 80, '2024-01-04', '2024-02-01'],
+          [3, 13, 150, '2024-02-20', '2024-03-18'],
+          [5, 14, 60, '2024-03-01', '2024-03-22']
+        ], set: true },
+      { setup: 'INSERT INTO orders VALUES (20,1,\'2024-12-30\',120,\'delivered\'),(21,1,\'2025-01-20\',120,\'delivered\')', rows: [
+          [1, 21, 120, '2024-12-30', '2025-01-20'],
+          [2, 5, 80, '2024-01-04', '2024-02-01'],
+          [3, 13, 150, '2024-02-20', '2024-03-18'],
+          [5, 14, 60, '2024-03-01', '2024-03-22']
+        ], set: true }
+    ] },
     solution: {
       approach: `<p>Partition by the duplicate key, LAG the date, keep rows whose gap is within the window: one sort, one pass.</p>`,
       code: { lang: 'sql', db: 'shop', code: `WITH x AS (
@@ -2675,6 +3749,45 @@ WHERE a.people >= 100 AND b.people >= 100 AND c.people >= 100
 ORDER BY a.visit_date;` } },
     mcq: { q: 'Why filter people ≥ 100 BEFORE computing id − ROW_NUMBER()?', options: ['So a low-traffic row breaks the run: survivors are re-numbered and gaps appear in the key', 'Because ROW_NUMBER ignores WHERE', 'It is only for speed', 'To avoid duplicates'], answer: 0, explain: 'After filtering, the 99-person row is missing, so ids 3 and 5 are no longer consecutive and get different island keys.' },
     hints: [`<p>Hint 1: keep only busy rows first; consecutive busy ids are an island.</p>`, `<p>Hint 2: island key = <code>id − ROW_NUMBER() OVER (ORDER BY id)</code> computed on the filtered rows.</p>`, `<p>Hint 3: keep islands with <code>COUNT(*) &gt;= 3</code> (a windowed <code>COUNT(*) OVER (PARTITION BY island)</code> avoids a second scan).</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          [5, '2017-01-05', 145],
+          [6, '2017-01-06', 1455],
+          [7, '2017-01-07', 199],
+          [8, '2017-01-09', 188]
+        ] },
+      { setup: 'DELETE FROM stadium', rows: [] },
+      { setup: 'UPDATE stadium SET people = 100', rows: [
+          [1, '2017-01-01', 100],
+          [2, '2017-01-02', 100],
+          [3, '2017-01-03', 100],
+          [4, '2017-01-04', 100],
+          [5, '2017-01-05', 100],
+          [6, '2017-01-06', 100],
+          [7, '2017-01-07', 100],
+          [8, '2017-01-09', 100]
+        ] },
+      { setup: 'UPDATE stadium SET people = 99', rows: [] },
+      { setup: 'UPDATE stadium SET people = 120 WHERE id = 4', rows: [
+          [2, '2017-01-02', 109],
+          [3, '2017-01-03', 150],
+          [4, '2017-01-04', 120],
+          [5, '2017-01-05', 145],
+          [6, '2017-01-06', 1455],
+          [7, '2017-01-07', 199],
+          [8, '2017-01-09', 188]
+        ] },
+      { setup: 'INSERT INTO stadium VALUES (9,\'2017-01-10\',100),(10,\'2017-01-11\',100)', rows: [
+          [5, '2017-01-05', 145],
+          [6, '2017-01-06', 1455],
+          [7, '2017-01-07', 199],
+          [8, '2017-01-09', 188],
+          [9, '2017-01-10', 100],
+          [10, '2017-01-11', 100]
+        ] },
+      { setup: 'DELETE FROM stadium WHERE id = 6', rows: [] },
+      { setup: 'DELETE FROM stadium WHERE id > 3', rows: [] }
+    ] },
     solution: {
       approach: `<p>Filter, compute the island key, count island sizes with a window, return rows of islands with size ≥ 3.</p>`,
       code: { lang: 'sql', db: 'shop', code: `WITH busy AS (
@@ -2713,6 +3826,56 @@ FROM users u
 GROUP BY cohort_month;` } },
     mcq: { q: 'The March cohort shows M2 = 0% in a report generated in April. What is the problem?', options: ['M2 (May) has not happened yet; it should be NULL / blank', 'Nobody from March is retained', 'The denominator is wrong', 'Months should be days'], answer: 0, explain: 'This is right-censoring: you cannot observe the future. Showing 0 misleads readers into thinking the cohort churned completely.' },
     hints: [`<p>Hint 1: convert dates to a sequential month index <code>year*12 + month</code> so offsets work across years.</p>`, `<p>Hint 2: count active cohort members per (cohort, offset) in one aggregated CTE; get the last observed month index from the activity data.</p>`, `<p>Hint 3: for each output column k, <code>CASE WHEN cohort_idx + k &lt;= max_idx THEN ROUND(100.0 * COALESCE(active_k, 0) / size, 1) END</code> — no ELSE means NULL.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          ['2024-01', 5, 100, 80, 40, 40],
+          ['2024-02', 4, 100, 50, 25, null],
+          ['2024-03', 3, 100, 66.7, null, null]
+        ] },
+      { setup: 'INSERT INTO logins VALUES (1,\'2024-06-01 10:00:00\')', rows: [
+          ['2024-01', 5, 100, 80, 40, 40],
+          ['2024-02', 4, 100, 50, 25, 0],
+          ['2024-03', 3, 100, 66.7, 0, 0]
+        ] },
+      { setup: 'INSERT INTO users VALUES (13,\'mia\',\'2023-12-15\',\'IN\',\'ads\'); INSERT INTO logins VALUES (13,\'2023-12-20 10:00:00\'),(13,\'2024-01-20 10:00:00\')', rows: [
+          ['2023-12', 1, 100, 100, 0, 0],
+          ['2024-01', 5, 100, 80, 40, 40],
+          ['2024-02', 4, 100, 50, 25, null],
+          ['2024-03', 3, 100, 66.7, null, null]
+        ] },
+      { setup: 'INSERT INTO users VALUES (13,\'mia\',\'2023-12-15\',\'IN\',\'ads\')', rows: [
+          ['2023-12', 1, 0, 0, 0, 0],
+          ['2024-01', 5, 100, 80, 40, 40],
+          ['2024-02', 4, 100, 50, 25, null],
+          ['2024-03', 3, 100, 66.7, null, null]
+        ] },
+      { setup: 'DELETE FROM logins WHERE user_id <> 1', rows: [
+          ['2024-01', 5, 20, 20, 20, 20],
+          ['2024-02', 4, 0, 0, 0, null],
+          ['2024-03', 3, 0, 0, null, null]
+        ] },
+      { setup: 'INSERT INTO logins VALUES (11,\'2024-03-09 10:00:00\'),(11,\'2024-04-09 10:00:00\'),(11,\'2024-05-09 10:00:00\')', rows: [
+          ['2024-01', 5, 100, 80, 40, 40],
+          ['2024-02', 4, 100, 50, 25, 0],
+          ['2024-03', 3, 100, 100, 33.3, null]
+        ] },
+      { setup: 'DELETE FROM logins WHERE user_id = 12', rows: [
+          ['2024-01', 5, 100, 80, 40, 40],
+          ['2024-02', 4, 100, 50, 25, null],
+          ['2024-03', 3, 66.7, 33.3, null, null]
+        ] },
+      { setup: 'INSERT INTO users VALUES (13,\'mia\',\'2024-04-30\',\'IN\',\'ads\'); INSERT INTO logins VALUES (13,\'2024-04-30 10:00:00\')', rows: [
+          ['2024-01', 5, 100, 80, 40, 40],
+          ['2024-02', 4, 100, 50, 25, null],
+          ['2024-03', 3, 100, 66.7, null, null],
+          ['2024-04', 1, 100, null, null, null]
+        ] },
+      { setup: 'INSERT INTO logins VALUES (2,\'2024-01-04 10:00:00\'),(2,\'2024-01-04 11:00:00\')', rows: [
+          ['2024-01', 5, 100, 80, 40, 40],
+          ['2024-02', 4, 100, 50, 25, null],
+          ['2024-03', 3, 100, 66.7, null, null]
+        ] }
+    ] },
     solution: {
       approach: `<p>Sequential month indexes, one aggregation of active users per (cohort, offset), cohort sizes from the users table (correct denominator), and a censoring CASE per column.</p>`,
       code: { lang: 'sql', db: 'app', code: `WITH cohort AS (
@@ -2769,6 +3932,44 @@ FROM meetings
 GROUP BY room;` } },
     mcq: { q: 'Sorted meetings: 09:00–12:00, 09:30–10:00, 11:00–11:30. Using LAG(end_time) only, what goes wrong for the third meeting?', options: ['It compares with 10:00, sees no overlap and starts a new block, although 09:00–12:00 still covers it', 'Nothing, LAG is enough', 'It merges with the wrong room', 'It causes an infinite loop'], answer: 0, explain: 'The previous row ended at 10:00, but an earlier row runs until 12:00. A running MAX(end) over all previous rows catches this.' },
     hints: [`<p>Hint 1: sort by start; a meeting starts a new block only if it begins after every earlier meeting in the room has ended.</p>`, `<p>Hint 2: <code>MAX(end_time) OVER (PARTITION BY room ORDER BY start_time ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)</code>.</p>`, `<p>Hint 3: flag new blocks, running SUM → block id, GROUP BY room, block for MIN/MAX, then sum durations per room with integer seconds.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          ['A', 2, 180, '09:00-11:00, 13:00-14:00'],
+          ['B', 2, 150, '09:00-09:30, 10:00-12:00']
+        ] },
+      { setup: 'DELETE FROM meetings', rows: [] },
+      { setup: 'INSERT INTO meetings VALUES (\'C\',\'08:00\',\'08:00\')', rows: [
+          ['A', 2, 180, '09:00-11:00, 13:00-14:00'],
+          ['B', 2, 150, '09:00-09:30, 10:00-12:00'],
+          ['C', 1, 0, '08:00-08:00']
+        ] },
+      { setup: 'INSERT INTO meetings VALUES (\'C\',\'08:00\',\'09:00\'),(\'C\',\'09:00\',\'10:00\'),(\'C\',\'10:01\',\'11:00\')', rows: [
+          ['A', 2, 180, '09:00-11:00, 13:00-14:00'],
+          ['B', 2, 150, '09:00-09:30, 10:00-12:00'],
+          ['C', 2, 179, '08:00-10:00, 10:01-11:00']
+        ] },
+      { setup: 'INSERT INTO meetings VALUES (\'C\',\'09:00\',\'17:00\'),(\'C\',\'10:00\',\'11:00\'),(\'C\',\'12:00\',\'13:00\')', rows: [
+          ['A', 2, 180, '09:00-11:00, 13:00-14:00'],
+          ['B', 2, 150, '09:00-09:30, 10:00-12:00'],
+          ['C', 1, 480, '09:00-17:00']
+        ] },
+      { setup: 'INSERT INTO meetings VALUES (\'A\',\'07:00\',\'23:59\')', rows: [
+          ['A', 1, 1019, '07:00-23:59'],
+          ['B', 2, 150, '09:00-09:30, 10:00-12:00']
+        ] },
+      { setup: 'INSERT INTO meetings VALUES (\'C\',\'11:00\',\'12:00\'),(\'C\',\'08:00\',\'09:00\'),(\'C\',\'09:30\',\'10:00\')', rows: [
+          ['A', 2, 180, '09:00-11:00, 13:00-14:00'],
+          ['B', 2, 150, '09:00-09:30, 10:00-12:00'],
+          ['C', 3, 150, '08:00-09:00, 09:30-10:00, 11:00-12:00']
+        ] },
+      { setup: 'DELETE FROM meetings WHERE room = \'A\'', rows: [
+          ['B', 2, 150, '09:00-09:30, 10:00-12:00']
+        ] },
+      { setup: 'INSERT INTO meetings VALUES (\'A\',\'09:00\',\'10:00\')', rows: [
+          ['A', 2, 180, '09:00-11:00, 13:00-14:00'],
+          ['B', 2, 150, '09:00-09:30, 10:00-12:00']
+        ] }
+    ] },
     solution: {
       approach: `<p>Interval merging as gaps-and-islands: running max of previous ends, new-block flag, running sum, aggregate blocks, then aggregate rooms.</p>`,
       code: { lang: 'sql', db: 'shop', code: `WITH m AS (
@@ -2815,6 +4016,64 @@ GROUP BY m.id, m.name
 ORDER BY reports_two_levels DESC;` } },
     mcq: { q: 'In the pairs CTE, why does the anchor pair every employee with themselves?', options: ['So every employee becomes a root whose subtree is then expanded downward', 'To count the CEO twice', 'Because recursive CTEs need two columns', 'To stop cycles'], answer: 0, explain: 'Starting with (id, id) for everyone lets one recursion compute the subtree of every node at once; GROUP BY ancestor then rolls up each subtree.' },
     hints: [`<p>Hint 1: you need every (ancestor, descendant) pair — a closure table built on the fly.</p>`, `<p>Hint 2: anchor <code>SELECT id, id, 0</code>; step joins employees whose manager_id = descendant, depth + 1, with <code>WHERE depth &lt; 20</code>.</p>`, `<p>Hint 3: drop depth-0 pairs (the manager themself), GROUP BY ancestor, COUNT and SUM the descendants' salaries.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          ['Asha', 16, 1961000],
+          ['Ben', 6, 735000],
+          ['Mo', 4, 330000],
+          ['Cara', 3, 326000],
+          ['Dev', 2, 230000],
+          ['Eli', 2, 205000],
+          ['Jia', 2, 196000],
+          ['Nia', 2, 155000]
+        ], set: true },
+      { setup: 'DELETE FROM employees WHERE id NOT IN (1)', rows: [], set: true },
+      { setup: 'DELETE FROM employees WHERE id NOT IN (1,2)', rows: [
+          ['Asha', 1, 220000]
+        ], set: true },
+      { setup: 'INSERT INTO employees VALUES (18,\'Zed\',\'Sales\',10,17,\'2024-01-01\'); INSERT INTO employees VALUES (19,\'Yan\',\'Sales\',20,18,\'2024-01-01\')', rows: [
+          ['Asha', 18, 1961030],
+          ['Ben', 6, 735000],
+          ['Mo', 6, 330030],
+          ['Cara', 3, 326000],
+          ['Dev', 2, 230000],
+          ['Eli', 2, 205000],
+          ['Jia', 2, 196000],
+          ['Nia', 4, 155030],
+          ['Raj', 2, 30],
+          ['Zed', 1, 20]
+        ], set: true },
+      { setup: 'UPDATE employees SET manager_id = NULL WHERE id = 1; UPDATE employees SET manager_id = NULL WHERE id = 13', rows: [
+          ['Asha', 11, 1491000],
+          ['Ben', 6, 735000],
+          ['Mo', 4, 330000],
+          ['Cara', 3, 326000],
+          ['Dev', 2, 230000],
+          ['Eli', 2, 205000],
+          ['Jia', 2, 196000],
+          ['Nia', 2, 155000]
+        ], set: true },
+      { setup: 'UPDATE employees SET salary = 1', rows: [
+          ['Asha', 16, 16],
+          ['Ben', 6, 6],
+          ['Mo', 4, 4],
+          ['Cara', 3, 3],
+          ['Dev', 2, 2],
+          ['Eli', 2, 2],
+          ['Jia', 2, 2],
+          ['Nia', 2, 2]
+        ], set: true },
+      { setup: 'DELETE FROM employees WHERE id IN (2)', rows: [
+          ['Asha', 9, 1006000],
+          ['Mo', 4, 330000],
+          ['Cara', 3, 326000],
+          ['Dev', 2, 230000],
+          ['Eli', 2, 205000],
+          ['Jia', 2, 196000],
+          ['Nia', 2, 155000]
+        ], set: true },
+      { setup: 'DELETE FROM employees', rows: [], set: true }
+    ] },
     solution: {
       approach: `<p>Recursive closure pairs with a depth guard, exclude self-pairs, aggregate per ancestor.</p>`,
       code: { lang: 'sql', db: 'hr', code: `WITH RECURSIVE pairs(ancestor, descendant, depth) AS (
@@ -2856,6 +4115,35 @@ SELECT COUNT(*) AS views,
 FROM v;` } },
     mcq: { q: 'What is the unit of analysis in this problem?', options: ['Sessions', 'Users', 'Events', 'Days'], answer: 0, explain: 'Both numerator and denominator count sessions. Mixing units (users on top, sessions below) produces meaningless ratios.' },
     hints: [`<p>Hint 1: reuse the sessionization CTE (LAG → flag → running SUM) to tag each event with (user_id, session_no).</p>`, `<p>Hint 2: per session compute the first view time with <code>MIN(CASE WHEN event_name = 'view_product' THEN event_time END)</code>.</p>`, `<p>Hint 3: a session converts if a cart in the same (user, session) is later than that first view — compute it with a second conditional MIN and compare.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          [8, 5, 62.5]
+        ] },
+      { setup: 'DELETE FROM events', rows: [
+          [0, null, null]
+        ] },
+      { setup: 'DELETE FROM events WHERE user_id <> 2', rows: [
+          [1, 1, 100]
+        ] },
+      { setup: 'INSERT INTO events VALUES (100,9,\'2024-03-01 09:00:00\',\'view_product\'),(101,9,\'2024-03-01 09:00:00\',\'add_to_cart\')', rows: [
+          [9, 5, 55.6]
+        ] },
+      { setup: 'INSERT INTO events VALUES (100,9,\'2024-03-01 09:00:00\',\'view_product\'),(101,9,\'2024-03-01 09:10:00\',\'add_to_cart\'),(102,9,\'2024-03-01 15:00:00\',\'view_product\'),(103,9,\'2024-03-01 15:05:00\',\'add_to_cart\')', rows: [
+          [10, 7, 70]
+        ] },
+      { setup: 'INSERT INTO events VALUES (100,9,\'2024-03-01 09:00:00\',\'view_product\'),(101,9,\'2024-03-01 09:31:00\',\'add_to_cart\')', rows: [
+          [9, 5, 55.6]
+        ] },
+      { setup: 'INSERT INTO events VALUES (100,9,\'2024-03-01 09:00:00\',\'search\'),(101,9,\'2024-03-01 09:10:00\',\'add_to_cart\')', rows: [
+          [8, 5, 62.5]
+        ] },
+      { setup: 'DELETE FROM events WHERE user_id <> 8', rows: [
+          [0, null, null]
+        ] },
+      { setup: 'INSERT INTO events VALUES (100,9,\'2024-03-01 09:00:00\',\'view_product\'),(101,9,\'2024-03-01 09:30:00\',\'add_to_cart\'),(102,10,\'2024-03-01 09:00:00\',\'view_product\')', rows: [
+          [10, 6, 60]
+        ] }
+    ] },
     solution: {
       approach: `<p>Sessionize, then aggregate each session to (first view, first cart after any view). Using conditional MIN for the first view and a correlated check keeps it readable; at scale use MIN of cart times greater than first view via a self-join on the session key.</p>`,
       code: { lang: 'sql', db: 'app', code: `WITH ordered AS (
@@ -2910,6 +4198,38 @@ r AS (SELECT num, ROW_NUMBER() OVER (ORDER BY num) AS rn, COUNT(*) OVER () AS cn
 SELECT AVG(num) AS median FROM r WHERE rn IN ((cnt + 1) / 2, (cnt + 2) / 2);` } },
     mcq: { q: 'A value with cumulative count cum and frequency f occupies which positions?', options: ['cum − f + 1 through cum', '1 through cum', 'cum through cum + f', 'f through cum'], answer: 0, explain: 'The running total up to and including this value is cum, so its f copies occupy the last f positions ending at cum.' },
     hints: [`<p>Hint 1: the median needs positions (total+1)/2 and (total+2)/2 in the sorted expanded list.</p>`, `<p>Hint 2: <code>SUM(frequency) OVER (ORDER BY num)</code> gives the last position of each value; <code>SUM(frequency) OVER ()</code> gives the total.</p>`, `<p>Hint 3: keep values whose range [cum − f + 1, cum] contains either middle position, then AVG them.</p>`],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          [2]
+        ] },
+      { setup: 'DELETE FROM num_freq', rows: [
+          [null]
+        ] },
+      { setup: 'DELETE FROM num_freq; INSERT INTO num_freq VALUES (7,1)', rows: [
+          [7]
+        ] },
+      { setup: 'DELETE FROM num_freq; INSERT INTO num_freq VALUES (1,1),(2,1)', rows: [
+          [1.5]
+        ] },
+      { setup: 'DELETE FROM num_freq; INSERT INTO num_freq VALUES (1,1),(2,1),(3,1)', rows: [
+          [2]
+        ] },
+      { setup: 'DELETE FROM num_freq; INSERT INTO num_freq VALUES (1,1000000000),(100,1000000000)', rows: [
+          [50.5]
+        ] },
+      { setup: 'DELETE FROM num_freq; INSERT INTO num_freq VALUES (-5,3),(0,3),(5,3)', rows: [
+          [0]
+        ] },
+      { setup: 'DELETE FROM num_freq; INSERT INTO num_freq VALUES (1,5),(2,1),(3,1)', rows: [
+          [1]
+        ] },
+      { setup: 'DELETE FROM num_freq; INSERT INTO num_freq VALUES (1,1),(2,1),(3,1),(4,1)', rows: [
+          [2.5]
+        ] },
+      { setup: 'DELETE FROM num_freq; INSERT INTO num_freq VALUES (10,2),(20,2)', rows: [
+          [15]
+        ] }
+    ] },
     solution: {
       approach: `<p>Running sum of frequencies maps each value to a position range; select the value(s) covering the middle positions; average.</p>`,
       code: { lang: 'sql', db: 'shop', code: `WITH c AS (

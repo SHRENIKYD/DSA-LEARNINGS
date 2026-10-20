@@ -25,6 +25,7 @@ jobs:
           node-version: 22
       - name: Play engine and update tests
         run: |
+          node tools/build.js site
           node tools/play-test.js
           node tools/update-test.js
           node tools/icon-test.js

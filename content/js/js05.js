@@ -462,6 +462,32 @@
         `<p>Hint 2: Split the path, walk all keys except the last to get <code>parent</code>, then read <code>fn = parent[last]</code> and call <code>fn.apply(parent, args)</code> or simply <code>parent[last](...args)</code>.</p>`,
         `<p>Hint 3: Edge cases: a missing segment (<code>parent == null</code>) and a non-function target should throw a clear <code>TypeError</code>. Recipe: keys = path.split('.'); last = keys.pop(); walk; check; call.</p>`
       ],
+      tests: { sig: 'string string[] -> string', fn: 'cp', harness: { js: `function cp(path, args) {
+  class Svc { constructor() { this.name = 'Ana'; } hello(g) { return g + ' ' + this.name; } }
+  const root = { api: { users: { list: ['a', 'b'], find(i) { return this.list[i]; } } }, n: null, svc: new Svc(), top() { return this === root; } };
+  root.api.users.who = function () { return this === root.api.users; };
+  root.api.users.sum = function (...a) { return a.reduce((s, x) => s + x, 0); };
+  root.deep = {}; let c = root.deep; for (let i = 0; i < 18; i++) { c.a = {}; c = c.a; }
+  c.me = function () { return this === c; };
+  try { const r = callPath(root, path, ...args); return r === undefined ? 'undefined' : r; } catch (e) { return e.name; }
+}` }, cases: [
+        [["api.users.find",[1]],"b"],
+        [["api.users.find",[0]],"a"],
+        [["api.users.find",[5]],"undefined"],
+        [["api.users.who",[]],true],
+        [["top",[]],true],
+        [["api.users.sum",[1,2,3]],6],
+        [["api.users.sum",[]],0],
+        [["svc.hello",["Hi"]],"Hi Ana"],
+        [["api.orders.find",[0]],"TypeError"],
+        [["api.users.list",[0]],"TypeError"],
+        [["missing",[]],"TypeError"],
+        [["api.users.find.deeper",[]],"TypeError"],
+        [["n.x",[]],"TypeError"],
+        [["n",[]],"TypeError"],
+        [["api.users.nothing.at.all",[]],"TypeError"],
+        [["deep.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.me",[]],true]
+      ] },
       solution: {
         approach: `<p>Walk to the <b>parent</b> of the final key, not to the function itself. Then call through the parent so implicit binding gives the right <code>this</code>. Using <code>Reflect.apply(fn, parent, args)</code> makes the binding explicit and also works if the target object has overridden <code>apply</code>.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -710,6 +736,43 @@
         `<p>Hint 2: Inside <code>myCall</code>, <code>this</code> is the function itself (you called <code>fn.myCall(...)</code>). Use a <code>Symbol</code> key so you never clash with real properties.</p>`,
         `<p>Hint 3: Normalise the context: <code>ctx == null ? globalThis : Object(ctx)</code>. Recipe: normalise → key = Symbol() → ctx[key] = this → result = ctx[key](...args) → delete in a <code>finally</code> (so it is cleaned even if the function throws) → return result.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'mc', harness: { js: `function mc(kind) {
+  function intro(g) { return g + ' ' + this.name; }
+  switch (kind) {
+    case 'intro': { const ana = { name: 'Ana', fn: 1 }; return [intro.myCall(ana, 'Hi'), JSON.stringify(ana)]; }
+    case 'primitive-number': { function t() { return typeof this; } return [t.myCall(5), t.myCall('s'), t.myCall(true)]; }
+    case 'primitive-length': { function l() { return this.length; } return l.myCall('abc'); }
+    case 'null-undefined': { function g() { return this === globalThis; } return [g.myCall(null), g.myCall(undefined), g.myCall()]; }
+    case 'cleanup-throw': { const o = { name: 'x' }; function boom() { throw new Error('inside'); } let m = ''; try { boom.myCall(o); } catch (e) { m = e.message; } return [m, Object.getOwnPropertySymbols(o).length, Object.getOwnPropertyNames(o).join(',')]; }
+    case 'no-clobber': { const o = { fn: 1, call: 2, name: 'q' }; const r = intro.myCall(o, 'Yo'); return [r, o.fn, o.call, Object.keys(o).join(',')]; }
+    case 'identity': { function me() { return this; } const o = {}; return me.myCall(o) === o; }
+    case 'sum': { function s(...a) { return a.reduce((x, y) => x + y, 0); } return [s.myCall(null, 1, 2, 3), s.myCall(null), s.myCall(null, ...rng(0, 10000))]; }
+    case 'return-undefined': { function r() {} return String(r.myCall({})); }
+    case 'non-function': { try { Function.prototype.myCall.call({}, null); return 'no error'; } catch (e) { return e.name; } }
+    case 'args-count': { function n() { return arguments.length; } return [n.myCall({}), n.myCall({}, undefined), n.myCall({}, 1, 2)]; }
+    case 'getter-own': { const o = { get v() { return 7; } }; function v() { return this.v; } return v.myCall(o); }
+    case 'symbol-keyed-ctx': { const s = Symbol('mine'); const o = { [s]: 1 }; function k() { return Object.getOwnPropertySymbols(this).length; } return [k.myCall(o), Object.getOwnPropertySymbols(o).length]; }
+    case 'nested': { function a() { return this.v; } function b() { return a.myCall({ v: 'inner' }) + this.v; } return b.myCall({ v: 'outer' }); }
+    case 'array-ctx': { function len() { return this.length; } return len.myCall([1, 2, 3]); }
+  }
+}
+function rng(a, b) { const o = []; for (let i = a; i < b; i++) o.push(i); return o; }` }, cases: [
+        [["intro"],["Hi Ana","{\"name\":\"Ana\",\"fn\":1}"]],
+        [["primitive-number"],["object","object","object"]],
+        [["primitive-length"],3],
+        [["null-undefined"],[true,true,true]],
+        [["cleanup-throw"],["inside",0,"name"]],
+        [["no-clobber"],["Yo q",1,2,"fn,call,name"]],
+        [["identity"],true],
+        [["sum"],[6,0,49995000]],
+        [["return-undefined"],"undefined"],
+        [["non-function"],"TypeError"],
+        [["args-count"],[0,1,2]],
+        [["getter-own"],7],
+        [["symbol-keyed-ctx"],[2,1]],
+        [["nested"],"innerouter"],
+        [["array-ctx"],3]
+      ] },
       solution: {
         approach: `<p>Turn explicit binding into implicit binding. Attach the function to the (normalised) context under a fresh <code>Symbol</code>, call it through the context, and always remove the key in <code>finally</code>. A guard throws a <code>TypeError</code> if myCall is borrowed onto something that is not a function.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -924,6 +987,43 @@
         `<p>Hint 2: Step 3 is explicit binding: <code>const r = Ctor.apply(obj, args)</code>. Step 4: return r only if it is a non-null object or a function.</p>`,
         `<p>Hint 3: If <code>Ctor.prototype</code> is not an object (someone set it to 5), native new falls back to <code>Object.prototype</code>. Recipe: check function → proto = isObject(Ctor.prototype) ? Ctor.prototype : Object.prototype → obj = Object.create(proto) → r = Ctor.apply(obj, args) → isObject(r) ? r : obj.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'mn', harness: { js: `function mn(kind) {
+  const same = (a, b) => a === b;
+  switch (kind) {
+    case 'car': { function Car(m) { this.model = m; } Car.prototype.drive = function () { return this.model + ' drives'; }; const c = myNew(Car, 'EV'); return [JSON.stringify(c), c instanceof Car, c.drive()]; }
+    case 'null-return': { function W() { this.a = 1; return null; } return [JSON.stringify(myNew(W))]; }
+    case 'primitive-return': { function P() { this.a = 2; return 5; } function S() { this.s = 1; return 'str'; } return [JSON.stringify(myNew(P)), JSON.stringify(myNew(S))]; }
+    case 'object-return': { const other = { z: 1 }; function O() { this.a = 1; return other; } return [myNew(O) === other, JSON.stringify(myNew(O))]; }
+    case 'function-return': { function F() { return function inner() {}; } return typeof myNew(F); }
+    case 'array-return': { function A() { this.x = 1; return [7]; } return JSON.stringify(myNew(A)); }
+    case 'bad-prototype': { function Odd() {} Odd.prototype = 5; const o = myNew(Odd); return [Object.getPrototypeOf(o) === Object.prototype]; }
+    case 'non-function': { const r = []; for (const v of [5, {}, undefined, null, 'str']) { try { myNew(v); r.push('no error'); } catch (e) { r.push(e.name); } } return r; }
+    case 'args': { function Pt(x, y, z) { this.s = [x, y, z].join('|'); this.n = arguments.length; } const p = myNew(Pt, 1, 2); return [p.s, p.n]; }
+    case 'this-is-object': { function T2() { this.self = this; } const o = myNew(T2); return o.self === o; }
+    case 'inheritance': { function Par() { this.p = 'p'; } Par.prototype.hi = function () { return 'hi ' + this.p; }; function Kid() { Par.call(this); this.k = 'k'; } Kid.prototype = Object.create(Par.prototype); Kid.prototype.constructor = Kid; const k = myNew(Kid); return [k.hi(), k instanceof Par, k instanceof Kid, k.constructor === Kid]; }
+    case 'function-prototype': { function Q() {} const proto = function () {}; Q.prototype = proto; return Object.getPrototypeOf(myNew(Q)) === proto; }
+    case 'no-args': { function N() { this.args = arguments.length; } return myNew(N).args; }
+    case 'matches-native': { function M(a) { this.a = a; } M.prototype.get = function () { return this.a; }; const x = myNew(M, 3), y = new M(3); return [x.get() === y.get(), Object.getPrototypeOf(x) === Object.getPrototypeOf(y), Object.keys(x).join() === Object.keys(y).join()]; }
+    case 'many-args': { function Sum() { this.t = Array.prototype.reduce.call(arguments, (s, v) => s + v, 0); } return myNew(Sum, ...rng(0, 10000)).t; }
+  }
+}
+function rng(a, b) { const o = []; for (let i = a; i < b; i++) o.push(i); return o; }` }, cases: [
+        [["car"],["{\"model\":\"EV\"}",true,"EV drives"]],
+        [["null-return"],["{\"a\":1}"]],
+        [["primitive-return"],["{\"a\":2}","{\"s\":1}"]],
+        [["object-return"],[true,"{\"z\":1}"]],
+        [["function-return"],"function"],
+        [["array-return"],"[7]"],
+        [["bad-prototype"],[true]],
+        [["non-function"],["TypeError","TypeError","TypeError","TypeError","TypeError"]],
+        [["args"],["1|2|",2]],
+        [["this-is-object"],true],
+        [["inheritance"],["hi p",true,true,true]],
+        [["function-prototype"],true],
+        [["no-args"],0],
+        [["matches-native"],[true,true,true]],
+        [["many-args"],49995000]
+      ] },
       solution: {
         approach: `<p>Translate the four spec steps directly. Use one helper <code>isObj(v)</code> = <code>v !== null &amp;&amp; (typeof v === 'object' || typeof v === 'function')</code> for both the prototype fallback and the return rule. For classes you would need <code>Reflect.construct</code>, because class constructors refuse <code>apply</code>.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -1189,6 +1289,39 @@
         `<p>Hint 2: An arrow looks up this from <code>start</code>, and start's this is the instance (implicit binding at <code>sw.start(3)</code>). Alternatives: <code>.bind(this)</code> or <code>const self = this</code>.</p>`,
         `<p>Hint 3: Keep the interval id, clear it when <code>elapsed === ticks</code>, and only then call onDone. Recipe: reset elapsed → id = setInterval(() =&gt; { elapsed++; if done: clearInterval(id); onDone(elapsed) }, 5).</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'sw', harness: { js: `function sw(kind) {
+  const g = globalThis, saved = { si: g.setInterval, ci: g.clearInterval };
+  const timers = new Map(); let nextId = 1; const cleared = []; const intervals = [];
+  g.setInterval = (fn, ms) => { const id = nextId++; timers.set(id, fn); intervals.push(ms); return id; };
+  g.clearInterval = (id) => { if (timers.delete(id)) cleared.push(id); };
+  const tick = (n = 1) => { for (let i = 0; i < n; i++) for (const [id, fn] of [...timers]) if (timers.has(id)) fn(); };
+  try {
+    const calls = []; const s = new Stopwatch((t) => calls.push(t));
+    switch (kind) {
+      case 'basic': { s.start(3); const r = [calls.length]; tick(); r.push(calls.length, s.elapsed); tick(); r.push(calls.length); tick(); r.push(calls.length, calls[0], timers.size); tick(3); r.push(calls.length, s.elapsed > 3); return { r, intervals, active: timers.size }; }
+      case 'single': { s.start(1); tick(); return { calls, active: timers.size, elapsed: s.elapsed }; }
+      case 'restart-immediate': { s.start(5); s.start(2); tick(); tick(); tick(3); return { calls, active: timers.size, cleared: cleared.length, created: intervals.length }; }
+      case 'restart-mid': { s.start(3); tick(); s.start(2); tick(); const mid = calls.length; tick(); return { mid, calls, elapsed: s.elapsed, active: timers.size }; }
+      case 'after-done': { s.start(1); tick(); s.start(2); tick(2); return { calls, active: timers.size }; }
+      case 'chain': { const r = s.start(2); return r === s; }
+      case 'ten': { s.start(10); tick(9); const before = calls.length; tick(); return { before, calls }; }
+      case 'two-instances': { const calls2 = []; const s2 = new Stopwatch((t) => calls2.push('b' + t)); s.start(2); s2.start(3); tick(3); return { calls, calls2, s: s.elapsed, s2: s2.elapsed }; }
+      case 'ondone-this': { const seen = []; const w = new Stopwatch(function (t) { seen.push(this === w, t); }); w.start(1); tick(); return seen; }
+      case 'elapsed-reset': { s.start(2); tick(); s.start(2); tick(); return { mid: calls.length, elapsed: s.elapsed }; }
+    }
+  } finally { g.setInterval = saved.si; g.clearInterval = saved.ci; }
+}` }, cases: [
+        [["basic"],{"r":[0,0,1,0,1,3,0,1,false],"intervals":[5],"active":0}],
+        [["single"],{"calls":[1],"active":0,"elapsed":1}],
+        [["restart-immediate"],{"calls":[2],"active":0,"cleared":2,"created":2}],
+        [["restart-mid"],{"mid":0,"calls":[2],"elapsed":2,"active":0}],
+        [["after-done"],{"calls":[1,2],"active":0}],
+        [["chain"],true],
+        [["ten"],{"before":0,"calls":[10]}],
+        [["two-instances"],{"calls":[2],"calls2":["b3"],"s":2,"s2":3}],
+        [["ondone-this"],[true,1]],
+        [["elapsed-reset"],{"mid":0,"elapsed":1}]
+      ] },
       solution: {
         approach: `<p>Replace the inner normal function with an arrow so <code>this</code> is resolved lexically from <code>start</code>. Everything else stays the same. Also guard against calling start twice by clearing any previous interval.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -1410,6 +1543,51 @@
         `<p>Hint 2: Walk from the instance's prototype upward. Skip a key if the instance already has an own property with that name; since the nearest level is visited first, child overrides win automatically.</p>`,
         `<p>Hint 3: For each name: descriptor = getOwnPropertyDescriptor(proto, name); skip if name === "constructor", or no <code>value</code>, or value is not a function; else <code>instance[name] = desc.value.bind(instance)</code>. Stop when proto is null or Object.prototype.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'ab', harness: { js: `function ab(kind) {
+  class A { hi() { return 'A:' + this.n; } get loud() { ab.getterRuns++; throw new Error('getter ran!'); } }
+  class B extends A { hi() { return 'B:' + this.n; } bye() { return this.n; } }
+  ab.getterRuns = 0;
+  switch (kind) {
+    case 'statement': { const b = autoBind(Object.assign(new B(), { n: 1 })); const { hi, bye } = b; return [hi(), bye(), Object.keys(b).join(','), ab.getterRuns]; }
+    case 'returns-instance': { const o = new B(); return autoBind(o) === o; }
+    case 'existing-own': { const o = new B(); o.n = 3; o.hi = function () { return 'own'; }; autoBind(o); const { hi } = o; return [hi(), Object.keys(o).join(',')]; }
+    case 'symbol': { const s = Symbol('sym'); class S { [s]() { return this.v; } } const o = Object.assign(new S(), { v: 9 }); autoBind(o); const f = o[s]; return [f(), Object.getOwnPropertySymbols(o).length]; }
+    case 'bound-this': { const b = autoBind(Object.assign(new B(), { n: 5 })); return b.hi.call({ n: 99 }); }
+    case 'levels': {
+      class L0 { common() { return 'L0' + this.id; } m0() { return 0; } }
+      class L1 extends L0 { common() { return 'L1' + this.id; } m1() { return 1; } }
+      class L2 extends L1 { m2() { return 2; } }
+      class L3 extends L2 { common() { return 'L3' + this.id; } m3() { return 3; } }
+      class L4 extends L3 { m4() { return 4; } }
+      const o = autoBind(Object.assign(new L4(), { id: 'x' })); const { common, m0, m4 } = o;
+      return [common(), m0(), m4(), Object.keys(o).sort().join(',')];
+    }
+    case 'object-prototype-untouched': { const o = autoBind(Object.assign(new B(), { n: 1 })); return [Object.hasOwn(o, 'toString'), Object.hasOwn(o, 'hasOwnProperty'), Object.hasOwn(o, 'constructor')]; }
+    case 'getter-not-invoked': { autoBind(Object.assign(new B(), { n: 1 })); return ab.getterRuns; }
+    case 'data-on-proto': { class D { m() { return 1; } } D.prototype.value = 42; D.prototype.list = [1]; const o = autoBind(new D()); return [Object.keys(o).join(','), o.value]; }
+    case 'static-not-bound': { class St { static make() { return 's'; } inst() { return 'i'; } } const o = autoBind(new St()); return [Object.keys(o).join(','), St.make()]; }
+    case 'hundred': {
+      class H {} for (let i = 0; i < 100; i++) Object.defineProperty(H.prototype, 'm' + i, { value: function () { return i + this.base; }, writable: true, configurable: true });
+      const o = autoBind(Object.assign(new H(), { base: 1000 })); const { m0, m99 } = o; return [Object.keys(o).length, m0(), m99()];
+    }
+    case 'async-gen': { class AG { async a() { return this.n; } *g() { yield this.n; } } const o = autoBind(Object.assign(new AG(), { n: 4 })); const { g } = o; return [[...g()][0], typeof o.a]; }
+    case 'setter-only': { class SO { set x(v) { this._x = v; } m() { return 'm'; } } const o = autoBind(new SO()); return [Object.keys(o).join(','), typeof Object.getOwnPropertyDescriptor(o, 'x')]; }
+  }
+}` }, cases: [
+        [["statement"],["B:1",1,"n,hi,bye",0]],
+        [["returns-instance"],true],
+        [["existing-own"],["own","n,hi,bye"]],
+        [["symbol"],[9,1]],
+        [["bound-this"],"B:5"],
+        [["levels"],["L3x",0,4,"common,id,m0,m1,m2,m3,m4"]],
+        [["object-prototype-untouched"],[false,false,false]],
+        [["getter-not-invoked"],0],
+        [["data-on-proto"],["m",42]],
+        [["static-not-bound"],["inst","s"]],
+        [["hundred"],[101,1000,1099]],
+        [["async-gen"],[4,"function"]],
+        [["setter-only"],["m","undefined"]]
+      ] },
       solution: {
         approach: `<p>Walk the prototype chain nearest-first, inspect property <b>descriptors</b> (so getters are not triggered and non-enumerable methods are visible), and define bound copies as own properties. Skipping names already present as own properties both preserves user data and makes child overrides win.</p>`,
         code: { lang: 'js', run: true, code: `
@@ -1631,6 +1809,18 @@
       `<p>Hint 2: Use explicit binding to choose reduce's this: <code>Array.prototype.reduce.call(arguments, callback, initial)</code>.</p>`,
       `<p>Hint 3: Always pass the initial value <code>0</code>, otherwise reduce throws on zero arguments ("Reduce of empty array with no initial value").</p>`
     ],
+    tests: { sig: 'int[] -> double', fn: 'sa', harness: { js: `function sa(arr) { return sumArgs(...arr); }` }, cases: [
+      [[[1,2,3]],6],
+      [[[]],0],
+      [[[10,-4]],6],
+      [[[5]],5],
+      [[[0,0,0]],0],
+      [[[0.5,0.25]],0.75],
+      [[[-1,-2,-3]],-6],
+      [[{"$rep":1,"n":10000}],10000],
+      [[{"$range":[1,10001]}],50005000],
+      [[{"$rep":-2,"n":10000}],-20000]
+    ] },
     solution: {
       approach: `<p>Borrow <code>Array.prototype.reduce</code> with <code>call</code>, setting <code>this</code> to the array-like <code>arguments</code> object, and give an initial value of 0 for the empty case.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1666,6 +1856,21 @@
       `<p>Hint 2: Handle the empty case first. Then loop over the array in slices of 10,000 and keep the running max.</p>`,
       `<p>Hint 3: Recipe: if empty → undefined; best = -Infinity; for i in steps of CHUNK: best = Math.max(best, Math.max.apply(null, nums.slice(i, i + CHUNK))); return best.</p>`
     ],
+    tests: { sig: 'int[] -> double', fn: 'mo', harness: { js: `function mo(a) { const r = maxOf(a); return r === undefined ? 'undefined' : r; }` }, cases: [
+      [[[3,9,2]],9],
+      [[[]],"undefined"],
+      [[[-5,-2,-9]],-2],
+      [[[7]],7],
+      [[[0,0]],0],
+      [[[1.5,-2.5,0.5]],1.5],
+      [[{"$range":[0,10000]}],9999],
+      [[{"$concat":[{"$rep":0,"n":10000},[5]]}],5],
+      [[{"$concat":[[5],{"$rep":0,"n":10000}]}],5],
+      [[{"$concat":[{"$rep":1,"n":9999},[8],{"$rep":1,"n":5}]}],8],
+      [[{"$range":[0,1000000]}],999999],
+      [[{"$rep":-1,"n":1000000}],-1],
+      [[{"$range":[1000000,0,-1]}],1000000]
+    ] },
     solution: {
       approach: `<p>Guard the empty array, then apply <code>Math.max</code> to bounded chunks so no single call receives too many arguments.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1710,6 +1915,48 @@
       `<p>Hint 2: Lend it to any value with <code>Object.prototype.toString.call(value)</code>, even <code>null</code> and <code>undefined</code>.</p>`,
       `<p>Hint 3: Slice off <code>"[object "</code> (8 chars) and the final <code>"]"</code>, then lowercase.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'tyc', harness: { js: `function tyc(label) {
+  const m = {
+    array: () => [], null: () => null, undef: () => undefined, date: () => new Date(0), re: () => /re/, map: () => new Map(), set: () => new Set(),
+    num: () => 42, nan: () => NaN, str: () => 'hi', fn: () => () => 1, obj: () => ({}), promise: () => Promise.resolve(), bool: () => true, sym: () => Symbol('s'),
+    big: () => 5n, err: () => new Error('x'), weakmap: () => new WeakMap(), args: () => (function () { return arguments; })(), genfn: () => function* () {},
+    asyncfn: () => async () => {}, cls: () => class K {}, json: () => JSON, math: () => Math, u8: () => new Uint8Array(2), buf: () => new ArrayBuffer(2),
+    boxed: () => new Number(1), boxedStr: () => new String('a'), nullproto: () => Object.create(null), tag: () => ({ [Symbol.toStringTag]: 'Foo' }), inst: () => new (class Z {})()
+  };
+  return typeOf(m[label]());
+}` }, cases: [
+      [["array"],"array"],
+      [["null"],"null"],
+      [["undef"],"undefined"],
+      [["date"],"date"],
+      [["re"],"regexp"],
+      [["map"],"map"],
+      [["set"],"set"],
+      [["num"],"number"],
+      [["nan"],"number"],
+      [["str"],"string"],
+      [["fn"],"function"],
+      [["obj"],"object"],
+      [["promise"],"promise"],
+      [["bool"],"boolean"],
+      [["sym"],"symbol"],
+      [["big"],"bigint"],
+      [["err"],"error"],
+      [["weakmap"],"weakmap"],
+      [["args"],"arguments"],
+      [["genfn"],"generatorfunction"],
+      [["asyncfn"],"asyncfunction"],
+      [["cls"],"function"],
+      [["json"],"json"],
+      [["math"],"math"],
+      [["u8"],"uint8array"],
+      [["buf"],"arraybuffer"],
+      [["boxed"],"number"],
+      [["boxedStr"],"string"],
+      [["nullproto"],"object"],
+      [["tag"],"foo"],
+      [["inst"],"object"]
+    ] },
     solution: {
       approach: `<p>Borrow the base <code>toString</code> through <code>call</code> so overrides are bypassed, then extract and lowercase the tag.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1744,6 +1991,36 @@
       `<p>Hint 2: Return a wrapper that does exactly that: <code>(...args) =&gt; obj[name](...args)</code>.</p>`,
       `<p>Hint 3: An arrow is fine as the wrapper because the wrapper itself never uses <code>this</code>; the inner call has the dot.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'bm', harness: { js: `function bm(kind) {
+  const counter = { total: 0, add(x) { this.total += x; return this.total; } };
+  switch (kind) {
+    case 'foreach': { const inc = bindMethod(counter, 'add'); [1, 2, 3].forEach((x) => inc(x)); return counter.total; }
+    case 'detached-forEach': { const inc = bindMethod(counter, 'add'); [1, 2, 3].forEach(inc); return counter.total; }
+    case 'late': { const inc = bindMethod(counter, 'add'); inc(1); counter.add = function (x) { this.total += 10 * x; return this.total; }; return inc(1); }
+    case 'return': { const inc = bindMethod(counter, 'add'); return [inc(5), inc(5)]; }
+    case 'this-ignored': { const inc = bindMethod(counter, 'add'); const other = { total: 100, inc }; other.inc(1); return [counter.total, other.total]; }
+    case 'call-ignored': { const inc = bindMethod(counter, 'add'); inc.call({ total: 50 }, 2); return counter.total; }
+    case 'defined-later': { const o = {}; const f = bindMethod(o, 'later'); o.later = function () { return this === o; }; return f(); }
+    case 'inherited': { class C { constructor() { this.v = 3; } get() { return this.v; } } const f = bindMethod(new C(), 'get'); return f(); }
+    case 'missing-at-call': { const f = bindMethod({}, 'nope'); try { f(); return 'no error'; } catch (e) { return e.name; } }
+    case 'multiple-args': { const o = { j(...a) { return this.p + a.join('-'); }, p: '>' }; return bindMethod(o, 'j')(1, 2, 3); }
+    case 'many-calls': { const f = bindMethod(counter, 'add'); for (let i = 0; i < 100000; i++) f(1); return counter.total; }
+    case 'no-args': { const o = { n() { return arguments.length; } }; return bindMethod(o, 'n')(); }
+  }
+}` }, cases: [
+      [["foreach"],6],
+      [["detached-forEach"],6],
+      [["late"],11],
+      [["return"],[5,10]],
+      [["this-ignored"],[1,100]],
+      [["call-ignored"],2],
+      [["defined-later"],true],
+      [["inherited"],3],
+      [["missing-at-call"],"TypeError"],
+      [["multiple-args"],">1-2-3"],
+      [["many-calls"],100000],
+      [["no-args"],0]
+    ] },
     solution: {
       approach: `<p>Return a tiny arrow wrapper that performs a real method call through <code>obj</code> each time. Implicit binding gives the right this; the late lookup respects replacements.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1787,6 +2064,43 @@
       `<p>Hint 2: Normalise the args: <code>argsArray == null ? [] : Array.from(argsArray)</code>, but first reject non-object primitives.</p>`,
       `<p>Hint 3: Clean up the key in <code>finally</code>. Recipe: validate → ctx normalise → args normalise → attach → call → delete.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'ma', harness: { js: `function ma(kind) {
+  function f(a, b) { return this.x + a + b; }
+  switch (kind) {
+    case 'basic': return f.myApply({ x: 1 }, [2, 3]);
+    case 'array-like': return f.myApply({ x: 1 }, { length: 2, 0: 2, 1: 3 });
+    case 'math': return Math.max.myApply(null, [4, 8, 1]);
+    case 'undefined-args': { function g() { return arguments.length; } return [g.myApply({}), g.myApply({}, undefined), g.myApply({}, null)]; }
+    case 'primitive-args': { const r = []; for (const v of [5, 'abc', true]) { try { f.myApply({}, v); r.push('no error'); } catch (e) { r.push(e.name); } } return r; }
+    case 'boxing': { function t() { return typeof this; } return [t.myApply(7, []), t.myApply('s', [])]; }
+    case 'null-ctx': { function t() { return this === globalThis; } return [t.myApply(null, []), t.myApply(undefined, [])]; }
+    case 'cleanup': { const o = { a: 1 }; function boom() { throw new Error('b'); } try { boom.myApply(o, []); } catch (e) {} f.myApply(o, [1, 1]); return [Object.getOwnPropertySymbols(o).length, Object.keys(o).join()]; }
+    case 'holes': { function n() { return Array.prototype.join.call(arguments, '|') + '#' + arguments.length; } return n.myApply({}, { length: 3, 0: 'a' }); }
+    case 'many': { function s() { return Array.prototype.reduce.call(arguments, (x, y) => x + y, 0); } return s.myApply(null, rng(0, 10000)); }
+    case 'string-ctx': { function l() { return this.length; } return l.myApply('abc', []); }
+    case 'non-function': { try { Function.prototype.myApply.call({}, null, []); return 'no error'; } catch (e) { return e.name; } }
+    case 'not-mutated': { const a = [2, 3]; f.myApply({ x: 0 }, a); return a.join(); }
+    case 'returns-undefined': { function u() {} return String(u.myApply({}, [])); }
+    case 'user-key-fn': { const o = { x: 1, fn: 'mine' }; f.myApply(o, [1, 1]); return o.fn; }
+  }
+}
+function rng(a, b) { const o = []; for (let i = a; i < b; i++) o.push(i); return o; }` }, cases: [
+      [["basic"],6],
+      [["array-like"],6],
+      [["math"],8],
+      [["undefined-args"],[0,0,0]],
+      [["primitive-args"],["TypeError","TypeError","TypeError"]],
+      [["boxing"],["object","object"]],
+      [["null-ctx"],[true,true]],
+      [["cleanup"],[0,"a"]],
+      [["holes"],"a||#3"],
+      [["many"],49995000],
+      [["string-ctx"],3],
+      [["non-function"],"TypeError"],
+      [["not-mutated"],"2,3"],
+      [["returns-undefined"],"undefined"],
+      [["user-key-fn"],"mine"]
+    ] },
     solution: {
       approach: `<p>Same shape as myCall: normalise context and arguments, attach under a unique Symbol, call through the context (implicit binding), and always clean up.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1836,6 +2150,31 @@
       `<p>Hint 2: Forward it with explicit binding: <code>fn.apply(this, args)</code>.</p>`,
       `<p>Hint 3: Track a separate boolean <code>called</code>; optionally drop the fn reference after the first call so it can be garbage-collected.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'on1', harness: { js: `function on1(kind) {
+  switch (kind) {
+    case 'db': { const db = { conns: 0, connect: once(function (url) { this.conns++; return 'connected#' + this.conns + ' to ' + url; }) }; return [db.connect('pg://a'), db.connect('pg://b'), db.conns]; }
+    case 'undefined-result': { let runs = 0; const f = once(() => { runs++; }); f(); f(); f(); return [runs, String(f())]; }
+    case 'first-receiver': { const a = { n: 'A', f: once(function () { return this.n; }) }; const b = { n: 'B', f: a.f }; return [a.f(), b.f()]; }
+    case 'args-first': { const f = once((x, y) => x + y); return [f(1, 2), f(10, 20)]; }
+    case 'falsy': { let runs = 0; const f = once(() => { runs++; return 0; }); return [f(), f(), runs]; }
+    case 'independent': { let runs = 0; const fn = () => ++runs; const a = once(fn), b = once(fn); return [a(), b(), a(), b(), runs]; }
+    case 'many': { let runs = 0; const f = once(() => ++runs); for (let i = 0; i < 100000; i++) f(); return runs; }
+    case 'arg-count': { const f = once(function () { return arguments.length; }); return f(1, 2, 3); }
+    case 'method-wrap': { const o = { c: 0, init() { this.c++; return 'ok'; } }; o.init = once(o.init); return [o.init(), o.init(), o.c]; }
+    case 'return-object': { const r = {}; const f = once(() => r); return f() === f(); }
+  }
+}` }, cases: [
+      [["db"],["connected#1 to pg://a","connected#1 to pg://a",1]],
+      [["undefined-result"],[1,"undefined"]],
+      [["first-receiver"],["A","A"]],
+      [["args-first"],[3,3]],
+      [["falsy"],[0,0,1]],
+      [["independent"],[1,2,1,2,2]],
+      [["many"],1],
+      [["arg-count"],3],
+      [["method-wrap"],["ok","ok",1]],
+      [["return-object"],true]
+    ] },
     solution: {
       approach: `<p>Return a normal function so it picks up the call-site's this, use a boolean flag, and forward this + args with <code>apply</code>. Release <code>fn</code> afterwards to free memory.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1890,6 +2229,41 @@
       `<p>Hint 2: On each call: clear the old timer, remember the latest <code>this</code> and <code>args</code>, start a new timer.</p>`,
       `<p>Hint 3: In the timer use an arrow: <code>setTimeout(() =&gt; fn.apply(lastThis, lastArgs), wait)</code>. cancel() = clearTimeout + forget saved values.</p>`
     ],
+    tests: { sig: 'int string[] -> string', fn: 'dbRun', harness: { js: `function dbRun(wait, ops) {
+  const g = globalThis, saved = { st: g.setTimeout, ct: g.clearTimeout };
+  let now = 0, id = 1, timers = [];
+  g.setTimeout = (fn, ms) => { const t = { id: id++, at: now + (ms || 0), fn }; timers.push(t); return t.id; };
+  g.clearTimeout = (i) => { timers = timers.filter((t) => t.id !== i); };
+  const advance = (to) => { for (;;) { timers.sort((a, b) => a.at - b.at || a.id - b.id); const t = timers[0]; if (!t || t.at > to) break; timers.shift(); now = t.at; t.fn(); } now = to; };
+  try {
+    const log = [], A = { name: 'A' }, B = { name: 'B' };
+    const d = debounce(function (...args) { log.push(now + ':' + this.name + ':' + args.join('|')); }, wait);
+    A.f = d; B.f = d;
+    for (const op of ops) {
+      if (op.startsWith('c:')) { const [, r, a] = op.split(':'); (r === 'A' ? A : B).f(...(a === '' ? [] : a.split(','))); }
+      else if (op.startsWith('t:')) advance(+op.slice(2));
+      else if (op === 'cancel') d.cancel();
+    }
+    return { log, pending: timers.length };
+  } finally { g.setTimeout = saved.st; g.clearTimeout = saved.ct; }
+}` }, cases: [
+      [[20,["c:A:a","t:5","c:A:ab","t:10","c:A:abc","t:100"]],{"log":["30:A:abc"],"pending":0}],
+      [[20,["c:A:x"]],{"log":[],"pending":1}],
+      [[20,["c:A:x","t:19"]],{"log":[],"pending":1}],
+      [[20,["c:A:x","t:20"]],{"log":["20:A:x"],"pending":0}],
+      [[0,["c:A:x","t:0"]],{"log":["0:A:x"],"pending":0}],
+      [[20,["c:A:x","cancel","t:100"]],{"log":[],"pending":0}],
+      [[20,["c:A:x","cancel","c:A:y","t:100"]],{"log":["20:A:y"],"pending":0}],
+      [[20,["c:A:1","t:5","c:B:2","t:100"]],{"log":["25:B:2"],"pending":0}],
+      [[20,["c:A:a","t:50","c:A:b","t:100"]],{"log":["20:A:a","70:A:b"],"pending":0}],
+      [[20,["c:A:a","t:20","c:A:b","t:39","t:40"]],{"log":["20:A:a","40:A:b"],"pending":0}],
+      [[20,["c:A:x,y","t:100"]],{"log":["20:A:x|y"],"pending":0}],
+      [[20,["c:A:","t:100"]],{"log":["20:A:"],"pending":0}],
+      [[10000,["c:A:q","t:9999","t:10000"]],{"log":["10000:A:q"],"pending":0}],
+      [[20,[]],{"log":[],"pending":0}],
+      [[20,["cancel","cancel","t:50"]],{"log":[],"pending":0}],
+      [[20,["c:A:1","c:A:2","c:A:3","c:A:4","t:30"]],{"log":["20:A:4"],"pending":0}]
+    ] },
     solution: {
       approach: `<p>Normal-function wrapper to capture the receiver, closure variables for the latest this/args, and an arrow inside setTimeout so the delayed call can use them with <code>apply</code>.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1946,6 +2320,32 @@
       `<p>Hint 2: Keep a <code>history</code> stack of previous values; push before each change, pop on undo.</p>`,
       `<p>Hint 3: Use a class so methods live on the prototype (one copy shared by all calculators); check <code>n === 0</code> in div before changing state.</p>`
     ],
+    tests: { sig: 'string string[] -> string', fn: 'cc', harness: { js: `function cc(startText, ops) {
+  const c = startText === '' ? calc() : calc(Number(startText)), out = [];
+  for (const op of ops) {
+    const [name, arg] = op.split(':');
+    try {
+      if (name === 'value') out.push(c.value());
+      else { const r = c[name](arg === undefined ? undefined : Number(arg)); if (r !== c) out.push('BROKEN CHAIN ' + name); }
+    } catch (e) { out.push(e.name + ': ' + e.message); }
+  }
+  return out;
+}` }, cases: [
+      [["5",["add:3","mul:2","undo","sub:1","value"]],[7]],
+      [["10",["div:4","value"]],[2.5]],
+      [["1",["div:0","value"]],["RangeError: Division by zero",1]],
+      [["8",["div:0","undo","value"]],["RangeError: Division by zero",8]],
+      [["",["value","add:2","value"]],[0,2]],
+      [["3",["undo","undo","value"]],[3]],
+      [["3",["add:1","add:1","undo","undo","undo","value"]],[3]],
+      [["-4",["mul:-2","sub:10","value"]],[-2]],
+      [["7",["mul:0","value","undo","value"]],[0,7]],
+      [["1",["div:3","value"]],[0.3333333333333333]],
+      [["2",["add:0.5","value"]],[2.5]],
+      [["0",["value"]],[0]],
+      [["0",{"$concat":[{"$rep":"add:1","n":10000},["value"]]}],[10000]],
+      [["0",{"$concat":[{"$rep":"add:1","n":10000},{"$rep":"undo","n":5000},["value"]]}],[5000]]
+    ] },
     solution: {
       approach: `<p>A small class whose mutating methods record history and return <code>this</code>. Chaining is just repeated implicit binding on the same receiver.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1994,6 +2394,37 @@
       `<p>Hint 2: Return a function that concatenates <code>preset</code> and its own arguments.</p>`,
       `<p>Hint 3: Call with <code>fn.apply(thisArg, preset.concat(later))</code>; never use the returned function's own this.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'bl', harness: { js: `function bl(kind) {
+  function vol(l, w, h) { return this.unit + (l * w * h); }
+  switch (kind) {
+    case 'vol': { const f = vol.myBindLite({ unit: 'cm3:' }, 2, 3); return [f(4), f.call({ unit: 'm3:' }, 1)]; }
+    case 'bound-bound': { const f = vol.myBindLite({ unit: 'cm3:' }, 2, 3); return f.myBindLite(null, 5)(); }
+    case 'no-preset': { function s(a, b) { return this.p + a + b; } return s.myBindLite({ p: '>' })('x', 'y'); }
+    case 'method-ignored': { function who() { return this.n; } const a = { n: 'A' }, b = { n: 'B' }; b.w = who.myBindLite(a); return b.w(); }
+    case 'primitive-this': { function t() { return typeof this; } return t.myBindLite(5)(); }
+    case 'non-function': { try { Function.prototype.myBindLite.call({}, null); return 'no error'; } catch (e) { return e.name; } }
+    case 'repeat': { function j(...a) { return a.join(); } const f = j.myBindLite(null, 1, 2); return [f(3), f(3), f()]; }
+    case 'arg-count': { function n() { return arguments.length; } return [n.myBindLite(null)(), n.myBindLite(null, 1, 2)(3, 4, 5), n.myBindLite(null, undefined)()]; }
+    case 'return': { function r() { return { v: this.v }; } return JSON.stringify(r.myBindLite({ v: 3 })()); }
+    case 'new-object-this': { const o = { c: 0 }; function inc() { this.c++; } const f = inc.myBindLite(o); f(); f(); return o.c; }
+    case 'preset-not-shared': { function g(...a) { return a.length; } const f = g.myBindLite(null, 1); f(2); return f(2); }
+    case 'many': { function s() { return Array.prototype.reduce.call(arguments, (x, y) => x + y, 0); } return s.myBindLite(null, ...rng(0, 5000))(...rng(5000, 10000)); }
+  }
+}
+function rng(a, b) { const o = []; for (let i = a; i < b; i++) o.push(i); return o; }` }, cases: [
+      [["vol"],["cm3:24","cm3:6"]],
+      [["bound-bound"],"cm3:30"],
+      [["no-preset"],">xy"],
+      [["method-ignored"],"A"],
+      [["primitive-this"],"object"],
+      [["non-function"],"TypeError"],
+      [["repeat"],["1,2,3","1,2,3","1,2"]],
+      [["arg-count"],[0,5,1]],
+      [["return"],"{\"v\":3}"],
+      [["new-object-this"],2],
+      [["preset-not-shared"],2],
+      [["many"],49995000]
+    ] },
     solution: {
       approach: `<p>Capture the target function and the bound values in a closure; the returned function concatenates arguments and calls the target with the captured thisArg via <code>apply</code>.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2036,6 +2467,46 @@
       `<p>Hint 2: <code>call</code> is itself a function that uses <i>its</i> this as the function to run. So <code>call.bind(method)</code> fixes "which function", and the first argument becomes the receiver.</p>`,
       `<p>Hint 3: Capture <code>call</code> once at module load (<code>const { call } = Function.prototype</code>) so later patches cannot affect you.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'un', harness: { js: `function un(kind) {
+  switch (kind) {
+    case 'slice': return uncurryThis(Array.prototype.slice)({ length: 3, 0: 'a', 1: 'b', 2: 'c' }, 1).join(',');
+    case 'upper': return uncurryThis(String.prototype.toUpperCase)('hi');
+    case 'hasOwn': { const h = uncurryThis(Object.prototype.hasOwnProperty); return [h({ a: 1 }, 'a'), h(Object.create({ a: 1 }), 'a'), h({ a: 1 }, 'b')]; }
+    case 'explicit-hasOwn': { const h = uncurryThisExplicit(Object.prototype.hasOwnProperty); return [h({ a: 1 }, 'a'), h(Object.create({ a: 1 }), 'a')]; }
+    case 'explicit-slice': return uncurryThisExplicit(Array.prototype.slice)([1, 2, 3, 4], 1, 3).join(',');
+    case 'map-on-string': return uncurryThis(Array.prototype.map)('abc', (c) => c + c).join('');
+    case 'push-mutates': { const push = uncurryThis(Array.prototype.push); const a = [1]; const n = push(a, 2, 3); return [n, a.join()]; }
+    case 'primitive-receiver': return [uncurryThis(String.prototype.toUpperCase)(5), uncurryThis(Number.prototype.toFixed)(1.005, 1)];
+    case 'patched-call': {
+      const slice = uncurryThis(Array.prototype.slice); const saved = Function.prototype.call;
+      Function.prototype.call = function () { throw new Error('patched'); };
+      try { return slice([1, 2, 3], 1).join(','); } finally { Function.prototype.call = saved; }
+    }
+    case 'join-args': return uncurryThis(Array.prototype.join)([1, 2, 3], '-');
+    case 'to-string-tag': { const ts = uncurryThis(Object.prototype.toString); return [ts([]), ts(null), ts(new Date(0))]; }
+    case 'concat-spread': { const c = uncurryThis(Array.prototype.concat); return JSON.stringify(c([1], [2], 3)); }
+    case 'no-args': return uncurryThis(Array.prototype.pop)([]) === undefined;
+    case 'explicit-no-extra': return uncurryThisExplicit(String.prototype.trim)('  x  ');
+    case 'many': return uncurryThis(Math.max)(null, ...rng(0, 10000));
+  }
+}
+function rng(a, b) { const o = []; for (let i = a; i < b; i++) o.push(i); return o; }` }, cases: [
+      [["slice"],"b,c"],
+      [["upper"],"HI"],
+      [["hasOwn"],[true,false,false]],
+      [["explicit-hasOwn"],[true,false]],
+      [["explicit-slice"],"2,3"],
+      [["map-on-string"],"aabbcc"],
+      [["push-mutates"],[3,"1,2,3"]],
+      [["primitive-receiver"],["5","1.0"]],
+      [["patched-call"],"2,3"],
+      [["join-args"],"1-2-3"],
+      [["to-string-tag"],["[object Array]","[object Null]","[object Date]"]],
+      [["concat-spread"],"[1,2,3]"],
+      [["no-args"],true],
+      [["explicit-no-extra"],"x"],
+      [["many"],9999]
+    ] },
     solution: {
       approach: `<p>Two equivalent forms: an explicit wrapper with <code>Reflect.apply</code>, and the classic <code>call.bind(method)</code>. Both move the receiver from the left of the dot into the first argument.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2081,6 +2552,42 @@
       `<p>Hint 2: For the construct path use <code>Reflect.construct(target, args, newTarget)</code>; native bind replaces a newTarget equal to the bound function with the target itself, so the prototype is <code>target.prototype</code>. This also makes class targets work.</p>`,
       `<p>Hint 3: For <code>instanceof bound</code>, define <code>bound[Symbol.hasInstance] = (x) =&gt; x instanceof target</code>. Fix <code>name</code> and <code>length</code> with <code>Object.defineProperty</code> (they are non-writable but configurable).</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'mb', harness: { js: `function mb(kind) {
+  function Point(x, y) { this.x = x; this.y = y; }
+  switch (kind) {
+    case 'point': { const ig = { ignored: true }, P = Point.myBind(ig, 1), p = new P(2); return { json: JSON.stringify(p), isPoint: p instanceof Point, isP: p instanceof P, ig: JSON.stringify(ig), name: P.name, len: P.length }; }
+    case 'call': { function who(g) { return g + ' ' + this.n; } const w = who.myBind({ n: 'Ana' }, 'Hi'); return [w(), w.call({ n: 'Ben' })]; }
+    case 'class': { class Animal { constructor(k, n) { this.kind = k; this.name = n; } } const Dog = Animal.myBind(null, 'dog'), d = new Dog('Rex'); return [d.kind, d.name, d instanceof Animal, d instanceof Dog]; }
+    case 'length-clamp': { function one(a) {} return [one.myBind(null, 1, 2, 3).length, Point.myBind(null).length, Point.myBind(null, 1).length, Point.myBind(null, 1, 2).length]; }
+    case 'name-anon': return [(function () {}).myBind().name, Point.myBind().name, Point.myBind().myBind().name];
+    case 'new-target': { class A { constructor() { this.nt = new.target.name; } } const B = A.myBind(null); class C extends B {} return [new B().nt, new C().nt]; }
+    case 'non-function': { try { Function.prototype.myBind.call({}, null); return 'no error'; } catch (e) { return e.name; } }
+    case 'return-override': { const other = { o: 1 }; function R() { return other; } const B = R.myBind(null); return new B() === other; }
+    case 'method-this': { function m() { return this.v; } const a = { v: 'a' }, o = { v: 'o' }; o.m = m.myBind(a); return o.m(); }
+    case 'not-instance-of-others': { const P = Point.myBind(null); return [({}) instanceof P, new Point(1, 2) instanceof P, [] instanceof P]; }
+    case 'preset-order': { const P = Point.myBind(null, 'a'); const p = new P('b'); return [p.x, p.y]; }
+    case 'multi-args': { function j(...a) { return this.s + a.join(''); } return j.myBind({ s: '>' }, 1, 2)(3, 4); }
+    case 'proto-chain': { function F() {} F.prototype.hi = function () { return 'hi'; }; const B = F.myBind(null); return new B().hi(); }
+    case 'bound-of-bound-new': { const P1 = Point.myBind(null, 1), P2 = P1.myBind(null, 2); const p = new P2(); return [p.x, p.y, p instanceof Point]; }
+    case 'receiver-untouched': { const ig = {}; const P = Point.myBind(ig, 1); new P(2); P.call(ig, 3); return JSON.stringify(ig); }
+  }
+}` }, cases: [
+      [["point"],{"json":"{\"x\":1,\"y\":2}","isPoint":true,"isP":true,"ig":"{\"ignored\":true}","name":"bound Point","len":1}],
+      [["call"],["Hi Ana","Hi Ana"]],
+      [["class"],["dog","Rex",true,true]],
+      [["length-clamp"],[0,2,1,0]],
+      [["name-anon"],["bound ","bound Point","bound bound Point"]],
+      [["new-target"],["A","C"]],
+      [["non-function"],"TypeError"],
+      [["return-override"],true],
+      [["method-this"],"a"],
+      [["not-instance-of-others"],[false,true,false]],
+      [["preset-order"],["a","b"]],
+      [["multi-args"],">1234"],
+      [["proto-chain"],"hi"],
+      [["bound-of-bound-new"],[1,2,true]],
+      [["receiver-untouched"],"{\"x\":1,\"y\":3}"]
+    ] },
     solution: {
       approach: `<p>Use <code>new.target</code> to branch. Normal calls apply the stored thisArg; construct calls delegate to <code>Reflect.construct</code> with the target (or a subclass newTarget), which honours the "new beats bind" rule and supports classes. Then patch <code>name</code>, <code>length</code> and <code>Symbol.hasInstance</code> to mirror native bound functions.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2144,6 +2651,40 @@
       `<p>Hint 2: <code>const useFallback = this == null || this === globalThis</code>.</p>`,
       `<p>Hint 3: Then <code>return fn.apply(useFallback ? fallback : this, preset.concat(later))</code>. Keep the prototype chain for instanceof by setting <code>wrapper.prototype = Object.create(fn.prototype)</code> if fn has one.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'sb', harness: { js: `function sb(kind) {
+  function who(tag) { return this.id + (tag ? '#' + tag : ''); }
+  switch (kind) {
+    case 'bare': { const f = who.softBind({ id: 'fallback' }); return f(); }
+    case 'implicit': { const f = who.softBind({ id: 'fallback' }); const obj = { id: 'obj', f }; return obj.f(); }
+    case 'explicit': { const f = who.softBind({ id: 'fallback' }); return f.call({ id: 'x' }, 1); }
+    case 'null-undefined-global': { const f = who.softBind({ id: 'fb' }); return [f.call(null), f.call(undefined), f.call(globalThis)]; }
+    case 'preset-map': { const g = who.softBind({ id: 'fb' }, 'pre'); return [0].map(g)[0]; }
+    case 'arg-order': { function ab2(a, b) { return a + b; } const f = ab2.softBind({}, 'A'); return f('B'); }
+    case 'new': { function P() { this.v = 1; } const SP = P.softBind({}); const o = new SP(); return [o.v, o instanceof P]; }
+    case 'returns': { function r() { return { id: this.id }; } return JSON.stringify(r.softBind({ id: 'z' })()); }
+    case 'two-owners': { const f = who.softBind({ id: 'fb' }); const a = { id: 'a', f }, b = { id: 'b', f }; return [a.f(), b.f(), f()]; }
+    case 'non-function': { try { Function.prototype.softBind.call({}, {}); return 'no error'; } catch (e) { return e.name; } }
+    case 'no-preset-args': { function n() { return arguments.length; } return [n.softBind({})(), n.softBind({})(1, 2)]; }
+    case 'fallback-mutations': { const fb = { id: 'fb', n: 0 }; function bump() { this.n++; return this.n; } const f = bump.softBind(fb); f(); f(); return fb.n; }
+    case 'array-this': { function len() { return this.length; } const f = len.softBind([1]); return [f(), f.call([1, 2, 3])]; }
+    case 'many': { const f = who.softBind({ id: 'm' }); let last; for (let i = 0; i < 100000; i++) last = f(); return last; }
+  }
+}` }, cases: [
+      [["bare"],"fallback"],
+      [["implicit"],"obj"],
+      [["explicit"],"x#1"],
+      [["null-undefined-global"],["fb","fb","fb"]],
+      [["preset-map"],"fb#pre"],
+      [["arg-order"],"AB"],
+      [["new"],[1,true]],
+      [["returns"],"{\"id\":\"z\"}"],
+      [["two-owners"],["a","b","fb"]],
+      [["non-function"],"TypeError"],
+      [["no-preset-args"],[0,2]],
+      [["fallback-mutations"],2],
+      [["array-this"],[1,3]],
+      [["many"],"m"]
+    ] },
     solution: {
       approach: `<p>Make a normal-function wrapper that inspects its own this at call time. Bare calls (undefined/null in strict callers, globalThis in sloppy ones) get the fallback; anything else wins. This keeps the precedence of implicit and explicit binding while fixing default binding.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2197,6 +2738,37 @@
       `<p>Hint 2: Two-level cache: <code>WeakMap&lt;receiver, Map&lt;key, result&gt;&gt;</code>.</p>`,
       `<p>Hint 3: WeakMap keys must be objects; if this is a primitive or null, skip caching and just <code>fn.apply(this, args)</code>. Use <code>cache.has(key)</code> (not truthiness) so cached <code>0</code> or <code>undefined</code> results count.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'mmeth', harness: { js: `function mmeth(kind) {
+  class Pricing { constructor(r) { this.rate = r; this.calls = 0; } price(q) { this.calls++; return q * this.rate; } }
+  Pricing.prototype.price = memoizeMethod(Pricing.prototype.price);
+  const a = new Pricing(2), b = new Pricing(3);
+  switch (kind) {
+    case 'pricing': return [a.price(10), b.price(10), a.price(10), b.price(10), a.calls, b.calls, a.price(5), a.calls];
+    case 'custom-key': { let calls = 0; const f = memoizeMethod(function (x) { calls++; return x * this.m; }, (x) => x % 2); const o = { m: 10 }; return [f.call(o, 1), f.call(o, 3), f.call(o, 2), f.call(o, 4), calls]; }
+    case 'object-args': { let calls = 0; const f = memoizeMethod(function (o) { calls++; return o.v + this.k; }); const t = { k: 1 }; return [f.call(t, { v: 1 }), f.call(t, { v: 1 }), f.call(t, { v: 2 }), calls]; }
+    case 'primitive-this': { let calls = 0; const f = memoizeMethod(function () { calls++; return typeof this; }); return [f.call(5), f.call(5), calls]; }
+    case 'falsy': { let calls = 0; const f = memoizeMethod(function () { calls++; return 0; }); const o = {}; f.call(o); f.call(o); const g = memoizeMethod(function () { calls++; }); g.call(o); g.call(o); return calls; }
+    case 'function-receiver': { let calls = 0; const f = memoizeMethod(function (x) { calls++; return x; }); const fn = function () {}; f.call(fn, 1); f.call(fn, 1); return calls; }
+    case 'many-instances': { let calls = 0; const f = memoizeMethod(function (x) { calls++; return x + this.i; }); let sum = 0; for (let i = 0; i < 100000; i++) { const o = { i }; sum += f.call(o, 1); sum += f.call(o, 1); } return [sum, calls]; }
+    case 'arg-order': { let calls = 0; const f = memoizeMethod(function (x, y) { calls++; return x - y; }); const o = {}; return [f.call(o, 1, 2), f.call(o, 2, 1), f.call(o, 1, 2), calls]; }
+    case 'inherits': { class Sub extends Pricing {} const s = new Sub(5); return [s.price(2), s.price(2), s.calls]; }
+    case 'zero-args': { let calls = 0; const f = memoizeMethod(function () { calls++; return calls; }); const o = {}; return [f.call(o), f.call(o), calls]; }
+    case 'null-this': { let calls = 0; const f = memoizeMethod(function () { calls++; return 1; }); const g = function () { return f.call(null); }; g(); g(); return calls; }
+    case 'per-receiver-isolation': { let calls = 0; const f = memoizeMethod(function (x) { calls++; return x + this.t; }); const o1 = { t: 1 }, o2 = { t: 2 }; return [f.call(o1, 1), f.call(o2, 1), f.call(o1, 1), calls]; }
+  }
+}` }, cases: [
+      [["pricing"],[20,30,20,30,1,1,10,2]],
+      [["custom-key"],[10,10,20,20,2]],
+      [["object-args"],[2,2,3,2]],
+      [["primitive-this"],["object","object",2]],
+      [["falsy"],2],
+      [["function-receiver"],1],
+      [["many-instances"],[10000100000,100000]],
+      [["arg-order"],[-1,1,-1,2]],
+      [["inherits"],[10,10,1]],
+      [["zero-args"],[1,1,1]],
+      [["per-receiver-isolation"],[2,3,2,2]]
+    ] },
     solution: {
       approach: `<p>Keep a WeakMap from receiver to its own Map of results. The wrapper reads the receiver from its dynamic this, finds or creates that receiver's Map, and calls the original with <code>apply(this, args)</code> on a miss.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2252,6 +2824,44 @@
       `<p>Hint 2: In emit: snapshot <code>list.slice()</code>; for each record, if once → remove it first; then <code>rec.fn.apply(rec.ctx ?? this, args)</code>.</p>`,
       `<p>Hint 3: <code>off(event, fn, ctx)</code> finds the record with <code>rec.fn === fn &amp;&amp; rec.ctx === ctx</code> and splices it. Return <code>this</code> from on/once/off for chaining.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'emx', harness: { js: `function emx(kind) {
+  const bus = new Emitter(); bus.label = 'bus'; const log = [];
+  const ui = { label: 'ui' }, other = { label: 'other' };
+  function report(n) { log.push('report ' + n + ' ' + this.label); }
+  switch (kind) {
+    case 'statement': { bus.on('save', report, ui).on('save', report).once('save', function () { log.push('once ' + this.label); }); log.push(bus.emit('save', 1)); bus.off('save', report, ui); log.push(bus.emit('save', 2)); log.push(bus.emit('nothing')); return log; }
+    case 'off-ctx-match': { bus.on('x', report, ui); bus.on('x', report, other); bus.off('x', report); bus.emit('x', 1); bus.off('x', report, other); log.push(bus.emit('x', 2)); return log; }
+    case 'once-reentrant': { let n = 0; bus.once('x', function () { n++; bus.emit('x'); }); bus.emit('x'); return [n, bus.emit('x')]; }
+    case 'added-during-emit': { bus.on('x', function () { log.push('a'); bus.on('x', () => log.push('late')); }); bus.emit('x'); log.push('|'); bus.emit('x'); return log; }
+    case 'removed-during-emit': { const b = () => log.push('b'); bus.on('x', () => { log.push('a'); bus.off('x', b); }); bus.on('x', b); bus.emit('x'); log.push('|'); bus.emit('x'); return log; }
+    case 'once-only-returns-true': { bus.once('x', () => {}); return [bus.emit('x'), bus.emit('x')]; }
+    case 'default-this-emitter': { bus.on('x', function () { log.push(this === bus); }); bus.emit('x'); return log; }
+    case 'chain': { return [bus.on('x', report) === bus, bus.once('x', report) === bus, bus.off('x', report) === bus, bus.off('nope', report) === bus]; }
+    case 'non-function': { try { bus.on('x', 5); return 'no error'; } catch (e) { return e.name; } }
+    case 'args': { bus.on('x', function (...a) { log.push(a.join('|')); }); bus.emit('x', 1, 'two', null); return log; }
+    case 'same-fn-twice': { bus.on('x', report, ui); bus.on('x', report, ui); bus.off('x', report, ui); bus.emit('x', 1); return log; }
+    case 'once-off': { const f = () => log.push('f'); bus.once('x', f); bus.off('x', f); log.push(bus.emit('x')); return log; }
+    case 'many': { let n = 0; for (let i = 0; i < 10000; i++) bus.on('x', () => { n++; }); bus.emit('x'); return n; }
+    case 'order': { bus.on('x', () => log.push(1)); bus.once('x', () => log.push(2)); bus.on('x', () => log.push(3)); bus.emit('x'); bus.emit('x'); return log; }
+    case 'once-with-ctx': { bus.once('x', function () { log.push(this.label); }, ui); bus.emit('x'); log.push(bus.emit('x')); return log; }
+  }
+}` }, cases: [
+      [["statement"],["report 1 ui","report 1 bus","once bus",true,"report 2 bus",true,false]],
+      [["off-ctx-match"],["report 1 ui","report 1 other","report 2 ui",true]],
+      [["once-reentrant"],[1,false]],
+      [["added-during-emit"],["a","|","a","late"]],
+      [["removed-during-emit"],["a","b","|","a"]],
+      [["once-only-returns-true"],[true,false]],
+      [["default-this-emitter"],[true]],
+      [["chain"],[true,true,true,true]],
+      [["non-function"],"TypeError"],
+      [["args"],["1|two|"]],
+      [["same-fn-twice"],["report 1 ui"]],
+      [["once-off"],[false]],
+      [["many"],10000],
+      [["order"],[1,2,3,1,3]],
+      [["once-with-ctx"],["ui",false]]
+    ] },
     solution: {
       approach: `<p>Use a Map from event name to an array of listener records. Explicit binding (<code>apply</code>) gives each listener its stored context or the emitter. emit works on a snapshot and removes once-listeners before calling them, so re-entrant emits cannot fire them twice.</p>`,
       code: { lang: 'js', run: true, code: `

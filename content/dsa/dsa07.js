@@ -452,14 +452,35 @@ console.log(bubbleSwaps([3, 1, 2]));     // 2` },
           <p>Why it is "3-sorted": 2 sits at index 3 but belongs at index 0 → ${H.c('y', '3 places away')}; 9 sits at index 6 and belongs at 5 → 1 away. No element is more than 3 away, so each key in insertion sort shifts <b>at most 3</b> times.</p>`,
         brute: {
           why: `<p>Selection sort ignores the hint completely: it always scans the whole remaining array for the minimum → N<sup>2</sup>/2 ≈ 5·10<sup>9</sup> comparisons for N = 10<sup>5</sup> → TLE. The waste: the minimum of the rest is guaranteed to be within the next K + 1 cells, yet we scan all of them.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             void brute(int[] a) {
                 for (int i = 0; i < a.length - 1; i++) {
                     int m = i;
                     for (int j = i + 1; j < a.length; j++) if (a[j] < a[m]) m = j;  // scans everything
                     int t = a[i]; a[i] = a[m]; a[m] = t;
                 }
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def sort_k_sorted(a, k):
+    for i in range(len(a) - 1):
+        m = i
+        for j in range(i + 1, len(a)):
+            if a[j] < a[m]:
+                m = j                      # scans everything
+        a[i], a[m] = a[m], a[i]` }, { lang: 'js', code: String.raw`
+function sortKSorted(a, k) {
+  for (let i = 0; i < a.length - 1; i++) {
+    let m = i;
+    for (let j = i + 1; j < a.length; j++) if (a[j] < a[m]) m = j;  // scans everything
+    const t = a[i]; a[i] = a[m]; a[m] = t;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+void sortKSorted(vector<int>& a, int k) {
+    for (int i = 0; i < (int) a.size() - 1; i++) {
+        int m = i;
+        for (int j = i + 1; j < (int) a.size(); j++) if (a[j] < a[m]) m = j;  // scans everything
+        swap(a[i], a[m]);
+    }
+}` }] }
         },
         mcq: {
           q: 'Every element is at most K places from its sorted position. How many times can one key shift left during insertion sort?',
@@ -807,7 +828,7 @@ void radixSort(vector<int>& a) {
           <p>Why: writing each value as many times as it was counted, from small to big, gives exactly the sorted order.</p>`,
         brute: {
           why: `<p>Any O(N<sup>2</sup>) sort (bubble/selection/insertion) does ~10<sup>12</sup> steps for N = 10<sup>6</sup> → far too slow. Even the library sort (<code>Arrays.sort</code> / <code>sorted</code> / <code>arr.sort</code> / <code>std::sort</code>, O(N log N) ≈ 2·10<sup>7</sup>) works, but it ignores the gift in the question: values are <b>tiny</b>. The wasted work is comparing items whose order we could read straight off their value.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int[] brute(int[] a) {
                 int[] b = a.clone();
                 // selection sort: O(N^2) comparisons
@@ -817,7 +838,37 @@ void radixSort(vector<int>& a) {
                     int t = b[i]; b[i] = b[m]; b[m] = t;
                 }
                 return b;
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def count_sort(a, k):
+    b = a[:]
+    # selection sort: O(N^2) comparisons
+    for i in range(len(b)):
+        m = i
+        for j in range(i + 1, len(b)):
+            if b[j] < b[m]:
+                m = j
+        b[i], b[m] = b[m], b[i]
+    return b` }, { lang: 'js', code: String.raw`
+function countSort(a, k) {
+  const b = a.slice();
+  // selection sort: O(N^2) comparisons
+  for (let i = 0; i < b.length; i++) {
+    let m = i;
+    for (let j = i + 1; j < b.length; j++) if (b[j] < b[m]) m = j;
+    const t = b[i]; b[i] = b[m]; b[m] = t;
+  }
+  return b;
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> countSort(const vector<int>& a, int k) {
+    vector<int> b = a;
+    // selection sort: O(N^2) comparisons
+    for (int i = 0; i < (int) b.size(); i++) {
+        int m = i;
+        for (int j = i + 1; j < (int) b.size(); j++) if (b[j] < b[m]) m = j;
+        swap(b[i], b[m]);
+    }
+    return b;
+}` }] }
         },
         mcq: {
           q: 'You must sort 10<sup>6</sup> exam marks, each between 0 and 100. What is the smartest plan?',
@@ -1194,14 +1245,36 @@ void mergeSort(vector<int>& a, int lo, int hi, vector<int>& tmp) {
           <p>Why: split into ${H.c('b', '[5, 2]')} and ${H.c('b', '[4, 1]')}, sort each → [2, 5] and [1, 4], then merge by always taking the smaller top → [1, 2, 4, 5].</p>`,
         brute: {
           why: `<p>Insertion sort is easy, but on a reverse-sorted array of 10<sup>5</sup> items every new item walks all the way left: about N<sup>2</sup>/2 = 5·10<sup>9</sup> shifts → TLE. The waste: each item is compared against many items one at a time, even though big sorted blocks could be combined in a single linear sweep.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             void brute(int[] a) {
                 for (int i = 1; i < a.length; i++) {
                     int key = a[i], j = i - 1;
                     while (j >= 0 && a[j] > key) { a[j + 1] = a[j]; j--; }
                     a[j + 1] = key;
                 }
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def sort_array(a):
+    for i in range(1, len(a)):
+        key, j = a[i], i - 1
+        while j >= 0 and a[j] > key:
+            a[j + 1] = a[j]
+            j -= 1
+        a[j + 1] = key` }, { lang: 'js', code: String.raw`
+function sortArray(a) {
+  for (let i = 1; i < a.length; i++) {
+    const key = a[i];
+    let j = i - 1;
+    while (j >= 0 && a[j] > key) { a[j + 1] = a[j]; j--; }
+    a[j + 1] = key;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+void sortArray(vector<int>& a) {
+    for (int i = 1; i < (int) a.size(); i++) {
+        int key = a[i], j = i - 1;
+        while (j >= 0 && a[j] > key) { a[j + 1] = a[j]; j--; }
+        a[j + 1] = key;
+    }
+}` }] }
         },
         mcq: {
           q: 'Merge sort splits an array of N = 1024 items in half again and again. About how many "levels" of merging are there, and how much work is done per level?',
@@ -1346,14 +1419,35 @@ public:
           <p>Output: <b>3</b>. The inversions are ${H.c('r', '(2, 1)')}, ${H.c('r', '(4, 1)')} and ${H.c('r', '(4, 3)')} — in each pair the bigger number stands to the left of the smaller one. 5 is bigger than everything before it, so it adds nothing.</p>`,
         brute: {
           why: `<p>Check every pair i &lt; j: N(N−1)/2 ≈ 5·10<sup>9</sup> comparisons for N = 10<sup>5</sup> → TLE. The waste: when we already know a whole block is sorted, we still compare each of its items one by one, instead of counting "everything remaining is bigger" in one go.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             long brute(int[] a) {
                 long cnt = 0;
                 for (int i = 0; i < a.length; i++)
                     for (int j = i + 1; j < a.length; j++)
                         if (a[i] > a[j]) cnt++;
                 return cnt;
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def count_inversions(arr):
+    cnt = 0
+    for i in range(len(arr)):
+        for j in range(i + 1, len(arr)):
+            if arr[i] > arr[j]:
+                cnt += 1
+    return cnt` }, { lang: 'js', code: String.raw`
+function countInversions(arr) {
+  let cnt = 0;
+  for (let i = 0; i < arr.length; i++)
+    for (let j = i + 1; j < arr.length; j++)
+      if (arr[i] > arr[j]) cnt++;
+  return cnt;
+}` }, { lang: 'cpp', code: String.raw`
+long long countInversions(const vector<int>& arr) {
+    long long cnt = 0;
+    for (int i = 0; i < (int) arr.size(); i++)
+        for (int j = i + 1; j < (int) arr.size(); j++)
+            if (arr[i] > arr[j]) cnt++;
+    return cnt;
+}` }] }
         },
         mcq: {
           q: 'While merging left = [3, 6, 7] and right = [2, 8], the pointer is at 3 (left) and 2 (right). We take 2. How many inversions does that reveal?',
@@ -1942,12 +2036,23 @@ void quickSortHoare(vector<int>& a, int lo, int hi) {
           <p>Output: <b>7</b> — it would sit at index ${H.c('p', 'k − 1 = 2')} in sorted order. Quickselect finds it without sorting everything.</p>`,
         brute: {
           why: `<p>Sort the whole array, return <code>a[k-1]</code>: O(N log N). It works, but it is wasted effort — we put <b>every</b> item in its exact place when we only care about <b>one</b> position. Partition tells us which side the answer is on, so we can throw the other side away.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int brute(int[] a, int k) {
                 int[] b = a.clone();
                 Arrays.sort(b);          // sorts everything: O(N log N)
                 return b[k - 1];
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def kth_smallest(arr, k):
+    b = sorted(arr)          # sorts everything: O(N log N)
+    return b[k - 1]` }, { lang: 'js', code: String.raw`
+function kthSmallest(arr, k) {
+  const b = [...arr].sort((x, y) => x - y);   // sorts everything: O(N log N)
+  return b[k - 1];
+}` }, { lang: 'cpp', code: String.raw`
+int kthSmallest(vector<int> a, int k) {
+    sort(a.begin(), a.end());    // sorts everything: O(N log N)
+    return a[k - 1];
+}` }] }
         },
         mcq: {
           q: 'After one partition the pivot lands at index 5, and you want the element at sorted index 2. What next?',
@@ -2466,7 +2571,7 @@ int main() {
           <p>Output: <b>"9534330"</b>. Why is ${H.c('y', '3 before 30')}? Because "3"+"30" = <b>330</b> beats "30"+"3" = 303. Plain numeric sorting (30 &gt; 3) would get this wrong.</p>`,
         brute: {
           why: `<p>Try every ordering (permutation), glue the strings, keep the biggest. That is N! orderings — for N = 12 already 479 million, for N = 100 impossible. The waste: we re-check whole arrangements when the right choice can be decided <b>pair by pair</b>.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             class Brute {
                 String best = "";
 
@@ -2489,7 +2594,70 @@ int main() {
                         t = s[k]; s[k] = s[i]; s[i] = t;            // undo the swap
                     }
                 }
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def largest_number(nums):
+    s = [str(x) for x in nums]
+    best = ""
+
+    def permute(k):
+        nonlocal best
+        if k == len(s):
+            cand = "".join(s)            # all candidates have the same length
+            if cand > best:              # so string compare = numeric compare
+                best = cand
+            return
+        for i in range(k, len(s)):
+            s[k], s[i] = s[i], s[k]
+            permute(k + 1)
+            s[k], s[i] = s[i], s[k]      # undo the swap
+
+    permute(0)
+    return best` }, { lang: 'js', code: String.raw`
+function largestNumber(nums) {
+  const s = nums.map(String);
+  let best = '';
+
+  function permute(k) {
+    if (k === s.length) {
+      const cand = s.join('');           // all candidates have the same length
+      if (cand > best) best = cand;      // so string compare = numeric compare
+      return;
+    }
+    for (let i = k; i < s.length; i++) {
+      [s[k], s[i]] = [s[i], s[k]];
+      permute(k + 1);
+      [s[k], s[i]] = [s[i], s[k]];       // undo the swap
+    }
+  }
+
+  permute(0);
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+    string best = "";
+
+    void permute(vector<string>& s, int k) {
+        if (k == (int) s.size()) {
+            string cand;
+            for (const string& x : s) cand += x;     // all candidates have the same length
+            if (cand > best) best = cand;            // so string compare = numeric compare
+            return;
+        }
+        for (int i = k; i < (int) s.size(); i++) {
+            swap(s[k], s[i]);
+            permute(s, k + 1);
+            swap(s[k], s[i]);                        // undo the swap
+        }
+    }
+
+public:
+    string largestNumber(const vector<int>& nums) {
+        vector<string> s;
+        for (int x : nums) s.push_back(to_string(x));
+        permute(s, 0);
+        return best;
+    }
+};` }] }
         },
         mcq: {
           q: 'Which rule correctly decides whether string <code>a</code> should come before string <code>b</code>?',
@@ -2603,12 +2771,16 @@ public:
           }
           if (L.length < 2 || L.length > 7) throw new Error('Please enter between 2 and 7 students.');
           var CODE = '(x, y) -> {\n  if (x.marks != y.marks)\n    return Integer.compare(y.marks, x.marks);\n  return x.name.compareTo(y.name);\n}';
+          var PY = 'def compare(x, y):\n    if x.marks != y.marks:\n        return (y.marks > x.marks) - (y.marks < x.marks)\n    return (x.name > y.name) - (x.name < y.name)',
+              JS = '(x, y) => {\n  if (x.marks !== y.marks)\n    return y.marks < x.marks ? -1 : 1;\n  return x.name < y.name ? -1 : x.name > y.name ? 1 : 0;\n}',
+              CPP = '[](const Student& x, const Student& y) {\n  if (x.marks != y.marks)\n    return x.marks > y.marks;\n  return x.name < y.name;\n}';
+          var ALT = { python: { code: PY }, js: { code: JS }, cpp: { code: CPP } };
           function rows() { return L.map(function (o) { return [o.n, o.m]; }); }
           function cmp(x, y) { if (x.m !== y.m) return y.m < x.m ? -1 : 1; return x.n < y.n ? -1 : (x.n > y.n ? 1 : 0); }
           var frames = [], calls = 0;
-          frames.push({ narr: 'The sort algorithm (here: insertion sort, like TimSort uses for short runs) knows <b>nothing</b> about students. Every time it needs an order it calls <code>compare(x, y)</code>: negative → x first, positive → y first, 0 → tie.', parts: [
+          frames.push({ narr: 'The sort algorithm (here: insertion sort, like TimSort uses for short runs) knows <b>nothing</b> about students. Every time it needs an order it calls <code>compare(x, y)</code>: negative → x first, positive → y first, 0 → tie. (Python <code>cmp_to_key</code> and JavaScript comparators follow this number rule; a C++ comparator instead returns <code>true</code> when x goes first.)', parts: [
             { type: 'table', label: 'list (input order)', columns: ['name', 'marks'], rows: rows() },
-            { type: 'code', label: 'your comparator (the rule card)', lang: 'java', code: CODE, hl: { 1: 'cur' } }
+            { type: 'code', label: 'your comparator (the rule card)', lang: 'java', code: CODE, alt: ALT, hl: { 1: 'cur' } }
           ] });
           for (var i = 1; i < L.length; i++) {
             var j = i;
@@ -2616,10 +2788,10 @@ public:
               var x = L[j - 1], y = L[j], r = cmp(x, y), line = x.m !== y.m ? 3 : 4;
               calls++;
               var hl = {}; hl[j - 1] = 'cur'; hl[j] = 'cur';
-              var why = x.m !== y.m ? 'marks differ (' + x.m + ' vs ' + y.m + ') → Integer.compare(' + y.m + ', ' + x.m + ') = ' + r : 'marks tie at ' + x.m + ' → compare names "' + x.n + '" vs "' + y.n + '" = ' + r;
+              var why = x.m !== y.m ? 'marks differ (' + x.m + ' vs ' + y.m + ') → compare(' + y.m + ', ' + x.m + ') = ' + r : 'marks tie at ' + x.m + ' → compare names "' + x.n + '" vs "' + y.n + '" = ' + r;
               frames.push({ narr: 'compare(' + x.n + ', ' + y.n + '): ' + why + '. ' + (r > 0 ? '<span class="c-r">Positive → ' + y.n + ' must go before ' + x.n + ', swap.</span>' : '<span class="c-g">' + (r < 0 ? 'Negative' : 'Zero') + ' → already in a valid order, stop shifting.</span>'), parts: [
                 { type: 'table', label: 'list', columns: ['name', 'marks'], rows: rows(), hl: hl },
-                { type: 'code', label: 'comparator line used', lang: 'java', code: CODE, hl: (function () { var h = {}; h[line] = r > 0 ? 'bad' : 'ok'; return h; })() },
+                { type: 'code', label: 'comparator line used', lang: 'java', code: CODE, alt: ALT, hl: (function () { var h = {}; h[line] = r > 0 ? 'bad' : 'ok'; return h; })() },
                 { type: 'vars', vals: { x: x.n + ':' + x.m, y: y.n + ':' + y.m, 'compare(x,y)': r, calls: calls }, hl: { 'compare(x,y)': r > 0 ? 'bad' : 'ok' } }
               ] });
               if (r > 0) {
@@ -2997,7 +3169,7 @@ print(by_dept)  # [('ben', 'HR'), ('dev', 'HR'), ('asha', 'IT'), ('cara', 'IT')]
           <p>Why: letter-logs sorted by content ("art can" &lt; "art zero" &lt; "own kit dig"); digit-logs stay in input order (dig1 came before dig2) — that last rule is a <b>stability</b> requirement.</p>`,
         brute: {
           why: `<p>Split into two lists, bubble-sort the letter-logs with hand-written string comparisons, then append the digit-logs. Correct, but O(N<sup>2</sup>·L) and lots of fiddly code. The waste: every mainstream language already has a stable O(N log N) sort — we only need to describe the rule.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             String[] brute(String[] logs) {
                 List<String> let = new ArrayList<>(), dig = new ArrayList<>();
                 for (String s : logs) {
@@ -3013,7 +3185,52 @@ print(by_dept)  # [('ben', 'HR'), ('dev', 'HR'), ('asha', 'IT'), ('cara', 'IT')]
                     }
                 let.addAll(dig);                                          // digit-logs in original order
                 return let.toArray(new String[0]);
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def reorder_log_files(logs):
+    let, dig = [], []
+    for s in logs:
+        if s[s.index(' ') + 1].isdigit():
+            dig.append(s)
+        else:
+            let.append(s)
+    for i in range(len(let)):                          # bubble sort letter-logs
+        for j in range(len(let) - 1 - i):
+            a, b = let[j], let[j + 1]
+            ca, cb = a[a.index(' ') + 1:], b[b.index(' ') + 1:]
+            if ca == cb:
+                ca, cb = a[:a.index(' ')], b[:b.index(' ')]
+            if ca > cb:
+                let[j], let[j + 1] = b, a
+    return let + dig                                   # digit-logs in original order` }, { lang: 'js', code: String.raw`
+function reorderLogFiles(logs) {
+  const let_ = [], dig = [];
+  for (const s of logs) {
+    if (/\d/.test(s[s.indexOf(' ') + 1])) dig.push(s); else let_.push(s);
+  }
+  for (let i = 0; i < let_.length; i++)                // bubble sort letter-logs
+    for (let j = 0; j + 1 < let_.length - i; j++) {
+      const a = let_[j], b = let_[j + 1];
+      let ca = a.slice(a.indexOf(' ') + 1), cb = b.slice(b.indexOf(' ') + 1);
+      if (ca === cb) { ca = a.slice(0, a.indexOf(' ')); cb = b.slice(0, b.indexOf(' ')); }
+      if (ca > cb) { let_[j] = b; let_[j + 1] = a; }
+    }
+  return let_.concat(dig);                             // digit-logs in original order
+}` }, { lang: 'cpp', code: String.raw`
+vector<string> reorderLogFiles(vector<string> logs) {
+    vector<string> let, dig;
+    for (const string& s : logs) {
+        if (isdigit((unsigned char) s[s.find(' ') + 1])) dig.push_back(s); else let.push_back(s);
+    }
+    for (int i = 0; i < (int) let.size(); i++)             // bubble sort letter-logs
+        for (int j = 0; j + 1 < (int) let.size() - i; j++) {
+            string a = let[j], b = let[j + 1];
+            string ca = a.substr(a.find(' ') + 1), cb = b.substr(b.find(' ') + 1);
+            if (ca == cb) { ca = a.substr(0, a.find(' ')); cb = b.substr(0, b.find(' ')); }
+            if (ca > cb) { let[j] = b; let[j + 1] = a; }
+        }
+    let.insert(let.end(), dig.begin(), dig.end());         // digit-logs in original order
+    return let;
+}` }] }
         },
         mcq: {
           q: 'Your comparator returns 0 for any two digit-logs. Why does that keep them in their original order?',
@@ -3248,7 +3465,7 @@ public:
           <p>Why: ${H.c('b', '[1,3] and [2,6]')} overlap (2 ≤ 3) → [1,6]; ${H.c('y', '[8,10] and [9,12]')} overlap (9 ≤ 10) → [8,12]; ${H.c('g', '[15,18]')} touches nobody.</p>`,
         brute: {
           why: `<p>Keep scanning all pairs; whenever two overlap, replace them by their union and start over. Each restart costs O(N<sup>2</sup>) pair checks and there can be N merges → O(N<sup>3</sup>). The waste: without sorting, an overlapping partner could be anywhere, so we keep re-checking pairs that were already fine.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int[][] brute(int[][] intervals) {
                 List<int[]> list = new ArrayList<>();
                 for (int[] x : intervals) list.add(new int[]{x[0], x[1]});
@@ -3270,7 +3487,66 @@ public:
                     }
                 }
                 return list.toArray(new int[0][]);
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def merge(intervals):
+    lst = [list(x) for x in intervals]
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(lst)):
+            for j in range(i + 1, len(lst)):
+                p, q = lst[i], lst[j]
+                if p[0] <= q[1] and q[0] <= p[1]:        # they overlap
+                    p[0] = min(p[0], q[0])
+                    p[1] = max(p[1], q[1])
+                    lst.pop(j)
+                    changed = True
+                    break
+            if changed:
+                break                                     # restart the scan
+    return lst` }, { lang: 'js', code: String.raw`
+function merge(intervals) {
+  const list = intervals.map((x) => [x[0], x[1]]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    outer:
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const p = list[i], q = list[j];
+        if (p[0] <= q[1] && q[0] <= p[1]) {              // they overlap
+          p[0] = Math.min(p[0], q[0]);
+          p[1] = Math.max(p[1], q[1]);
+          list.splice(j, 1);
+          changed = true;
+          break outer;                                    // restart the scan
+        }
+      }
+    }
+  }
+  return list;
+}` }, { lang: 'cpp', code: String.raw`
+vector<vector<int>> merge(vector<vector<int>> intervals) {
+    vector<vector<int>> list = intervals;
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (int i = 0; i < (int) list.size() && !changed; i++) {
+            for (int j = i + 1; j < (int) list.size(); j++) {
+                vector<int>& p = list[i];
+                vector<int>& q = list[j];
+                if (p[0] <= q[1] && q[0] <= p[1]) {      // they overlap
+                    p[0] = min(p[0], q[0]);
+                    p[1] = max(p[1], q[1]);
+                    list.erase(list.begin() + j);
+                    changed = true;                       // restart the scan
+                    break;
+                }
+            }
+        }
+    }
+    return list;
+}` }] }
         },
         mcq: {
           q: 'The intervals are sorted by start. The last merged block is [2, 9] and the next interval is [3, 5]. What should happen?',
@@ -3751,7 +4027,7 @@ print(insert([[1, 2], [3, 5], [6, 7], [8, 10], [12, 16]], [4, 8]))  # [[1, 2], [
           <p>Why: ${H.c('y', '[1,3]')} overlaps [2,5] (1 ≤ 5 and 3 ≥ 2) → fused to [1,5]; [6,9] starts at 6 &gt; 5, so it stays separate.</p>`,
         brute: {
           why: `<p>Append the new interval and run the full "sort by start + merge" algorithm: O(N log N). Correct, but it throws away the fact that the list is <b>already sorted</b> — the sort re-discovers an order we were given for free.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int[][] brute(int[][] intervals, int[] newIv) {
                 List<int[]> all = new ArrayList<>(Arrays.asList(intervals));
                 all.add(newIv);
@@ -3762,7 +4038,40 @@ print(insert([[1, 2], [3, 5], [6, 7], [8, 10], [12, 16]], [4, 8]))  # [[1, 2], [
                     else res.get(res.size() - 1)[1] = Math.max(res.get(res.size() - 1)[1], cur[1]);
                 }
                 return res.toArray(new int[0][]);
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def insert(intervals, new_interval):
+    all_iv = [list(x) for x in intervals]
+    all_iv.append(list(new_interval))
+    all_iv.sort(key=lambda x: x[0])           # O(N log N) — unnecessary
+    res = []
+    for cur in all_iv:
+        if not res or cur[0] > res[-1][1]:
+            res.append([cur[0], cur[1]])
+        else:
+            res[-1][1] = max(res[-1][1], cur[1])
+    return res` }, { lang: 'js', code: String.raw`
+function insert(intervals, newInterval) {
+  const all = intervals.map((x) => [x[0], x[1]]);
+  all.push([newInterval[0], newInterval[1]]);
+  all.sort((x, y) => x[0] - y[0]);            // O(N log N) — unnecessary
+  const res = [];
+  for (const cur of all) {
+    if (res.length === 0 || cur[0] > res[res.length - 1][1]) res.push([cur[0], cur[1]]);
+    else res[res.length - 1][1] = Math.max(res[res.length - 1][1], cur[1]);
+  }
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+vector<vector<int>> insert(const vector<vector<int>>& intervals, const vector<int>& newInterval) {
+    vector<vector<int>> all = intervals;
+    all.push_back(newInterval);
+    sort(all.begin(), all.end(), [](const vector<int>& x, const vector<int>& y) { return x[0] < y[0]; });   // O(N log N) — unnecessary
+    vector<vector<int>> res;
+    for (const auto& cur : all) {
+        if (res.empty() || cur[0] > res.back()[1]) res.push_back({cur[0], cur[1]});
+        else res.back()[1] = max(res.back()[1], cur[1]);
+    }
+    return res;
+}` }] }
         },
         mcq: {
           q: 'List [[1,2],[4,6],[8,9]], new = [3,8]. Which blocks get absorbed?',
@@ -4227,7 +4536,7 @@ print(min_rooms([[1, 5], [5, 10], [10, 15]]))    # 1` }
           <p>Output <b>2</b>. Why: [0,30) overlaps both others, but [5,10) and [15,20) never overlap each other, so they can share the second room. At most 2 meetings run at once.</p>`,
         brute: {
           why: `<p>For every meeting's start time, count how many meetings are running at that instant (O(N) each) and take the maximum: O(N<sup>2</sup>) = 10<sup>8</sup> for N = 10<sup>4</sup> — borderline, and hopeless for 10<sup>5</sup>. The waste: we recount from scratch at every start, although only one meeting begins or ends between neighbouring events.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int brute(int[][] m) {
                 int best = 0;
                 for (int[] a : m) {                          // the peak happens at some start time
@@ -4238,7 +4547,38 @@ print(min_rooms([[1, 5], [5, 10], [10, 15]]))    # 1` }
                     best = Math.max(best, running);
                 }
                 return best;
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def min_meeting_rooms(intervals):
+    best = 0
+    for a in intervals:                      # the peak happens at some start time
+        running = 0
+        for b in intervals:
+            if b[0] <= a[0] < b[1]:          # b is running at time a.start
+                running += 1
+        best = max(best, running)
+    return best` }, { lang: 'js', code: String.raw`
+function minMeetingRooms(intervals) {
+  let best = 0;
+  for (const a of intervals) {               // the peak happens at some start time
+    let running = 0;
+    for (const b of intervals) {
+      if (b[0] <= a[0] && a[0] < b[1]) running++;   // b is running at time a.start
+    }
+    best = Math.max(best, running);
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int minMeetingRooms(vector<vector<int>> intervals) {
+    int best = 0;
+    for (const auto& a : intervals) {        // the peak happens at some start time
+        int running = 0;
+        for (const auto& b : intervals) {
+            if (b[0] <= a[0] && a[0] < b[1]) running++;   // b is running at time a.start
+        }
+        best = max(best, running);
+    }
+    return best;
+}` }] }
         },
         mcq: {
           q: 'Sorted by start, the heap of end times is {12, 20} and the next meeting is [12, 15). What happens?',
@@ -4375,13 +4715,31 @@ public:
     example: `<p>[[0,30],[5,10],[15,20]] → ${H.c('r', 'false')} (5 &lt; 30: the second meeting starts while the first is running).<br>[[7,10],[2,4]] → ${H.c('g', 'true')} (sorted: [2,4) then [7,10), and 7 ≥ 4).</p>`,
     brute: {
       why: `<p>Compare every pair of meetings for overlap: N(N−1)/2 ≈ 5·10<sup>7</sup> checks for N = 10<sup>4</sup>. It works but wastes effort — after sorting, only <b>neighbours</b> can clash first.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         boolean brute(int[][] m) {
             for (int i = 0; i < m.length; i++)
                 for (int j = i + 1; j < m.length; j++)
                     if (m[i][0] < m[j][1] && m[j][0] < m[i][1]) return false;  // overlap test
             return true;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def can_attend_meetings(m):
+    for i in range(len(m)):
+        for j in range(i + 1, len(m)):
+            if m[i][0] < m[j][1] and m[j][0] < m[i][1]:
+                return False                 # overlap test
+    return True` }, { lang: 'js', code: String.raw`
+function canAttendMeetings(m) {
+  for (let i = 0; i < m.length; i++)
+    for (let j = i + 1; j < m.length; j++)
+      if (m[i][0] < m[j][1] && m[j][0] < m[i][1]) return false;   // overlap test
+  return true;
+}` }, { lang: 'cpp', code: String.raw`
+bool canAttendMeetings(vector<vector<int>> m) {
+    for (int i = 0; i < (int) m.size(); i++)
+        for (int j = i + 1; j < (int) m.size(); j++)
+            if (m[i][0] < m[j][1] && m[j][0] < m[i][1]) return false;   // overlap test
+    return true;
+}` }] }
     },
     mcq: {
       q: 'After sorting by start, which check is enough?',
@@ -4457,7 +4815,7 @@ public:
     example: `${H.arr([1, 1, 4, 2, 1, 3], { label: 'heights', hl: { 2: 'r', 4: 'r', 5: 'r' } })}${H.arr([1, 1, 1, 2, 3, 4], { label: 'expected', hl: { 2: 'r', 4: 'r', 5: 'r' } })}<p>Output <b>3</b>: indices 2, 4, 5 differ.</p>`,
     brute: {
       why: `<p>Copy the array, bubble-sort the copy (O(N<sup>2</sup>)), then compare. Fine for N = 100, but it ignores that heights are only 1..100 — counting gives O(N + 100) and scales to millions of students.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[] h) {
             int[] e = h.clone();
             for (int i = 0; i < e.length; i++)
@@ -4466,7 +4824,36 @@ public:
             int diff = 0;
             for (int i = 0; i < h.length; i++) if (h[i] != e[i]) diff++;
             return diff;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def height_checker(heights):
+    e = heights[:]
+    for i in range(len(e)):
+        for j in range(len(e) - 1 - i):
+            if e[j] > e[j + 1]:
+                e[j], e[j + 1] = e[j + 1], e[j]
+    diff = 0
+    for i in range(len(heights)):
+        if heights[i] != e[i]:
+            diff += 1
+    return diff` }, { lang: 'js', code: String.raw`
+function heightChecker(heights) {
+  const e = heights.slice();
+  for (let i = 0; i < e.length; i++)
+    for (let j = 0; j + 1 < e.length - i; j++)
+      if (e[j] > e[j + 1]) { const t = e[j]; e[j] = e[j + 1]; e[j + 1] = t; }
+  let diff = 0;
+  for (let i = 0; i < heights.length; i++) if (heights[i] !== e[i]) diff++;
+  return diff;
+}` }, { lang: 'cpp', code: String.raw`
+int heightChecker(const vector<int>& heights) {
+    vector<int> e = heights;
+    for (int i = 0; i < (int) e.size(); i++)
+        for (int j = 0; j + 1 < (int) e.size() - i; j++)
+            if (e[j] > e[j + 1]) swap(e[j], e[j + 1]);
+    int diff = 0;
+    for (int i = 0; i < (int) heights.size(); i++) if (heights[i] != e[i]) diff++;
+    return diff;
+}` }] }
     },
     mcq: {
       q: 'Heights are between 1 and 100. What is the fastest way to know the expected height at each position?',
@@ -4561,7 +4948,7 @@ public:
     example: `<p>arr1 = [2,3,1,3,2,4,6,7,9,2,19], arr2 = [2,1,4,3,9,6]</p>${H.arr([2, 2, 2, 1, 4, 3, 3, 9, 6, 7, 19], { label: 'output', hl: { 9: 'y', 10: 'y' } })}<p>All 2s, then 1, 4, both 3s, 9, 6 (arr2's order), then the leftovers ${H.c('y', '7, 19')} ascending.</p>`,
     brute: {
       why: `<p>A comparator that looks up each value's position in arr2 with a linear scan: O(N log N · M). Works, but each comparison does an O(M) search. The waste disappears with a count array (values ≤ 1000).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[] brute(int[] arr1, int[] arr2) {
             List<Integer> arr2List = new ArrayList<>();
             for (int x : arr2) arr2List.add(x);
@@ -4577,7 +4964,48 @@ public:
             int[] out = new int[b.length];
             for (int i = 0; i < b.length; i++) out[i] = b[i];
             return out;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+from functools import cmp_to_key
+
+def relative_sort_array(arr1, arr2):
+    def pos(v):
+        return arr2.index(v) if v in arr2 else -1     # O(M) each!
+
+    def cmp(x, y):
+        px, py = pos(x), pos(y)
+        if px >= 0 and py >= 0:
+            return (px > py) - (px < py)
+        if px >= 0:
+            return -1
+        if py >= 0:
+            return 1
+        return (x > y) - (x < y)
+
+    return sorted(arr1, key=cmp_to_key(cmp))` }, { lang: 'js', code: String.raw`
+function relativeSortArray(arr1, arr2) {
+  return [...arr1].sort((x, y) => {
+    const px = arr2.indexOf(x), py = arr2.indexOf(y);   // O(M) each!
+    if (px >= 0 && py >= 0) return px - py;
+    if (px >= 0) return -1;
+    if (py >= 0) return 1;
+    return x - y;
+  });
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> relativeSortArray(const vector<int>& arr1, const vector<int>& arr2) {
+    auto pos = [&](int v) {                              // O(M) each!
+        auto it = find(arr2.begin(), arr2.end(), v);
+        return it == arr2.end() ? -1 : (int) (it - arr2.begin());
+    };
+    vector<int> b = arr1;
+    sort(b.begin(), b.end(), [&](int x, int y) {         // true when x must come first
+        int px = pos(x), py = pos(y);
+        if (px >= 0 && py >= 0) return px < py;
+        if (px >= 0) return true;
+        if (py >= 0) return false;
+        return x < y;
+    });
+    return b;
+}` }] }
     },
     mcq: {
       q: 'Values are ≤ 1000. Which plan is O(N + M + 1000)?',
@@ -4676,15 +5104,27 @@ public:
     example: `${H.arr([1, 2, 3, 0, 0, 0], { label: 'nums1 (m = 3)', hl: { 3: 'm', 4: 'm', 5: 'm' } })}${H.arr([2, 5, 6], { label: 'nums2 (n = 3)' })}${H.arr([1, 2, 2, 3, 5, 6], { label: 'result', hl: { 4: 'g', 5: 'g' } })}<p>Filling from the <b>back</b> means we never overwrite an unread nums1 value.</p>`,
     brute: {
       why: `<p>Copy nums2 into the empty tail and call the library sort: O((m+n) log(m+n)). It ignores that both parts are already sorted — a single merge is linear.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         void brute(int[] nums1, int m, int[] nums2, int n) {
             for (int i = 0; i < n; i++) nums1[m + i] = nums2[i];
             Arrays.sort(nums1);
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def merge(nums1, m, nums2, n):
+    for i in range(n):
+        nums1[m + i] = nums2[i]
+    nums1.sort()` }, { lang: 'js', code: String.raw`
+function merge(nums1, m, nums2, n) {
+  for (let i = 0; i < n; i++) nums1[m + i] = nums2[i];
+  nums1.sort((a, b) => a - b);
+}` }, { lang: 'cpp', code: String.raw`
+void merge(vector<int>& nums1, int m, const vector<int>& nums2, int n) {
+    for (int i = 0; i < n; i++) nums1[m + i] = nums2[i];
+    sort(nums1.begin(), nums1.end());
+}` }] }
     },
     mcq: {
       q: 'Why merge from the back instead of the front?',
-      options: ['It is faster in Big-O', 'The back of nums1 is empty space, so writing there never destroys unread values', 'Java requires it', 'To keep the sort stable'],
+      options: ['It is faster in Big-O', 'The back of nums1 is empty space, so writing there never destroys unread values', 'The language requires it', 'To keep the sort stable'],
       answer: 1,
       explain: 'Writing the largest items into the free tail first means the write pointer k is always ≥ the read pointer i, so no unread nums1 value is overwritten.'
     },
@@ -4762,12 +5202,27 @@ public:
     example: `${H.arr([2, 0, 2, 1, 1, 0], { label: 'input' })}${H.arr([0, 0, 1, 1, 2, 2], { label: 'output', hl: { 0: 'r', 1: 'r', 4: 'b', 5: 'b' } })}<p>Three zones grow from the edges: 0s from the left, 2s from the right, 1s stay in the middle.</p>`,
     brute: {
       why: `<p>Bubble sort: O(N<sup>2</sup>) swaps. Counting sort is O(N) but needs <b>two</b> passes (count, then rewrite). The one-pass 3-way partition puts every element in its zone the first time it is looked at.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         void brute(int[] a) {
             for (int i = 0; i < a.length; i++)
                 for (int j = 0; j + 1 < a.length - i; j++)
                     if (a[j] > a[j + 1]) { int t = a[j]; a[j] = a[j + 1]; a[j + 1] = t; }
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def sort_colors(a):
+    for i in range(len(a)):
+        for j in range(len(a) - 1 - i):
+            if a[j] > a[j + 1]:
+                a[j], a[j + 1] = a[j + 1], a[j]` }, { lang: 'js', code: String.raw`
+function sortColors(a) {
+  for (let i = 0; i < a.length; i++)
+    for (let j = 0; j + 1 < a.length - i; j++)
+      if (a[j] > a[j + 1]) { const t = a[j]; a[j] = a[j + 1]; a[j + 1] = t; }
+}` }, { lang: 'cpp', code: String.raw`
+void sortColors(vector<int>& a) {
+    for (int i = 0; i < (int) a.size(); i++)
+        for (int j = 0; j + 1 < (int) a.size() - i; j++)
+            if (a[j] > a[j + 1]) swap(a[j], a[j + 1]);
+}` }] }
     },
     mcq: {
       q: 'In the Dutch-flag loop, after swapping a[i] with a[gt] (because a[i] == 2), why do we NOT advance i?',
@@ -4857,12 +5312,23 @@ public:
     example: `<p>[3,2,3,1,2,4,5,5,6], k = 4 → sorted descending 6, 5, 5, ${H.c('p', '4')}, 3, 3, 2, 2, 1 → output <b>4</b>.</p>`,
     brute: {
       why: `<p>Sort a copy with the library sort, then index N − k: O(N log N). It orders everything when only one position matters.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[] nums, int k) {
             int[] b = nums.clone();
             Arrays.sort(b);
             return b[b.length - k];
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def find_kth_largest(nums, k):
+    b = sorted(nums)
+    return b[len(b) - k]` }, { lang: 'js', code: String.raw`
+function findKthLargest(nums, k) {
+  const b = [...nums].sort((x, y) => x - y);
+  return b[b.length - k];
+}` }, { lang: 'cpp', code: String.raw`
+int findKthLargest(vector<int> a, int k) {
+    sort(a.begin(), a.end());
+    return a[a.size() - k];
+}` }] }
     },
     mcq: {
       q: 'The input has 10<sup>5</sup> copies of the same value. Which quickselect survives?',
@@ -4990,7 +5456,7 @@ public:
     example: `${H.arr([4, 2, 1, 3], { label: 'list 4→2→1→3' })}${H.arr([1, 2, 3, 4], { label: 'sorted 1→2→3→4', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g' } })}<p>Split 4→2 | 1→3, sort each (2→4, 1→3), merge by relinking nodes.</p>`,
     brute: {
       why: `<p>Insertion sort on the list: each node walks from the head to find its place → O(N<sup>2</sup>) = 2.5·10<sup>9</sup> steps for 5·10<sup>4</sup> reverse-sorted nodes. Quick sort is awkward without random access; merge sort needs only sequential access — perfect for lists.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         ListNode brute(ListNode head) {
             ListNode dummy = new ListNode(0);
             while (head != null) {
@@ -5001,7 +5467,46 @@ public:
                 head = next;
             }
             return dummy.next;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def sort_list(head):
+    dummy = ListNode(0)
+    while head is not None:
+        nxt, p = head.next, dummy
+        while p.next is not None and p.next.val < head.val:     # find insert spot
+            p = p.next
+        head.next = p.next
+        p.next = head
+        head = nxt
+    return dummy.next` }, { lang: 'js', code: String.raw`
+function sortList(head) {
+  const dummy = new ListNode(0);
+  while (head !== null) {
+    const next = head.next;
+    let p = dummy;
+    while (p.next !== null && p.next.val < head.val) p = p.next;   // find insert spot
+    head.next = p.next;
+    p.next = head;
+    head = next;
+  }
+  return dummy.next;
+}` }, { lang: 'cpp', code: String.raw`
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+ListNode* sortList(ListNode* head) {
+    ListNode dummy(0);                          // on the stack: nothing to free
+    while (head != nullptr) {
+        ListNode* next = head->next;
+        ListNode* p = &dummy;
+        while (p->next != nullptr && p->next->val < head->val) p = p->next;   // find insert spot
+        head->next = p->next;
+        p->next = head;
+        head = next;
+    }
+    return dummy.next;
+}` }] }
     },
     mcq: {
       q: 'Why is merge sort the natural choice for linked lists?',
@@ -5135,7 +5640,7 @@ public:
     example: `<p>[[1,2],[2,3],[3,4],[1,3]] → <b>1</b>: remove ${H.c('r', '[1,3]')}; [1,2] [2,3] [3,4] only touch.</p>`,
     brute: {
       why: `<p>Sort by start and run an O(N<sup>2</sup>) DP: keep[i] = 1 + max keep[j] over j with end[j] ≤ start[i]. 10<sup>10</sup> steps for N = 10<sup>5</sup>. The greedy "always keep the interval that ends first" makes it O(N log N).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[][] iv) {
             Arrays.sort(iv, (x, y) -> Integer.compare(x[0], y[0]));
             int n = iv.length, best = 0;
@@ -5147,7 +5652,43 @@ public:
                 best = Math.max(best, keep[i]);
             }
             return n - best;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def erase_overlap_intervals(iv):
+    iv = sorted(iv, key=lambda x: x[0])
+    n, best = len(iv), 0
+    keep = [0] * n
+    for i in range(n):
+        keep[i] = 1
+        for j in range(i):
+            if iv[j][1] <= iv[i][0]:
+                keep[i] = max(keep[i], keep[j] + 1)
+        best = max(best, keep[i])
+    return n - best` }, { lang: 'js', code: String.raw`
+function eraseOverlapIntervals(iv) {
+  iv = iv.slice().sort((x, y) => x[0] - y[0]);
+  const n = iv.length;
+  let best = 0;
+  const keep = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    keep[i] = 1;
+    for (let j = 0; j < i; j++)
+      if (iv[j][1] <= iv[i][0]) keep[i] = Math.max(keep[i], keep[j] + 1);
+    best = Math.max(best, keep[i]);
+  }
+  return n - best;
+}` }, { lang: 'cpp', code: String.raw`
+int eraseOverlapIntervals(vector<vector<int>> iv) {
+    sort(iv.begin(), iv.end(), [](const vector<int>& x, const vector<int>& y) { return x[0] < y[0]; });
+    int n = iv.size(), best = 0;
+    vector<int> keep(n, 0);
+    for (int i = 0; i < n; i++) {
+        keep[i] = 1;
+        for (int j = 0; j < i; j++)
+            if (iv[j][1] <= iv[i][0]) keep[i] = max(keep[i], keep[j] + 1);
+        best = max(best, keep[i]);
+    }
+    return n - best;
+}` }] }
     },
     mcq: {
       q: 'Why sort by END time for this greedy?',
@@ -5234,7 +5775,7 @@ public:
     example: `<p>[[10,16],[2,8],[1,6],[7,12]] → <b>2</b>: sorted by end [1,6] [2,8] [7,12] [10,16]; arrow at ${H.c('g', 'x = 6')} bursts [1,6], [2,8]; arrow at ${H.c('g', 'x = 12')} bursts [7,12], [10,16].</p>`,
     brute: {
       why: `<p>Repeatedly shoot at the smallest end among the remaining balloons and delete everything it hits: up to N rounds × N scans = O(N<sup>2</sup>). Sorting by end lets one pass do the same work.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[][] p) {
             List<int[]> left = new ArrayList<>(Arrays.asList(p));
             int arrows = 0;
@@ -5246,7 +5787,40 @@ public:
                 arrows++;
             }
             return arrows;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def find_min_arrow_shots(points):
+    left = [list(p) for p in points]
+    arrows = 0
+    while left:
+        shot = min(b[1] for b in left)                         # smallest end
+        left = [b for b in left if not (b[0] <= shot <= b[1])]   # burst everything at x
+        arrows += 1
+    return arrows` }, { lang: 'js', code: String.raw`
+function findMinArrowShots(points) {
+  let left = points.map((p) => [p[0], p[1]]);
+  let arrows = 0;
+  while (left.length > 0) {
+    let shot = Infinity;
+    for (const b of left) shot = Math.min(shot, b[1]);         // smallest end
+    left = left.filter((b) => !(b[0] <= shot && shot <= b[1]));   // burst everything at x
+    arrows++;
+  }
+  return arrows;
+}` }, { lang: 'cpp', code: String.raw`
+int findMinArrowShots(vector<vector<int>> points) {
+    vector<vector<int>> left = points;
+    int arrows = 0;
+    while (!left.empty()) {
+        long long shot = LLONG_MAX;
+        for (const auto& b : left) shot = min(shot, (long long) b[1]);     // smallest end
+        vector<vector<int>> rest;
+        for (const auto& b : left)
+            if (!(b[0] <= shot && shot <= b[1])) rest.push_back(b);        // burst everything at x
+        left = rest;
+        arrows++;
+    }
+    return arrows;
+}` }] }
     },
     mcq: {
       q: 'Someone sorts with <code>(a, b) -&gt; a[1] - b[1]</code>. What happens on [[-2147483646, -2147483645], [2147483646, 2147483647]]?',
@@ -5334,7 +5908,7 @@ public:
     example: `<p>A = [[0,2],[5,10],[13,23],[24,25]], B = [[1,5],[8,12],[15,24],[25,26]] → [[1,2],[5,5],[8,10],[15,23],[24,24],[25,25]].</p><p>e.g. [5,10] ∩ [1,5] = ${H.c('g', '[max(5,1), min(10,5)] = [5,5]')}.</p>`,
     brute: {
       why: `<p>Intersect every pair (N·M = 10<sup>6</sup>, then sort the results). Fine here, but it ignores that both lists are sorted — like merge sort's merge, two pointers find every intersection in O(N + M).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[][] brute(int[][] a, int[][] b) {
             List<int[]> res = new ArrayList<>();
             for (int[] x : a)
@@ -5344,7 +5918,36 @@ public:
                 }
             res.sort((p, q) -> Integer.compare(p[0], q[0]));
             return res.toArray(new int[0][]);
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def interval_intersection(a, b):
+    res = []
+    for x in a:
+        for y in b:
+            lo, hi = max(x[0], y[0]), min(x[1], y[1])
+            if lo <= hi:
+                res.append([lo, hi])
+    res.sort(key=lambda p: p[0])
+    return res` }, { lang: 'js', code: String.raw`
+function intervalIntersection(a, b) {
+  const res = [];
+  for (const x of a)
+    for (const y of b) {
+      const lo = Math.max(x[0], y[0]), hi = Math.min(x[1], y[1]);
+      if (lo <= hi) res.push([lo, hi]);
+    }
+  res.sort((p, q) => p[0] - q[0]);
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+vector<vector<int>> intervalIntersection(const vector<vector<int>>& a, const vector<vector<int>>& b) {
+    vector<vector<int>> res;
+    for (const auto& x : a)
+        for (const auto& y : b) {
+            int lo = max(x[0], y[0]), hi = min(x[1], y[1]);
+            if (lo <= hi) res.push_back({lo, hi});
+        }
+    sort(res.begin(), res.end(), [](const vector<int>& p, const vector<int>& q) { return p[0] < q[0]; });
+    return res;
+}` }] }
     },
     mcq: {
       q: 'After intersecting A[i] and B[j], which pointer moves?',
@@ -5444,7 +6047,7 @@ public:
     example: `${H.arr([5, 2, 6, 1], { label: 'nums' })}${H.arr([2, 1, 1, 0], { label: 'counts', hl: { 0: 'p' } })}<p>5 has ${H.c('p', '2 and 1')} to its right that are smaller → 2; 2 has 1 → 1; 6 has 1 → 1; 1 has nothing → 0. (These are per-element inversion counts.)</p>`,
     brute: {
       why: `<p>For every i scan all j &gt; i: N(N−1)/2 ≈ 5·10<sup>9</sup> comparisons → TLE. Merge sort already discovers each inversion during merging; we just need to credit it to the right <b>original index</b>.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         List<Integer> brute(int[] nums) {
             List<Integer> res = new ArrayList<>();
             for (int i = 0; i < nums.length; i++) {
@@ -5453,7 +6056,34 @@ public:
                 res.add(c);
             }
             return res;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def count_smaller(nums):
+    res = []
+    for i in range(len(nums)):
+        c = 0
+        for j in range(i + 1, len(nums)):
+            if nums[j] < nums[i]:
+                c += 1
+        res.append(c)
+    return res` }, { lang: 'js', code: String.raw`
+function countSmaller(nums) {
+  const res = [];
+  for (let i = 0; i < nums.length; i++) {
+    let c = 0;
+    for (let j = i + 1; j < nums.length; j++) if (nums[j] < nums[i]) c++;
+    res.push(c);
+  }
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> countSmaller(const vector<int>& nums) {
+    vector<int> res;
+    for (int i = 0; i < (int) nums.size(); i++) {
+        int c = 0;
+        for (int j = i + 1; j < (int) nums.size(); j++) if (nums[j] < nums[i]) c++;
+        res.push_back(c);
+    }
+    return res;
+}` }] }
     },
     mcq: {
       q: 'While merging (by value) left and right halves, a left element is placed after j − (mid+1) right elements have already been placed. What does that number mean for it?',
@@ -5599,15 +6229,36 @@ public:
     constraints: `1 ≤ N ≤ 5·10<sup>4</sup>, −2<sup>31</sup> ≤ nums[i] ≤ 2<sup>31</sup> − 1`,
     example: `<p>[2,4,3,5,1] → <b>3</b>: ${H.c('r', '(4,1)')}, ${H.c('r', '(3,1)')}, ${H.c('r', '(5,1)')} — each left value is more than twice 1. [1,3,2,3,1] → 2: (3,1) twice.</p>`,
     brute: {
-      why: `<p>All pairs: ~1.25·10<sup>9</sup> checks for N = 5·10<sup>4</sup> → TLE. Also 2·nums[j] overflows int for big values — compute in long.</p>`,
-      code: `
+      why: `<p>All pairs: ~1.25·10<sup>9</sup> checks for N = 5·10<sup>4</sup> → TLE. Also 2·nums[j] overflows a 32-bit int for big values in Java and C++ — compute in 64 bits (<code>long</code> / <code>long long</code>); Python integers and JavaScript doubles do not overflow here.</p>`,
+      code: { lang: 'java', code: `
         int brute(int[] nums) {
             int c = 0;
             for (int i = 0; i < nums.length; i++)
                 for (int j = i + 1; j < nums.length; j++)
                     if ((long) nums[i] > 2L * nums[j]) c++;
             return c;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def reverse_pairs(nums):
+    c = 0
+    for i in range(len(nums)):
+        for j in range(i + 1, len(nums)):
+            if nums[i] > 2 * nums[j]:
+                c += 1
+    return c` }, { lang: 'js', code: String.raw`
+function reversePairs(nums) {
+  let c = 0;
+  for (let i = 0; i < nums.length; i++)
+    for (let j = i + 1; j < nums.length; j++)
+      if (nums[i] > 2 * nums[j]) c++;      // 2 * nums[j] stays exact in a double
+  return c;
+}` }, { lang: 'cpp', code: String.raw`
+int reversePairs(const vector<int>& nums) {
+    int c = 0;
+    for (int i = 0; i < (int) nums.size(); i++)
+        for (int j = i + 1; j < (int) nums.size(); j++)
+            if ((long long) nums[i] > 2LL * nums[j]) c++;   // 2 * nums[j] would overflow an int
+    return c;
+}` }] }
     },
     mcq: {
       q: 'Why can\'t we count reverse pairs inside the normal merge loop like plain inversions?',
@@ -5732,7 +6383,7 @@ public:
     example: `<p>[3, 6, 9, 1] → sorted 1, 3, 6, 9 → gaps 2, ${H.c('g', '3')}, ${H.c('g', '3')} → <b>3</b>.</p>`,
     brute: {
       why: `<p>A library sort + one scan is O(N log N) — correct and simple, but the problem explicitly demands linear time. Values fit in 32 bits, so a 4-pass base-256 radix sort is linear.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[] nums) {
             if (nums.length < 2) return 0;
             int[] b = nums.clone();
@@ -5740,7 +6391,30 @@ public:
             int best = 0;
             for (int i = 1; i < b.length; i++) best = Math.max(best, b[i] - b[i - 1]);
             return best;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def maximum_gap(nums):
+    if len(nums) < 2:
+        return 0
+    b = sorted(nums)
+    best = 0
+    for i in range(1, len(b)):
+        best = max(best, b[i] - b[i - 1])
+    return best` }, { lang: 'js', code: String.raw`
+function maximumGap(nums) {
+  if (nums.length < 2) return 0;
+  const b = [...nums].sort((x, y) => x - y);
+  let best = 0;
+  for (let i = 1; i < b.length; i++) best = Math.max(best, b[i] - b[i - 1]);
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int maximumGap(const vector<int>& nums) {
+    if (nums.size() < 2) return 0;
+    vector<int> b = nums;
+    sort(b.begin(), b.end());
+    int best = 0;
+    for (int i = 1; i < (int) b.size(); i++) best = max(best, b[i] - b[i - 1]);
+    return best;
+}` }] }
     },
     mcq: {
       q: 'Base-256 LSD radix sort on 32-bit non-negative ints needs how many passes?',
@@ -5846,7 +6520,7 @@ public:
     example: `<p>schedule = [[[1,2],[5,6]], [[1,3]], [[4,10]]] → <b>[[3,4]]</b>. Merge all busy time: [1,3] and [4,10] → the only gap is ${H.c('g', '[3,4]')}. (−∞..1 and 10..∞ are not finite, so they do not count.)</p>`,
     brute: {
       why: `<p>Mark every time unit in a boolean timeline up to 10<sup>8</sup> and read off the gaps: O(T) memory and time — 100 MB and far too slow. Only interval <b>endpoints</b> matter, so sort-and-merge works in O(N log N).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         List<int[]> brute(List<List<int[]>> schedule) {
             int maxT = 0;
             for (List<int[]> emp : schedule) for (int[] iv : emp) maxT = Math.max(maxT, iv[1]);
@@ -5866,7 +6540,69 @@ public:
                 }
             }
             return res;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def employee_free_time(schedule):
+    max_t = 0
+    for emp in schedule:
+        for iv in emp:
+            max_t = max(max_t, iv[1])
+    busy = [False] * (max_t + 1)                      # one cell per time unit [t, t+1)
+    min_t = float('inf')
+    for emp in schedule:
+        for iv in emp:
+            min_t = min(min_t, iv[0])
+            for t in range(iv[0], iv[1]):
+                busy[t] = True
+    res = []
+    t = min_t
+    while t < max_t:
+        if not busy[t]:
+            s = t
+            while t < max_t and not busy[t]:
+                t += 1
+            res.append([s, t])
+        t += 1
+    return res` }, { lang: 'js', code: String.raw`
+function employeeFreeTime(schedule) {
+  let maxT = 0;
+  for (const emp of schedule) for (const iv of emp) maxT = Math.max(maxT, iv[1]);
+  const busy = new Array(maxT + 1).fill(false);         // one cell per time unit [t, t+1)
+  let minT = Infinity;
+  for (const emp of schedule)
+    for (const iv of emp) {
+      minT = Math.min(minT, iv[0]);
+      for (let t = iv[0]; t < iv[1]; t++) busy[t] = true;
+    }
+  const res = [];
+  for (let t = minT; t < maxT; t++) {
+    if (!busy[t]) {
+      const s = t;
+      while (t < maxT && !busy[t]) t++;
+      res.push([s, t]);
+    }
+  }
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+vector<vector<int>> employeeFreeTime(const vector<vector<vector<int>>>& schedule) {
+    int maxT = 0;
+    for (const auto& emp : schedule) for (const auto& iv : emp) maxT = max(maxT, iv[1]);
+    vector<bool> busy(maxT + 1, false);                 // one cell per time unit [t, t+1)
+    int minT = INT_MAX;
+    for (const auto& emp : schedule)
+        for (const auto& iv : emp) {
+            minT = min(minT, iv[0]);
+            for (int t = iv[0]; t < iv[1]; t++) busy[t] = true;
+        }
+    vector<vector<int>> res;
+    for (int t = minT; t < maxT; t++) {
+        if (!busy[t]) {
+            int s = t;
+            while (t < maxT && !busy[t]) t++;
+            res.push_back({s, t});
+        }
+    }
+    return res;
+}` }] }
     },
     mcq: {
       q: 'After merging all employees\' intervals into blocks [1,3], [4,10], [12,15], what is the answer?',
@@ -6028,7 +6764,7 @@ public:
     },
     {
       q: 'Insert an interval into a sorted, non-overlapping list. Then: what if there are millions of inserts?', level: 'I',
-      a: `<p>Single insert: one O(N) walk in three phases — copy intervals that end before the new start, absorb every interval whose start ≤ new end (widening with min/max), add the fused interval once, copy the rest. No sort needed because the input is already sorted. For <b>many inserts</b>, keep the disjoint blocks in a balanced BST (<code>TreeMap&lt;start, end&gt;</code>): check <code>floorEntry</code> for a left neighbour, then remove overlapping <code>ceilingEntry</code> blocks while their start ≤ new end. Each block is removed at most once, so inserts are O(log N) amortised.</p>`,
+      a: `<p>Single insert: one O(N) walk in three phases — copy intervals that end before the new start, absorb every interval whose start ≤ new end (widening with min/max), add the fused interval once, copy the rest. No sort needed because the input is already sorted. For <b>many inserts</b>, keep the disjoint blocks in a balanced BST (Java <code>TreeMap&lt;start, end&gt;</code>, C++ <code>std::map</code>, Python <code>sortedcontainers</code>): check <code>floorEntry</code> for a left neighbour, then remove overlapping <code>ceilingEntry</code> blocks while their start ≤ new end. Each block is removed at most once, so inserts are O(log N) amortised.</p>`,
       followUps: ['How do you remove an interval from the set?', 'How do you answer "is point x covered?" quickly?', 'What changes for half-open intervals?']
     },
     {

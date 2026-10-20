@@ -9,7 +9,13 @@
     o = o || {};
     return { type: 'graph', label: label, directed: true, height: o.h || 60, nodes: nodes, edges: edges, hl: o.hl || {}, ehl: o.ehl || {}, tags: o.tags || {} };
   }
-  function CODE(label, code, hl) { return { type: 'code', label: label, lang: 'java', code: code, hl: hl || {} }; }
+  // python / TypeScript / C++ versions of Java code panes, keyed by the exact Java text (filled in near the end of this file)
+  var ALTS = {};
+  function mkAlt(py, ts, cpp, maps) {
+    maps = maps || {};
+    return { python: { code: py, map: maps.python || {} }, js: { lang: 'ts', code: ts, map: maps.ts || {} }, cpp: { code: cpp, map: maps.cpp || {} } };
+  }
+  function CODE(label, code, hl, alt) { return { type: 'code', label: label, lang: 'java', code: code, hl: hl || {}, alt: alt || ALTS[code] }; }
   function TXT(html, label) { var p = { type: 'text', html: html }; if (label) p.label = label; return p; }
   function F(narr, parts) { return { narr: narr, parts: parts }; }
   function clone(o) { var r = {}; for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) r[k] = o[k]; return r; }
@@ -429,7 +435,7 @@ int main() {
     }, {
       title: 'Code walk: spotting four reasons to change in one method',
       gen: function () {
-        return refactorFrames('OrderManager.java', [
+        return refactorFrames('OrderManager', [
           { narr: 'Here is the God class. It compiles, it works, tests pass. So what is wrong? Let us ask: <b>who could ask us to change this method?</b>', code: T1_GOD, hl: { 2: 'cur' } },
           { narr: '<span class="c-r">Reason 1 — finance.</span> The tax rate and formula live here. A new tax law means editing this method.', code: T1_GOD, hl: { 3: 'bad', 4: 'bad' } },
           { narr: '<span class="c-r">Reason 2 — the DBA.</span> Raw SQL text, built by string concatenation (also an SQL-injection risk!). A schema change means editing this method.', code: T1_GOD, hl: { 5: 'bad', 6: 'bad', 7: 'bad' } },
@@ -976,8 +982,8 @@ public:
       constraints: `<p>Standard library only, no frameworks. Email must contain "@" and password ≥ 8 chars. Duplicate emails are rejected. Do not store raw passwords.</p>`,
       example: `<p><code>register("asha@x.com", "secret123")</code> → ${H.c('g', 'saved, welcome email sent')}. <code>register("bad", "123")</code> → ${H.c('r', 'IllegalArgumentException("invalid email")')} — validation fails before any hashing, saving or emailing happens.</p>`,
       brute: {
-        why: `<p>Everything lives in one method: four actors (product rules, security, DBA, marketing) edit the same file. Changing the email template means re-testing hashing and storage; you cannot unit test validation without also "sending" email. The SHA-256 call, the map and the println are hard-wired — <b>rigid and fragile</b>.</p>`,
-        code: `import java.security.MessageDigest;
+        why: `<p>Everything lives in one method: four actors (product rules, security, DBA, marketing) edit the same file. Changing the email template means re-testing hashing and storage; you cannot unit test validation without also "sending" email. The SHA-256 call, the map and the print statement are hard-wired — <b>rigid and fragile</b>.</p>`,
+        code: { lang: 'java', code: `import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
 
 class UserRegistration {
@@ -992,7 +998,50 @@ class UserRegistration {
         users.put(email, hash);                                           // storage concern
         System.out.println("To " + email + ": Welcome aboard!");           // marketing concern
     }
-}`
+}`, alt: [
+                { lang: 'python', code: `
+import hashlib
+
+class UserRegistration:
+    def __init__(self):
+        self.users = {}
+
+    def register(self, email, password):
+        if email is None or "@" not in email: raise ValueError("invalid email")
+        if password is None or len(password) < 8: raise ValueError("weak password")
+        if email in self.users: raise RuntimeError("duplicate")
+        h = hashlib.sha256(password.encode("utf-8")).hexdigest()   # security concern
+        self.users[email] = h                                      # storage concern
+        print("To " + email + ": Welcome aboard!")                 # marketing concern` },
+                { lang: 'ts', code: `
+import { createHash } from "crypto";
+
+class UserRegistration {
+    private users = new Map<string, string>();
+
+    register(email: string | null, password: string | null): void {
+        if (email === null || !email.includes("@")) throw new Error("invalid email");
+        if (password === null || password.length < 8) throw new Error("weak password");
+        if (this.users.has(email)) throw new Error("duplicate");
+        const hash = createHash("sha256").update(password).digest("hex");   // security concern
+        this.users.set(email, hash);                                        // storage concern
+        console.log("To " + email + ": Welcome aboard!");                   // marketing concern
+    }
+}` },
+                { lang: 'cpp', code: `
+class UserRegistration {
+    unordered_map<string, string> users;
+public:
+    void registerUser(const string& email, const string& password) {
+        if (email.find('@') == string::npos) throw invalid_argument("invalid email");
+        if (password.size() < 8) throw invalid_argument("weak password");
+        if (users.count(email)) throw runtime_error("duplicate");
+        string hash = to_string(std::hash<string>{}(password));   // security concern (real code: SHA-256)
+        users[email] = hash;                                      // storage concern
+        cout << "To " << email << ": Welcome aboard!\\n";          // marketing concern
+    }
+};` }
+              ] }
       },
       mcq: { q: 'Marketing wants a new welcome message. In a good SRP design, how many classes change?', options: ['Exactly one (the mailer / message class)', 'The registration service and the mailer', 'All of them, because register() calls them', 'None — use a config file only'], answer: 0, explain: 'Each actor owns one class. The orchestrator only calls <code>mailer.sendWelcome(email)</code>, so the message content can change without touching it.' },
       hints: [
@@ -1658,13 +1707,28 @@ int main() {
         var names = String(input || '').trim().split(/[\s,]+/).filter(Boolean).map(function (s) { return s.toUpperCase(); });
         if (!names.length || names.length > 4 || names.some(function (n) { return !/^[A-Z]{2,10}$/.test(n); })) throw new Error('Enter 1-4 type names (2-10 letters each), e.g. FESTIVE STUDENT');
         var cases = ['REGULAR', 'PREMIUM', 'EMPLOYEE'], pct = { REGULAR: '0', PREMIUM: 'amt * 0.10', EMPLOYEE: 'amt * 0.30' };
+        function swAlt(list, newIdx) {
+          function amt(c) { return pct[c] || 'amt * 0.15'; }
+          var py = ['class DiscountCalculator:', '    def discount(self, type, amt):', '        match type:'];
+          var ts = ['class DiscountCalculator {', '  discount(type: string, amt: number): number {', '    switch (type) {'];
+          var cc = ['struct DiscountCalculator {', '  double discount(const string& type, double amt) {', '    // C++ cannot switch on a string: an if-chain'];
+          list.forEach(function (c) {
+            py.push('            case "' + c + '": return ' + amt(c));
+            ts.push('      case "' + c + '": return ' + amt(c) + ';');
+            cc.push('    if (type == "' + c + '") return ' + amt(c) + ';');
+          });
+          py.push('            case _: raise ValueError(type)');
+          ts.push('      default: throw new Error(type);', '    }', '  }', '}');
+          cc.push('    throw invalid_argument(type);', '  }', '};');
+          return mkAlt(py.join('\n'), ts.join('\n'), cc.join('\n'));
+        }
         function sw(list, newIdx) {
           var lines = ['class DiscountCalculator {', '  double discount(String type, double amt) {', '    switch (type) {'];
           list.forEach(function (c) { lines.push('      case "' + c + '": return ' + (pct[c] || 'amt * 0.15') + ';'); });
           lines.push('      default: throw new IllegalArgumentException(type);', '    }', '  }', '}');
           var hl = {}; if (newIdx >= 0) hl[4 + newIdx] = 'bad';
           for (var i = 0; i < list.length; i++) if (i !== newIdx) hl[4 + i] = newIdx >= 0 ? 'cur' : '';
-          return CODE('DiscountCalculator.java', lines.join('\n'), hl);
+          return CODE('DiscountCalculator', lines.join('\n'), hl, swAlt(list, newIdx));
         }
         var frames = [], edits = 0, retests = 0;
         frames.push(F('<b>Before (violates OCP):</b> one class with a switch over 3 types. It is tested and in production. Now the business sends ' + names.length + ' new discount type(s): <b>' + names.join(', ') + '</b>.',
@@ -1943,7 +2007,7 @@ string describe(const PaymentResult& r) {
       example: `<p><code>pay("CARD", 1000)</code> → ${H.c('g', '1020.0')} (2% fee). <code>pay("WALLET", 20000)</code> → ${H.c('r', 'IllegalStateException: wallet limit')}. <code>pay("NETBANKING", 1000)</code> → ${H.c('g', '1015.0')} after adding one new class.</p>`,
       brute: {
         why: `<p>The if/else ladder mixes all payment rules in one method. Adding NETBANKING edits this tested method, re-tests all branches and risks breaking CARD. The same ladder is often duplicated for refunds and receipts — every new method becomes shotgun surgery.</p>`,
-        code: `class PaymentProcessor {
+        code: { lang: 'java', code: `class PaymentProcessor {
     double pay(String method, double amount) {
         if (method.equals("CARD")) {
             return amount + amount * 0.02;
@@ -1956,7 +2020,51 @@ string describe(const PaymentResult& r) {
             throw new IllegalArgumentException("unknown method " + method);
         }
     }
-}`
+}`, alt: [
+                { lang: 'python', code: `
+class PaymentProcessor:
+    def pay(self, method, amount):
+        if method == "CARD":
+            return amount + amount * 0.02
+        elif method == "UPI":
+            return amount
+        elif method == "WALLET":
+            if amount > 10_000: raise RuntimeError("wallet limit")
+            return amount + amount * 0.01
+        else:
+            raise ValueError("unknown method " + method)` },
+                { lang: 'ts', code: `
+class PaymentProcessor {
+    pay(method: string, amount: number): number {
+        if (method === "CARD") {
+            return amount + amount * 0.02;
+        } else if (method === "UPI") {
+            return amount;
+        } else if (method === "WALLET") {
+            if (amount > 10_000) throw new Error("wallet limit");
+            return amount + amount * 0.01;
+        } else {
+            throw new Error("unknown method " + method);
+        }
+    }
+}` },
+                { lang: 'cpp', code: `
+class PaymentProcessor {
+public:
+    double pay(const string& method, double amount) {
+        if (method == "CARD") {
+            return amount + amount * 0.02;
+        } else if (method == "UPI") {
+            return amount;
+        } else if (method == "WALLET") {
+            if (amount > 10000) throw runtime_error("wallet limit");
+            return amount + amount * 0.01;
+        } else {
+            throw invalid_argument("unknown method " + method);
+        }
+    }
+};` }
+              ] }
       },
       mcq: { q: 'Where should the knowledge "WALLET fails above 10,000" live after the refactor?', options: ['Inside the WalletPayment class', 'Inside PaymentProcessor, before calling the strategy', 'In a global constants class', 'In the caller (UI)'], answer: 0, explain: 'Each strategy owns all of its rules. If the processor checked wallet limits, it would still change whenever wallet rules change — OCP and SRP both broken.' },
       hints: [
@@ -2730,8 +2838,8 @@ public:
       constraints: `<p>Balance must never go negative. Fees apply only to withdrawable accounts; FDs earn interest instead.</p>`,
       example: `<p>Accounts: Savings(1000), FD(5000), Savings(50). Monthly fee 100. ${H.c('r', 'Before:')} job crashes at FD → third account never charged. ${H.c('g', 'After:')} the job takes <code>List&lt;Withdrawable&gt;</code>, charges both savings accounts (the 50 one is skipped with "insufficient funds"), and the FD is not in that list by construction.</p>`,
       brute: {
-        why: `<p>FixedDepositAccount <b>strengthens the precondition</b> of <code>withdraw</code> (parent: "any amount ≤ balance"; child: "never"). Every client of <code>Account</code> must now guard with <code>instanceof</code> or try/catch, and the bug only appears when production data contains an FD — classic LSP violation.</p>`,
-        code: `class Account {
+        why: `<p>FixedDepositAccount <b>strengthens the precondition</b> of <code>withdraw</code> (parent: "any amount ≤ balance"; child: "never"). Every client of <code>Account</code> must now guard with a type check (<code>instanceof</code> / <code>isinstance</code>) or try/catch, and the bug only appears when production data contains an FD — classic LSP violation.</p>`,
+        code: { lang: 'java', code: `class Account {
     protected double balance;
     Account(double opening) { balance = opening; }
     void deposit(double amt) { balance += amt; }
@@ -2750,7 +2858,71 @@ class MonthlyFeeJob {
     static void run(List<Account> accounts, double fee) {
         for (Account a : accounts) a.withdraw(fee);   // crashes on the first FD
     }
-}`
+}`, alt: [
+                { lang: 'python', code: `
+class Account:
+    def __init__(self, opening): self._balance = opening
+    def deposit(self, amt): self._balance += amt
+    def withdraw(self, amt):
+        if amt > self._balance: raise RuntimeError("insufficient funds")
+        self._balance -= amt
+    def balance(self): return self._balance
+
+class SavingsAccount(Account): pass
+
+class FixedDepositAccount(Account):
+    def withdraw(self, amt): raise NotImplementedError("FD locked")
+
+class MonthlyFeeJob:
+    @staticmethod
+    def run(accounts, fee):
+        for a in accounts: a.withdraw(fee)   # crashes on the first FD` },
+                { lang: 'ts', code: `
+class Account {
+    protected _balance: number;
+    constructor(opening: number) { this._balance = opening; }
+    deposit(amt: number): void { this._balance += amt; }
+    withdraw(amt: number): void {
+        if (amt > this._balance) throw new Error("insufficient funds");
+        this._balance -= amt;
+    }
+    balance(): number { return this._balance; }
+}
+class SavingsAccount extends Account { }
+class FixedDepositAccount extends Account {
+    override withdraw(amt: number): void { throw new Error("FD locked"); }
+}
+class MonthlyFeeJob {
+    static run(accounts: Account[], fee: number): void {
+        for (const a of accounts) a.withdraw(fee);   // crashes on the first FD
+    }
+}` },
+                { lang: 'cpp', code: `
+class Account {
+protected:
+    double bal;
+public:
+    Account(double opening) : bal(opening) {}
+    virtual ~Account() = default;
+    void deposit(double amt) { bal += amt; }
+    virtual void withdraw(double amt) {
+        if (amt > bal) throw runtime_error("insufficient funds");
+        bal -= amt;
+    }
+    double balance() { return bal; }
+};
+class SavingsAccount : public Account { public: SavingsAccount(double o) : Account(o) {} };
+class FixedDepositAccount : public Account {
+public:
+    FixedDepositAccount(double o) : Account(o) {}
+    void withdraw(double amt) override { throw logic_error("FD locked"); }
+};
+struct MonthlyFeeJob {
+    static void run(vector<Account*>& accounts, double fee) {
+        for (Account* a : accounts) a->withdraw(fee);   // crashes on the first FD
+    }
+};` }
+              ] }
       },
       mcq: { q: 'Which LSP rule does <code>FixedDepositAccount.withdraw</code> break?', options: ['It strengthens the precondition (and adds a surprise exception)', 'It weakens the postcondition of deposit', 'It changes the return type', 'None — throwing is always allowed'], answer: 0, explain: 'The parent accepts any amount up to the balance; the child accepts nothing. Callers relying on the parent contract break.' },
       hints: [
@@ -3580,8 +3752,8 @@ public:
       constraints: `<p>Brightness 0–100, temperature 16–30 °C. A device can have several capabilities (a smart lamp-speaker exists).</p>`,
       example: `<p>Devices: Bulb, Thermostat, Speaker, LampSpeaker. "Good night" → all four turned off; Bulb and LampSpeaker dimmed to 10. ${H.c('r', 'Before:')} calling <code>setBrightness</code> on the thermostat throws. ${H.c('g', 'After:')} the scene dims only <code>Dimmable</code> devices — chosen by type, not by try/catch.</p>`,
       brute: {
-        why: `<p>Every device is forced to implement five methods; three of the four classes contain fake implementations. The scene has to wrap calls in try/catch or <code>instanceof</code> checks, and any change to <code>playMusic</code>'s signature forces the bulb and thermostat to change too.</p>`,
-        code: `interface SmartDevice {
+        why: `<p>Every device is forced to implement five methods; three of the four classes contain fake implementations. The scene has to wrap calls in try/catch or type checks (<code>instanceof</code> / <code>isinstance</code>), and any change to <code>playMusic</code>'s signature forces the bulb and thermostat to change too.</p>`,
+        code: { lang: 'java', code: `interface SmartDevice {
     void turnOn(); void turnOff();
     void setBrightness(int pct);
     void setTemperature(int celsius);
@@ -3601,7 +3773,77 @@ class Scene {
             try { d.setBrightness(10); } catch (UnsupportedOperationException ignored) { }  // smell
         }
     }
-}`
+}`, alt: [
+                { lang: 'python', code: `
+class SmartDevice:
+    def turn_on(self): raise NotImplementedError
+    def turn_off(self): raise NotImplementedError
+    def set_brightness(self, pct): raise NotImplementedError
+    def set_temperature(self, celsius): raise NotImplementedError
+    def play_music(self, song): raise NotImplementedError
+
+class Bulb(SmartDevice):
+    def turn_on(self): print("bulb on")
+    def turn_off(self): print("bulb off")
+    def set_brightness(self, p): print(f"bulb {p}%")
+    def set_temperature(self, c): raise NotImplementedError
+    def play_music(self, s): raise NotImplementedError
+
+class Scene:
+    @staticmethod
+    def good_night(all_devices):
+        for d in all_devices:
+            d.turn_off()
+            try: d.set_brightness(10)
+            except NotImplementedError: pass   # smell` },
+                { lang: 'ts', code: `
+interface SmartDevice {
+    turnOn(): void; turnOff(): void;
+    setBrightness(pct: number): void;
+    setTemperature(celsius: number): void;
+    playMusic(song: string): void;
+}
+class Bulb implements SmartDevice {
+    turnOn() { console.log("bulb on"); }
+    turnOff() { console.log("bulb off"); }
+    setBrightness(p: number) { console.log("bulb " + p + "%"); }
+    setTemperature(c: number): void { throw new Error("unsupported"); }
+    playMusic(s: string): void { throw new Error("unsupported"); }
+}
+class Scene {
+    static goodNight(all: SmartDevice[]): void {
+        for (const d of all) {
+            d.turnOff();
+            try { d.setBrightness(10); } catch (ignored) { }  // smell
+        }
+    }
+}` },
+                { lang: 'cpp', code: `
+class SmartDevice {
+public:
+    virtual ~SmartDevice() = default;
+    virtual void turnOn() = 0; virtual void turnOff() = 0;
+    virtual void setBrightness(int pct) = 0;
+    virtual void setTemperature(int celsius) = 0;
+    virtual void playMusic(const string& song) = 0;
+};
+class Bulb : public SmartDevice {
+public:
+    void turnOn() override { cout << "bulb on\\n"; }
+    void turnOff() override { cout << "bulb off\\n"; }
+    void setBrightness(int p) override { cout << "bulb " << p << "%\\n"; }
+    void setTemperature(int c) override { throw logic_error("unsupported"); }
+    void playMusic(const string& s) override { throw logic_error("unsupported"); }
+};
+struct Scene {
+    static void goodNight(vector<SmartDevice*>& all) {
+        for (SmartDevice* d : all) {
+            d->turnOff();
+            try { d->setBrightness(10); } catch (const logic_error&) { }  // smell
+        }
+    }
+};` }
+              ] }
       },
       mcq: { q: 'What should the "Good night" scene depend on to turn everything off?', options: ['A small <code>Switchable</code> interface implemented by all devices', 'The fat <code>SmartDevice</code> interface', 'Each concrete class (Bulb, Speaker…)', 'A static utility with instanceof checks'], answer: 0, explain: 'The scene needs only on/off for everyone and brightness for some. Each need is a role: Switchable for all, Dimmable for lights.' },
       hints: [
@@ -4501,7 +4743,7 @@ int main() {
       example: `<p>42 °C at 14:00 → ${H.c('g', 'alert')}. 42 °C at 23:30 → ${H.c('y', 'no alert (quiet hours)')}. 46 °C at 23:30 → ${H.c('r', 'alert (emergency overrides quiet hours)')}. 30 °C anytime → no alert.</p>`,
       brute: {
         why: `<p>All three dependencies are hard-wired: the network (slow, flaky, rate-limited), the system clock (you cannot test 23:30 at 14:00) and the alert channel (tests would send real SMS). The only way to test the quiet-hours rule is to run it at night against a live API. Swapping vendors means editing the business rule class.</p>`,
-        code: `class HttpWeatherClient {
+        code: { lang: 'java', code: `class HttpWeatherClient {
     double currentTemp(String city) {
         System.out.println("GET https://api.weather.example/" + city);   // pretend network call
         return 41.5;
@@ -4515,7 +4757,58 @@ class WeatherAlertService {
         if (t > 45 || (t > 40 && !quiet))
             System.out.println("SMS: heat alert in " + city + " " + t);   // hidden dependency 3
     }
-}`
+}`, alt: [
+                { lang: 'python', code: `
+import datetime
+
+class HttpWeatherClient:
+    def current_temp(self, city):
+        print("GET https://api.weather.example/" + city)   # pretend network call
+        return 41.5
+
+class WeatherAlertService:
+    def check_and_alert(self, city):
+        t = HttpWeatherClient().current_temp(city)   # hidden dependency 1
+        hour = datetime.datetime.now().hour          # hidden dependency 2
+        quiet = hour >= 22 or hour < 7
+        if t > 45 or (t > 40 and not quiet):
+            print(f"SMS: heat alert in {city} {t}")   # hidden dependency 3` },
+                { lang: 'ts', code: `
+class HttpWeatherClient {
+    currentTemp(city: string): number {
+        console.log("GET https://api.weather.example/" + city);   // pretend network call
+        return 41.5;
+    }
+}
+class WeatherAlertService {
+    checkAndAlert(city: string): void {
+        const t = new HttpWeatherClient().currentTemp(city);   // hidden dependency 1
+        const hour = new Date().getHours();                    // hidden dependency 2
+        const quiet = hour >= 22 || hour < 7;
+        if (t > 45 || (t > 40 && !quiet))
+            console.log("SMS: heat alert in " + city + " " + t);   // hidden dependency 3
+    }
+}` },
+                { lang: 'cpp', code: `
+class HttpWeatherClient {
+public:
+    double currentTemp(const string& city) {
+        cout << "GET https://api.weather.example/" << city << "\\n";   // pretend network call
+        return 41.5;
+    }
+};
+class WeatherAlertService {
+public:
+    void checkAndAlert(const string& city) {
+        double t = HttpWeatherClient().currentTemp(city);   // hidden dependency 1
+        time_t now = time(nullptr);
+        int hour = localtime(&now)->tm_hour;                // hidden dependency 2
+        bool quiet = hour >= 22 || hour < 7;
+        if (t > 45 || (t > 40 && !quiet))
+            cout << "SMS: heat alert in " << city << " " << t << "\\n";   // hidden dependency 3
+    }
+};` }
+              ] }
       },
       mcq: { q: 'Which of these should become injected dependencies?', options: ['Weather source, clock and alert sender', 'Only the weather source', 'Only the alert sender', 'None — use static mocking instead'], answer: 0, explain: 'All three are volatile or non-deterministic: network, time and an external vendor. Each gets a domain-owned interface (or a standard clock abstraction).' },
       hints: [
@@ -5400,14 +5693,14 @@ int main() {
           I: { lines: [20, 21, 22, 23], name: 'Interface Segregation', msg: 'Fat <code>Exporter</code>: an exporter that only does CSV must still implement pdf, xlsx and html.', fix: 'One small ReportFormat role per format class' },
           D: { lines: [2, 11], name: 'Dependency Inversion', msg: 'Business logic builds <code>new MySqlSales()</code> and <code>new SmtpClient()</code> — untestable, unswappable.', fix: 'Inject SalesSource and ReportDelivery (domain-owned interfaces)' }
         };
-        var frames = [F('A teammate asks you to review this <b>ReportService</b>. It works in production. We will check it against: <b>' + uniq.join(', ') + '</b>.', [CODE('ReportService.java (under review)', T7_BAD, {}), { type: 'table', label: 'Review findings', columns: ['Principle', 'Lines', 'Fix'], rows: [] }])];
+        var frames = [F('A teammate asks you to review this <b>ReportService</b>. It works in production. We will check it against: <b>' + uniq.join(', ') + '</b>.', [CODE('ReportService (under review)', T7_BAD, {}), { type: 'table', label: 'Review findings', columns: ['Principle', 'Lines', 'Fix'], rows: [] }])];
         var rows = [], all = {};
         uniq.forEach(function (l) {
           var f = F2[l], hl = {};
           Object.keys(all).forEach(function (k) { hl[k] = 'done'; });
           f.lines.forEach(function (n) { hl[n] = 'bad'; all[n] = 1; });
           rows.push([l + ' — ' + f.name, f.lines.join(', '), f.fix]);
-          frames.push(F('<b>' + l + ' — ' + f.name + ':</b> ' + f.msg, [CODE('ReportService.java (under review)', T7_BAD, hl), { type: 'table', label: 'Review findings', columns: ['Principle', 'Lines', 'Fix'], rows: rows.slice(), hl: (function () { var r = {}; r[rows.length - 1] = 'sel'; return r; })() }]));
+          frames.push(F('<b>' + l + ' — ' + f.name + ':</b> ' + f.msg, [CODE('ReportService (under review)', T7_BAD, hl), { type: 'table', label: 'Review findings', columns: ['Principle', 'Lines', 'Fix'], rows: rows.slice(), hl: (function () { var r = {}; r[rows.length - 1] = 'sel'; return r; })() }]));
         });
         var nodes = [B('JOB', 'ReportJob', 50, 6), B('SRC', '«SalesSource»', 15, 24), B('SUM', 'SalesSummary', 50, 24), B('FMT', '«ReportFormat»', 85, 24),
           B('DEL', '«ReportDelivery»', 30, 44), B('CSV', 'CsvFormat', 72, 44), B('TXT', 'TextFormat', 94, 44), B('EM', 'EmailDelivery', 18, 62), B('SC', 'ScreenDelivery', 48, 62), B('MY', 'MySqlSource', 80, 62)];
@@ -5530,8 +5823,8 @@ int main() {
       constraints: `<p>Standard library only, no frameworks. Keep the public behaviour: <code>notifyOrderShipped(user, orderId)</code> sends one message via the user's preferred channel and records success/failure.</p>`,
       example: `<p>User prefers SMS → "Your order #42 has shipped" via SMS, log "u1 SMS ok". User prefers WHATSAPP (after adding one class) → same text via WhatsApp. Unknown preference → falls back to EMAIL instead of crashing.</p>`,
       brute: {
-        why: `<p>${H.c('r', 'S:')} one class builds text, picks channels, logs and talks to vendors. ${H.c('r', 'O:')} the switch must be edited for WhatsApp. ${H.c('r', 'L:')} PushChannel extends EmailChannel and throws on attachments. ${H.c('r', 'I:')} <code>Channel</code> forces <code>schedule</code> and <code>attach</code> on everyone. ${H.c('r', 'D:')} <code>new TwilioClient()</code>, <code>new FileWriter</code> inside business code — tests send real SMS and write files.</p>`,
-        code: `interface Channel {
+        why: `<p>${H.c('r', 'S:')} one class builds text, picks channels, logs and talks to vendors. ${H.c('r', 'O:')} the switch must be edited for WhatsApp. ${H.c('r', 'L:')} PushChannel extends EmailChannel and throws on attachments. ${H.c('r', 'I:')} <code>Channel</code> forces <code>schedule</code> and <code>attach</code> on everyone. ${H.c('r', 'D:')} constructing a <code>TwilioClient</code> and opening the log file inside business code — tests send real SMS and write files.</p>`,
+        code: { lang: 'java', code: `interface Channel {
     void send(String to, String text);
     void schedule(String to, String text, long epochMillis);
     void attach(String fileName);
@@ -5560,7 +5853,102 @@ class NotificationManager {
         }
         try (FileWriter w = new FileWriter("notify.log", true)) { w.write(userId + " " + pref + " " + ok + "\\n"); }
     }
-}`
+}`, alt: [
+                { lang: 'python', code: `
+class Channel:
+    def send(self, to, text): raise NotImplementedError
+    def schedule(self, to, text, epoch_millis): raise NotImplementedError
+    def attach(self, file_name): raise NotImplementedError
+
+class TwilioClient:
+    def sms(self, to, t): print("twilio " + to + " " + t)
+
+class EmailChannel(Channel):
+    def send(self, to, text): print("email " + to + " " + text)
+    def schedule(self, to, text, at): print("scheduled email")
+    def attach(self, f): print("attached " + f)
+
+class PushChannel(EmailChannel):
+    def send(self, to, text): print("push " + to + " " + text)
+    def attach(self, f): raise NotImplementedError("push has no attachments")
+
+class NotificationManager:
+    def notify_order_shipped(self, user_id, pref, contact, order_id):
+        text = "Your order #" + order_id + " has shipped"
+        ok = True
+        if pref == "SMS": TwilioClient().sms(contact, text)
+        elif pref == "EMAIL": EmailChannel().send(contact, text)
+        elif pref == "PUSH": PushChannel().send(contact, text)
+        else: ok = False
+        with open("notify.log", "a") as w: w.write(f"{user_id} {pref} {ok}\\n")` },
+                { lang: 'ts', code: `
+import { appendFileSync } from "fs";
+
+interface Channel {
+    send(to: string, text: string): void;
+    schedule(to: string, text: string, epochMillis: number): void;
+    attach(fileName: string): void;
+}
+class TwilioClient { sms(to: string, t: string): void { console.log("twilio " + to + " " + t); } }
+
+class EmailChannel implements Channel {
+    send(to: string, text: string): void { console.log("email " + to + " " + text); }
+    schedule(to: string, text: string, at: number): void { console.log("scheduled email"); }
+    attach(f: string): void { console.log("attached " + f); }
+}
+class PushChannel extends EmailChannel {
+    override send(to: string, text: string): void { console.log("push " + to + " " + text); }
+    override attach(f: string): void { throw new Error("push has no attachments"); }
+}
+
+class NotificationManager {
+    notifyOrderShipped(userId: string, pref: string, contact: string, orderId: string): void {
+        const text = "Your order #" + orderId + " has shipped";
+        let ok = true;
+        switch (pref) {
+            case "SMS": new TwilioClient().sms(contact, text); break;
+            case "EMAIL": new EmailChannel().send(contact, text); break;
+            case "PUSH": new PushChannel().send(contact, text); break;
+            default: ok = false;
+        }
+        appendFileSync("notify.log", userId + " " + pref + " " + ok + "\\n");
+    }
+}` },
+                { lang: 'cpp', code: `
+class Channel {
+public:
+    virtual ~Channel() = default;
+    virtual void send(const string& to, const string& text) = 0;
+    virtual void schedule(const string& to, const string& text, long long epochMillis) = 0;
+    virtual void attach(const string& fileName) = 0;
+};
+struct TwilioClient { void sms(const string& to, const string& t) { cout << "twilio " << to << " " << t << "\\n"; } };
+
+class EmailChannel : public Channel {
+public:
+    void send(const string& to, const string& text) override { cout << "email " << to << " " << text << "\\n"; }
+    void schedule(const string& to, const string& text, long long at) override { cout << "scheduled email\\n"; }
+    void attach(const string& f) override { cout << "attached " << f << "\\n"; }
+};
+class PushChannel : public EmailChannel {
+public:
+    void send(const string& to, const string& text) override { cout << "push " << to << " " << text << "\\n"; }
+    void attach(const string& f) override { throw logic_error("push has no attachments"); }
+};
+
+class NotificationManager {
+public:
+    void notifyOrderShipped(const string& userId, const string& pref, const string& contact, const string& orderId) {
+        string text = "Your order #" + orderId + " has shipped";
+        bool ok = true;
+        if (pref == "SMS") TwilioClient().sms(contact, text);
+        else if (pref == "EMAIL") EmailChannel().send(contact, text);
+        else if (pref == "PUSH") PushChannel().send(contact, text);
+        else ok = false;
+        ofstream("notify.log", ios::app) << userId << " " << pref << " " << ok << "\\n";
+    }
+};` }
+              ] }
       },
       mcq: { q: 'Product adds WhatsApp. In the refactored design, what is the minimal change?', options: ['Add a WhatsAppChannel class and register it in the composition root', 'Add a case to NotificationService and a WhatsAppChannel class', 'Make WhatsAppChannel extend SmsChannel', 'Add whatsapp() to the Channel interface'], answer: 0, explain: 'With a registry of <code>Channel</code> implementations keyed by name (OCP) and injected into the service (DIP), the new class plus one wiring line is all that changes.' },
       hints: [
@@ -6122,7 +6510,7 @@ int main() {
     example: `<p>Changing the console layout from "Title by Author" to a boxed format → ${H.c('g', 'only BookPrinter changes')}. Moving to S3 → ${H.c('g', 'only a new BookStore implementation')}; <code>Book</code> is untouched in both cases.</p>`,
     brute: {
       why: `<p><code>Book</code> has three reasons to change: book data (domain), presentation (UI team) and persistence (infra team). Every UI tweak re-opens the class that infra depends on and vice versa; the file I/O also makes <code>Book</code> hard to unit test. This is a <b>Single Responsibility</b> violation.</p>`,
-      code: `class Book {
+      code: { lang: 'java', code: `class Book {
     String title, author, text;
     Book(String title, String author, String text) { this.title = title; this.author = author; this.text = text; }
 
@@ -6135,7 +6523,49 @@ int main() {
             w.println(title); w.println(author); w.println(text);
         }
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class Book:
+    def __init__(self, title, author, text):
+        self.title, self.author, self.text = title, author, text
+
+    def print_to_console(self):                  # UI team's concern
+        print(self.title + " by " + self.author)
+        print(self.text)
+
+    def save_to_file(self, path):                # infra team's concern
+        with open(path, "w") as w:
+            w.write(self.title + "\\n" + self.author + "\\n" + self.text + "\\n")` },
+              { lang: 'ts', code: `
+import { writeFileSync } from "fs";
+
+class Book {
+    constructor(public title: string, public author: string, public text: string) {}
+
+    printToConsole(): void {                       // UI team's concern
+        console.log(this.title + " by " + this.author);
+        console.log(this.text);
+    }
+    saveToFile(path: string): void {               // infra team's concern
+        writeFileSync(path, this.title + "\\n" + this.author + "\\n" + this.text + "\\n");
+    }
+}` },
+              { lang: 'cpp', code: `
+class Book {
+public:
+    string title, author, text;
+    Book(string title, string author, string text) : title(title), author(author), text(text) {}
+
+    void printToConsole() {                        // UI team's concern
+        cout << title << " by " << author << "\\n";
+        cout << text << "\\n";
+    }
+    void saveToFile(const string& path) {          // infra team's concern
+        ofstream w(path);
+        w << title << "\\n" << author << "\\n" << text << "\\n";
+    }
+};` }
+            ] }
     },
     mcq: { q: 'Which principle does <code>Book.saveToFile</code> most directly violate?', options: ['Single Responsibility', 'Liskov Substitution', 'Interface Segregation', 'None — books should save themselves'], answer: 0, explain: 'Persistence is a different actor\'s concern (infra) from the book\'s data and from printing (UI). Three actors → three reasons to change.' },
     hints: [
@@ -6340,8 +6770,8 @@ int main() { LibraryDemo::run(); }` }
     constraints: `<p>Decoys still appear in the pond list (they float). No type test (<code>instanceof</code>, <code>isinstance</code>, <code>dynamic_cast</code>) in the chorus.</p>`,
     example: `<p>Pond: [Mallard, Decoy, Rubber]. ${H.c('r', 'Before:')} chorus crashes at Decoy. ${H.c('g', 'After:')} chorus takes only <code>Quackable</code> things → "Quack", "Squeak"; the decoy is in the pond list but not in the chorus list.</p>`,
     brute: {
-      why: `<p><code>DecoyDuck</code> cannot keep the promise of its parent (<code>quack()</code> makes a sound). Any code written for <code>Duck</code> breaks when handed a decoy — a <b>Liskov Substitution</b> violation. Fixing it with <code>instanceof DecoyDuck</code> in the chorus would also break OCP.</p>`,
-      code: `class Duck {
+      why: `<p><code>DecoyDuck</code> cannot keep the promise of its parent (<code>quack()</code> makes a sound). Any code written for <code>Duck</code> breaks when handed a decoy — a <b>Liskov Substitution</b> violation. Fixing it with a type check for <code>DecoyDuck</code> (<code>instanceof</code> / <code>isinstance</code>) in the chorus would also break OCP.</p>`,
+      code: { lang: 'java', code: `class Duck {
     void quack() { System.out.println("Quack"); }
     void fly() { System.out.println("Flap flap"); }
 }
@@ -6352,7 +6782,52 @@ class DecoyDuck extends Duck {
 }
 class Chorus {
     static void sing(List<Duck> pond) { pond.forEach(Duck::quack); }   // crashes on decoys
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class Duck:
+    def quack(self): print("Quack")
+    def fly(self): print("Flap flap")
+
+class MallardDuck(Duck): pass
+
+class DecoyDuck(Duck):
+    def quack(self): raise NotImplementedError("wooden")
+    def fly(self): raise NotImplementedError("wooden")
+
+class Chorus:
+    @staticmethod
+    def sing(pond):
+        for d in pond: d.quack()   # crashes on decoys` },
+              { lang: 'ts', code: `
+class Duck {
+    quack(): void { console.log("Quack"); }
+    fly(): void { console.log("Flap flap"); }
+}
+class MallardDuck extends Duck { }
+class DecoyDuck extends Duck {
+    override quack(): void { throw new Error("wooden"); }
+    override fly(): void { throw new Error("wooden"); }
+}
+class Chorus {
+    static sing(pond: Duck[]): void { pond.forEach(d => d.quack()); }   // crashes on decoys
+}` },
+              { lang: 'cpp', code: `
+class Duck {
+public:
+    virtual ~Duck() = default;
+    virtual void quack() { cout << "Quack\\n"; }
+    virtual void fly() { cout << "Flap flap\\n"; }
+};
+class MallardDuck : public Duck { };
+class DecoyDuck : public Duck {
+public:
+    void quack() override { throw logic_error("wooden"); }
+    void fly() override { throw logic_error("wooden"); }
+};
+struct Chorus {
+    static void sing(vector<Duck*>& pond) { for (Duck* d : pond) d->quack(); }   // crashes on decoys
+};` }
+            ] }
     },
     mcq: { q: 'What is the best fix?', options: ['Split capabilities into small interfaces (Floatable, Quackable, Flyable) and let each duck implement what it can', 'Catch the exception in the chorus', 'Make DecoyDuck.quack() print nothing', 'Add <code>if (d instanceof DecoyDuck) continue;</code>'], answer: 0, explain: 'An empty quack silently breaks the promise too (weakened postcondition). Capabilities as role interfaces let the type system keep decoys out of the chorus.' },
     hints: [
@@ -6562,7 +7037,7 @@ int main() {
     example: `<p>[Circle(r=1), Rectangle(2,3)] → 3.14159… + 6 = ${H.c('g', '9.14')}. After adding Triangle(base 4, height 3) → +6 = ${H.c('g', '15.14')} with zero edits to the calculator.</p>`,
     brute: {
       why: `<p>Each new shape means editing <code>total()</code> and every other method with a similar chain (perimeter, draw). The fallback branch silently ignores unknown shapes — a hidden bug. This violates <b>Open/Closed</b>; the type <code>Object</code> also gives the compiler nothing to check.</p>`,
-      code: `class Circle { double r; Circle(double r) { this.r = r; } }
+      code: { lang: 'java', code: `class Circle { double r; Circle(double r) { this.r = r; } }
 class Rectangle { double w, h; Rectangle(double w, double h) { this.w = w; this.h = h; } }
 
 class AreaCalculator {
@@ -6575,7 +7050,55 @@ class AreaCalculator {
         }
         return sum;
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+import math
+
+class Circle:
+    def __init__(self, r): self.r = r
+class Rectangle:
+    def __init__(self, w, h): self.w, self.h = w, h
+
+class AreaCalculator:
+    @staticmethod
+    def total(shapes):
+        s_sum = 0.0
+        for s in shapes:
+            if isinstance(s, Circle): s_sum += math.pi * s.r * s.r
+            elif isinstance(s, Rectangle): s_sum += s.w * s.h
+            # Triangle? Hexagon? -> edit here, and in perimeter(), and in draw()...
+        return s_sum` },
+              { lang: 'ts', code: `
+class Circle { constructor(public r: number) {} }
+class Rectangle { constructor(public w: number, public h: number) {} }
+
+class AreaCalculator {
+    static total(shapes: object[]): number {
+        let sum = 0;
+        for (const s of shapes) {
+            if (s instanceof Circle) sum += Math.PI * s.r * s.r;
+            else if (s instanceof Rectangle) sum += s.w * s.h;
+            // Triangle? Hexagon? -> edit here, and in perimeter(), and in draw()...
+        }
+        return sum;
+    }
+}` },
+              { lang: 'cpp', code: `
+struct Circle { double r; Circle(double r) : r(r) {} virtual ~Circle() = default; };
+struct Rectangle { double w, h; Rectangle(double w, double h) : w(w), h(h) {} virtual ~Rectangle() = default; };
+
+struct AreaCalculator {
+    static double total(const vector<void*>& shapes) {
+        double sum = 0;
+        for (void* p : shapes) {
+            if (auto* c = dynamic_cast<Circle*>((Circle*)p)) sum += M_PI * c->r * c->r;
+            else if (auto* r = dynamic_cast<Rectangle*>((Rectangle*)p)) sum += r->w * r->h;
+            // Triangle? Hexagon? -> edit here, and in perimeter(), and in draw()...
+        }
+        return sum;
+    }
+};` }
+            ] }
     },
     mcq: { q: 'Where should the formula for a triangle\'s area live after the refactor?', options: ['In the Triangle class itself', 'In AreaCalculator', 'In a ShapeUtils class', 'In the UI'], answer: 0, explain: 'Replace conditional with polymorphism: each shape knows its own area, so the calculator only calls <code>s.area()</code>.' },
     hints: [
@@ -6781,8 +7304,8 @@ int main() {
     constraints: `<p>A car must always have an engine (no nulls). Engine start may fail; <code>drive()</code> should report it.</p>`,
     example: `<p><code>new Car(new ElectricMotor()).drive()</code> → ${H.c('g', '"silent whirr... driving"')}. <code>new Car(new FailingEngine()).drive()</code> in a test → ${H.c('y', '"engine failed to start"')}, no real simulation needed.</p>`,
     brute: {
-      why: `<p>The high-level <code>Car</code> depends directly on the low-level <code>PetrolEngine</code> and even creates it. Supporting EVs means editing <code>Car</code> (or copy-pasting it into <code>ElectricCar</code>), and tests cannot swap the slow engine — a <b>Dependency Inversion</b> violation ("new is glue").</p>`,
-      code: `class PetrolEngine {
+      why: `<p>The high-level <code>Car</code> depends directly on the low-level <code>PetrolEngine</code> and even creates it. Supporting EVs means editing <code>Car</code> (or copy-pasting it into <code>ElectricCar</code>), and tests cannot swap the slow engine — a <b>Dependency Inversion</b> violation (constructing a collaborator yourself, "new" in Java/TypeScript/C++, is glue).</p>`,
+      code: { lang: 'java', code: `class PetrolEngine {
     boolean start() {
         System.out.println("crank... vroom (slow simulation)");
         return true;
@@ -6791,7 +7314,43 @@ int main() {
 class Car {
     private final PetrolEngine engine = new PetrolEngine();   // glued forever
     String drive() { return engine.start() ? "driving" : "engine failed to start"; }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class PetrolEngine:
+    def start(self):
+        print("crank... vroom (slow simulation)")
+        return True
+
+class Car:
+    def __init__(self):
+        self._engine = PetrolEngine()   # glued forever
+    def drive(self):
+        return "driving" if self._engine.start() else "engine failed to start"` },
+              { lang: 'ts', code: `
+class PetrolEngine {
+    start(): boolean {
+        console.log("crank... vroom (slow simulation)");
+        return true;
+    }
+}
+class Car {
+    private readonly engine = new PetrolEngine();   // glued forever
+    drive(): string { return this.engine.start() ? "driving" : "engine failed to start"; }
+}` },
+              { lang: 'cpp', code: `
+class PetrolEngine {
+public:
+    bool start() {
+        cout << "crank... vroom (slow simulation)\\n";
+        return true;
+    }
+};
+class Car {
+    PetrolEngine engine;   // glued forever
+public:
+    string drive() { return engine.start() ? "driving" : "engine failed to start"; }
+};` }
+            ] }
     },
     mcq: { q: 'Who should own the <code>Engine</code> interface?', options: ['The Car side (the high-level module that needs it)', 'The PetrolEngine package', 'A shared utils package', 'Nobody — use abstract classes only'], answer: 0, explain: 'In DIP the abstraction is shaped by and belongs to the client that uses it; engines plug into the car\'s "socket".' },
     hints: [
@@ -6975,7 +7534,7 @@ int main() {
     example: `<p>Dashboard: <code>countByCity()</code> → ${H.c('g', '{Delhi=1, Pune=2}')}. Trying <code>reader.purgeInactive()</code> in dashboard code → ${H.c('r', 'compile error')} after the refactor. Dashboard test fakes 2 methods instead of 8.</p>`,
     brute: {
       why: `<p>Every client depends on all 8 methods (an <b>Interface Segregation</b> violation): read-only code can perform destructive operations, tests stub methods they never call, and a signature change to <code>bulkImport</code> forces the dashboard to rebuild and retest.</p>`,
-      code: `record Customer(String id, String city, boolean active) {}
+      code: { lang: 'java', code: `record Customer(String id, String city, boolean active) {}
 
 interface CustomerRepository {
     Optional<Customer> findById(String id);
@@ -6992,7 +7551,72 @@ class Dashboard {
     private final CustomerRepository repo;          // sees everything, including purgeInactive()
     Dashboard(CustomerRepository repo) { this.repo = repo; }
     String render() { return "Customers per city: " + repo.countByCity(); }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class Customer:
+    id: str
+    city: str
+    active: bool
+
+class CustomerRepository:
+    def find_by_id(self, id): raise NotImplementedError
+    def find_all(self): raise NotImplementedError
+    def count_by_city(self): raise NotImplementedError
+    def save(self, c): raise NotImplementedError
+    def delete(self, id): raise NotImplementedError
+    def bulk_import(self, cs): raise NotImplementedError
+    def export_csv(self): raise NotImplementedError
+    def purge_inactive(self): raise NotImplementedError
+
+class Dashboard:
+    def __init__(self, repo):
+        self._repo = repo          # sees everything, including purge_inactive()
+    def render(self):
+        return "Customers per city: " + str(self._repo.count_by_city())` },
+              { lang: 'ts', code: `
+interface Customer { id: string; city: string; active: boolean }
+
+interface CustomerRepository {
+    findById(id: string): Customer | undefined;
+    findAll(): Customer[];
+    countByCity(): Map<string, number>;
+    save(c: Customer): void;
+    delete(id: string): void;
+    bulkImport(cs: Customer[]): void;
+    exportCsv(): string;
+    purgeInactive(): number;
+}
+
+class Dashboard {
+    constructor(private readonly repo: CustomerRepository) {}   // sees everything, including purgeInactive()
+    render(): string { return "Customers per city: " + JSON.stringify([...this.repo.countByCity()]); }
+}` },
+              { lang: 'cpp', code: `
+struct Customer { string id, city; bool active; };
+
+class CustomerRepository {
+public:
+    virtual ~CustomerRepository() = default;
+    virtual optional<Customer> findById(const string& id) = 0;
+    virtual vector<Customer> findAll() = 0;
+    virtual map<string, long long> countByCity() = 0;
+    virtual void save(const Customer& c) = 0;
+    virtual void remove(const string& id) = 0;
+    virtual void bulkImport(const vector<Customer>& cs) = 0;
+    virtual string exportCsv() = 0;
+    virtual int purgeInactive() = 0;
+};
+
+class Dashboard {
+    CustomerRepository& repo;          // sees everything, including purgeInactive()
+public:
+    Dashboard(CustomerRepository& repo) : repo(repo) {}
+    string render() { return "Customers per city: " + to_string(repo.countByCity().size()); }
+};` }
+            ] }
     },
     mcq: { q: 'How should the 8 methods be grouped?', options: ['By client role: reader (find/count), writer (save/delete), admin (bulk/export/purge)', 'Alphabetically into two interfaces', 'One interface per method', 'Keep one interface but add Javadoc warnings'], answer: 0, explain: 'ISP splits by who uses the methods. Three roles match three kinds of clients; one-method-per-interface would be needless fragmentation.' },
     hints: [
@@ -7381,7 +8005,7 @@ int main() {
     example: `<p>BlueDart, 2 kg, TIER2 → (50 + 40) × 1.10 = ${H.c('g', '99.00')}. IndiaPost, 1 kg, REMOTE → (30 + 15) × 1.35 = ${H.c('g', '60.75')}. A new carrier "Shadowfax" = one new class.</p>`,
     brute: {
       why: `<p><b>OCP:</b> each carrier edits the if/else. <b>SRP:</b> carrier pricing (owned by partnerships team) and regional surcharges (owned by finance) are tangled in one method, so a surcharge change re-tests every carrier. The surcharge logic is also duplicated inside each branch.</p>`,
-      code: `class ShippingCalculator {
+      code: { lang: 'java', code: `class ShippingCalculator {
     double cost(String carrier, double kg, String region) {
         double base;
         if (carrier.equals("BLUEDART")) base = 50 + 20 * kg;
@@ -7392,7 +8016,47 @@ int main() {
         else if (region.equals("REMOTE")) base *= 1.35;
         return Math.round(base * 100) / 100.0;
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+import math
+
+class ShippingCalculator:
+    def cost(self, carrier, kg, region):
+        if carrier == "BLUEDART": base = 50 + 20 * kg
+        elif carrier == "DELHIVERY": base = 40 + 25 * kg
+        elif carrier == "INDIAPOST": base = 30 + 15 * kg
+        else: raise ValueError(carrier)
+        if region == "TIER2": base *= 1.10
+        elif region == "REMOTE": base *= 1.35
+        return round(base * 100) / 100.0` },
+              { lang: 'ts', code: `
+class ShippingCalculator {
+    cost(carrier: string, kg: number, region: string): number {
+        let base: number;
+        if (carrier === "BLUEDART") base = 50 + 20 * kg;
+        else if (carrier === "DELHIVERY") base = 40 + 25 * kg;
+        else if (carrier === "INDIAPOST") base = 30 + 15 * kg;
+        else throw new Error(carrier);
+        if (region === "TIER2") base *= 1.10;
+        else if (region === "REMOTE") base *= 1.35;
+        return Math.round(base * 100) / 100.0;
+    }
+}` },
+              { lang: 'cpp', code: `
+class ShippingCalculator {
+public:
+    double cost(const string& carrier, double kg, const string& region) {
+        double base;
+        if (carrier == "BLUEDART") base = 50 + 20 * kg;
+        else if (carrier == "DELHIVERY") base = 40 + 25 * kg;
+        else if (carrier == "INDIAPOST") base = 30 + 15 * kg;
+        else throw invalid_argument(carrier);
+        if (region == "TIER2") base *= 1.10;
+        else if (region == "REMOTE") base *= 1.35;
+        return round(base * 100) / 100.0;
+    }
+};` }
+            ] }
     },
     mcq: { q: 'Finance changes REMOTE surcharge to 40%. In the good design, which class changes?', options: ['Only the surcharge policy', 'Every carrier class', 'The calculator and every carrier', 'The Region enum and the calculator'], answer: 0, explain: 'Carrier rates and regional surcharges are separate responsibilities with separate owners, so they live in separate classes.' },
     hints: [
@@ -7702,7 +8366,7 @@ int main() {
     example: `<p>Fleet: PetrolCar(tank 40 L, 15 km/L, 10 L left), ElectricCar(60 kWh, 6 km/kWh, 20 kWh left). <code>topUpAll()</code> → petrol tank to 40 L (range 600 km), battery to 60 kWh (range 360 km). ${H.c('g', 'No crash.')}</p>`,
     brute: {
       why: `<p><code>ElectricCar</code> cannot honour <code>refuel(litres)</code> — the parent contract is shaped around petrol. The override throws (surprise exception), so every <code>Vehicle</code> client is at risk: a <b>Liskov</b> violation caused by an abstraction that leaked a detail (litres) into the base type.</p>`,
-      code: `class Vehicle {
+      code: { lang: 'java', code: `class Vehicle {
     protected double fuelLitres, tankLitres, kmPerLitre;
     Vehicle(double tank, double kmpl, double current) { tankLitres = tank; kmPerLitre = kmpl; fuelLitres = current; }
     void refuel(double litres) { fuelLitres = Math.min(tankLitres, fuelLitres + litres); }
@@ -7716,7 +8380,60 @@ class FleetService {
     static void topUpAll(List<Vehicle> fleet) {
         for (Vehicle v : fleet) v.refuel(v.tankLitres);   // boom on the first EV
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class Vehicle:
+    def __init__(self, tank, kmpl, current):
+        self.tank_litres, self.km_per_litre, self.fuel_litres = tank, kmpl, current
+    def refuel(self, litres): self.fuel_litres = min(self.tank_litres, self.fuel_litres + litres)
+    def range(self): return self.fuel_litres * self.km_per_litre
+
+class ElectricCar(Vehicle):
+    def __init__(self): super().__init__(0, 0, 0)
+    def refuel(self, litres): raise NotImplementedError("EVs charge!")
+
+class FleetService:
+    @staticmethod
+    def top_up_all(fleet):
+        for v in fleet: v.refuel(v.tank_litres)   # boom on the first EV` },
+              { lang: 'ts', code: `
+class Vehicle {
+    constructor(protected tankLitres: number, protected kmPerLitre: number, protected fuelLitres: number) {}
+    refuel(litres: number): void { this.fuelLitres = Math.min(this.tankLitres, this.fuelLitres + litres); }
+    range(): number { return this.fuelLitres * this.kmPerLitre; }
+    get tank(): number { return this.tankLitres; }
+}
+class ElectricCar extends Vehicle {
+    constructor() { super(0, 0, 0); }
+    override refuel(litres: number): void { throw new Error("EVs charge!"); }
+}
+class FleetService {
+    static topUpAll(fleet: Vehicle[]): void {
+        for (const v of fleet) v.refuel(v.tank);   // boom on the first EV
+    }
+}` },
+              { lang: 'cpp', code: `
+class Vehicle {
+protected:
+    double fuelLitres, tankLitres, kmPerLitre;
+public:
+    Vehicle(double tank, double kmpl, double current) : fuelLitres(current), tankLitres(tank), kmPerLitre(kmpl) {}
+    virtual ~Vehicle() = default;
+    virtual void refuel(double litres) { fuelLitres = min(tankLitres, fuelLitres + litres); }
+    double range() { return fuelLitres * kmPerLitre; }
+    double tank() { return tankLitres; }
+};
+class ElectricCar : public Vehicle {
+public:
+    ElectricCar() : Vehicle(0, 0, 0) {}
+    void refuel(double litres) override { throw logic_error("EVs charge!"); }
+};
+struct FleetService {
+    static void topUpAll(vector<Vehicle*>& fleet) {
+        for (Vehicle* v : fleet) v->refuel(v->tank());   // boom on the first EV
+    }
+};` }
+            ] }
     },
     mcq: { q: 'What is the root cause of this LSP violation?', options: ['The base type exposes a petrol-specific detail (litres) as if every vehicle had it', 'ElectricCar forgot to call super', 'refuel should be static', 'The language lacks multiple inheritance'], answer: 0, explain: 'The abstraction is wrong. A neutral contract ("top up to full", "range") that every energy source can honour fixes the hierarchy.' },
     hints: [
@@ -8018,7 +8735,7 @@ int main() {
     example: `<p>Coupon SAVE20: 20%, max 150, min cart 500, expires 2026-03-31. Cart 1000 on 2026-03-31 → ${H.c('g', '150 (capped)')}. Same on 2026-04-01 → ${H.c('r', '0 (expired)')}. Cart 400 → ${H.c('y', '0 (below minimum)')}.</p>`,
     brute: {
       why: `<p>Two hidden dependencies: a global singleton (shared mutable state, cannot substitute) and the wall clock (non-deterministic). The business rule cannot be tested in isolation, tests interfere with each other through the singleton, and midnight-boundary bugs slip through — a <b>Dependency Inversion</b> violation.</p>`,
-      code: `record Coupon(String code, int percent, double maxOff, double minCart, LocalDate expires) {}
+      code: { lang: 'java', code: `record Coupon(String code, int percent, double maxOff, double minCart, LocalDate expires) {}
 
 class CouponDb {                                          // global singleton
     private static final CouponDb INSTANCE = new CouponDb();
@@ -8033,7 +8750,69 @@ class CouponService {
         if (c == null || LocalDate.now().isAfter(c.expires()) || cart < c.minCart()) return 0;   // hidden dependency 2
         return Math.min(cart * c.percent() / 100.0, c.maxOff());
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+from dataclasses import dataclass
+from datetime import date
+
+@dataclass(frozen=True)
+class Coupon:
+    code: str
+    percent: int
+    max_off: float
+    min_cart: float
+    expires: date
+
+class CouponDb:                                  # global singleton
+    _instance = None
+    def __init__(self): self.rows = {}
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None: cls._instance = CouponDb()
+        return cls._instance
+    def find(self, code): return self.rows.get(code)
+
+class CouponService:
+    def apply(self, code, cart):
+        c = CouponDb.get_instance().find(code)    # hidden dependency 1
+        if c is None or date.today() > c.expires or cart < c.min_cart: return 0   # hidden dependency 2
+        return min(cart * c.percent / 100.0, c.max_off)` },
+              { lang: 'ts', code: `
+interface Coupon { code: string; percent: number; maxOff: number; minCart: number; expires: Date }
+
+class CouponDb {                                          // global singleton
+    private static readonly INSTANCE = new CouponDb();
+    private readonly rows = new Map<string, Coupon>();
+    static getInstance(): CouponDb { return CouponDb.INSTANCE; }
+    find(code: string): Coupon | undefined { return this.rows.get(code); }
+}
+
+class CouponService {
+    apply(code: string, cart: number): number {
+        const c = CouponDb.getInstance().find(code);     // hidden dependency 1
+        if (!c || new Date() > c.expires || cart < c.minCart) return 0;   // hidden dependency 2
+        return Math.min(cart * c.percent / 100.0, c.maxOff);
+    }
+}` },
+              { lang: 'cpp', code: `
+struct Coupon { string code; int percent; double maxOff, minCart; time_t expires; };
+
+class CouponDb {                                          // global singleton
+    unordered_map<string, Coupon> rows;
+public:
+    static CouponDb& getInstance() { static CouponDb instance; return instance; }
+    const Coupon* find(const string& code) { auto it = rows.find(code); return it == rows.end() ? nullptr : &it->second; }
+};
+
+class CouponService {
+public:
+    double apply(const string& code, double cart) {
+        const Coupon* c = CouponDb::getInstance().find(code);     // hidden dependency 1
+        if (!c || time(nullptr) > c->expires || cart < c->minCart) return 0;   // hidden dependency 2
+        return min(cart * c->percent / 100.0, c->maxOff);
+    }
+};` }
+            ] }
     },
     mcq: { q: 'Why inject <code>java.time.Clock</code> instead of calling <code>LocalDate.now()</code>?', options: ['So tests can fix "now" to any instant and zone deterministically', 'Because LocalDate.now() is deprecated', 'Clock is faster', 'To avoid time zones entirely'], answer: 0, explain: 'A clock abstraction (Java\'s built-in <code>Clock</code>, or an injected function that returns now) lets tests fix the date. <code>Clock.fixed</code> makes expiry boundaries testable; production passes <code>Clock.system(zone)</code>.' },
     hints: [
@@ -8329,7 +9108,7 @@ int main() {
     example: `<p>Items: 2 × 100.00 + 1 × 50.00 = 250.00. Country IN → tax 45.00, total ${H.c('g', '295.00')}. Country DE (added as new class) → tax 47.50, total ${H.c('g', '297.50')}.</p>`,
     brute: {
       why: `<p><b>SRP:</b> one class serves finance (tax rules), sales (line items) and design (layout). <b>OCP:</b> every new country edits the switch inside <code>total()</code>. A layout tweak re-opens the class that computes money — risky.</p>`,
-      code: `class Invoice {
+      code: { lang: 'java', code: `class Invoice {
     private final String country;
     private final List<double[]> lines = new ArrayList<>();   // {qty, unitPrice}
     Invoice(String country) { this.country = country; }
@@ -8346,7 +9125,60 @@ int main() {
         }
     }
     void print() { System.out.println("INVOICE (" + country + ") total = " + total()); }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class Invoice:
+    def __init__(self, country):
+        self._country = country
+        self._lines = []             # (qty, unit_price)
+    def add(self, qty, price): self._lines.append((qty, price))
+
+    def total(self):
+        sub = 0.0
+        for qty, price in self._lines: sub += qty * price
+        if self._country == "IN": return sub * 1.18
+        if self._country == "UK": return sub * 1.20
+        if self._country == "US": return sub
+        raise ValueError(self._country)
+
+    def print(self): print(f"INVOICE ({self._country}) total = {self.total()}")` },
+              { lang: 'ts', code: `
+class Invoice {
+    private readonly lines: [number, number][] = [];   // [qty, unitPrice]
+    constructor(private readonly country: string) {}
+    add(qty: number, price: number): void { this.lines.push([qty, price]); }
+
+    total(): number {
+        let sub = 0;
+        for (const l of this.lines) sub += l[0] * l[1];
+        switch (this.country) {
+            case "IN": return sub * 1.18;
+            case "UK": return sub * 1.20;
+            case "US": return sub;
+            default: throw new Error(this.country);
+        }
+    }
+    print(): void { console.log("INVOICE (" + this.country + ") total = " + this.total()); }
+}` },
+              { lang: 'cpp', code: `
+class Invoice {
+    string country;
+    vector<pair<int, double>> lines;   // {qty, unitPrice}
+public:
+    Invoice(string country) : country(country) {}
+    void add(int qty, double price) { lines.push_back({qty, price}); }
+
+    double total() {
+        double sub = 0;
+        for (auto& l : lines) sub += l.first * l.second;
+        if (country == "IN") return sub * 1.18;
+        if (country == "UK") return sub * 1.20;
+        if (country == "US") return sub;
+        throw invalid_argument(country);
+    }
+    void print() { cout << "INVOICE (" << country << ") total = " << total() << "\\n"; }
+};` }
+            ] }
     },
     mcq: { q: 'Where should "Germany charges 19%" be written after the refactor?', options: ['In a new GermanVat class implementing TaxPolicy', 'In the Invoice switch', 'In the InvoicePrinter', 'In a properties file read by Invoice.print()'], answer: 0, explain: 'Tax rules are their own responsibility with their own axis of change (countries), so each country is a TaxPolicy implementation.' },
     hints: [
@@ -8715,7 +9547,7 @@ int main() {
     example: `<p>Min level INFO, appenders [console(text), memory(json)]. <code>debug("x")</code> → nothing. <code>warn("disk 91%")</code> → console: <code>WARN disk 91%</code>; memory: <code>{"level":"WARN","msg":"disk 91%"}</code>.</p>`,
     brute: {
       why: `<p><b>OCP:</b> every destination or format edits <code>log()</code>. <b>SRP:</b> filtering, formatting and writing are mixed. <b>DIP:</b> the logger creates file writers itself, so tests must read files from disk. String levels also allow typos ("WARNING") that silently never log.</p>`,
-      code: `class Logger {
+      code: { lang: 'java', code: `class Logger {
     private final String destination;   // "console" or "file"
     private final String minLevel;
     Logger(String destination, String minLevel) { this.destination = destination; this.minLevel = minLevel; }
@@ -8729,7 +9561,57 @@ int main() {
             try (FileWriter w = new FileWriter("app.log", true)) { w.write(line + "\\n"); }
         }
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+import datetime
+
+class Logger:
+    def __init__(self, destination, min_level):
+        self._destination = destination    # "console" or "file"
+        self._min_level = min_level
+
+    def log(self, level, msg):
+        order = ["DEBUG", "INFO", "WARN", "ERROR"]
+        if order.index(level) < order.index(self._min_level): return
+        line = str(datetime.datetime.now().time()) + " " + level + " " + msg
+        if self._destination == "console": print(line)
+        elif self._destination == "file":
+            with open("app.log", "a") as w: w.write(line + "\\n")` },
+              { lang: 'ts', code: `
+import { appendFileSync } from "fs";
+
+class Logger {
+    constructor(private readonly destination: string, private readonly minLevel: string) {}   // "console" or "file"
+
+    log(level: string, msg: string): void {
+        const order = ["DEBUG", "INFO", "WARN", "ERROR"];
+        if (order.indexOf(level) < order.indexOf(this.minLevel)) return;
+        const line = new Date().toISOString() + " " + level + " " + msg;
+        if (this.destination === "console") console.log(line);
+        else if (this.destination === "file") {
+            appendFileSync("app.log", line + "\\n");
+        }
+    }
+}` },
+              { lang: 'cpp', code: `
+class Logger {
+    string destination;   // "console" or "file"
+    string minLevel;
+public:
+    Logger(string destination, string minLevel) : destination(destination), minLevel(minLevel) {}
+
+    void log(const string& level, const string& msg) {
+        vector<string> order = {"DEBUG", "INFO", "WARN", "ERROR"};
+        auto idx = [&](const string& s) { return find(order.begin(), order.end(), s) - order.begin(); };
+        if (idx(level) < idx(minLevel)) return;
+        string line = to_string(time(nullptr)) + " " + level + " " + msg;
+        if (destination == "console") cout << line << "\\n";
+        else if (destination == "file") {
+            ofstream("app.log", ios::app) << line << "\\n";
+        }
+    }
+};` }
+            ] }
     },
     mcq: { q: 'Which split mirrors real logging frameworks (Logback/Log4j)?', options: ['Logger (level filter) → Appender (destination) → Layout (format)', 'One Logger subclass per destination', 'A static LogUtils class', 'Separate loggers per level'], answer: 0, explain: 'Frameworks separate what/whether to log, where it goes and how it looks — each an independent axis of change.' },
     hints: [
@@ -9045,8 +9927,8 @@ int main() {
     constraints: `<p>Vehicle types: BIKE, CAR, EV, TRUCK. Pricing: first hour flat, then per started hour (BIKE 10/5, CAR 30/20, TRUCK 60/40; EV = CAR rate + 15 per hour charging). Weekend: +25%. Lot full → reject park. Paying twice for one ticket → reject.</p>`,
     example: `<p>CAR parks Sat 10:00, exits 12:30 → hours = 3 (started hours) → 30 + 2×20 = 70 → weekend ×1.25 = ${H.c('g', '87.50')}. EV, Mon 09:00–10:00 → 30 + 15 = ${H.c('g', '45.00')}. Third car when 2 car spots exist → ${H.c('r', 'rejected: no spot')}.</p>`,
     brute: {
-      why: `<p><b>S:</b> spots, tickets, pricing, payments and receipts in one class (5 actors). <b>O:</b> fee switch and payment if/else edited for EV/UPI/weekend. <b>D:</b> <code>new CardTerminal()</code> and <code>System.currentTimeMillis()</code> make tests slow and time-dependent. <b>I/L</b> risks appear as soon as someone adds "refund" to a shared payment interface that cash cannot honour. Every new requirement edits the same method.</p>`,
-      code: `class CardTerminal { boolean charge(double amt) { System.out.println("card charged " + amt); return true; } }
+      why: `<p><b>S:</b> spots, tickets, pricing, payments and receipts in one class (5 actors). <b>O:</b> fee switch and payment if/else edited for EV/UPI/weekend. <b>D:</b> constructing a <code>CardTerminal</code> inside the method and reading the system clock directly make tests slow and time-dependent. <b>I/L</b> risks appear as soon as someone adds "refund" to a shared payment interface that cash cannot honour. Every new requirement edits the same method.</p>`,
+      code: { lang: 'java', code: `class CardTerminal { boolean charge(double amt) { System.out.println("card charged " + amt); return true; } }
 
 class ParkingLot {
     private final Map<String, Integer> free = new HashMap<>(Map.of("BIKE", 2, "CAR", 2, "TRUCK", 1));
@@ -9075,7 +9957,99 @@ class ParkingLot {
         System.out.println("RECEIPT " + plate + " " + hours + "h " + fee);
         return fee;
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+import time
+
+class CardTerminal:
+    def charge(self, amt): print("card charged", amt); return True
+
+class ParkingLot:
+    def __init__(self):
+        self._free = {"BIKE": 2, "CAR": 2, "TRUCK": 1}
+        self._tickets = {}                      # plate -> (type, start_millis)
+
+    def park(self, type, plate):
+        if self._free.get(type, 0) == 0: return "FULL"
+        self._free[type] -= 1
+        self._tickets[plate] = (type, int(time.time() * 1000))
+        return "TICKET-" + plate
+
+    def exit(self, plate, pay_by):
+        typ, start = self._tickets.pop(plate)
+        hours = max(1, (int(time.time() * 1000) - start + 3_599_999) // 3_600_000)
+        if typ == "BIKE": fee = 10 + (hours - 1) * 5
+        elif typ == "CAR": fee = 30 + (hours - 1) * 20
+        elif typ == "TRUCK": fee = 60 + (hours - 1) * 40
+        else: raise ValueError(typ)
+        if pay_by == "CARD": CardTerminal().charge(fee)
+        elif pay_by == "CASH": print("collect cash", fee)
+        self._free[typ] += 1
+        print("RECEIPT", plate, str(hours) + "h", fee)
+        return fee` },
+              { lang: 'ts', code: `
+class CardTerminal { charge(amt: number): boolean { console.log("card charged " + amt); return true; } }
+
+class ParkingLot {
+    private free = new Map<string, number>([["BIKE", 2], ["CAR", 2], ["TRUCK", 1]]);
+    private tickets = new Map<string, [string, number]>();   // plate -> [type, startMillis]
+
+    park(type: string, plate: string): string {
+        if ((this.free.get(type) ?? 0) === 0) return "FULL";
+        this.free.set(type, this.free.get(type)! - 1);
+        this.tickets.set(plate, [type, Date.now()]);
+        return "TICKET-" + plate;
+    }
+
+    exit(plate: string, payBy: string): number {
+        const [type, start] = this.tickets.get(plate)!;
+        this.tickets.delete(plate);
+        const hours = Math.max(1, Math.floor((Date.now() - start + 3_599_999) / 3_600_000));
+        let fee: number;
+        switch (type) {
+            case "BIKE": fee = 10 + (hours - 1) * 5; break;
+            case "CAR": fee = 30 + (hours - 1) * 20; break;
+            case "TRUCK": fee = 60 + (hours - 1) * 40; break;
+            default: throw new Error(type);
+        }
+        if (payBy === "CARD") new CardTerminal().charge(fee);
+        else if (payBy === "CASH") console.log("collect cash " + fee);
+        this.free.set(type, this.free.get(type)! + 1);
+        console.log("RECEIPT " + plate + " " + hours + "h " + fee);
+        return fee;
+    }
+}` },
+              { lang: 'cpp', code: `
+struct CardTerminal { bool charge(double amt) { cout << "card charged " << amt << "\\n"; return true; } };
+
+class ParkingLot {
+    unordered_map<string, int> free = {{"BIKE", 2}, {"CAR", 2}, {"TRUCK", 1}};
+    unordered_map<string, pair<string, long long>> tickets;   // plate -> {type, startMillis}
+    static long long nowMillis() { return chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count(); }
+public:
+    string park(const string& type, const string& plate) {
+        if (free[type] == 0) return "FULL";
+        free[type]--;
+        tickets[plate] = {type, nowMillis()};
+        return "TICKET-" + plate;
+    }
+
+    double exit(const string& plate, const string& payBy) {
+        auto t = tickets[plate]; tickets.erase(plate);
+        long long hours = max(1LL, (nowMillis() - t.second + 3599999) / 3600000);
+        double fee;
+        if (t.first == "BIKE") fee = 10 + (hours - 1) * 5;
+        else if (t.first == "CAR") fee = 30 + (hours - 1) * 20;
+        else if (t.first == "TRUCK") fee = 60 + (hours - 1) * 40;
+        else throw invalid_argument(t.first);
+        if (payBy == "CARD") CardTerminal().charge(fee);
+        else if (payBy == "CASH") cout << "collect cash " << fee << "\\n";
+        free[t.first]++;
+        cout << "RECEIPT " << plate << " " << hours << "h " << fee << "\\n";
+        return fee;
+    }
+};` }
+            ] }
     },
     mcq: { q: 'Weekend pricing (+25%) should be added how?', options: ['As a decorator/wrapper PricingPolicy around the base policy, using the injected Clock', 'As another case in the fee switch', 'Inside the payment classes', 'By subclassing ParkingLot as WeekendParkingLot'], answer: 0, explain: 'A <code>WeekendSurcharge implements PricingPolicy</code> wrapping the base policy adds behaviour without editing it (OCP), and reading time from the ticket/Clock keeps it testable (DIP).' },
     hints: [
@@ -9752,7 +10726,7 @@ int main() {
     example: `<p>Config <code>"trim,mask-emails,censor"</code>, banned = [darn]. Input <code>"  Mail me at a@b.com, darn it  "</code> → ${H.c('g', '"Mail me at ***@***, **** it"')}. Config <code>"trim,mask-phones"</code> works after adding one class + one registration.</p>`,
     brute: {
       why: `<p>Boolean-flag parameters violate <b>OCP</b> (each rule edits the signature and every caller) and hide meaning at call sites. The hard-coded order and banned list couple policy to data (<b>DIP</b>: configuration and word lists are details). It is also an <b>SRP</b> pile: four unrelated rules in one method, each owned by a different team (privacy, trust &amp; safety, formatting).</p>`,
-      code: `class TextProcessor {
+      code: { lang: 'java', code: `class TextProcessor {
     String process(String text, boolean trim, boolean lower, boolean maskEmails, boolean censor) {
         String t = text;
         if (trim) t = t.trim();
@@ -9761,7 +10735,42 @@ int main() {
         if (censor) t = t.replaceAll("(?i)darn", "****");            // banned list hard-coded
         return t;                                                     // new rule? new boolean + new if
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+import re
+
+class TextProcessor:
+    def process(self, text, trim, lower, mask_emails, censor):
+        t = text
+        if trim: t = t.strip()
+        if lower: t = t.lower()
+        if mask_emails: t = re.sub(r"[\\w.+-]+@[\\w-]+\\.[\\w.]+", "***@***", t)
+        if censor: t = re.sub(r"(?i)darn", "****", t)            # banned list hard-coded
+        return t                                                  # new rule? new boolean + new if` },
+              { lang: 'ts', code: `
+class TextProcessor {
+    process(text: string, trim: boolean, lower: boolean, maskEmails: boolean, censor: boolean): string {
+        let t = text;
+        if (trim) t = t.trim();
+        if (lower) t = t.toLowerCase();
+        if (maskEmails) t = t.replace(/[\\w.+-]+@[\\w-]+\\.[\\w.]+/g, "***@***");
+        if (censor) t = t.replace(/darn/gi, "****");              // banned list hard-coded
+        return t;                                                  // new rule? new boolean + new if
+    }
+}` },
+              { lang: 'cpp', code: `
+class TextProcessor {
+public:
+    string process(string text, bool trim, bool lower, bool maskEmails, bool censor) {
+        string t = text;
+        if (trim) { t.erase(0, t.find_first_not_of(" \\t\\n")); t.erase(t.find_last_not_of(" \\t\\n") + 1); }
+        if (lower) transform(t.begin(), t.end(), t.begin(), ::tolower);
+        if (maskEmails) t = regex_replace(t, regex("[\\\\w.+-]+@[\\\\w-]+\\\\.[\\\\w.]+"), "***@***");
+        if (censor) t = regex_replace(t, regex("darn", regex::icase), "****");   // banned list hard-coded
+        return t;                                                                 // new rule? new boolean + new if
+    }
+};` }
+            ] }
     },
     mcq: { q: 'What makes the pipeline open for extension?', options: ['A TextFilter interface plus a name → factory registry used to build the chain from config', 'An enum of all filters with a switch', 'Subclassing TextProcessor for each combination', 'More boolean parameters with default values'], answer: 0, explain: 'Filters implement one interface and register themselves by name; the pipeline composes whatever the config lists. The core code never learns about specific filters.' },
     hints: [
@@ -10169,8 +11178,8 @@ int main() {
     constraints: `<p>Operations: push, pop, peek, size, isEmpty. Pop/peek on empty must not throw (return an empty optional: Java <code>Optional</code>, Python <code>None</code>, TypeScript <code>undefined</code>, C++ <code>std::optional</code>). No public method may let callers bypass LIFO.</p>`,
     example: `<p>Bounded(capacity 2): push A → true, push B → true, push C → ${H.c('y', 'false (full, unchanged)')}, pop → ${H.c('g', 'B')}. The same contract test passes for both <code>ArrayLifoStack</code> and <code>BoundedLifoStack</code>.</p>`,
     brute: {
-      why: `<p>(1) <b>Inheritance for reuse</b>: extending ArrayList exposes ~40 list methods that break the stack invariant (only the top is accessible) — the subclass cannot protect its own invariant (the same flaw as <code>java.util.Stack extends Vector</code>). (2) <code>BoundedStack.push</code> <b>strengthens the precondition</b> ("only when not full") and adds a surprise exception, so clients of <code>LifoStack</code> break — a direct LSP violation.</p>`,
-      code: `class LifoStack<T> extends ArrayList<T> {
+      why: `<p>(1) <b>Inheritance for reuse</b>: extending a list class (<code>ArrayList</code> in Java, <code>list</code> in Python, <code>Array</code> in TypeScript, <code>vector</code> in C++) exposes dozens of list methods that break the stack invariant (only the top is accessible) — the subclass cannot protect its own invariant (the same flaw as <code>java.util.Stack extends Vector</code>). (2) <code>BoundedStack.push</code> <b>strengthens the precondition</b> ("only when not full") and adds a surprise exception, so clients of <code>LifoStack</code> break — a direct LSP violation.</p>`,
+      code: { lang: 'java', code: `class LifoStack<T> extends ArrayList<T> {
     void push(T x) { add(x); }
     T pop() { return remove(size() - 1); }          // throws on empty
 }
@@ -10187,7 +11196,68 @@ class Scheduler {
         for (int i = 0; i < 3; i++) jobs.push("job" + i);   // crashes for BoundedStack(2)
         jobs.add(0, "sneaky");                              // inherited: breaks LIFO silently
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class LifoStack(list):
+    def push(self, x): self.append(x)
+    def pop(self): return super().pop()          # raises on empty
+
+class BoundedStack(LifoStack):
+    def __init__(self, capacity):
+        super().__init__()
+        self._capacity = capacity
+    def push(self, x):
+        if len(self) == self._capacity: raise RuntimeError("full")   # strengthened precondition
+        super().push(x)
+
+class Scheduler:
+    @staticmethod
+    def run_all(jobs):
+        for i in range(3): jobs.push("job" + str(i))   # crashes for BoundedStack(2)
+        jobs.insert(0, "sneaky")                       # inherited: breaks LIFO silently` },
+              { lang: 'ts', code: `
+class LifoStack<T> extends Array<T> {
+    pushItem(x: T): void { this.push(x); }
+    popItem(): T | undefined { return this.pop(); }
+}
+class BoundedStack<T> extends LifoStack<T> {
+    private capacity = 0;
+    static of<T>(capacity: number): BoundedStack<T> { const s = new BoundedStack<T>(); s.capacity = capacity; return s; }
+    override pushItem(x: T): void {
+        if (this.length === this.capacity) throw new Error("full");   // strengthened precondition
+        super.pushItem(x);
+    }
+}
+class Scheduler {
+    static runAll(jobs: LifoStack<string>): void {
+        for (let i = 0; i < 3; i++) jobs.pushItem("job" + i);   // crashes for BoundedStack(2)
+        jobs.unshift("sneaky");                                  // inherited: breaks LIFO silently
+    }
+}` },
+              { lang: 'cpp', code: `
+template <class T>
+class LifoStack : public vector<T> {
+public:
+    void pushItem(T x) { this->push_back(x); }
+    T popItem() { T x = this->back(); this->pop_back(); return x; }
+};
+template <class T>
+class BoundedStack : public LifoStack<T> {
+    size_t capacity;
+public:
+    BoundedStack(size_t capacity) : capacity(capacity) {}
+    void pushItem(T x) {
+        if (this->size() == capacity) throw runtime_error("full");   // strengthened precondition
+        LifoStack<T>::pushItem(x);
+    }
+};
+struct Scheduler {
+    static void runAll(BoundedStack<string>& jobs) {
+        for (int i = 0; i < 3; i++) jobs.pushItem("job" + to_string(i));   // crashes for BoundedStack(2)
+        jobs.insert(jobs.begin(), "sneaky");                                // inherited: breaks LIFO silently
+    }
+};` }
+            ] }
     },
     mcq: { q: 'How can a bounded stack and an unbounded stack share one honest contract?', options: ['Make push return boolean ("accepted or not") in the interface, so "full" is part of the contract', 'Let the bounded stack silently drop the item and return void', 'Catch IllegalStateException in every caller', 'Make capacity a static constant'], answer: 0, explain: 'Like <code>Queue.offer</code>, a boolean result lets every implementation keep the promise. The unbounded one always returns true; the bounded one returns false when full. Callers wrote code for the contract, so nothing surprises them.' },
     hints: [
@@ -10527,7 +11597,7 @@ int main() {
     example: `<p>Stock {pen: 5}. Cart [pen×2] + payment OK → ${H.c('g', 'CONFIRMED')}, stock 3, email sent. Cart [pen×9] → ${H.c('y', 'OUT_OF_STOCK')}. Cart [pen×2] + decline → ${H.c('r', 'PAYMENT_DECLINED')}, stock back to 5.</p>`,
     brute: {
       why: `<p><b>DIP:</b> static and <code>new</code>-ed vendor clients make the flow untestable and vendor-locked. <b>ISP:</b> checkout depends on a 12-method inventory API. <b>SRP:</b> orchestration, vendor calls and email wording are mixed. The missing compensation bug survived precisely because nobody could test "payment declined" without a real gateway.</p>`,
-      code: `class InventoryDb {                                        // static global, 12 methods in real life
+      code: { lang: 'java', code: `class InventoryDb {                                        // static global, 12 methods in real life
     static final Map<String, Integer> STOCK = new HashMap<>(Map.of("pen", 5));
     static boolean reserve(String sku, int qty) {
         int have = STOCK.getOrDefault(sku, 0);
@@ -10546,7 +11616,75 @@ class CheckoutService {
         new SmtpMailer().send(email, "Order confirmed");                               // failure here kills checkout
         return "CONFIRMED";
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class InventoryDb:                                         # static global, 12 methods in real life
+    STOCK = {"pen": 5}
+    @staticmethod
+    def reserve(sku, qty):
+        have = InventoryDb.STOCK.get(sku, 0)
+        if have < qty: return False
+        InventoryDb.STOCK[sku] = have - qty
+        return True
+
+class RazorpayClient:
+    def __init__(self, key): pass
+    def charge(self, amt): return amt < 1000
+
+class SmtpMailer:
+    def send(self, to, body): print("mail", to, body)
+
+class CheckoutService:
+    def checkout(self, sku, qty, total, email):
+        if not InventoryDb.reserve(sku, qty): return "OUT_OF_STOCK"
+        if not RazorpayClient("live_key").charge(total): return "PAYMENT_DECLINED"   # BUG: stock never released
+        SmtpMailer().send(email, "Order confirmed")                                  # failure here kills checkout
+        return "CONFIRMED"` },
+              { lang: 'ts', code: `
+class InventoryDb {                                        // static global, 12 methods in real life
+    static readonly STOCK = new Map<string, number>([["pen", 5]]);
+    static reserve(sku: string, qty: number): boolean {
+        const have = InventoryDb.STOCK.get(sku) ?? 0;
+        if (have < qty) return false;
+        InventoryDb.STOCK.set(sku, have - qty);
+        return true;
+    }
+}
+class RazorpayClient { constructor(key: string) { } charge(amt: number): boolean { return amt < 1000; } }
+class SmtpMailer { send(to: string, body: string): void { console.log("mail " + to + " " + body); } }
+
+class CheckoutService {
+    checkout(sku: string, qty: number, total: number, email: string): string {
+        if (!InventoryDb.reserve(sku, qty)) return "OUT_OF_STOCK";
+        if (!new RazorpayClient("live_key").charge(total)) return "PAYMENT_DECLINED";   // BUG: stock never released
+        new SmtpMailer().send(email, "Order confirmed");                               // failure here kills checkout
+        return "CONFIRMED";
+    }
+}` },
+              { lang: 'cpp', code: `
+class InventoryDb {                                        // static global, 12 methods in real life
+public:
+    static inline unordered_map<string, int> STOCK = {{"pen", 5}};
+    static bool reserve(const string& sku, int qty) {
+        int have = STOCK.count(sku) ? STOCK[sku] : 0;
+        if (have < qty) return false;
+        STOCK[sku] = have - qty;
+        return true;
+    }
+};
+struct RazorpayClient { RazorpayClient(string key) { } bool charge(double amt) { return amt < 1000; } };
+struct SmtpMailer { void send(const string& to, const string& body) { cout << "mail " << to << " " << body << "\\n"; } };
+
+class CheckoutService {
+public:
+    string checkout(const string& sku, int qty, double total, const string& email) {
+        if (!InventoryDb::reserve(sku, qty)) return "OUT_OF_STOCK";
+        if (!RazorpayClient("live_key").charge(total)) return "PAYMENT_DECLINED";   // BUG: stock never released
+        SmtpMailer().send(email, "Order confirmed");                               // failure here kills checkout
+        return "CONFIRMED";
+    }
+};` }
+            ] }
     },
     mcq: { q: 'Which inventory interface should checkout depend on?', options: ['A narrow StockReservations port: reserve(lines) and release(lines)', 'The full 12-method InventoryDb', 'A generic Repository&lt;Object&gt;', 'None — call the DB directly from checkout'], answer: 0, explain: 'ISP + DIP: the checkout domain defines the small port it needs, shaped by its use case (reserve/release), and the inventory adapter implements it.' },
     hints: [
@@ -11033,11 +12171,11 @@ int main() {
     { q: 'In Uncle Bob\'s modern wording, SRP means a module should be responsible to…', options: ['One actor (one group of people who request changes)', 'One method', 'One database table', 'One developer'], answer: 0, explain: '"A module should be responsible to one, and only one, actor." A class with many methods can still follow SRP if they all change for the same stakeholder.' },
     { q: 'A <code>DiscountCalculator</code> has a <code>switch</code> on customer type that grows every month. Which principle is most directly violated?', options: ['Open/Closed', 'Liskov Substitution', 'Interface Segregation', 'Dependency Inversion'], answer: 0, explain: 'Each new discount modifies tested code. Replace the conditional with polymorphism (a <code>DiscountPolicy</code> per type) so new types are added, not edited in.' },
     { q: '<code>Square extends Rectangle</code> overrides <code>setWidth</code> to also set the height. Client code expecting area = w × h breaks. This violates…', options: ['Liskov Substitution', 'Single Responsibility', 'Open/Closed', 'Interface Segregation'], answer: 0, explain: 'The subclass breaks the behavioural contract of the parent ("setWidth changes only width"), so it is not substitutable.' },
-    { q: 'Which of these is a classic smell of an Interface Segregation violation?', options: ['Implementations that throw <code>UnsupportedOperationException</code> for methods they cannot support', 'A class with a private helper method', 'An interface with one method', 'Using generics in an interface'], answer: 0, explain: 'Forced, fake implementations mean the interface is too fat for some implementers. Split it into role interfaces.' },
+    { q: 'Which of these is a classic smell of an Interface Segregation violation?', options: ['Implementations that throw a "not supported" error (<code>UnsupportedOperationException</code> in Java, <code>NotImplementedError</code> in Python) for methods they cannot support', 'A class with a private helper method', 'An interface with one method', 'Using generics in an interface'], answer: 0, explain: 'Forced, fake implementations mean the interface is too fat for some implementers. Split it into role interfaces.' },
     { q: 'In the Dependency Inversion Principle, who should own (define) the <code>OrderRepository</code> interface?', options: ['The high-level domain module that uses it', 'The MySQL adapter package', 'The JDBC driver vendor', 'A shared utils module used by everyone'], answer: 0, explain: 'The abstraction is shaped by the client\'s needs and lives with the policy; low-level details depend on it. That is what "inversion" refers to.' },
     { q: 'What is the relationship between DIP and Dependency Injection (DI)?', options: ['DI (passing dependencies in) is a technique often used to achieve DIP', 'They are exactly the same thing', 'DI forbids interfaces', 'DIP requires a framework like Spring'], answer: 0, explain: 'DIP is the principle (depend on abstractions). DI is how you supply the concrete implementation from outside. IoC containers automate DI. You can do DI with plain constructors.' },
     { q: 'A subclass method requires <code>amount ≤ 1000</code> while the parent accepted any positive amount. In LSP terms this…', options: ['Strengthens a precondition — not allowed', 'Weakens a precondition — allowed', 'Strengthens a postcondition — allowed', 'Has nothing to do with LSP'], answer: 0, explain: 'Subtypes may accept <i>more</i> (weaker preconditions) and promise <i>more</i> (stronger postconditions), never less. Demanding more from callers breaks parent-based clients.' },
-    { q: 'Which change best applies DIP to code that calls <code>LocalDate.now()</code> inside a business rule?', options: ['Inject a <code>java.time.Clock</code> and call <code>LocalDate.now(clock)</code>', 'Wrap the call in try/catch', 'Make the method static', 'Cache today\'s date in a static field'], answer: 0, explain: 'Time is a volatile, non-deterministic dependency. a clock abstraction is the standard fix (Java\'s <code>Clock</code>, or an injected function that returns now); tests pass <code>Clock.fixed(...)</code>.' },
+    { q: 'Which change best applies DIP to code that reads the current date inside a business rule (<code>LocalDate.now()</code>, <code>date.today()</code>, <code>new Date()</code>)?', options: ['Inject a clock abstraction (Java\'s <code>Clock</code>, a function that returns now) and read the date from it', 'Wrap the call in try/catch', 'Make the method static', 'Cache today\'s date in a static field'], answer: 0, explain: 'Time is a volatile, non-deterministic dependency. a clock abstraction is the standard fix (Java\'s <code>Clock</code>, or an injected function that returns now); tests pass <code>Clock.fixed(...)</code>.' },
     { q: 'You have exactly one implementation of a payment interface, no plans for another, and no testing need for a fake. Strongest design advice?', options: ['Consider a concrete class for now (YAGNI); extract an interface when a real need appears', 'Always add an interface plus an abstract factory', 'Use reflection to load implementations', 'Duplicate the class just in case'], answer: 0, explain: 'SOLID responds to real or clearly expected change. Interfaces with one implementation and no test seam are needless complexity; IDEs extract interfaces in seconds when needed.' },
     { q: 'Sealed types with exhaustive pattern matching (Java 21 <code>sealed</code> + <code>switch</code>, a TypeScript discriminated union, C++ <code>std::variant</code>) are available. When is that a better fit than polymorphic classes (Strategy)?', options: ['When the set of types is fixed but new operations are added often', 'When new types are added every week by different teams', 'Never — switches always violate OCP', 'Only for primitive types'], answer: 0, explain: 'This is the expression problem. Polymorphism makes adding types cheap; sealed + switch makes adding operations cheap with compiler-checked exhaustiveness. Pick by the axis of change.' },
     { q: 'An <code>OfficeMachine</code> implements <code>Printer</code>, <code>Scanner</code> and <code>Fax</code>. A <code>PrintQueue</code> constructor should accept…', options: ['A <code>Printer</code>', 'An <code>OfficeMachine</code>', 'An <code>Object</code>', 'All three interfaces as separate parameters'], answer: 0, explain: 'Depend on the narrowest role you use. PrintQueue then works with any printer and is unaffected by fax/scan changes.' },
@@ -11074,6 +12212,613 @@ int main() {
   var allProblems = practice.slice();
   topics.forEach(function (t) { (t.problems || []).forEach(function (p) { allProblems.push(p); }); });
   allProblems.forEach(function (p, i) { rotate(p.mcq, i * 3 + 2); });
+
+  /* ---- python / TypeScript / C++ versions of the Java code panes (same lines, so hl and "line N" narration still match) ---- */
+  ALTS[T1_GOD] = mkAlt(`class OrderManager:
+    def place_order(self, item, price, email):
+        tax = price * 0.18          # tax rule
+        total = price + tax
+        sql = ("INSERT INTO orders VALUES('"
+            + item + "'," + str(total) + ")")    # database
+        print("MySQL> " + sql)
+        pdf = "%PDF " + item + " " + str(total)  # invoice
+        print("SMTP to " + email
+            + ": " + pdf)                  # email
+        return total`, `class OrderManager {
+  placeOrder(item: string, price: number, email: string): number {
+    const tax = price * 0.18;          // tax rule
+    const total = price + tax;
+    const sql = "INSERT INTO orders VALUES('"
+        + item + "'," + total + ")";    // database
+    console.log("MySQL> " + sql);
+    const pdf = "%PDF " + item + " " + total; // invoice
+    console.log("SMTP to " + email
+        + ": " + pdf);                  // email
+    return total;
+  }
+}`, `class OrderManager {
+public:
+  double placeOrder(string item, double price, string email) {
+    double tax = price * 0.18;          // tax rule
+    double total = price + tax;
+    string sql = "INSERT INTO orders VALUES('"
+        + item + "'," + to_string(total) + ")";    // database
+    cout << "MySQL> " << sql << endl;
+    string pdf = "%PDF " + item + " " + to_string(total); // invoice
+    cout << "SMTP to " << email
+        << ": " << pdf << endl;         // email
+    return total;
+  }
+};`, { cpp: { 2: 3, 3: 4, 4: 5, 5: 6, 6: 7, 7: 8, 8: 9, 9: 10, 10: 11 } });
+  ALTS[T1_CLEAN] = mkAlt(`class OrderService:
+    tax: TaxPolicy
+    repo: OrderRepository
+    renderer: InvoiceRenderer
+    notifier: Notifier
+    def __init__(self, t: TaxPolicy, r: OrderRepository,
+                 v: InvoiceRenderer, n: Notifier):
+        self.tax, self.repo, self.renderer, self.notifier = t, r, v, n
+
+    def place_order(self, item, price, email):
+        total = price + self.tax.on(price)
+        self.repo.save(item, total)
+        self.notifier.send(email, self.renderer.render(item, total))
+        return total`, `class OrderService {
+  private readonly tax: TaxPolicy;
+  private readonly repo: OrderRepository;
+  private readonly renderer: InvoiceRenderer;
+  private readonly notifier: Notifier;
+  constructor(t: TaxPolicy, r: OrderRepository,
+              v: InvoiceRenderer, n: Notifier) {
+    this.tax = t; this.repo = r; this.renderer = v; this.notifier = n;
+  }
+  placeOrder(item: string, price: number, email: string): number {
+    const total = price + this.tax.on(price);
+    this.repo.save(item, total);
+    this.notifier.send(email, this.renderer.render(item, total));
+    return total;
+  }
+}`, `class OrderService {
+  TaxPolicy& tax;
+  OrderRepository& repo;
+  InvoiceRenderer& renderer;
+  Notifier& notifier;
+public: OrderService(TaxPolicy& t, OrderRepository& r,
+               InvoiceRenderer& v, Notifier& n)
+    : tax(t), repo(r), renderer(v), notifier(n) {}
+
+  double placeOrder(string item, double price, string email) {
+    double total = price + tax.on(price);
+    repo.save(item, total);
+    notifier.send(email, renderer.render(item, total));
+    return total;
+  }
+};`);
+  ALTS[T2_BAD] = mkAlt(`class Employee:
+    def __init__(self, name, rate, hours): self.name, self.rate, self.hours = name, rate, hours
+    # Accounting (CFO) owns this
+    def calculate_pay(self):
+        return self.regular_hours() * self.rate
+
+    # HR (COO) owns this
+    def report_hours(self):
+        return self.name + ": " + str(self.regular_hours()) + "h"
+
+    # DBA (CTO) owns this
+    def save(self):
+        print("UPDATE emp ...")
+
+    # shared helper: whose rule is it?
+    def regular_hours(self):
+        return min(self.hours, 40)`, `class Employee {
+  name = ""; rate = 0; hours = 0;
+  // Accounting (CFO) owns this
+  calculatePay(): number {
+    return this.regularHours() * this.rate;
+  }
+  // HR (COO) owns this
+  reportHours(): string {
+    return this.name + ": " + this.regularHours() + "h";
+  }
+  // DBA (CTO) owns this
+  save(): void {
+    console.log("UPDATE emp ...");
+  }
+  // shared helper: whose rule is it?
+  regularHours(): number {
+    return Math.min(this.hours, 40);
+  }
+}`, `class Employee {
+public: string name; double rate; int hours;
+  // Accounting (CFO) owns this
+  double calculatePay() {
+    return regularHours() * rate;
+  }
+  // HR (COO) owns this
+  string reportHours() {
+    return name + ": " + to_string(regularHours()) + "h";
+  }
+  // DBA (CTO) owns this
+  void save() {
+    cout << "UPDATE emp ..." << endl;
+  }
+  // shared helper: whose rule is it?
+  int regularHours() {
+    return min(hours, 40);
+  }
+};`);
+  ALTS[T2_GOOD] = mkAlt(`@dataclass(frozen=True)
+class EmployeeData: name: str; rate: float; hours: int
+
+class PayCalculator:          # Accounting
+    def pay(self, e):
+        return min(e.hours, 40) * e.rate
+
+
+class HourReporter:           # HR
+    def report(self, e):
+        return e.name + ": " + str(e.hours) + "h"
+
+
+class EmployeeRepository:     # DBA
+    def save(self, e):
+        print("UPDATE emp ...")`, `interface EmployeeData { readonly name: string;
+                      readonly rate: number; readonly hours: number; }
+
+class PayCalculator {          // Accounting
+  pay(e: EmployeeData): number {
+    return Math.min(e.hours, 40) * e.rate;
+  }
+}
+class HourReporter {           // HR
+  report(e: EmployeeData): string {
+    return e.name + ": " + e.hours + "h";
+  }
+}
+class EmployeeRepository {     // DBA
+  save(e: EmployeeData): void {
+    console.log("UPDATE emp ...");
+  }
+}`, `struct EmployeeData { string name;
+                      double rate; int hours; };
+
+struct PayCalculator {          // Accounting
+  double pay(const EmployeeData& e) {
+    return min(e.hours, 40) * e.rate;
+  }
+};
+struct HourReporter {           // HR
+  string report(const EmployeeData& e) {
+    return e.name + ": " + to_string(e.hours) + "h";
+  }
+};
+struct EmployeeRepository {     // DBA
+  void save(const EmployeeData& e) {
+    cout << "UPDATE emp ..." << endl;
+  }
+};`);
+  ALTS[T3_BAD] = mkAlt(`class DiscountCalculator:
+    def discount(self, type, amt):
+        match type:
+            case "REGULAR":  return 0
+            case "PREMIUM":  return amt * 0.10
+            case "EMPLOYEE": return amt * 0.30
+            case _: raise ValueError(type)`, `class DiscountCalculator {
+  discount(type: string, amt: number): number {
+    switch (type) {
+      case "REGULAR":  return 0;
+      case "PREMIUM":  return amt * 0.10;
+      case "EMPLOYEE": return amt * 0.30;
+      default: throw new Error(type);
+    }
+  }
+}`, `struct DiscountCalculator {
+  double discount(const string& type, double amt) {
+    // C++ cannot switch on a string: an if-chain
+    if (type == "REGULAR")  return 0;
+    if (type == "PREMIUM")  return amt * 0.10;
+    if (type == "EMPLOYEE") return amt * 0.30;
+    throw invalid_argument(type);
+  }
+};`);
+  ALTS[T3_GOOD] = mkAlt(`class DiscountPolicy(ABC):
+    @abstractmethod
+    def discount(self, amt): pass
+class Premium(DiscountPolicy):
+    def discount(self, a): return a * 0.10
+
+class Employee(DiscountPolicy):
+    def discount(self, a): return a * 0.30
+
+class Checkout:
+    rules: dict[str, DiscountPolicy]
+    def __init__(self, rules):
+        self.rules = dict(rules)
+
+    def pay(self, type, amt):
+        p = self.rules.get(type, SimpleNamespace(discount=lambda a: 0))
+        return amt - p.discount(amt)
+
+
+# adding FESTIVE = one NEW class + one map entry:
+class Festive(DiscountPolicy):
+    def discount(self, a): return a * 0.20
+    # nothing above was edited`, `interface DiscountPolicy {
+  discount(amt: number): number;
+}
+class Premium implements DiscountPolicy {
+  discount(a: number): number { return a * 0.10; }
+}
+class Employee implements DiscountPolicy {
+  discount(a: number): number { return a * 0.30; }
+}
+class Checkout {
+  private readonly rules: Map<string, DiscountPolicy>;
+  constructor(rules: Map<string, DiscountPolicy>) {
+    this.rules = new Map(rules);
+  }
+  pay(type: string, amt: number): number {
+    const p = this.rules.get(type) ?? { discount: (a: number) => 0 };
+    return amt - p.discount(amt);
+  }
+}
+// adding FESTIVE = one NEW class + one map entry:
+class Festive implements DiscountPolicy {
+  discount(a: number): number { return a * 0.20; }
+}`, `struct DiscountPolicy {
+  virtual ~DiscountPolicy() = default; virtual double discount(double amt) const = 0;
+};
+struct Premium : DiscountPolicy {
+  double discount(double a) const override { return a * 0.10; }
+};
+struct Employee : DiscountPolicy {
+  double discount(double a) const override { return a * 0.30; }
+};
+class Checkout {
+  map<string, shared_ptr<DiscountPolicy>> rules;
+public: Checkout(map<string, shared_ptr<DiscountPolicy>> r)
+    : rules(r) {}
+
+  double pay(const string& type, double amt) {
+    double d = rules.count(type) ? rules.at(type)->discount(amt) : 0;   // unknown type: no discount
+    return amt - d;
+  }
+};
+// adding FESTIVE = one NEW class + one map entry:
+struct Festive : DiscountPolicy {
+  double discount(double a) const override { return a * 0.20; }
+};`);
+  ALTS[T4_CLIENT] = mkAlt(`class Rectangle:
+    w = h = 0
+    def set_width(self, w): self.w = w
+    def set_height(self, h): self.h = h
+    def area(self): return self.w * self.h
+
+class Square(Rectangle):
+    def set_width(self, s): self.w = self.h = s
+    def set_height(self, s): self.w = self.h = s
+
+# client written against Rectangle's promise
+def stretch(r):
+    r.set_width(5)
+    r.set_height(4)
+    check(r.area() == 20)`, `class Rectangle {
+  protected w = 0; protected h = 0;
+  setWidth(w: number): void { this.w = w; }
+  setHeight(h: number): void { this.h = h; }
+  area(): number { return this.w * this.h; }
+}
+class Square extends Rectangle {
+  override setWidth(s: number): void { this.w = s; this.h = s; }
+  override setHeight(s: number): void { this.w = s; this.h = s; }
+}
+// client written against Rectangle's promise
+function stretch(r: Rectangle): void {
+  r.setWidth(5);
+  r.setHeight(4);
+  check(r.area() === 20);
+}`, `class Rectangle {
+protected: int w = 0, h = 0;
+public: virtual void setWidth(int w)  { this->w = w; }
+  virtual void setHeight(int h) { this->h = h; }
+  int area() { return w * h; }
+};
+class Square : public Rectangle {
+public: void setWidth(int s) override  { w = s; h = s; }
+  void setHeight(int s) override { w = s; h = s; }
+};
+// client written against Rectangle's promise
+void stretch(Rectangle& r) {
+  r.setWidth(5);
+  r.setHeight(4);
+  check(r.area() == 20);
+}`);
+  ALTS['void stretch(Rectangle r) {\n  if (r instanceof Square) return; // hack\n  r.setWidth(5);\n  r.setHeight(4);\n}'] = mkAlt(`def stretch(r):
+    if isinstance(r, Square): return  # hack
+    r.set_width(5)
+    r.set_height(4)`, `function stretch(r: Rectangle): void {
+  if (r instanceof Square) return; // hack
+  r.setWidth(5);
+  r.setHeight(4);
+}`, `void stretch(Rectangle& r) {
+  if (dynamic_cast<Square*>(&r)) return; // hack
+  r.setWidth(5);
+  r.setHeight(4);
+}`);
+  ALTS['abstract class Bird { abstract void fly(); }\nclass Penguin extends Bird {\n  void fly() { throw new UnsupportedOperationException(); }\n}\n// client\nfor (Bird b : birds) b.fly();'] = mkAlt(`class Bird(ABC):
+    @abstractmethod
+    def fly(self): pass
+class Penguin(Bird):
+    def fly(self): raise NotImplementedError()
+# client
+for b in birds: b.fly()`, `abstract class Bird { abstract fly(): void; }
+class Penguin extends Bird {
+  fly(): void { throw new Error("unsupported"); }
+}
+// client
+for (const b of birds) b.fly();`, `struct Bird { virtual void fly() = 0; };
+struct Penguin : Bird {
+  void fly() override { throw logic_error("unsupported"); }
+};
+// client
+for (Bird* b : birds) b->fly();`, { python: { 1: 3, 3: 5, 6: 7 } });
+  ALTS['interface Bird { void eat(); }\ninterface FlyingBird extends Bird { void fly(); }\nclass Sparrow implements FlyingBird { ... }\nclass Penguin implements Bird { ... }\n// client asks for exactly what it needs\nfor (FlyingBird b : flyers) b.fly();'] = mkAlt(`class Bird(ABC):
+    @abstractmethod
+    def eat(self): pass
+class FlyingBird(Bird):
+    @abstractmethod
+    def fly(self): pass
+class Sparrow(FlyingBird):    # implements eat() and fly()
+    def eat(self): print("eat")
+    def fly(self): print("fly")
+class Penguin(Bird):          # implements only eat()
+    def eat(self): print("eat")
+# client asks for exactly what it needs
+for b in flyers: b.fly()`, `interface Bird { eat(): void }
+interface FlyingBird extends Bird { fly(): void }
+class Sparrow implements FlyingBird { eat() { console.log("eat"); } fly() { console.log("fly"); } }
+class Penguin implements Bird { eat() { console.log("eat"); } }
+// client asks for exactly what it needs
+for (const b of flyers) b.fly();`, `struct Bird { virtual void eat() = 0; virtual ~Bird() = default; };
+struct FlyingBird : Bird { virtual void fly() = 0; };
+struct Sparrow : FlyingBird { void eat() override { cout << "eat\\n"; } void fly() override { cout << "fly\\n"; } };
+struct Penguin : Bird { void eat() override { cout << "eat\\n"; } };
+// client asks for exactly what it needs
+for (FlyingBird* b : flyers) b->fly();`, { python: { 2: 4, 4: 10, 6: 13 } });
+  ALTS[T5_BAD] = mkAlt(`class Machine:
+    def print(self, doc): raise NotImplementedError
+    def scan(self, doc): raise NotImplementedError
+    def fax(self, doc, number): raise NotImplementedError
+
+class BasicPrinter(Machine):
+    def print(self, d): print(d)
+    def scan(self, d):
+        raise NotImplementedError()
+
+    def fax(self, d, n):
+        raise NotImplementedError()
+`, `interface Machine {
+  print(doc: string): void;
+  scan(doc: string): void;
+  fax(doc: string, number: string): void;
+}
+class BasicPrinter implements Machine {
+  print(d: string): void { console.log(d); }
+  scan(d: string): void {
+    throw new Error("unsupported");
+  }
+  fax(d: string, n: string): void {
+    throw new Error("unsupported");
+  }
+}`, `struct Machine {
+  virtual void print(const string& doc) = 0;
+  virtual void scan(const string& doc) = 0;
+  virtual void fax(const string& doc, const string& number) = 0;
+};
+struct BasicPrinter : Machine {
+  void print(const string& d) override { cout << d << endl; }
+  void scan(const string& d) override {
+    throw logic_error("unsupported");
+  }
+  void fax(const string& d, const string& n) override {
+    throw logic_error("unsupported");
+  }
+};`);
+  ALTS[T5_GOOD] = mkAlt(`class Printer(Protocol): print: Callable[[str], None]
+class Scanner(Protocol): scan: Callable[[str], str]
+class Fax(Protocol): fax: Callable[[str, str], None]
+
+class BasicPrinter(Printer):
+    def print(self, d): print(d)
+
+class OfficeMachine(Printer, Scanner, Fax):
+    def print(self, d): print(d)
+    def scan(self, d): return "scan:" + d
+    def fax(self, d, n): print(n)
+
+class PrintQueue:               # needs printing only
+    printer: Printer
+    def __init__(self, p): self.printer = p
+`, `interface Printer { print(doc: string): void; }
+interface Scanner { scan(doc: string): string; }
+interface Fax { fax(doc: string, number: string): void; }
+
+class BasicPrinter implements Printer {
+  print(d: string): void { console.log(d); }
+}
+class OfficeMachine implements Printer, Scanner, Fax {
+  print(d: string): void { console.log(d); }
+  scan(d: string): string { return "scan:" + d; }
+  fax(d: string, n: string): void { console.log(n); }
+}
+class PrintQueue {               // needs printing only
+  private readonly printer: Printer;
+  constructor(p: Printer) { this.printer = p; }
+}`, `struct Printer { virtual void print(const string& doc) = 0; };
+struct Scanner { virtual string scan(const string& doc) = 0; };
+struct Fax { virtual void fax(const string& doc, const string& number) = 0; };
+
+struct BasicPrinter : Printer {
+  void print(const string& d) override { cout << d << endl; }
+};
+struct OfficeMachine : Printer, Scanner, Fax {
+  void print(const string& d) override { cout << d << endl; }
+  string scan(const string& d) override { return "scan:" + d; }
+  void fax(const string& d, const string& n) override { cout << n << endl; }
+};
+class PrintQueue {               // needs printing only
+  Printer& printer;
+public: PrintQueue(Printer& p) : printer(p) {}
+};`);
+  ALTS[T6_BAD] = mkAlt(`class OrderService:
+    def __init__(self):
+        self._repo = MySqlOrderRepository("mysql://prod")
+        self._mailer = SmtpMailer("smtp.company.com")
+
+    def place(self, o):
+        self._repo.insert(o)
+        self._mailer.send(o.email, "Order placed")`, `class OrderService {
+  private readonly repo =
+      new MySqlOrderRepository("mysql://prod");
+  private readonly mailer =
+      new SmtpMailer("smtp.company.com");
+
+  place(o: Order): void {
+    this.repo.insert(o);
+    this.mailer.send(o.email(), "Order placed");
+  }
+}`, `class OrderService {
+  MySqlOrderRepository repo =
+      MySqlOrderRepository("mysql://prod");
+  SmtpMailer mailer =
+      SmtpMailer("smtp.company.com");
+
+public: void place(Order& o) {
+    repo.insert(o);
+    mailer.send(o.email(), "Order placed");
+  }
+};`, { python: { 2: 3, 3: 3, 4: 4, 5: 4, 7: 6, 8: 7, 9: 8 } });
+  ALTS[T6_GOOD] = mkAlt(`# owned by the DOMAIN (high-level) package
+class OrderRepository(Protocol): save: Callable[[Order], None]
+class Notifier(Protocol): notify: Callable[[str, str], None]
+
+class OrderService:
+    _repo: OrderRepository
+    _notifier: Notifier
+    def __init__(self, r: OrderRepository, n: Notifier):
+        self._repo, self._notifier = r, n          # injected
+
+    def place(self, o):
+        self._repo.save(o)
+        self._notifier.notify(o.email, "Order placed")
+
+
+# infrastructure (low-level) implements domain's interface
+class MySqlOrderRepository(OrderRepository):
+    def save(self, o): pass   # JDBC-style insert`, `// owned by the DOMAIN (high-level) package
+interface OrderRepository { save(o: Order): void; }
+interface Notifier { notify(to: string, msg: string): void; }
+
+class OrderService {
+  private readonly repo: OrderRepository;
+  private readonly notifier: Notifier;
+  constructor(r: OrderRepository, n: Notifier) {
+    this.repo = r; this.notifier = n;          // injected
+  }
+  place(o: Order): void {
+    this.repo.save(o);
+    this.notifier.notify(o.email(), "Order placed");
+  }
+}
+// infrastructure (low-level) implements domain's interface
+class MySqlOrderRepository implements OrderRepository {
+  save(o: Order): void { /* JDBC insert */ }
+}`, `// owned by the DOMAIN (high-level) package
+struct OrderRepository { virtual void save(Order& o) = 0; };
+struct Notifier { virtual void notify(const string& to, const string& msg) = 0; };
+
+class OrderService {
+  OrderRepository& repo;
+  Notifier& notifier;
+public: OrderService(OrderRepository& r, Notifier& n)
+    : repo(r), notifier(n) {}          // injected
+
+  void place(Order& o) {
+    repo.save(o);
+    notifier.notify(o.email(), "Order placed");
+  }
+};
+// infrastructure (low-level) implements domain's interface
+struct MySqlOrderRepository : OrderRepository {
+  void save(Order& o) override { /* JDBC insert */ }
+};`);
+  ALTS[T7_BAD] = mkAlt(`class ReportService:
+    def __init__(self): self._db = MySqlSales()
+    def run(self, format, email):
+        sales = self._db.query("SELECT * FROM sales")
+        total = 0.0
+        for s in sales: total += s.amount()
+        out = None
+        if format == "CSV": out = to_csv(sales, total)
+        elif format == "PDF": out = to_pdf(sales, total)
+        else: raise ValueError(format)
+        SmtpClient().send(email, out)
+        return out
+
+
+class ScreenReportService(ReportService):
+    def run(self, format, email):
+        raise NotImplementedError("no email")
+
+
+class Exporter:
+    csv = pdf = None      # csv(s), pdf(s): abstract
+    xlsx = html = None    # xlsx(s), html(s): abstract
+    # one fat interface for every client`, `class ReportService {
+  private readonly db = new MySqlSales();
+  run(format: string, email: string): string {
+    const sales: Sale[] = this.db.query("SELECT * FROM sales");
+    let total = 0;
+    for (const s of sales) total += s.amount();
+    let out: string;
+    if (format === "CSV") out = toCsv(sales, total);
+    else if (format === "PDF") out = toPdf(sales, total);
+    else throw new Error(format);
+    new SmtpClient().send(email, out);
+    return out;
+  }
+}
+class ScreenReportService extends ReportService {
+  override run(format: string, email: string): string {
+    throw new Error("no email");
+  }
+}
+interface Exporter {
+  csv(s: Sale[]): string; pdf(s: Sale[]): string;
+  xlsx(s: Sale[]): string; html(s: Sale[]): string;
+}`, `class ReportService {
+  MySqlSales db;
+public: virtual string run(const string& format, const string& email) {
+    vector<Sale> sales = db.query("SELECT * FROM sales");
+    double total = 0;
+    for (auto& s : sales) total += s.amount();
+    string out;
+    if (format == "CSV") out = toCsv(sales, total);
+    else if (format == "PDF") out = toPdf(sales, total);
+    else throw invalid_argument(format);
+    SmtpClient().send(email, out);
+    return out;
+  }
+};
+class ScreenReportService : public ReportService {
+public: string run(const string& format, const string& email) override {
+    throw logic_error("no email");
+  }
+};
+struct Exporter {
+  virtual string csv(const vector<Sale>& s) = 0; virtual string pdf(const vector<Sale>& s) = 0;
+  virtual string xlsx(const vector<Sale>& s) = 0; virtual string html(const vector<Sale>& s) = 0;
+};`);
 
   registerModule({
     id: 'lld02',

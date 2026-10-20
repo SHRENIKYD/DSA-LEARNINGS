@@ -1,5 +1,26 @@
 (function () {
   var topics = [], practice = [], quiz = [], interview = [];
+  // Shared test harness: runs each case as python lines in a fresh namespace; returns repr of every non-None expression, or !ExceptionName.
+  var PYT = String.raw`
+def run_lines(lines):
+    g = dict(globals())
+    out = []
+    for ln in lines:
+        try:
+            try:
+                code = compile(ln, '<t>', 'eval')
+            except SyntaxError:
+                code = None
+            if code is None:
+                exec(compile(ln, '<t>', 'exec'), g)
+            else:
+                v = eval(code, g)
+                if v is not None:
+                    out.append(repr(v))
+        except Exception as e:
+            out.append('!' + type(e).__name__)
+    return out
+`;
   // String.raw keeps backslashes exactly as typed, so Python code like "a\nb" stays "a\nb".
   var R = String.raw;
 
@@ -338,6 +359,78 @@ print(opcode_histogram_brute(lambda a, b: a * b + 1))
 ` },
       mcq: { q: 'Which API gives you structured instruction objects instead of printed text?', options: ['<code>dis.get_instructions(func)</code>', '<code>func.__code__.co_names</code>', '<code>inspect.getsource(func)</code>', '<code>ast.parse(func)</code>'], answer: 0, explain: '<code>dis.get_instructions</code> yields <code>Instruction</code> named tuples with <code>opname</code>, <code>arg</code>, <code>argval</code>, <code>offset</code> and more. <code>co_names</code> only lists names; <code>inspect</code>/<code>ast</code> work on source.' },
       hints: [R`<p>Hint 1: <code>dis.get_instructions(func)</code> gives you one object per instruction, with an <code>.opname</code> string. No text parsing needed.</p>`, R`<p>Hint 2: <code>collections.Counter</code> counts in one line; then sort its items with a key of <code>(-count, name)</code> and build a plain dict (dicts keep insertion order).</p>`, R`<p>Hint 3: filter out <code>RESUME</code>, <code>CACHE</code>, <code>NOP</code>. Recipe: iterate instructions → skip ignored → count → sort → dict. For the demo, compare a function that reads a global in a loop vs one that copies it into a local first.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['h = opcode_histogram(lambda a, b: a * b + 1)',
+           'h["BINARY_OP"]',
+           'h["LOAD_CONST"]',
+           'h["RETURN_VALUE"]',
+           'h.get("LOAD_FAST", 0) + 2 * h.get("LOAD_FAST_LOAD_FAST", 0)']],
+         ['2',
+          '1',
+          '1',
+          '2']],
+        [[['h = opcode_histogram(lambda a, b: a * b + 1)',
+           'not (set(h) & {"RESUME", "CACHE", "NOP"})',
+           'list(h.items()) == sorted(h.items(), key=lambda kv: (-kv[1], kv[0]))',
+           'list(h)[0]',
+           'max(h.values())']],
+         ['True',
+          'True',
+          '\'BINARY_OP\'',
+          '2']],
+        [[['g = opcode_histogram(uses_global)',
+           'l = opcode_histogram(uses_local)',
+           'g.get("LOAD_GLOBAL", 0)',
+           'l.get("LOAD_GLOBAL", 0)',
+           'g["FOR_ITER"], l["FOR_ITER"]',
+           'g["BINARY_OP"], l["BINARY_OP"]',
+           'opcode_histogram(uses_global) == g']],
+         ['1',
+          '0',
+          '(1, 1)',
+          '(2, 2)',
+          'True']],
+        [[[String.raw`def e():
+    pass`,
+           String.raw`def n():
+    pass
+    pass
+    pass`,
+           'sum(opcode_histogram(e).values()) <= 2',
+           'opcode_histogram(n) == opcode_histogram(e)',
+           '"NOP" in opcode_histogram(n)']],
+         ['True',
+          'True',
+          'False']],
+        [[['src = "def big():\\n" + "".join("    x%d = %d\\n" % (i % 3, i) for i in range(1000)) + "    return 0\\n"',
+           'ns = {}',
+           'exec(src, ns)',
+           'h = opcode_histogram(ns["big"])',
+           'h["STORE_FAST"]',
+           'h["LOAD_CONST"] >= 1000',
+           'list(h)[:2]']],
+         ['1000',
+          'True',
+          '[\'LOAD_CONST\', \'STORE_FAST\']']],
+        [[[String.raw`def loop(xs):
+    t = 0
+    for x in xs:
+        t += x
+    return t`,
+           'h = opcode_histogram(loop)',
+           'h["FOR_ITER"]',
+           'h["BINARY_OP"]',
+           'h["RETURN_VALUE"]',
+           'h["STORE_FAST"] >= 2',
+           'sum(h.values()) == len([i for i in dis.get_instructions(loop) if i.opname not in ("RESUME", "CACHE", "NOP")])']],
+         ['1',
+          '1',
+          '1',
+          'True',
+          'True']],
+        [[['opcode_histogram(len)']],
+         ['!TypeError']],
+      ] },
       solution: {
         approach: R`<p>Use the structured API, count with <code>Counter</code>, then sort deterministically. The demo shows <code>LOAD_GLOBAL</code> inside the loop of the first function becoming <code>LOAD_FAST</code> in the second.</p>`,
         code: { lang: 'python', run: true, code: R`import dis
@@ -592,6 +685,95 @@ except RecursionError as e:
 ` },
       mcq: { q: 'In <code>a - b</code>, after <code>LOAD a</code>, <code>LOAD b</code>, what must <code>BINARY_SUB</code> do?', options: ['Pop b first (top), then a, push a − b', 'Pop a first, then b, push a − b', 'Pop b, then a, push b − a', 'Read both without popping'], answer: 0, explain: 'The right operand was pushed last, so it is on top. Popping gives b, then a, and the result is a − b. Swapping them is the classic stack-VM bug.' },
       hints: [R`<p>Hint 1: the whole VM is <code>while True: op, arg = program[pc]; pc += 1; …</code>. Jumps simply overwrite <code>pc</code>.</p>`, R`<p>Hint 2: binary ops pop the <b>right</b> operand first. Use a small dict of lambdas (<code>operator.add</code>, <code>operator.sub</code>…) to keep dispatch O(1) and the code short.</p>`, R`<p>Hint 3: guard underflow with a helper <code>pop()</code> that raises <code>RuntimeError</code>; count steps and raise when over <code>max_steps</code>. Test with a loop program and with an infinite loop.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[[String.raw`prog = [
+    ("LOAD_CONST", 0), ("STORE_NAME", "i"),
+    ("LOAD_CONST", 0), ("STORE_NAME", "s"),
+    ("LOAD_NAME", "i"), ("LOAD_CONST", 5),
+    ("COMPARE_LT", None), ("POP_JUMP_IF_FALSE", 17),
+    ("LOAD_NAME", "s"), ("LOAD_NAME", "i"),
+    ("BINARY_ADD", None), ("STORE_NAME", "s"),
+    ("LOAD_NAME", "i"), ("LOAD_CONST", 1),
+    ("BINARY_ADD", None), ("STORE_NAME", "i"),
+    ("JUMP", 4),
+    ("LOAD_NAME", "s"), ("RETURN_VALUE", None),
+]`,
+           'run(prog)',
+           'env = {}',
+           'run(prog, env)',
+           'env']],
+         ['10',
+          '10',
+          '{\'i\': 5, \'s\': 10}']],
+        [[['run([("LOAD_CONST", 6), ("LOAD_CONST", 7), ("BINARY_MUL", None), ("RETURN_VALUE", None)])',
+           'run([("LOAD_CONST", 10), ("LOAD_CONST", 3), ("BINARY_SUB", None), ("RETURN_VALUE", None)])',
+           'run([("LOAD_CONST", 3), ("LOAD_CONST", 10), ("BINARY_SUB", None), ("RETURN_VALUE", None)])',
+           'run([("LOAD_CONST", 2), ("LOAD_CONST", 3), ("BINARY_ADD", None), ("RETURN_VALUE", None)])']],
+         ['42',
+          '7',
+          '-7',
+          '5']],
+        [[['run([("LOAD_CONST", 1), ("LOAD_CONST", 2), ("COMPARE_LT", None), ("RETURN_VALUE", None)])',
+           'run([("LOAD_CONST", 2), ("LOAD_CONST", 2), ("COMPARE_LT", None), ("RETURN_VALUE", None)])',
+           'run([("LOAD_CONST", 0), ("POP_JUMP_IF_FALSE", 4), ("LOAD_CONST", 111), ("RETURN_VALUE", None), ("LOAD_CONST", 222), ("RETURN_VALUE", None)])',
+           'run([("LOAD_CONST", 1), ("POP_JUMP_IF_FALSE", 4), ("LOAD_CONST", 111), ("RETURN_VALUE", None), ("LOAD_CONST", 222), ("RETURN_VALUE", None)])',
+           'run([("JUMP", 2), ("LOAD_CONST", 1), ("LOAD_CONST", 9), ("RETURN_VALUE", None)])']],
+         ['True',
+          'False',
+          '222',
+          '111',
+          '9']],
+        [[['run([("BINARY_ADD", None)])',
+           'run([("LOAD_CONST", 1), ("BINARY_ADD", None)])',
+           'run([("RETURN_VALUE", None)])',
+           'run([("STORE_NAME", "x")])',
+           'run([("POP_JUMP_IF_FALSE", 0)])',
+           'run([("NOPE", None)])']],
+         ['!RuntimeError',
+          '!RuntimeError',
+          '!RuntimeError',
+          '!RuntimeError',
+          '!RuntimeError',
+          '!RuntimeError']],
+        [[['run([("JUMP", 0)], max_steps=1000)',
+           'run([("LOAD_CONST", 1), ("RETURN_VALUE", None)], max_steps=2)',
+           'run([("LOAD_CONST", 1), ("RETURN_VALUE", None)], max_steps=1)',
+           'run([("LOAD_CONST", 1), ("JUMP", 0)], max_steps=10**6)']],
+         ['!RuntimeError',
+          '1',
+          '!RuntimeError',
+          '!RuntimeError']],
+        [[['run([("LOAD_NAME", "x"), ("RETURN_VALUE", None)], {"x": 5})',
+           'run([("LOAD_NAME", "y"), ("RETURN_VALUE", None)], {"x": 5})',
+           'e = {"a": 2, "b": 3}',
+           'run([("LOAD_NAME", "a"), ("LOAD_NAME", "b"), ("BINARY_MUL", None), ("STORE_NAME", "c"), ("LOAD_NAME", "c"), ("RETURN_VALUE", None)], e)',
+           'e']],
+         ['5',
+          '!KeyError',
+          '6',
+          '{\'a\': 2, \'b\': 3, \'c\': 6}']],
+        [[[String.raw`prog = [
+    ("LOAD_CONST", 0), ("STORE_NAME", "i"),
+    ("LOAD_CONST", 0), ("STORE_NAME", "s"),
+    ("LOAD_NAME", "i"), ("LOAD_CONST", 5),
+    ("COMPARE_LT", None), ("POP_JUMP_IF_FALSE", 17),
+    ("LOAD_NAME", "s"), ("LOAD_NAME", "i"),
+    ("BINARY_ADD", None), ("STORE_NAME", "s"),
+    ("LOAD_NAME", "i"), ("LOAD_CONST", 1),
+    ("BINARY_ADD", None), ("STORE_NAME", "i"),
+    ("JUMP", 4),
+    ("LOAD_NAME", "s"), ("RETURN_VALUE", None),
+]`,
+           'big = [("LOAD_CONST", 0), ("STORE_NAME", "i"), ("LOAD_CONST", 0), ("STORE_NAME", "s"), ("LOAD_NAME", "i"), ("LOAD_CONST", 100000), ("COMPARE_LT", None), ("POP_JUMP_IF_FALSE", 17)] + prog[8:]',
+           'run(big, max_steps=10**7)',
+           'run(big)',
+           'run(prog, max_steps=100)',
+           'run(prog, max_steps=120)']],
+         ['4999950000',
+          '!RuntimeError',
+          '10',
+          '10']],
+      ] },
       solution: {
         approach: R`<p>Keep a list as the value stack and an integer instruction pointer. Fetch, advance, dispatch. Arithmetic and comparisons share one generic handler using the <code>operator</code> module. Jumps assign to <code>pc</code>. A step counter acts as the "eval breaker".</p>`,
         code: { lang: 'python', run: true, code: R`import operator
@@ -856,6 +1038,37 @@ print(capacity_jumps_hardcoded(20))
 ` },
       mcq: { q: 'Why does <code>sys.getsizeof</code> of a list change only at some appends?', options: ['It measures the header plus the allocated pointer array, which grows in jumps', 'Python garbage-collects the list every few appends', 'Small ints are stored inline in the list', 'getsizeof is random by design'], answer: 0, explain: 'The list over-allocates its pointer array. Until capacity runs out, appends only bump <code>ob_size</code>, so the allocated size (what getsizeof reports beyond the header) stays the same.' },
       hints: [R`<p>Hint 1: <code>capacity = (getsizeof(lst) - getsizeof([])) // 8</code> because each slot is an 8-byte pointer on 64-bit.</p>`, R`<p>Hint 2: remember the previous capacity; whenever it changes after an append, record <code>(len(lst), capacity)</code>. When capacity jumps, the old <code>len - 1</code> pointers were copied.</p>`, R`<p>Hint 3: use <code>struct.calcsize("P")</code> for the pointer size to be safe. Recipe: base = getsizeof([]); loop; compute cap; compare; accumulate copies; return jumps and copies / n.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['capacity_jumps(20)']],
+         ['([(1, 4), (5, 8), (9, 16), (17, 24)], 1.4)']],
+        [[['capacity_jumps(1)',
+           'capacity_jumps(4)',
+           'capacity_jumps(5)']],
+         ['([(1, 4)], 0.0)',
+          '([(1, 4)], 0.0)',
+          '([(1, 4), (5, 8)], 0.8)']],
+        [[['capacity_jumps(9)',
+           'capacity_jumps(17)']],
+         ['([(1, 4), (5, 8), (9, 16)], 1.3333333333333333)',
+          '([(1, 4), (5, 8), (9, 16), (17, 24)], 1.6470588235294117)']],
+        [[['capacity_jumps(100)']],
+         ['([(1, 4), (5, 8), (9, 16), (17, 24), (25, 32), (33, 40), (41, 52), (53, 64), (65, 76), (77, 92), (93, 108)], 4.08)']],
+        [[['capacity_jumps(1000)']],
+         ['([(1, 4), (5, 8), (9, 16), (17, 24), (25, 32), (33, 40), (41, 52), (53, 64), (65, 76), (77, 92), (93, 108), (109, 128), (129, 148), (149, 172), (173, 200), (201, 232), (233, 268), (269, 308), (309, 352), (353, 400), (401, 456), (457, 520), (521, 592), (593, 672), (673, 760), (761, 860), (861, 972), (973, 1100)], 7.556)']],
+        [[['j, avg = capacity_jumps(100000)',
+           'j[0]',
+           'len(j)',
+           'all(a[0] < b[0] and a[1] < b[1] for a, b in zip(j, j[1:]))',
+           'all(c >= n for n, c in j)',
+           'avg == 7.98128',
+           'j == [(1, 4),(5, 8),(9, 16),(17, 24),(25, 32),(33, 40),(41, 52),(53, 64),(65, 76),(77, 92),(93, 108),(109, 128),(129, 148),(149, 172),(173, 200),(201, 232),(233, 268),(269, 308),(309, 352),(353, 400),(401, 456),(457, 520),(521, 592),(593, 672),(673, 760),(761, 860),(861, 972),(973, 1100),(1101, 1244),(1245, 1404),(1405, 1584),(1585, 1788),(1789, 2016),(2017, 2272),(2273, 2560),(2561, 2884),(2885, 3248),(3249, 3660),(3661, 4124),(4125, 4644),(4645, 5228),(5229, 5888),(5889, 6628),(6629, 7460),(7461, 8396),(8397, 9452),(9453, 10640),(10641, 11976),(11977, 13480),(13481, 15172),(15173, 17072),(17073, 19212),(19213, 21620),(21621, 24328),(24329, 27376),(27377, 30804),(30805, 34660),(34661, 38996),(38997, 43876),(43877, 49364),(49365, 55540),(55541, 62488),(62489, 70304),(70305, 79096),(79097, 88988),(88989, 100116)]']],
+         ['(1, 4)',
+          '66',
+          'True',
+          'True',
+          'True',
+          'True']],
+      ] },
       solution: {
         approach: R`<p>Measure, do not assume: derive capacity from the actual object size, record each jump, and count how many pointers had to be moved. The average settles at a constant (about 8 copies per append for a 1.125 growth factor, since 1/(1.125 − 1) = 8, and often less because <code>realloc</code> can grow in place), which is the practical proof that <code>append</code> is amortized O(1).</p>`,
         code: { lang: 'python', run: true, code: R`import struct
@@ -1129,6 +1342,104 @@ print(is_freed_brute(lambda: [], lambda o: None))
 ` },
       mcq: { q: 'Your weakref still returns the object after you deleted your variable. What is the most likely cause?', options: ['Something else still holds a strong reference', 'Weak references always keep objects alive for one GC cycle', 'del only works inside functions', 'The object is immortal because it is a list'], answer: 0, explain: 'A weakref dies with the object. If it still resolves, a strong reference exists somewhere (a registry, a closure, a traceback, a cycle not yet collected). Lists are not immortal.' },
       hints: [R`<p>Hint 1: <code>wr = weakref.ref(obj)</code> does not change the refcount; <code>wr()</code> returns <code>None</code> once the object is gone.</p>`, R`<p>Hint 2: after <code>release(obj)</code>, run <code>del obj</code> so your own function no longer holds it. If cycles might be involved, call <code>gc.collect()</code> before checking.</p>`, R`<p>Hint 3: recipe: obj = make(); wr = weakref.ref(obj); release(obj); del obj; gc.collect(); return wr() is None. Test one leaking release and one clean release.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['class Session: pass',
+           'REG = []',
+           'def leaky(s): REG.append(s)',
+           'def clean(s): pass',
+           'is_freed_after(Session, leaky)',
+           'is_freed_after(Session, clean)',
+           'REG.clear()',
+           'is_freed_after(Session, leaky)',
+           'len(REG)']],
+         ['False',
+          'True',
+          'False',
+          '1']],
+        [[['import gc',
+           'gc.disable()',
+           'class Session: pass',
+           'def cyc(s): s.me = s',
+           'is_freed_after(Session, cyc, collect_cycles=False)',
+           'is_freed_after(Session, cyc)',
+           'is_freed_after(Session, cyc, False)',
+           'gc.enable()']],
+         ['False',
+          'True',
+          'False']],
+        [[['is_freed_after(lambda: 5, lambda o: None)',
+           'is_freed_after(lambda: (1, 2), lambda o: None)',
+           'is_freed_after(lambda: "text", lambda o: None)',
+           String.raw`class Slotted:
+    __slots__ = ("a",)`,
+           'is_freed_after(Slotted, lambda o: None)',
+           String.raw`class SlottedWeak:
+    __slots__ = ("a", "__weakref__")`,
+           'is_freed_after(SlottedWeak, lambda o: None)']],
+         ['!TypeError',
+          '!TypeError',
+          '!TypeError',
+          '!TypeError',
+          'True']],
+        [[['class Session: pass',
+           'SINGLE = Session()',
+           'is_freed_after(lambda: SINGLE, lambda o: None)',
+           'cache = {}',
+           'def remember(s): cache["k"] = s',
+           'is_freed_after(Session, remember)',
+           'cache.clear()',
+           'is_freed_after(Session, remember)',
+           'cache.pop("k", None) is not None']],
+         ['False',
+          'False',
+          'False',
+          'True']],
+        [[['class Session: pass',
+           'box = []',
+           String.raw`def hold_in_closure(s):
+    box.append(lambda: s)`,
+           'is_freed_after(Session, hold_in_closure)',
+           'box.clear()',
+           'is_freed_after(Session, hold_in_closure)',
+           'del box[:]',
+           'is_freed_after(Session, lambda s: None)']],
+         ['False',
+          'False',
+          'True']],
+        [[[String.raw`class Node:
+    def __init__(self):
+        self.other = None`,
+           String.raw`def ring(n):
+    a, b = n, Node()
+    a.other, b.other = b, a`,
+           'import gc',
+           'gc.disable()',
+           'is_freed_after(Node, ring, collect_cycles=False)',
+           'is_freed_after(Node, ring, collect_cycles=True)',
+           'gc.enable()',
+           'all(is_freed_after(Node, lambda o: None, collect_cycles=False) for _ in range(10000))']],
+         ['False',
+          'True',
+          'True']],
+        [[[String.raw`class WithDel:
+    log = []
+    def __del__(self):
+        WithDel.log.append("del")`,
+           'is_freed_after(WithDel, lambda o: None)',
+           'WithDel.log',
+           'import gc',
+           'gc.disable()',
+           'def cyc(s): s.me = s',
+           'is_freed_after(WithDel, cyc, collect_cycles=False)',
+           'is_freed_after(WithDel, cyc)',
+           'gc.enable()',
+           'WithDel.log.count("del") >= 2']],
+         ['True',
+          '[\'del\']',
+          'False',
+          'True',
+          'True']],
+      ] },
       solution: {
         approach: R`<p>A weak reference is the ground truth for "is it alive?". We drop our own strong reference, optionally run the cycle collector (so cycles do not give false negatives), and check whether the weakref is dead.</p>`,
         code: { lang: 'python', run: true, code: R`import gc
@@ -1373,6 +1684,54 @@ print(unreachable_brute({"A": 2, "B": 1, "C": 1, "D": 1}, {"A": ["B"], "B": ["A"
 ` },
       mcq: { q: 'After subtracting internal references, object X has gc_refs = 0. What can you conclude?', options: ['Nothing yet: X may still be reachable from a root', 'X is garbage', 'X has no references at all', 'X is immortal'], answer: 0, explain: 'gc_refs = 0 only means no reference comes from OUTSIDE the generation directly. X may be referenced by a root object inside the generation, so the reachability pass decides.' },
       hints: [R`<p>Hint 1: copy the refcounts, then for every edge <code>src → dst</code> subtract 1 from <code>dst</code>. What remains counts references from outside the group.</p>`, R`<p>Hint 2: objects with a positive remainder are roots. BFS/DFS from all roots along <code>refs</code>; everything visited is alive.</p>`, R`<p>Hint 3: the answer is all objects minus the visited set. Use a deque for BFS; duplicates in <code>refs</code> must subtract more than once; self-references subtract from themselves.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['sorted(unreachable({"A": 2, "B": 1, "C": 1, "D": 1}, {"A": ["B"], "B": ["A"], "C": ["D"], "D": ["C"]}))']],
+         ['[\'C\', \'D\']']],
+        [[['sorted(unreachable({"S": 1, "T": 1, "U": 2}, {"S": ["S"], "T": ["U"], "U": []}))']],
+         ['[\'S\']']],
+        [[['unreachable({}, {})',
+           'unreachable({"A": 1}, {})',
+           'unreachable({"A": 1}, {"A": []})',
+           'sorted(unreachable({"A": 1}, {"A": ["A"]}))',
+           'unreachable({"A": 2}, {"A": ["A"]})']],
+         ['set()',
+          'set()',
+          'set()',
+          '[\'A\']',
+          'set()']],
+        [[['sorted(unreachable({"A": 2, "B": 2}, {"A": ["B", "B"], "B": ["A"]}))',
+           'sorted(unreachable({"A": 3, "B": 2}, {"A": ["B", "B"], "B": ["A"]}))']],
+         ['[]',
+          '[]']],
+        [[['sorted(unreachable({"A": 1, "B": 1, "C": 1}, {"A": ["B"], "B": ["A", "C"], "C": []}))',
+           'sorted(unreachable({"A": 1, "B": 2, "C": 1}, {"A": ["B"], "B": ["A", "C"], "C": []}))']],
+         ['[\'A\', \'B\', \'C\']',
+          '[]']],
+        [[['sorted(unreachable({1: 1, 2: 1, 3: 2, 4: 1}, {1: [2], 2: [1], 3: [4], 4: [3]}))',
+           'sorted(unreachable({1: 2, 2: 2, 3: 1, 4: 1, 5: 1}, {1: [2], 2: [3], 3: [2], 4: [5], 5: [4]}))']],
+         ['[1, 2]',
+          '[4, 5]']],
+        [[['n = 100000',
+           'rc = {i: 1 for i in range(n)}',
+           'rf = {i: [(i + 1) % n] for i in range(n)}',
+           'len(unreachable(rc, rf))',
+           'rc[0] = 2',
+           'len(unreachable(rc, rf))',
+           'rc2 = {i: 1 for i in range(n)}',
+           'rc2[n - 1] = 2',
+           'len(unreachable(rc2, {i: [i + 1] for i in range(n - 1)} | {n - 1: []}))']],
+         ['100000',
+          '0',
+          '0']],
+        [[['m = 1000',
+           'rc = {i: m for i in range(m)}',
+           'rf = {i: list(range(m)) for i in range(m)}',
+           'len(unreachable(rc, rf))',
+           'rc[5] = m + 1',
+           'len(unreachable(rc, rf))']],
+         ['1000',
+          '0']],
+      ] },
       solution: {
         approach: R`<p>Exactly CPython's mark phase: (1) <code>gc_refs = refcnt</code>; (2) subtract one per internal edge; (3) roots are objects with <code>gc_refs &gt; 0</code>; (4) BFS from roots; (5) everything not reached is garbage.</p>`,
         code: { lang: 'python', run: true, code: R`from collections import deque
@@ -1564,6 +1923,77 @@ print(p.intern("".join(["a", "1"])) is p.intern("".join(["a", "1"])))
 ` },
       mcq: { q: 'What should <code>intern(s)</code> return when <code>s</code> was already seen?', options: ['The object stored the first time (canonical copy)', 'The new object s', 'A copy of s', 'hash(s)'], answer: 0, explain: 'The whole point is that all equal values map to one canonical object; returning the stored one lets callers drop their duplicate.' },
       hints: [R`<p>Hint 1: a dict can map a value to itself: <code>table.setdefault(s, s)</code> returns the existing key's value if present, otherwise stores and returns <code>s</code>.</p>`, R`<p>Hint 2: count calls in a counter; distinct = <code>len(table)</code>.</p>`, R`<p>Hint 3: build test strings with <code>"".join</code> or <code>str(i)</code> so they are separate runtime objects; compare <code>len({id(x) for x in data})</code> before and after.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['pool = InternPool()',
+           'raw = ["".join([c, str(n)]) for c, n in [("a", 1), ("b", 2), ("a", 1), ("a", 1)]]',
+           'len({id(x) for x in raw})',
+           'canon = [pool.intern(x) for x in raw]',
+           'len({id(x) for x in canon})',
+           'canon[0] is canon[2] is canon[3]',
+           'canon[0] is canon[1]',
+           'pool.stats()']],
+         ['4',
+          '2',
+          'True',
+          'False',
+          '(4, 2)']],
+        [[['pool = InternPool()',
+           'pool.stats()',
+           'pool.intern("")',
+           'pool.stats()',
+           'pool.intern("") is pool.intern("".join([]))']],
+         ['(0, 0)',
+          '\'\'',
+          '(1, 1)',
+          'True']],
+        [[['pool = InternPool()',
+           'first = "".join(["a", "b"])',
+           'second = "".join(["a", "b"])',
+           'first is second',
+           'pool.intern(first) is first',
+           'pool.intern(second) is first',
+           'pool.intern(second) is second',
+           'pool.stats()']],
+         ['False',
+          'True',
+          'True',
+          'False',
+          '(3, 1)']],
+        [[['pool = InternPool()',
+           'ids = {id(pool.intern("".join(["k", "5"]))) for _ in range(1000)}',
+           'len(ids)',
+           'pool.stats()']],
+         ['1',
+          '(1000, 1)']],
+        [[['pool = InternPool()',
+           'vals = [pool.intern("v%d" % i) for i in range(100)]',
+           'vals == ["v%d" % i for i in range(100)]',
+           'pool.stats()',
+           'len({id(v) for v in vals})']],
+         ['True',
+          '(100, 100)',
+          '100']],
+        [[['pool = InternPool()',
+           'a = pool.intern("héllo wörld ✓")',
+           'b = pool.intern("".join(["héllo", " wörld ✓"]))',
+           'a is b',
+           'pool.intern("Hello") is pool.intern("hello")',
+           'pool.stats()']],
+         ['True',
+          'False',
+          '(4, 3)']],
+        [[['pool = InternPool()',
+           'raw = ["".join(["s", str(i % 1000)]) for i in range(10**6)]',
+           'len({id(x) for x in raw}) > 900000',
+           'canon = [pool.intern(x) for x in raw]',
+           'len({id(x) for x in canon})',
+           'pool.stats()',
+           'canon[0] is canon[1000]']],
+         ['True',
+          '1000',
+          '(1000000, 1000)',
+          'True']],
+      ] },
       solution: {
         approach: R`<p>A dict from value to canonical object. <code>setdefault</code> does the "get or insert" in one hash lookup. This is the same design as <code>sys.intern</code>, minus the immortality and interpreter-wide scope.</p>`,
         code: { lang: 'python', run: true, code: R`class InternPool:
@@ -1826,6 +2256,94 @@ print(a.age, b.age)                           # 2 2  -> bug
 ` },
       mcq: { q: 'Where should a data descriptor store each instance\'s value?', options: ['In the instance\'s __dict__ under a private name', 'On the descriptor object itself', 'In a module-level dict keyed by id(obj)', 'In the class __dict__'], answer: 0, explain: 'The instance dict is per object and dies with it. The descriptor is shared by all instances, an id-keyed dict leaks and can collide after ids are reused, and the class dict is shared too.' },
       hints: [R`<p>Hint 1: use <code>__set_name__(self, owner, name)</code> to learn the attribute name and derive a private storage key such as <code>"_typed_age"</code>.</p>`, R`<p>Hint 2: in <code>__get__</code>, return <code>self</code> when <code>obj is None</code>; otherwise <code>obj.__dict__.get(key, default)</code>. In <code>__set__</code>, validate then write <code>obj.__dict__[key] = value</code>.</p>`, R`<p>Hint 3: because <code>Typed</code> has <code>__set__</code>, it is a data descriptor, so even if the instance dict had the public name the descriptor still wins. Test: two instances, wrong type, class access.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['u = User("ana", 30)',
+           '(u.name, u.age)',
+           'u.age = "31"',
+           'u.age = 31',
+           'u.age',
+           String.raw`def msg(f):
+    try:
+        f()
+    except TypeError as e:
+        return str(e)`,
+           'msg(lambda: setattr(u, "age", "31"))',
+           'msg(lambda: setattr(u, "name", 5))',
+           'msg(lambda: setattr(u, "age", 2.5))']],
+         ['(\'ana\', 30)',
+          '!TypeError',
+          '31',
+          '\'age must be int, got str\'',
+          '\'name must be str, got int\'',
+          '\'age must be int, got float\'']],
+        [[['a, b = User("ana", 30), User("ben", 41)',
+           'a.age += 1',
+           '(a.name, a.age, b.name, b.age)',
+           'b.name = "bob"',
+           '(a.name, b.name)']],
+         ['(\'ana\', 31, \'ben\', 41)',
+          '(\'ana\', \'bob\')']],
+        [[['isinstance(User.age, Typed)',
+           'isinstance(User.name, Typed)',
+           'User.age is User.age',
+           'User.age is not User.name',
+           '"age" in vars(User)']],
+         ['True',
+          'True',
+          'True',
+          'True',
+          'True']],
+        [[[String.raw`class Z:
+    n = Typed(int, default=7)
+    s = Typed(str)
+    f = Typed(float, default=1.5)`,
+           'z = Z()',
+           '(z.n, z.s, z.f)',
+           'z.n = 3',
+           '(z.n, Z().n)',
+           'z.n = 3.5',
+           'Z().f']],
+         ['(7, None, 1.5)',
+          '(3, 7)',
+          '!TypeError',
+          '1.5']],
+        [[['import weakref, gc',
+           'u = User("a", 1)',
+           'r = weakref.ref(u)',
+           'del u',
+           '_ = gc.collect()',
+           'r() is None',
+           'us = [User("n%d" % i, i) for i in range(1000)]',
+           'refs = [weakref.ref(x) for x in us]',
+           'del us',
+           '_ = gc.collect()',
+           'all(r() is None for r in refs)']],
+         ['True',
+          'True']],
+        [[['us = [User("n%d" % i, i) for i in range(100000)]',
+           'us[99999].age',
+           'sum(u.age for u in us)',
+           'us[5].age = 6',
+           '(us[5].age, us[4].age, us[6].age)',
+           'us[7].name']],
+         ['99999',
+          '4999950000',
+          '(6, 4, 6)',
+          '\'n7\'']],
+        [[[String.raw`class W:
+    flag = Typed(bool, default=False)
+    items = Typed(list)`,
+           'w1, w2 = W(), W()',
+           'w1.flag = True',
+           '(w1.flag, w2.flag)',
+           'w1.items = [1]',
+           'w1.items.append(2)',
+           '(w1.items, w2.items)',
+           'w2.items = (1,)']],
+         ['(True, False)',
+          '([1, 2], None)',
+          '!TypeError']],
+      ] },
       solution: {
         approach: R`<p>A data descriptor that learns its name via <code>__set_name__</code>, validates in <code>__set__</code>, and stores each value in the instance's own <code>__dict__</code> under a private key. Class access returns the descriptor for introspection.</p>`,
         code: { lang: 'python', run: true, code: R`class Typed:
@@ -2084,7 +2602,7 @@ print(type(Fixed).__name__, [c.__name__ for c in type(Fixed).__mro__])
     problems: [{
       title: 'Enforce an Interface at Class-Creation Time',
       level: 'Hard', tags: ['metaclass', '__init_subclass__', 'validation'], companies: ['Google', 'Atlassian', 'Shopify'],
-      statement: R`<p>Write a base class <code>Plugin</code> such that any subclass declaring <code>required = ("run", "name")</code> style requirements is checked <b>when the subclass is defined</b>: each name in the nearest <code>required</code> tuple must be defined somewhere in the subclass's MRO (other than on <code>Plugin</code> itself) and, if it is a method, be callable. A violation raises <code>TypeError</code> listing all missing names. Also keep a registry of valid concrete plugins by class name.</p>`,
+      statement: R`<p>Write a base class <code>Plugin</code> such that any subclass declaring <code>required = ("run", "name")</code> style requirements is checked <b>when the subclass is defined</b>: each name in the nearest <code>required</code> tuple must be defined somewhere in the subclass's MRO (other than on <code>Plugin</code> itself). A violation raises <code>TypeError</code> listing all missing names. Also keep a registry of valid concrete plugins by class name.</p>`,
       constraints: R`<p>Must fail at definition time (not instantiation). Must support multi-level inheritance: an intermediate abstract class may mark itself with <code>abstract=True</code> to skip checks. No third-party libraries.</p>`,
       example: R`<p><code>class Bad(Plugin): name = "x"</code> → ${H.c('r', "TypeError: Bad is missing: run")}. <code>class Good(Plugin): name = "g"; def run(self): ...</code> → registered: ${H.c('g', "{'Good': Good}")}.</p>`,
       brute: { why: R`<p>Checking in <code>__init__</code> (or each time you call the plugin) finds the problem late, only when someone instantiates the class, possibly in production. A metaclass or <code>__init_subclass__</code> moves the error to import time, where tests and CI catch it immediately.</p>`, code: R`class PluginLate:
@@ -2104,6 +2622,123 @@ except TypeError as e:
 ` },
       mcq: { q: 'Which hook runs for every new subclass, at definition time, without writing a metaclass?', options: ['<code>__init_subclass__</code>', '<code>__init__</code>', '<code>__new__</code> of the subclass', '<code>__class_getitem__</code>'], answer: 0, explain: '<code>type.__new__</code> calls the parent\'s <code>__init_subclass__</code> right after the class object is created. <code>__init__</code>/<code>__new__</code> run per instance; <code>__class_getitem__</code> handles <code>Cls[...]</code>.' },
       hints: [R`<p>Hint 1: in <code>__init_subclass__(cls, abstract=False, **kw)</code>, <code>cls</code> is the brand-new subclass. Return early if <code>abstract</code>.</p>`, R`<p>Hint 2: for each required name, walk <code>cls.__mro__</code> excluding <code>Plugin</code> and <code>object</code>; the name is satisfied if it appears in some class's <code>__dict__</code>. Collect all missing names before raising.</p>`, R`<p>Hint 3: names that are methods on <code>Plugin</code> as placeholders should not count, which is why you skip <code>Plugin</code> in the MRO walk. Register with <code>Plugin.registry[cls.__name__] = cls</code>. Show the metaclass version as an alternative.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[[String.raw`class Good(Plugin):
+    name = "g"
+    def run(self):
+        return 1`,
+           '"Good" in Plugin.registry',
+           'Plugin.registry["Good"] is Good',
+           'Good().run()']],
+         ['True',
+          'True',
+          '1']],
+        [[[String.raw`def msg(make):
+    try:
+        make()
+    except TypeError as e:
+        return str(e)`,
+           String.raw`def make():
+    class Bad(Plugin):
+        name = "x"`,
+           'msg(make)',
+           '"Bad" in Plugin.registry']],
+         ['\'Bad is missing: run\'',
+          'False']],
+        [[[String.raw`def msg(make):
+    try:
+        make()
+    except TypeError as e:
+        return str(e)`,
+           String.raw`def make():
+    class Empty2(Plugin):
+        pass`,
+           'msg(make)',
+           String.raw`def make3():
+    class OnlyRun(Plugin):
+        def run(self): pass`,
+           'msg(make3)']],
+         ['\'Empty2 is missing: run, name\'',
+          '\'OnlyRun is missing: name\'']],
+        [[[String.raw`def msg(make):
+    try:
+        make()
+    except TypeError as e:
+        return str(e)`,
+           'Csv().run()',
+           '"Csv" in Plugin.registry',
+           '"Exporter" in Plugin.registry',
+           String.raw`def make():
+    class Broken(Exporter):
+        name = "broken"`,
+           'msg(make)',
+           'class Csv2(Csv): pass',
+           '"Csv2" in Plugin.registry',
+           'Csv2().run()']],
+         ['\'exporting .csv\'',
+          'True',
+          'False',
+          '\'Broken is missing: ext\'',
+          'True',
+          '\'exporting .csv\'']],
+        [[[String.raw`def msg(make):
+    try:
+        make()
+    except TypeError as e:
+        return str(e)`,
+           String.raw`class A(Plugin, abstract=True):
+    required = ("x",)`,
+           String.raw`class B(A):
+    x = 1`,
+           String.raw`def make():
+    class C(A):
+        pass`,
+           'msg(make)',
+           '("B" in Plugin.registry, "A" in Plugin.registry, "C" in Plugin.registry)']],
+         ['\'C is missing: x\'',
+          '(True, False, False)']],
+        [[['before = len(Plugin.registry)',
+           String.raw`try:
+    class NoRun(Plugin):
+        name = "n"
+except TypeError:
+    pass`,
+           'len(Plugin.registry) == before',
+           String.raw`class Fine(Plugin):
+    name = "f"
+    run = lambda self: 2`,
+           'len(Plugin.registry) == before + 1',
+           'Fine().run()']],
+         ['True',
+          'True',
+          '2']],
+        [[[String.raw`class RunMixin:
+    def run(self):
+        return "mixin"`,
+           String.raw`class P3(RunMixin, Plugin):
+    name = "p3"`,
+           'P3().run()',
+           '"P3" in Plugin.registry',
+           String.raw`class Base1(Plugin):
+    name = "b1"
+    def run(self): return "base"`,
+           'class Child1(Base1): pass',
+           '"Child1" in Plugin.registry',
+           'Child1().run()']],
+         ['\'mixin\'',
+          'True',
+          'True',
+          '\'base\'']],
+        [[['ns = {"Plugin": Plugin}',
+           'exec("class Many(Plugin):\\n" + "".join("    a%d = %d\\n" % (i, i) for i in range(500)) + "    name = \'m\'\\n    def run(self): pass", ns)',
+           '"Many" in Plugin.registry',
+           String.raw`class T1(Plugin):
+    required = ("a", "b", "c")
+    a = b = c = 0`,
+           '"T1" in Plugin.registry']],
+         ['True',
+          'True']],
+      ] },
       solution: {
         approach: R`<p>Use <code>__init_subclass__</code> so the check runs inside <code>type.__new__</code> for every subclass, at import time. Walk the MRO manually so placeholders on the base class do not count. A metaclass version (same logic in <code>Meta.__init__</code>) is shown as the alternative; it is needed only if you also want to customise the namespace or class-level operators.</p>`,
         code: { lang: 'python', run: true, code: R`class Plugin:
@@ -2416,6 +3051,136 @@ sys.path.remove(str(root))
 ` },
       mcq: { q: 'Why must the finder return <code>None</code> for module names it does not know?', options: ['So the next finder on sys.meta_path gets a chance', 'Because raising would be faster', 'To make the module a namespace package', 'It must raise ImportError instead'], answer: 0, explain: 'The import system tries each finder in order; returning None means "not mine". Raising would abort the whole import, breaking every other module.' },
       hints: [R`<p>Hint 1: subclass <code>importlib.abc.MetaPathFinder</code> and <code>importlib.abc.Loader</code> (one class can be both). <code>find_spec(name, path, target=None)</code> returns <code>importlib.util.spec_from_loader(name, self, is_package=...)</code>.</p>`, R`<p>Hint 2: <code>exec_module(module)</code> compiles <code>sources[module.__name__]</code> with a fake filename like <code>"&lt;dict:plugins.hello&gt;"</code> and <code>exec</code>s it in <code>module.__dict__</code>. <code>create_module</code> returning None means "use the default module object".</p>`, R`<p>Hint 3: for packages, <code>spec_from_loader(..., is_package=True)</code> sets <code>submodule_search_locations</code> so <code>__path__</code> exists. Insert the finder at the front of <code>sys.meta_path</code>; remove it and the cached modules when done.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[[String.raw`import importlib, sys
+def with_finder(sources, body):
+    f = DictImporter(sources)
+    sys.meta_path.insert(0, f)
+    try:
+        return body()
+    finally:
+        sys.meta_path.remove(f)
+        roots = {n.split(".")[0] for n in sources}
+        for k in list(sys.modules):
+            if k.split(".")[0] in roots:
+                del sys.modules[k]`,
+           'with_finder({"plugins": "", "plugins.hello": "def hi(): return \'hi from memory\'"}, lambda: importlib.import_module("plugins.hello").hi())']],
+         ['\'hi from memory\'']],
+        [[[String.raw`import importlib, sys
+def with_finder(sources, body):
+    f = DictImporter(sources)
+    sys.meta_path.insert(0, f)
+    try:
+        return body()
+    finally:
+        sys.meta_path.remove(f)
+        roots = {n.split(".")[0] for n in sources}
+        for k in list(sys.modules):
+            if k.split(".")[0] in roots:
+                del sys.modules[k]`,
+           'with_finder({"plugins": "", "plugins.hello": "x = 1"}, lambda: (hasattr(importlib.import_module("plugins"), "__path__"), hasattr(importlib.import_module("plugins.hello"), "__path__")))']],
+         ['(True, False)']],
+        [[[String.raw`import importlib, sys
+def with_finder(sources, body):
+    f = DictImporter(sources)
+    sys.meta_path.insert(0, f)
+    try:
+        return body()
+    finally:
+        sys.meta_path.remove(f)
+        roots = {n.split(".")[0] for n in sources}
+        for k in list(sys.modules):
+            if k.split(".")[0] in roots:
+                del sys.modules[k]`,
+           String.raw`def probe():
+    m = importlib.import_module("plugins.hello")
+    return (m.__spec__.name, m.__spec__.origin, isinstance(m.__spec__.loader, DictImporter), m.__name__, m.__package__)`,
+           'with_finder({"plugins": "", "plugins.hello": "x = 1"}, probe)']],
+         ['(\'plugins.hello\', \'<dict:plugins.hello>\', True, \'plugins.hello\', \'plugins\')']],
+        [[[String.raw`import importlib, sys
+def with_finder(sources, body):
+    f = DictImporter(sources)
+    sys.meta_path.insert(0, f)
+    try:
+        return body()
+    finally:
+        sys.meta_path.remove(f)
+        roots = {n.split(".")[0] for n in sources}
+        for k in list(sys.modules):
+            if k.split(".")[0] in roots:
+                del sys.modules[k]`,
+           'import builtins',
+           String.raw`def twice():
+    a = importlib.import_module("cnt")
+    b = importlib.import_module("cnt")
+    return a is b, builtins._cnt`,
+           'with_finder({"cnt": "import builtins\\nbuiltins._cnt = getattr(builtins, \'_cnt\', 0) + 1"}, twice)',
+           'del builtins._cnt',
+           'importlib.import_module("json").dumps({})',
+           'with_finder({"zz": ""}, lambda: importlib.import_module("nosuchmod_xyz"))',
+           'with_finder({"zz": ""}, lambda: importlib.import_module("json").dumps([1]))']],
+         ['(True, 1)',
+          '\'{}\'',
+          '!ModuleNotFoundError',
+          '\'[1]\'']],
+        [[[String.raw`import importlib, sys
+def with_finder(sources, body):
+    f = DictImporter(sources)
+    sys.meta_path.insert(0, f)
+    try:
+        return body()
+    finally:
+        sys.meta_path.remove(f)
+        roots = {n.split(".")[0] for n in sources}
+        for k in list(sys.modules):
+            if k.split(".")[0] in roots:
+                del sys.modules[k]`,
+           'with_finder({"app": "", "app.a": "from app.b import val\\nres = val + 1", "app.b": "val = 41"}, lambda: importlib.import_module("app.a").res)',
+           'with_finder({"pkg": "", "pkg.sub": "from . import other\\nval = other.x", "pkg.other": "x = 7"}, lambda: importlib.import_module("pkg.sub").val)']],
+         ['42',
+          '7']],
+        [[[String.raw`import importlib, sys
+def with_finder(sources, body):
+    f = DictImporter(sources)
+    sys.meta_path.insert(0, f)
+    try:
+        return body()
+    finally:
+        sys.meta_path.remove(f)
+        roots = {n.split(".")[0] for n in sources}
+        for k in list(sys.modules):
+            if k.split(".")[0] in roots:
+                del sys.modules[k]`,
+           'n_before = len(sys.meta_path)',
+           'with_finder({"tmpmod": "v = 1"}, lambda: len(sys.meta_path) == n_before + 1 and sys.meta_path[0].__class__.__name__ == "DictImporter")',
+           'len(sys.meta_path) == n_before',
+           '"tmpmod" in sys.modules',
+           'with_finder({"tmpmod": "raise RuntimeError(\'boom\')"}, lambda: importlib.import_module("tmpmod"))',
+           '"tmpmod" in sys.modules']],
+         ['True',
+          'True',
+          'False',
+          '!RuntimeError',
+          'False']],
+        [[[String.raw`import importlib, sys
+def with_finder(sources, body):
+    f = DictImporter(sources)
+    sys.meta_path.insert(0, f)
+    try:
+        return body()
+    finally:
+        sys.meta_path.remove(f)
+        roots = {n.split(".")[0] for n in sources}
+        for k in list(sys.modules):
+            if k.split(".")[0] in roots:
+                del sys.modules[k]`,
+           'srcs = {"pk": ""}',
+           'srcs.update({"pk.m%d" % i: "v = %d" % i for i in range(1000)})',
+           'with_finder(srcs, lambda: sum(importlib.import_module("pk.m%d" % i).v for i in range(1000)))',
+           'with_finder(srcs, lambda: (importlib.import_module("pk").__path__ is not None, sorted(k for k in sys.modules if k == "pk" or k.startswith("pk."))))']],
+         ['499500',
+          '(True, [\'pk\'])']],
+      ] },
       solution: {
         approach: R`<p>One object acting as both finder and loader. <code>find_spec</code> claims only names in the dict and marks packages; <code>exec_module</code> compiles and runs the stored source in the fresh module's namespace. Everything else (parent-first imports, <code>sys.modules</code> caching, attribute binding of submodules) is handled by importlib.</p>`,
         code: { lang: 'python', run: true, code: R`import importlib.abc
@@ -2488,6 +3253,74 @@ print(relation_brute(1, "1"))
 ` },
     mcq: { q: 'For <code>x = float("nan")</code>, what is <code>relation(x, x)</code> with identity checked first?', options: ['"same object"', '"equal, different objects"', '"different"', 'It raises'], answer: 0, explain: 'Identity holds even though <code>nan == nan</code> is False. Checking <code>==</code> first would wrongly report "different".' },
     hints: [R`<p>Hint 1: order matters: test <code>a is b</code> first, then <code>a == b</code>, then fall through to "different".</p>`, R`<p>Hint 2: build values at runtime (<code>int(text)</code>, <code>"".join</code>) so the compiler cannot merge constants and fool your experiment.</p>`, R`<p>Hint 3: remember the cache range −5…256 for ints and that only empty / one-char Latin-1 strings are cached at runtime.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['relation(int("256"), int("256"))',
+         'relation(int("257"), int("257"))',
+         'relation("".join(["ab", "c"]), "".join(["ab", "c"]))',
+         'relation([1], [1])']],
+       ['\'same object\'',
+        '\'equal, different objects\'',
+        '\'equal, different objects\'',
+        '\'equal, different objects\'']],
+      [[['nan = float("nan")',
+         'relation(nan, nan)',
+         'relation(float("nan"), float("nan"))',
+         'nan == nan']],
+       ['\'same object\'',
+        '\'different\'',
+        'False']],
+      [[['relation(1, "1")',
+         'relation(None, None)',
+         'relation(True, 1)',
+         'relation(1, 1.0)',
+         'relation(True, True)',
+         'relation([], {})']],
+       ['\'different\'',
+        '\'same object\'',
+        '\'equal, different objects\'',
+        '\'equal, different objects\'',
+        '\'same object\'',
+        '\'different\'']],
+      [[[String.raw`class AlwaysEq:
+    def __eq__(self, o):
+        return True
+    __hash__ = None`,
+         String.raw`class NeverEq:
+    def __eq__(self, o):
+        return False`,
+         'x, y = AlwaysEq(), AlwaysEq()',
+         'relation(x, y)',
+         'relation(x, x)',
+         'n = NeverEq()',
+         'relation(n, n)',
+         'relation(NeverEq(), NeverEq())']],
+       ['\'equal, different objects\'',
+        '\'same object\'',
+        '\'same object\'',
+        '\'different\'']],
+      [[['relation([], [])',
+         'relation(tuple(), ())',
+         'relation("".join([]), "")',
+         'relation(int("-5"), int("-5"))',
+         'relation(int("-6"), int("-6"))',
+         'relation({"a": 1}, {"a": 1})']],
+       ['\'equal, different objects\'',
+        '\'same object\'',
+        '\'same object\'',
+        '\'same object\'',
+        '\'equal, different objects\'',
+        '\'equal, different objects\'']],
+      [[['a = list(range(10**6))',
+         'b = list(range(10**6))',
+         'relation(a, b)',
+         'relation(a, a)',
+         'relation(a, b[:-1])',
+         'relation(a, a[:])']],
+       ['\'equal, different objects\'',
+        '\'same object\'',
+        '\'different\'',
+        '\'equal, different objects\'']],
+    ] },
     solution: {
       approach: R`<p>Three ordered checks. The experiment builds every value at runtime so that results reflect real program data rather than merged literals.</p>`,
       code: { lang: 'python', run: true, code: R`def relation(a, b):
@@ -2532,6 +3365,83 @@ print(is_precomputed_shallow(outer, 1024))       # False: wrong
 ` },
     mcq: { q: 'Where does the bytecode of an inner function defined inside <code>outer</code> live?', options: ['As a code object inside <code>outer.__code__.co_consts</code>', 'In <code>outer.__dict__</code>', 'In the module globals only', 'It is created from source text at call time'], answer: 0, explain: 'The compiler stores nested code objects as constants; <code>MAKE_FUNCTION</code> wraps them in a new function object each time <code>outer</code> runs.' },
     hints: [R`<p>Hint 1: <code>types.CodeType</code> instances inside <code>co_consts</code> are nested code objects; recurse into them.</p>`, R`<p>Hint 2: compare with <code>type(c) is type(value) and c == value</code> to avoid <code>True == 1</code> surprises.</p>`, R`<p>Hint 3: use an explicit stack of code objects to avoid recursion limits; start with <code>func.__code__</code>.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`def seconds():
+    return 24 * 60 * 60`,
+         String.raw`def scaled(x):
+    return x * 60`,
+         'is_precomputed(seconds, 86400)',
+         'is_precomputed(seconds, 86400.0)',
+         'is_precomputed(scaled, 3600)',
+         'is_precomputed(scaled, 60)']],
+       ['True',
+        'False',
+        'False',
+        'True']],
+      [[[String.raw`def outer():
+    def inner():
+        return 2 ** 10
+    return inner`,
+         'is_precomputed(outer, 1024)',
+         'is_precomputed(lambda: "ab" * 3, "ababab")',
+         'is_precomputed(lambda: 2 ** 200, 2 ** 200)',
+         'is_precomputed(lambda: "x" * 5000, "x" * 5000)',
+         'is_precomputed(lambda: (1, 2), (1, 2))']],
+       ['True',
+        'True',
+        'False',
+        'False',
+        'True']],
+      [[[String.raw`def t():
+    return True`,
+         String.raw`def u():
+    return 1.0`,
+         'is_precomputed(t, 1)',
+         'is_precomputed(t, True)',
+         'is_precomputed(u, 1)',
+         'is_precomputed(u, 1.0)',
+         'is_precomputed(u, True)']],
+       ['False',
+        'True',
+        'False',
+        'True',
+        'False']],
+      [[[String.raw`def g():
+    return sum(x * 3600 for x in range(3))`,
+         'is_precomputed(g, 3600)',
+         'is_precomputed(g, 3)',
+         'is_precomputed(g, 7200)',
+         String.raw`def h(a):
+    f = lambda b: b + 99
+    return f(a)`,
+         'is_precomputed(h, 99)']],
+       ['True',
+        'True',
+        'False',
+        'True']],
+      [[['is_precomputed(len, 1)',
+         'is_precomputed(print, None)']],
+       ['!AttributeError',
+        '!AttributeError']],
+      [[['lines = ["%sdef f%d():" % ("  " * i, i) for i in range(40)] + ["  " * 40 + "return 424242"]',
+         'ns = {}',
+         'exec("\\n".join(lines), ns)',
+         'is_precomputed(ns["f0"], 424242)',
+         'is_precomputed(ns["f0"], 424243)']],
+       ['True',
+        'False']],
+      [[['src = "def many():\\n" + "".join("    v = %d\\n" % i for i in range(5000)) + "    return v\\n"',
+         'ns = {}',
+         'exec(src, ns)',
+         'is_precomputed(ns["many"], 4999)',
+         'is_precomputed(ns["many"], 2500)',
+         'is_precomputed(ns["many"], 5000)',
+         'is_precomputed(ns["many"], -1)']],
+       ['True',
+        'True',
+        'False',
+        'False']],
+    ] },
     solution: {
       approach: R`<p>Depth-first walk over code objects via <code>co_consts</code>, checking each constant with a type-strict comparison.</p>`,
       code: { lang: 'python', run: true, code: R`import types
@@ -2583,6 +3493,74 @@ def global_lookups_regex(func):
 ` },
     mcq: { q: 'Inside a function, which instruction reads a builtin like <code>len</code>?', options: ['LOAD_GLOBAL', 'LOAD_FAST', 'LOAD_NAME', 'LOAD_DEREF'], answer: 0, explain: 'Function code uses LOAD_GLOBAL for names that are neither local nor closure variables; it checks module globals and then builtins. LOAD_NAME is for module/class bodies.' },
     hints: [R`<p>Hint 1: filter instructions with <code>ins.opname == "LOAD_GLOBAL"</code> and collect <code>ins.argval</code>.</p>`, R`<p>Hint 2: <code>collections.Counter</code> does the counting.</p>`, R`<p>Hint 3: compare two versions of the same loop: one calling <code>math.sqrt</code>, one with <code>sqrt = math.sqrt</code> hoisted before the loop (or passed as a default argument).</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['global_lookups(norms) == {"math": 1, "sum": 1, "len": 1}',
+         'global_lookups(norms_hoisted)',
+         'sorted(global_lookups(norms))']],
+       ['True',
+        '{}',
+        '[\'len\', \'math\', \'sum\']']],
+      [[['a, b = 1, 2',
+         String.raw`def f():
+    return a + a + b`,
+         'global_lookups(f) == {"a": 2, "b": 1}',
+         'sorted(global_lookups(f).items())']],
+       ['True',
+        '[(\'a\', 2), (\'b\', 1)]']],
+      [[[String.raw`def h(x):
+    print(len(x))
+    return len(x)`,
+         'global_lookups(h) == {"print": 1, "len": 2}',
+         String.raw`def k(x, y):
+    z = x + y
+    return z`,
+         'global_lookups(k)',
+         'global_lookups(lambda: 5)']],
+       ['True',
+        '{}',
+        '{}']],
+      [[[String.raw`def o():
+    def i():
+        return g1
+    return i`,
+         'global_lookups(o)',
+         'global_lookups(o())']],
+       ['{}',
+        '{\'g1\': 1}']],
+      [[[String.raw`def s(xs):
+    return sum(len(x) for x in xs)`,
+         'global_lookups(s)',
+         String.raw`def m(xs):
+    for x in xs:
+        math.pi
+        math.e`,
+         'global_lookups(m)']],
+       ['{\'sum\': 1}',
+        '{\'math\': 2}']],
+      [[[String.raw`def sg():
+    global G
+    G = 1`,
+         'global_lookups(sg)',
+         String.raw`def mixed(x):
+    global G
+    G = x
+    return G + x`,
+         'global_lookups(mixed)']],
+       ['{}',
+        '{\'G\': 1}']],
+      [[['src = "def big(x):\\n    return " + " + ".join(["len(x)"] * 500)',
+         'ns = {}',
+         'exec(src, ns)',
+         'global_lookups(ns["big"])',
+         'src2 = "def many(x):\\n    return " + " + ".join("g%d" % i for i in range(1000))',
+         'exec(src2, ns)',
+         'g = global_lookups(ns["many"])',
+         'len(g)',
+         'set(g.values())']],
+       ['{\'len\': 500}',
+        '1000',
+        '{1}']],
+    ] },
     solution: {
       approach: R`<p>Count <code>LOAD_GLOBAL</code> instructions by name. Then show that hoisting (binding globals to default arguments, which are evaluated once at <code>def</code> time) removes every <code>LOAD_GLOBAL</code> from the function: the loop body now reads only <code>LOAD_FAST</code> slots.</p>`,
       code: { lang: 'python', run: true, code: R`import dis
@@ -2629,6 +3607,86 @@ def report_brute(func):
 ` },
     mcq: { q: 'A variable defined in <code>outer</code> and used by a nested <code>inner</code> appears in…', options: ['outer.co_cellvars and inner.co_freevars', 'outer.co_freevars and inner.co_cellvars', 'only co_names of both', 'co_consts'], answer: 0, explain: 'The owner stores it in a cell (cellvar); the nested function receives that cell in its closure (freevar) and accesses it with LOAD_DEREF.' },
     hints: [R`<p>Hint 1: positional parameters are <code>co_varnames[:co_argcount]</code>; the remaining <code>co_varnames</code> are other locals.</p>`, R`<p>Hint 2: <code>co_cellvars</code> and <code>co_freevars</code> are tuples of names. <code>func.__closure__</code> holds the actual cell objects.</p>`, R`<p>Hint 3: test flags with <code>co_flags &amp; inspect.CO_GENERATOR</code> and <code>CO_COROUTINE</code>.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`def counter(start):
+    count = start
+    def inc(step=1):
+        nonlocal count
+        count += step
+        return count
+    return inc`,
+         'inc = counter(10)',
+         'report(counter)',
+         'report(inc)',
+         'inc.__closure__[0].cell_contents']],
+       ['{\'args\': (\'start\',), \'locals\': (\'inc\',), \'cellvars\': (\'count\',), \'freevars\': (), \'kind\': \'function\'}',
+        '{\'args\': (\'step\',), \'locals\': (), \'cellvars\': (), \'freevars\': (\'count\',), \'kind\': \'function\'}',
+        '10']],
+      [[[String.raw`def gen(n):
+    yield from range(n)`,
+         String.raw`async def fetch():
+    return 1`,
+         String.raw`def plain():
+    return 1`,
+         'report(gen)["kind"]',
+         'report(fetch)["kind"]',
+         'report(plain)["kind"]',
+         'report(lambda: (yield))["kind"]']],
+       ['\'generator\'',
+        '\'coroutine\'',
+        '\'function\'',
+        '\'generator\'']],
+      [[[String.raw`def f(a, b):
+    c = a + b
+    d = c * 2
+    return d`,
+         'report(f)']],
+       ['{\'args\': (\'a\', \'b\'), \'locals\': (\'c\', \'d\'), \'cellvars\': (), \'freevars\': (), \'kind\': \'function\'}']],
+      [[[String.raw`def g():
+    x = 1`,
+         'report(g)',
+         'report(lambda x, y: x)']],
+       ['{\'args\': (), \'locals\': (\'x\',), \'cellvars\': (), \'freevars\': (), \'kind\': \'function\'}',
+        '{\'args\': (\'x\', \'y\'), \'locals\': (), \'cellvars\': (), \'freevars\': (), \'kind\': \'function\'}']],
+      [[[String.raw`def outer(a):
+    b = 1
+    def mid():
+        c = 2
+        def inn():
+            return a + b + c
+        return inn
+    return mid`,
+         'report(outer)',
+         'report(outer(5))',
+         'report(outer(5)())']],
+       ['{\'args\': (\'a\',), \'locals\': (\'mid\',), \'cellvars\': (\'a\', \'b\'), \'freevars\': (), \'kind\': \'function\'}',
+        '{\'args\': (), \'locals\': (\'inn\',), \'cellvars\': (\'c\',), \'freevars\': (\'a\', \'b\'), \'kind\': \'function\'}',
+        '{\'args\': (), \'locals\': (), \'cellvars\': (), \'freevars\': (\'a\', \'b\', \'c\'), \'kind\': \'function\'}']],
+      [[[String.raw`def make():
+    x = 1
+    async def co():
+        return x
+    def ge():
+        yield x
+    return co, ge`,
+         'co, ge = make()',
+         'report(co)',
+         'report(ge)',
+         'report(make)["cellvars"]']],
+       ['{\'args\': (), \'locals\': (), \'cellvars\': (), \'freevars\': (\'x\',), \'kind\': \'coroutine\'}',
+        '{\'args\': (), \'locals\': (), \'cellvars\': (), \'freevars\': (\'x\',), \'kind\': \'generator\'}',
+        '(\'x\',)']],
+      [[['src = "def many(%s):\\n    %s\\n    return 0" % (", ".join("a%d" % i for i in range(50)), "; ".join("v%d = %d" % (i, i) for i in range(150)))',
+         'ns = {}',
+         'exec(src, ns)',
+         'r = report(ns["many"])',
+         'r["args"] == tuple("a%d" % i for i in range(50))',
+         'r["locals"] == tuple("v%d" % i for i in range(150))',
+         '(r["cellvars"], r["freevars"], r["kind"])']],
+       ['True',
+        'True',
+        '((), (), \'function\')']],
+    ] },
     solution: {
       approach: R`<p>Read the compiler's bookkeeping straight from the code object; flags tell the function kind.</p>`,
       code: { lang: 'python', run: true, code: R`import inspect
@@ -2687,6 +3745,146 @@ print(report(gen)["kind"], report(fetch)["kind"])
 ` },
     mcq: { q: 'An instance dict has key <code>"x"</code> and the class has a property <code>x</code>. What does <code>obj.x</code> return?', options: ['The property getter result', 'The instance dict value', 'Whichever was set last', 'AttributeError'], answer: 0, explain: 'property is a data descriptor (it defines __set__), and data descriptors take precedence over the instance dict.' },
     hints: [R`<p>Hint 1: find the class attribute first: <code>for k in type(obj).__mro__: if name in k.__dict__: attr = k.__dict__[name]; break</code>.</p>`, R`<p>Hint 2: check descriptor-ness on the attribute's <b>type</b>: <code>hasattr(type(attr), "__set__")</code>, <code>hasattr(type(attr), "__get__")</code>.</p>`, R`<p>Hint 3: follow the order data descriptor → instance dict → non-data descriptor → class attribute → <code>__getattr__</code> on the type → missing. Use <code>getattr(obj, "__dict__", {})</code> for slotted objects.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`class Temp:
+    unit = "C"
+    def __init__(self, c):
+        self.c = c
+    @property
+    def kelvin(self):
+        return self.c + 273.15
+    def show(self):
+        return "method"
+    def __getattr__(self, name):
+        return "<no " + name + ">"
+t = Temp(21)
+t.__dict__.update(kelvin=0, show="shadowed")`,
+         'lookup_source(t, "kelvin")',
+         'lookup_source(t, "show")',
+         'lookup_source(t, "c")',
+         'lookup_source(t, "unit")',
+         'lookup_source(t, "nope")',
+         'lookup_source(t, "__init__")']],
+       ['\'data descriptor\'',
+        '\'instance dict\'',
+        '\'instance dict\'',
+        '\'class attribute\'',
+        '\'__getattr__\'',
+        '\'non-data descriptor\'']],
+      [[[String.raw`class Temp:
+    unit = "C"
+    def __init__(self, c):
+        self.c = c
+    @property
+    def kelvin(self):
+        return self.c + 273.15
+    def show(self):
+        return "method"
+    def __getattr__(self, name):
+        return "<no " + name + ">"
+t = Temp(21)
+t.__dict__.update(kelvin=0, show="shadowed")`,
+         'u = Temp(5)',
+         'lookup_source(u, "show")',
+         'lookup_source(u, "kelvin")',
+         'u.kelvin',
+         'getattr(u, "show")()',
+         'getattr(u, "nope")',
+         'getattr(t, "kelvin")',
+         'getattr(t, "show")']],
+       ['\'non-data descriptor\'',
+        '\'data descriptor\'',
+        '278.15',
+        '\'method\'',
+        '\'<no nope>\'',
+        '294.15',
+        '\'shadowed\'']],
+      [[[String.raw`class Plain:
+    k = 1`,
+         'p = Plain()',
+         'lookup_source(p, "k")',
+         'lookup_source(p, "zzz")',
+         'p.k = 2',
+         'lookup_source(p, "k")',
+         'p.new = 3',
+         'lookup_source(p, "new")',
+         'lookup_source(p, "__class__")',
+         'lookup_source(p, "__dict__")']],
+       ['\'class attribute\'',
+        '\'missing\'',
+        '\'instance dict\'',
+        '\'instance dict\'',
+        '\'data descriptor\'',
+        '\'data descriptor\'']],
+      [[[String.raw`class DD:
+    def __get__(self, o, t=None): return "dd"
+    def __set__(self, o, v): pass`,
+         String.raw`class DelOnly:
+    def __get__(self, o, t=None): return "do"
+    def __delete__(self, o): pass`,
+         String.raw`class NDD:
+    def __get__(self, o, t=None): return "ndd"`,
+         String.raw`class C:
+    a = DD()
+    b = NDD()
+    c = DelOnly()
+    d = staticmethod(len)
+    e = classmethod(len)
+    f = len`,
+         'o = C()',
+         'o.__dict__.update(a=1, b=2, c=3, d=4, e=5, f=6)',
+         '[lookup_source(o, n) for n in "abcdef"]',
+         'del o.__dict__["b"], o.__dict__["d"], o.__dict__["f"]',
+         '[lookup_source(o, n) for n in "bdf"]',
+         '[o.b, o.d is len, o.f is len]']],
+       ['[\'data descriptor\', \'instance dict\', \'data descriptor\', \'instance dict\', \'instance dict\', \'instance dict\']',
+        '[\'non-data descriptor\', \'non-data descriptor\', \'class attribute\']',
+        '[\'ndd\', True, True]']],
+      [[[String.raw`class Base:
+    inherited = 1
+    def meth(self): return 1
+    def __getattr__(self, n): return n`,
+         String.raw`class Mid(Base):
+    pass`,
+         String.raw`class Leaf(Mid):
+    own = 2`,
+         'l = Leaf()',
+         '[lookup_source(l, n) for n in ("inherited", "meth", "own", "other")]',
+         String.raw`class NoGA:
+    x = 1`,
+         '[lookup_source(NoGA(), n) for n in ("x", "y")]']],
+       ['[\'class attribute\', \'non-data descriptor\', \'class attribute\', \'__getattr__\']',
+        '[\'class attribute\', \'missing\']']],
+      [[[String.raw`class S:
+    __slots__ = ("a", "b")
+    c = 5`,
+         's = S()',
+         's.a = 1',
+         'lookup_source(s, "a")',
+         'lookup_source(s, "b")',
+         'lookup_source(s, "c")',
+         'lookup_source(s, "zz")',
+         'hasattr(s, "__dict__")']],
+       ['\'data descriptor\'',
+        '\'data descriptor\'',
+        '\'class attribute\'',
+        '\'missing\'',
+        'False']],
+      [[['classes = [type("C0", (), {"root": 1})]',
+         'for i in range(1, 200): classes.append(type("C%d" % i, (classes[-1],), {}))',
+         'deep = classes[-1]()',
+         'len(type(deep).__mro__)',
+         'lookup_source(deep, "root")',
+         'lookup_source(deep, "nothing")',
+         'deep.__dict__["root"] = 2',
+         'lookup_source(deep, "root")',
+         'deep.root']],
+       ['201',
+        '\'class attribute\'',
+        '\'missing\'',
+        '\'instance dict\'',
+        '2']],
+    ] },
     solution: {
       approach: R`<p>Replicate CPython's <code>_PyObject_GenericGetAttrWithDict</code> decision order using raw <code>__dict__</code> reads, never triggering descriptors. Verify the answers against actual attribute access.</p>`,
       code: { lang: 'python', run: true, code: R`_MISSING = object()
@@ -2752,6 +3950,165 @@ for n in ["kelvin", "show", "c", "unit", "nope", "__init__"]:
 ` },
     mcq: { q: 'Why does a cached value stored in <code>obj.__dict__["total"]</code> bypass the descriptor next time?', options: ['Non-data descriptors lose to the instance dict in lookup order', 'Python deletes the descriptor after first use', '__dict__ is checked before the class for all descriptors', 'Because __set_name__ renamed it'], answer: 0, explain: 'Step 3 (instance dict) comes before step 4 (non-data descriptor). Data descriptors would still win, which is why cached must NOT define __set__.' },
     hints: [R`<p>Hint 1: store the function in <code>__init__</code>, learn the attribute name in <code>__set_name__</code>.</p>`, R`<p>Hint 2: in <code>__get__</code>: if <code>obj is None</code> return self; compute <code>value = self.func(obj)</code>; write <code>obj.__dict__[self.name] = value</code>; return value.</p>`, R`<p>Hint 3: <code>getattr(obj, "__dict__", None)</code> is None for slotted classes, so raise TypeError there. Do not define <code>__set__</code> or <code>__delete__</code>: <code>del obj.total</code> then just deletes the dict key.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`class C:
+    n = 0
+    @cached
+    def v(self):
+        C.n += 1
+        return 42`,
+         'c = C()',
+         'c.v',
+         'c.v',
+         'C.n',
+         'del c.v',
+         'c.v',
+         'C.n',
+         'c.v',
+         'C.n']],
+       ['42',
+        '42',
+        '1',
+        '42',
+        '2',
+        '42',
+        '2']],
+      [[[String.raw`class C:
+    @cached
+    def v(self):
+        return 1`,
+         'type(C.v).__name__',
+         'isinstance(C.v, cached)',
+         'C.v is C.v',
+         'C().v',
+         'C.v.func.__name__']],
+       ['\'cached\'',
+        'True',
+        'True',
+        '1',
+        '\'v\'']],
+      [[[String.raw`class S:
+    __slots__ = ("x",)
+    @cached
+    def v(self):
+        return 1`,
+         's = S()',
+         's.v',
+         String.raw`def msg(f):
+    try:
+        f()
+    except TypeError as e:
+        return str(e)`,
+         'msg(lambda: s.v)',
+         'msg(lambda: S().v)']],
+       ['!TypeError',
+        '"cannot cache \'v\': instance has no __dict__"',
+        '"cannot cache \'v\': instance has no __dict__"']],
+      [[['hasattr(cached, "__get__")',
+         'hasattr(cached, "__set__")',
+         'hasattr(cached, "__delete__")',
+         String.raw`class C:
+    @cached
+    def v(self):
+        return "computed"`,
+         'c = C()',
+         'c.__dict__["v"] = 99',
+         'c.v',
+         'D = C()',
+         'D.v',
+         'D.__dict__[\'v\']']],
+       ['True',
+        'False',
+        'False',
+        '99',
+        '\'computed\'',
+        '\'computed\'']],
+      [[[String.raw`class D:
+    def __init__(self, k):
+        self.k = k
+    @cached
+    def sq(self):
+        return self.k ** 2`,
+         'D(3).sq',
+         'D(4).sq',
+         'd = D(5)',
+         'd.sq',
+         'd.k = 6',
+         'd.sq',
+         'del d.sq',
+         'd.sq',
+         'D(0).sq']],
+       ['9',
+        '16',
+        '25',
+        '25',
+        '36',
+        '0']],
+      [[[String.raw`class E:
+    @cached
+    def v(self):
+        "doc text"
+        return 1`,
+         'E.v.__doc__',
+         String.raw`class F:
+    n = 0
+    @cached
+    def v(self):
+        F.n += 1
+        if F.n < 3:
+            raise ValueError("no")
+        return F.n`,
+         'f = F()',
+         'f.v',
+         'f.v',
+         'f.v',
+         'f.v',
+         'F.n']],
+       ['\'doc text\'',
+        '!ValueError',
+        '!ValueError',
+        '3',
+        '3',
+        '3']],
+      [[[String.raw`class G:
+    n = 0
+    @cached
+    def none(self):
+        G.n += 1
+        return None
+    @cached
+    def zero(self):
+        G.n += 1
+        return 0
+    @cached
+    def empty(self):
+        G.n += 1
+        return ""`,
+         'g = G()',
+         '(g.none, g.zero, g.empty)',
+         '(g.none, g.zero, g.empty)',
+         'G.n',
+         'sorted(vars(g))']],
+       ['(None, 0, \'\')',
+        '(None, 0, \'\')',
+        '3',
+        '[\'empty\', \'none\', \'zero\']']],
+      [[[String.raw`class H:
+    n = 0
+    def __init__(self, i):
+        self.i = i
+    @cached
+    def v(self):
+        H.n += 1
+        return self.i * 2`,
+         'hs = [H(i) for i in range(100000)]',
+         'sum(h.v for h in hs)',
+         'sum(h.v for h in hs)',
+         'H.n']],
+       ['9999900000',
+        '9999900000',
+        '100000']],
+    ] },
     solution: {
       approach: R`<p>A non-data descriptor that writes its result into the instance dict under its own name, so the normal lookup order turns later accesses into a plain dict hit.</p>`,
       code: { lang: 'python', run: true, code: R`class cached:
@@ -2803,6 +4160,94 @@ print(type(Report.total).__name__)
 ` },
     mcq: { q: 'Which hook sees every instance creation of every class using the metaclass?', options: ['<code>Tracked.__call__</code>', '<code>Tracked.__init__</code>', '<code>Tracked.__prepare__</code>', '<code>object.__init_subclass__</code>'], answer: 0, explain: 'Calling a class runs type(cls).__call__. Meta.__init__ runs once per class creation, __prepare__ before the class body.' },
     hints: [R`<p>Hint 1: in <code>Tracked.__init__</code> (once per class) give the class its own <code>_instances = weakref.WeakSet()</code> and <code>created = 0</code>.</p>`, R`<p>Hint 2: override <code>__call__</code>: <code>obj = super().__call__(*a, **kw)</code>, add to <code>cls._instances</code>, increment <code>cls.created</code>.</p>`, R`<p>Hint 3: define <code>live</code> as a method on the <b>metaclass</b>, so <code>Bullet.live()</code> works but instances do not get it.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`class B1(metaclass=Tracked):
+    def __init__(self, v):
+        self.v = v`,
+         'shots = [B1(i) for i in range(3)]',
+         'del shots[:2]',
+         'B1.live()',
+         'B1.created']],
+       ['1',
+        '3']],
+      [[[String.raw`class B2(metaclass=Tracked):
+    pass`,
+         String.raw`class R2(B2):
+    pass`,
+         'a, b = B2(), B2()',
+         'r = R2()',
+         '(B2.live(), B2.created, R2.live(), R2.created)',
+         'del r',
+         '(B2.live(), R2.live(), R2.created)']],
+       ['(2, 2, 1, 1)',
+        '(2, 0, 1)']],
+      [[[String.raw`class B3(metaclass=Tracked):
+    pass`,
+         'x = B3()',
+         'hasattr(x, "live")',
+         'hasattr(B3, "live")',
+         'import weakref',
+         'ref = weakref.ref(x)',
+         'del x',
+         'ref() is None',
+         '(B3.live(), B3.created)']],
+       ['False',
+        'True',
+        'True',
+        '(0, 1)']],
+      [[[String.raw`class B4(metaclass=Tracked):
+    pass`,
+         String.raw`class B5(metaclass=Tracked):
+    pass`,
+         'keep = [B4(), B4(), B5()]',
+         '(B4.live(), B5.live(), B4.created, B5.created)',
+         'keep.clear()',
+         '(B4.live(), B5.live(), B4.created, B5.created)',
+         'B4.live()']],
+       ['(2, 1, 2, 1)',
+        '(0, 0, 2, 1)',
+        '0']],
+      [[[String.raw`class B6(metaclass=Tracked):
+    def __init__(self, v):
+        self.v = v`,
+         'b = B6(7)',
+         'b.v',
+         'type(B6).__name__',
+         'isinstance(B6, Tracked)',
+         'B6.created',
+         'B6(1).v',
+         'B6.created']],
+       ['7',
+        '\'Tracked\'',
+        'True',
+        '1',
+        '1',
+        '2']],
+      [[[String.raw`class B7(metaclass=Tracked):
+    pass`,
+         'for i in range(100000): B7()',
+         '(B7.live(), B7.created)',
+         'objs = [B7() for _ in range(1000)]',
+         '(B7.live(), B7.created)',
+         'del objs',
+         '(B7.live(), B7.created)']],
+       ['(0, 100000)',
+        '(1000, 101000)',
+        '(0, 101000)']],
+      [[[String.raw`class B8(metaclass=Tracked):
+    def __init__(self, other=None):
+        self.other = other`,
+         'a = B8()',
+         'b = B8(a)',
+         'a.other = b',
+         '(B8.live(), B8.created)',
+         'import gc',
+         'del a, b',
+         '_ = gc.collect()',
+         '(B8.live(), B8.created)']],
+       ['(2, 2)',
+        '(0, 2)']],
+    ] },
     solution: {
       approach: R`<p>Per-class state is created in the metaclass's <code>__init__</code>, every instantiation passes through the metaclass's <code>__call__</code>, and a <code>WeakSet</code> tracks liveness without owning objects. <code>live</code> is a metaclass method, visible on classes only.</p>`,
       code: { lang: 'python', run: true, code: R`import weakref
@@ -2858,6 +4303,139 @@ print("instances see live()?", hasattr(r, "live"))
 ` },
     mcq: { q: 'Why does <code>weakref.ref(widget.on_event)</code> die immediately?', options: ['The bound method is a temporary object created on attribute access', 'Widgets cannot be weakly referenced', 'Methods are immortal', 'weakref only works on functions'], answer: 0, explain: 'Each widget.on_event creates a new bound-method object; nothing else references it, so the weakref dies at once. WeakMethod stores weak refs to the object and the function separately.' },
     hints: [R`<p>Hint 1: <code>weakref.WeakMethod(bound)</code> recreates the bound method on call and returns None once <code>__self__</code> is dead.</p>`, R`<p>Hint 2: detect bound methods with <code>hasattr(cb, "__self__") and hasattr(cb, "__func__")</code>; wrap plain functions in a lambda that returns them, so both kinds look like "call me to get the callback".</p>`, R`<p>Hint 3: in <code>publish</code>, build a new list of live entries while dispatching; replace the old list at the end.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`class W:
+    def __init__(self, name, log):
+        self.name = name
+        self.log = log
+    def on_event(self, event):
+        self.log.append((self.name, event))`,
+         'log = []',
+         'bus = EventBus()',
+         'a, b = W("A", log), W("B", log)',
+         '_ = bus.subscribe(a.on_event)',
+         '_ = bus.subscribe(b.on_event)',
+         '_ = bus.subscribe(lambda e: log.append(("logger", e)))',
+         'bus.publish("tick-1")',
+         'log',
+         'del b',
+         'log.clear()',
+         'bus.publish("tick-2")',
+         'log',
+         'len(bus)']],
+       ['[(\'A\', \'tick-1\'), (\'B\', \'tick-1\'), (\'logger\', \'tick-1\')]',
+        '[(\'A\', \'tick-2\'), (\'logger\', \'tick-2\')]',
+        '2']],
+      [[[String.raw`class W:
+    def __init__(self, name, log):
+        self.name = name
+        self.log = log
+    def on_event(self, event):
+        self.log.append((self.name, event))`,
+         'import weakref, gc',
+         'log = []',
+         'bus = EventBus()',
+         'w = W("X", log)',
+         '_ = bus.subscribe(w.on_event)',
+         '_ = None',
+         'ref = weakref.ref(w)',
+         'del w',
+         'ref() is None',
+         'bus.publish("e")',
+         'log',
+         'len(bus)']],
+       ['True',
+        '[]',
+        '0']],
+      [[[String.raw`class W:
+    def __init__(self, name, log):
+        self.name = name
+        self.log = log
+    def on_event(self, event):
+        self.log.append((self.name, event))`,
+         'import gc',
+         'log = []',
+         'bus = EventBus()',
+         '_ = bus.subscribe(lambda e: log.append(("f1", e)))',
+         'def f2(e): log.append(("f2", e))',
+         '_ = bus.subscribe(f2)',
+         'del f2',
+         '_ = gc.collect()',
+         'bus.publish(1)',
+         'bus.publish(2)',
+         'log',
+         'len(bus)']],
+       ['[(\'f1\', 1), (\'f2\', 1), (\'f1\', 2), (\'f2\', 2)]',
+        '2']],
+      [[['bus = EventBus()',
+         'len(bus)',
+         'bus.publish("nobody")',
+         'len(bus)']],
+       ['0',
+        '0']],
+      [[[String.raw`class W:
+    def __init__(self, name, log):
+        self.name = name
+        self.log = log
+    def on_event(self, event):
+        self.log.append((self.name, event))`,
+         'log = []',
+         'bus = EventBus()',
+         'ws = [W("w%d" % i, log) for i in range(5)]',
+         'for w in ws: bus.subscribe(w.on_event)',
+         'bus.publish("x")',
+         '[n for n, e in log]',
+         'del ws[1:3]',
+         'w = None',
+         'log.clear()',
+         'bus.publish("y")',
+         '[n for n, e in log]',
+         'len(bus)']],
+       ['[\'w0\', \'w1\', \'w2\', \'w3\', \'w4\']',
+        '[\'w0\', \'w3\', \'w4\']',
+        '3']],
+      [[[String.raw`class W:
+    def __init__(self, name, log):
+        self.name = name
+        self.log = log
+    def on_event(self, event):
+        self.log.append((self.name, event))`,
+         'log = []',
+         'bus = EventBus()',
+         'a = W("A", log)',
+         '_ = bus.subscribe(a.on_event)',
+         'bus.publish({"k": [1, 2]})',
+         'bus.publish(None)',
+         'log',
+         'len(bus)']],
+       ['[(\'A\', {\'k\': [1, 2]}), (\'A\', None)]',
+        '1']],
+      [[[String.raw`class W:
+    def __init__(self, name, log):
+        self.name = name
+        self.log = log
+    def on_event(self, event):
+        self.log.append((self.name, event))`,
+         'log = []',
+         'bus = EventBus()',
+         'ws = [W(str(i), log) for i in range(10000)]',
+         'for w in ws: bus.subscribe(w.on_event)',
+         '_ = bus.subscribe(lambda e: log.append("plain"))',
+         'del ws[:5000]',
+         'w = None',
+         'log.clear()',
+         'bus.publish("e")',
+         'len(log)',
+         'len(bus)',
+         'log[-1]',
+         'log.clear()',
+         'bus.publish("e")',
+         'len(log)']],
+       ['5001',
+        '5001',
+        '\'plain\'',
+        '5001']],
+    ] },
     solution: {
       approach: R`<p>Store "resolvers": for bound methods a <code>WeakMethod</code>, for functions a strong closure. Publishing resolves each; dead ones are dropped. No subscriber's lifetime is extended by the bus.</p>`,
       code: { lang: 'python', run: true, code: R`import weakref
@@ -2925,6 +4503,92 @@ def make_eager_module(name, mapping):
 ` },
     mcq: { q: 'When does a module-level <code>__getattr__</code> run?', options: ['Only when normal lookup in the module dict fails', 'On every attribute access', 'Only at import time', 'Only for names starting with an underscore'], answer: 0, explain: 'PEP 562: module attribute access first checks the module __dict__; only if the name is missing is __getattr__ called. Caching the result in the dict makes later accesses normal.' },
     hints: [R`<p>Hint 1: create <code>mod = types.ModuleType(name)</code>, then define <code>def __getattr__(attr): ...</code> and store it as <code>mod.__getattr__</code> (it lives in the module dict).</p>`, R`<p>Hint 2: inside, look up <code>mapping[attr]</code>, <code>importlib.import_module</code> the module part, <code>getattr</code> the object part, then <code>setattr(mod, attr, value)</code> to cache.</p>`, R`<p>Hint 3: unknown attr → <code>raise AttributeError(f"module {name!r} has no attribute {attr!r}")</code>. <code>__dir__</code> returns sorted module dict keys plus mapping keys.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['import sys',
+         'tools = make_lazy_module("tools1", {"dumps": "json:dumps"})',
+         '"dumps" in vars(tools)',
+         'tools.dumps({"a": 1})',
+         '"dumps" in vars(tools)',
+         'tools.dumps is tools.dumps',
+         'del sys.modules["tools1"]']],
+       ['False',
+        '\'{"a": 1}\'',
+        'True',
+        'True']],
+      [[['import sys',
+         String.raw`def msg(f, exc=AttributeError):
+    try:
+        f()
+    except exc as e:
+        return str(e)`,
+         'tools = make_lazy_module("tools2", {"dumps": "json:dumps"})',
+         'tools.nope',
+         'msg(lambda: tools.nope)',
+         'hasattr(tools, "nope")',
+         'hasattr(tools, "dumps")',
+         'del sys.modules["tools2"]']],
+       ['!AttributeError',
+        '"module \'tools2\' has no attribute \'nope\'"',
+        'False',
+        'True']],
+      [[['import sys',
+         'tools = make_lazy_module("tools3", {"dumps": "json:dumps", "sqrt": "math:sqrt"})',
+         'sorted(n for n in dir(tools) if not n.startswith("__"))',
+         'tools.sqrt(16.0)',
+         'sorted(n for n in dir(tools) if not n.startswith("__"))',
+         'len(dir(tools)) == len(set(dir(tools)))',
+         'del sys.modules["tools3"]']],
+       ['[\'dumps\', \'sqrt\']',
+        '4.0',
+        '[\'dumps\', \'sqrt\']',
+        'True']],
+      [[['import sys, importlib',
+         'tools = make_lazy_module("tools4", {"pi": "math:pi"})',
+         'importlib.import_module("tools4") is tools',
+         'sys.modules["tools4"] is tools',
+         'tools.pi',
+         'tools.__name__',
+         'del sys.modules["tools4"]']],
+       ['True',
+        'True',
+        '3.141592653589793',
+        '\'tools4\'']],
+      [[['import sys',
+         '_ = sys.modules.pop("colorsys", None)',
+         'tools = make_lazy_module("tools5", {"rgb_to_hsv": "colorsys:rgb_to_hsv"})',
+         '"colorsys" in sys.modules',
+         'tools.rgb_to_hsv(1, 0, 0)',
+         '"colorsys" in sys.modules',
+         'tools.rgb_to_hsv is sys.modules["colorsys"].rgb_to_hsv',
+         'del sys.modules["tools5"]']],
+       ['False',
+        '(0.0, 1.0, 1)',
+        'True',
+        'True']],
+      [[['import sys',
+         'tools = make_lazy_module("tools6", {"x": "no_such_module_zz:foo", "y": "json:nope"})',
+         'tools.x',
+         'tools.y',
+         '"x" in vars(tools)',
+         '"y" in vars(tools)',
+         'del sys.modules["tools6"]']],
+       ['!ModuleNotFoundError',
+        '!AttributeError',
+        'False',
+        'False']],
+      [[['import sys',
+         'mapping = {"a%d" % i: "math:pi" for i in range(1000)}',
+         'tools = make_lazy_module("tools7", mapping)',
+         'len([n for n in dir(tools) if n.startswith("a")]) >= 1000',
+         'vars(tools).get("a5") is None',
+         'all(getattr(tools, "a%d" % i) == 3.141592653589793 for i in range(1000))',
+         'sum(1 for n in vars(tools) if n.startswith("a") and n[1:].isdigit())',
+         'del sys.modules["tools7"]']],
+       ['True',
+        'True',
+        'True',
+        '1000']],
+    ] },
     solution: {
       approach: R`<p>PEP 562 gives modules a fallback <code>__getattr__</code>. We resolve on first access and cache into the module dict so subsequent accesses are ordinary dict lookups.</p>`,
       code: { lang: 'python', run: true, code: R`import importlib
@@ -2985,6 +4649,68 @@ print(sys.getsizeof(P()))          # shallow: misses attribute storage
 ` },
     mcq: { q: 'What does <code>__slots__ = ("x", "y")</code> remove from each instance?', options: ['The per-instance __dict__ (and __weakref__ unless listed)', 'The type pointer', 'The reference count', 'Nothing, it only speeds up access'], answer: 0, explain: 'Slots store attributes at fixed offsets via member descriptors, so no per-instance dict is needed. Every object still has a refcount and type pointer.' },
     hints: [R`<p>Hint 1: <code>tracemalloc.start()</code>, take <code>get_traced_memory()[0]</code> before and after creating the list of instances.</p>`, R`<p>Hint 2: subtract the list's own size (about <code>8 * n</code> bytes of pointers plus a header) by pre-building <code>[None] * n</code> and filling it.</p>`, R`<p>Hint 3: call <code>gc.collect()</code> before measuring and <code>tracemalloc.stop()</code> afterwards; divide by n.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['r = bytes_per_instance(Regular)',
+         's = bytes_per_instance(Slotted)',
+         'd = bytes_per_instance(DataSlotted)',
+         'isinstance(r, float) and isinstance(s, float)',
+         '54 <= s <= 64',
+         '54 <= d <= 64',
+         'r > s',
+         '60 <= r <= 200']],
+       ['True',
+        'True',
+        'True',
+        'True',
+        'True']],
+      [[['import tracemalloc',
+         'tracemalloc.is_tracing()',
+         '54 <= bytes_per_instance(Slotted) <= 64',
+         'tracemalloc.is_tracing()',
+         'a = bytes_per_instance(Slotted, 1000)',
+         'b = bytes_per_instance(Slotted, 20000)',
+         'abs(a - b) < 8']],
+       ['False',
+        'True',
+        'False',
+        'True']],
+      [[[String.raw`class Five:
+    def __init__(self, a, b, c):
+        self.a, self.b, self.c = a, b, c
+        self.d = self.e = 0`,
+         String.raw`class FiveSlots:
+    __slots__ = ("a", "b", "c", "d", "e")
+    def __init__(self, a, b, c):
+        self.a, self.b, self.c = a, b, c
+        self.d = self.e = 0`,
+         'f5, f5s = bytes_per_instance(Five), bytes_per_instance(FiveSlots)',
+         'f5 > f5s',
+         'abs((f5s - bytes_per_instance(Slotted)) - 16) < 1']],
+       ['True',
+        'True']],
+      [[['import tracemalloc',
+         'tracemalloc.start()',
+         'bytes_per_instance(Slotted) > 0',
+         'tracemalloc.is_tracing()',
+         'tracemalloc.stop()']],
+       ['True',
+        'False']],
+      [[[String.raw`class Plain3:
+    def __init__(self, x, y, z):
+        self.x, self.y, self.z = x, y, z`,
+         'values = [bytes_per_instance(Plain3) for _ in range(3)]',
+         'max(values) - min(values) < 2',
+         'bytes_per_instance(Plain3) > bytes_per_instance(Slotted)']],
+       ['True',
+        'True']],
+      [[['x = bytes_per_instance(Slotted, 1)',
+         'x > 0',
+         'bytes_per_instance(Slotted, 100000) < 70',
+         'bytes_per_instance(Regular, 100000) > 60']],
+       ['True',
+        'True',
+        'True']],
+    ] },
     solution: {
       approach: R`<p>Pre-allocate the holder list so it does not count, then measure the allocation delta while creating n instances. Divide by n. Compare three class styles.</p>`,
       code: { lang: 'python', run: true, code: R`import gc
@@ -3059,8 +4785,127 @@ def cycles_brute(objs):
 ` },
     mcq: { q: 'Why must the edge builder pass through plain dicts and lists?', options: ['References often go via a container (an attribute dict or a list attribute) rather than directly', 'gc.get_referents only returns dicts', 'To include every object in the program', 'Because tuples are immortal'], answer: 0, explain: 'f.items = [g] means f → list → g. Depending on the version, attributes may also sit in a __dict__ dict. Walking through plain containers recovers the logical edge f → g.' },
     hints: [R`<p>Hint 1: build the graph: for each object, BFS over <code>gc.get_referents</code>; when you hit an object in your set, add an edge and stop there; when you hit a plain container not in the set, keep walking; ignore everything else.</p>`, R`<p>Hint 2: run Tarjan's SCC (or Kosaraju) on the label graph. An SCC with more than one node, or one node with a self-edge, is a cycle.</p>`, R`<p>Hint 3: key objects by <code>id()</code> while they are alive; keep a <code>seen</code> set of container ids per BFS so you do not loop through container cycles. Sort labels inside each cycle and the list of cycles.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`class Node:
+    def __init__(self, name):
+        self.name = name
+        self.link = None
+        self.items = []`,
+         'a, b, c, d, e, f, g = (Node(x) for x in "abcdefg")',
+         'a.link, b.link = b, a',
+         'c.link = c',
+         'd.link = e',
+         'f.items = [g]',
+         'g.link = f',
+         'find_cycles(dict(a=a, b=b, c=c, d=d, e=e, f=f, g=g))']],
+       ['[[\'a\', \'b\'], [\'c\'], [\'f\', \'g\']]']],
+      [[[String.raw`class Node:
+    def __init__(self, name):
+        self.name = name
+        self.link = None
+        self.items = []`,
+         'find_cycles({})',
+         'x = Node("x")',
+         'find_cycles({"x": x})',
+         'x.link = x',
+         'find_cycles({"x": x})',
+         'a, b = Node("a"), Node("b")',
+         'a.link = b',
+         'find_cycles({"a": a, "b": b})',
+         'b.link = a',
+         'find_cycles({"a": a, "b": b})']],
+       ['[]',
+        '[]',
+        '[[\'x\']]',
+        '[]',
+        '[[\'a\', \'b\']]']],
+      [[[String.raw`class Node:
+    def __init__(self, name):
+        self.name = name
+        self.link = None
+        self.items = []`,
+         'a, b, c = Node("a"), Node("b"), Node("c")',
+         'a.link, b.link, c.link = b, c, a',
+         'find_cycles({"a": a, "b": b, "c": c})',
+         'find_cycles({"c": c, "b": b, "a": a})']],
+       ['[[\'a\', \'b\', \'c\']]',
+        '[[\'a\', \'b\', \'c\']]']],
+      [[[String.raw`class Node:
+    def __init__(self, name):
+        self.name = name
+        self.link = None
+        self.items = []`,
+         'a, b, c, d = (Node(x) for x in "abcd")',
+         'a.link, b.link = b, a',
+         'c.link, d.link = d, c',
+         'find_cycles(dict(a=a, b=b, c=c, d=d))',
+         'b.items = [c]',
+         'find_cycles(dict(a=a, b=b, c=c, d=d))',
+         'c.items = [b]',
+         'find_cycles(dict(a=a, b=b, c=c, d=d))']],
+       ['[[\'a\', \'b\'], [\'c\', \'d\']]',
+        '[[\'a\', \'b\'], [\'c\', \'d\']]',
+        '[[\'a\', \'b\', \'c\', \'d\']]']],
+      [[[String.raw`class Node:
+    def __init__(self, name):
+        self.name = name
+        self.link = None
+        self.items = []`,
+         'a, b = Node("a"), Node("b")',
+         'a.items = {"k": (b,)}',
+         'b.items = [a]',
+         'find_cycles({"a": a, "b": b})',
+         'u = Node("u")',
+         'p, q = Node("p"), Node("q")',
+         'p.link = u',
+         'u.link = q',
+         'q.link = p',
+         'find_cycles({"p": p, "q": q})',
+         'find_cycles({"p": p, "q": q, "u": u})']],
+       ['[[\'a\', \'b\']]',
+        '[]',
+        '[[\'p\', \'q\', \'u\']]']],
+      [[[String.raw`class Node:
+    def __init__(self, name):
+        self.name = name
+        self.link = None
+        self.items = []`,
+         'n = 10000',
+         'ns = [Node(i) for i in range(n)]',
+         'for i in range(n): ns[i].link = ns[(i + 1) % n]',
+         'r = find_cycles({i: ns[i] for i in range(n)})',
+         'len(r)',
+         'len(r[0])',
+         'r[0] == sorted(range(n), key=lambda v: v)',
+         'ns[n - 1].link = None',
+         'find_cycles({i: ns[i] for i in range(n)})']],
+       ['1',
+        '10000',
+        'True',
+        '[]']],
+      [[[String.raw`class Node:
+    def __init__(self, name):
+        self.name = name
+        self.link = None
+        self.items = []`,
+         'n = 10000',
+         'ns = [Node(i) for i in range(n)]',
+         'for i in range(n - 1): ns[i].link = ns[i + 1]',
+         'find_cycles({i: ns[i] for i in range(n)})',
+         'ns[n - 1].link = ns[n - 1]',
+         'find_cycles({i: ns[i] for i in range(n)})',
+         'rings = [Node(i) for i in range(9000)]',
+         'for i in range(9000): rings[i].link = rings[i - i % 3 + (i + 1) % 3]',
+         'r = find_cycles({i: rings[i] for i in range(9000)})',
+         'len(r)',
+         'set(map(len, r))']],
+       ['[]',
+        '[[9999]]',
+        '3000',
+        '{3}']],
+    ] },
     solution: {
-      approach: R`<p>Two phases. (1) Edge extraction: BFS from each object through referents, crossing plain containers, stopping at tracked objects. (2) Tarjan's algorithm (iterative-friendly recursion is fine at this size) to find strongly connected components; report SCCs that are real cycles.</p>`,
+      approach: R`<p>Two phases. (1) Edge extraction: BFS from each object through referents, crossing plain containers, stopping at tracked objects. (2) Tarjan's algorithm to find strongly connected components, written with an explicit DFS stack because a ring of 10<sup>4</sup> objects would exceed Python's default recursion limit of 1000; report SCCs that are real cycles.</p>`,
       code: { lang: 'python', run: true, code: R`import gc
 from collections import deque
 
@@ -3083,31 +4928,38 @@ def build_edges(objs):
 
 def find_cycles(objs):
     edges = build_edges(objs)
-    index, low, on_stack, stack, out, counter = {}, {}, set(), [], [], [0]
-
-    def strongconnect(v):
-        index[v] = low[v] = counter[0]; counter[0] += 1
-        stack.append(v); on_stack.add(v)
-        for w in edges[v]:
-            if w not in index:
-                strongconnect(w)
-                low[v] = min(low[v], low[w])
-            elif w in on_stack:
-                low[v] = min(low[v], index[w])
-        if low[v] == index[v]:                         # v is an SCC root
-            comp = []
-            while True:
-                w = stack.pop(); on_stack.discard(w); comp.append(w)
-                if w == v:
+    index, low, on_stack, stack, out = {}, {}, set(), [], []
+    counter = 0
+    for root in edges:                                 # iterative Tarjan: no recursion limit
+        if root in index:
+            continue
+        index[root] = low[root] = counter; counter += 1
+        stack.append(root); on_stack.add(root)
+        work = [(root, iter(edges[root]))]             # explicit DFS stack
+        while work:
+            v, it = work[-1]
+            for w in it:
+                if w not in index:
+                    index[w] = low[w] = counter; counter += 1
+                    stack.append(w); on_stack.add(w)
+                    work.append((w, iter(edges[w])))   # descend; resume v later
                     break
-            if len(comp) > 1 or v in edges[v]:
-                out.append(sorted(comp))
-
-    for v in edges:
-        if v not in index:
-            strongconnect(v)
+                if w in on_stack:
+                    low[v] = min(low[v], index[w])
+            else:                                      # all neighbours of v done
+                work.pop()
+                if work:
+                    parent = work[-1][0]
+                    low[parent] = min(low[parent], low[v])
+                if low[v] == index[v]:                 # v is an SCC root
+                    comp = []
+                    while True:
+                        w = stack.pop(); on_stack.discard(w); comp.append(w)
+                        if w == v:
+                            break
+                    if len(comp) > 1 or v in edges[v]:
+                        out.append(sorted(comp))
     return sorted(out)
-
 class Node:
     def __init__(self, name):
         self.name = name
@@ -3132,7 +4984,7 @@ print(find_cycles(objs))
     level: 'Hard', tags: ['ast', 'compiler', 'stack machine'], companies: ['Jane Street', 'Hudson River Trading', 'Google'],
     statement: R`<p>Write <code>compile_expr(src)</code> that parses a Python arithmetic expression with <code>ast</code> and emits a list of instructions for a stack machine (<code>LOAD_CONST</code>, <code>LOAD_NAME</code>, <code>BINARY_OP op</code>, <code>UNARY_NEG</code>), performing <b>constant folding</b> like CPython. Then write <code>execute(code, env)</code> and check your results against <code>eval</code> on many random expressions.</p>`,
     constraints: R`<p>Support <code>+ - * / // % **</code>, unary minus/plus, parentheses, int/float constants and variable names. Reject anything else (calls, attributes) with <code>ValueError</code>. Do not fold operations that raise (e.g. <code>1 / 0</code>).</p>`,
-    example: R`<p><code>"x * (2 + 3) - -4"</code> → ${H.c('b', "[LOAD_NAME x, LOAD_CONST 5, BINARY_OP *, LOAD_CONST 4, BINARY_OP +]")}? No! Subtracting −4 folds the unary minus into the constant −4, giving <code>LOAD_CONST -4, BINARY_OP -</code>. With x = 2 the result is ${H.c('g', '14')}.</p>`,
+    example: R`<p><code>"x * (2 + 3) - -4"</code> → ${H.c('b', "[LOAD_NAME x, LOAD_CONST 5, BINARY_OP *, LOAD_CONST -4, BINARY_OP -]")}: <code>2 + 3</code> folds to 5, and the unary minus folds into the constant −4 (so there is no <code>UNARY_NEG</code>). With x = 2 the result is ${H.c('g', '14')}.</p>`,
     brute: { why: R`<p>Calling <code>eval(src)</code> gives the answer but no bytecode and runs arbitrary code. A hand-written string parser with precedence rules is long and buggy. The <code>ast</code> module already gives a correct tree; the remaining work is a post-order walk, exactly what CPython's code generator does.</p>`, code: R`def compile_with_eval(src, env):
     return eval(src, {"__builtins__": {}}, env)       # no bytecode, unsafe in general
 
@@ -3140,6 +4992,114 @@ print(compile_with_eval("x * (2 + 3)", {"x": 2}))
 ` },
     mcq: { q: 'In which order must a post-order code generator emit <code>a - b</code>?', options: ['code(a), code(b), BINARY_OP -', 'BINARY_OP -, code(a), code(b)', 'code(b), code(a), BINARY_OP -', 'code(a), BINARY_OP -, code(b)'], answer: 0, explain: 'Operands first (left then right), operator last. The VM pops b (top) then a and computes a − b.' },
     hints: [R`<p>Hint 1: <code>ast.parse(src, mode="eval").body</code> is the root. Map <code>ast.Add</code>, <code>ast.Sub</code>… to symbols and Python functions from <code>operator</code>.</p>`, R`<p>Hint 2: write <code>fold(node)</code> returning either <code>("const", value)</code> or a list of instructions. For a BinOp whose both sides are constants, try computing; on exception keep the instructions (like CPython).</p>`, R`<p>Hint 3: the VM is the classic loop: push constants/names, pop two for BINARY_OP (right first), negate for UNARY_NEG. Test with a seeded random generator of expressions over a few names, skipping cases where <code>eval</code> raises.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['compile_expr("x * (2 + 3) - -4")',
+         'execute(compile_expr("x * (2 + 3) - -4"), {"x": 2})']],
+       ['[(\'LOAD_NAME\', \'x\'), (\'LOAD_CONST\', 5), (\'BINARY_OP\', \'*\'), (\'LOAD_CONST\', -4), (\'BINARY_OP\', \'-\')]',
+        '14']],
+      [[['compile_expr("24 * 60 * 60")',
+         'compile_expr("1 / 0 + x")',
+         'compile_expr("7")',
+         'compile_expr("x")',
+         'compile_expr("-x")',
+         'compile_expr("+x")',
+         'compile_expr("-(-x)")']],
+       ['[(\'LOAD_CONST\', 86400)]',
+        '[(\'LOAD_CONST\', 1), (\'LOAD_CONST\', 0), (\'BINARY_OP\', \'/\'), (\'LOAD_NAME\', \'x\'), (\'BINARY_OP\', \'+\')]',
+        '[(\'LOAD_CONST\', 7)]',
+        '[(\'LOAD_NAME\', \'x\')]',
+        '[(\'LOAD_NAME\', \'x\'), (\'UNARY_NEG\', None)]',
+        '[(\'LOAD_NAME\', \'x\')]',
+        '[(\'LOAD_NAME\', \'x\'), (\'UNARY_NEG\', None), (\'UNARY_NEG\', None)]']],
+      [[['compile_expr("2 ** 3 ** 2")',
+         'compile_expr("10 // 3 % 2")',
+         'compile_expr("3.5 * 2")',
+         'compile_expr("2 ** -1")',
+         'compile_expr("(x + 1) * (y - 2)")',
+         'compile_expr("x ** 2")']],
+       ['[(\'LOAD_CONST\', 512)]',
+        '[(\'LOAD_CONST\', 1)]',
+        '[(\'LOAD_CONST\', 7.0)]',
+        '[(\'LOAD_CONST\', 0.5)]',
+        '[(\'LOAD_NAME\', \'x\'), (\'LOAD_CONST\', 1), (\'BINARY_OP\', \'+\'), (\'LOAD_NAME\', \'y\'), (\'LOAD_CONST\', 2), (\'BINARY_OP\', \'-\'), (\'BINARY_OP\', \'*\')]',
+        '[(\'LOAD_NAME\', \'x\'), (\'LOAD_CONST\', 2), (\'BINARY_OP\', \'**\')]']],
+      [[['[compile_expr("x %s y" % op)[-1] for op in ("+", "-", "*", "/", "//", "%", "**")]',
+         'compile_expr("1 // 0")',
+         'compile_expr("5 % 0 * x")',
+         'execute(compile_expr("1 / 0 + x"), {"x": 1})']],
+       ['[(\'BINARY_OP\', \'+\'), (\'BINARY_OP\', \'-\'), (\'BINARY_OP\', \'*\'), (\'BINARY_OP\', \'/\'), (\'BINARY_OP\', \'//\'), (\'BINARY_OP\', \'%\'), (\'BINARY_OP\', \'**\')]',
+        '[(\'LOAD_CONST\', 1), (\'LOAD_CONST\', 0), (\'BINARY_OP\', \'//\')]',
+        '[(\'LOAD_CONST\', 5), (\'LOAD_CONST\', 0), (\'BINARY_OP\', \'%\'), (\'LOAD_NAME\', \'x\'), (\'BINARY_OP\', \'*\')]',
+        '!ZeroDivisionError']],
+      [[['compile_expr("f(1)")',
+         'compile_expr("a.b")',
+         'compile_expr("[1]")',
+         'compile_expr("x if y else z")',
+         'compile_expr("\'s\'")',
+         'compile_expr("True")',
+         'compile_expr("x < 1")',
+         'compile_expr("x and y")',
+         'compile_expr("1 +")']],
+       ['!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!SyntaxError']],
+      [[['execute(compile_expr("(a + b) * c"), {"a": 1, "b": 2, "c": 3})',
+         'execute(compile_expr("7 // 2"), {})',
+         'execute(compile_expr("-7 // 2"), {})',
+         'execute(compile_expr("7 % -3"), {})',
+         'execute(compile_expr("2 ** 10"), {})',
+         'execute(compile_expr("x / 4"), {"x": 1})',
+         'execute(compile_expr("10 - 2 - 3"), {})',
+         'execute(compile_expr("2 * 3 + 4 * 5"), {})',
+         'execute(compile_expr("x - -x"), {"x": 3})',
+         'execute(compile_expr("-x ** 2"), {"x": 3})']],
+       ['9',
+        '3',
+        '-4',
+        '-2',
+        '1024',
+        '0.25',
+        '5',
+        '26',
+        '6',
+        '-9']],
+      [[[String.raw`def rand_check(seed, n):
+    import random
+    rng = random.Random(seed)
+    def gen(depth=0):
+        if depth > 3 or rng.random() < 0.3:
+            return rng.choice(["x", "y", str(rng.randint(1, 9)), "-" + str(rng.randint(1, 9)), "2.5"])
+        op = rng.choice(["+", "-", "*", "//", "%", "/"])
+        return "(" + gen(depth + 1) + " " + op + " " + gen(depth + 1) + ")"
+    ok = total = 0
+    for _ in range(n):
+        src = gen()
+        env = {"x": rng.randint(-5, 5), "y": rng.randint(1, 5)}
+        try:
+            want = eval(src, {}, env)
+        except ZeroDivisionError:
+            continue
+        total += 1
+        ok += execute(compile_expr(src), env) == want
+    return ok, total`,
+         'rand_check(7, 1000)[0] == rand_check(7, 1000)[1]',
+         'rand_check(11, 1000)[1] > 700',
+         'r = rand_check(3, 1500)',
+         'r[0] == r[1]',
+         'execute(compile_expr(" + ".join(["x"] * 200)), {"x": 3})',
+         'len(compile_expr(" + ".join(["x"] * 200)))']],
+       ['True',
+        'True',
+        'True',
+        '600',
+        '399']],
+    ] },
     solution: {
       approach: R`<p>A recursive emitter over the AST that returns constants when sub-trees are constant (folding), and instruction lists otherwise. The VM executes the list with a value stack. A randomized differential test against <code>eval</code> gives confidence.</p>`,
       code: { lang: 'python', run: true, code: R`import ast
@@ -3243,6 +5203,126 @@ builtins.__import__ = _real_import            # (restored immediately in this de
 ` },
     mcq: { q: 'Why is hiding blocked entries in <code>sys.modules</code> necessary?', options: ['A cached module is returned before any finder is consulted', 'Finders only run for packages', 'sys.modules is read-only', 'It speeds up the import'], answer: 0, explain: 'Step 1 of import is the sys.modules lookup. If socket is cached, your finder never runs, so the block would be silently bypassed.' },
     hints: [R`<p>Hint 1: a finder whose <code>find_spec</code> raises <code>ImportError</code> for blocked names (check <code>name == b or name.startswith(b + ".")</code>) and returns <code>None</code> otherwise.</p>`, R`<p>Hint 2: on enter, pop blocked names (and their submodules) out of <code>sys.modules</code> into a stash; insert the finder at index 0 of <code>sys.meta_path</code>.</p>`, R`<p>Hint 3: on exit (in <code>finally</code>), remove the finder, delete any blocked entries that appeared meanwhile, and put the stash back. Use <code>contextlib.contextmanager</code>.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`import importlib, sys
+def tryimp(n):
+    try:
+        importlib.import_module(n)
+        return "ok"
+    except ImportError as e:
+        return str(e)`,
+         String.raw`with block_imports("colorsys", "xml"):
+    r = [tryimp("colorsys"), tryimp("xml"), tryimp("xml.dom"), tryimp("json")]`,
+         'r']],
+       ['["import of \'colorsys\' is blocked", "import of \'xml\' is blocked", "import of \'xml\' is blocked", \'ok\']']],
+      [[[String.raw`import importlib, sys
+def tryimp(n):
+    try:
+        importlib.import_module(n)
+        return "ok"
+    except ImportError as e:
+        return str(e)`,
+         'import colorsys as c0',
+         'saved = sys.modules["colorsys"]',
+         String.raw`with block_imports("colorsys"):
+    inside = (tryimp("colorsys"), "colorsys" in sys.modules)`,
+         'inside',
+         'sys.modules["colorsys"] is saved',
+         'importlib.import_module("colorsys") is c0']],
+       ['("import of \'colorsys\' is blocked", False)',
+        'True',
+        'True']],
+      [[[String.raw`import importlib, sys
+def tryimp(n):
+    try:
+        importlib.import_module(n)
+        return "ok"
+    except ImportError as e:
+        return str(e)`,
+         'n0 = len(sys.meta_path)',
+         'saved = list(sys.meta_path)',
+         String.raw`def inside():
+    with block_imports("colorsys"):
+        return len(sys.meta_path), tryimp("colorsys")`,
+         'inside() == (n0 + 1, "import of \'colorsys\' is blocked")',
+         'sys.meta_path == saved',
+         String.raw`def boom():
+    with block_imports("colorsys"):
+        raise ValueError("inside")`,
+         'boom()',
+         'sys.meta_path == saved',
+         'tryimp("colorsys")']],
+       ['True',
+        'True',
+        '!ValueError',
+        'True',
+        '\'ok\'']],
+      [[[String.raw`import importlib, sys
+def tryimp(n):
+    try:
+        importlib.import_module(n)
+        return "ok"
+    except ImportError as e:
+        return str(e)`,
+         '_ = sys.modules.pop("colorsys", None)',
+         String.raw`with block_imports("colorsys"):
+    r = tryimp("colorsys")`,
+         'r',
+         '"colorsys" in sys.modules',
+         'tryimp("colorsys")',
+         '"colorsys" in sys.modules']],
+       ['"import of \'colorsys\' is blocked"',
+        'False',
+        '\'ok\'',
+        'True']],
+      [[[String.raw`import importlib, sys
+def tryimp(n):
+    try:
+        importlib.import_module(n)
+        return "ok"
+    except ImportError as e:
+        return str(e)`,
+         String.raw`with block_imports("colorsys"):
+    with block_imports("fnmatch"):
+        both = (tryimp("colorsys"), tryimp("fnmatch"))
+    after_inner = (tryimp("colorsys"), tryimp("fnmatch"))
+after_outer = (tryimp("colorsys"), tryimp("fnmatch"))`,
+         'both',
+         'after_inner',
+         'after_outer']],
+       ['("import of \'colorsys\' is blocked", "import of \'fnmatch\' is blocked")',
+        '("import of \'colorsys\' is blocked", \'ok\')',
+        '(\'ok\', \'ok\')']],
+      [[[String.raw`import importlib, sys
+def tryimp(n):
+    try:
+        importlib.import_module(n)
+        return "ok"
+    except ImportError as e:
+        return str(e)`,
+         String.raw`with block_imports("xml"):
+    r = [tryimp("xmlrpc"), tryimp("xml.sax"), tryimp("xml")]`,
+         'r',
+         String.raw`with block_imports("xml.dom"):
+    r2 = [tryimp("xml"), tryimp("xml.dom"), tryimp("xml.dom.minidom"), tryimp("xml.sax")]`,
+         'r2']],
+       ['[\'ok\', "import of \'xml\' is blocked", "import of \'xml\' is blocked"]',
+        '[\'ok\', "import of \'xml.dom\' is blocked", "import of \'xml.dom\' is blocked", \'ok\']']],
+      [[[String.raw`import importlib, sys
+def tryimp(n):
+    try:
+        importlib.import_module(n)
+        return "ok"
+    except ImportError as e:
+        return str(e)`,
+         'names = ["antigravity", "this", "idlelib", "turtle", "tkinter", "lib2to3", "pydoc_data", "xdrlib", "nntplib", "crypt"] + ["colorsys"]',
+         String.raw`with block_imports(*names):
+    r = [tryimp(n) for n in names]`,
+         'r == ["import of %r is blocked" % n for n in names]',
+         'tryimp("colorsys")']],
+       ['True',
+        '\'ok\'']],
+    ] },
     solution: {
       approach: R`<p>A meta path finder that vetoes blocked names, plus temporary removal of cached modules so the finder is actually consulted. Everything is undone in <code>finally</code>. It is a guard rail for tests, not a sandbox: code can still reach the stashed module objects through other references (e.g. <code>sys.modules</code> of another module's attributes, <code>gc.get_objects()</code>), and C extensions can do anything.</p>`,
       code: { lang: 'python', run: true, code: R`import contextlib
@@ -3311,6 +5391,119 @@ print(hasattr(p, "__dict__"))
 ` },
     mcq: { q: 'Why does <code>class A: __slots__ = ("x",); x = 0</code> raise ValueError?', options: ['The slot creates a member descriptor named x, which would clash with the class attribute x', 'Slots cannot have defaults in any form', 'x is a reserved name', 'Slots require a metaclass'], answer: 0, explain: '__slots__ makes type.__new__ add a member descriptor called x to the class namespace; an existing class attribute x conflicts with it.' },
     hints: [R`<p>Hint 1: collect <code>names = tuple(inspect.get_annotations(cls))</code> and <code>defaults = {n: cls.__dict__[n] for n in names if n in cls.__dict__}</code>.</p>`, R`<p>Hint 2: build <code>ns</code> from <code>cls.__dict__</code> minus the slot names, <code>__dict__</code>, <code>__weakref__</code> and annotation bookkeeping keys; add <code>__slots__</code>; create <code>type(cls)(cls.__name__, cls.__bases__, ns)</code>.</p>`, R`<p>Hint 3: generate <code>__init__(self, *args, **kwargs)</code> that binds args to names in order, then kwargs, then defaults, raising <code>TypeError</code> for missing or unexpected arguments. Restore <code>__annotations__</code> and <code>__qualname__</code> on the new class.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`@auto_slots
+class P:
+    x: int
+    y: int = 0`,
+         'p = P(3)',
+         '(p.x, p.y)',
+         'hasattr(p, "__dict__")',
+         'p.z = 1',
+         'p',
+         'P.__slots__']],
+       ['(3, 0)',
+        'False',
+        '!AttributeError',
+        'P(x=3, y=0)',
+        '(\'x\', \'y\')']],
+      [[[String.raw`@auto_slots
+class P:
+    x: int
+    y: int = 0`,
+         '(P(1, 2).x, P(1, 2).y)',
+         '(P(y=5, x=4).x, P(y=5, x=4).y)',
+         '(P(1, y=2).x, P(1, y=2).y)',
+         'P()',
+         'P(1, 2, 3)',
+         'P(1, z=3)',
+         'P(1, x=2)']],
+       ['(1, 2)',
+        '(4, 5)',
+        '(1, 2)',
+        '!TypeError',
+        '!TypeError',
+        '!TypeError',
+        '!TypeError']],
+      [[[String.raw`@auto_slots
+class Q:
+    a: int
+    def __init__(self, a):
+        self.a = a * 2`,
+         'Q(2).a',
+         'hasattr(Q(2), "__dict__")',
+         'Q.__slots__']],
+       ['4',
+        'False',
+        '(\'a\',)']],
+      [[['Point(3, y=4).norm2()',
+         'type(Point.__dict__["x"]).__name__',
+         'repr(Point(5))',
+         'Point.__slots__',
+         'hasattr(Point(1), "__dict__")',
+         'Point.__name__',
+         'Point.__annotations__ == {"x": int, "y": int}']],
+       ['25',
+        '\'member_descriptor\'',
+        '\'Point(x=5, y=0)\'',
+        '(\'x\', \'y\')',
+        'False',
+        '\'Point\'',
+        'True']],
+      [[[String.raw`@auto_slots
+class P:
+    x: int
+    y: int = 0`,
+         'type(P.__dict__["y"]).__name__',
+         'type(P.__dict__["x"]).__name__',
+         'P.__bases__',
+         'p = P(1)',
+         'p.x = 10',
+         'p.y += 5',
+         '(p.x, p.y)',
+         'P(2) == P(2)']],
+       ['\'member_descriptor\'',
+        '\'member_descriptor\'',
+        '(<class \'object\'>,)',
+        '(10, 5)',
+        'False']],
+      [[[String.raw`class B:
+    __slots__ = ()`,
+         String.raw`@auto_slots
+class C(B):
+    v: int`,
+         'c = C(1)',
+         'hasattr(c, "__dict__")',
+         'isinstance(c, B)',
+         'C.__mro__[1] is B',
+         'c.v',
+         'C.__qualname__']],
+       ['False',
+        'True',
+        'True',
+        '1',
+        '\'C\'']],
+      [[['src = "@auto_slots\\nclass Big:\\n" + "".join("    f%d: int%s\\n" % (i, "" if i < 10 else " = %d" % i) for i in range(100)) + "    def total(self):\\n        return sum(getattr(self, n) for n in self.__slots__)\\n"',
+         'ns = {"auto_slots": auto_slots}',
+         'exec(src, ns)',
+         'Big = ns["Big"]',
+         'len(Big.__slots__)',
+         'obj = Big(*range(10))',
+         '(obj.f0, obj.f9, obj.f10, obj.f99)',
+         'obj.total() == sum(range(100))',
+         'hasattr(obj, "__dict__")',
+         'Big(*range(10), f5=1)',
+         'Big(*range(10), f60=5).f60',
+         'objs = [Big(*[i + k for k in range(10)]) for i in range(20000)]',
+         'sum(o.f9 for o in objs)']],
+       ['100',
+        '(0, 9, 10, 99)',
+        'True',
+        'False',
+        '!TypeError',
+        '5',
+        '200170000']],
+    ] },
     solution: {
       approach: R`<p>Recreate the class (same metaclass, name, bases) with a cleaned namespace that includes <code>__slots__</code>, then attach a generated <code>__init__</code> and copy annotations. This mirrors what <code>@dataclass(slots=True)</code> does internally. Limitation: methods using zero-argument <code>super()</code> keep a <code>__class__</code> cell pointing at the old class (the stdlib patches those cells; we document it as a follow-up).</p>`,
       code: { lang: 'python', run: true, code: R`import inspect

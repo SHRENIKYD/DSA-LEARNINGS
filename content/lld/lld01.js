@@ -11,6 +11,39 @@
     return n;
   }
   function plural(w) { return /[^aeiou]y$/.test(w) ? w.slice(0, -1) + 'ies' : /(s|x|ch|sh)$/.test(w) ? w + 'es' : w + 's'; }
+  function snake(s) { return s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase(); }
+  // Neutral class model -> skeleton source in python / ts / cpp (the Java skeleton is built separately).
+  // class = { n, iface, ext, impl:[], fields:[{ t, n, list, own, c }], methods:[{ n, ps:[[type, name]], c }] }
+  function emitSkeleton(classes, lang) {
+    return classes.map(function (c) {
+      var fs = c.fields, ms = c.methods, L = [];
+      if (lang === 'python') {
+        var bases = (c.ext ? [c.ext] : []).concat(c.impl, c.iface ? ['ABC'] : []);
+        L.push('class ' + c.n + (bases.length ? '(' + bases.join(', ') + ')' : '') + ':');
+        if (fs.length) L.push('    def __init__(self):');
+        fs.forEach(function (f) { L.push('        self.' + snake(f.n) + ' = ' + (f.list ? '[]' : f.own ? f.t + '()' : 'None') + (f.c ? '  # ' + f.c : '')); });
+        ms.forEach(function (m) { L.push('    def ' + snake(m.n) + '(' + ['self'].concat(m.ps.map(function (p) { return snake(p[1]); })).join(', ') + '):\n        pass' + (m.c ? '  # ' + m.c : '')); });
+        if (!fs.length && !ms.length) L.push('    pass');
+        return L.join('\n');
+      }
+      if (lang === 'ts') {
+        var head = (c.iface ? 'interface ' : 'class ') + c.n + (c.ext ? ' extends ' + c.ext : '') + (c.impl.length ? ' implements ' + c.impl.join(', ') : '');
+        fs.forEach(function (f) { L.push('    ' + (f.list ? 'private readonly ' + f.n + ': ' + f.t + '[] = [];' : f.own ? 'private readonly ' + f.n + ' = new ' + f.t + '();' : 'private ' + f.n + ': ' + f.t + ' | null = null;') + (f.c ? ' // ' + f.c : '')); });
+        ms.forEach(function (m) { L.push('    ' + m.n + '(' + m.ps.map(function (p) { return p[1] + ': ' + p[0]; }).join(', ') + '): void { ' + (m.c ? '/* ' + m.c + ' */ ' : '') + '}'); });
+        return head + ' {' + (L.length ? '\n' + L.join('\n') + '\n' : ' ') + '}';
+      }
+      var bs = (c.ext ? [c.ext] : []).concat(c.impl).map(function (b) { return 'public ' + b; });
+      var h = 'class ' + c.n + (bs.length ? ' : ' + bs.join(', ') : '');
+      fs.forEach(function (f) { L.push('    ' + (f.list ? 'vector<' + f.t + (f.own ? '' : '*') + '> ' + f.n + ';' : f.own ? f.t + ' ' + f.n + ';' : f.t + '* ' + f.n + ' = nullptr;') + (f.c ? ' // ' + f.c : '')); });
+      if (ms.length || c.iface) L.push('public:');
+      if (c.iface) L.push('    virtual ~' + c.n + '() = default;');
+      ms.forEach(function (m) { L.push('    void ' + m.n + '(' + m.ps.map(function (p) { return p[0] + '& ' + p[1]; }).join(', ') + ') { ' + (m.c ? '/* ' + m.c + ' */ ' : '') + '}'); });
+      return h + ' {' + (L.length ? '\n' + L.join('\n') + '\n' : ' ') + '};';
+    }).join('\n');
+  }
+  function skeletonAlt(classes) {
+    return { python: { code: emitSkeleton(classes, 'python') }, js: { lang: 'ts', code: emitSkeleton(classes, 'ts') }, cpp: { code: emitSkeleton(classes, 'cpp') } };
+  }
   function hesc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
   // Build a UML class diagram one step at a time.
@@ -33,7 +66,7 @@
       });
       var parts = [{ type: 'graph', label: title, directed: true, height: height, nodes: cp(nodes), edges: cp(edges), hl: hl, ehl: ehl, tags: cp(tags) }];
       if (rows.length && !s.noTable) parts.push({ type: 'table', label: 'Class boxes: name | attributes | operations', columns: ['Class', 'Attributes', 'Operations'], rows: cp(rows), hl: rhl });
-      if (s.code) parts.push({ type: 'code', label: s.codeLabel || 'Java skeleton so far', lang: 'java', code: s.code, hl: s.codeHl || {} });
+      if (s.code) parts.push({ type: 'code', label: s.codeLabel || 'Code skeleton so far', lang: 'java', code: s.code, hl: s.codeHl || {}, alt: s.alt });
       if (s.extra) parts = parts.concat(s.extra);
       frames.push({ narr: s.narr, parts: parts });
     });
@@ -51,7 +84,7 @@
     var allHl = {};
     who.forEach(function (p) { allHl[ID[p]] = 'sel'; });
     var intro = [{ type: 'graph', label: title, directed: true, height: height, nodes: cp(base), edges: [], hl: allHl }];
-    if (opt.code) intro.push({ type: 'code', label: opt.codeLabel || 'The Java this diagram describes', lang: 'java', code: opt.code, hl: {} });
+    if (opt.code) intro.push({ type: 'code', label: opt.codeLabel || 'The code this diagram describes', lang: 'java', code: opt.code, hl: {}, alt: opt.alt });
     frames.push({ narr: opt.intro || 'Lifelines first: one box per object taking part. Time flows <b>downwards</b>.', parts: intro });
     var nodes = cp(base), edges = [], log = [];
     msgs.forEach(function (msg, k) {
@@ -70,13 +103,13 @@
         { type: 'graph', label: title, directed: true, height: height, nodes: cp(nodes), edges: cp(edges), hl: hl, ehl: ehl },
         { type: 'table', label: 'Message log (read top to bottom = time order)', columns: ['#', 'from', 'to', 'message'], rows: cp(log), hl: lhl }
       ];
-      if (opt.code) { var ch = {}; if (msg.line) ch[msg.line] = msg.ret ? 'ok' : 'cur'; parts.push({ type: 'code', label: opt.codeLabel || 'The Java this diagram describes', lang: 'java', code: opt.code, hl: ch }); }
+      if (opt.code) { var ch = {}; if (msg.line) ch[msg.line] = msg.ret ? 'ok' : 'cur'; parts.push({ type: 'code', label: opt.codeLabel || 'The code this diagram describes', lang: 'java', code: opt.code, hl: ch, alt: opt.alt }); }
       frames.push({ narr: msg.narr || ('<b>' + hesc(msg.f) + '</b> ' + (msg.ret ? 'returns <b>' + hesc(msg.m) + '</b> to ' : 'calls <b>' + hesc(msg.m) + '</b> on ') + '<b>' + hesc(msg.t) + '</b>.'), parts: parts });
     });
     var fin = {};
     edges.forEach(function (e) { fin[e[0] + '-' + e[1]] = 'ok'; });
     var last = [{ type: 'graph', label: title, directed: true, height: height, nodes: cp(nodes), edges: cp(edges), ehl: fin }, { type: 'table', label: 'Full message log', columns: ['#', 'from', 'to', 'message'], rows: cp(log) }];
-    if (opt.code) last.push({ type: 'code', label: opt.codeLabel || 'The Java this diagram describes', lang: 'java', code: opt.code, hl: {} });
+    if (opt.code) last.push({ type: 'code', label: opt.codeLabel || 'The code this diagram describes', lang: 'java', code: opt.code, hl: {}, alt: opt.alt });
     frames.push({ narr: opt.outro || 'Done. Read the numbers top to bottom and you can replay the whole use case.', parts: last });
     return frames;
   }
@@ -148,16 +181,26 @@
       var hl = {}; hl[x.a] = 'cur'; hl[x.b] = 'ok';
       steps.push({
         narr: '<b>' + hesc(x.a) + ' ' + hesc(x.r.op) + ' ' + hesc(x.b) + '</b> is <b>' + x.r.kind + '</b>' + (x.mult ? ' with multiplicity <b>' + hesc(x.mult) + '</b>' : '') + '. ' +
-          hesc(x.r.test.replace(/CHILD-owner/g, x.a).replace(/CHILD/g, x.a).replace(/PARENT/g, x.b)) + ' Java shape: <code>' + hesc(x.r.java.replace(/PART|PARENT/g, x.b).replace(/CHILD/g, x.a)) + '</code>',
+          hesc(x.r.test.replace(/CHILD-owner/g, x.a).replace(/CHILD/g, x.a).replace(/PARENT/g, x.b)) + ' Code shape (Java): <code>' + hesc(x.r.java.replace(/PART|PARENT/g, x.b).replace(/CHILD/g, x.a)) + '</code>',
         nodes: nodes, edges: [[x.a, x.b, lab]], hl: hl, tags: tg, noTable: true,
-        extra: [{ type: 'table', label: 'Relationships so far', columns: ['From', 'Kind', 'To', 'Mult.', 'Java shape'], rows: cp(summary), hl: (function () { var h = {}; h[i] = 'cur'; return h; })() }]
+        extra: [{ type: 'table', label: 'Relationships so far', columns: ['From', 'Kind', 'To', 'Mult.', 'Code shape (Java)'], rows: cp(summary), hl: (function () { var h = {}; h[i] = 'cur'; return h; })() }]
       });
     });
     // generate a Java skeleton
     var cls = {};
-    names.forEach(function (n) { cls[n] = { ext: null, impl: [], body: [] }; });
+    var ncls = {};
+    names.forEach(function (n) { cls[n] = { ext: null, impl: [], body: [] }; ncls[n] = { n: n, iface: !!isIface[n], ext: null, impl: [], fields: [], methods: [] }; });
     rels.forEach(function (x) {
-      var A = cls[x.a], many = ['', '1', '0..1'].indexOf(x.mult) < 0, fld = x.b.charAt(0).toLowerCase() + x.b.slice(1);
+      var A = cls[x.a], NA = ncls[x.a], many = ['', '1', '0..1'].indexOf(x.mult) < 0, fld = x.b.charAt(0).toLowerCase() + x.b.slice(1);
+      if (x.r.kind === 'inheritance') NA.ext = x.b;
+      else if (x.r.kind === 'realization') NA.impl.push(x.b);
+      else if (x.r.kind === 'composition') NA.fields.push({ t: x.b, n: many ? plural(fld) : fld, list: many, own: true, c: many ? 'owned: created inside, never handed out' : 'owned: born and dies with ' + x.a });
+      else if (x.r.kind === 'aggregation') NA.fields.push({ t: x.b, n: many ? plural(fld) : fld, list: many, own: false, c: many ? 'shared parts, added from outside' : 'set from outside, may outlive ' + x.a });
+      else if (x.r.kind === 'dependency') NA.methods.push({ n: 'use', ps: [[x.b, fld]], c: 'uses it briefly, keeps no field' });
+      else {
+        NA.fields.push({ t: x.b, n: many ? plural(fld) : fld, list: many, own: false, c: many ? 'association' : 'association (reference)' });
+        if (x.r.op === '--') ncls[x.b].fields.push({ t: x.a, n: x.a.charAt(0).toLowerCase() + x.a.slice(1), list: false, own: false, c: 'back-reference (two-way link)' });
+      }
       if (x.r.kind === 'inheritance') A.ext = x.b;
       else if (x.r.kind === 'realization') A.impl.push(x.b);
       else if (x.r.kind === 'composition') A.body.push(many ? '    private final List<' + x.b + '> ' + plural(fld) + ' = new ArrayList<>(); // owned: created inside, never handed out' : '    private final ' + x.b + ' ' + fld + ' = new ' + x.b + '(); // owned: born and dies with ' + x.a);
@@ -172,8 +215,8 @@
     }).join('\n');
     var fin = {};
     rels.forEach(function (x) { fin[x.a + '-' + x.b] = 'ok'; });
-    steps.push({ narr: 'Finished diagram. Every arrow became a <b>field</b>, a <b>constructor/parameter</b>, an <b>extends</b> or an <b>implements</b> in the Java skeleton below. Edit the input and press run to model your own system.', ehl: fin, noTable: true, code: code, codeLabel: 'Generated Java skeleton',
-      extra: [{ type: 'table', label: 'All relationships', columns: ['From', 'Kind', 'To', 'Mult.', 'Java shape'], rows: cp(summary) }] });
+    steps.push({ narr: 'Finished diagram. Every arrow became a <b>field</b>, a <b>constructor/parameter</b>, an <b>extends</b> or an <b>implements</b> in the code skeleton below. Edit the input and press run to model your own system.', ehl: fin, noTable: true, code: code, codeLabel: 'Generated code skeleton', alt: skeletonAlt(names.map(function (n) { return ncls[n]; })),
+      extra: [{ type: 'table', label: 'All relationships', columns: ['From', 'Kind', 'To', 'Mult.', 'Code shape (Java)'], rows: cp(summary) }] });
     return uml(title || 'UML class diagram', 72, steps);
   }
 
@@ -197,7 +240,7 @@
     if (names.length > 9) throw new Error('Use at most 9 different nouns');
     var pos = layout(names, facts.map(function (f) { return f.kind === 'is' ? [f.o, f.s] : [f.s, f.o]; }));
     var model = {};
-    names.forEach(function (n) { model[n] = { attrs: [], ops: [], ext: null }; });
+    names.forEach(function (n) { model[n] = { attrs: [], ops: [], ext: null, nf: [], nm: [] }; });
     var chipHl = {};
     names.forEach(function (n) { chipHl[n] = 'ok'; });
     verbs.forEach(function (v) { chipHl[v] = 'win'; });
@@ -211,9 +254,9 @@
       var nodes = [];
       [f.s, f.o].forEach(function (p) { if (!pos[p].shown) { pos[p].shown = true; nodes.push(bx(p, p.slice(0, 14), pos[p][0], pos[p][1])); } });
       var lab, narr, low = f.o.charAt(0).toLowerCase() + f.o.slice(1);
-      if (f.kind === 'has') { model[f.s].attrs.push('List<' + f.o + '> ' + plural(low)); lab = 'has-a 0..*'; narr = '"' + hesc(f.s + ' ' + f.v + ' ' + f.o) + '" is a <b>has-a</b> phrase, so ' + hesc(f.s) + ' gets a <b>field</b> holding ' + hesc(f.o) + ' objects, not a method.'; }
+      if (f.kind === 'has') { model[f.s].attrs.push('List<' + f.o + '> ' + plural(low)); model[f.s].nf.push({ t: f.o, n: plural(low), list: true, own: true, c: null }); lab = 'has-a 0..*'; narr = '"' + hesc(f.s + ' ' + f.v + ' ' + f.o) + '" is a <b>has-a</b> phrase, so ' + hesc(f.s) + ' gets a <b>field</b> holding ' + hesc(f.o) + ' objects, not a method.'; }
       else if (f.kind === 'is') { model[f.s].ext = f.o; lab = 'is-a'; narr = '"' + hesc(f.s + ' ' + f.v + ' ' + f.o) + '" is an <b>is-a</b> phrase, so ' + hesc(f.s) + ' <b>extends</b> ' + hesc(f.o) + ' (check it is true in every case first!).'; }
-      else { var mth = base(f.v) + f.o + '(' + f.o + ' ' + low + ')'; model[f.s].ops.push(mth); lab = base(f.v); narr = 'The verb <b>' + hesc(f.v) + '</b> becomes a <b>method</b> on the actor who does it: <code>' + hesc(f.s) + '.' + hesc(mth) + '</code>. The arrow shows ' + hesc(f.s) + ' <b>uses</b> ' + hesc(f.o) + '.'; }
+      else { var mth = base(f.v) + f.o + '(' + f.o + ' ' + low + ')'; model[f.s].ops.push(mth); model[f.s].nm.push({ n: base(f.v) + f.o, ps: [[f.o, low]], c: null }); lab = base(f.v); narr = 'The verb <b>' + hesc(f.v) + '</b> becomes a <b>method</b> on the actor who does it: <code>' + hesc(f.s) + '.' + hesc(mth) + '</code>. The arrow shows ' + hesc(f.s) + ' <b>uses</b> ' + hesc(f.o) + '.'; }
       var rows = [f.s, f.o].map(function (n) { var m = model[n]; return [n + (m.ext ? ' extends ' + m.ext : ''), m.attrs.join(', ') || '-', m.ops.join(', ') || '-']; });
       var hl = {}; hl[f.s] = 'cur'; hl[f.o] = 'ok';
       steps.push({ narr: 'Sentence ' + (i + 1) + ': ' + narr, nodes: nodes, edges: [[f.s, f.o, lab]], hl: hl, rows: rows });
@@ -224,7 +267,7 @@
       m.ops.forEach(function (o) { body.push('    void ' + o + ' { }'); });
       return 'class ' + n + (m.ext ? ' extends ' + m.ext : '') + ' {' + (body.length ? '\n' + body.join('\n') + '\n' : ' ') + '}';
     }).join('\n');
-    steps.push({ narr: 'Last step: turn the diagram into a Java skeleton. Nouns became classes, has-a became fields, is-a became extends, verbs became methods. Now <b>prune</b>: delete nouns that are just values (name, date) and merge synonyms.', code: code, codeLabel: 'Generated Java skeleton' });
+    steps.push({ narr: 'Last step: turn the diagram into a code skeleton. Nouns became classes, has-a became fields, is-a became extends, verbs became methods. Now <b>prune</b>: delete nouns that are just values (name, date) and merge synonyms.', code: code, codeLabel: 'Generated code skeleton', alt: skeletonAlt(names.map(function (n) { var m = model[n]; return { n: n, iface: false, ext: m.ext, impl: [], fields: m.nf, methods: m.nm }; })) });
     return uml('Class diagram built from the requirement', 72, steps);
   }
 
@@ -490,6 +533,10 @@ public:
       title: 'Objects and references on the heap, line by line',
       gen: function () {
         var code = 'Dog rex = new Dog("Rex", 3);\nDog bo = new Dog("Bo", 5);\nDog alias = rex;\nalias.birthday();\nSystem.out.println(rex.getAge());\nbo = null;';
+        var pyCode = 'rex = Dog("Rex", 3)\nbo = Dog("Bo", 5)\nalias = rex\nalias.birthday()\nprint(rex.get_age())\nbo = None';
+        var tsCode = 'let rex = new Dog("Rex", 3);\nlet bo: Dog | null = new Dog("Bo", 5);\nlet alias = rex;\nalias.birthday();\nconsole.log(rex.getAge());\nbo = null;';
+        var cppCode = 'Dog* rex = new Dog("Rex", 3);\nDog* bo = new Dog("Bo", 5);\nDog* alias = rex;\nalias->birthday();\ncout << rex->getAge() << endl;\nbo = nullptr;';
+        var altCode = { python: { code: pyCode }, js: { lang: 'ts', code: tsCode }, cpp: { code: cppCode } };
         var vars = [bx('rex', 'rex', 12, 10), bx('bo', 'bo', 12, 30), bx('alias', 'alias', 12, 50)];
         var o1 = function (age) { return bx('O1', 'Dog#1 Rex, age ' + age, 70, 18, 30); };
         var o2 = bx('O2', 'Dog#2 Bo, age 5', 70, 42, 30);
@@ -497,14 +544,14 @@ public:
           var ch = {}; if (line) ch[line] = 'cur';
           return { narr: narr, parts: [
             { type: 'graph', label: 'Stack variables (left) hold references to objects on the heap (right)', directed: true, height: 60, nodes: nodes, edges: edges, hl: hl, ehl: ehl, tags: tags || {} },
-            { type: 'code', label: 'Running code', lang: 'java', code: code, hl: ch },
+            { type: 'code', label: 'Running code', lang: 'java', code: code, hl: ch, alt: altCode },
             { type: 'vars', label: 'What each variable holds', vals: vals }
           ] };
         }
         return [
           { narr: 'Before running anything there is only the <b>class</b> Dog: a blueprint with fields <code>name, age</code> and methods <code>birthday(), bark()</code>. No dogs exist yet.', parts: [
             { type: 'table', label: 'Class Dog (the blueprint)', columns: ['Class', 'Attributes', 'Operations'], rows: [['Dog', '- name: String, - age: int', '+ birthday(), + bark(): String, + getAge(): int']], hl: { 0: 'sel' } },
-            { type: 'code', label: 'Running code', lang: 'java', code: code, hl: {} }
+            { type: 'code', label: 'Running code', lang: 'java', code: code, hl: {}, alt: altCode }
           ] },
           f('<code>new Dog("Rex", 3)</code> builds object <b>#1</b> on the heap. The variable <code>rex</code> stores a <b>reference</b> (like a remote control) to it.', [vars[0], o1(3)], [['rex', 'O1', 'ref']], { rex: 'cur', O1: 'ok' }, { 'rex-O1': 'cur' }, 1, { rex: 'Dog#1', bo: '-', alias: '-' }),
           f('A second <code>new</code> builds a completely separate object <b>#2</b>. Each object has its <b>own</b> state.', [vars[0], vars[1], o1(3), o2], [['rex', 'O1', 'ref'], ['bo', 'O2', 'ref']], { bo: 'cur', O2: 'ok' }, { 'bo-O2': 'cur' }, 2, { rex: 'Dog#1', bo: 'Dog#2', alias: '-' }),
@@ -526,10 +573,14 @@ public:
         if (!ops.length || ops.some(function (x) { return isNaN(x) || x === 0; })) throw new Error('Enter non-zero numbers like: 500 -200 -400');
         if (ops.length > 12) throw new Error('Use at most 12 operations');
         var code = 'boolean withdraw(long amt) {\n    if (amt <= 0 || amt > balance) return false; // guard\n    balance -= amt;\n    return true;\n}\nvoid deposit(long amt) {\n    if (amt <= 0) throw new IllegalArgumentException();\n    balance += amt;\n}';
+        var pyCode = 'def withdraw(self, amt):\n    if amt <= 0 or amt > self.balance: return False  # guard\n    self.balance -= amt\n    return True\ndef deposit(self, amt):\n    if amt <= 0: raise ValueError()\n    self.balance += amt';
+        var tsCode = 'withdraw(amt: number): boolean {\n    if (amt <= 0 || amt > this.balance) return false; // guard\n    this.balance -= amt;\n    return true;\n}\ndeposit(amt: number): void {\n    if (amt <= 0) throw new Error("amount must be positive");\n    this.balance += amt;\n}';
+        var cppCode = 'bool withdraw(long long amt) {\n    if (amt <= 0 || amt > balance) return false; // guard\n    balance -= amt;\n    return true;\n}\nvoid deposit(long long amt) {\n    if (amt <= 0) throw invalid_argument("amount must be positive");\n    balance += amt;\n}';
+        var altCode = { python: { code: pyCode, map: { 7: 6, 8: 7 } }, js: { lang: 'ts', code: tsCode }, cpp: { code: cppCode } };
         var bal = 0, frames = [], hist = [];
         frames.push({ narr: 'A new account starts at balance 0. The field <code>balance</code> is <b>private</b>: the only doors are <code>deposit</code> and <code>withdraw</code>, and both check the rules.', parts: [
           { type: 'vars', label: 'BankAccount object state', vals: { balance: 0 } },
-          { type: 'code', label: 'The only doors into the object', lang: 'java', code: code, hl: {} }
+          { type: 'code', label: 'The only doors into the object', lang: 'java', code: code, hl: {}, alt: altCode }
         ] });
         ops.forEach(function (x) {
           var ok = true, hl;
@@ -540,7 +591,7 @@ public:
           var rh = {}; rh[hist.length - 1] = ok ? 'ok' : 'bad';
           frames.push({ narr: x > 0 ? 'Deposit <b>' + x + '</b>: positive, so accepted. Balance is now <b>' + bal + '</b>.' : (ok ? 'Withdraw <b>' + (-x) + '</b>: enough money, the guard passes, balance becomes <b>' + bal + '</b>.' : '<span class="c-r">Withdraw <b>' + (-x) + '</b> is more than the balance ' + bal + '.</span> The guard inside the object refuses it. No caller anywhere can break this rule because no caller can touch <code>balance</code> directly.'), parts: [
             { type: 'vars', label: 'BankAccount object state', vals: { balance: bal }, hl: { balance: ok ? 'ok' : 'bad' } },
-            { type: 'code', label: 'The only doors into the object', lang: 'java', code: code, hl: hl },
+            { type: 'code', label: 'The only doors into the object', lang: 'java', code: code, hl: hl, alt: altCode },
             { type: 'table', label: 'History', columns: ['call', 'result', 'balance after'], rows: cp(hist), hl: rh }
           ] });
         });
@@ -750,7 +801,7 @@ ${H.table(['call', 'result', 'balance', 'history size'], [['deposit(500)', H.c('
 <p>The last withdrawal is rejected because 400 &gt; 300 would break the invariant <code>balance ≥ 0</code>. It is <b>not</b> recorded in history.</p>`,
       brute: {
         why: `<p>The naive design makes every field <b>public</b> and lets a "BankUtils" god class change them. Every caller must remember the balance check and the history update. One forgotten check in one of fifty callers produces a negative balance, and because <code>history</code> is a public mutable list, anyone can delete records. Nothing is enforced; everything relies on discipline.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 class Account {
     public String accountNumber;      // anyone can change it
     public double balance;            // double for money: rounding bugs
@@ -761,7 +812,44 @@ class BankUtils {
         a.balance -= amt;             // forgot the check: balance goes negative
         a.history.add("W " + amt);
     }
-}`
+}`, alt: [
+                { lang: 'python', code: `
+class Account:
+    def __init__(self):
+        self.account_number = ""      # anyone can change it
+        self.balance = 0.0            # float for money: rounding bugs
+        self.history = []             # anyone can clear it
+
+class BankUtils:
+    @staticmethod
+    def withdraw(a, amt):
+        a.balance -= amt              # forgot the check: balance goes negative
+        a.history.append(f"W {amt}")` },
+                { lang: 'ts', code: `
+class Account {
+    accountNumber = "";      // anyone can change it
+    balance = 0;             // number for money: rounding bugs
+    history: string[] = [];  // anyone can clear it
+}
+class BankUtils {
+    static withdraw(a: Account, amt: number): void {
+        a.balance -= amt;    // forgot the check: balance goes negative
+        a.history.push("W " + amt);
+    }
+}` },
+                { lang: 'cpp', code: `
+struct Account {
+    string accountNumber;      // anyone can change it
+    double balance = 0;        // double for money: rounding bugs
+    vector<string> history;    // anyone can clear it
+};
+struct BankUtils {
+    static void withdraw(Account& a, double amt) {
+        a.balance -= amt;      // forgot the check: balance goes negative
+        a.history.push_back("W " + to_string(amt));
+    }
+};` }
+              ] }
       },
       mcq: { q: 'Where should the rule "balance can never go negative" live?', options: ['In every controller that calls withdraw', 'Inside BankAccount.withdraw(), with balance private', 'In a database trigger only', 'In a static utility class'], answer: 1, explain: 'The object that owns the data owns its rules. Making balance private and checking inside withdraw() means no caller can bypass it.' },
       hints: [
@@ -1466,7 +1554,7 @@ ${H.table(['Type (shared description)', 'Instance (individual)', 'Link'], [['Boo
 ${H.table(['day', 'action', 'due', 'result'], [['0', 'checkout C1', '14', H.c('g', 'ok')], ['10', 'renew', '24', H.c('g', 'ok')], ['12', 'renew', '24', H.c('r', 'no: already renewed')], ['27', 'return', '-', H.c('r', 'fine ₹30 (3 days late)')]])}`,
       brute: {
         why: `<p>The naive "god class" puts everything in one <code>LibrarySystem</code> with parallel maps of strings: <code>Map&lt;String,String&gt; copyStatus</code>, <code>Map&lt;String,Integer&gt; memberLoanCount</code>, <code>Map&lt;String,Integer&gt; dueDay</code>. It works for the happy path, but every rule is an if-statement in one 800-line class; statuses are strings ("loand" typo compiles); renew count, due date and member are in three different maps that can drift apart; and adding reservations means editing every method. It cannot be unit tested piece by piece and nobody can own a part of it.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 class LibrarySystem {
     Map<String, String> copyStatus = new HashMap<>();       // "AVAILABLE" / "LOANED" as strings
     Map<String, Integer> memberLoans = new HashMap<>();
@@ -1488,7 +1576,77 @@ class LibrarySystem {
         copyStatus.put(copy, "AVAILABLE");
         return late * 10;
     }
-}`
+}`, alt: [
+                { lang: 'python', code: `
+class LibrarySystem:
+    def __init__(self):
+        self.copy_status = {}      # "AVAILABLE" / "LOANED" as strings
+        self.member_loans = {}
+        self.due_day = {}
+        self.copy_holder = {}
+
+    def checkout(self, member, copy, today):
+        if self.member_loans.get(member, 0) >= 3: return "LIMIT"
+        if self.copy_status.get(copy) != "AVAILABLE": return "UNAVAILABLE"
+        self.copy_status[copy] = "LOANED"
+        self.member_loans[member] = self.member_loans.get(member, 0) + 1
+        self.due_day[copy] = today + 14
+        self.copy_holder[copy] = member
+        return "OK"
+
+    def give_back(self, copy, today):                  # every rule tangled in one place
+        late = max(0, today - self.due_day[copy])
+        self.member_loans[self.copy_holder[copy]] -= 1
+        self.copy_status[copy] = "AVAILABLE"
+        return late * 10` },
+                { lang: 'ts', code: `
+class LibrarySystem {
+    copyStatus = new Map<string, string>();       // "AVAILABLE" / "LOANED" as strings
+    memberLoans = new Map<string, number>();
+    dueDay = new Map<string, number>();
+    copyHolder = new Map<string, string>();
+
+    checkout(member: string, copy: string, today: number): string {
+        if ((this.memberLoans.get(member) ?? 0) >= 3) return "LIMIT";
+        if (this.copyStatus.get(copy) !== "AVAILABLE") return "UNAVAILABLE";
+        this.copyStatus.set(copy, "LOANED");
+        this.memberLoans.set(member, (this.memberLoans.get(member) ?? 0) + 1);
+        this.dueDay.set(copy, today + 14);
+        this.copyHolder.set(copy, member);
+        return "OK";
+    }
+    giveBack(copy: string, today: number): number {   // every rule tangled in one place
+        const late = Math.max(0, today - this.dueDay.get(copy)!);
+        const m = this.copyHolder.get(copy)!;
+        this.memberLoans.set(m, this.memberLoans.get(m)! - 1);
+        this.copyStatus.set(copy, "AVAILABLE");
+        return late * 10;
+    }
+}` },
+                { lang: 'cpp', code: `
+class LibrarySystem {
+    unordered_map<string, string> copyStatus;       // "AVAILABLE" / "LOANED" as strings
+    unordered_map<string, int> memberLoans;
+    unordered_map<string, int> dueDay;
+    unordered_map<string, string> copyHolder;
+public:
+    string checkout(const string& member, const string& copy, int today) {
+        if (memberLoans[member] >= 3) return "LIMIT";
+        if (copyStatus[copy] != "AVAILABLE") return "UNAVAILABLE";
+        copyStatus[copy] = "LOANED";
+        memberLoans[member]++;
+        dueDay[copy] = today + 14;
+        copyHolder[copy] = member;
+        return "OK";
+    }
+    int giveBack(const string& copy, int today) {   // every rule tangled in one place
+        int late = max(0, today - dueDay[copy]);
+        memberLoans[copyHolder[copy]]--;
+        copyStatus[copy] = "AVAILABLE";
+        return late * 10;
+    }
+};` }
+              ] }
       },
       mcq: { q: 'The requirement says "the library may own several copies of a book". What is the best model?', options: ['One Book class with a copies counter', 'Book (title, ISBN) and BookCopy (barcode, status), Book 1 → 0..* BookCopy', 'A subclass per copy: BookCopy1, BookCopy2', 'Only BookCopy, with the title repeated in each'], answer: 1, explain: 'Type vs instance. The title data is shared (Book) while each physical copy has its own identity and status (BookCopy). A counter cannot track which copy is lost or who holds it.' },
       hints: [
@@ -2202,7 +2360,10 @@ int main() {
         function G(n, e, hl, ehl, tags) { return { type: 'graph', label: 'Composition (left) vs Aggregation (right)', directed: true, height: 60, nodes: cp(n), edges: e, hl: hl, ehl: ehl || {}, tags: tags || {} }; }
         return [
           { narr: 'Left: a <b>House</b> composed of rooms (filled diamond ◆). Right: a <b>Team</b> aggregating players (hollow diamond ◇). They look similar on paper. The difference shows up when the whole dies.', parts: [G(nodes.slice(0, 6), edges, {})] },
-          { narr: 'Where did the parts come from? Rooms were <b>created inside</b> <code>new House(...)</code>. Players were <b>created elsewhere</b> and passed to <code>team.add(p)</code>. Who creates is the first hint.', parts: [G(nodes.slice(0, 6), edges, { R1: 'ok', R2: 'ok', P1: 'win', P2: 'win' }, {}, { R1: 'made by House', R2: 'made by House', P1: 'made outside', P2: 'made outside' }), { type: 'code', label: 'Creation', lang: 'java', code: 'House h = new House("Kitchen", "Bedroom"); // rooms born inside\nPlayer virat = new Player("Virat");           // born outside\nteam.add(virat);', hl: { 1: 'ok', 2: 'cur', 3: 'cur' } }] },
+          { narr: 'Where did the parts come from? Rooms were <b>created inside</b> <code>new House(...)</code>. Players were <b>created elsewhere</b> and passed to <code>team.add(p)</code>. Who creates is the first hint.', parts: [G(nodes.slice(0, 6), edges, { R1: 'ok', R2: 'ok', P1: 'win', P2: 'win' }, {}, { R1: 'made by House', R2: 'made by House', P1: 'made outside', P2: 'made outside' }), { type: 'code', label: 'Creation', lang: 'java', code: 'House h = new House("Kitchen", "Bedroom"); // rooms born inside\nPlayer virat = new Player("Virat");           // born outside\nteam.add(virat);', hl: { 1: 'ok', 2: 'cur', 3: 'cur' }, alt: {
+            python: { code: 'h = House("Kitchen", "Bedroom")    # rooms born inside\nvirat = Player("Virat")            # born outside\nteam.add(virat)' },
+            js: { lang: 'ts', code: 'const h = new House("Kitchen", "Bedroom"); // rooms born inside\nconst virat = new Player("Virat");          // born outside\nteam.add(virat);' },
+            cpp: { code: 'House h("Kitchen", "Bedroom");   // rooms born inside\nPlayer virat("Virat");            // born outside\nteam.add(virat);' } } }] },
           { narr: 'Can a part be <b>shared</b>? Virat can play for RCB <b>and</b> Team India at the same time: aggregation allows it. A kitchen cannot belong to two houses: composition forbids it.', parts: [G(nodes, edges.concat([['India', 'P1', '◇ has-a']]), { P1: 'sel', India: 'ok' }, { 'India-P1': 'cur' }, { P1: 'shared by 2 teams' })] },
           { narr: 'Now <b>demolish the house</b>. The rooms go with it: no one else refers to them and they make no sense alone. That is <b>composition</b>: the whole controls the life of its parts.', parts: [G(nodes, edges.concat([['India', 'P1', '◇ has-a']]), { House: 'bad', R1: 'bad', R2: 'bad' }, { 'House-R1': 'bad', 'House-R2': 'bad' }, { R1: 'destroyed', R2: 'destroyed' })] },
           { narr: '<b>Disband RCB</b>. Virat and Faf still exist; Virat is still in Team India. That is <b>aggregation</b>: the group goes away, the members live on.', parts: [G(nodes, edges.concat([['India', 'P1', '◇ has-a']]), { House: 'bad', R1: 'bad', R2: 'bad', Team: 'bad', P1: 'ok', P2: 'ok' }, { 'Team-P1': 'bad', 'Team-P2': 'bad', 'India-P1': 'ok' }, { P1: 'alive', P2: 'alive (free agent)' })] },
@@ -2415,7 +2576,7 @@ int main() {
       example: `${H.table(['Pair', 'Relationship', 'Multiplicity', 'Why'], [['University–Department', H.c('g', 'composition'), '1 → 1..*', 'department dies with the university'], ['Department–Professor', H.c('b', 'aggregation'), '0..1 → 0..*', 'professor outlives and can move'], ['Professor–Course', H.c('p', 'association'), '* ↔ *', 'co-teaching, independent lives'], ['Student–Course', H.c('p', 'association class Enrollment'), '* ↔ *', 'the link has its own data (grade)']])}`,
       brute: {
         why: `<p>The naive design stores everything as strings inside one <code>University</code> class: <code>Map&lt;String, List&lt;String&gt;&gt; deptToProfs</code>, <code>Map&lt;String, Map&lt;String, String&gt;&gt; grades</code>. There is no Professor object, so moving a professor means hunting through maps and hoping you removed her from the old department. Grades keyed by concatenated strings break when a name changes. Relationships exist only in the programmer's head, so nobody can tell which deletions should cascade.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 class University {
     Map<String, List<String>> deptToProfs = new HashMap<>();
     Map<String, List<String>> courseToStudents = new HashMap<>();
@@ -2425,7 +2586,47 @@ class University {
         deptToProfs.computeIfAbsent(to, k -> new ArrayList<>()).add(prof);
     }
     void grade(String student, String course, String g) { grades.put(student + "|" + course, g); }
-}`
+}`, alt: [
+                { lang: 'python', code: `
+class University:
+    def __init__(self):
+        self.dept_to_profs = {}
+        self.course_to_students = {}
+        self.grades = {}   # key "student|course" -> grade
+
+    def move_prof(self, prof, frm, to):
+        self.dept_to_profs[frm].remove(prof)          # forget this line once and the prof is in two depts
+        self.dept_to_profs.setdefault(to, []).append(prof)
+
+    def grade(self, student, course, g):
+        self.grades[student + "|" + course] = g` },
+                { lang: 'ts', code: `
+class University {
+    deptToProfs = new Map<string, string[]>();
+    courseToStudents = new Map<string, string[]>();
+    grades = new Map<string, string>();   // key "student|course" -> grade
+    moveProf(prof: string, from: string, to: string): void {
+        const old = this.deptToProfs.get(from)!;
+        old.splice(old.indexOf(prof), 1);          // forget this line once and the prof is in two depts
+        if (!this.deptToProfs.has(to)) this.deptToProfs.set(to, []);
+        this.deptToProfs.get(to)!.push(prof);
+    }
+    grade(student: string, course: string, g: string): void { this.grades.set(student + "|" + course, g); }
+}` },
+                { lang: 'cpp', code: `
+class University {
+    unordered_map<string, vector<string>> deptToProfs;
+    unordered_map<string, vector<string>> courseToStudents;
+    unordered_map<string, string> grades;   // key "student|course" -> grade
+public:
+    void moveProf(const string& prof, const string& from, const string& to) {
+        auto& v = deptToProfs[from];
+        v.erase(find(v.begin(), v.end(), prof));     // forget this line once and the prof is in two depts
+        deptToProfs[to].push_back(prof);
+    }
+    void grade(const string& student, const string& course, const string& g) { grades[student + "|" + course] = g; }
+};` }
+              ] }
       },
       mcq: { q: 'Students and courses are many-to-many, and each pair needs a grade. How should you model it?', options: ['Student has List&lt;Course&gt;, Course has List&lt;Student&gt;, grade in Student as Map&lt;String,String&gt;', 'An Enrollment class holding student, course and grade', 'Make Student extend Course', 'Composition: Course owns its Students'], answer: 1, explain: 'When the link itself carries data, promote the link to an association class (Enrollment). It also maps cleanly to a join table.' },
       hints: [
@@ -3122,12 +3323,16 @@ int main() {
           throw new Error('Could not read "' + it + '". Use circle r, square s or rect w h with positive numbers');
         });
         var code = 'double total = 0;\nfor (Shape s : shapes) {\n    total += s.area();   // ONE call site\n}\n// which body runs?\nCircle.area()  { return PI * r * r; }\nSquare.area()  { return side * side; }\nRect.area()    { return w * h; }';
+        var altCode = {
+          python: { code: 'total = 0.0\nfor s in shapes:\n    total += s.area()   # ONE call site\n# which body runs?\nclass Circle(Shape): area = lambda self: math.pi * self.r * self.r\nclass Square(Shape): area = lambda self: self.side * self.side\nclass Rect(Shape): area = lambda self: self.w * self.h', map: { 6: 5, 7: 6, 8: 7 } },
+          js: { lang: 'ts', code: 'let total = 0;\nfor (const s of shapes) {\n    total += s.area();   // ONE call site\n}\n// which body runs?\nclass Circle extends Shape { area() { return Math.PI * this.r * this.r; } }\nclass Square extends Shape { area() { return this.side * this.side; } }\nclass Rect extends Shape { area() { return this.w * this.h; } }' },
+          cpp: { code: 'double total = 0;\nfor (Shape* s : shapes) {\n    total += s->area();   // ONE call site\n}\n// which body runs?\nstruct Circle : Shape { double area() const override { return M_PI * r * r; } };\nstruct Square : Shape { double area() const override { return side * side; } };\nstruct Rect : Shape { double area() const override { return w * h; } };' } };
         var nodes = [bx('Shape', 'Shape (abstract)', 50, 8), bx('Circle', 'Circle', 17, 34), bx('Square', 'Square', 50, 34), bx('Rect', 'Rect', 83, 34)];
         var edges = [['Circle', 'Shape', 'is-a'], ['Square', 'Shape', 'is-a'], ['Rect', 'Shape', 'is-a']];
         var frames = [], total = 0, done = [];
-        frames.push({ narr: 'The loop only knows the type <b>Shape</b>. It has <b>no if/else</b> on the kind of shape. Let us watch the JVM pick the right <code>area()</code> for each object.', parts: [
+        frames.push({ narr: 'The loop only knows the type <b>Shape</b>. It has <b>no if/else</b> on the kind of shape. Let us watch the runtime pick the right <code>area()</code> for each object.', parts: [
           { type: 'graph', label: 'Class hierarchy', directed: true, height: 44, nodes: cp(nodes), edges: edges, hl: { Shape: 'sel' }, tags: { Shape: '«abstract» area()' } },
-          { type: 'code', label: 'Caller code (top) and the three overrides (bottom)', lang: 'java', code: code, hl: { 3: 'cur' } },
+          { type: 'code', label: 'Caller code (top) and the three overrides (bottom)', lang: 'java', code: code, hl: { 3: 'cur' }, alt: altCode },
           { type: 'array', label: 'List&lt;Shape&gt; shapes', values: shapes.map(function (s) { return s.d; }) }
         ] });
         shapes.forEach(function (s, i) {
@@ -3136,9 +3341,9 @@ int main() {
           var ehl = {}; ehl[s.k + '-Shape'] = 'cur';
           var ch = { 3: 'cur' }; ch[s.line] = 'ok';
           var ah = {}; ah[i] = 'cur';
-          frames.push({ narr: 'Element ' + i + ' is really a <b>' + s.k + '</b>. The call <code>s.area()</code> is the same text every time, but the JVM looks at the <b>actual object</b> (dynamic dispatch) and runs <code>' + s.k + '.area()</code> = <b>' + s.area.toFixed(2) + '</b>.', parts: [
+          frames.push({ narr: 'Element ' + i + ' is really a <b>' + s.k + '</b>. The call <code>s.area()</code> is the same text every time, but the runtime looks at the <b>actual object</b> (dynamic dispatch) and runs <code>' + s.k + '.area()</code> = <b>' + s.area.toFixed(2) + '</b>.', parts: [
             { type: 'graph', label: 'Class hierarchy', directed: true, height: 44, nodes: cp(nodes), edges: edges, hl: hl, ehl: ehl },
-            { type: 'code', label: 'Caller code (top) and the three overrides (bottom)', lang: 'java', code: code, hl: ch },
+            { type: 'code', label: 'Caller code (top) and the three overrides (bottom)', lang: 'java', code: code, hl: ch, alt: altCode },
             { type: 'array', label: 'List&lt;Shape&gt; shapes', values: shapes.map(function (x) { return x.d; }), hl: ah, ptr: (function () { var p = {}; p[i] = 's'; return p; })() },
             { type: 'vars', label: 'Loop state', vals: { 'runtime type': s.k, 'area()': s.area.toFixed(2), total: total.toFixed(2) }, hl: { total: 'ok' } }
           ] });
@@ -3483,7 +3688,7 @@ ${H.table(['method', 'fee', 'charged'], [['CreditCard', '2% = 2000', H.c('y', '1
 <p>The checkout code is identical in all four cases; only the object passed in differs.</p>`,
       brute: {
         why: `<p>The naive design has a single <code>Payment</code> class with a <code>String type</code> and a switch in every method (<code>fee</code>, <code>validate</code>, <code>pay</code>). Adding wallets means editing every switch (and forgetting one compiles fine and silently charges zero fee). Card-only fields (expiry) sit next to UPI-only fields (vpa) with nulls everywhere. It violates Open/Closed and makes each method a growing if-ladder.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 class Payment {
     String type;            // "CREDIT", "DEBIT", "UPI" ... typo = silent bug
     String cardNumber, expiry, vpa;   // half of these are always null
@@ -3498,7 +3703,55 @@ class Payment {
         if (type.equals("UPI")) return vpa != null && vpa.contains("@");
         return cardNumber != null && cardNumber.length() == 16;
     }
-}`
+}`, alt: [
+                { lang: 'python', code: `
+class Payment:
+    def __init__(self):
+        self.type = None          # "CREDIT", "DEBIT", "UPI" ... typo = silent bug
+        self.card_number = self.expiry = self.vpa = None   # half of these are always None
+
+    def fee(self, amount):
+        if self.type == "CREDIT": return amount * 2 // 100
+        if self.type == "DEBIT": return amount // 200
+        return 0                  # new WALLET type silently free
+
+    def validate(self):
+        if self.type == "UPI": return self.vpa is not None and "@" in self.vpa
+        return self.card_number is not None and len(self.card_number) == 16` },
+                { lang: 'ts', code: `
+class Payment {
+    type = "";                 // "CREDIT", "DEBIT", "UPI" ... typo = silent bug
+    cardNumber: string | null = null;   // half of these are always null
+    expiry: string | null = null;
+    vpa: string | null = null;
+    fee(amount: number): number {
+        switch (this.type) {
+            case "CREDIT": return Math.floor(amount * 2 / 100);
+            case "DEBIT": return Math.floor(amount / 200);
+            default: return 0;           // new WALLET type silently free
+        }
+    }
+    validate(): boolean {
+        if (this.type === "UPI") return this.vpa !== null && this.vpa.includes("@");
+        return this.cardNumber !== null && this.cardNumber.length === 16;
+    }
+}` },
+                { lang: 'cpp', code: `
+class Payment {
+public:
+    string type;                       // "CREDIT", "DEBIT", "UPI" ... typo = silent bug
+    string cardNumber, expiry, vpa;    // half of these are always empty
+    long long fee(long long amount) {
+        if (type == "CREDIT") return amount * 2 / 100;
+        if (type == "DEBIT") return amount / 200;
+        return 0;                      // new WALLET type silently free
+    }
+    bool validate() {
+        if (type == "UPI") return vpa.find('@') != string::npos;
+        return cardNumber.size() == 16;
+    }
+};` }
+              ] }
       },
       mcq: { q: 'Credit and debit cards share validation code and fields; UPI shares nothing but the "can pay" ability. What structure fits best?', options: ['One Payment class with a type field', 'interface PaymentMethod; abstract class CardPayment implements it; CreditCard/DebitCard extend CardPayment; Upi implements PaymentMethod directly', 'Upi extends CreditCard', 'Three unrelated classes and instanceof checks in Checkout'], answer: 1, explain: 'Interface for the capability every method shares (validate, fee, pay); abstract class only where real shared code and state exist (cards). Checkout depends on the interface only.' },
       hints: [
@@ -3972,7 +4225,54 @@ Customer "1" -- "0..*" Account : holds >
           { narr: 'Payment varies (card, UPI, wallet) → an <b>interface</b>. Order only <b>uses</b> it during <code>pay()</code>: <b>dependency</b> (dashed arrow). Implementations hang below it with the realisation triangle.', nodes: [bx('PM', 'PaymentMethod', 85, 46), bx('Upi', 'Upi', 70, 65), bx('Card', 'Card', 94, 65)], edges: [['Order', 'PM', 'uses'], ['Upi', 'PM', 'implements'], ['Card', 'PM', 'implements']], tags: { PM: '«interface»' },
             rows: [['PaymentMethod «interface»', '', '+ pay(amountPaise: long): boolean'], ['Upi', '- vpa: String', '+ pay(amountPaise: long): boolean'], ['Card', '- last4: String', '+ pay(amountPaise: long): boolean']] },
           { narr: 'Sanity check with a use case: <i>checkout</i> = Customer reads Cart → creates Order with one OrderLine per CartItem (price copied) → Order.pay(PaymentMethod) → status PAID → cart cleared. Every step has a home. The diagram is done.', hl: { Customer: 'cur', Cart: 'win', Order: 'ok', PM: 'sel' },
-            code: 'class Customer { private final Cart cart = new Cart(); Order checkout(PaymentMethod pm) { /* cart items become order lines */ } }\nclass Cart { private final List<CartItem> items = new ArrayList<>(); }\nclass CartItem { private final Product product; private int quantity; }\nrecord Product(String sku, String name, long pricePaise) { }\nclass Order { private final List<OrderLine> lines; private OrderStatus status; boolean pay(PaymentMethod pm) { /* charge total, set PAID */ } }\nrecord OrderLine(Product product, int quantity, long unitPricePaise) { }\nenum OrderStatus { PLACED, PAID, SHIPPED, CANCELLED }\ninterface PaymentMethod { boolean pay(long amountPaise); }', codeLabel: 'Skeleton read straight off the diagram' }
+            code: 'class Customer { private final Cart cart = new Cart(); Order checkout(PaymentMethod pm) { /* cart items become order lines */ } }\nclass Cart { private final List<CartItem> items = new ArrayList<>(); }\nclass CartItem { private final Product product; private int quantity; }\nrecord Product(String sku, String name, long pricePaise) { }\nclass Order { private final List<OrderLine> lines; private OrderStatus status; boolean pay(PaymentMethod pm) { /* charge total, set PAID */ } }\nrecord OrderLine(Product product, int quantity, long unitPricePaise) { }\nenum OrderStatus { PLACED, PAID, SHIPPED, CANCELLED }\ninterface PaymentMethod { boolean pay(long amountPaise); }', codeLabel: 'Skeleton read straight off the diagram', alt: {
+              python: { code: `from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
+
+class Customer:
+    def __init__(self): self._cart = Cart()
+    def checkout(self, pm): ...   # cart items become order lines
+class Cart:
+    def __init__(self): self._items = []
+@dataclass
+class CartItem:
+    product: "Product"
+    quantity: int
+@dataclass(frozen=True)
+class Product:
+    sku: str
+    name: str
+    price_paise: int
+class Order:
+    def __init__(self): self._lines = []; self._status = OrderStatus.PLACED
+    def pay(self, pm): ...        # charge total, set PAID
+@dataclass(frozen=True)
+class OrderLine:
+    product: Product
+    quantity: int
+    unit_price_paise: int
+class OrderStatus(Enum):
+    PLACED = 1; PAID = 2; SHIPPED = 3; CANCELLED = 4
+class PaymentMethod(ABC):
+    @abstractmethod
+    def pay(self, amount_paise): ...` },
+              js: { lang: 'ts', code: `class Customer { private readonly cart = new Cart(); checkout(pm: PaymentMethod): Order { /* cart items become order lines */ } }
+class Cart { private readonly items: CartItem[] = []; }
+class CartItem { constructor(private readonly product: Product, private quantity: number) {} }
+interface Product { sku: string; name: string; pricePaise: number }
+class Order { private readonly lines: OrderLine[] = []; private status = OrderStatus.PLACED; pay(pm: PaymentMethod): boolean { /* charge total, set PAID */ } }
+interface OrderLine { product: Product; quantity: number; unitPricePaise: number }
+enum OrderStatus { PLACED, PAID, SHIPPED, CANCELLED }
+interface PaymentMethod { pay(amountPaise: number): boolean }` },
+              cpp: { code: `struct Product { string sku, name; long long pricePaise; };
+struct CartItem { Product product; int quantity; };
+struct OrderLine { Product product; int quantity; long long unitPricePaise; };
+enum class OrderStatus { PLACED, PAID, SHIPPED, CANCELLED };
+class PaymentMethod { public: virtual bool pay(long long amountPaise) = 0; virtual ~PaymentMethod() = default; };
+class Cart { vector<CartItem> items; };
+class Order { vector<OrderLine> lines; OrderStatus status = OrderStatus::PLACED; public: bool pay(PaymentMethod& pm) { /* charge total, set PAID */ return true; } };
+class Customer { Cart cart; public: Order checkout(PaymentMethod& pm) { /* cart items become order lines */ return Order(); } };` } } }
         ]);
       }
     }, {
@@ -4139,7 +4439,7 @@ public:
 ${H.table(['Box', 'Key members', 'Links'], [['Customer', 'id, name; checkout(pm)', '◆ 1 Cart; 1 → 0..* Order'], ['Cart', 'add, remove, total', '◆ 0..* CartItem; 0..1 → Coupon'], ['Order', 'lines, total, status', '◆ 1..* OrderLine'], ['«interface» Coupon', 'apply(total)', 'FlatCoupon, PercentCoupon ..▷']])}`,
       brute: {
         why: `<p>The god-class version is one <code>ShopService</code> with <code>Map&lt;String, Integer&gt; cart</code> (sku → qty), <code>Map&lt;String, Long&gt; prices</code> and a <code>String couponType</code>. Checkout re-reads <i>current</i> prices, so old orders change when prices change (an accounting bug). Coupon logic is an if-else on strings. There is no Order object at all, just a list of maps. You cannot draw a class diagram of it because there are no classes to draw, which is exactly the problem.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 class ShopService {
     Map<String, Integer> cart = new HashMap<>();
     Map<String, Long> prices = new HashMap<>();
@@ -4153,7 +4453,56 @@ class ShopService {
         return t;                         // may go negative
     }
     void checkout() { orders.add(new HashMap<>(cart)); cart.clear(); }  // prices not frozen
-}`
+}`, alt: [
+                { lang: 'python', code: `
+class ShopService:
+    def __init__(self):
+        self.cart = {}
+        self.prices = {}
+        self.coupon_type = None
+        self.coupon_value = 0
+        self.orders = []
+
+    def total(self):
+        t = sum(self.prices[sku] * qty for sku, qty in self.cart.items())
+        if self.coupon_type == "FLAT": t -= self.coupon_value
+        elif self.coupon_type == "PERCENT": t -= t * self.coupon_value // 100
+        return t                         # may go negative
+
+    def checkout(self):
+        self.orders.append(dict(self.cart)); self.cart.clear()   # prices not frozen` },
+                { lang: 'ts', code: `
+class ShopService {
+    cart = new Map<string, number>();
+    prices = new Map<string, number>();
+    couponType: string | null = null; couponValue = 0;
+    orders: Map<string, number>[] = [];
+    total(): number {
+        let t = 0;
+        for (const [sku, qty] of this.cart) t += this.prices.get(sku)! * qty;
+        if (this.couponType === "FLAT") t -= this.couponValue;
+        else if (this.couponType === "PERCENT") t -= Math.floor(t * this.couponValue / 100);
+        return t;                         // may go negative
+    }
+    checkout(): void { this.orders.push(new Map(this.cart)); this.cart.clear(); }  // prices not frozen
+}` },
+                { lang: 'cpp', code: `
+class ShopService {
+    unordered_map<string, int> cart;
+    unordered_map<string, long long> prices;
+    string couponType; long long couponValue = 0;
+    vector<unordered_map<string, int>> orders;
+public:
+    long long total() {
+        long long t = 0;
+        for (auto& [sku, qty] : cart) t += prices[sku] * qty;
+        if (couponType == "FLAT") t -= couponValue;
+        else if (couponType == "PERCENT") t -= t * couponValue / 100;
+        return t;                         // may go negative
+    }
+    void checkout() { orders.push_back(cart); cart.clear(); }   // prices not frozen
+};` }
+              ] }
       },
       mcq: { q: 'Why does OrderLine store unitPricePaise instead of just referencing Product?', options: ['To save memory', 'Because the order must remember the price actually paid even if the product price changes later', 'Because Product is immutable', 'UML requires it'], answer: 1, explain: 'An order is a historical record. Referencing the live product price would rewrite history. Copy the price (a snapshot) into the line; keep the reference to Product for everything else.' },
       hints: [
@@ -4887,7 +5236,10 @@ int main() {
           { f: 'OrderService', t: 'OrderService', m: 'new Order + save', line: 5, narr: '<b>Self-call</b> area: the service creates the Order («create» message) and saves it through the repository. Shown as a self-arrow to keep the picture small.' },
           { f: 'OrderService', t: 'Notifier', m: 'sendAsync(orderId)', line: 7, narr: '<b>Asynchronous</b> message (open arrow head in real UML): queue a confirmation email. The service does <b>not</b> wait for it; the user should not wait for SMTP.' },
           { f: 'OrderService', t: 'Controller', m: 'orderId', ret: true, line: 8, narr: 'Return the new order id to the controller, which turns it into an HTTP 201 response.' }
-        ], { code: code, codeLabel: 'OrderService.placeOrder (each message = one highlighted line)', intro: 'Five lifelines for the "place order" use case. Watch each arrow light up the line of code that sends it.', outro: 'Notice the <b>shape</b>: one coordinator in the middle with short arrows to helpers that each own one job. If Controller had arrows straight to Inventory, Payments and Notifier, the controller would be a god class.' });
+        ], { code: code, alt: {
+          python: { code: 'def place_order(self, cart, pm):                  # called by Controller\n    if not self.inventory.reserve(cart.items()):     # ask Inventory\n        raise OutOfStockError()                      # alt: failure branch\n    r = self.payments.charge(pm, cart.total())       # ask Payments\n    order = Order(cart, r)                           # create\n    self.repository.save(order)                      # persist\n    self.notifier.send_async(order.id())             # async, no waiting\n    return order.id()                                # reply to Controller' },
+          js: { lang: 'ts', code: 'placeOrder(cart: Cart, pm: PaymentMethod): OrderId {   // called by Controller\n    if (!this.inventory.reserve(cart.items()))        // ask Inventory\n        throw new OutOfStockError();                  // alt: failure branch\n    const r = this.payments.charge(pm, cart.total()); // ask Payments\n    const order = new Order(cart, r);                 // create\n    this.repository.save(order);                      // persist\n    this.notifier.sendAsync(order.id());              // async, no waiting\n    return order.id();                                // reply to Controller\n}' },
+          cpp: { code: 'OrderId placeOrder(Cart& cart, PaymentMethod& pm) {   // called by Controller\n    if (!inventory.reserve(cart.items()))             // ask Inventory\n        throw OutOfStockError();                      // alt: failure branch\n    Receipt r = payments.charge(pm, cart.total());    // ask Payments\n    Order order(cart, r);                             // create\n    repository.save(order);                           // persist\n    notifier.sendAsync(order.id());                   // async, no waiting\n    return order.id();                                // reply to Controller\n}' } }, codeLabel: 'OrderService.placeOrder (each message = one highlighted line)', intro: 'Five lifelines for the "place order" use case. Watch each arrow light up the line of code that sends it.', outro: 'Notice the <b>shape</b>: one coordinator in the middle with short arrows to helpers that each own one job. If Controller had arrows straight to Inventory, Payments and Notifier, the controller would be a god class.' });
       }
     }],
     examples: [
@@ -5076,8 +5428,8 @@ public:
       constraints: `<ul><li>Locations as (x, y) grid points; distance = Manhattan distance.</li><li>Fare = ₹50 base + ₹12 per unit distance.</li><li>A driver is available only if not already assigned. Notifier must not block (async).</li></ul>`,
       example: `<p>Drivers: D1 at (0,0) free, D2 at (5,5) free. Rider requests (1,1) → (4,5): distance 3 + 4 = 7 → fare = 50 + 84 = ${H.c('g', '₹134')}. Nearest free driver to (1,1) is D1 (distance 2) → ride ASSIGNED to D1. A second request from (1,1) gets ${H.c('y', 'D2')}. A third gets ${H.c('r', '"no drivers nearby"')} (alt else branch).</p>`,
       brute: {
-        why: `<p>The naive version puts the whole diagram inside one <code>RideController.request</code> method: it computes the fare inline, loops over a raw list of driver maps, flips a <code>"busy"</code> string, and sends the notification synchronously with a <code>Thread.sleep</code>-like call. Drawn as a sequence diagram it has <b>one lifeline</b> with 20 self-calls: no object owns anything, the fare formula cannot be reused or tested, and the user waits for the SMS gateway.</p>`,
-        code: `
+        why: `<p>The naive version puts the whole diagram inside one <code>RideController.request</code> method: it computes the fare inline, loops over a raw list of driver maps, flips a <code>"busy"</code> string, and sends the notification synchronously with a blocking call. Drawn as a sequence diagram it has <b>one lifeline</b> with 20 self-calls: no object owns anything, the fare formula cannot be reused or tested, and the user waits for the SMS gateway.</p>`,
+        code: { lang: 'java', code: `
 class RideController {
     List<Map<String, Object>> drivers = new ArrayList<>();
     String request(int px, int py, int dx, int dy) {
@@ -5093,7 +5445,60 @@ class RideController {
         System.out.println("SMS sent");           // synchronous: user waits for this
         return "assigned " + best.get("id") + " fare " + fare;
     }
-}`
+}`, alt: [
+                { lang: 'python', code: `
+class RideController:
+    def __init__(self):
+        self.drivers = []        # list of dicts
+
+    def request(self, px, py, dx, dy):
+        fare = 50 + 12 * (abs(px - dx) + abs(py - dy))     # formula buried here
+        best, best_d = None, float("inf")
+        for d in self.drivers:
+            if d["status"] == "busy": continue
+            dist = abs(d["x"] - px) + abs(d["y"] - py)
+            if dist < best_d: best_d, best = dist, d
+        if best is None: return "no drivers nearby"
+        best["status"] = "busy"
+        print("SMS sent")           # synchronous: user waits for this
+        return f"assigned {best['id']} fare {fare}"` },
+                { lang: 'ts', code: `
+class RideController {
+    drivers: { id: string; x: number; y: number; status: string }[] = [];
+    request(px: number, py: number, dx: number, dy: number): string {
+        const fare = 50 + 12 * (Math.abs(px - dx) + Math.abs(py - dy));    // formula buried here
+        let best: { id: string; x: number; y: number; status: string } | null = null, bestD = Infinity;
+        for (const d of this.drivers) {
+            if (d.status === "busy") continue;
+            const dist = Math.abs(d.x - px) + Math.abs(d.y - py);
+            if (dist < bestD) { bestD = dist; best = d; }
+        }
+        if (best === null) return "no drivers nearby";
+        best.status = "busy";
+        console.log("SMS sent");           // synchronous: user waits for this
+        return "assigned " + best.id + " fare " + fare;
+    }
+}` },
+                { lang: 'cpp', code: `
+struct Driver { string id; int x, y; string status; };
+class RideController {
+    vector<Driver> drivers;
+public:
+    string request(int px, int py, int dx, int dy) {
+        long long fare = 50 + 12LL * (abs(px - dx) + abs(py - dy));    // formula buried here
+        Driver* best = nullptr; int bestD = INT_MAX;
+        for (auto& d : drivers) {
+            if (d.status == "busy") continue;
+            int dist = abs(d.x - px) + abs(d.y - py);
+            if (dist < bestD) { bestD = dist; best = &d; }
+        }
+        if (!best) return "no drivers nearby";
+        best->status = "busy";
+        cout << "SMS sent\\n";           // synchronous: user waits for this
+        return "assigned " + best->id + " fare " + to_string(fare);
+    }
+};` }
+              ] }
       },
       mcq: { q: 'In the diagram, which class should own "find the nearest available driver"?', options: ['RideService, by looping over all drivers itself', 'DriverPool, because it holds the drivers and their availability', 'Rider', 'Notifier'], answer: 1, explain: 'Information Expert: DriverPool has the data (drivers, positions, availability). RideService just asks it, which is exactly the arrow RideService → DriverPool: nearestAvailable(pickup).' },
       hints: [
@@ -6031,7 +6436,7 @@ ${H.table(['request', 'result', 'why'], [['Asha, 10:00–11:00, 3 people', H.c('
 <p>Note row 3: Ganga is <i>free</i> at 11:00 (Asha's [10:00, 11:00) ends exactly then, half-open intervals) but lacks a projector, and Yamuna's [10:30, 11:30) overlaps, so the smallest fitting free room is ${H.c('y', 'Kaveri')}. Getting these boundaries right is part of the problem.</p>`,
       brute: {
         why: `<p>The god-class approach: <code>OfficeManager</code> with <code>Map&lt;String, List&lt;int[]&gt;&gt; roomSlots</code>, capacities in another map, equipment as comma-separated strings, and a <code>book</code> method with nested loops and string <code>contains</code> checks. "Smallest room" is a hard-coded sort inside book(). Switching to "closest floor" means editing the core method; cancellation has no idea who the organiser was because bookings are just int arrays. It has no seams to test or extend.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 class OfficeManager {
     Map<String, Integer> capacity = new HashMap<>();
     Map<String, String> equipment = new HashMap<>();       // "projector,whiteboard"
@@ -6048,7 +6453,66 @@ class OfficeManager {
         }
         return null;                                         // who booked it? unknown, so no safe cancel
     }
-}`
+}`, alt: [
+                { lang: 'python', code: `
+class OfficeManager:
+    def __init__(self):
+        self.capacity = {}
+        self.equipment = {}       # "projector,whiteboard"
+        self.slots = {}           # room -> [start, end] minutes
+
+    def book(self, start, end, people, needs):
+        rooms = sorted(self.capacity, key=lambda r: self.capacity[r])   # strategy hard-coded
+        for r in rooms:
+            if self.capacity[r] < people: continue
+            if needs and needs not in self.equipment[r]: continue
+            free = True
+            for s in self.slots.get(r, []):
+                if start < s[1] and s[0] < end: free = False
+            if free:
+                self.slots.setdefault(r, []).append([start, end]); return r
+        return None                                          # who booked it? unknown, so no safe cancel` },
+                { lang: 'ts', code: `
+class OfficeManager {
+    capacity = new Map<string, number>();
+    equipment = new Map<string, string>();       // "projector,whiteboard"
+    slots = new Map<string, number[][]>();       // room -> [start, end] minutes
+    book(start: number, end: number, people: number, needs: string): string | null {
+        const rooms = [...this.capacity.keys()].sort((a, b) => this.capacity.get(a)! - this.capacity.get(b)!);  // strategy hard-coded
+        for (const r of rooms) {
+            if (this.capacity.get(r)! < people) continue;
+            if (needs !== "" && !this.equipment.get(r)!.includes(needs)) continue;
+            let free = true;
+            for (const s of this.slots.get(r) ?? []) if (start < s[1] && s[0] < end) free = false;
+            if (free) {
+                if (!this.slots.has(r)) this.slots.set(r, []);
+                this.slots.get(r)!.push([start, end]); return r;
+            }
+        }
+        return null;                                         // who booked it? unknown, so no safe cancel
+    }
+}` },
+                { lang: 'cpp', code: `
+class OfficeManager {
+    unordered_map<string, int> capacity;
+    unordered_map<string, string> equipment;                  // "projector,whiteboard"
+    unordered_map<string, vector<pair<int, int>>> slots;      // room -> [start, end] minutes
+public:
+    string book(int start, int end, int people, const string& needs) {
+        vector<string> rooms;
+        for (auto& [r, c] : capacity) rooms.push_back(r);
+        sort(rooms.begin(), rooms.end(), [&](const string& a, const string& b) { return capacity[a] < capacity[b]; });  // strategy hard-coded
+        for (auto& r : rooms) {
+            if (capacity[r] < people) continue;
+            if (!needs.empty() && equipment[r].find(needs) == string::npos) continue;
+            bool free = true;
+            for (auto& s : slots[r]) if (start < s.second && s.first < end) free = false;
+            if (free) { slots[r].push_back({start, end}); return r; }
+        }
+        return "";                                           // who booked it? unknown, so no safe cancel
+    }
+};` }
+              ] }
       },
       mcq: { q: 'The company will later want "closest floor" or "least used" room selection. What should the design include now?', options: ['A big if/else on a strategy name inside book()', 'A RoomSelectionStrategy interface injected into the booking service, with SmallestFitStrategy as the first implementation', 'A subclass of the service for each strategy', 'Nothing; YAGNI'], answer: 1, explain: 'The change was announced, so add a seam exactly there. An interface with one implementation today costs almost nothing and turns the future change into one new class.' },
       hints: [
@@ -6507,13 +6971,37 @@ int main() {
     example: `${H.table(['Pair', 'Relationship', 'Multiplicity'], [['Car–Engine', H.c('g', 'composition'), '1 → 1'], ['Car–Wheel', H.c('g', 'composition'), '1 → 4'], ['Driver–Car', H.c('b', 'association'), '0..1 ↔ 0..1']])}<p><code>car.start()</code> prints "engine on"; <code>driver.drive(car)</code> fails if the car already has another driver.</p>`,
     brute: {
       why: `<p>The naive version gives Car public fields <code>engine</code> and <code>wheels</code> that callers fill in, so two cars can end up sharing one Engine object (start one, the other "starts" too) and a car can be built with 3 wheels or none. Driver and Car are linked by two independent setters, so a car can point to Ravi while Ravi points to a different car.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 class Engine { boolean on; }
 class Car {
     public Engine engine;                 // set from outside: may be shared or null
     public List<String> wheels = new ArrayList<>();
     public String driverName;             // and Driver has its own carPlate: drift
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class Engine:
+    def __init__(self): self.on = False
+
+class Car:
+    def __init__(self):
+        self.engine = None                # set from outside: may be shared or None
+        self.wheels = []
+        self.driver_name = ""             # and Driver has its own car_plate: drift` },
+              { lang: 'ts', code: `
+class Engine { on = false; }
+class Car {
+    engine: Engine | null = null;         // set from outside: may be shared or null
+    wheels: string[] = [];
+    driverName = "";                      // and Driver has its own carPlate: drift
+}` },
+              { lang: 'cpp', code: `
+struct Engine { bool on = false; };
+struct Car {
+    Engine* engine = nullptr;             // set from outside: may be shared or null
+    vector<string> wheels;
+    string driverName;                    // and Driver has its own carPlate: drift
+};` }
+            ] }
     },
     mcq: { q: 'Two cars must never share an engine, and the engine is scrapped with the car. Which shape fits?', options: ['Engine passed into the Car constructor from outside', 'private final Engine engine = new Engine(); created inside Car', 'public Engine engine; set later', 'static Engine shared by all cars'], answer: 1, explain: 'Composition: the whole creates and exclusively owns the part. Creating it inside and keeping it private guarantees no sharing.' },
     hints: [
@@ -6795,7 +7283,7 @@ int main() {
     example: `<p>Library: {S1 "Kesariya" 268s, S2 "Naatu Naatu" 210s}. Playlist "Gym": [S2, S1, S2] → duration ${H.c('g', '688s')}. Delete playlist "Gym" → songs still in library. Delete S2 from library → Playlist "Chill" [S2, S1] becomes ${H.c('y', '[S1]')}.</p>`,
     brute: {
       why: `<p>The naive design copies song data into each playlist (<code>List&lt;String&gt; titles</code>). Now a renamed or deleted song stays stale in every playlist, the duration is stored and goes out of sync, and the library has no idea which playlists use a song. Copying parts instead of referencing them is the opposite of aggregation.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 class Playlist {
     String name;
     List<String> songTitles = new ArrayList<>();   // copies, not references
@@ -6804,7 +7292,39 @@ class Playlist {
 class MusicApp {
     List<Playlist> playlists = new ArrayList<>();
     Map<String, Integer> library = new HashMap<>(); // title -> seconds
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class Playlist:
+    def __init__(self):
+        self.name = ""
+        self.song_titles = []        # copies, not references
+        self.total_seconds = 0       # stored, drifts when songs change
+
+class MusicApp:
+    def __init__(self):
+        self.playlists = []
+        self.library = {}            # title -> seconds` },
+              { lang: 'ts', code: `
+class Playlist {
+    name = "";
+    songTitles: string[] = [];   // copies, not references
+    totalSeconds = 0;            // stored, drifts when songs change
+}
+class MusicApp {
+    playlists: Playlist[] = [];
+    library = new Map<string, number>();   // title -> seconds
+}` },
+              { lang: 'cpp', code: `
+struct Playlist {
+    string name;
+    vector<string> songTitles;   // copies, not references
+    int totalSeconds = 0;        // stored, drifts when songs change
+};
+struct MusicApp {
+    vector<Playlist> playlists;
+    unordered_map<string, int> library;   // title -> seconds
+};` }
+            ] }
     },
     mcq: { q: 'Library → Song and Playlist → Song: which pair of relationships fits?', options: ['Both composition', 'Library ◆ Song (owns them), Playlist ◇ Song (shared references)', 'Both inheritance', 'Playlist ◆ Song, Library ◇ Song'], answer: 1, explain: 'Songs live in the library (deleting from the library deletes the song). Playlists only group references to songs that are shared with other playlists.' },
     hints: [
@@ -7074,8 +7594,8 @@ int main() {
     constraints: `<ul><li>No method may throw UnsupportedOperationException.</li><li>Adding a new animal must not modify the show code.</li></ul>`,
     example: `<p>Pool show → ${H.c('g', 'Duck, Penguin, Fish')}. Bird show → ${H.c('g', 'Duck, Eagle')}. A design where <code>Penguin extends Bird</code> with <code>fly()</code> would ${H.c('r', 'lie')}.</p>`,
     brute: {
-      why: `<p>The naive design puts every ability in one base class: <code>Animal</code> with <code>swim()</code>, <code>fly()</code>, <code>walk()</code>, and subclasses override the ones they cannot do with <code>throw new UnsupportedOperationException()</code>. Every show must now wrap calls in try/catch or check a type string. The hierarchy promises abilities that do not exist (an LSP violation).</p>`,
-      code: `
+      why: `<p>The naive design puts every ability in one base class: <code>Animal</code> with <code>swim()</code>, <code>fly()</code>, <code>walk()</code>, and subclasses override the ones they cannot do with a <code>throw</code> of a "not supported" error. Every show must now wrap calls in try/catch or check a type string. The hierarchy promises abilities that do not exist (an LSP violation).</p>`,
+      code: { lang: 'java', code: `
 class Animal {
     String name;
     void fly() { System.out.println(name + " flies"); }
@@ -7083,7 +7603,37 @@ class Animal {
 }
 class Fish extends Animal {
     @Override void fly() { throw new UnsupportedOperationException("fish can't fly"); }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class Animal:
+    def __init__(self, name): self.name = name
+    def fly(self): print(self.name + " flies")
+    def swim(self): print(self.name + " swims")
+
+class Fish(Animal):
+    def fly(self): raise NotImplementedError("fish can't fly")` },
+              { lang: 'ts', code: `
+class Animal {
+    constructor(public name: string) {}
+    fly(): void { console.log(this.name + " flies"); }
+    swim(): void { console.log(this.name + " swims"); }
+}
+class Fish extends Animal {
+    override fly(): void { throw new Error("fish can't fly"); }
+}` },
+              { lang: 'cpp', code: `
+class Animal {
+public:
+    string name;
+    virtual void fly() { cout << name << " flies\\n"; }
+    virtual void swim() { cout << name << " swims\\n"; }
+    virtual ~Animal() = default;
+};
+class Fish : public Animal {
+public:
+    void fly() override { throw runtime_error("fish can't fly"); }
+};` }
+            ] }
     },
     mcq: { q: 'Where should "can fly" live?', options: ['As fly() on the Animal base class', 'In a Flyable interface implemented only by animals that fly', 'As a boolean canFly field checked everywhere', 'In a FlyingAnimal superclass that Duck and Eagle extend, while Penguin extends SwimmingAnimal'], answer: 1, explain: 'Abilities that cut across the family tree are capabilities: small interfaces. A Duck both swims and flies, which single-inheritance superclasses cannot express.' },
     hints: [
@@ -7381,12 +7931,31 @@ int main() {
     example: `${H.table(['mode', 'target', 'current', 'action'], [['HEAT', '22.0', '20.5', H.c('r', 'HEATING')], ['COOL', '22.0', '20.5', H.c('m', 'IDLE')], ['AUTO', '22.0', '23.5', H.c('b', 'COOLING')], ['OFF', 'any', 'any', H.c('m', 'IDLE')]])}<p>30 nudges up from 29.0 leave the target at ${H.c('g', '30.0')}, not 44.0.</p>`,
     brute: {
       why: `<p>With public fields, the mobile app writes <code>t.target = 45</code>, a buggy integration sets <code>t.current</code> directly, and mode is a String ("Heat" vs "HEAT"). The decision logic is copied into the app, the wall panel and the voice assistant, and the three copies disagree. Nothing protects the 16–30 rule.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 class Thermostat {
     public double target;      // anyone can set 45.0
     public double current;     // anyone can fake the sensor
     public String mode;        // "heat", "HEAT", "Heat"?
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class Thermostat:
+    def __init__(self):
+        self.target = 0.0      # anyone can set 45.0
+        self.current = 0.0     # anyone can fake the sensor
+        self.mode = ""         # "heat", "HEAT", "Heat"?` },
+              { lang: 'ts', code: `
+class Thermostat {
+    target = 0;      // anyone can set 45.0
+    current = 0;     // anyone can fake the sensor
+    mode = "";       // "heat", "HEAT", "Heat"?
+}` },
+              { lang: 'cpp', code: `
+struct Thermostat {
+    double target = 0;     // anyone can set 45.0
+    double current = 0;    // anyone can fake the sensor
+    string mode;           // "heat", "HEAT", "Heat"?
+};` }
+            ] }
     },
     mcq: { q: 'Which is the best API for changing the target?', options: ['setTarget(double) with no checks', 'nudgeUp() / nudgeDown() that clamp to [16, 30], plus a validated setTarget', 'A public target field', 'A static method in ThermostatUtils'], answer: 1, explain: 'Methods named after real user actions, each guarding the invariant inside the object. The field stays private.' },
     hints: [
@@ -7630,7 +8199,7 @@ int main() {
 <p>GPA = (4×10 + 3×8 + 1×6) / 8 = 70 / 8 = ${H.c('g', '8.75')}. Enrolling in DSA again in Sem 1 → ${H.c('r', 'rejected')}.</p>`,
     brute: {
       why: `<p>The naive model stores <code>Map&lt;String, String&gt; grades</code> (course code → letter) inside Student and a separate <code>List&lt;String&gt; students</code> inside Course. Semester information is lost (retaking a course overwrites the old grade), credits must be looked up from somewhere else, and GPA is a stored field updated by hand. The link (enrollment) has its own data but has no class to live in.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 class Student {
     String name;
     Map<String, String> grades = new HashMap<>();   // course -> "A": which semester? overwritten on retake
@@ -7639,7 +8208,40 @@ class Student {
 class Course {
     String code; int credits;
     List<String> students = new ArrayList<>();       // separately maintained: drifts
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class Student:
+    def __init__(self, name):
+        self.name = name
+        self.grades = {}    # course -> "A": which semester? overwritten on retake
+        self.gpa = 0.0      # stored, goes stale
+
+class Course:
+    def __init__(self, code, credits):
+        self.code = code
+        self.credits = credits
+        self.students = []  # separately maintained: drifts` },
+              { lang: 'ts', code: `
+class Student {
+    name = "";
+    grades = new Map<string, string>();   // course -> "A": which semester? overwritten on retake
+    gpa = 0;                              // stored, goes stale
+}
+class Course {
+    code = ""; credits = 0;
+    students: string[] = [];              // separately maintained: drifts
+}` },
+              { lang: 'cpp', code: `
+struct Student {
+    string name;
+    unordered_map<string, string> grades;   // course -> "A": which semester? overwritten on retake
+    double gpa = 0;                         // stored, goes stale
+};
+struct Course {
+    string code; int credits = 0;
+    vector<string> students;                // separately maintained: drifts
+};` }
+            ] }
     },
     mcq: { q: 'Where should the grade live?', options: ['In Student as a map', 'In Course as a map', 'In an Enrollment object linking student, course and semester', 'In a global static map'], answer: 2, explain: 'The grade belongs to the (student, course, semester) link, not to either side alone. That makes Enrollment an association class.' },
     hints: [
@@ -7965,7 +8567,7 @@ int main() {
     example: `<p>Table 4: 2 × Paneer Tikka (₹250) + 3 × Roti (₹30) = ₹590; GST 5% = ₹29.50 → 2950 paise; total ${H.c('g', '61950 paise (₹619.50)')}. Changing Roti to ₹35 afterwards does not change this bill. Opening a second order on table 4 before payment → ${H.c('r', 'rejected')}.</p>`,
     brute: {
       why: `<p>A single <code>RestaurantSystem</code> with <code>Map&lt;Integer, List&lt;String&gt;&gt; tableItems</code> computes the bill by looking up <b>today's</b> menu prices, so a price change rewrites open bills. Status is a string, any transition is allowed (PAID → OPEN), and nothing stops two orders on one table.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 class RestaurantSystem {
     Map<String, Integer> menuPrices = new HashMap<>();
     Map<Integer, List<String>> tableItems = new HashMap<>();
@@ -7975,7 +8577,43 @@ class RestaurantSystem {
         for (String item : tableItems.get(table)) sum += menuPrices.get(item);  // live prices: wrong
         return sum + sum * 5 / 100;
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class RestaurantSystem:
+    def __init__(self):
+        self.menu_prices = {}
+        self.table_items = {}
+        self.table_status = {}    # free-form strings
+
+    def bill(self, table):
+        total = 0
+        for item in self.table_items[table]:
+            total += self.menu_prices[item]     # live prices: wrong
+        return total + total * 5 // 100` },
+              { lang: 'ts', code: `
+class RestaurantSystem {
+    menuPrices = new Map<string, number>();
+    tableItems = new Map<number, string[]>();
+    tableStatus = new Map<number, string>();   // free-form strings
+    bill(table: number): number {
+        let sum = 0;
+        for (const item of this.tableItems.get(table)!) sum += this.menuPrices.get(item)!;  // live prices: wrong
+        return sum + Math.floor(sum * 5 / 100);
+    }
+}` },
+              { lang: 'cpp', code: `
+class RestaurantSystem {
+    unordered_map<string, int> menuPrices;
+    unordered_map<int, vector<string>> tableItems;
+    unordered_map<int, string> tableStatus;   // free-form strings
+public:
+    int bill(int table) {
+        int sum = 0;
+        for (auto& item : tableItems[table]) sum += menuPrices[item];   // live prices: wrong
+        return sum + sum * 5 / 100;
+    }
+};` }
+            ] }
     },
     mcq: { q: 'Order → OrderItem → MenuItem. Which statement is right?', options: ['Order ◆ OrderItem; OrderItem → MenuItem (association) plus a copied unit price', 'Order ◇ MenuItem directly, no OrderItem needed', 'MenuItem ◆ OrderItem', 'OrderItem extends MenuItem'], answer: 0, explain: 'Order lines live and die with the order (composition) and snapshot the price; they only reference the menu item, which belongs to the menu.' },
     hints: [
@@ -8359,14 +8997,40 @@ int main() {
     example: `<p>Asha prefers {EMAIL, SMS}. Event "Order 42 shipped" → Email ${H.c('g', 'sent')}, SMS ${H.c('g', 'sent')}. If the SMS gateway is down: result {EMAIL: ok, SMS: ${H.c('r', 'failed')}}; email still went out.</p>`,
     brute: {
       why: `<p>The naive service has <code>if (prefs.contains("EMAIL")) sendEmail(...); if (prefs.contains("SMS")) sendSms(...);</code> with each sender's code inline. One exception in SMS aborts the rest. Adding WhatsApp means editing the service, its tests, and every place that lists channels.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 class NotificationService {
     void notifyUser(Set<String> prefs, String msg) {
         if (prefs.contains("EMAIL")) System.out.println("SMTP: " + msg);
         if (prefs.contains("SMS")) { if (msg.length() > 160) throw new RuntimeException("too long"); System.out.println("SMS: " + msg); }
         if (prefs.contains("PUSH")) System.out.println("FCM: " + msg);   // never reached if SMS threw
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class NotificationService:
+    def notify_user(self, prefs, msg):
+        if "EMAIL" in prefs: print("SMTP: " + msg)
+        if "SMS" in prefs:
+            if len(msg) > 160: raise RuntimeError("too long")
+            print("SMS: " + msg)
+        if "PUSH" in prefs: print("FCM: " + msg)   # never reached if SMS raised` },
+              { lang: 'ts', code: `
+class NotificationService {
+    notifyUser(prefs: Set<string>, msg: string): void {
+        if (prefs.has("EMAIL")) console.log("SMTP: " + msg);
+        if (prefs.has("SMS")) { if (msg.length > 160) throw new Error("too long"); console.log("SMS: " + msg); }
+        if (prefs.has("PUSH")) console.log("FCM: " + msg);   // never reached if SMS threw
+    }
+}` },
+              { lang: 'cpp', code: `
+class NotificationService {
+public:
+    void notifyUser(const set<string>& prefs, const string& msg) {
+        if (prefs.count("EMAIL")) cout << "SMTP: " << msg << "\\n";
+        if (prefs.count("SMS")) { if (msg.size() > 160) throw runtime_error("too long"); cout << "SMS: " << msg << "\\n"; }
+        if (prefs.count("PUSH")) cout << "FCM: " << msg << "\\n";   // never reached if SMS threw
+    }
+};` }
+            ] }
     },
     mcq: { q: 'The service holds a Map&lt;ChannelType, NotificationChannel&gt; passed in at construction. What relationship is that?', options: ['Composition, because the service created them', 'Aggregation/association via dependency injection: channels are created outside and may be shared', 'Inheritance', 'No relationship'], answer: 1, explain: 'The channels live independently (often singletons shared by many services) and are handed in, which is what makes them swappable in tests.' },
     hints: [
@@ -8716,13 +9380,47 @@ int main() {
     example: `${H.table(['employee', 'pay policy', 'input', 'monthly pay'], [['Asha', 'Salaried 80,000', '-', '80,000'], ['Ravi', 'Hourly 500/h', '170 h', '160×500 + 10×750 = 87,500'], ['Mia', 'Commission 20,000 + 5%', 'sales 4,00,000', '40,000'], ['Mia as manager', 'same + 10,000 allowance', 'same', H.c('g', '50,000')]])}`,
     brute: {
       why: `<p>An inheritance tree <code>Employee → SalariedEmployee, HourlyEmployee, CommissionedEmployee</code> plus managers doubles it: <code>SalariedManager, HourlyManager, CommissionedManager</code>. Every new dimension multiplies classes. Worse, switching pay type requires creating a different object, breaking every reference held elsewhere (payslips, org chart) and losing identity.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 abstract class Employee { String id; abstract long pay(); }
 class SalariedEmployee extends Employee { long monthly; long pay() { return monthly; } }
 class HourlyEmployee extends Employee { long rate; int hours; long pay() { return rate * hours; } }
 class SalariedManager extends SalariedEmployee { long pay() { return super.pay() + 1_000_000; } }
 class HourlyManager extends HourlyEmployee { long pay() { return super.pay() + 1_000_000; } }
-// CommissionedManager, InternManager, ... the explosion continues`
+// CommissionedManager, InternManager, ... the explosion continues`, alt: [
+              { lang: 'python', code: `
+class Employee:
+    def __init__(self, id): self.id = id
+    def pay(self): raise NotImplementedError
+
+class SalariedEmployee(Employee):
+    def __init__(self, id, monthly): super().__init__(id); self.monthly = monthly
+    def pay(self): return self.monthly
+
+class HourlyEmployee(Employee):
+    def __init__(self, id, rate, hours): super().__init__(id); self.rate = rate; self.hours = hours
+    def pay(self): return self.rate * self.hours
+
+class SalariedManager(SalariedEmployee):
+    def pay(self): return super().pay() + 1_000_000
+
+class HourlyManager(HourlyEmployee):
+    def pay(self): return super().pay() + 1_000_000
+# CommissionedManager, InternManager, ... the explosion continues` },
+              { lang: 'ts', code: `
+abstract class Employee { constructor(public id: string) {} abstract pay(): number; }
+class SalariedEmployee extends Employee { monthly = 0; pay() { return this.monthly; } }
+class HourlyEmployee extends Employee { rate = 0; hours = 0; pay() { return this.rate * this.hours; } }
+class SalariedManager extends SalariedEmployee { pay() { return super.pay() + 1_000_000; } }
+class HourlyManager extends HourlyEmployee { pay() { return super.pay() + 1_000_000; } }
+// CommissionedManager, InternManager, ... the explosion continues` },
+              { lang: 'cpp', code: `
+struct Employee { string id; virtual long long pay() = 0; virtual ~Employee() = default; };
+struct SalariedEmployee : Employee { long long monthly = 0; long long pay() override { return monthly; } };
+struct HourlyEmployee : Employee { long long rate = 0; int hours = 0; long long pay() override { return rate * hours; } };
+struct SalariedManager : SalariedEmployee { long long pay() override { return SalariedEmployee::pay() + 1000000; } };
+struct HourlyManager : HourlyEmployee { long long pay() override { return HourlyEmployee::pay() + 1000000; } };
+// CommissionedManager, InternManager, ... the explosion continues` }
+            ] }
     },
     mcq: { q: 'An intern becomes a salaried employee. With which design is that a one-line change on the same object?', options: ['class Intern extends Employee, class Salaried extends Employee', 'Employee has a PayPolicy field; call employee.changePolicy(new Salaried(...))', 'A String payType field with a switch in pay()', 'Delete the intern and create a new employee'], answer: 1, explain: 'Composition with a behaviour object (a policy/strategy) lets behaviour change at runtime while identity stays the same.' },
     hints: [
@@ -8993,13 +9691,35 @@ int main() {
     example: `<p>Asha follows Ravi and Mia. Ravi posts P1, Mia posts P2, Kiran posts P3. Asha's feed → ${H.c('g', '[P2, P1]')} (P3 excluded: not followed). Asha likes P1 twice → like count ${H.c('y', '1')}. Ravi deletes P1 → its comments vanish.</p>`,
     brute: {
       why: `<p>The naive design keeps global lists: <code>List&lt;String[]&gt; follows</code>, <code>List&lt;String[]&gt; likes</code>, <code>List&lt;String[]&gt; comments</code>. Deleting a post means scanning three lists and remembering each one; likes are duplicated because nothing enforces uniqueness; building a feed scans every post in the system for every request.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 class SocialApp {
     List<String[]> follows = new ArrayList<>();    // [follower, followee]
     List<String[]> posts = new ArrayList<>();      // [id, author, text]
     List<String[]> likes = new ArrayList<>();      // duplicates possible
     List<String[]> comments = new ArrayList<>();   // orphaned after post deletion
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class SocialApp:
+    def __init__(self):
+        self.follows = []    # [follower, followee]
+        self.posts = []      # [id, author, text]
+        self.likes = []      # duplicates possible
+        self.comments = []   # orphaned after post deletion` },
+              { lang: 'ts', code: `
+class SocialApp {
+    follows: string[][] = [];    // [follower, followee]
+    posts: string[][] = [];      // [id, author, text]
+    likes: string[][] = [];      // duplicates possible
+    comments: string[][] = [];   // orphaned after post deletion
+}` },
+              { lang: 'cpp', code: `
+struct SocialApp {
+    vector<array<string, 2>> follows;    // [follower, followee]
+    vector<array<string, 3>> posts;      // [id, author, text]
+    vector<array<string, 2>> likes;      // duplicates possible
+    vector<array<string, 3>> comments;   // orphaned after post deletion
+};` }
+            ] }
     },
     mcq: { q: 'How do you guarantee a user likes a post at most once?', options: ['Check a List&lt;String&gt; of likers with contains() and hope callers use it', 'Post holds a Set&lt;User&gt; likedBy and like() returns set.add(user)', 'A static counter', 'Store likes in User only'], answer: 1, explain: 'A Set gives uniqueness by construction, and keeping it inside Post (which owns its likes) means one place enforces the rule.' },
     hints: [
@@ -9350,7 +10070,7 @@ int main() {
     example: `<p>Balance ₹2,000; dispenser has 2 × ₹500 and 10 × ₹100. Withdraw ₹1,300 → dispense ${H.c('g', '2×500 + 3×100')}, balance ₹700. Withdraw ₹250 → ${H.c('r', 'rejected')} (not a multiple of 100). Wrong PIN 3 times → ${H.c('r', 'card retained')}.</p>`,
     brute: {
       why: `<p>The naive version is a single <code>Atm.run()</code> method with nested ifs: it reads the PIN, compares it with a hard-coded map, subtracts from a balance map, and computes notes inline. The order of checks is easy to get wrong (debit happens before checking that notes are available, so the customer loses money without cash). There are no seams to test the dispenser or the bank separately.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 class AtmGod {
     Map<String, Integer> pins = new HashMap<>(), balances = new HashMap<>();
     int notes500 = 2, notes100 = 10;
@@ -9362,7 +10082,48 @@ class AtmGod {
         if (rest / 100 > notes100) return "cannot dispense";    // ...money already gone
         return "ok";
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class AtmGod:
+    def __init__(self):
+        self.pins, self.balances = {}, {}
+        self.notes500, self.notes100 = 2, 10
+
+    def run(self, card, pin, amount):
+        if self.pins.get(card) != pin: return "wrong pin"       # no retry count, no retention
+        self.balances[card] = self.balances.get(card, 0) - amount   # debited first...
+        n5 = min(amount // 500, self.notes500)
+        rest = amount - n5 * 500
+        if rest // 100 > self.notes100: return "cannot dispense"   # ...money already gone
+        return "ok"` },
+              { lang: 'ts', code: `
+class AtmGod {
+    pins = new Map<string, number>(); balances = new Map<string, number>();
+    notes500 = 2; notes100 = 10;
+    run(card: string, pin: number, amount: number): string {
+        if (this.pins.get(card) !== pin) return "wrong pin";          // no retry count, no retention
+        this.balances.set(card, (this.balances.get(card) ?? 0) - amount);   // debited first...
+        const n5 = Math.min(Math.floor(amount / 500), this.notes500);
+        const rest = amount - n5 * 500;
+        if (Math.floor(rest / 100) > this.notes100) return "cannot dispense";   // ...money already gone
+        return "ok";
+    }
+}` },
+              { lang: 'cpp', code: `
+class AtmGod {
+    unordered_map<string, int> pins, balances;
+    int notes500 = 2, notes100 = 10;
+public:
+    string run(const string& card, int pin, int amount) {
+        if (pins[card] != pin) return "wrong pin";          // no retry count, no retention
+        balances[card] -= amount;                           // debited first...
+        int n5 = min(amount / 500, notes500);
+        int rest = amount - n5 * 500;
+        if (rest / 100 > notes100) return "cannot dispense";   // ...money already gone
+        return "ok";
+    }
+};` }
+            ] }
     },
     mcq: { q: 'Which order avoids taking money without giving cash?', options: ['debit → check notes → dispense', 'check notes can make the amount → debit → dispense', 'dispense → debit', 'Order does not matter'], answer: 1, explain: 'Ask the CashDispenser whether it can make the amount before the bank debit. The sequence diagram is the place to get this order right.' },
     hints: [
@@ -9809,13 +10570,40 @@ int main() {
     example: `<p>Show S1 (Dune, Screen 2, 18:00), premium ₹400, regular ₹250. Asha locks A1, A2 at minute 0 → Ravi tries A2 at minute 2 → ${H.c('r', 'rejected')} (locked). Asha confirms at minute 3 → booking ₹650 if A1 premium, A2 regular. Had Asha waited until minute 6, her lock ${H.c('y', 'expired')} and Ravi could lock A2.</p>`,
     brute: {
       why: `<p>The naive model puts a <code>status</code> field on <b>Seat</b>. But the same physical seat is used by the 15:00 and the 18:00 show, so booking A1 for 18:00 also blocks it at 15:00. The workaround (copying the whole seat layout per show, including row/number/type) duplicates data and makes layout changes impossible. Locks with no owner or expiry leave seats stuck forever.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 class Seat {
     String row; int number; String type;
     String status = "AVAILABLE";      // one status for ALL shows: wrong
 }
 class Screen { List<Seat> seats = new ArrayList<>(); }
-class Show { String movie; Screen screen; String time; }   // no per-show seat state`
+class Show { String movie; Screen screen; String time; }   // no per-show seat state`, alt: [
+              { lang: 'python', code: `
+class Seat:
+    def __init__(self, row, number, type):
+        self.row, self.number, self.type = row, number, type
+        self.status = "AVAILABLE"     # one status for ALL shows: wrong
+
+class Screen:
+    def __init__(self): self.seats = []
+
+class Show:                           # no per-show seat state
+    def __init__(self, movie, screen, time):
+        self.movie, self.screen, self.time = movie, screen, time` },
+              { lang: 'ts', code: `
+class Seat {
+    row = ""; number = 0; type = "";
+    status = "AVAILABLE";      // one status for ALL shows: wrong
+}
+class Screen { seats: Seat[] = []; }
+class Show { movie = ""; screen!: Screen; time = ""; }   // no per-show seat state` },
+              { lang: 'cpp', code: `
+struct Seat {
+    string row; int number = 0; string type;
+    string status = "AVAILABLE";      // one status for ALL shows: wrong
+};
+struct Screen { vector<Seat> seats; };
+struct Show { string movie; Screen* screen = nullptr; string time; };   // no per-show seat state` }
+            ] }
     },
     mcq: { q: 'Seat A1 on Screen 2 is booked for the 18:00 show but free at 15:00. Where does its status live?', options: ['Seat.status', 'In a ShowSeat object (show + seat + status), one per seat per show', 'Screen.status', 'Movie.status'], answer: 1, explain: 'Type vs instance again: Seat is the physical, shared description; ShowSeat is the per-show instance carrying status, lock owner and lock time.' },
     hints: [
@@ -10323,13 +11111,37 @@ int main() {
     example: `${H.table(['step', 'status', 'agent'], [['place (2 × Biryani)', 'PLACED', '-'], ['restaurant accepts', 'ACCEPTED', H.c('g', 'A1 (nearest free)')], ['cancel', H.c('r', 'still allowed (before PREPARING)'), 'A1 released'], ['… or: prepare → pick up → deliver', 'DELIVERED', 'A1 free again'], ['cancel after PREPARING', H.c('r', 'illegal-state error'), '-']])}`,
     brute: {
       why: `<p>A god class <code>DeliveryApp</code> holds <code>Map&lt;Integer, String&gt; orderStatus</code> and each endpoint does <code>orderStatus.put(id, "DELIVERED")</code>. Nothing prevents DELIVERED → PLACED; cancellation rules are copied (and differ) in the customer app and the restaurant app; agents are marked busy in one map and never freed when an order is cancelled.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 class DeliveryApp {
     Map<Integer, String> orderStatus = new HashMap<>();
     Map<String, Boolean> agentBusy = new HashMap<>();
     void setStatus(int orderId, String status) { orderStatus.put(orderId, status); }   // any jump allowed
     void cancel(int orderId) { orderStatus.put(orderId, "CANCELLED"); }                 // agent never freed
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class DeliveryApp:
+    def __init__(self):
+        self.order_status = {}
+        self.agent_busy = {}
+
+    def set_status(self, order_id, status): self.order_status[order_id] = status   # any jump allowed
+    def cancel(self, order_id): self.order_status[order_id] = "CANCELLED"          # agent never freed` },
+              { lang: 'ts', code: `
+class DeliveryApp {
+    orderStatus = new Map<number, string>();
+    agentBusy = new Map<string, boolean>();
+    setStatus(orderId: number, status: string): void { this.orderStatus.set(orderId, status); }   // any jump allowed
+    cancel(orderId: number): void { this.orderStatus.set(orderId, "CANCELLED"); }                 // agent never freed
+}` },
+              { lang: 'cpp', code: `
+class DeliveryApp {
+    unordered_map<int, string> orderStatus;
+    unordered_map<string, bool> agentBusy;
+public:
+    void setStatus(int orderId, const string& status) { orderStatus[orderId] = status; }   // any jump allowed
+    void cancel(int orderId) { orderStatus[orderId] = "CANCELLED"; }                        // agent never freed
+};` }
+            ] }
     },
     mcq: { q: 'Where should the rule "cancel only before PREPARING" be written?', options: ['In every client app', 'Inside Order (or its status enum) as the only way to change status', 'In the database only', 'In the DeliveryAgent class'], answer: 1, explain: 'The order owns its lifecycle. Putting legal transitions in one place (enum or Order methods) makes illegal jumps impossible from any caller.' },
     hints: [
@@ -10867,7 +11679,7 @@ int main() {
     example: `<p>Course "Intro 101" with lessons L1, L2. Asha enrolls (free course), watches L1 95% → complete, L2 50% → not complete → progress ${H.c('y', '50%')}; watches L2 92% → progress ${H.c('g', '100%')} → certificate CERT-1 issued. Watching L2 again does ${H.c('m', 'not')} issue a second certificate.</p>`,
     brute: {
       why: `<p>Everything is keyed by concatenated strings (<code>learner + "|" + course + "|" + lesson</code>), so a typo silently creates a new key. Rules are scattered: the 90% threshold appears in two methods with different values; certificate issuance can run twice because "already issued" lives in a different map than progress; adding quizzes would mean editing every method. There is no type to hang a unit test on.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 class LearningPlatform {
     Map<String, List<String>> courseLessons = new HashMap<>();
     Map<String, Boolean> paid = new HashMap<>();               // course -> paid?
@@ -10886,7 +11698,70 @@ class LearningPlatform {
             certificates.put(learner + "|" + course, "CERT-" + (certSeq++));   // re-issued every time!
         return "ok";
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class LearningPlatform:
+    def __init__(self):
+        self.course_lessons = {}
+        self.paid = {}                # course -> paid?
+        self.enrolled = set()         # "learner|course"
+        self.watched = {}             # "learner|course|lesson" -> percent
+        self.certificates = {}        # "learner|course" -> id
+        self.cert_seq = 1
+
+    def watch(self, learner, course, lesson, percent):
+        if learner + "|" + course not in self.enrolled: return "not enrolled"
+        k = learner + "|" + course + "|" + lesson
+        self.watched[k] = max(self.watched.get(k, 0), percent)
+        done = 0
+        for l in self.course_lessons[course]:
+            if self.watched.get(learner + "|" + course + "|" + l, 0) >= 90: done += 1
+        if done == len(self.course_lessons[course]):
+            self.certificates[learner + "|" + course] = "CERT-" + str(self.cert_seq); self.cert_seq += 1   # re-issued every time!
+        return "ok"` },
+              { lang: 'ts', code: `
+class LearningPlatform {
+    courseLessons = new Map<string, string[]>();
+    paid = new Map<string, boolean>();               // course -> paid?
+    enrolled = new Set<string>();                    // "learner|course"
+    watched = new Map<string, number>();             // "learner|course|lesson" -> percent
+    certificates = new Map<string, string>();        // "learner|course" -> id
+    certSeq = 1;
+
+    watch(learner: string, course: string, lesson: string, percent: number): string {
+        if (!this.enrolled.has(learner + "|" + course)) return "not enrolled";
+        const k = learner + "|" + course + "|" + lesson;
+        this.watched.set(k, Math.max(this.watched.get(k) ?? 0, percent));
+        let done = 0;
+        for (const l of this.courseLessons.get(course)!)
+            if ((this.watched.get(learner + "|" + course + "|" + l) ?? 0) >= 90) done++;
+        if (done === this.courseLessons.get(course)!.length)
+            this.certificates.set(learner + "|" + course, "CERT-" + (this.certSeq++));   // re-issued every time!
+        return "ok";
+    }
+}` },
+              { lang: 'cpp', code: `
+class LearningPlatform {
+    unordered_map<string, vector<string>> courseLessons;
+    unordered_map<string, bool> paid;                // course -> paid?
+    unordered_set<string> enrolled;                  // "learner|course"
+    unordered_map<string, int> watched;              // "learner|course|lesson" -> percent
+    unordered_map<string, string> certificates;      // "learner|course" -> id
+    int certSeq = 1;
+public:
+    string watch(const string& learner, const string& course, const string& lesson, int percent) {
+        if (!enrolled.count(learner + "|" + course)) return "not enrolled";
+        int& w = watched[learner + "|" + course + "|" + lesson];
+        w = max(w, percent);
+        int done = 0;
+        for (auto& l : courseLessons[course])
+            if (watched[learner + "|" + course + "|" + l] >= 90) done++;
+        if (done == (int)courseLessons[course].size())
+            certificates[learner + "|" + course] = "CERT-" + to_string(certSeq++);   // re-issued every time!
+        return "ok";
+    }
+};` }
+            ] }
     },
     mcq: { q: 'Which hidden entity owns "is this lesson complete for this learner"?', options: ['Course', 'Lesson', 'Enrollment (learner + course), holding per-lesson progress', 'Certificate'], answer: 2, explain: 'Progress belongs to the learner-in-a-course relationship. Enrollment is the association class that should hold per-lesson watch percentages and decide completion.' },
     hints: [
@@ -11373,7 +12248,7 @@ int main() {
 ${H.table(['call', 'result'], [['ls /docs', H.c('g', '[java, plan.txt]')], ['size /docs', H.c('g', '12')], ['rm /docs/java', 'java and notes.txt gone'], ['size /docs', H.c('y', '8')]])}`,
     brute: {
       why: `<p>The naive design stores a flat <code>Map&lt;String, String&gt;</code> from full path to content, and directories as a <code>Set&lt;String&gt;</code> of path strings. <code>ls</code> and <code>size</code> scan every path with <code>startsWith</code> (O(total files) per call and buggy: "/doc" matches "/docs"); <code>rm</code> must find all prefixes; renaming a directory rewrites thousands of keys. The tree structure exists only in string prefixes.</p>`,
-      code: `
+      code: { lang: 'java', code: `
 class FlatFs {
     Map<String, String> files = new HashMap<>();      // "/docs/java/notes.txt" -> content
     Set<String> dirs = new HashSet<>();
@@ -11382,7 +12257,40 @@ class FlatFs {
         for (var e : files.entrySet()) if (e.getKey().startsWith(path)) s += e.getValue().length();  // "/doc" matches "/docs"!
         return s;
     }
-}`
+}`, alt: [
+              { lang: 'python', code: `
+class FlatFs:
+    def __init__(self):
+        self.files = {}      # "/docs/java/notes.txt" -> content
+        self.dirs = set()
+
+    def size(self, path):
+        s = 0
+        for k, v in self.files.items():
+            if k.startswith(path): s += len(v)      # "/doc" matches "/docs"!
+        return s` },
+              { lang: 'ts', code: `
+class FlatFs {
+    files = new Map<string, string>();      // "/docs/java/notes.txt" -> content
+    dirs = new Set<string>();
+    size(path: string): number {
+        let s = 0;
+        for (const [k, v] of this.files) if (k.startsWith(path)) s += v.length;  // "/doc" matches "/docs"!
+        return s;
+    }
+}` },
+              { lang: 'cpp', code: `
+class FlatFs {
+    unordered_map<string, string> files;      // "/docs/java/notes.txt" -> content
+    unordered_set<string> dirs;
+public:
+    long long size(const string& path) {
+        long long s = 0;
+        for (auto& [k, v] : files) if (k.rfind(path, 0) == 0) s += v.size();   // "/doc" matches "/docs"!
+        return s;
+    }
+};` }
+            ] }
     },
     mcq: { q: 'Directory contains Files and Directories. What structure models "any depth" cleanly?', options: ['Directory has List&lt;File&gt; and List&lt;List&lt;File&gt;&gt;', 'abstract Entry; File extends Entry; Directory extends Entry and ◆ 0..* Entry children', 'One class Node with a boolean isFile and a String content for everything', 'A Map from path to content only'], answer: 1, explain: 'A recursive composition: Directory owns children of the common supertype Entry, which can themselves be directories. Polymorphic size() then recurses naturally (the Composite pattern you will meet later).' },
     hints: [
@@ -11867,24 +12775,24 @@ int main() {
     { q: 'Why is <code>Penguin extends Bird</code> wrong when <code>Bird</code> declares <code>fly()</code>?', options: ['Penguins are not animals', 'It violates the Liskov Substitution Principle: a Penguin cannot honour Bird\'s fly() contract', 'The compiler forbids it', 'It makes the class too small'], answer: 1, explain: 'Any code that loops over Birds and calls fly() breaks for penguins. Move flying to a Flyable interface implemented only by birds that fly.' },
     { q: 'Which is an <b>invariant</b> best enforced inside the owning class?', options: ['The UI font size', 'An account balance never goes below zero', 'The database host name', 'The log file path'], answer: 1, explain: 'Invariants are facts about an object\'s state that must always hold. Keeping the field private and checking inside withdraw() makes violation impossible.' },
     { q: 'Order lines reference Product but also store <code>unitPricePaise</code>. Why?', options: ['Duplicate data is always good', 'To freeze the price paid; later product price changes must not rewrite the order', 'Because Product cannot be referenced', 'To make Product immutable'], answer: 1, explain: 'An order is a historical record. Snapshotting the price at purchase time keeps totals correct after catalogue changes.' },
-    { q: 'Two classes keep references to each other (Student ↔ Course). What is the main risk?', options: ['Slower compilation', 'The two sides can become inconsistent unless one method updates both', 'Object references cannot form cycles', 'Garbage collection stops working'], answer: 1, explain: 'Bidirectional associations double the update points. Use one entry point (student.enroll(course)) that updates both sides, or make the link one-way.' }
+    { q: 'Two classes keep references to each other (Student ↔ Course). What is the main risk?', options: ['Slower compilation', 'The two sides can become inconsistent unless one method updates both', 'Object references cannot form cycles', 'Automatic memory cleanup stops working'], answer: 1, explain: 'Bidirectional associations double the update points. Use one entry point (student.enroll(course)) that updates both sides, or make the link one-way.' }
   );
 
   /* =========================== INTERVIEW =========================== */
   interview.push(
-    { level: 'B', q: 'What is the difference between a class and an object? Give an everyday example.', a: `<p>A <b>class</b> is a blueprint written once in code: it declares what state (fields) and behaviour (methods) its instances will have. An <b>object</b> is one concrete instance created at runtime with <code>new</code>, with its own state and identity. Cookie cutter vs cookies: one <code>Dog</code> class, many dog objects, each with its own name and age. Variables hold <b>references</b> to objects, so two variables can point to the same object, which is why changing it through one is visible through the other.</p>`, followUps: ['What is object identity and how does it differ from equality (==, equals, is, operator==)?', 'Where do objects live in memory and when are they destroyed or garbage collected?'] },
+    { level: 'B', q: 'What is the difference between a class and an object? Give an everyday example.', a: `<p>A <b>class</b> is a blueprint written once in code: it declares what state (fields) and behaviour (methods) its instances will have. An <b>object</b> is one concrete instance created at runtime by calling a constructor (<code>new</code> in Java, TypeScript and C++; <code>Dog(...)</code> in Python), with its own state and identity. Cookie cutter vs cookies: one <code>Dog</code> class, many dog objects, each with its own name and age. Variables hold <b>references</b> to objects, so two variables can point to the same object, which is why changing it through one is visible through the other.</p>`, followUps: ['What is object identity and how does it differ from equality (==, equals, is, operator==)?', 'Where do objects live in memory and when are they destroyed or garbage collected?'] },
     { level: 'B', q: 'Explain association, aggregation and composition with examples. How do you decide between them?', a: `<p>All three are "has-a" links. <b>Association</b>: a long-lived reference between independent objects (Doctor ↔ Patient). <b>Aggregation</b>: a whole groups parts that can exist alone and be shared (Team ◇ Player). <b>Composition</b>: the whole creates, exclusively owns and destroys its parts (House ◆ Room, Order ◆ OrderLine). I decide with the life test: can the part exist without the whole? Can it belong to two wholes at once? Who creates it? If the part dies with the whole and is never shared, composition; otherwise aggregation or plain association. In code, composition means the part is created inside and never leaked; aggregation usually arrives through the constructor or an add method.</p>`, followUps: ['How does composition map to database foreign keys?', 'Is aggregation worth distinguishing from association in practice?'] },
     { level: 'B', q: 'What are the four pillars of OOP, in one sentence each?', a: `<p><b>Encapsulation</b>: keep state private and change it only through methods that protect the rules. <b>Abstraction</b>: expose what an object does and hide how (a <code>PaymentMethod.pay()</code> hides card vs UPI details). <b>Inheritance</b>: a subclass is a kind of its parent and reuses its contract and code. <b>Polymorphism</b>: one call site runs different implementations depending on the runtime object, removing type switches. In design interviews encapsulation and polymorphism carry most of the weight; inheritance is used sparingly.</p>`, followUps: ['Give an example where inheritance hurts.', 'Is a getter for every field still encapsulation?'] },
-    { level: 'I', q: 'How do you identify classes from a requirements paragraph?', a: `<p>First I clarify scope with the interviewer. Then I do a noun-verb pass: nouns are candidate classes or attributes, verbs candidate methods. I filter nouns: things with their own state, behaviour and identity become classes; single values become attributes; fixed option sets become enums; values with rules but no identity become immutable value objects (records); synonyms are merged; vague words like "system" are dropped; a link with its own data (loan, booking, enrollment) becomes its own class. I give each verb to the class that has the data (Information Expert), and finally I trace one real use case through the classes to find gaps. I say my reasons out loud for every drop or merge.</p>`, followUps: ['How do you avoid creating a god class like LibrarySystem?', 'When does an actor (Driver, User) become a class?'] },
+    { level: 'I', q: 'How do you identify classes from a requirements paragraph?', a: `<p>First I clarify scope with the interviewer. Then I do a noun-verb pass: nouns are candidate classes or attributes, verbs candidate methods. I filter nouns: things with their own state, behaviour and identity become classes; single values become attributes; fixed option sets become enums; values with rules but no identity become immutable value objects (records, frozen dataclasses, structs); synonyms are merged; vague words like "system" are dropped; a link with its own data (loan, booking, enrollment) becomes its own class. I give each verb to the class that has the data (Information Expert), and finally I trace one real use case through the classes to find gaps. I say my reasons out loud for every drop or merge.</p>`, followUps: ['How do you avoid creating a god class like LibrarySystem?', 'When does an actor (Driver, User) become a class?'] },
     { level: 'I', q: 'Abstract class vs interface: when do you use each?', a: `<p>An <b>interface</b> describes a capability or contract; a class can implement many, and in Java interfaces can carry <code>default</code>, <code>static</code> and <code>private</code> methods but no instance state (Python uses <code>abc.ABC</code> or <code>Protocol</code>, TypeScript interfaces hold no code, and C++ has no interface keyword, so an abstract class with only pure virtual functions plays that role). An <b>abstract class</b> is a partial implementation with shared state and constructors; a class can extend only one. I use interfaces at variation points (PaymentMethod, NotificationChannel, PricingPolicy) and for capabilities across unrelated classes (Flyable). I use an abstract class when subclasses truly share state and an algorithm skeleton (CardPayment with number/expiry validation). Often both: interface for clients, abstract base for shared implementation. For a closed set of variants, a closed type (Java <code>sealed</code> interface with records, a Python union of dataclasses, a TypeScript discriminated union, C++ <code>std::variant</code>) is a modern option.</p>`, followUps: ['What happens if two interfaces provide the same default method?', 'When would you choose a sealed interface?'] },
     { level: 'I', q: 'What does "favour composition over inheritance" mean? Give an example.', a: `<p>Inheritance couples the child to the parent's implementation and fixes the type at compile time. Composition gets reuse by holding another object and delegating to it, which keeps classes loosely coupled and lets behaviour change at runtime. Example: payroll with Salaried, Hourly and Commissioned employees who can also be managers. Inheritance explodes into SalariedManager, HourlyManager and so on, and a promotion requires a new object. With composition, Employee holds a <code>PayPolicy</code> and an optional <code>ManagerRole</code>: P + R classes instead of P × R, and <code>changePolicy()</code> keeps the same identity. I still use inheritance for genuine, stable "kind-of" hierarchies.</p>`, followUps: ['What is the fragile base class problem?', 'How does this relate to the Strategy pattern?'] },
     { level: 'I', q: 'Walk me through drawing a class diagram in an interview. How much detail do you include?', a: `<p>I draw boxes with names first, then relationship lines with diamonds/triangles and multiplicities, then key attributes (ids, statuses, money) and use-case methods, then interfaces where variation was mentioned and enums for fixed sets. I skip getters/setters and constructors. 6–10 classes is typical in 45 minutes, and I budget about 10 minutes for the diagram so most time goes to code. I verify it by tracing the main use case. I mention that in a real repo I would keep it as PlantUML/Mermaid text next to the code so it does not rot.</p>`, followUps: ['What notation mistakes do people commonly make?', 'Domain model vs design model: what is the difference?'] },
     { level: 'I', q: 'What is a sequence diagram for, and how does it map to code?', a: `<p>It shows the behaviour of one use case over time: lifelines are participating objects, solid arrows are synchronous method calls, dashed arrows are returns, open-headed arrows are async messages, and fragments (<code>alt</code>, <code>opt</code>, <code>loop</code>, <code>par</code>) are if/else, if, loops and parallel work. Each arrow into a lifeline must be a method on that class, so drawing it validates the class diagram: missing methods or arrows landing on classes without the needed data reveal design gaps. It also exposes god classes (one lifeline with arrows to everyone) and train wrecks (long chains of getters).</p>`, followUps: ['How do you show an asynchronous email send?', 'What would you draw for a payment failure after inventory was reserved?'] },
-    { level: 'A', q: 'How do you keep a bidirectional association consistent? When would you avoid it?', a: `<p>I give the relationship a single entry point that updates both sides, for example <code>student.enroll(course)</code> adds the course to the student and calls a package-private <code>course.addInternal(student)</code>; removal mirrors it. Collections are never exposed mutably. I avoid two-way links unless a real use case navigates both directions often, because they double the update points, couple both classes, and create cycles that break naive <code>toString</code>, <code>equals</code>, <code>hashCode</code> and JSON serialisation. A reverse lookup can instead come from a repository query or an index maintained by a coordinator.</p>`, followUps: ['How do JPA mappedBy and owning sides relate to this?', 'What happens to equals/hashCode with cyclic references?'] },
+    { level: 'A', q: 'How do you keep a bidirectional association consistent? When would you avoid it?', a: `<p>I give the relationship a single entry point that updates both sides, for example <code>student.enroll(course)</code> adds the course to the student and calls a hidden <code>course.addInternal(student)</code> (package-private in Java, underscore-prefixed in Python, private or friend in C++); removal mirrors it. Collections are never exposed mutably. I avoid two-way links unless a real use case navigates both directions often, because they double the update points, couple both classes, and create cycles that break naive string conversion, equality, hashing and JSON serialisation. A reverse lookup can instead come from a repository query or an index maintained by a coordinator.</p>`, followUps: ['How do JPA mappedBy and owning sides relate to this?', 'What happens to equals/hashCode with cyclic references?'] },
     { level: 'A', q: 'What is the Liskov Substitution Principle? Show a violation and the fix.', a: `<p>LSP says objects of a subtype must be usable anywhere the parent type is expected without breaking correctness: no stronger preconditions, no weaker postconditions, invariants preserved. Violation: <code>Square extends Rectangle</code> where <code>setWidth</code> also changes height; code that sets width 5 and height 4 expects area 20 but gets 16. Another: <code>Penguin extends Bird</code> with <code>fly()</code> throwing. Fixes: model squares and rectangles as separate immutable shapes implementing a <code>Shape</code> interface, and move flying into a <code>Flyable</code> capability interface. The test is behavioural, not taxonomic: "is-a" in biology does not guarantee substitutability in code.</p>`, followUps: ['How do exception declarations (Java <code>throws</code>) and return types relate to LSP?', 'Can an immutable Square extend an immutable Rectangle safely?'] },
-    { level: 'A', q: 'Entity vs value object: how do you model each in code?', a: `<p>An <b>entity</b> has identity that persists through state changes (Customer #42 changing address is still #42); I give it an id, mutable state guarded by methods, and equals/hashCode based on id (or identity). A <b>value object</b> is defined only by its values and is immutable (Money, DateRange, Address); I use an immutable value type (a Java <code>record</code>, a frozen dataclass, a C++ struct with <code>==</code>), validate in its constructor, and share instances freely, including as map keys. Values make code safer (no aliasing bugs), thread-safe by default, and push small rules (like <code>DateRange.overlaps</code>) to tiny, testable types instead of services.</p>`, followUps: ['Why is double a bad type for money?', 'How do value objects reduce primitive obsession?'] },
+    { level: 'A', q: 'Entity vs value object: how do you model each in code?', a: `<p>An <b>entity</b> has identity that persists through state changes (Customer #42 changing address is still #42); I give it an id, mutable state guarded by methods, and equality and hashing based on id (or identity). A <b>value object</b> is defined only by its values and is immutable (Money, DateRange, Address); I use an immutable value type (a Java <code>record</code>, a frozen dataclass, a C++ struct with <code>==</code>), validate in its constructor, and share instances freely, including as map keys. Values make code safer (no aliasing bugs), thread-safe by default, and push small rules (like <code>DateRange.overlaps</code>) to tiny, testable types instead of services.</p>`, followUps: ['Why is double a bad type for money?', 'How do value objects reduce primitive obsession?'] },
     { level: 'E', q: 'An interviewer adds a late twist: "now support seasonal pricing and multiple hotels". How do you show your model is extensible?', a: `<p>I point to the seams I created on purpose. Pricing was announced as variable, so it sits behind a <code>PricingPolicy</code> interface; seasonal pricing is one new class injected into Hotel, with no edits to booking logic (Open/Closed). Multiple hotels means a new <code>HotelChain ◆ 1..* Hotel</code> composition above the existing model; Hotel's internals do not change. I also say what I would <i>not</i> do: no speculative factories or plugin frameworks for changes nobody mentioned (YAGNI). Then I sketch the diff: which classes are added, which are untouched, and which tests prove the old behaviour still works.</p>`, followUps: ['How do you decide which variation points to create upfront?', 'What if the twist breaks a core assumption (bookings by the hour)?'] },
-    { level: 'E', q: 'You are given an AI-generated design for a library system. What do you check first?', a: `<p>I read it back into a class diagram and compare it with the requirement. First checks: is there a god class or anemic model (data classes + one giant service)? Are Book and BookCopy separated? Are statuses enums and money not double? Do getters leak mutable collections (breaking composition)? Are rules owned by the information expert (loan limit in Member, fine in Loan)? Are relationships one-way unless needed? Are invariants validated in constructors? Is the check-then-act in checkout atomic? Did it add features we scoped out? Then I write a few tests for the riskiest rules. The AI saves typing; ownership and lifecycle decisions are still mine to verify.</p>`, followUps: ['What prompt would you write to get a better first draft?', 'How would you catch architectural drift over time (ArchUnit, diagrams-as-code)?'] }
+    { level: 'E', q: 'You are given an AI-generated design for a library system. What do you check first?', a: `<p>I read it back into a class diagram and compare it with the requirement. First checks: is there a god class or anemic model (data classes + one giant service)? Are Book and BookCopy separated? Are statuses enums and money not a floating-point number? Do getters leak mutable collections (breaking composition)? Are rules owned by the information expert (loan limit in Member, fine in Loan)? Are relationships one-way unless needed? Are invariants validated in constructors? Is the check-then-act in checkout atomic? Did it add features we scoped out? Then I write a few tests for the riskiest rules. The AI saves typing; ownership and lifecycle decisions are still mine to verify.</p>`, followUps: ['What prompt would you write to get a better first draft?', 'How would you catch architectural drift over time (ArchUnit, diagrams-as-code)?'] }
   );
 
   registerModule({

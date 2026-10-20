@@ -330,6 +330,7 @@
         //   -> temporary thread destroyed while joinable -> std::terminate` },
       mcq: { q: 'Each thread writes only out[lo..hi). Do we need a mutex around <code>out[i] = ...</code>?', options: ['Yes, vector is not thread-safe', 'No: different elements are different memory locations, and join() publishes the results', 'Only if k &gt; number of cores', 'Yes, but only for the last chunk'], answer: 1, explain: 'A data race needs two threads touching the SAME memory location. Distinct vector elements are distinct locations (careful: vector&lt;bool&gt; is the exception, its bits share bytes). join() then gives main a happens-before edge, so reading the results is safe.' },
       hints: [`<p><b>Aha:</b> if every index is owned by exactly one thread, no thread ever touches another thread's data, so there's nothing to lock.</p>`, `<p>Use <code>chunk = (n + k - 1) / k</code>; thread w handles <code>[w*chunk, min(n, (w+1)*chunk))</code>. Store threads in a <code>vector&lt;thread&gt;</code>.</p>`, `<p>Edge cases: k &gt; n gives empty slices, so skip them. Capture <code>lo</code>/<code>hi</code> <b>by value</b>. Recipe: make the slices → <code>emplace_back</code> one lambda per slice → join all → return.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"0 1 4 9 16 25 36 49 64 81\n0\n0 1 4\n0 1 4 9 16 25 36\n0 1 4 9 16\n10000000 99999980000001 0"}]},
       solution: {
         approach: `<p><b>Static partitioning.</b> Cut the index range into k contiguous slices, give each slice to one thread, then join all. Contiguous slices are also cache-friendly. Because slices are disjoint, the only synchronization needed is <code>join()</code>, which makes every write visible to the caller.</p>`,
         code: R`
@@ -356,8 +357,19 @@
           }
 
           int main() {
-              for (long long x : parallelSquares(10, 3)) cout << x << ' ';
-              cout << '\n';                                // 0 1 4 9 16 25 36 49 64 81
+              auto show = [](int n, int k) {
+                  for (long long x : parallelSquares(n, k)) cout << x << ' ';
+                  cout << '\n';
+              };
+              show(10, 3);                                 // 0 1 4 9 16 25 36 49 64 81
+              show(1, 1);                                  // 0
+              show(3, 64);                                 // more threads than elements: 0 1 4
+              show(7, 7);                                  // one element per thread
+              show(5, 1);                                  // a single worker
+              auto big = parallelSquares(10000000, 8);
+              int bad = 0;
+              for (int i = 0; i < 10000000; ++i) if (big[i] != 1LL * i * i) ++bad;   // every slot written exactly once, with the right value
+              cout << big.size() << ' ' << big.back() << ' ' << bad << '\n';
           }`,
         dry: { head: ['w', 'lo', 'hi', 'thread writes', 'after join'], rows: [['0', '0', '4', 'out[0..3] = 0 1 4 9', 'visible'], ['1', '4', '8', 'out[4..7] = 16 25 36 49', 'visible'], ['2', '8', '10', 'out[8..9] = 64 81', 'visible'], ['3', '12', '10', 'lo ≥ hi → loop breaks', '-']] },
         complexity: `<p>Work O(n) total, wall-clock ≈ O(n / k) with k free cores (plus ~tens of µs per thread start). Extra space O(k) for the thread handles.</p>`,
@@ -557,6 +569,7 @@
         }` },
       mcq: { q: 'Which fix is usually the FASTEST for 8 threads hammering one counter?', options: ['A std::mutex around ++hits', 'std::atomic&lt;long long&gt; with fetch_add', 'Each thread counts in a local variable, then adds it once at the end', 'Mark hits as volatile'], answer: 2, explain: 'Local counting does 10<sup>6</sup> register increments per thread and only ONE shared update each. Atomics are correct but all 8 cores fight over one cache line (~20-100 ns per contended op). A mutex is slower still. volatile does not fix anything.' },
       hints: [`<p><b>Aha:</b> the bug is not "two threads", it's <b>shared + mutable + unsynchronized</b>. Remove any one of the three and it's fixed.</p>`, `<p>Fix 1: <code>std::atomic&lt;long long&gt;</code>. Fix 2: <code>std::mutex</code> + <code>lock_guard</code>. Fix 3: stop sharing: count locally, then publish once.</p>`, `<p>For Fix 3 the final "publish" still needs to be safe: use one atomic <code>fetch_add</code> per thread, or write into a per-thread slot and sum after <code>join()</code>. Remember <code>relaxed</code> is enough for a pure counter read after join.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"8000000\n8000000\n8000000\n16000000"}]},
       solution: {
         approach: `<p><b>Why:</b> lost updates from interleaved load-add-store (see the table). <b>Fixes</b>, from fastest to slowest under heavy contention: (3) <b>don't share</b>: accumulate in a local and add once; (2) <b>atomic</b> <code>fetch_add</code>: every increment is indivisible, but the cache line bounces between cores; (1) <b>mutex</b>: correct but every increment pays a lock and unlock, and threads go to sleep under contention. Never use <code>volatile</code>.</p>`,
         code: R`
@@ -597,9 +610,11 @@
           }
 
           int main() {
+              static_assert(THREADS * PER == 8000000);
               runAll(withMutex);      cout << hitsLocked << "\n";          // 8000000
               runAll(withAtomic);     cout << hitsAtomic.load() << "\n";   // 8000000
               runAll(withLocalCount); cout << hitsBatched.load() << "\n";  // 8000000
+              runAll(withAtomic);     cout << hitsAtomic.load() << "\n";   // 16000000: every run adds exactly 8000000
           }`,
         dry: { head: ['fix', 'shared writes per thread', 'contention', 'result'], rows: [['buggy ++hits', '1,000,000 (racy)', 'silent corruption', '<span class="c-r">≤ 8,000,000, UB</span>'], ['mutex', '1,000,000 lock/unlock pairs', 'threads sleep and wake', '<span class="c-g">8,000,000</span>'], ['atomic fetch_add', '1,000,000 atomic RMWs', 'cache line ping-pong', '<span class="c-g">8,000,000</span>'], ['local + 1 publish', '1', 'almost none', '<span class="c-g">8,000,000</span>']] },
         complexity: `<p>All O(N) work. Rough real timings for 8×10<sup>6</sup> increments on 8 cores: local ≈ 1–3 ms, contended atomic ≈ 50–200 ms, contended mutex ≈ 200–800 ms. The asymptotic class is the same; the constant factor from cache-line traffic is everything.</p>`,
@@ -830,6 +845,7 @@
         }` },
       mcq: { q: 'T1 runs transfer(A,B) and T2 runs transfer(B,A). Which change GUARANTEES no deadlock?', options: ['Add a sleep between the two locks', 'Lock both with std::scoped_lock(from.m, to.m)', 'Use recursive_mutex', 'Lock to.m first instead of from.m'], answer: 1, explain: 'scoped_lock uses std::lock\'s deadlock-avoidance algorithm (never holds one while blocking on another). Swapping the order just moves the cycle; sleeping only hides it; recursive_mutex is about re-locking in the SAME thread.' },
       hints: [`<p><b>Aha:</b> deadlock needs a cycle. Two threads taking the same two locks in opposite orders is the textbook cycle.</p>`, `<p>Either acquire both atomically with <code>std::scoped_lock</code>, or always lock the account with the smaller id (or address) first.</p>`, `<p>Edge case: <code>&amp;from == &amp;to</code> → return early (locking one mutex twice is UB). Check the balance <b>after</b> locking, never before (check-then-act). Recipe: same-account check → lock both → check balance → move → unlock by scope exit.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"150\n0111 150 0\n10000 0"}]},
       solution: {
         approach: `<p>Use <code>std::scoped_lock lk(from.m, to.m)</code>: it acquires both mutexes as one unit with a try-and-back-off algorithm, so no circular wait can form regardless of argument order. Do the balance check <i>inside</i> the critical section so the decision and the update are one atomic unit. The alternative (shown in comments) is <b>global lock ordering</b> by account id, which is cheaper and avoids retries but requires a total order on every lock in the system.</p>`,
         code: R`
@@ -871,8 +887,37 @@
                   jthread t1([&] { for (int i = 0; i < 100000; ++i) transfer(a, b, 1); });
                   jthread t2([&] { for (int i = 0; i < 100000; ++i) transfer(b, a, 1); });
               }                                            // both joined here
-              scoped_lock lk(a.m, b.m);
-              cout << a.balance + b.balance << "\n";       // always 150
+              {
+                  scoped_lock lk(a.m, b.m);
+                  cout << a.balance + b.balance << "\n";   // always 150
+              }
+
+              Account x(1, 100), y(2, 50);                 // single-threaded rules
+              bool r1 = transfer(x, y, 200);               // not enough money: refused
+              bool r2 = transfer(x, y, 100);               // exactly everything: allowed
+              bool r3 = transfer(x, x, 5);                 // same account: no-op, no deadlock
+              bool r4 = transfer(y, x, 150);
+              cout << r1 << r2 << r3 << r4 << ' ' << x.balance << ' ' << y.balance << "\n";   // 0111 150 0
+
+              vector<unique_ptr<Account>> accs;
+              for (int i = 0; i < 10; ++i) accs.push_back(make_unique<Account>(i, 1000));
+              {
+                  vector<jthread> ts;
+                  for (int t = 0; t < 8; ++t)
+                      ts.emplace_back([&, t] {
+                          mt19937 rng(t);
+                          for (int k = 0; k < 50000; ++k) {
+                              Account& f = *accs[rng() % 10];
+                              Account& to = *accs[rng() % 10];
+                              long long amt = rng() % 300;
+                              if (t % 2) transfer(f, to, amt); else transferOrdered(f, to, amt);
+                          }
+                      });
+              }
+              long long total = 0;
+              bool negative = false;
+              for (auto& acc : accs) { total += acc->balance; negative |= acc->balance < 0; }
+              cout << total << ' ' << negative << "\n";    // 10000 0
           }`,
         dry: { head: ['step', 'T1: transfer(A,B,30)', 'T2: transfer(B,A,70)', 'A', 'B'], rows: [['1', 'scoped_lock(A,B): gets A, try B ok', '', '100', '50'], ['2', '', 'scoped_lock(B,A): try B busy, waits (holds nothing)', '100', '50'], ['3', 'balance 100 ≥ 30 → A-=30, B+=30', '', '70', '80'], ['4', 'unlock both', 'gets B, gets A', '70', '80'], ['5', '', 'balance 80 ≥ 70 → B-=70, A+=70', '140', '10']] },
         complexity: `<p>O(1) per transfer plus lock cost (~20 ns uncontended, microseconds when contended). No deadlock in any interleaving; total money invariant preserved because every read-modify-write happens under both locks.</p>`,
@@ -1117,6 +1162,7 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
         };` },
       mcq: { q: 'Why do we need TWO condition variables (notEmpty and notFull) here?', options: ['One cv cannot be waited on by two threads', 'Producers and consumers wait for different conditions; with one cv a notify_one might wake the wrong kind of thread and the right one sleeps forever', 'condition_variable has a maximum of 1 waiter', 'It makes the queue lock-free'], answer: 1, explain: 'With a single cv, a consumer\'s notify_one could wake another consumer instead of the waiting producer. You can survive with one cv only by always using notify_all (slower). Two cvs make notify_one always target the right group.' },
       hints: [`<p><b>Aha:</b> "full" and "empty" are two different reasons to sleep, so give each its own condition_variable.</p>`, `<p>push: <code>notFull.wait(lk, [&amp;]{ return q.size() &lt; cap; })</code>, push, <code>notEmpty.notify_one()</code>. pop is the mirror image.</p>`, `<p>Always use the predicate overload (spurious + stolen wakeups). Mutate the deque under the lock. Make <code>size()</code> lock too. Recipe: lock → wait(pred) → modify → unlock → notify the other side.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"500500\n1 0\n2002000 1 0"}]},
       solution: {
         approach: `<p>One mutex guards the deque. Two condition variables: consumers sleep on <b>notEmpty</b>, producers sleep on <b>notFull</b>. Each operation: lock → wait until its predicate holds → modify → unlock → notify_one the <i>other</i> side. Predicates make spurious and stolen wakeups harmless. Notifying after unlocking avoids waking a thread straight into a held lock.</p>`,
         code: R`
@@ -1161,6 +1207,33 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
                   jthread consumer([&] { for (int i = 1; i <= 1000; ++i) total += bq.pop(); });
               }                                          // both joined: total is visible
               cout << total << "\n";                     // 500500
+
+              BoundedQueue<int> fq(3);                   // one producer, one consumer: FIFO order
+              vector<int> seen;
+              {
+                  jthread p([&] { for (int i = 0; i < 2000; ++i) fq.push(i); });
+                  jthread c([&] { for (int i = 0; i < 2000; ++i) seen.push_back(fq.pop()); });
+              }
+              bool fifo = seen.size() == 2000;
+              for (int i = 0; i < (int)seen.size(); ++i) fifo = fifo && seen[i] == i;
+              cout << fifo << ' ' << fq.size() << "\n";  // 1 0
+
+              BoundedQueue<int> mq(1);                   // 4 producers, 4 consumers, capacity 1
+              atomic<long long> sum{0};
+              atomic<size_t> maxSeen{0};
+              {
+                  vector<jthread> ts;
+                  for (int p = 0; p < 4; ++p) ts.emplace_back([&] { for (int i = 1; i <= 1000; ++i) mq.push(i); });
+                  for (int c = 0; c < 4; ++c)
+                      ts.emplace_back([&] {
+                          for (int i = 0; i < 1000; ++i) {
+                              sum += mq.pop();
+                              size_t s = mq.size(), m = maxSeen.load();
+                              while (s > m && !maxSeen.compare_exchange_weak(m, s)) {}
+                          }
+                      });
+              }
+              cout << sum << ' ' << (maxSeen.load() <= 1) << ' ' << mq.size() << "\n";   // 2002000 1 0
           }`,
         dry: { head: ['step', 'thread', 'action', 'queue', 'sleepers'], rows: [['1', 'C', 'pop: empty → wait on notEmpty', '[]', 'C'], ['2', 'P', 'push 1 → notify notEmpty', '[1]', '(C woken)'], ['3', 'C', 're-check ok → pop 1 → notify notFull', '[]', '-'], ['4', 'P', 'push 2, push 3', '[2, 3]', '-'], ['5', 'P', 'push 4: full → wait on notFull', '[2, 3]', 'P'], ['6', 'C', 'pop 2 → notify notFull', '[3]', '(P woken)'], ['7', 'P', 're-check ok → push 4', '[3, 4]', '-']] },
         complexity: `<p>O(1) amortized per push/pop (deque). Memory O(C). Waiting threads use no CPU. Each blocked handoff costs a few µs (kernel wake-up).</p>`,
@@ -1346,6 +1419,7 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
         }` },
       mcq: { q: 'In the CAS loop <code>while (cur &lt; v &amp;&amp; !m.compare_exchange_weak(cur, v)) {}</code>, what happens to <code>cur</code> when the CAS fails?', options: ['It stays the same, so the loop retries with stale data', 'It is set to v', 'It is updated to the value currently stored in m', 'It becomes 0'], answer: 2, explain: 'On failure compare_exchange writes the actual current value into the expected argument. The loop condition then re-checks cur &lt; v with fresh data, and stops if someone already stored something bigger.' },
       hints: [`<p><b>Aha:</b> you want "store v only if the current value is still the one I compared against". That's exactly compare-and-swap.</p>`, `<p>Loop: <code>int cur = m.load(); while (cur &lt; v &amp;&amp; !m.compare_exchange_weak(cur, v)) {}</code>.</p>`, `<p>Exit early when <code>cur ≥ v</code> (someone already did better; no write needed, which also reduces cache traffic). Use <code>_weak</code> because we are in a loop anyway. Relaxed ordering is fine for a pure statistic.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"1000000\n-2147483648\n0 0 1000000000 1000000000\n7\n1"}]},
       solution: {
         approach: `<p>CAS loop: snapshot the current max, and while our value is bigger try to swap it in. A failed CAS means someone else changed the max, and <code>cur</code> is refreshed automatically, so we re-evaluate. The loop ends either because we won or because the stored max is already ≥ ours. Lock-free: every failed CAS implies another thread's CAS succeeded.</p>`,
         code: R`
@@ -1368,15 +1442,43 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
           int main() {
               MaxTracker t;
               {
-                  vector<jthread> pool;
+                  vector<thread> pool;
                   for (int id = 0; id < 8; ++id)
                       pool.emplace_back([&t, id] {
                           mt19937 rng(id);
                           for (int i = 0; i < 100000; ++i) t.record(int(rng() % 1000000));
                       });
                   t.record(1000000);                    // a known maximum from the main thread
+                  for (auto& th : pool) th.join();     // destroying a joinable std::thread would call std::terminate
               }
               cout << t.worst() << "\n";                // 1000000
+
+              MaxTracker e;
+              cout << e.worst() << "\n";                // -2147483648: nothing recorded yet
+              e.record(0); cout << e.worst() << ' ';    // 0
+              e.record(0); cout << e.worst() << ' ';    // 0
+              e.record(1000000000); cout << e.worst() << ' ';   // 1000000000
+              e.record(5); cout << e.worst() << "\n";   // 1000000000 (a smaller value never lowers it)
+              MaxTracker one;
+              one.record(7);
+              cout << one.worst() << "\n";              // 7
+
+              MaxTracker many;                          // 64 threads, answer compared with a sequential scan
+              int expected = INT_MIN;
+              for (int id = 0; id < 64; ++id) {
+                  mt19937 rng(1000 + id);
+                  for (int i = 0; i < 20000; ++i) expected = max(expected, int(rng() % 1000000001u));
+              }
+              {
+                  vector<thread> pool;
+                  for (int id = 0; id < 64; ++id)
+                      pool.emplace_back([&many, id] {
+                          mt19937 rng(1000 + id);
+                          for (int i = 0; i < 20000; ++i) many.record(int(rng() % 1000000001u));
+                      });
+                  for (auto& th : pool) th.join();
+              }
+              cout << (many.worst() == expected) << "\n";   // 1
           }`,
         dry: { head: ['step', 'thread', 'cur (local)', 'stored max', 'CAS result'], rows: [['1', 'A(v=70)', '50', '50', '-'], ['2', 'B(v=90)', '50', '50', '-'], ['3', 'B', '50', '90', '<span class="c-g">success</span>'], ['4', 'A', '50 → 90', '90', '<span class="c-r">fail, cur refreshed</span>'], ['5', 'A', '90', '90', 'loop exits: 90 ≥ 70']] },
         complexity: `<p>O(1) expected per record; under contention a call may retry, but each retry means another thread succeeded (lock-free). No writes at all when v ≤ current max, which keeps the cache line shared and fast.</p>`,
@@ -1658,6 +1760,7 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
         }` },
       mcq: { q: 'Which is the weakest correct pair of orders for the done flag?', options: ['store relaxed / load relaxed', 'store release / load acquire', 'store seq_cst / load relaxed', 'store relaxed / load acquire'], answer: 1, explain: 'You need a synchronizes-with edge: a release store read by an acquire load. A seq_cst store with a relaxed load does NOT synchronize (the load side has no acquire). Relaxed on either side breaks the edge.' },
       hints: [`<p><b>Aha:</b> the question is not "is done atomic?" (it is) but "does reading done = true guarantee seeing msg?". That needs a happens-before edge.</p>`, `<p>Release on the store keeps <code>msg = "hello"</code> before it; acquire on the load keeps <code>cout &lt;&lt; msg</code> after it. When the acquire reads the released value they synchronize.</p>`, `<p>Write the chain: <code>msg = "hello"</code> sequenced-before <code>done.store(release)</code> synchronizes-with <code>done.load(acquire)</code> sequenced-before <code>cout &lt;&lt; msg</code> → happens-before → no data race. seq_cst would also work, just stronger than needed.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"hello\n0"}]},
       solution: {
         approach: `<p>Add the release/acquire handshake. The writer's <b>release</b> store means "everything I wrote before this, including msg, travels with the flag". The reader's <b>acquire</b> load, once it reads <code>true</code>, synchronizes-with that store, so the write to msg happens-before the print. The non-atomic <code>msg</code> is now race-free. Possible outputs: only <code>hello</code>.</p>`,
         code: R`
@@ -1680,7 +1783,21 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
 
           int main() {
               thread r(reader), w(writer);
-              w.join(); r.join();
+              w.join(); r.join();                              // hello
+              int bad = 0;
+              for (int i = 0; i < 2000; ++i) {                 // publish again and again
+                  msg.clear();
+                  done.store(false);
+                  string got;
+                  thread rd([&] {
+                      while (!done.load(memory_order_acquire)) this_thread::yield();
+                      got = msg;
+                  });
+                  thread wr(writer);
+                  wr.join(); rd.join();
+                  if (got != "hello") ++bad;
+              }
+              cout << bad << "\n";                             // 0
           }`,
         dry: { head: ['step', 'thread', 'operation', 'guarantee gained'], rows: [['1', 'A', 'msg = "hello"', 'sequenced-before step 2'], ['2', 'A', 'done.store(true, release)', 'all earlier writes travel with it'], ['3', 'B', 'done.load(acquire) → false (spin)', 'nothing yet: do not touch msg'], ['4', 'B', 'done.load(acquire) → true', 'synchronizes-with step 2'], ['5', 'B', 'print msg', '<span class="c-g">step 1 happens-before: prints hello</span>']] },
         complexity: `<p>On x86 the fix costs nothing at runtime (plain movs; it only stops compiler reordering). On ARM64 it uses <code>stlr</code>/<code>ldar</code>, a few cycles. The spin loop burns CPU while waiting; for long waits use <code>done.wait(false)</code> (C++20) or a condition_variable.</p>`,
@@ -1901,6 +2018,7 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
         }` },
       mcq: { q: 'Why compute the right half on the CURRENT thread instead of launching two asyncs?', options: ['async cannot be called twice', 'The current thread would otherwise just sit in get() doing nothing: one async per split halves the number of threads', 'It changes the result', 'get() only works for the left half'], answer: 1, explain: 'Launching both halves leaves the parent idle while it waits. Doing one half yourself keeps every thread busy and halves the thread count.' },
       hints: [`<p><b>Aha:</b> parallel speedup only pays if each task is big enough to amortize ~20–50 µs of thread start-up.</p>`, `<p>Recursive helper <code>sum(v, lo, hi, depth)</code>: if <code>hi - lo &lt; THRESH</code> or <code>depth == 0</code>, use accumulate; else async the left half with depth-1, do the right half here, add <code>left.get()</code>.</p>`, `<p>Start with <code>depth = ⌈log₂(hardware_concurrency())⌉</code> so about that many leaves run at once. Pass the vector with <code>std::cref</code> (async copies its arguments!). Use long long for the sum.</p>`],
+      tests: {"io":true,"cases":[{"stdin":"","stdout":"12500002500000\n36\n5 0\n10000 10001\n1000000000000000\n-1000000000000000\n0"}]},
       solution: {
         approach: `<p>Divide and conquer with a <b>depth budget</b>: each level spawns one async for the left half and recurses on the right half itself, so depth d gives at most 2<sup>d</sup> concurrent leaves. Small ranges fall back to <code>std::accumulate</code>. Futures carry results (and exceptions) back without any shared mutable state.</p>`,
         code: R`
@@ -1930,6 +2048,14 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
               vector<int> v(5'000'000);
               iota(v.begin(), v.end(), 1);
               cout << parallelSum(v) << "\n";                               // 12500002500000
+              cout << parallelSum(vector<int>{1, 2, 3, 4, 5, 6, 7, 8}) << "\n";   // 36
+              cout << parallelSum(vector<int>{5}) << ' ' << parallelSum(vector<int>{}) << "\n";   // 5 0
+              cout << parallelSum(vector<int>(10000, 1)) << ' ' << parallelSum(vector<int>(10001, 1)) << "\n";   // 10000 10001
+              cout << parallelSum(vector<int>(1000000, 1000000000)) << "\n";     // 1000000000000000 (needs 64 bits)
+              cout << parallelSum(vector<int>(1000000, -1000000000)) << "\n";    // -1000000000000000
+              vector<int> alt(10000000);
+              for (size_t i = 0; i < alt.size(); ++i) alt[i] = i % 2 ? -1000000000 : 1000000000;
+              cout << parallelSum(alt) << "\n";                             // 0
           }`,
         dry: { head: ['call', 'lo..hi', 'depth', 'action', 'returns'], rows: [['root', '0..8', '2', 'async(0..4), self(4..8)', '36'], ['self', '4..8', '1', 'async(4..6), self(6..8)', '26'], ['async', '0..4', '1', 'async(0..2), self(2..4)', '10'], ['leaves', '0..2 / 2..4 / 4..6 / 6..8', '0', 'accumulate', '3 / 7 / 11 / 15']] },
         complexity: `<p>Work O(n); span O(n / 2<sup>d</sup> + d); at most 2<sup>d</sup> ≈ cores threads alive. Memory-bandwidth-bound sums usually speed up 3–6× on 8 cores, not 8×, because RAM bandwidth is shared.</p>`,
@@ -1959,6 +2085,7 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
       }` },
     mcq: { q: 'Why is it safe for main to read <code>results[i]</code> after the loop of <code>join()</code> calls without any mutex?', options: ['vector is thread-safe', 'join() makes everything the thread did happen-before the code after join()', 'Because ints are atomic', 'It is not safe'], answer: 1, explain: 'Thread completion synchronizes-with the return of join(). After joining, all writes of that thread are visible. Different slots also mean no two workers race with each other.' },
     hints: [`<p>Separate <b>computing</b> (parallel) from <b>printing</b> (in order, on main). Each worker writes its answer to its own slot.</p>`, `<p>Use <code>vector&lt;long long&gt; results(n)</code> and <code>vector&lt;thread&gt; pool</code>; capture <code>i</code> by value and <code>results</code> by reference.</p>`, `<p>Recipe: start all → join all → print results[0..n-1]. Never call join inside the start loop (that would run them one by one).</p>`],
+    tests: {"io":true,"cases":[{"stdin":"1\n","stdout":"0: 100"},{"stdin":"2\n","stdout":"0: 100\n1: 201"},{"stdin":"3\n","stdout":"0: 100\n1: 201\n2: 302"},{"stdin":"5\n","stdout":"0: 100\n1: 201\n2: 302\n3: 403\n4: 504"},{"stdin":"10\n","stdout":"0: 100\n1: 201\n2: 302\n3: 403\n4: 504\n5: 605\n6: 706\n7: 807\n8: 908\n9: 1009"},{"stdin":"64\n","stdout":"0: 100\n1: 201\n2: 302\n3: 403\n4: 504\n5: 605\n6: 706\n7: 807\n8: 908\n9: 1009\n10: 1110\n11: 1211\n12: 1312\n13: 1413\n14: 1514\n15: 1615\n16: 1716\n17: 1817\n18: 1918\n19: 2019\n20: 2120\n21: 2221\n22: 2322\n23: 2423\n24: 2524\n25: 2625\n26: 2726\n27: 2827\n28: 2928\n29: 3029\n30: 3130\n31: 3231\n32: 3332\n33: 3433\n34: 3534\n35: 3635\n36: 3736\n37: 3837\n38: 3938\n39: 4039\n40: 4140\n41: 4241\n42: 4342\n43: 4443\n44: 4544\n45: 4645\n46: 4746\n47: 4847\n48: 4948\n49: 5049\n50: 5150\n51: 5251\n52: 5352\n53: 5453\n54: 5554\n55: 5655\n56: 5756\n57: 5857\n58: 5958\n59: 6059\n60: 6160\n61: 6261\n62: 6362\n63: 6463"},{"stdin":"","stdout":"0: 100\n1: 201\n2: 302\n3: 403\n4: 504"}]},
     solution: {
       approach: `<p>Start all workers first, so they truly overlap, with each writing <code>results[i]</code>. Then join every thread; join gives the happens-before edge that makes the results visible. Finally print in order from main. Joining inside the creation loop would serialize the work.</p>`,
       code: R`
@@ -1969,6 +2096,7 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
 
         int main() {
             int n = 5;
+    if (!(cin >> n)) n = 5;               // number of workers (5 when no input is given)
             vector<long long> results(n);
             vector<thread> pool;
             pool.reserve(n);
@@ -2001,6 +2129,7 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
       }` },
     mcq: { q: 'Which call makes the thread write into <code>data</code> itself?', options: ['<code>std::thread t(loadInto, data)</code>', '<code>std::thread t(loadInto, &amp;data)</code> with a by-value vector parameter', '<code>std::thread t(loadInto, std::ref(data))</code> with a <code>vector&lt;int&gt;&amp;</code> parameter', '<code>std::thread t(loadInto, std::move(data))</code>'], answer: 2, explain: 'std::ref wraps a reference in a copyable reference_wrapper, which converts back to vector&lt;int&gt;&amp; inside the thread. You then must keep data alive until join().' },
     hints: [`<p>Remember the rule: <b>std::thread copies every argument</b>, just like std::bind.</p>`, `<p>Make the parameter <code>vector&lt;int&gt;&amp;</code> again and pass <code>std::ref(data)</code>, or use a lambda capturing <code>[&amp;data]</code>.</p>`, `<p>Lifetime check: the referenced object must outlive the thread, so join before <code>data</code> goes out of scope. Never combine a reference with <code>detach()</code>.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"3\n5\n30 1\n3 1\n42"}]},
     solution: {
       approach: `<p>Restore the reference parameter and pass <code>std::ref(data)</code> (or capture by reference in a lambda). Then reason about lifetime: <code>data</code> lives in main and we join before main's scope ends, so the reference never dangles. Reading <code>data</code> after join is race-free.</p>`,
       code: R`
@@ -2021,6 +2150,24 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
             thread t2([&other] { other.assign(5, 7); });   // lambda alternative
             t2.join();
             cout << other.size() << "\n";           // 5
+
+            vector<vector<int>> all(10);            // ten threads, ten separate vectors
+            vector<thread> ts;
+            for (int i = 0; i < 10; ++i) ts.emplace_back(loadInto, ref(all[i]));
+            for (auto& th : ts) th.join();
+            size_t total = 0;
+            bool same = true;
+            for (auto& v : all) { total += v.size(); same = same && v == vector<int>{1, 2, 3}; }
+            cout << total << ' ' << same << "\n";   // 30 1
+
+            vector<int> pre{9, 9};                  // existing contents are replaced in the caller's vector
+            thread t3(loadInto, ref(pre));
+            t3.join();
+            cout << pre.size() << ' ' << pre[0] << "\n";   // 3 1
+            int counter = 0;
+            thread t4([&counter] { counter = 42; });
+            t4.join();
+            cout << counter << "\n";                // 42
         }`,
       dry: { head: ['version', 'what the thread touches', 'data.size() after join'], rows: [['by-value param', 'private copy', '<span class="c-r">0</span>'], ['std::ref + T&amp;', 'main\'s data', '<span class="c-g">3</span>']] },
       complexity: `<p>O(1) extra; no copy of the vector at all with std::ref.</p>`,
@@ -2048,6 +2195,7 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
       }` },
     mcq: { q: 'Which is the correct, portable fix?', options: ['<code>volatile bool stopRequested</code>', '<code>std::atomic&lt;bool&gt; stopRequested</code>', 'Add <code>sleep_for(1ms)</code> in the loop', 'Compile with -O0'], answer: 1, explain: 'std::atomic makes the access race-free and guarantees the store becomes visible to the loading thread. volatile is not a synchronization primitive in C++; sleeps and -O0 just hide the bug.' },
     hints: [`<p>Ask: is a non-atomic variable written by one thread while another reads it, with no lock? Then it's a data race and the compiler may assume it never changes.</p>`, `<p><code>std::atomic&lt;bool&gt;</code> fixes it: every <code>load()</code> really reads the shared value. In C++20, <code>std::jthread</code> + <code>std::stop_token</code> is a ready-made version.</p>`, `<p>Default seq_cst is fine; if the flag publishes other data (e.g. "results are ready") use release/acquire. For a pure stop signal even relaxed works, but default is simplest.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"stopped 1\n1\n100"}]},
     solution: {
       approach: `<p>Make the flag <code>std::atomic&lt;bool&gt;</code>. The compiler must then perform a real atomic load each iteration, and the store from main is guaranteed to become visible. Better still in C++20: <code>std::jthread</code> whose lambda takes a <code>std::stop_token</code>; its destructor requests stop and joins.</p>`,
       code: R`
@@ -2065,14 +2213,29 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
 
         int main() {
             thread t(sampler);
-            this_thread::sleep_for(50ms);
+            while (samples.load() == 0) this_thread::yield();   // wait until the sampler is really running
             stopRequested.store(true);                    // visible to the sampler
             t.join();
-            cout << "stopped after " << samples.load() << " samples\n";
+            cout << "stopped " << (samples.load() > 0) << "\n";   // stopped 1
 
             // C++20 version: cooperative cancellation built in
-            jthread j([](stop_token st) { while (!st.stop_requested()) this_thread::yield(); });
-            this_thread::sleep_for(10ms);
+            atomic<bool> cleanExit{false};
+            {
+                jthread j([&](stop_token st) { while (!st.stop_requested()) this_thread::yield(); cleanExit = true; });
+            }                                             // ~jthread: request_stop() + join()
+            cout << cleanExit << "\n";                    // 1
+
+            int finished = 0;                             // start/stop the sampler many times: it always stops
+            for (int i = 0; i < 100; ++i) {
+                stopRequested.store(false);
+                samples.store(0);
+                thread again(sampler);
+                while (samples.load() == 0) this_thread::yield();
+                stopRequested.store(true);
+                again.join();
+                ++finished;
+            }
+            cout << finished << "\n";                     // 100
         }                                                 // ~jthread: request_stop() + join()`,
       dry: { head: ['step', 'sampler', 'main'], rows: [['1', 'load → false, sample', 'sleeping'], ['2', 'load → false, sample', 'store(true)'], ['3', 'load → true, exit loop', 'join() waits'], ['4', 'returns', 'join() returns']] },
       complexity: `<p>One atomic load per iteration: on x86 a plain <code>mov</code>, essentially free.</p>`,
@@ -2096,6 +2259,7 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
       };` },
     mcq: { q: 'Why is <code>std::promise&lt;void&gt;</code> a natural fit here?', options: ['It is faster than a mutex in every case', 'Each "X is done" event happens exactly once, and future::wait() sleeps until it happens, with a happens-before edge', 'promise can be set many times', 'It avoids creating threads'], answer: 1, explain: 'A one-shot event = promise/future. set_value() makes the future ready; wait() blocks without spinning; the handoff orders the prints.' },
     hints: [`<p>You need two one-time signals: "first is done" and "second is done".</p>`, `<p>Use two <code>promise&lt;void&gt;</code> members and keep their futures (get_future can be called only once). <code>second()</code> waits on the first future, <code>third()</code> on the second.</p>`, `<p>Alternatives: a mutex + cv + <code>stage</code> counter with predicates; two C++20 <code>std::binary_semaphore</code>s starting at 0; or <code>std::atomic&lt;int&gt;</code> + <code>wait()/notify_all()</code>.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"firstsecondthird\n0"}]},
     solution: {
       approach: `<p>Model each "done" event as a promise. <code>first()</code> prints and fulfils p1; <code>second()</code> waits for f1, prints, fulfils p2; <code>third()</code> waits for f2 and prints. The futures are created in the constructor (member initializers run in declaration order, so promises come first). Waiting is blocking, not spinning, and set_value → wait gives the needed ordering.</p>`,
       code: R`
@@ -2119,6 +2283,24 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
             thread b([&] { foo.second([] { cout << "second"; }); });
             a.join(); b.join(); c.join();
             cout << "\n";                                 // firstsecondthird
+
+            int orders[6][3] = {{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}};
+            int bad = 0;
+            for (int rep = 0; rep < 50; ++rep)
+                for (auto& order : orders) {              // every start order, many times
+                    Foo f;
+                    string out;
+                    vector<thread> ts;
+                    for (int k : order)
+                        ts.emplace_back([&f, &out, k] {
+                            if (k == 0) f.first([&] { out += "first"; });
+                            else if (k == 1) f.second([&] { out += "second"; });
+                            else f.third([&] { out += "third"; });
+                        });
+                    for (auto& t : ts) t.join();
+                    if (out != "firstsecondthird") ++bad;
+                }
+            cout << bad << "\n";                          // 0
         }`,
       dry: { head: ['time', 'thread C (third)', 'thread A (first)', 'thread B (second)'], rows: [['1', 'f2.wait() sleeps', '', ''], ['2', '', 'prints first, p1.set_value()', ''], ['3', '', '', 'f1 ready → prints second, p2.set_value()'], ['4', 'wakes → prints third', '', '']] },
       complexity: `<p>O(1) work; each thread blocks at most once; no CPU spinning.</p>`,
@@ -2148,6 +2330,7 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
       };` },
     mcq: { q: 'In the lock-free version, what does the CAS loop guarantee?', options: ['That no thread ever retries', 'That we only increment if count is STILL the value we compared against the limit', 'That the counter is always even', 'That threads acquire in FIFO order'], answer: 1, explain: 'compare_exchange(cur, cur+1) succeeds only if nobody changed count since we read cur and checked cur &lt; limit, closing the check-then-act gap.' },
     hints: [`<p>The check and the increment must be one indivisible unit: either a lock around both, or a compare-and-swap that only succeeds if the value is unchanged.</p>`, `<p>CAS loop: <code>int cur = count.load(); while (cur &lt; limit) { if (count.compare_exchange_weak(cur, cur + 1)) return true; } return false;</code></p>`, `<p>release() can be a plain <code>fetch_sub(1)</code>. Think about which memory order the acquire path needs (acquire/release if the counter guards other resources; relaxed if it's only a number).</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"2 2\n10000 10000\n10000 10000\n0 0\n3 3\n0 0\n0 0\n101"}]},
     solution: {
       approach: `<p>Two correct designs. <b>Mutex:</b> lock, check, increment, unlock: simple and obviously right. <b>Lock-free:</b> CAS loop: read cur, give up if cur ≥ limit, otherwise CAS cur → cur+1; on failure cur is refreshed and we re-check. The count can never pass the limit because every successful increment was based on an up-to-date value below the limit.</p>`,
       code: R`
@@ -2188,14 +2371,63 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
             int inUse() const { return count.load(memory_order_relaxed); }
         };
 
+        template <class L>
+        pair<long long, int> grab(int limit, int threads, int tries) {   // nobody ever releases
+            L lim(limit);
+            atomic<long long> granted{0};
+            {
+                vector<thread> ts;
+                for (int t = 0; t < threads; ++t)
+                    ts.emplace_back([&] { for (int k = 0; k < tries; ++k) if (lim.tryAcquire()) ++granted; });
+                for (auto& th : ts) th.join();
+            }
+            return {granted.load(), lim.inUse()};
+        }
+
+        template <class L>
+        pair<int, int> cycle(int limit, int threads, int rounds) {       // acquire, look, release
+            L lim(limit);
+            atomic<int> violations{0};
+            {
+                vector<thread> ts;
+                for (int t = 0; t < threads; ++t)
+                    ts.emplace_back([&] {
+                        for (int k = 0; k < rounds; ++k)
+                            if (lim.tryAcquire()) {
+                                if (lim.inUse() > limit) ++violations;
+                                lim.release();
+                            }
+                    });
+                for (auto& th : ts) th.join();
+            }
+            return {violations.load(), lim.inUse()};
+        }
+
         int main() {
             LimiterAtomic lim(2);
             atomic<int> granted{0};
             {
-                vector<jthread> ts;
+                vector<thread> ts;
                 for (int i = 0; i < 3; ++i) ts.emplace_back([&] { if (lim.tryAcquire()) ++granted; });
+                for (auto& th : ts) th.join();
             }
             cout << granted << " " << lim.inUse() << "\n";  // 2 2
+
+            auto a = grab<LimiterAtomic>(10000, 64, 1000);
+            auto m = grab<LimiterMutex>(10000, 64, 1000);
+            cout << a.first << ' ' << a.second << "\n" << m.first << ' ' << m.second << "\n";   // 10000 10000 (twice)
+            auto z = grab<LimiterAtomic>(0, 4, 100);
+            cout << z.first << ' ' << z.second << "\n";                                          // 0 0
+            auto few = grab<LimiterMutex>(5, 1, 3);
+            cout << few.first << ' ' << few.second << "\n";                                      // 3 3
+            auto c1 = cycle<LimiterAtomic>(3, 16, 20000);
+            auto c2 = cycle<LimiterMutex>(3, 16, 20000);
+            cout << c1.first << ' ' << c1.second << "\n" << c2.first << ' ' << c2.second << "\n";   // 0 0 (twice)
+            LimiterMutex lm(1);
+            bool first = lm.tryAcquire(), second = lm.tryAcquire();
+            lm.release();
+            bool third = lm.tryAcquire();
+            cout << first << second << third << "\n";                                            // 101
         }`,
       dry: { head: ['step', 'T1', 'T2', 'count'], rows: [['1', 'cur = 1', 'cur = 1', '1'], ['2', 'CAS 1→2 ok, true', '', '2'], ['3', '', 'CAS 1→2 fails, cur = 2', '2'], ['4', '', '2 &lt; 2 false → return false', '2']] },
       complexity: `<p>O(1) expected per call. Mutex: ~20 ns uncontended, much more when contended. CAS: lock-free, retries only when another thread just succeeded.</p>`,
@@ -2220,6 +2452,7 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
       }` },
     mcq: { q: 'What must the predicate passed to <code>cv.wait</code> include so both threads exit at the end?', options: ['Only "it is my turn"', '"it is my turn" OR "counter &gt; N"', 'Only "counter &gt; N"', 'Nothing; wait without predicate'], answer: 1, explain: 'When the last number is printed, the other thread is asleep waiting for its turn, which will never come. It must also wake when the work is finished, otherwise it waits forever and join() hangs.' },
     hints: [`<p>Shared state: one integer <code>cur</code> (next number to print), protected by a mutex.</p>`, `<p>Each thread loops: lock → <code>wait(lk, [&amp;]{ return cur &gt; n || cur % 2 == parity; })</code> → if done, return → print → ++cur → notify.</p>`, `<p>Notify after changing <code>cur</code>. With exactly two threads, notify_one works; notify_all is the safe default. Don't forget the exit condition in the predicate.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"1\n","stdout":"1"},{"stdin":"2\n","stdout":"1 2"},{"stdin":"3\n","stdout":"1 2 3"},{"stdin":"10\n","stdout":"1 2 3 4 5 6 7 8 9 10"},{"stdin":"11\n","stdout":"1 2 3 4 5 6 7 8 9 10 11"},{"stdin":"100\n","stdout":"1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100"},{"stdin":"2000\n","stdout":"1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159 160 161 162 163 164 165 166 167 168 169 170 171 172 173 174 175 176 177 178 179 180 181 182 183 184 185 186 187 188 189 190 191 192 193 194 195 196 197 198 199 200 201 202 203 204 205 206 207 208 209 210 211 212 213 214 215 216 217 218 219 220 221 222 223 224 225 226 227 228 229 230 231 232 233 234 235 236 237 238 239 240 241 242 243 244 245 246 247 248 249 250 251 252 253 254 255 256 257 258 259 260 261 262 263 264 265 266 267 268 269 270 271 272 273 274 275 276 277 278 279 280 281 282 283 284 285 286 287 288 289 290 291 292 293 294 295 296 297 298 299 300 301 302 303 304 305 306 307 308 309 310 311 312 313 314 315 316 317 318 319 320 321 322 323 324 325 326 327 328 329 330 331 332 333 334 335 336 337 338 339 340 341 342 343 344 345 346 347 348 349 350 351 352 353 354 355 356 357 358 359 360 361 362 363 364 365 366 367 368 369 370 371 372 373 374 375 376 377 378 379 380 381 382 383 384 385 386 387 388 389 390 391 392 393 394 395 396 397 398 399 400 401 402 403 404 405 406 407 408 409 410 411 412 413 414 415 416 417 418 419 420 421 422 423 424 425 426 427 428 429 430 431 432 433 434 435 436 437 438 439 440 441 442 443 444 445 446 447 448 449 450 451 452 453 454 455 456 457 458 459 460 461 462 463 464 465 466 467 468 469 470 471 472 473 474 475 476 477 478 479 480 481 482 483 484 485 486 487 488 489 490 491 492 493 494 495 496 497 498 499 500 501 502 503 504 505 506 507 508 509 510 511 512 513 514 515 516 517 518 519 520 521 522 523 524 525 526 527 528 529 530 531 532 533 534 535 536 537 538 539 540 541 542 543 544 545 546 547 548 549 550 551 552 553 554 555 556 557 558 559 560 561 562 563 564 565 566 567 568 569 570 571 572 573 574 575 576 577 578 579 580 581 582 583 584 585 586 587 588 589 590 591 592 593 594 595 596 597 598 599 600 601 602 603 604 605 606 607 608 609 610 611 612 613 614 615 616 617 618 619 620 621 622 623 624 625 626 627 628 629 630 631 632 633 634 635 636 637 638 639 640 641 642 643 644 645 646 647 648 649 650 651 652 653 654 655 656 657 658 659 660 661 662 663 664 665 666 667 668 669 670 671 672 673 674 675 676 677 678 679 680 681 682 683 684 685 686 687 688 689 690 691 692 693 694 695 696 697 698 699 700 701 702 703 704 705 706 707 708 709 710 711 712 713 714 715 716 717 718 719 720 721 722 723 724 725 726 727 728 729 730 731 732 733 734 735 736 737 738 739 740 741 742 743 744 745 746 747 748 749 750 751 752 753 754 755 756 757 758 759 760 761 762 763 764 765 766 767 768 769 770 771 772 773 774 775 776 777 778 779 780 781 782 783 784 785 786 787 788 789 790 791 792 793 794 795 796 797 798 799 800 801 802 803 804 805 806 807 808 809 810 811 812 813 814 815 816 817 818 819 820 821 822 823 824 825 826 827 828 829 830 831 832 833 834 835 836 837 838 839 840 841 842 843 844 845 846 847 848 849 850 851 852 853 854 855 856 857 858 859 860 861 862 863 864 865 866 867 868 869 870 871 872 873 874 875 876 877 878 879 880 881 882 883 884 885 886 887 888 889 890 891 892 893 894 895 896 897 898 899 900 901 902 903 904 905 906 907 908 909 910 911 912 913 914 915 916 917 918 919 920 921 922 923 924 925 926 927 928 929 930 931 932 933 934 935 936 937 938 939 940 941 942 943 944 945 946 947 948 949 950 951 952 953 954 955 956 957 958 959 960 961 962 963 964 965 966 967 968 969 970 971 972 973 974 975 976 977 978 979 980 981 982 983 984 985 986 987 988 989 990 991 992 993 994 995 996 997 998 999 1000 1001 1002 1003 1004 1005 1006 1007 1008 1009 1010 1011 1012 1013 1014 1015 1016 1017 1018 1019 1020 1021 1022 1023 1024 1025 1026 1027 1028 1029 1030 1031 1032 1033 1034 1035 1036 1037 1038 1039 1040 1041 1042 1043 1044 1045 1046 1047 1048 1049 1050 1051 1052 1053 1054 1055 1056 1057 1058 1059 1060 1061 1062 1063 1064 1065 1066 1067 1068 1069 1070 1071 1072 1073 1074 1075 1076 1077 1078 1079 1080 1081 1082 1083 1084 1085 1086 1087 1088 1089 1090 1091 1092 1093 1094 1095 1096 1097 1098 1099 1100 1101 1102 1103 1104 1105 1106 1107 1108 1109 1110 1111 1112 1113 1114 1115 1116 1117 1118 1119 1120 1121 1122 1123 1124 1125 1126 1127 1128 1129 1130 1131 1132 1133 1134 1135 1136 1137 1138 1139 1140 1141 1142 1143 1144 1145 1146 1147 1148 1149 1150 1151 1152 1153 1154 1155 1156 1157 1158 1159 1160 1161 1162 1163 1164 1165 1166 1167 1168 1169 1170 1171 1172 1173 1174 1175 1176 1177 1178 1179 1180 1181 1182 1183 1184 1185 1186 1187 1188 1189 1190 1191 1192 1193 1194 1195 1196 1197 1198 1199 1200 1201 1202 1203 1204 1205 1206 1207 1208 1209 1210 1211 1212 1213 1214 1215 1216 1217 1218 1219 1220 1221 1222 1223 1224 1225 1226 1227 1228 1229 1230 1231 1232 1233 1234 1235 1236 1237 1238 1239 1240 1241 1242 1243 1244 1245 1246 1247 1248 1249 1250 1251 1252 1253 1254 1255 1256 1257 1258 1259 1260 1261 1262 1263 1264 1265 1266 1267 1268 1269 1270 1271 1272 1273 1274 1275 1276 1277 1278 1279 1280 1281 1282 1283 1284 1285 1286 1287 1288 1289 1290 1291 1292 1293 1294 1295 1296 1297 1298 1299 1300 1301 1302 1303 1304 1305 1306 1307 1308 1309 1310 1311 1312 1313 1314 1315 1316 1317 1318 1319 1320 1321 1322 1323 1324 1325 1326 1327 1328 1329 1330 1331 1332 1333 1334 1335 1336 1337 1338 1339 1340 1341 1342 1343 1344 1345 1346 1347 1348 1349 1350 1351 1352 1353 1354 1355 1356 1357 1358 1359 1360 1361 1362 1363 1364 1365 1366 1367 1368 1369 1370 1371 1372 1373 1374 1375 1376 1377 1378 1379 1380 1381 1382 1383 1384 1385 1386 1387 1388 1389 1390 1391 1392 1393 1394 1395 1396 1397 1398 1399 1400 1401 1402 1403 1404 1405 1406 1407 1408 1409 1410 1411 1412 1413 1414 1415 1416 1417 1418 1419 1420 1421 1422 1423 1424 1425 1426 1427 1428 1429 1430 1431 1432 1433 1434 1435 1436 1437 1438 1439 1440 1441 1442 1443 1444 1445 1446 1447 1448 1449 1450 1451 1452 1453 1454 1455 1456 1457 1458 1459 1460 1461 1462 1463 1464 1465 1466 1467 1468 1469 1470 1471 1472 1473 1474 1475 1476 1477 1478 1479 1480 1481 1482 1483 1484 1485 1486 1487 1488 1489 1490 1491 1492 1493 1494 1495 1496 1497 1498 1499 1500 1501 1502 1503 1504 1505 1506 1507 1508 1509 1510 1511 1512 1513 1514 1515 1516 1517 1518 1519 1520 1521 1522 1523 1524 1525 1526 1527 1528 1529 1530 1531 1532 1533 1534 1535 1536 1537 1538 1539 1540 1541 1542 1543 1544 1545 1546 1547 1548 1549 1550 1551 1552 1553 1554 1555 1556 1557 1558 1559 1560 1561 1562 1563 1564 1565 1566 1567 1568 1569 1570 1571 1572 1573 1574 1575 1576 1577 1578 1579 1580 1581 1582 1583 1584 1585 1586 1587 1588 1589 1590 1591 1592 1593 1594 1595 1596 1597 1598 1599 1600 1601 1602 1603 1604 1605 1606 1607 1608 1609 1610 1611 1612 1613 1614 1615 1616 1617 1618 1619 1620 1621 1622 1623 1624 1625 1626 1627 1628 1629 1630 1631 1632 1633 1634 1635 1636 1637 1638 1639 1640 1641 1642 1643 1644 1645 1646 1647 1648 1649 1650 1651 1652 1653 1654 1655 1656 1657 1658 1659 1660 1661 1662 1663 1664 1665 1666 1667 1668 1669 1670 1671 1672 1673 1674 1675 1676 1677 1678 1679 1680 1681 1682 1683 1684 1685 1686 1687 1688 1689 1690 1691 1692 1693 1694 1695 1696 1697 1698 1699 1700 1701 1702 1703 1704 1705 1706 1707 1708 1709 1710 1711 1712 1713 1714 1715 1716 1717 1718 1719 1720 1721 1722 1723 1724 1725 1726 1727 1728 1729 1730 1731 1732 1733 1734 1735 1736 1737 1738 1739 1740 1741 1742 1743 1744 1745 1746 1747 1748 1749 1750 1751 1752 1753 1754 1755 1756 1757 1758 1759 1760 1761 1762 1763 1764 1765 1766 1767 1768 1769 1770 1771 1772 1773 1774 1775 1776 1777 1778 1779 1780 1781 1782 1783 1784 1785 1786 1787 1788 1789 1790 1791 1792 1793 1794 1795 1796 1797 1798 1799 1800 1801 1802 1803 1804 1805 1806 1807 1808 1809 1810 1811 1812 1813 1814 1815 1816 1817 1818 1819 1820 1821 1822 1823 1824 1825 1826 1827 1828 1829 1830 1831 1832 1833 1834 1835 1836 1837 1838 1839 1840 1841 1842 1843 1844 1845 1846 1847 1848 1849 1850 1851 1852 1853 1854 1855 1856 1857 1858 1859 1860 1861 1862 1863 1864 1865 1866 1867 1868 1869 1870 1871 1872 1873 1874 1875 1876 1877 1878 1879 1880 1881 1882 1883 1884 1885 1886 1887 1888 1889 1890 1891 1892 1893 1894 1895 1896 1897 1898 1899 1900 1901 1902 1903 1904 1905 1906 1907 1908 1909 1910 1911 1912 1913 1914 1915 1916 1917 1918 1919 1920 1921 1922 1923 1924 1925 1926 1927 1928 1929 1930 1931 1932 1933 1934 1935 1936 1937 1938 1939 1940 1941 1942 1943 1944 1945 1946 1947 1948 1949 1950 1951 1952 1953 1954 1955 1956 1957 1958 1959 1960 1961 1962 1963 1964 1965 1966 1967 1968 1969 1970 1971 1972 1973 1974 1975 1976 1977 1978 1979 1980 1981 1982 1983 1984 1985 1986 1987 1988 1989 1990 1991 1992 1993 1994 1995 1996 1997 1998 1999 2000"},{"stdin":"","stdout":"1 2 3 4 5 6 7 8 9 10"}]},
     solution: {
       approach: `<p>One mutex, one condition_variable, one shared counter. A thread may print only when <code>cur</code> has its parity; otherwise it sleeps. After printing it increments and notifies, which hands the turn to the other thread. The predicate also checks <code>cur &gt; n</code> so the waiting thread wakes and exits at the end.</p>`,
       code: R`
@@ -2227,7 +2460,8 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
         using namespace std;
 
         int main() {
-            const int n = 10;
+            int n = 10;
+            if (!(cin >> n)) n = 10;                            // how many numbers (10 when no input)
             mutex m;
             condition_variable cv;
             int cur = 1;                                        // next number to print (guarded by m)
@@ -2276,6 +2510,7 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
       }` },
     mcq: { q: 'Which change does NOT reliably fix this deadlock?', options: ['Lock both with std::scoped_lock(dbMutex, logMutex) in both functions', 'Always lock dbMutex before logMutex everywhere', 'Release the first lock before taking the second (no nesting)', 'Add a 1 ms sleep before the second lock'], answer: 3, explain: 'Sleeping changes the timing but the cycle is still possible. The other three remove hold-and-wait or the circular order.' },
     hints: [`<p>Draw who holds what and who waits for what. A cycle = deadlock.</p>`, `<p>Fix A: one global order (db before log) or <code>std::scoped_lock</code>. Fix B: don't hold one lock while taking the other: finish the DB work, unlock, then log.</p>`, `<p>Fix B is often best in practice: logging under a DB lock also makes the critical section slow. Copy what you need to log while locked, log after unlocking.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"4400\n400\n1000 1000 1000 1000"}]},
     solution: {
       approach: `<p><b>Fix 1 (ordering):</b> acquire both with <code>std::scoped_lock</code> (or one documented global order). <b>Fix 2 (narrow critical sections):</b> never nest: do the DB work under dbMutex, release it, then log under logMutex. Fix 2 also shortens lock hold times. Prevent recurrence with a lock-hierarchy convention or Clang thread-safety annotations.</p>`,
       code: R`
@@ -2304,13 +2539,16 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
 
         int main() {
             {
-                vector<jthread> ts;
+                vector<thread> ts;
                 for (int i = 0; i < 4; ++i) {
                     ts.emplace_back([i] { for (int k = 0; k < 1000; ++k) saveUser("u" + to_string(i)); });
                     ts.emplace_back([] { for (int k = 0; k < 100; ++k) rotateLogs(); });
                 }
+                for (auto& t : ts) t.join();
             }                                           // never hangs
             cout << dbRows.size() << "\n";              // 4000 + 400 = 4400
+            cout << count(dbRows.begin(), dbRows.end(), "log rotated") << "\n";   // 400
+            for (int i = 0; i < 4; ++i) cout << count(dbRows.begin(), dbRows.end(), "u" + to_string(i)) << (i < 3 ? ' ' : '\n');   // 1000 1000 1000 1000
         }`,
       dry: { head: ['time', 'saveUser', 'rotateLogs'], rows: [['1', 'lock db, insert, unlock db', ''], ['2', '', 'scoped_lock(log, db) → gets both'], ['3', 'lock log → waits (holds nothing else)', 'clear logs, insert, unlock both'], ['4', 'gets log, appends', '']] },
       complexity: `<p>No extra cost for Fix 2 (shorter hold times usually make it faster). scoped_lock adds a try-lock/back-off only under contention.</p>`,
@@ -2342,6 +2580,7 @@ int pop() {
       }` },
     mcq: { q: 'A consumer checked <code>jobs.empty()</code> (true) and is about to call wait(). The producer pushes and notifies WITHOUT the lock right now. What happens?', options: ['The consumer gets the notification later', 'The notify is lost; the consumer then sleeps although a job is queued', 'wait() returns immediately because it remembers the notify', 'The program throws'], answer: 1, explain: 'condition_variable has no memory. If the notify happens before the consumer is registered as a waiter, it is lost. Taking the mutex in push makes this window impossible, because push cannot run between check and wait.' },
     hints: [`<p>Two independent rules are broken: "modify shared state under the mutex" and "always re-check the condition after waking".</p>`, `<p>push: <code>{ lock_guard g(m); jobs.push(j); } cv.notify_one();</code>. pop: <code>cv.wait(lk, [&amp;]{ return !jobs.empty(); });</code></p>`, `<p>Bonus: add a <code>closed</code> flag for shutdown and include it in the predicate, with <code>notify_all</code> in close().</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"1000 499500\n0\n2000 499000\nempty"}]},
     solution: {
       approach: `<p>Push under the mutex (removes the data race and the lost-wakeup window), and wait with a predicate (handles spurious and stolen wakeups). Add a shutdown flag so consumers can exit. The notify can happen after unlocking.</p>`,
       code: R`
@@ -2371,12 +2610,37 @@ int pop() {
         int main() {
             JobQueue q;
             atomic<int> done{0};
+            atomic<long long> sum{0};
             vector<thread> workers;
-            for (int i = 0; i < 3; ++i) workers.emplace_back([&] { while (q.pop()) ++done; });
+            for (int i = 0; i < 3; ++i) workers.emplace_back([&] { while (auto j = q.pop()) { ++done; sum += *j; } });
             for (int j = 0; j < 1000; ++j) q.push(j);
             q.close();
             for (auto& w : workers) w.join();
-            cout << done << "\n";                               // 1000
+            cout << done << ' ' << sum << "\n";                 // 1000 499500
+
+            JobQueue idle;                                       // closed before any job: workers must still exit
+            atomic<int> none{0};
+            {
+                vector<thread> ws;
+                for (int i = 0; i < 3; ++i) ws.emplace_back([&] { while (idle.pop()) ++none; });
+                idle.close();
+                for (auto& w : ws) w.join();
+            }
+            cout << none << "\n";                                // 0
+
+            JobQueue multi;                                      // 4 producers, 4 consumers
+            atomic<int> cnt{0};
+            atomic<long long> total{0};
+            {
+                vector<thread> cs, ps;
+                for (int i = 0; i < 4; ++i) cs.emplace_back([&] { while (auto j = multi.pop()) { ++cnt; total += *j; } });
+                for (int p = 0; p < 4; ++p) ps.emplace_back([&] { for (int j = 0; j < 500; ++j) multi.push(j); });
+                for (auto& p : ps) p.join();
+                multi.close();
+                for (auto& c : cs) c.join();
+            }
+            cout << cnt << ' ' << total << "\n";                 // 2000 499000
+            cout << (multi.pop().has_value() ? "item" : "empty") << "\n";   // empty
         }`,
       dry: { head: ['time', 'consumer', 'producer (fixed)'], rows: [['1', 'lock, sees empty, wait() → unlock + sleep', ''], ['2', '', 'lock (now possible), push, unlock'], ['3', '', 'notify_one → consumer woken'], ['4', 're-lock, predicate true → pop', '']] },
       complexity: `<p>O(1) per operation; the fix adds one uncontended lock to push (~20 ns).</p>`,
@@ -2401,6 +2665,7 @@ int pop() {
       }` },
     mcq: { q: 'When is it safe to call <code>close()</code> on the queue?', options: ['Right after starting the producers', 'After ALL producer threads have been joined', 'When the queue becomes empty', 'From any consumer'], answer: 1, explain: 'Close means "no more items will ever come". That is only true after every producer has finished, which you know by joining them. Consumers then drain the rest and exit.' },
     hints: [`<p>The exit condition is "queue empty <b>and</b> no more items will come", not just "queue empty".</p>`, `<p>Use a blocking queue whose pop returns <code>optional&lt;T&gt;</code>: empty optional only when closed and drained. Join producers, then close, then join consumers.</p>`, `<p>close() must <code>notify_all</code>. Accumulate per consumer locally and merge once at the end to avoid a shared hot counter.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"1001000\n1\n8008000\n15\n240\n500000500000"}]},
     solution: {
       approach: `<p>Blocking queue with a <code>closed</code> flag. Consumers loop on <code>pop()</code>, which sleeps while the queue is empty and open, and returns nullopt only when closed <b>and</b> empty. The orchestration order: start consumers, start producers, join producers, close (notify_all), join consumers. Each consumer keeps a local sum and adds it to an atomic once.</p>`,
       code: R`
@@ -2422,8 +2687,7 @@ int pop() {
             void close() { { lock_guard<mutex> g(m); closed = true; } cv.notify_all(); }
         };
 
-        int main() {
-            const int P = 2, C = 3, K = 1000;
+        long long run(int P, int C, int K) {
             ClosableQueue<int> q;
             atomic<long long> total{0};
 
@@ -2440,7 +2704,16 @@ int pop() {
             for (auto& t : producers) t.join();                   // 1) no more items will come
             q.close();                                            // 2) tell everyone
             for (auto& t : consumers) t.join();                   // 3) they drain and exit
-            cout << total << "\n";                                // 1001000
+            return total;
+        }
+
+        int main() {
+            cout << run(2, 3, 1000) << "\n";                      // 1001000
+            cout << run(1, 1, 1) << "\n";                         // 1
+            cout << run(16, 16, 1000) << "\n";                    // 8008000
+            cout << run(1, 16, 5) << "\n";                        // 15
+            cout << run(16, 1, 5) << "\n";                        // 240
+            cout << run(1, 4, 1000000) << "\n";                   // 500000500000
         }`,
       dry: { head: ['phase', 'producers', 'consumers', 'queue'], rows: [['run', 'pushing 1..K', 'popping, summing locally', 'varies'], ['producers joined', 'done', 'still draining', 'maybe non-empty'], ['close()', '-', 'all woken; keep popping', 'draining'], ['drained', '-', 'pop → nullopt → exit', 'empty']] },
       complexity: `<p>O(P·K) total pushes/pops, each O(1) plus lock cost. Throughput is limited by the single mutex (~10<sup>6</sup>–10<sup>7</sup> ops/s); shard queues if you need more.</p>`,
@@ -2467,6 +2740,7 @@ int pop() {
       }` },
     mcq: { q: 'Why does the map-reduce design need no mutex at all?', options: ['unordered_map is thread-safe for different keys', 'Each task owns a private map; maps are only combined on one thread after get() returns them', 'std::async adds a lock automatically', 'Strings are immutable'], answer: 1, explain: 'Nothing is shared and mutable during the parallel phase. The future hands each partial map back with a happens-before edge, and the merge runs on a single thread.' },
     hints: [`<p><b>Map</b> phase: each task counts its own chunk into its own local map. <b>Reduce</b> phase: merge the partial maps.</p>`, `<p>Launch tasks with <code>async(launch::async, countChunk, cref(words), lo, hi)</code> returning a map; collect futures in a vector.</p>`, `<p>Merge into the largest map to reduce work; reserve buckets; pass the words by const reference (std::cref) to avoid copying 10<sup>7</sup> strings.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"321\n<a:3 b:2 c:1>\n<>\n<x:1>\n<a:5 b:5>\n<a:3 b:2 c:1>\n<a:3 b:2 c:1>\n100 10000 10000 1000000"}]},
     solution: {
       approach: `<p>Split the vector into T contiguous chunks; each async task builds a <b>private</b> frequency map for its chunk (no sharing, so no locks); the main thread then merges the T partial maps. This is map-reduce in miniature, and the same idea behind per-thread counters and parallel reductions.</p>`,
       code: R`
@@ -2495,10 +2769,31 @@ int pop() {
             return total;
         }
 
+        void show(const Freq& f) {
+            vector<pair<string, int>> v(f.begin(), f.end());
+            sort(v.begin(), v.end());
+            cout << '<';
+            for (size_t i = 0; i < v.size(); ++i) cout << (i ? " " : "") << v[i].first << ':' << v[i].second;
+            cout << ">\n";
+        }
+
         int main() {
             vector<string> w = {"a", "b", "a", "c", "b", "a"};
             Freq f = parallelCount(w, 2);
             cout << f["a"] << f["b"] << f["c"] << "\n";        // 321
+            show(f);                                           // <a:3 b:2 c:1>
+            show(parallelCount({}, 4));                        // <>
+            show(parallelCount({"x"}, 8));                     // <x:1>
+            show(parallelCount({"a", "b", "a", "b", "a", "b", "a", "b", "a", "b"}, 4));   // <a:5 b:5>
+            show(parallelCount(w, 1));                         // <a:3 b:2 c:1>
+            show(parallelCount(w, 64));                        // <a:3 b:2 c:1>
+            vector<string> many;
+            many.reserve(1000000);
+            for (int i = 0; i < 1000000; ++i) many.push_back("w" + to_string(i % 100));
+            Freq big = parallelCount(many, 8);
+            long long total = 0;
+            for (auto& [word, c] : big) total += c;
+            cout << big.size() << ' ' << big["w0"] << ' ' << big["w99"] << ' ' << total << "\n";   // 100 10000 10000 1000000
         }`,
       dry: { head: ['task', 'chunk', 'partial map'], rows: [['0', '[a, b, a]', '{a:2, b:1}'], ['1', '[c, b, a]', '{c:1, b:1, a:1}'], ['merge', '-', '{a:3, b:2, c:1}']] },
       complexity: `<p>Work O(n + T·U) where U = distinct words per chunk (the merge); span O(n/T + T·U). Memory O(T·U) for partial maps.</p>`,
@@ -2522,6 +2817,7 @@ int pop() {
       }` },
     mcq: { q: 'Why is the packaged_task wrapped in a <code>shared_ptr</code> before being put in a <code>std::queue&lt;std::function&lt;void()&gt;&gt;</code>?', options: ['To make it faster', 'std::function requires a copyable callable, and packaged_task is move-only', 'To share it between several workers that all run it', 'shared_ptr makes it thread-safe'], answer: 1, explain: 'std::function needs CopyConstructible targets. Capturing a shared_ptr makes the lambda copyable. (C++23 std::move_only_function removes the need.)' },
     hints: [`<p>Parts: a vector of worker threads, a queue of type-erased jobs <code>function&lt;void()&gt;</code>, a mutex + condition_variable, and a <code>stopping</code> flag.</p>`, `<p>submit: build <code>packaged_task&lt;R()&gt;</code> from <code>bind(f, args...)</code>, take its future, push a lambda that runs it, then notify_one. Workers: wait(pred: stopping or !empty), pop, unlock, run.</p>`, `<p>Destructor: set stopping under the lock, notify_all, join all. Workers exit only when <code>stopping &amp;&amp; queue empty</code> so queued tasks still finish. Run the job <b>outside</b> the lock.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"5\ntask failed\n140\n5\n49995000\n1000\n1"}]},
     solution: {
       approach: `<p>Classic design: N workers loop on a condition variable, pulling type-erased jobs from a shared queue. <code>submit</code> wraps the call in a <code>packaged_task</code>, which captures the return value <i>or</i> the exception into its shared state, so the caller gets results and errors through the future. Shutdown sets a flag, wakes everyone, and joins; workers drain remaining jobs first. Jobs run outside the lock, so the lock is held only for the push/pop.</p>`,
       code: R`
@@ -2576,17 +2872,43 @@ int pop() {
         };
 
         int main() {
-            ThreadPool pool(4);
-            auto sum = pool.submit([](int a, int b) { return a + b; }, 2, 3);
-            auto bad = pool.submit([]() -> int { throw runtime_error("task failed"); });
-            vector<future<int>> squares;
-            for (int i = 0; i < 8; ++i) squares.push_back(pool.submit([i] { return i * i; }));
+            {
+                ThreadPool pool(4);
+                auto sum = pool.submit([](int a, int b) { return a + b; }, 2, 3);
+                auto bad = pool.submit([]() -> int { throw runtime_error("task failed"); });
+                vector<future<int>> squares;
+                for (int i = 0; i < 8; ++i) squares.push_back(pool.submit([i] { return i * i; }));
 
-            cout << sum.get() << "\n";                               // 5
-            try { bad.get(); } catch (const exception& e) { cout << e.what() << "\n"; }
-            int total = 0;
-            for (auto& f : squares) total += f.get();
-            cout << total << "\n";                                   // 140
+                cout << sum.get() << "\n";                               // 5
+                try { bad.get(); } catch (const exception& e) { cout << e.what() << "\n"; }
+                int total = 0;
+                for (auto& f : squares) total += f.get();
+                cout << total << "\n";                                   // 140
+
+                pool.submit([] {}).get();                                // void tasks work
+                auto len = pool.submit([](string s) { return s.size(); }, string("hello"));
+                cout << len.get() << "\n";                               // 5
+                vector<future<long long>> many;
+                for (int i = 0; i < 10000; ++i) many.push_back(pool.submit([i] { return 1LL * i; }));
+                long long all = 0;
+                for (auto& f : many) all += f.get();
+                cout << all << "\n";                                     // 49995000
+            }
+            atomic<int> counter{0};
+            {
+                ThreadPool pool(2);
+                for (int i = 0; i < 1000; ++i) pool.submit([&counter] { ++counter; });   // futures ignored
+            }                                                            // destructor runs every queued task first
+            cout << counter << "\n";                                     // 1000
+
+            vector<int> order;
+            {
+                ThreadPool single(1);                                    // one worker: tasks run in submission order
+                for (int i = 0; i < 100; ++i) single.submit([&order, i] { order.push_back(i); });
+            }
+            bool fifo = order.size() == 100;
+            for (int i = 0; i < (int)order.size(); ++i) fifo = fifo && order[i] == i;
+            cout << fifo << "\n";                                        // 1
         }`,
       dry: { head: ['event', 'queue', 'workers', 'futures'], rows: [['submit(sum)', '[sum]', 'one woken', 'sum: not ready'], ['worker runs sum', '[]', 'job() outside lock', 'sum: ready 5'], ['submit(bad)', '[bad]', 'one woken', 'bad: not ready'], ['bad throws', '[]', 'packaged_task stores exception', 'bad: ready (exception)'], ['~ThreadPool', '[]', 'stopping=true, notify_all, join', 'all done']] },
       complexity: `<p>submit/pop: O(1) + one lock. Per-task overhead ≈ 1–5 µs (allocation + handoff) vs ~20–50 µs for a new thread. The single queue becomes the bottleneck above ~10<sup>6</sup> tasks/s; then use per-worker queues with work stealing.</p>`,
@@ -2613,6 +2935,7 @@ Thread B: flagB.store(true, release); if (!flagA.load(acquire)) print("B");</pre
       }` },
     mcq: { q: 'Which change guarantees that "AB" can never be printed?', options: ['Use memory_order_relaxed everywhere', 'Use memory_order_seq_cst for the stores and the loads', 'Make the flags volatile', 'Swap the order of store and load'], answer: 1, explain: 'seq_cst puts all four operations into one total order. Whichever store comes first in that order, the other thread\'s later load must see it, so at least one load reads true. Swapping store and load breaks the protocol completely.' },
     hints: [`<p>First enumerate all 6 interleavings: in every one, at least one thread sees the other's flag as true. So "AB" can only come from <b>reordering</b>.</p>`, `<p>The pattern "store X; load Y" in one thread and "store Y; load X" in the other is the <b>store-buffering</b> litmus test. Only seq_cst (or seq_cst fences between store and load) forbids both loads returning false.</p>`, `<p>Fix: default seq_cst on all four operations, or keep the orders and put <code>atomic_thread_fence(memory_order_seq_cst)</code> between each store and load. Real code should just use std::mutex.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"both entered: 0 times\nfenced, both entered: 0 times"}]},
     solution: {
       approach: `<p>With seq_cst, all seq_cst operations appear in a single total order S consistent with each thread's program order. Suppose flagA.store comes before flagB.store in S. Then B's load of flagA comes after flagA.store in S, so it reads true and B does not print. Symmetrically for the other case. Therefore at most one thread prints. This is why Dekker's and Peterson's algorithms need sequential consistency. On x86 the compiler emits <code>xchg</code> (or <code>mov</code> + <code>mfence</code>) for the seq_cst stores, which drains the store buffer before the load.</p>`,
       code: R`
@@ -2638,6 +2961,12 @@ Thread B: flagB.store(true, release); if (!flagA.load(acquire)) print("B");</pre
             if (!flagB.load(memory_order_relaxed)) entered.fetch_add(1);
         }
 
+        void threadBFenced() {
+            flagB.store(true, memory_order_relaxed);
+            atomic_thread_fence(memory_order_seq_cst);
+            if (!flagA.load(memory_order_relaxed)) entered.fetch_add(1);
+        }
+
         int main() {
             int violations = 0;
             for (int i = 0; i < 20000; ++i) {
@@ -2647,6 +2976,15 @@ Thread B: flagB.store(true, release); if (!flagA.load(acquire)) print("B");</pre
                 if (entered.load() == 2) ++violations;
             }
             cout << "both entered: " << violations << " times\n";   // always 0 with seq_cst
+
+            violations = 0;
+            for (int i = 0; i < 5000; ++i) {
+                flagA = false; flagB = false; entered = 0;
+                thread a(threadAFenced), b(threadBFenced);
+                a.join(); b.join();
+                if (entered.load() == 2) ++violations;
+            }
+            cout << "fenced, both entered: " << violations << " times\n";   // always 0 with fences
         }`,
       dry: { head: ['orders used', '"" possible?', '"A" or "B"?', '"AB" possible?'], rows: [['relaxed', 'yes (both stores first)', 'yes', '<span class="c-r">yes</span>'], ['release / acquire', 'yes', 'yes', '<span class="c-r">yes</span>'], ['seq_cst', 'yes', 'yes', '<span class="c-g">no</span>']] },
       complexity: `<p>Each seq_cst store costs a full fence on x86 (~20–30 cycles more than a plain store). That's exactly why hardware vendors made StoreLoad reordering the one reordering x86 allows.</p>`,
@@ -2673,6 +3011,7 @@ Thread B: flagB.store(true, release); if (!flagA.load(acquire)) print("B");</pre
       };` },
     mcq: { q: 'Why must <code>unlock()</code> use (at least) <code>memory_order_release</code>?', options: ['Otherwise the store might never happen', 'So writes made inside the critical section happen-before the next thread that acquires the lock reads them', 'Release makes the store faster', 'It is required by lock_guard'], answer: 1, explain: 'The next lock() does an acquire RMW that reads the value written by unlock\'s release store, creating synchronizes-with. Without it, the protected data is accessed by two threads without happens-before: a data race.' },
     hints: [`<p>Acquiring must be one atomic read-modify-write: <code>locked.exchange(true)</code> returns the old value; false means you got it.</p>`, `<p>lock: <code>exchange(true, acquire)</code>; unlock: <code>store(false, release)</code>. While waiting, only <b>read</b> (<code>load(relaxed)</code>) until it looks free, then retry the exchange: test-and-test-and-set.</p>`, `<p>Add a CPU pause / <code>this_thread::yield()</code> in the read loop. try_lock = one exchange attempt, but check with a cheap load first to avoid a write when it's obviously taken.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"2000000\n101\n800000\n200000"}]},
     solution: {
       approach: `<p><b>Acquire</b> with an atomic exchange (one RMW, so no check-then-act gap) using <code>memory_order_acquire</code>, so nothing in the critical section can move above it. <b>Release</b> with a store of false using <code>memory_order_release</code>, so nothing in the critical section can move below it, and the next acquirer sees all writes. While contended, spin on a relaxed <b>load</b>: readers can share the cache line in "shared" state; only the final exchange needs exclusive ownership (TTAS).</p>`,
       code: R`
@@ -2704,6 +3043,35 @@ Thread B: flagB.store(true, release); if (!flagA.load(acquire)) print("B");</pre
                 jthread b([&] { for (int i = 0; i < 1000000; ++i) { lock_guard<SpinLock> g(sl); ++counter; } });
             }
             cout << counter << "\n";                     // 2000000
+
+            SpinLock one;
+            bool t1 = one.try_lock(), t2 = one.try_lock();   // second attempt must fail while held
+            one.unlock();
+            bool t3 = one.try_lock();
+            cout << t1 << t2 << t3 << "\n";              // 101
+
+            SpinLock many;
+            long long c8 = 0;
+            {
+                vector<jthread> ts;
+                for (int t = 0; t < 8; ++t) ts.emplace_back([&] { for (int i = 0; i < 100000; ++i) { lock_guard<SpinLock> g(many); ++c8; } });
+            }
+            cout << c8 << "\n";                         // 800000
+
+            SpinLock tl;
+            long long c4 = 0;
+            {
+                vector<jthread> ts;
+                for (int t = 0; t < 4; ++t)
+                    ts.emplace_back([&] {
+                        for (int i = 0; i < 50000; ++i) {
+                            while (!tl.try_lock()) this_thread::yield();
+                            ++c4;
+                            tl.unlock();
+                        }
+                    });
+            }
+            cout << c4 << "\n";                          // 200000
         }`,
       dry: { head: ['step', 'T1', 'T2', 'locked'], rows: [['1', 'exchange(true, acq) → old false: enters', '', 'true'], ['2', '++counter', 'exchange → old true: spin on load', 'true'], ['3', 'store(false, release)', 'load sees false', 'false'], ['4', '', 'exchange(true, acq) → old false: enters, sees T1\'s write', 'true']] },
       complexity: `<p>Uncontended lock+unlock ≈ 2 atomic ops (~10–20 ns). Under contention TTAS avoids cache-line ping-pong while waiting. Spinlocks are bad if the holder can be preempted, or with more threads than cores; then std::mutex (spin briefly, then sleep) wins.</p>`,
@@ -2735,6 +3103,7 @@ Thread B: flagB.store(true, release); if (!flagA.load(acquire)) print("B");</pre
       };` },
     mcq: { q: 'Why does "never free popped nodes until the destructor" prevent ABA here?', options: ['Because CAS becomes wait-free', 'Because a node address can never be reused while the stack is alive, so head == old really means the same node is still on top', 'Because the stack becomes FIFO', 'It does not prevent ABA'], answer: 1, explain: 'ABA needs the same address to come back with different meaning. If memory is never recycled during operation, an address uniquely identifies a node, and dereferencing old-&gt;next is always safe. Production code uses hazard pointers / epochs (C++26 has std::hazard_pointer and RCU) to reclaim earlier.' },
     hints: [`<p>push: build the node privately, set <code>n-&gt;next = head</code>, CAS head from n-&gt;next to n (on failure, CAS refreshes n-&gt;next for you).</p>`, `<p>pop: <code>old = head.load(acquire)</code>; loop CAS(old → old-&gt;next). Use release on push's CAS and acquire on pop's load/CAS so the popper sees the node's contents.</p>`, `<p>Reclamation: push popped nodes onto a separate lock-free "retired" list (using a different link field) and delete everything in the destructor. Note the trade-off: memory grows with the number of pops.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"2002000\n3 2 1 empty\nba\n4000 2002000"}]},
     solution: {
       approach: `<p>Treiber stack: a CAS loop swaps the head pointer. Push publishes a fully built node with a <b>release</b> CAS; pop reads head with <b>acquire</b> so it can safely read <code>old-&gt;next</code> and the value. Safety comes from <b>deferred reclamation</b>: popped nodes go to a retired list (linked through a separate field, so concurrent readers of <code>next</code> are unaffected) and are freed only in the destructor. Since addresses are never reused while the stack is live, ABA can't happen and no thread ever touches freed memory. Production versions reclaim earlier with hazard pointers or epoch-based schemes.</p>`,
       code: R`
@@ -2782,15 +3151,42 @@ Thread B: flagB.store(true, release); if (!flagA.load(acquire)) print("B");</pre
             TreiberStack<int> st;
             atomic<long long> popped{0};
             {
-                vector<jthread> ts;
+                vector<thread> ts;
                 for (int t = 0; t < 4; ++t)
                     ts.emplace_back([&, t] {
                         for (int i = 1; i <= 1000; ++i) st.push(i);
                         for (int i = 0; i < 1000; ++i) if (auto v = st.pop()) popped += *v;
                     });
+                for (auto& th : ts) th.join();
             }
             while (auto v = st.pop()) popped += *v;               // drain leftovers
             cout << popped << "\n";                               // 4 * 500500 = 2002000
+
+            TreiberStack<int> lifo;                               // single thread: last in, first out
+            lifo.push(1); lifo.push(2); lifo.push(3);
+            for (int i = 0; i < 3; ++i) cout << *lifo.pop() << ' ';
+            cout << (lifo.pop().has_value() ? "item" : "empty") << "\n";   // 3 2 1 empty
+
+            TreiberStack<string> ss;
+            ss.push("a"); ss.push("b");
+            cout << *ss.pop() << *ss.pop() << (ss.pop() ? "!" : "") << "\n";   // ba
+
+            TreiberStack<int> mix;                                // producers and consumers at the same time
+            atomic<int> count{0};
+            atomic<long long> sum{0};
+            {
+                vector<thread> ts;
+                for (int p = 0; p < 4; ++p) ts.emplace_back([&] { for (int i = 1; i <= 1000; ++i) mix.push(i); });
+                for (int c = 0; c < 4; ++c)
+                    ts.emplace_back([&] {
+                        while (count.load() < 4000) {
+                            if (auto v = mix.pop()) { sum += *v; ++count; }
+                            else this_thread::yield();
+                        }
+                    });
+                for (auto& th : ts) th.join();
+            }
+            cout << count << ' ' << sum << "\n";                  // 4000 2002000
         }`,
       dry: { head: ['step', 'T1 (pop)', 'T2 (push 9)', 'head'], rows: [['1', 'old = A (acquire), old-&gt;next = B', '', 'A'], ['2', '', 'n = {9, next = A}; CAS(A → n) ok (release)', 'n'], ['3', 'CAS(A → B) fails, old = n', '', 'n'], ['4', 'CAS(n → A) ok, returns 9, retires n', '', 'A']] },
       complexity: `<p>push/pop O(1) expected, lock-free (a failed CAS means someone else succeeded). Memory O(total pushes) until destruction: that's the price of the simple reclamation scheme. Under heavy contention a single head is a hotspot; elimination-backoff stacks help.</p>`,
@@ -2822,6 +3218,7 @@ t2 phase 1</pre>`,
       };` },
     mcq: { q: 'What does the generation counter solve?', options: ['It makes the barrier faster', 'Each waiter remembers which phase it waits for and wakes when the phase number changes, which is immune to the count being reset or reused', 'It counts the number of threads', 'It replaces the mutex'], answer: 1, explain: 'The predicate "generation != myGeneration" stays true forever once the phase has advanced, so late wakers can never miss it, and a fast thread entering the next phase cannot confuse it.' },
     hints: [`<p>Keep three fields under the mutex: <code>waiting</code> (arrived in this phase), <code>generation</code> (phase number), and the constant <code>n</code>.</p>`, `<p>On arrival: remember <code>gen = generation</code>. If you're the last (<code>++waiting == n</code>): reset waiting to 0, <code>++generation</code>, notify_all. Otherwise wait until <code>generation != gen</code>.</p>`, `<p>The predicate must refer to the phase you joined, not to the count. Spurious wakeups are harmless. Notify can happen after unlocking.</p>`],
+    tests: {"io":true,"cases":[{"stdin":"","stdout":"1 9\n32000 0"}]},
     solution: {
       approach: `<p>Use a <b>generation number</b>. Each arriving thread notes the current generation. The last arrival opens the barrier by resetting the count and incrementing the generation, then wakes all. Waiters sleep until the generation differs from the one they joined, a condition that stays true no matter how quickly the next phase starts. This is exactly how <code>std::barrier</code> and Java's <code>CyclicBarrier</code> work internally.</p>`,
       code: R`
@@ -2854,15 +3251,35 @@ t2 phase 1</pre>`,
             const int N = 3, PHASES = 3;
             Barrier bar(N);
             mutex outM;
+            vector<pair<int, int>> log;                      // (thread, phase) in the order lines were "printed"
             vector<thread> ts;
             for (int id = 0; id < N; ++id)
                 ts.emplace_back([&, id] {
                     for (int p = 0; p < PHASES; ++p) {
-                        { lock_guard<mutex> g(outM); cout << "t" << id << " phase " << p << "\n"; }
+                        { lock_guard<mutex> g(outM); log.push_back({id, p}); }
                         bar.arriveAndWait();                // nobody starts phase p+1 early
                     }
                 });
             for (auto& t : ts) t.join();
+            bool ordered = true;                            // entry i must belong to phase i / N
+            for (int i = 0; i < (int)log.size(); ++i) ordered = ordered && log[i].second == i / N;
+            cout << ordered << ' ' << log.size() << "\n";   // 1 9
+
+            const int N2 = 16, P2 = 2000;                   // many phases, many threads
+            Barrier big(N2);
+            atomic<int> arrived{0};
+            atomic<int> bad{0};
+            vector<thread> ts2;
+            for (int id = 0; id < N2; ++id)
+                ts2.emplace_back([&] {
+                    for (int p = 0; p < P2; ++p) {
+                        arrived.fetch_add(1);
+                        big.arriveAndWait();
+                        if (arrived.load() < N2 * (p + 1)) ++bad;   // everybody of phase p must have arrived
+                    }
+                });
+            for (auto& t : ts2) t.join();
+            cout << arrived << ' ' << bad << "\n";          // 32000 0
         }`,
       dry: { head: ['event', 'waiting', 'generation', 'effect'], rows: [['t0 arrives (gen 0)', '1', '0', 't0 sleeps'], ['t2 arrives (gen 0)', '2', '0', 't2 sleeps'], ['t1 arrives (gen 0)', '3 → 0', '0 → 1', 'notify_all: all released'], ['t1 races ahead, arrives (gen 1)', '1', '1', 'sleeps; t0/t2 still see 1 ≠ 0 and wake fine']] },
       complexity: `<p>O(1) per arrival; one notify_all per phase (n wakeups). For huge n, tree/dissemination barriers avoid the single hot mutex. C++20 <code>std::barrier</code> also supports a completion function run once per phase.</p>`,

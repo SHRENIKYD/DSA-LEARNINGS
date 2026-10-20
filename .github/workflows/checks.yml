@@ -1,0 +1,59 @@
+name: Content checks
+
+on:
+  push:
+    branches: [main, claude/dsa-math-study-portal-weghh9]
+    paths: ['content/**', 'src/paths.js', 'src/tracks.js', 'tools/**', 'vendor/sql-wasm*', '.github/workflows/checks.yml']
+  pull_request:
+    paths: ['content/**', 'src/paths.js', 'src/tracks.js', 'tools/**', 'vendor/sql-wasm*', '.github/workflows/checks.yml']
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  paths:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Route, prerequisite and schedule checks
+        run: node tools/paths-check.js --strict
+
+  changed:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/toolchain
+      - name: Validate and test changed modules
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then BASE=HEAD~1; fi
+          node tools/ci-check.js --base "$BASE"
+
+  full:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        track: [dsa, lld, java, py, js, cpp, sql, other]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/toolchain
+      - name: Validate and test every ${{ matrix.track }} module
+        run: node tools/ci-check.js --track ${{ matrix.track }}

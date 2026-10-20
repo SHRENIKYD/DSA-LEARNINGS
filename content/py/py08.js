@@ -1,5 +1,26 @@
 (function () {
   var topics = [], practice = [], quiz = [], interview = [];
+  // Shared test harness: runs each case as python lines in a fresh namespace; returns repr of every non-None expression, or !ExceptionName.
+  var PYT = String.raw`
+def run_lines(lines):
+    g = dict(globals())
+    out = []
+    for ln in lines:
+        try:
+            try:
+                code = compile(ln, '<t>', 'eval')
+            except SyntaxError:
+                code = None
+            if code is None:
+                exec(compile(ln, '<t>', 'exec'), g)
+            else:
+                v = eval(code, g)
+                if v is not None:
+                    out.append(repr(v))
+        except Exception as e:
+            out.append('!' + type(e).__name__)
+    return out
+`;
   // String.raw keeps backslashes exactly as typed, so Python code like "a\nb" stays "a\nb".
   var R = String.raw;
 
@@ -312,39 +333,103 @@
         R`<p>Hint 2: In <code>__getitem__</code>, check <code>isinstance(index, slice)</code> and wrap the result in a new <code>Playlist</code>. For fast case-insensitive <code>in</code>, keep a <code>set</code> of <code>title.casefold()</code> values and implement <code>__contains__</code>.</p>`,
         R`<p>Hint 3: Edge cases: empty playlist must be falsy (define <code>__len__</code>); <code>in</code> with a non-string should return False, not crash; <code>__iter__</code> should return <code>iter(self._songs)</code> so loops do not go through the slow <code>__getitem__</code> fallback. Recipe: <code>__init__</code> → <code>__repr__</code> → <code>__len__</code> → <code>__getitem__</code> → <code>__iter__</code> → <code>__contains__</code>.</p>`
       ],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['pl = Playlist("Gym", ["Eye of the Tiger", "Lose Yourself", "Stronger"])',
+           'len(pl)',
+           'pl[-1]',
+           'pl[0:2]',
+           '"STRONGER" in pl']],
+         ['3',
+          '\'Stronger\'',
+          'Playlist(\'Gym (slice)\', [\'Eye of the Tiger\', \'Lose Yourself\'])',
+          'True']],
+        [[['e = Playlist("E", [])',
+           'bool(e)',
+           'len(e)',
+           'list(e)',
+           'e[0]',
+           'bool(Playlist("A", ["x"]))']],
+         ['False',
+          '0',
+          '[]',
+          '!IndexError',
+          'True']],
+        [[['pl = Playlist("A", ["Hello"])',
+           '"hello" in pl',
+           '42 in pl',
+           'None in pl',
+           '"HELLO " in pl']],
+         ['True',
+          'False',
+          'False',
+          'False']],
+        [[['pl = Playlist("N", ["a", "b", "c", "d"])',
+           'pl[1:3]',
+           'pl[::-1]',
+           'pl[10:]',
+           'len(pl[1:3])',
+           'pl[1:3][0]']],
+         ['Playlist(\'N (slice)\', [\'b\', \'c\'])',
+          'Playlist(\'N (slice)\', [\'d\', \'c\', \'b\', \'a\'])',
+          'Playlist(\'N (slice)\', [])',
+          '2',
+          '\'b\'']],
+        [[['pl = Playlist("Q", ["Ender\'s Game", "Dune"])',
+           'pl',
+           '[s.upper() for s in pl]',
+           '[pl[0], pl[-1]]']],
+         ['Playlist(\'Q\', ["Ender\'s Game", \'Dune\'])',
+          '["ENDER\'S GAME", \'DUNE\']',
+          '["Ender\'s Game", \'Dune\']']],
+        [[['pl = Playlist("Big", [f"song{i}" for i in range(100000)])',
+           'len(pl)',
+           '"SONG99999" in pl',
+           '"song100000" in pl',
+           'pl[-1]',
+           'sum(1 for _ in pl)',
+           'pl[100000]',
+           'all(("song%d" % i) in pl for i in range(0, 100000, 7))']],
+         ['100000',
+          'True',
+          'False',
+          '\'song99999\'',
+          '100000',
+          '!IndexError',
+          'True']],
+      ] },
       solution: {
         approach: R`<p>Composition plus five dunders. <code>__getitem__</code> delegates to the inner list and re-wraps slices. <code>__contains__</code> uses a pre-computed casefolded set → O(1) average membership. <code>__iter__</code> delegates to the list iterator. <code>__len__</code> gives both <code>len()</code> and truthiness.</p>`,
         code: { lang: 'python', run: true, code: R`
-          class Playlist:
-              def __init__(self, name, songs):
-                  self.name = name
-                  self._songs = list(songs)
-                  self._keys = {s.casefold() for s in self._songs}   # for O(1) "in"
+class Playlist:
+    def __init__(self, name, songs):
+        self.name = name
+        self._songs = list(songs)
+        self._keys = {s.casefold() for s in self._songs}   # for O(1) "in"
 
-              def __repr__(self):
-                  return f"Playlist({self.name!r}, {self._songs!r})"
+    def __repr__(self):
+        return f"Playlist({self.name!r}, {self._songs!r})"
 
-              def __len__(self):
-                  return len(self._songs)          # also powers bool(pl)
+    def __len__(self):
+        return len(self._songs)          # also powers bool(pl)
 
-              def __getitem__(self, index):
-                  if isinstance(index, slice):
-                      return Playlist(f"{self.name} (slice)", self._songs[index])
-                  return self._songs[index]        # ints, negatives, IndexError: all from list
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return Playlist(f"{self.name} (slice)", self._songs[index])
+        return self._songs[index]        # ints, negatives, IndexError: all from list
 
-              def __iter__(self):
-                  return iter(self._songs)         # fast path; no __getitem__ fallback
+    def __iter__(self):
+        return iter(self._songs)         # fast path; no __getitem__ fallback
 
-              def __contains__(self, title):
-                  return isinstance(title, str) and title.casefold() in self._keys
+    def __contains__(self, title):
+        return isinstance(title, str) and title.casefold() in self._keys
 
-          pl = Playlist("Gym", ["Eye of the Tiger", "Lose Yourself", "Stronger"])
-          print(len(pl), pl[-1])
-          print(pl[0:2])
-          print("STRONGER" in pl, 42 in pl)
-          print(bool(Playlist("Empty", [])))
-          print([s.upper() for s in pl][:1])
-        ` },
+pl = Playlist("Gym", ["Eye of the Tiger", "Lose Yourself", "Stronger"])
+print(len(pl), pl[-1])
+print(pl[0:2])
+print("STRONGER" in pl, 42 in pl)
+print(bool(Playlist("Empty", [])))
+print([s.upper() for s in pl][:1])
+` },
         dry: { head: ['expression', 'dunder called', 'argument', 'result'], rows: [
           ['len(pl)', '__len__', '—', '3'],
           ['pl[-1]', '__getitem__', '-1', "'Stronger'"],
@@ -603,53 +688,106 @@
         R`<p>Hint 2: <code>__eq__</code> and <code>__lt__</code> start with <code>if not isinstance(other, Tag): return NotImplemented</code>. Decorate the class with <code>@functools.total_ordering</code> so you only write <code>__lt__</code>.</p>`,
         R`<p>Hint 3: Make it immutable: store the fields in <code>__slots__</code> and expose <code>name</code> via a read-only property (or block <code>__setattr__</code>). Recipe: <code>__init__</code> (store name + key) → <code>__repr__</code> → <code>__eq__</code> → <code>__hash__</code> → <code>__lt__</code>.</p>`
       ],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['tags = [Tag("python"), Tag("Go"), Tag("PYTHON"), Tag("rust"), Tag("go")]',
+           'len(set(tags))',
+           'sorted(set(tags))']],
+         ['3',
+          '[Tag(\'Go\'), Tag(\'python\'), Tag(\'rust\')]']],
+        [[['Tag("x") == "x"',
+           '"x" == Tag("x")',
+           'Tag("x") != "x"',
+           'Tag("x") < "x"',
+           'Tag("x") > 3']],
+         ['False',
+          'False',
+          'True',
+          '!TypeError',
+          '!TypeError']],
+        [[['d = {Tag("Python"): 1}',
+           'd[Tag("PYTHON")]',
+           'Tag("python") in d',
+           'Tag("java") in d',
+           'hash(Tag("A")) == hash(Tag("a"))']],
+         ['1',
+          'True',
+          'False',
+          'True']],
+        [[['{Tag("Straße"): 1}[Tag("STRASSE")]',
+           'Tag("Straße") == Tag("strasse")',
+           'Tag("Straße")']],
+         ['1',
+          'True',
+          'Tag(\'Straße\')']],
+        [[['sorted([Tag("banana"), Tag("Apple"), Tag("cherry"), Tag("apple")])',
+           'Tag("a") <= Tag("A")',
+           'Tag("a") < Tag("A")',
+           'max(Tag("b"), Tag("Z"))']],
+         ['[Tag(\'Apple\'), Tag(\'apple\'), Tag(\'banana\'), Tag(\'cherry\')]',
+          'True',
+          'False',
+          'Tag(\'Z\')']],
+        [[['t = Tag("Go")',
+           't.name',
+           't.name = "x"',
+           't.other = 1',
+           't.name',
+           't']],
+         ['\'Go\'',
+          '!AttributeError',
+          '!AttributeError',
+          '\'Go\'',
+          'Tag(\'Go\')']],
+        [[['len(set(Tag(str(i % 1000) + ("A" if i % 2 else "a")) for i in range(100000)))']],
+         ['1000']],
+      ] },
       solution: {
         approach: R`<p>One normalised key (<code>casefold()</code>) drives <code>__eq__</code>, <code>__hash__</code> and <code>__lt__</code>, so the hash contract holds by construction. Returning <code>NotImplemented</code> gives the right behaviour for foreign types for free: <code>==</code> falls back to identity (False), <code>&lt;</code> raises <code>TypeError</code>. <code>__slots__</code> + a read-only property keep it immutable so the hash never changes.</p>`,
         code: { lang: 'python', run: true, code: R`
-          from functools import total_ordering
+from functools import total_ordering
 
-          @total_ordering
-          class Tag:
-              __slots__ = ("_name", "_key")
+@total_ordering
+class Tag:
+    __slots__ = ("_name", "_key")
 
-              def __init__(self, name):
-                  object.__setattr__(self, "_name", name)
-                  object.__setattr__(self, "_key", name.casefold())   # one normalised key
+    def __init__(self, name):
+        object.__setattr__(self, "_name", name)
+        object.__setattr__(self, "_key", name.casefold())   # one normalised key
 
-              def __setattr__(self, attr, value):
-                  raise AttributeError("Tag is immutable")
+    def __setattr__(self, attr, value):
+        raise AttributeError("Tag is immutable")
 
-              @property
-              def name(self):
-                  return self._name
+    @property
+    def name(self):
+        return self._name
 
-              def __repr__(self):
-                  return f"Tag({self._name!r})"
+    def __repr__(self):
+        return f"Tag({self._name!r})"
 
-              def __eq__(self, other):
-                  if not isinstance(other, Tag):
-                      return NotImplemented
-                  return self._key == other._key
+    def __eq__(self, other):
+        if not isinstance(other, Tag):
+            return NotImplemented
+        return self._key == other._key
 
-              def __hash__(self):
-                  return hash(self._key)              # same data as __eq__
+    def __hash__(self):
+        return hash(self._key)              # same data as __eq__
 
-              def __lt__(self, other):
-                  if not isinstance(other, Tag):
-                      return NotImplemented
-                  return self._key < other._key
+    def __lt__(self, other):
+        if not isinstance(other, Tag):
+            return NotImplemented
+        return self._key < other._key
 
-          tags = [Tag("python"), Tag("Go"), Tag("PYTHON"), Tag("rust"), Tag("go")]
-          uniq = set(tags)
-          print(len(uniq), sorted(uniq, key=lambda t: t._key) == sorted(uniq))
-          print(sorted(uniq))
-          print({Tag("Straße"): 1}[Tag("STRASSE")])   # casefold: ß -> ss
-          print(Tag("x") == "x")
-          try:
-              Tag("x") < "x"
-          except TypeError as e:
-              print("TypeError:", e)
-        ` },
+tags = [Tag("python"), Tag("Go"), Tag("PYTHON"), Tag("rust"), Tag("go")]
+uniq = set(tags)
+print(len(uniq), sorted(uniq, key=lambda t: t._key) == sorted(uniq))
+print(sorted(uniq))
+print({Tag("Straße"): 1}[Tag("STRASSE")])   # casefold: ß -> ss
+print(Tag("x") == "x")
+try:
+    Tag("x") < "x"
+except TypeError as e:
+    print("TypeError:", e)
+` },
         dry: { head: ['operation', 'method(s) run', 'keys compared', 'result'], rows: [
           ['Tag("python") == Tag("PYTHON")', '__eq__', "'python' == 'python'", 'True'],
           ['set(tags)', '__hash__ then __eq__ on equal hashes', "hash('go') for Go and go", '3 tags'],
@@ -1079,65 +1217,121 @@
         R`<p>Hint 2: <code>__add__</code>: <code>if not isinstance(other, Money): return NotImplemented</code>; then check currencies (<code>ValueError</code> is fine here: types are right, values are wrong). <code>__radd__</code>: accept the int 0 for <code>sum()</code>. <code>__mul__</code>: accept <code>int</code>/<code>Decimal</code> but reject <code>bool</code> and <code>Money</code>; <code>__rmul__ = __mul__</code>.</p>`,
         R`<p>Hint 3: Hash and equality on <code>(amount, currency)</code>. Edge cases: <code>Money("1.0")</code> equals <code>Money("1.00")</code> after quantize; <code>-m</code> via <code>__neg__</code>; <code>True * m</code> should be a TypeError. Recipe: init → repr → eq/hash → add/radd → mul/rmul → neg.</p>`
       ],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['sum([Money("10.10", "USD"), Money("0.20", "USD")])',
+           'sum([Money("5", "EUR")])',
+           'sum([])']],
+         ['Money(\'10.30\', \'USD\')',
+          'Money(\'5.00\', \'EUR\')',
+          '0']],
+        [[['from decimal import Decimal',
+           '3 * Money("1.50", "EUR")',
+           'Money("1.50", "EUR") * 3',
+           'Money("1.50", "EUR") * Decimal("0.10")',
+           'Money("2.50", "USD") * 0']],
+         ['Money(\'4.50\', \'EUR\')',
+          'Money(\'4.50\', \'EUR\')',
+          'Money(\'0.15\', \'EUR\')',
+          'Money(\'0.00\', \'USD\')']],
+        [[['Money(1, "USD") + Money(1, "EUR")',
+           'Money(1, "USD") + 5',
+           'Money(1, "USD") * Money(2, "USD")',
+           'True * Money(1, "USD")',
+           'Money(1, "USD") * 1.5',
+           'sum([Money(1, "USD"), 5])']],
+         ['!ValueError',
+          '!TypeError',
+          '!TypeError',
+          '!TypeError',
+          '!TypeError',
+          '!TypeError']],
+        [[['-Money(2, "USD")',
+           'Money("1.0", "USD") == Money("1.00", "USD")',
+           'len({Money(1, "USD"), Money("1.00", "USD")})',
+           'Money(1, "USD") == Money(1, "EUR")',
+           'Money(1, "USD") == 1']],
+         ['Money(\'-2.00\', \'USD\')',
+          'True',
+          '1',
+          'False',
+          'False']],
+        [[['m = Money(1, "USD")',
+           'm.amount = 5',
+           'm.currency = "EUR"',
+           'm']],
+         ['!AttributeError',
+          '!AttributeError',
+          'Money(\'1.00\', \'USD\')']],
+        [[['Money("0.10", "USD") + Money("0.20", "USD") == Money("0.30", "USD")',
+           'sum(Money("0.01", "USD") for _ in range(100000))',
+           'Money(10**12, "USD")',
+           'Money(10**12, "USD") * 3',
+           'Money("12.5", "USD")']],
+         ['True',
+          'Money(\'1000.00\', \'USD\')',
+          'Money(\'1000000000000.00\', \'USD\')',
+          'Money(\'3000000000000.00\', \'USD\')',
+          'Money(\'12.50\', \'USD\')']],
+      ] },
       solution: {
         approach: R`<p>An immutable value object. All operators return new <code>Money</code>; foreign types get <code>NotImplemented</code> so Python produces the standard <code>TypeError</code> and other types can still interoperate; same-type-but-wrong-currency raises <code>ValueError</code> (a domain error). <code>__radd__</code> handles the <code>0</code> that <code>sum()</code> starts with.</p>`,
         code: { lang: 'python', run: true, code: R`
-          from decimal import Decimal
+from decimal import Decimal
 
-          CENT = Decimal("0.01")
+CENT = Decimal("0.01")
 
-          class Money:
-              __slots__ = ("amount", "currency")
+class Money:
+    __slots__ = ("amount", "currency")
 
-              def __init__(self, amount, currency):
-                  object.__setattr__(self, "amount", Decimal(str(amount)).quantize(CENT))
-                  object.__setattr__(self, "currency", currency)
+    def __init__(self, amount, currency):
+        object.__setattr__(self, "amount", Decimal(str(amount)).quantize(CENT))
+        object.__setattr__(self, "currency", currency)
 
-              def __setattr__(self, name, value):
-                  raise AttributeError("Money is immutable")
+    def __setattr__(self, name, value):
+        raise AttributeError("Money is immutable")
 
-              def __repr__(self):
-                  return f"Money('{self.amount}', '{self.currency}')"
+    def __repr__(self):
+        return f"Money('{self.amount}', '{self.currency}')"
 
-              def __eq__(self, other):
-                  if not isinstance(other, Money):
-                      return NotImplemented
-                  return (self.amount, self.currency) == (other.amount, other.currency)
+    def __eq__(self, other):
+        if not isinstance(other, Money):
+            return NotImplemented
+        return (self.amount, self.currency) == (other.amount, other.currency)
 
-              def __hash__(self):
-                  return hash((self.amount, self.currency))
+    def __hash__(self):
+        return hash((self.amount, self.currency))
 
-              def __add__(self, other):
-                  if not isinstance(other, Money):
-                      return NotImplemented                 # Python will raise TypeError
-                  if other.currency != self.currency:
-                      raise ValueError(f"cannot add {self.currency} and {other.currency}")
-                  return Money(self.amount + other.amount, self.currency)
+    def __add__(self, other):
+        if not isinstance(other, Money):
+            return NotImplemented                 # Python will raise TypeError
+        if other.currency != self.currency:
+            raise ValueError(f"cannot add {self.currency} and {other.currency}")
+        return Money(self.amount + other.amount, self.currency)
 
-              def __radd__(self, other):
-                  if other == 0 and not isinstance(other, bool):
-                      return self                           # sum() starts with 0
-                  return NotImplemented
+    def __radd__(self, other):
+        if other == 0 and not isinstance(other, bool):
+            return self                           # sum() starts with 0
+        return NotImplemented
 
-              def __mul__(self, k):
-                  if isinstance(k, bool) or not isinstance(k, (int, Decimal)):
-                      return NotImplemented
-                  return Money(self.amount * k, self.currency)
+    def __mul__(self, k):
+        if isinstance(k, bool) or not isinstance(k, (int, Decimal)):
+            return NotImplemented
+        return Money(self.amount * k, self.currency)
 
-              __rmul__ = __mul__
+    __rmul__ = __mul__
 
-              def __neg__(self):
-                  return Money(-self.amount, self.currency)
+    def __neg__(self):
+        return Money(-self.amount, self.currency)
 
-          print(sum([Money("10.10", "USD"), Money("0.20", "USD")]))
-          print(3 * Money("1.50", "EUR"), -Money(2, "USD"))
-          print(Money("1.0", "USD") == Money("1.00", "USD"), len({Money(1, "USD"), Money("1.00", "USD")}))
-          for expr in ("Money(1, 'USD') + Money(1, 'EUR')", "Money(1, 'USD') + 5", "Money(1, 'USD') * Money(2, 'USD')", "True * Money(1, 'USD')"):
-              try:
-                  eval(expr)
-              except (TypeError, ValueError) as e:
-                  print(type(e).__name__ + ":", e)
-        ` },
+print(sum([Money("10.10", "USD"), Money("0.20", "USD")]))
+print(3 * Money("1.50", "EUR"), -Money(2, "USD"))
+print(Money("1.0", "USD") == Money("1.00", "USD"), len({Money(1, "USD"), Money("1.00", "USD")}))
+for expr in ("Money(1, 'USD') + Money(1, 'EUR')", "Money(1, 'USD') + 5", "Money(1, 'USD') * Money(2, 'USD')", "True * Money(1, 'USD')"):
+    try:
+        eval(expr)
+    except (TypeError, ValueError) as e:
+        print(type(e).__name__ + ":", e)
+` },
         dry: { head: ['expression', 'call sequence', 'result'], rows: [
           ['0 + Money(10.10)', 'int.__add__ → NotImplemented; Money.__radd__(0) → self', "Money('10.10', 'USD')"],
           ['Money(10.10) + Money(0.20)', 'Money.__add__ → same currency', "Money('10.30', 'USD')"],
@@ -1482,60 +1676,103 @@
         R`<p>Hint 2: merge loop: drop empty lists; scan heads left to right; pick the first head that is not in <code>s[1:]</code> for any list <code>s</code>; append it and pop it from the front of every list whose head it is. If no head qualifies → <code>TypeError</code>.</p>`,
         R`<p>Hint 3: Do not forget the final list of direct bases (it enforces local precedence order). To verify, build real classes in definition order: <code>cls = type(name, tuple(real[b] for b in bs) or (object,), {})</code> and compare with <code>[k.__name__ for k in cls.__mro__]</code>.</p>`
       ],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['bases = {"A": [], "B": ["A"], "C": ["A"], "D": ["B", "C"]}',
+           'c3_mro("D", bases)',
+           'real_mro("D", bases) == c3_mro("D", bases)']],
+         ['[\'D\', \'B\', \'C\', \'A\', \'object\']',
+          'True']],
+        [[['bases = {"A": [], "B": [], "X": ["A", "B"], "Y": ["B", "A"], "Z": ["X", "Y"]}',
+           'c3_mro("Z", bases)',
+           'c3_mro("X", bases)']],
+         ['!TypeError',
+          '[\'X\', \'A\', \'B\', \'object\']']],
+        [[['bases = {"A": [], "B": [], "C": [], "D": [], "E": [], "K1": ["A", "B", "C"], "K2": ["D", "B", "E"], "K3": ["D", "A"], "Z": ["K1", "K2", "K3"]}',
+           'c3_mro("Z", bases)',
+           'c3_mro("Z", bases) == real_mro("Z", bases)']],
+         ['[\'Z\', \'K1\', \'K2\', \'K3\', \'D\', \'A\', \'B\', \'C\', \'E\', \'object\']',
+          'True']],
+        [[['c3_mro("A", {"A": []})',
+           'c3_mro("A", {})',
+           'c3_mro("object", {})']],
+         ['[\'A\', \'object\']',
+          '[\'A\', \'object\']',
+          '[\'object\']']],
+        [[['bases = {"A": [], "B": ["A"], "Z": ["A", "B"]}',
+           'c3_mro("Z", bases)',
+           'c3_mro("B", bases)']],
+         ['!TypeError',
+          '[\'B\', \'A\', \'object\']']],
+        [[['bases = {"Base": [], "L": ["Base"], "R": ["Base"], "M": ["L", "R"], "N": ["R", "L"]}',
+           'c3_mro("M", bases)',
+           'c3_mro("N", bases)',
+           'c3_mro("L", bases)']],
+         ['[\'M\', \'L\', \'R\', \'Base\', \'object\']',
+          '[\'N\', \'R\', \'L\', \'Base\', \'object\']',
+          '[\'L\', \'Base\', \'object\']']],
+        [[['bases = {"C0": []}',
+           'bases.update({"C%d" % i: ["C%d" % (i - 1)] for i in range(1, 200)})',
+           'c3_mro("C199", bases)[:3]',
+           'len(c3_mro("C199", bases))',
+           'c3_mro("C199", bases) == ["C%d" % i for i in range(199, -1, -1)] + ["object"]']],
+         ['[\'C199\', \'C198\', \'C197\']',
+          '201',
+          'True']],
+      ] },
       solution: {
         approach: R`<p>Direct implementation of C3 with memoisation. Each merge step scans at most k heads and checks tails, so it is polynomial and fast for real hierarchies. We then cross-check against CPython by constructing the same hierarchy dynamically.</p>`,
         code: { lang: 'python', run: true, code: R`
-          def c3_mro(cls, bases):
-              memo = {"object": ["object"]}
+def c3_mro(cls, bases):
+    memo = {"object": ["object"]}
 
-              def lin(c):
-                  if c in memo:
-                      return memo[c]
-                  direct = bases.get(c) or ["object"]
-                  seqs = [list(lin(b)) for b in direct] + [list(direct)]
-                  out = [c]
-                  while True:
-                      seqs = [s for s in seqs if s]              # drop exhausted lists
-                      if not seqs:
-                          memo[c] = out
-                          return out
-                      for s in seqs:                             # first good head wins
-                          head = s[0]
-                          if not any(head in t[1:] for t in seqs):
-                              break
-                      else:
-                          raise TypeError(f"Cannot create a consistent MRO for {c}")
-                      out.append(head)
-                      for t in seqs:                             # remove it from the fronts
-                          if t[0] == head:
-                              del t[0]
+    def lin(c):
+        if c in memo:
+            return memo[c]
+        direct = bases.get(c) or ["object"]
+        seqs = [list(lin(b)) for b in direct] + [list(direct)]
+        out = [c]
+        while True:
+            seqs = [s for s in seqs if s]              # drop exhausted lists
+            if not seqs:
+                memo[c] = out
+                return out
+            for s in seqs:                             # first good head wins
+                head = s[0]
+                if not any(head in t[1:] for t in seqs):
+                    break
+            else:
+                raise TypeError(f"Cannot create a consistent MRO for {c}")
+            out.append(head)
+            for t in seqs:                             # remove it from the fronts
+                if t[0] == head:
+                    del t[0]
 
-              return lin(cls)
+    return lin(cls)
 
-          def real_mro(cls, bases):
-              """Build the hierarchy with type() and ask CPython."""
-              real = {}
-              pending = list(bases)
-              while pending:                                     # define bases before children
-                  for name in pending:
-                      if all(b in real for b in bases[name]):
-                          real[name] = type(name, tuple(real[b] for b in bases[name]) or (object,), {})
-                          pending.remove(name)
-                          break
-              return [k.__name__ for k in real[cls].__mro__]
+def real_mro(cls, bases):
+    """Build the hierarchy with type() and ask CPython."""
+    real = {}
+    pending = list(bases)
+    while pending:                                     # define bases before children
+        for name in pending:
+            if all(b in real for b in bases[name]):
+                real[name] = type(name, tuple(real[b] for b in bases[name]) or (object,), {})
+                pending.remove(name)
+                break
+    return [k.__name__ for k in real[cls].__mro__]
 
-          diamond = {"A": [], "B": ["A"], "C": ["A"], "D": ["B", "C"]}
-          print(c3_mro("D", diamond), c3_mro("D", diamond) == real_mro("D", diamond))
+diamond = {"A": [], "B": ["A"], "C": ["A"], "D": ["B", "C"]}
+print(c3_mro("D", diamond), c3_mro("D", diamond) == real_mro("D", diamond))
 
-          wiki = {"A": [], "B": [], "C": [], "D": [], "E": [],
-                  "K1": ["A", "B", "C"], "K2": ["D", "B", "E"], "K3": ["D", "A"], "Z": ["K1", "K2", "K3"]}
-          print(" ".join(c3_mro("Z", wiki)), c3_mro("Z", wiki) == real_mro("Z", wiki))
+wiki = {"A": [], "B": [], "C": [], "D": [], "E": [],
+        "K1": ["A", "B", "C"], "K2": ["D", "B", "E"], "K3": ["D", "A"], "Z": ["K1", "K2", "K3"]}
+print(" ".join(c3_mro("Z", wiki)), c3_mro("Z", wiki) == real_mro("Z", wiki))
 
-          try:
-              c3_mro("Z", {"A": [], "B": [], "X": ["A", "B"], "Y": ["B", "A"], "Z": ["X", "Y"]})
-          except TypeError as e:
-              print("TypeError:", e)
-        ` },
+try:
+    c3_mro("Z", {"A": [], "B": [], "X": ["A", "B"], "Y": ["B", "A"], "Z": ["X", "Y"]})
+except TypeError as e:
+    print("TypeError:", e)
+` },
         dry: { head: ['step', 'lists (heads first)', 'candidate', 'decision', 'L[D]'], rows: [
           ['0', '[B A obj] [C A obj] [B C]', '—', 'start', 'D'],
           ['1', '[B A obj] [C A obj] [B C]', 'B', 'in no tail → take', 'D B'],
@@ -2118,9 +2355,9 @@
     problems: [{
       title: 'Product catalog: validated, sortable, hashable records',
       level: 'Medium', tags: ['dataclass', 'order', 'frozen', '__post_init__'], companies: ['Shopify', 'Amazon', 'Flipkart', 'Instacart'],
-      statement: R`<p>Model a <code>Product</code> with <code>name: str</code>, <code>price: Decimal</code>, <code>stock: int = 0</code> and <code>tags: tuple[str, ...] = ()</code> using a dataclass. Requirements: (1) <code>price &lt; 0</code> or <code>stock &lt; 0</code> raises <code>ValueError</code>; names are stripped; tags are normalised to a sorted tuple of lower-case strings (accept any iterable). (2) Products are <b>immutable and hashable</b> (usable in sets/dict keys). (3) <code>sorted(products)</code> orders by <b>price ascending, then name</b>; <code>stock</code> and <code>tags</code> do not affect equality or ordering. (4) A <code>restock(n)</code> method returns a <b>new</b> product with more stock.</p>`,
+      statement: R`<p>Model a <code>Product</code> with <code>name: str</code>, <code>price: Decimal</code>, <code>stock: int = 0</code> and <code>tags: tuple[str, ...] = ()</code> using a dataclass. Declare the fields in sort order (<code>price</code>, <code>name</code>, <code>stock</code>, <code>tags</code>) so <code>order=True</code> sorts by them, and add a classmethod <code>Product.of(name, price, stock=0, tags=())</code> that takes the arguments name-first. Requirements: (1) <code>price &lt; 0</code> or <code>stock &lt; 0</code> raises <code>ValueError</code>; names are stripped; tags are normalised to a sorted tuple of lower-case strings (accept any iterable). (2) Products are <b>immutable and hashable</b> (usable in sets/dict keys). (3) <code>sorted(products)</code> orders by <b>price ascending, then name</b>; <code>stock</code> and <code>tags</code> do not affect equality or ordering. (4) A <code>restock(n)</code> method returns a <b>new</b> product with more stock.</p>`,
       constraints: R`Up to 10<sup>5</sup> products; Decimal prices with 2 decimals.`,
-      example: R`<p><code>Product(" Mug ", Decimal("9.50"), 3, ["Kitchen", "gift"])</code> → ${H.c('g', "Product(name='Mug', price=Decimal('9.50'), stock=3, tags=('gift', 'kitchen'))")}<br><code>sorted([pen 1.20, mug 9.50, cup 1.20])</code> → ${H.c('b', 'cup, pen, mug')} (tie on price → by name)<br><code>Product("Mug", Decimal("9.50"), 99) == Product("Mug", Decimal("9.50"), 0)</code> → ${H.c('g', 'True')} (stock not compared)</p>`,
+      example: R`<p><code>Product.of(" Mug ", "9.50", 3, ["Kitchen", "gift"])</code> → ${H.c('g', "Product(price=Decimal('9.50'), name='Mug', stock=3, tags=('gift', 'kitchen'))")}<br><code>sorted([pen 1.20, mug 9.50, cup 1.20])</code> → ${H.c('b', 'cup, pen, mug')} (tie on price → by name)<br><code>Product.of("Mug", "9.50", 99) == Product.of("Mug", "9.50", 0)</code> → ${H.c('g', 'True')} (stock not compared)</p>`,
       brute: {
         why: R`<p>Hand-write <code>__init__</code>, <code>__repr__</code>, <code>__eq__</code>, <code>__hash__</code>, <code>__lt__</code> and friends: ~50 lines where every new field must be added in five places. It is easy to make <code>__eq__</code> and <code>__hash__</code> disagree (e.g. hash includes stock but eq does not), and the class stays mutable, so hashed products can be corrupted.</p>`,
         code: R`
@@ -2148,45 +2385,100 @@
         R`<p>Hint 2: Frozen objects cannot assign in <code>__post_init__</code> normally: use <code>object.__setattr__(self, "name", self.name.strip())</code> for normalisation. Validate before normalising.</p>`,
         R`<p>Hint 3: <code>restock</code> returns <code>dataclasses.replace(self, stock=self.stock + n)</code> (which re-runs <code>__post_init__</code>, so validation still applies). Tags must be a tuple (hashable), not a list. Since <code>price</code> comes first, make it a required field and give <code>name</code> no default either.</p>`
       ],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['mug = Product.of(" Mug ", Decimal("9.50"), 3, ["Kitchen", "gift"])',
+           'mug']],
+         ['Product(price=Decimal(\'9.50\'), name=\'Mug\', stock=3, tags=(\'gift\', \'kitchen\'))']],
+        [[['ps = [Product.of("pen", Decimal("1.20")), Product.of("mug", Decimal("9.50")), Product.of("cup", Decimal("1.20"))]',
+           '[p.name for p in sorted(ps)]',
+           'max(ps).name',
+           'Product.of("a", Decimal("1")) < Product.of("b", Decimal("1"))']],
+         ['[\'cup\', \'pen\', \'mug\']',
+          '\'mug\'',
+          'True']],
+        [[['Product.of("Mug", Decimal("9.50"), 99) == Product.of("Mug", Decimal("9.50"), 0, ["x"])',
+           'len({Product.of("Mug", Decimal("9.50"), 1), Product.of("Mug", Decimal("9.50"), 2)})',
+           'hash(Product.of("M", Decimal("1"), 1)) == hash(Product.of("M", Decimal("1"), 2))',
+           'Product.of("M", Decimal("1")) == Product.of("M", Decimal("2"))']],
+         ['True',
+          '1',
+          'True',
+          'False']],
+        [[['Product.of("bad", Decimal("-1"))',
+           'Product.of("bad", Decimal("1"), -1)',
+           'Product.of("free", Decimal("0"), 0)']],
+         ['!ValueError',
+          '!ValueError',
+          'Product(price=Decimal(\'0.00\'), name=\'free\', stock=0, tags=())']],
+        [[['p = Product.of("x", Decimal("2"), 1)',
+           'q = p.restock(4)',
+           '(p.stock, q.stock)',
+           'p.stock = 9',
+           'q is p',
+           'q == p']],
+         ['(1, 5)',
+          '!FrozenInstanceError',
+          'False',
+          'True']],
+        [[['Product.of("t", Decimal("1"), 0, {"B", "a", "b"}).tags',
+           'Product.of("t", Decimal("1"), 0, iter(["Z", "y"])).tags',
+           'Product.of("t", 1).price',
+           'Product.of("t", "9.5").price',
+           'Product.of("  padded  ", 1).name']],
+         ['(\'a\', \'b\')',
+          '(\'y\', \'z\')',
+          'Decimal(\'1.00\')',
+          'Decimal(\'9.50\')',
+          '\'padded\'']],
+        [[['ps = [Product.of("n%d" % i, Decimal(i % 100)) for i in range(100000)]',
+           'sorted(ps)[0].name',
+           'sorted(ps)[-1].name',
+           'len(set(ps))',
+           'sorted(ps)[-1].price']],
+         ['\'n0\'',
+          '\'n99999\'',
+          '100000',
+          'Decimal(\'99.00\')']],
+      ] },
       solution: {
         approach: R`<p><code>@dataclass(frozen=True, order=True)</code> with fields declared as <code>price, name, stock, tags</code>; <code>stock</code>/<code>tags</code> use <code>compare=False</code>. <code>__post_init__</code> validates and normalises via <code>object.__setattr__</code>. Everything else (init, repr, eq, ordering, hash) is generated consistently from one field list. A small factory classmethod gives the friendlier <code>name</code>-first call signature.</p>`,
         code: { lang: 'python', run: true, code: R`
-          from dataclasses import dataclass, field, replace
-          from decimal import Decimal
+from dataclasses import dataclass, field, replace
+from decimal import Decimal
 
-          @dataclass(frozen=True, order=True)
-          class Product:
-              price: Decimal                                   # sort key 1
-              name: str                                        # sort key 2
-              stock: int = field(default=0, compare=False)
-              tags: tuple = field(default=(), compare=False)
+@dataclass(frozen=True, order=True)
+class Product:
+    price: Decimal                                   # sort key 1
+    name: str                                        # sort key 2
+    stock: int = field(default=0, compare=False)
+    tags: tuple = field(default=(), compare=False)
 
-              def __post_init__(self):
-                  price = Decimal(str(self.price))
-                  if price < 0 or self.stock < 0:
-                      raise ValueError("price and stock must be >= 0")
-                  object.__setattr__(self, "price", price.quantize(Decimal("0.01")))
-                  object.__setattr__(self, "name", self.name.strip())
-                  object.__setattr__(self, "tags", tuple(sorted({t.lower() for t in self.tags})))
+    def __post_init__(self):
+        price = Decimal(str(self.price))
+        if price < 0 or self.stock < 0:
+            raise ValueError("price and stock must be >= 0")
+        object.__setattr__(self, "price", price.quantize(Decimal("0.01")))
+        object.__setattr__(self, "name", self.name.strip())
+        object.__setattr__(self, "tags", tuple(sorted({t.lower() for t in self.tags})))
 
-              @classmethod
-              def of(cls, name, price, stock=0, tags=()):     # name-first convenience
-                  return cls(price, name, stock, tuple(tags))
+    @classmethod
+    def of(cls, name, price, stock=0, tags=()):     # name-first convenience
+        return cls(price, name, stock, tuple(tags))
 
-              def restock(self, n):
-                  return replace(self, stock=self.stock + n)   # new object; __post_init__ runs again
+    def restock(self, n):
+        return replace(self, stock=self.stock + n)   # new object; __post_init__ runs again
 
-          mug = Product.of(" Mug ", "9.50", 3, ["Kitchen", "gift"])
-          print(mug)
-          catalog = [Product.of("pen", "1.20"), mug, Product.of("cup", "1.20")]
-          print([p.name for p in sorted(catalog)])
-          print(mug == Product.of("Mug", "9.50", 99), len({mug, mug.restock(5)}))
-          print(mug.restock(2).stock, mug.stock)
-          try:
-              Product.of("bad", "-1")
-          except ValueError as e:
-              print("ValueError:", e)
-        ` },
+mug = Product.of(" Mug ", "9.50", 3, ["Kitchen", "gift"])
+print(mug)
+catalog = [Product.of("pen", "1.20"), mug, Product.of("cup", "1.20")]
+print([p.name for p in sorted(catalog)])
+print(mug == Product.of("Mug", "9.50", 99), len({mug, mug.restock(5)}))
+print(mug.restock(2).stock, mug.stock)
+try:
+    Product.of("bad", "-1")
+except ValueError as e:
+    print("ValueError:", e)
+` },
         dry: { head: ['call', 'what runs', 'result'], rows: [
           ['Product.of(" Mug ", "9.50", 3, [...])', 'generated __init__ → __post_init__ (validate, strip, sort tags)', "Product(price=Decimal('9.50'), name='Mug', stock=3, tags=('gift', 'kitchen'))"],
           ['sorted(catalog)', 'generated __lt__ on (price, name)', 'cup 1.20, pen 1.20, mug 9.50'],
@@ -2681,28 +2973,61 @@
       R`<p>Hint 2: Use the <code>!r</code> conversion inside the f-string so each field is shown with its own repr (correct quotes and escapes).</p>`,
       R`<p>Hint 3: Keep <code>__str__</code> for the friendly form, add <code>__repr__</code> as <code>f"{type(self).__name__}({self.title!r}, {self.author!r})"</code> so subclasses show their own name.</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['b = Book("Dune", "Frank Herbert")',
+         'str(b)',
+         'b',
+         '[b]']],
+       ['\'Dune by Frank Herbert\'',
+        'Book(\'Dune\', \'Frank Herbert\')',
+        '[Book(\'Dune\', \'Frank Herbert\')]']],
+      [[['Book("Ender\'s Game", "Orson Scott Card")',
+         '[Book("Ender\'s Game", "Orson Scott Card")]']],
+       ['Book("Ender\'s Game", \'Orson Scott Card\')',
+        '[Book("Ender\'s Game", \'Orson Scott Card\')]']],
+      [[['class EBook(Book): pass',
+         'EBook("T", "A")',
+         '[Book("a", "b"), EBook("c", "d")]',
+         'str(EBook("T", "A"))']],
+       ['EBook(\'T\', \'A\')',
+        '[Book(\'a\', \'b\'), EBook(\'c\', \'d\')]',
+        '\'T by A\'']],
+      [[['b = Book("Dune", "Frank Herbert")',
+         'f"{b!r} | {b}"']],
+       ['"Book(\'Dune\', \'Frank Herbert\') | Dune by Frank Herbert"']],
+      [[['eval(repr(Book("O\'Reilly", \'say "hi"\'))).title',
+         'eval(repr(Book("O\'Reilly", \'say "hi"\'))).author']],
+       ['"O\'Reilly"',
+        '\'say "hi"\'']],
+      [[['Book("", "")',
+         'Book("日本", "é")',
+         'repr(Book("", ""))']],
+       ['Book(\'\', \'\')',
+        'Book(\'日本\', \'é\')',
+        '"Book(\'\', \'\')"']],
+    ] },
     solution: {
       approach: R`<p>Add an unambiguous <code>__repr__</code> built with <code>!r</code>, and keep <code>__str__</code> for users. Using <code>type(self).__name__</code> makes subclasses print correctly without overriding.</p>`,
       code: { lang: 'python', run: true, code: R`
-        class Book:
-            def __init__(self, title, author):
-                self.title, self.author = title, author
+class Book:
+    def __init__(self, title, author):
+        self.title, self.author = title, author
 
-            def __repr__(self):
-                return f"{type(self).__name__}({self.title!r}, {self.author!r})"
+    def __repr__(self):
+        return f"{type(self).__name__}({self.title!r}, {self.author!r})"
 
-            def __str__(self):
-                return f"{self.title} by {self.author}"
+    def __str__(self):
+        return f"{self.title} by {self.author}"
 
-        class EBook(Book):
-            pass
+class EBook(Book):
+    pass
 
-        book = Book("Dune", "Frank Herbert")
-        print(book)
-        print(repr(book))
-        print([book, EBook("Ender's Game", "Orson Scott Card")])
-        print(f"{book!r} | {book}")
-      ` },
+book = Book("Dune", "Frank Herbert")
+print(book)
+print(repr(book))
+print([book, EBook("Ender's Game", "Orson Scott Card")])
+print(f"{book!r} | {book}")
+` },
       dry: { head: ['call', 'method used', 'output'], rows: [['print(book)', '__str__', 'Dune by Frank Herbert'], ['repr(book)', '__repr__', "Book('Dune', 'Frank Herbert')"], ['print([book])', 'list repr → item __repr__', "[Book('Dune', 'Frank Herbert')]"]] },
       complexity: R`<p>O(L) in the length of the fields for each string conversion.</p>`,
       followUps: ['What does <code>eval(repr(book))</code> need to work?', 'Implement <code>__format__</code> so <code>f"{book:short}"</code> prints only the title']
@@ -2733,58 +3058,121 @@
       R`<p>Hint 2: Store the value in <code>self._balance</code>; only <code>deposit</code>/<code>withdraw</code> modify it after validating.</p>`,
       R`<p>Hint 3: For <code>owner</code>, write a setter and assign <code>self.owner = owner</code> in <code>__init__</code> so construction is validated. Reject <code>bool</code> amounts too (<code>True</code> is an int!).</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['a = BankAccount("  Ada ", 100)',
+         'a.owner',
+         'a.withdraw(30)',
+         'a.balance',
+         'a.withdraw(500)',
+         'a.balance = 10**9',
+         'a.balance']],
+       ['\'Ada\'',
+        '70',
+        '!ValueError',
+        '!AttributeError',
+        '70']],
+      [[['BankAccount("x", -1)',
+         'BankAccount("   ")',
+         'BankAccount("")',
+         'BankAccount("x", 0).balance']],
+       ['!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '0']],
+      [[['a = BankAccount("x")',
+         'a.deposit(0)',
+         'a.deposit(-5)',
+         'a.deposit(10**12)',
+         'a.balance',
+         'a.deposit(1)',
+         'a.balance']],
+       ['!ValueError',
+        '!ValueError',
+        '1000000000000',
+        '1000000000001']],
+      [[['a = BankAccount("x", 50)',
+         'a.withdraw(50)',
+         'a.balance',
+         'a.withdraw(1)',
+         'a.withdraw(0)',
+         'a.balance']],
+       ['0',
+        '!ValueError',
+        '!ValueError',
+        '0']],
+      [[['a = BankAccount("x")',
+         'a.owner = "  Bob  "',
+         'a.owner',
+         'a.owner = "  "',
+         'a.owner']],
+       ['\'Bob\'',
+        '!ValueError',
+        '\'Bob\'']],
+      [[['a = BankAccount("x", 100)',
+         'a.withdraw(101)',
+         'a.balance',
+         'a.deposit(-1)',
+         'a.balance',
+         'for _ in range(10**5): a.deposit(10**7)',
+         'a.balance']],
+       ['!ValueError',
+        '100',
+        '!ValueError',
+        '100',
+        '1000000000100']],
+    ] },
     solution: {
       approach: R`<p>Two properties: <code>owner</code> (getter + validating setter) and <code>balance</code> (getter only). All state changes go through methods that enforce the invariants: balance ≥ 0, amounts positive ints.</p>`,
       code: { lang: 'python', run: true, code: R`
-        class BankAccount:
-            def __init__(self, owner, balance=0):
-                self.owner = owner                       # validated by the setter
-                if not isinstance(balance, int) or isinstance(balance, bool) or balance < 0:
-                    raise ValueError("initial balance must be a non-negative int")
-                self._balance = balance
+class BankAccount:
+    def __init__(self, owner, balance=0):
+        self.owner = owner                       # validated by the setter
+        if not isinstance(balance, int) or isinstance(balance, bool) or balance < 0:
+            raise ValueError("initial balance must be a non-negative int")
+        self._balance = balance
 
-            @property
-            def owner(self):
-                return self._owner
+    @property
+    def owner(self):
+        return self._owner
 
-            @owner.setter
-            def owner(self, name):
-                name = str(name).strip()
-                if not name:
-                    raise ValueError("owner name required")
-                self._owner = name
+    @owner.setter
+    def owner(self, name):
+        name = str(name).strip()
+        if not name:
+            raise ValueError("owner name required")
+        self._owner = name
 
-            @property
-            def balance(self):                           # no setter -> read-only
-                return self._balance
+    @property
+    def balance(self):                           # no setter -> read-only
+        return self._balance
 
-            @staticmethod
-            def _check(amount):
-                if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
-                    raise ValueError("amount must be a positive int")
+    @staticmethod
+    def _check(amount):
+        if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
+            raise ValueError("amount must be a positive int")
 
-            def deposit(self, amount):
-                self._check(amount)
-                self._balance += amount
+    def deposit(self, amount):
+        self._check(amount)
+        self._balance += amount
 
-            def withdraw(self, amount):
-                self._check(amount)
-                if amount > self._balance:
-                    raise ValueError("insufficient funds")
-                self._balance -= amount
+    def withdraw(self, amount):
+        self._check(amount)
+        if amount > self._balance:
+            raise ValueError("insufficient funds")
+        self._balance -= amount
 
-            def __repr__(self):
-                return f"BankAccount({self._owner!r}, {self._balance})"
+    def __repr__(self):
+        return f"BankAccount({self._owner!r}, {self._balance})"
 
-        a = BankAccount("  Ada ", 100)
-        a.withdraw(30)
-        print(a, a.balance)
-        for action in (lambda: a.withdraw(500), lambda: setattr(a, "balance", 10**9), lambda: BankAccount(" ")):
-            try:
-                action()
-            except (ValueError, AttributeError) as e:
-                print(type(e).__name__ + ":", e)
-      ` },
+a = BankAccount("  Ada ", 100)
+a.withdraw(30)
+print(a, a.balance)
+for action in (lambda: a.withdraw(500), lambda: setattr(a, "balance", 10**9), lambda: BankAccount(" ")):
+    try:
+        action()
+    except (ValueError, AttributeError) as e:
+        print(type(e).__name__ + ":", e)
+` },
       dry: { head: ['operation', 'path', 'result'], rows: [['BankAccount("  Ada ", 100)', 'owner setter strips → balance check', "BankAccount('Ada', 100)"], ['withdraw(30)', '_check → 30 ≤ 100', 'balance 70'], ['withdraw(500)', '500 &gt; 70', 'ValueError'], ['a.balance = 10**9', 'property without setter', 'AttributeError']] },
       complexity: R`<p>O(1) time and O(1) extra space per operation.</p>`,
       followUps: ['Add a transaction history that callers can read but not modify (return a tuple or a read-only view)', 'Make it thread-safe']
@@ -2828,29 +3216,76 @@ print(b.members)</pre>`,
       R`<p>Hint 2: <code>members: list[str] = field(default_factory=list)</code> creates a fresh list per instance.</p>`,
       R`<p>Hint 3: Increment the counter in <code>__post_init__</code> with <code>type(self).created += 1</code> (not <code>self.created += 1</code>, which would create an instance attribute).</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['a, b = Team("red"), Team("blue")',
+         'a.add("ann")',
+         'b.members',
+         'a.members',
+         'a.members is b.members']],
+       ['[]',
+        '[\'ann\']',
+        'False']],
+      [[['n0 = Team.created',
+         't = Team("x")',
+         'Team.created - n0',
+         't2 = Team("y")',
+         'Team.created - n0',
+         't2.created == Team.created']],
+       ['1',
+        '2',
+        'True']],
+      [[['Team("x")',
+         'import dataclasses',
+         '[f.name for f in dataclasses.fields(Team)]']],
+       ['Team(name=\'x\', members=[])',
+        '[\'name\', \'members\']']],
+      [[['n0 = Team.created',
+         'ts = [Team(str(i)) for i in range(10000)]',
+         'ts[0].add("z")',
+         'sum(len(t.members) for t in ts)',
+         'Team.created - n0',
+         'len({id(t.members) for t in ts})']],
+       ['1',
+        '10000',
+        '10000']],
+      [[['Team("r", ["a", "b"]).members',
+         'Team("r", ["a"]) == Team("r", ["a"])',
+         'Team("r") == Team("r", ["a"])',
+         'Team()']],
+       ['[\'a\', \'b\']',
+        'True',
+        'False',
+        '!TypeError']],
+      [[['isinstance(Team.created, int)',
+         '"members" in Team.__dataclass_fields__',
+         'Team.__dataclass_fields__["members"].default_factory is list']],
+       ['True',
+        'True',
+        'True']],
+    ] },
     solution: {
       approach: R`<p>A dataclass with a <code>default_factory</code> field for the list and a <code>ClassVar</code> counter updated in <code>__post_init__</code> through the class.</p>`,
       code: { lang: 'python', run: true, code: R`
-        from dataclasses import dataclass, field
-        from typing import ClassVar
+from dataclasses import dataclass, field
+from typing import ClassVar
 
-        @dataclass
-        class Team:
-            name: str
-            members: list[str] = field(default_factory=list)
-            created: ClassVar[int] = 0                  # shared, not a field
+@dataclass
+class Team:
+    name: str
+    members: list[str] = field(default_factory=list)
+    created: ClassVar[int] = 0                  # shared, not a field
 
-            def __post_init__(self):
-                type(self).created += 1                 # update the CLASS attribute
+    def __post_init__(self):
+        type(self).created += 1                 # update the CLASS attribute
 
-            def add(self, person):
-                self.members.append(person)
+    def add(self, person):
+        self.members.append(person)
 
-        a, b = Team("red"), Team("blue")
-        a.add("ann")
-        print(a, b)
-        print(Team.created, a.members is b.members)
-      ` },
+a, b = Team("red"), Team("blue")
+a.add("ann")
+print(a, b)
+print(Team.created, a.members is b.members)
+` },
       dry: { head: ['step', 'a.members', 'b.members', 'Team.created'], rows: [['Team("red")', '[] (new list)', '—', '1'], ['Team("blue")', '[]', '[] (another new list)', '2'], ['a.add("ann")', "['ann']", '[]', '2']] },
       complexity: R`<p>O(1) per operation; O(m) memory per team for m members.</p>`,
       followUps: ['What would <code>self.created += 1</code> do instead?', 'Why do dataclasses reject <code>members: list = []</code> but plain classes allow it?']
@@ -2882,27 +3317,54 @@ print(b.members)</pre>`,
       R`<p>Hint 2: <code>__eq__</code> compares the rounded tuple (return <code>NotImplemented</code> for other types); <code>__hash__</code> returns <code>hash(self._key)</code>.</p>`,
       R`<p>Hint 3: For first-seen order use <code>dict.fromkeys(places)</code> (dicts keep insertion order and dedupe by hash/eq). Make it immutable with <code>__slots__</code> and read-only properties, or a frozen dataclass.</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['unique_places([(12.97161, 77.59456), (12.971609, 77.594561), (13.0827, 80.2707)])']],
+       ['[Place(lat=12.9716, lon=77.5946), Place(lat=13.0827, lon=80.2707)]']],
+      [[['unique_places([])',
+         'len(unique_places([(1.0, 1.0)]))']],
+       ['[]',
+        '1']],
+      [[['unique_places([(1.0, 1.0), (2.0, 2.0), (1.00001, 1.0), (3.0, 3.0), (2.0, 2.00004)])']],
+       ['[Place(lat=1.0, lon=1.0), Place(lat=2.0, lon=2.0), Place(lat=3.0, lon=3.0)]']],
+      [[['unique_places([(-90.0, -180.0), (90.0, 180.0), (-90.00004, -180.00003), (0.0, 0.0), (-0.00001, 0.00001)])']],
+       ['[Place(lat=-90.0, lon=-180.0), Place(lat=90.0, lon=180.0), Place(lat=0.0, lon=0.0)]']],
+      [[['unique_places([(10.00004, 20.0), (10.00006, 20.0)])']],
+       ['[Place(lat=10.0, lon=20.0), Place(lat=10.0001, lon=20.0)]']],
+      [[['d = {Place(1.00001, 2.0): "a"}',
+         'd[Place(1.0, 2.00001)]',
+         'Place(1.0, 2.0) == Place(1.00004, 2.0)',
+         'Place(1.0, 2.0) == Place(1.0, 2.001)',
+         'Place(1.0, 2.0).lat = 3',
+         'len({Place(5.0, 5.0), Place(5.00001, 5.0)})']],
+       ['\'a\'',
+        'True',
+        'False',
+        '!FrozenInstanceError',
+        '1']],
+      [[['len(unique_places([(float(i % 1000), 0.0) for i in range(10**6)]))']],
+       ['1000']],
+    ] },
     solution: {
       approach: R`<p>Canonicalise the data in the constructor, then equality and hashing operate on the same canonical tuple. A frozen dataclass with a <code>__post_init__</code> does it in a few lines; <code>dict.fromkeys</code> keeps first-seen order.</p>`,
       code: { lang: 'python', run: true, code: R`
-        from dataclasses import dataclass
+from dataclasses import dataclass
 
-        @dataclass(frozen=True, slots=True)
-        class Place:
-            lat: float
-            lon: float
+@dataclass(frozen=True, slots=True)
+class Place:
+    lat: float
+    lon: float
 
-            def __post_init__(self):
-                object.__setattr__(self, "lat", round(self.lat, 4))   # canonical form
-                object.__setattr__(self, "lon", round(self.lon, 4))
+    def __post_init__(self):
+        object.__setattr__(self, "lat", round(self.lat, 4))   # canonical form
+        object.__setattr__(self, "lon", round(self.lon, 4))
 
-        def unique_places(readings):
-            return list(dict.fromkeys(Place(lat, lon) for lat, lon in readings))
+def unique_places(readings):
+    return list(dict.fromkeys(Place(lat, lon) for lat, lon in readings))
 
-        readings = [(12.97161, 77.59456), (12.971609, 77.594561), (13.0827, 80.2707)]
-        print(unique_places(readings))
-        print(hash(Place(1.00001, 2)) == hash(Place(1.0, 2.0)))
-      ` },
+readings = [(12.97161, 77.59456), (12.971609, 77.594561), (13.0827, 80.2707)]
+print(unique_places(readings))
+print(hash(Place(1.00001, 2)) == hash(Place(1.0, 2.0)))
+` },
       dry: { head: ['reading', 'canonical', 'already seen?', 'kept'], rows: [['(12.97161, 77.59456)', '(12.9716, 77.5946)', 'no', '1'], ['(12.971609, 77.594561)', '(12.9716, 77.5946)', '<span class="c-r">yes (hash + eq match)</span>', '1'], ['(13.0827, 80.2707)', '(13.0827, 80.2707)', 'no', '2']] },
       complexity: R`<p>O(n) average time, O(u) space for u unique places.</p>`,
       followUps: ['Rounding puts two points 1 mm apart into different cells when they straddle a boundary: how do geohashes or checking neighbour cells fix this?', 'Why is <code>-0.0</code> vs <code>0.0</code> not a problem for hashing here?']
@@ -2933,49 +3395,107 @@ print(b.members)</pre>`,
       R`<p>Hint 2: <code>__eq__</code>, <code>__lt__</code> and <code>__hash__</code> all use that key; return <code>NotImplemented</code> for non-Cards so <code>&lt;</code> raises <code>TypeError</code> automatically.</p>`,
       R`<p>Hint 3: Parse with <code>text[:-1]</code> and <code>text[-1]</code> (rank may be two characters). Validate and raise <code>ValueError</code> for unknown ranks/suits. Use <code>__slots__</code> for immutability.</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['sorted(map(Card, ["QS", "10H", "2C", "AD", "10C"]))']],
+       ['[Card(\'2C\'), Card(\'10C\'), Card(\'10H\'), Card(\'QS\'), Card(\'AD\')]']],
+      [[['Card("10H") >= Card("10C")',
+         'Card("QS") > Card("QH")',
+         'Card("2S") < Card("3C")',
+         'Card("9S") < Card("10C")',
+         'Card("KS") < Card("AC")',
+         'Card("JC") < Card("10S")']],
+       ['True',
+        'True',
+        'True',
+        'True',
+        'True',
+        'False']],
+      [[['len({Card("QS"), Card("qs")})',
+         'Card("qs")',
+         'Card("10h") == Card("10H")',
+         'Card("2C") != Card("2D")',
+         'Card("QS") in {Card("QS")}']],
+       ['1',
+        'Card(\'QS\')',
+        'True',
+        'True',
+        'True']],
+      [[['Card("QS") < "QS"',
+         'Card("QS") == "QS"',
+         'Card("1H")',
+         'Card("QX")',
+         'Card("")',
+         'Card("H")',
+         'Card("10")',
+         'Card("  QS")']],
+       ['!TypeError',
+        'False',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError']],
+      [[['deck = [Card(r + s) for r in "2 3 4 5 6 7 8 9 10 J Q K A".split() for s in "CDHS"]',
+         'len(deck)',
+         'len(set(deck))',
+         'sorted(reversed(deck)) == deck',
+         'max(deck)',
+         'min(deck)']],
+       ['52',
+        '52',
+        'True',
+        'Card(\'AS\')',
+        'Card(\'2C\')']],
+      [[['deck = [Card(r + s) for r in "2 3 4 5 6 7 8 9 10 J Q K A".split() for s in "CDHS"]',
+         'sorted(deck, reverse=True)[:3]',
+         'deck[4:8]']],
+       ['[Card(\'AS\'), Card(\'AH\'), Card(\'AD\')]',
+        '[Card(\'3C\'), Card(\'3D\'), Card(\'3H\'), Card(\'3S\')]']],
+    ] },
     solution: {
       approach: R`<p>One integer key tuple drives eq, ordering and hashing, so they are always consistent. <code>@total_ordering</code> fills in <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code>.</p>`,
       code: { lang: 'python', run: true, code: R`
-        from functools import total_ordering
+from functools import total_ordering
 
-        RANKS = "2 3 4 5 6 7 8 9 10 J Q K A".split()
-        SUITS = "CDHS"
+RANKS = "2 3 4 5 6 7 8 9 10 J Q K A".split()
+SUITS = "CDHS"
 
-        @total_ordering
-        class Card:
-            __slots__ = ("rank", "suit", "_key")
+@total_ordering
+class Card:
+    __slots__ = ("rank", "suit", "_key")
 
-            def __init__(self, text):
-                rank, suit = text[:-1].upper(), text[-1].upper()
-                if rank not in RANKS or suit not in SUITS:
-                    raise ValueError(f"bad card {text!r}")
-                self.rank, self.suit = rank, suit
-                self._key = (RANKS.index(rank), SUITS.index(suit))
+    def __init__(self, text):
+        rank, suit = text[:-1].upper(), text[-1:].upper()
+        if rank not in RANKS or suit not in SUITS:
+            raise ValueError(f"bad card {text!r}")
+        self.rank, self.suit = rank, suit
+        self._key = (RANKS.index(rank), SUITS.index(suit))
 
-            def __repr__(self):
-                return f"Card('{self.rank}{self.suit}')"
+    def __repr__(self):
+        return f"Card('{self.rank}{self.suit}')"
 
-            def __eq__(self, other):
-                if not isinstance(other, Card):
-                    return NotImplemented
-                return self._key == other._key
+    def __eq__(self, other):
+        if not isinstance(other, Card):
+            return NotImplemented
+        return self._key == other._key
 
-            def __lt__(self, other):
-                if not isinstance(other, Card):
-                    return NotImplemented
-                return self._key < other._key
+    def __lt__(self, other):
+        if not isinstance(other, Card):
+            return NotImplemented
+        return self._key < other._key
 
-            def __hash__(self):
-                return hash(self._key)
+    def __hash__(self):
+        return hash(self._key)
 
-        hand = [Card(c) for c in ["QS", "10H", "2C", "AD", "10C"]]
-        print(sorted(hand))
-        print(max(hand), Card("10H") >= Card("10C"), len({Card("QS"), Card("qs")}))
-        try:
-            Card("QS") < "QS"
-        except TypeError as e:
-            print("TypeError:", e)
-      ` },
+hand = [Card(c) for c in ["QS", "10H", "2C", "AD", "10C"]]
+print(sorted(hand))
+print(max(hand), Card("10H") >= Card("10C"), len({Card("QS"), Card("qs")}))
+try:
+    Card("QS") < "QS"
+except TypeError as e:
+    print("TypeError:", e)
+` },
       dry: { head: ['card', 'rank index', 'suit index', 'key'], rows: [['2C', '0', '0', '(0, 0)'], ['10C', '8', '0', '(8, 0)'], ['10H', '8', '2', '(8, 2)'], ['QS', '10', '3', '(10, 3)'], ['AD', '12', '1', '(12, 1) → max']] },
       complexity: R`<p>Parsing O(1) (13-element list); comparisons O(1); sorting a hand O(n log n).</p>`,
       followUps: ['Rank poker hands (pair, flush, straight): which comparison key would you build?', 'Why might a <code>key=</code> function be preferable to <code>__lt__</code> in some games (e.g. trump suits change per round)?']
@@ -3005,68 +3525,134 @@ print(b.members)</pre>`,
       R`<p>Hint 2: <code>__getitem__(self, key)</code>: unpack <code>i, j = key</code> and index <code>self._rows[i][j]</code> (tuples handle negatives and raise IndexError).</p>`,
       R`<p>Hint 3: <code>__matmul__</code>: check <code>self.shape[1] == other.shape[0]</code>; use <code>zip(*other._rows)</code> to get columns. Return <code>NotImplemented</code> for non-Matrix in <code>@</code> and for non-numbers in <code>*</code>; <code>__rmul__ = __mul__</code>. Define <code>__hash__</code> since you defined <code>__eq__</code> and the object is immutable.</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['A = Matrix([[1, 2], [3, 4]])',
+         'B = Matrix([[0, 1], [1, 0]])',
+         'A @ B',
+         'A[1, -1]',
+         'A.shape',
+         'len(A)',
+         '2 * A == A * 2']],
+       ['Matrix([[2, 1], [4, 3]])',
+        '4',
+        '(2, 2)',
+        '2',
+        'True']],
+      [[['X = Matrix([[1, 2, 3], [4, 5, 6]])',
+         'Y = Matrix([[7, 8], [9, 10], [11, 12]])',
+         'X @ Y',
+         'Y @ X',
+         'X.shape',
+         'Y.shape',
+         'X @ X']],
+       ['Matrix([[58, 64], [139, 154]])',
+        'Matrix([[39, 54, 69], [49, 68, 87], [59, 82, 105]])',
+        '(2, 3)',
+        '(3, 2)',
+        '!ValueError']],
+      [[['Matrix([])',
+         'Matrix([[1, 2], [3]])',
+         'Matrix([[1, 2], [3, 4]]) @ 3',
+         'Matrix([[1, 2], [3, 4]])[2, 0]',
+         'Matrix([[1, 2], [3, 4]])[0, 2]']],
+       ['!ValueError',
+        '!ValueError',
+        '!TypeError',
+        '!IndexError',
+        '!IndexError']],
+      [[['Matrix([[1, 2], [3, 4]]) * 0.5',
+         '3 * Matrix([[1, -1]])',
+         'Matrix([[1]]) * True',
+         'Matrix([[5]]) @ Matrix([[4]])']],
+       ['Matrix([[0.5, 1.0], [1.5, 2.0]])',
+        'Matrix([[3, -3]])',
+        '!TypeError',
+        'Matrix([[20]])']],
+      [[['Matrix([[1, 2]]) == Matrix([[1, 2]])',
+         'Matrix([[1, 2]]) == Matrix([[1.0, 2.0]])',
+         'Matrix([[1, 2]]) == [[1, 2]]',
+         'len({Matrix([[1, 2]]), Matrix([[1, 2]])})',
+         'Matrix([[1, 2]]) != Matrix([[2, 1]])']],
+       ['True',
+        'True',
+        'False',
+        '1',
+        'True']],
+      [[['I = Matrix([[1 if i == j else 0 for j in range(100)] for i in range(100)])',
+         'M = Matrix([[i * 100 + j for j in range(100)] for i in range(100)])',
+         '(I @ M) == M',
+         '(M @ I) == M',
+         '(M @ M).shape',
+         '(M @ M)[0, 0]',
+         '(M @ M)[99, 99]']],
+       ['True',
+        'True',
+        '(100, 100)',
+        '32835000',
+        '5031835050']],
+    ] },
     solution: {
       approach: R`<p>Immutable tuple-of-tuples storage; dunders map syntax to operations; <code>NotImplemented</code> for unsupported operand types so Python raises the standard <code>TypeError</code>.</p>`,
       code: { lang: 'python', run: true, code: R`
-        from numbers import Number
+from numbers import Number
 
-        class Matrix:
-            def __init__(self, rows):
-                rows = tuple(tuple(r) for r in rows)
-                if not rows or any(len(r) != len(rows[0]) for r in rows):
-                    raise ValueError("rows must be non-empty and equal length")
-                self._rows = rows
+class Matrix:
+    def __init__(self, rows):
+        rows = tuple(tuple(r) for r in rows)
+        if not rows or any(len(r) != len(rows[0]) for r in rows):
+            raise ValueError("rows must be non-empty and equal length")
+        self._rows = rows
 
-            @property
-            def shape(self):
-                return (len(self._rows), len(self._rows[0]))
+    @property
+    def shape(self):
+        return (len(self._rows), len(self._rows[0]))
 
-            def __len__(self):
-                return len(self._rows)
+    def __len__(self):
+        return len(self._rows)
 
-            def __getitem__(self, key):
-                i, j = key                                    # m[i, j] -> key == (i, j)
-                return self._rows[i][j]
+    def __getitem__(self, key):
+        i, j = key                                    # m[i, j] -> key == (i, j)
+        return self._rows[i][j]
 
-            def __repr__(self):
-                return f"Matrix({[list(r) for r in self._rows]!r})"
+    def __repr__(self):
+        return f"Matrix({[list(r) for r in self._rows]!r})"
 
-            def __eq__(self, other):
-                if not isinstance(other, Matrix):
-                    return NotImplemented
-                return self._rows == other._rows
+    def __eq__(self, other):
+        if not isinstance(other, Matrix):
+            return NotImplemented
+        return self._rows == other._rows
 
-            def __hash__(self):
-                return hash(self._rows)
+    def __hash__(self):
+        return hash(self._rows)
 
-            def __matmul__(self, other):
-                if not isinstance(other, Matrix):
-                    return NotImplemented
-                if self.shape[1] != other.shape[0]:
-                    raise ValueError(f"shape mismatch {self.shape} @ {other.shape}")
-                cols = list(zip(*other._rows))
-                return Matrix([[sum(a * b for a, b in zip(row, col)) for col in cols] for row in self._rows])
+    def __matmul__(self, other):
+        if not isinstance(other, Matrix):
+            return NotImplemented
+        if self.shape[1] != other.shape[0]:
+            raise ValueError(f"shape mismatch {self.shape} @ {other.shape}")
+        cols = list(zip(*other._rows))
+        return Matrix([[sum(a * b for a, b in zip(row, col)) for col in cols] for row in self._rows])
 
-            def __mul__(self, k):
-                if not isinstance(k, Number) or isinstance(k, bool):
-                    return NotImplemented
-                return Matrix([[x * k for x in row] for row in self._rows])
+    def __mul__(self, k):
+        if not isinstance(k, Number) or isinstance(k, bool):
+            return NotImplemented
+        return Matrix([[x * k for x in row] for row in self._rows])
 
-            __rmul__ = __mul__
+    __rmul__ = __mul__
 
-        A = Matrix([[1, 2], [3, 4]])
-        B = Matrix([[0, 1], [1, 0]])
-        print(A @ B, A[1, -1], A.shape, len(A))
-        print(2 * A == A * 2, {A, Matrix([[1, 2], [3, 4]])} == {A})
-        try:
-            A @ Matrix([[1, 2, 3]])
-        except ValueError as e:
-            print("ValueError:", e)
-        try:
-            A @ 3
-        except TypeError as e:
-            print("TypeError:", e)
-      ` },
+A = Matrix([[1, 2], [3, 4]])
+B = Matrix([[0, 1], [1, 0]])
+print(A @ B, A[1, -1], A.shape, len(A))
+print(2 * A == A * 2, {A, Matrix([[1, 2], [3, 4]])} == {A})
+try:
+    A @ Matrix([[1, 2, 3]])
+except ValueError as e:
+    print("ValueError:", e)
+try:
+    A @ 3
+except TypeError as e:
+    print("TypeError:", e)
+` },
       dry: { head: ['expression', 'dunder', 'result'], rows: [['A @ B', '__matmul__', 'Matrix([[2, 1], [4, 3]])'], ['A[1, -1]', '__getitem__((1, -1))', '4'], ['2 * A', 'int.__mul__ → NI; Matrix.__rmul__', 'Matrix([[2, 4], [6, 8]])'], ['A @ 3', '__matmul__ → NI; int has no __rmatmul__', 'TypeError']] },
       complexity: R`<p><code>@</code> is O(n·m·p) for (n×m)·(m×p); indexing O(1); equality O(n·m).</p>`,
       followUps: ['Support slicing rows: <code>m[0:2, :]</code> (key contains slice objects)', 'Add <code>__iter__</code> over rows and <code>__array__</code> so NumPy can convert it']
@@ -3112,42 +3698,80 @@ print(b.members)</pre>`,
       R`<p>Hint 2: <code>Base</code> is the end of the chain; it calls <code>super().__init__(**kwargs)</code> so that <code>object.__init__</code> raises <code>TypeError</code> for leftovers (typos!).</p>`,
       R`<p>Hint 3: The log list must exist before mixins append to it. Either append <b>before</b> calling super and create the list lazily, or have each class append on entry using a helper that creates <code>self.log</code> if missing. Simplest: <code>self.__dict__.setdefault("log", []).append(...)</code> at the top of each <code>__init__</code>.</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['w = Widget("btn", color="red", size=3)',
+         'w.log',
+         '(w.name, w.color, w.size)']],
+       ['[\'Widget\', \'ColorMixin\', \'SizeMixin\', \'Base\']',
+        '(\'btn\', \'red\', 3)']],
+      [[['w = Widget("x")',
+         '(w.color, w.size)',
+         'w.log']],
+       ['(\'black\', 10)',
+        '[\'Widget\', \'ColorMixin\', \'SizeMixin\', \'Base\']']],
+      [[['Widget("x", colour="red")',
+         'Widget("x", size=0)',
+         'Widget("x", size=-5)',
+         'Widget("x", "red")']],
+       ['!TypeError',
+        '!ValueError',
+        '!ValueError',
+        '!TypeError']],
+      [[['[k.__name__ for k in Widget.__mro__]']],
+       ['[\'Widget\', \'ColorMixin\', \'SizeMixin\', \'Base\', \'object\']']],
+      [[['a = Widget("a")',
+         'b = Widget("b", color="blue")',
+         '(len(a.log), len(b.log))',
+         'a.log is b.log',
+         '(a.color, b.color)']],
+       ['(4, 4)',
+        'False',
+        '(\'black\', \'blue\')']],
+      [[['Widget("z", color="c", size=1).log.count("Base")',
+         'sorted(Widget("z").log)',
+         'ColorMixin(color="k").log',
+         'SizeMixin(size=2).size']],
+       ['1',
+        '[\'Base\', \'ColorMixin\', \'SizeMixin\', \'Widget\']',
+        '[\'ColorMixin\']',
+        '2']],
+    ] },
     solution: {
       approach: R`<p>Cooperative multiple inheritance: each class handles its own keyword arguments and forwards the rest through <code>super()</code>; the MRO guarantees each runs once. Leftover kwargs reach <code>object.__init__</code>, which rejects them.</p>`,
       code: { lang: 'python', run: true, code: R`
-        class Base:
-            def __init__(self, name, **kwargs):
-                self.__dict__.setdefault("log", []).append("Base")
-                self.name = name
-                super().__init__(**kwargs)              # object.__init__ rejects leftovers
+class Base:
+    def __init__(self, name, **kwargs):
+        self.__dict__.setdefault("log", []).append("Base")
+        self.name = name
+        super().__init__(**kwargs)              # object.__init__ rejects leftovers
 
-        class ColorMixin:
-            def __init__(self, color="black", **kwargs):
-                self.__dict__.setdefault("log", []).append("ColorMixin")
-                self.color = color
-                super().__init__(**kwargs)
+class ColorMixin:
+    def __init__(self, color="black", **kwargs):
+        self.__dict__.setdefault("log", []).append("ColorMixin")
+        self.color = color
+        super().__init__(**kwargs)
 
-        class SizeMixin:
-            def __init__(self, size=10, **kwargs):
-                self.__dict__.setdefault("log", []).append("SizeMixin")
-                if size <= 0:
-                    raise ValueError("size must be positive")
-                self.size = size
-                super().__init__(**kwargs)
+class SizeMixin:
+    def __init__(self, size=10, **kwargs):
+        self.__dict__.setdefault("log", []).append("SizeMixin")
+        if size <= 0:
+            raise ValueError("size must be positive")
+        self.size = size
+        super().__init__(**kwargs)
 
-        class Widget(ColorMixin, SizeMixin, Base):
-            def __init__(self, name, **kwargs):
-                self.__dict__.setdefault("log", []).append("Widget")
-                super().__init__(name=name, **kwargs)
+class Widget(ColorMixin, SizeMixin, Base):
+    def __init__(self, name, **kwargs):
+        self.__dict__.setdefault("log", []).append("Widget")
+        super().__init__(name=name, **kwargs)
 
-        w = Widget("btn", color="red", size=3)
-        print([k.__name__ for k in Widget.__mro__])
-        print(w.log, w.name, w.color, w.size)
-        try:
-            Widget("x", colour="red")
-        except TypeError as e:
-            print("TypeError:", e)
-      ` },
+w = Widget("btn", color="red", size=3)
+print([k.__name__ for k in Widget.__mro__])
+print(w.log, w.name, w.color, w.size)
+try:
+    Widget("x", colour="red")
+except TypeError as e:
+    print("TypeError:", e)
+` },
       dry: { head: ['running', 'kwargs received', 'consumes', 'forwards to'], rows: [['Widget.__init__', "name='btn', color, size", '—', 'ColorMixin'], ['ColorMixin.__init__', "color='red', size=3, name", 'color', 'SizeMixin'], ['SizeMixin.__init__', "size=3, name", 'size', 'Base'], ['Base.__init__', "name='btn'", 'name', 'object (no kwargs left)']] },
       complexity: R`<p>O(k) for k classes in the chain; each runs once.</p>`,
       followUps: ['What happens if <code>SizeMixin</code> forgets to call <code>super().__init__</code>?', 'Why is the mixin placed before <code>Base</code> in the bases list?']
@@ -3157,7 +3781,7 @@ print(b.members)</pre>`,
   practice.push({
     title: 'Exporter plugins: ABC contract + automatic registry',
     level: 'Medium', tags: ['ABC', '@abstractmethod', '__init_subclass__', 'registry'], companies: ['Atlassian', 'Salesforce', 'Bloomberg'],
-    statement: R`<p>Design an <code>Exporter</code> ABC with an abstract method <code>export(rows: list[dict]) -&gt; str</code> and a concrete <code>save(rows, path)</code> template method (just return the string in this exercise). Subclasses declare a format with <code>class CSVExporter(Exporter, fmt="csv")</code> and are <b>registered automatically</b>; <code>Exporter.for_format("csv")</code> returns an instance. Implement CSV and JSON exporters. A subclass that forgets <code>export</code> must fail at instantiation; two classes claiming the same format must fail at class creation.</p>`,
+    statement: R`<p>Design an <code>Exporter</code> ABC with an abstract method <code>export(rows: list[dict]) -&gt; str</code> and a concrete <code>save(rows, path)</code> template method (in this exercise it does not write a file: it returns the message <code>"would write N chars to path.fmt"</code>, where N is the length of the exported text). Subclasses declare a format with <code>class CSVExporter(Exporter, fmt="csv")</code> and are <b>registered automatically</b>; <code>Exporter.for_format("csv")</code> returns an instance. Implement CSV and JSON exporters. A subclass that forgets <code>export</code> must fail at instantiation; two classes claiming the same format must fail at class creation.</p>`,
     constraints: R`Rows are flat dicts with the same keys; up to 10<sup>4</sup> rows.`,
     example: R`<p><code>Exporter.for_format("csv").export([{"id": 1, "name": "Ada"}])</code> → ${H.c('g', '"id,name\\n1,Ada"')}; <code>Exporter.for_format("xml")</code> → ${H.c('r', 'KeyError: no exporter for xml')}</p>`,
     brute: {
@@ -3182,69 +3806,115 @@ print(b.members)</pre>`,
       R`<p>Hint 2: <code>def __init_subclass__(cls, fmt=None, **kw): super().__init_subclass__(**kw)</code>; if <code>fmt</code> is given, check for duplicates and store <code>cls</code>.</p>`,
       R`<p>Hint 3: Mark <code>export</code> with <code>@abstractmethod</code>; a registered class missing it still registers but cannot be instantiated, so <code>for_format</code> surfaces the TypeError. Use the <code>csv</code> module or careful joins; <code>json.dumps</code> for JSON.</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['rows = [{"id": 1, "name": "Ada"}, {"id": 2, "name": "Linus"}]',
+         'Exporter.for_format("csv").export(rows)',
+         'Exporter.for_format("csv").save(rows, "out")']],
+       ['\'id,name\\n1,Ada\\n2,Linus\'',
+        '\'would write 21 chars to out.csv\'']],
+      [[['rows = [{"id": 1, "name": "Ada"}, {"id": 2, "name": "Linus"}]',
+         'Exporter.for_format("json").export(rows)',
+         'Exporter.for_format("json").save(rows, "out")',
+         'Exporter.for_format("json").export([])']],
+       ['\'[{"id": 1, "name": "Ada"}, {"id": 2, "name": "Linus"}]\'',
+        '\'would write 54 chars to out.json\'',
+        '\'[]\'']],
+      [[['Exporter.for_format("xml")',
+         'Exporter.for_format("yaml")',
+         'Exporter()',
+         'class NoExport(Exporter, fmt="t1"): pass',
+         'NoExport()']],
+       ['!KeyError',
+        '!TypeError',
+        '!TypeError',
+        '!TypeError']],
+      [[['class Dup(Exporter, fmt="csv"): pass',
+         'Exporter.for_format("csv").__class__.__name__',
+         'Exporter.for_format("json").__class__.__name__',
+         'isinstance(Exporter.for_format("json"), Exporter)']],
+       ['!TypeError',
+        '\'CSVExporter\'',
+        '\'JSONExporter\'',
+        'True']],
+      [[['class TSV(Exporter, fmt="tsv"): export = lambda self, rows: "\\t".join(map(str, rows[0].values()))',
+         'Exporter.for_format("tsv").export([{"a": 1, "b": 2}])',
+         'Exporter.for_format("tsv").fmt',
+         'Exporter.for_format("tsv") is Exporter.for_format("tsv")']],
+       ['\'1\\t2\'',
+        '\'tsv\'',
+        'False']],
+      [[['Exporter.for_format("csv").export([{"a": "x,y", "b": \'q"r\'}])']],
+       ['\'a,b\\n"x,y","q""r"\'']],
+      [[['Exporter.for_format("json").export([{"i": i} for i in range(10000)]).count("{")',
+         'Exporter.for_format("csv").export([{"i": i, "n": "x"} for i in range(10000)]).count("\\n")',
+         'Exporter.for_format("csv").export([{"i": i, "n": "x"} for i in range(10000)]).endswith("\\n")']],
+       ['10000',
+        '10000',
+        'False']],
+    ] },
     solution: {
       approach: R`<p>ABC for the contract (fail fast on missing methods), template method <code>save</code> in the base, and <code>__init_subclass__</code> keyword arguments for zero-boilerplate registration. Duplicate formats raise at definition time.</p>`,
       code: { lang: 'python', run: true, code: R`
-        import io
-        import csv
-        import json
-        from abc import ABC, abstractmethod
+import io
+import csv
+import json
+from abc import ABC, abstractmethod
 
-        class Exporter(ABC):
-            _registry: dict = {}
+class Exporter(ABC):
+    _registry: dict = {}
 
-            def __init_subclass__(cls, fmt=None, **kwargs):
-                super().__init_subclass__(**kwargs)
-                if fmt is not None:
-                    if fmt in Exporter._registry:
-                        raise TypeError(f"format {fmt!r} already handled by {Exporter._registry[fmt].__name__}")
-                    Exporter._registry[fmt] = cls
-                    cls.fmt = fmt
+    def __init_subclass__(cls, fmt=None, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if fmt is not None:
+            if fmt in Exporter._registry:
+                raise TypeError(f"format {fmt!r} already handled by {Exporter._registry[fmt].__name__}")
+            Exporter._registry[fmt] = cls
+            cls.fmt = fmt
 
-            @classmethod
-            def for_format(cls, fmt):
-                try:
-                    return cls._registry[fmt]()
-                except KeyError:
-                    raise KeyError(f"no exporter for {fmt}") from None
-
-            @abstractmethod
-            def export(self, rows):
-                """Return the rows serialised as a string."""
-
-            def save(self, rows, path):                 # template method
-                text = self.export(rows)
-                return f"would write {len(text)} chars to {path}.{self.fmt}"
-
-        class CSVExporter(Exporter, fmt="csv"):
-            def export(self, rows):
-                buf = io.StringIO()
-                writer = csv.DictWriter(buf, fieldnames=list(rows[0]), lineterminator="\n")
-                writer.writeheader()
-                writer.writerows(rows)
-                return buf.getvalue().rstrip("\n")
-
-        class JSONExporter(Exporter, fmt="json"):
-            def export(self, rows):
-                return json.dumps(rows)
-
-        class BrokenExporter(Exporter, fmt="yaml"):
-            pass                                        # forgot export()
-
-        rows = [{"id": 1, "name": "Ada"}, {"id": 2, "name": "Linus"}]
-        print(repr(Exporter.for_format("csv").export(rows)))
-        print(Exporter.for_format("json").save(rows, "out"))
-        for bad in ("yaml", "xml"):
-            try:
-                Exporter.for_format(bad)
-            except (TypeError, KeyError) as e:
-                print(type(e).__name__ + ":", e)
+    @classmethod
+    def for_format(cls, fmt):
         try:
-            class AnotherCSV(Exporter, fmt="csv"):
-                def export(self, rows): return ""
-        except TypeError as e:
-            print("TypeError:", e)
-      ` },
+            return cls._registry[fmt]()
+        except KeyError:
+            raise KeyError(f"no exporter for {fmt}") from None
+
+    @abstractmethod
+    def export(self, rows):
+        """Return the rows serialised as a string."""
+
+    def save(self, rows, path):                 # template method
+        text = self.export(rows)
+        return f"would write {len(text)} chars to {path}.{self.fmt}"
+
+class CSVExporter(Exporter, fmt="csv"):
+    def export(self, rows):
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=list(rows[0]), lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+        return buf.getvalue().rstrip("\n")
+
+class JSONExporter(Exporter, fmt="json"):
+    def export(self, rows):
+        return json.dumps(rows)
+
+class BrokenExporter(Exporter, fmt="yaml"):
+    pass                                        # forgot export()
+
+rows = [{"id": 1, "name": "Ada"}, {"id": 2, "name": "Linus"}]
+print(repr(Exporter.for_format("csv").export(rows)))
+print(Exporter.for_format("json").save(rows, "out"))
+for bad in ("yaml", "xml"):
+    try:
+        Exporter.for_format(bad)
+    except (TypeError, KeyError) as e:
+        print(type(e).__name__ + ":", e)
+try:
+    class AnotherCSV(Exporter, fmt="csv"):
+        def export(self, rows): return ""
+except TypeError as e:
+    print("TypeError:", e)
+` },
       dry: { head: ['event', 'hook', 'effect'], rows: [['class CSVExporter(..., fmt="csv")', '__init_subclass__', "registry['csv'] = CSVExporter"], ['class BrokenExporter(..., fmt="yaml")', '__init_subclass__', 'registered, but still abstract'], ['for_format("yaml")', 'instantiate', 'TypeError: missing export'], ['class AnotherCSV(..., fmt="csv")', '__init_subclass__', 'TypeError: duplicate format']] },
       complexity: R`<p>Lookup O(1); CSV/JSON export O(total size of rows).</p>`,
       followUps: ['Load third-party exporters via <code>importlib.metadata.entry_points</code>', 'Replace the ABC with a <code>Protocol</code>: what do you lose?']
@@ -3275,74 +3945,155 @@ print(b.members)</pre>`,
       R`<p>Hint 2: <code>__add__</code>: copy the larger dict and add the other's items, dropping results that become 0. <code>__matmul__</code>: loop over the smaller dict and <code>get</code> from the other.</p>`,
       R`<p>Hint 3: Return <code>NotImplemented</code> for non-SparseVector operands; raise <code>ValueError</code> on dimension mismatch. Equality: same n and same dict. The object is mutable, so leave <code>__hash__ = None</code> (the default once you define <code>__eq__</code>).</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['v = SparseVector(10**9, {3: 2.0, 7: 1.0})',
+         'w = SparseVector(10**9, {7: 4.0, 99: 5.0})',
+         'v @ w',
+         '(v + w)[7]',
+         'v[-1]',
+         'len(v)']],
+       ['4.0',
+        '5.0',
+        '0',
+        '1000000000']],
+      [[['v = SparseVector(5, {1: 3})',
+         'v[5]',
+         'v[-6]',
+         'v[-5]',
+         'v[1]',
+         'v[-4]',
+         'v[1.5]']],
+       ['!IndexError',
+        '!IndexError',
+        '0',
+        '3',
+        '3',
+        '!TypeError']],
+      [[['v = SparseVector(4)',
+         'v[2] = 7',
+         'v',
+         'v[2] = 0',
+         'v',
+         'v[9] = 1',
+         'SparseVector(3, {0: 0, 1: 5})',
+         'v[-1] = 9',
+         'v[3]']],
+       ['SparseVector(4, {2: 7})',
+        'SparseVector(4, {})',
+        '!IndexError',
+        'SparseVector(3, {1: 5})',
+        '9']],
+      [[['SparseVector(5, {1: 2, 3: 4}) + SparseVector(5, {1: -2, 4: 1})',
+         'SparseVector(5) + SparseVector(6)',
+         'SparseVector(5) + 3',
+         'SparseVector(5) @ SparseVector(6)']],
+       ['SparseVector(5, {3: 4, 4: 1})',
+        '!ValueError',
+        '!TypeError',
+        '!ValueError']],
+      [[['a = SparseVector(10, {1: 2, 2: 3})',
+         'b = SparseVector(10, {1: 4, 2: 5, 3: 6})',
+         'a @ b',
+         'b @ a',
+         'a @ SparseVector(10)',
+         'SparseVector(10) @ SparseVector(10)',
+         'a @ SparseVector(10, {5: 1})']],
+       ['23',
+        '23',
+        '0',
+        '0',
+        '0']],
+      [[['SparseVector(3, {1: 2}) == SparseVector(3, {1: 2})',
+         'SparseVector(3, {1: 2}) == SparseVector(4, {1: 2})',
+         'SparseVector(3, {1: 2}) == [0, 2, 0]',
+         'SparseVector(3) == SparseVector(3, {0: 0})']],
+       ['True',
+        'False',
+        'False',
+        'True']],
+      [[['a = SparseVector(10**9, {i * 10000: 1 for i in range(100000)})',
+         'b = SparseVector(10**9, {i * 20000: 2 for i in range(50000)})',
+         'a @ b',
+         'b @ a',
+         '(a + b)[0]',
+         '(a + b)[20000]',
+         '(a + b)[10000]',
+         'len(a + b)']],
+       ['100000',
+        '100000',
+        '3',
+        '3',
+        '1',
+        '1000000000']],
+    ] },
     solution: {
       approach: R`<p>A dict of non-zeros plus the dimension. Invariant: no zero values are stored. All operations cost O(non-zeros) instead of O(n).</p>`,
       code: { lang: 'python', run: true, code: R`
-        class SparseVector:
-            def __init__(self, n, entries=None):
-                self.n = n
-                self._d = {}
-                for i, x in (entries or {}).items():
-                    self[i] = x                               # validated + zeros dropped
+class SparseVector:
+    def __init__(self, n, entries=None):
+        self.n = n
+        self._d = {}
+        for i, x in (entries or {}).items():
+            self[i] = x                               # validated + zeros dropped
 
-            def _idx(self, i):
-                if not isinstance(i, int):
-                    raise TypeError("index must be an int")
-                if i < 0:
-                    i += self.n
-                if not 0 <= i < self.n:
-                    raise IndexError("SparseVector index out of range")
-                return i
+    def _idx(self, i):
+        if not isinstance(i, int):
+            raise TypeError("index must be an int")
+        if i < 0:
+            i += self.n
+        if not 0 <= i < self.n:
+            raise IndexError("SparseVector index out of range")
+        return i
 
-            def __len__(self):
-                return self.n
+    def __len__(self):
+        return self.n
 
-            def __getitem__(self, i):
-                return self._d.get(self._idx(i), 0)
+    def __getitem__(self, i):
+        return self._d.get(self._idx(i), 0)
 
-            def __setitem__(self, i, x):
-                i = self._idx(i)
-                if x == 0:
-                    self._d.pop(i, None)                      # keep only non-zeros
-                else:
-                    self._d[i] = x
+    def __setitem__(self, i, x):
+        i = self._idx(i)
+        if x == 0:
+            self._d.pop(i, None)                      # keep only non-zeros
+        else:
+            self._d[i] = x
 
-            def __repr__(self):
-                return f"SparseVector({self.n}, {dict(sorted(self._d.items()))})"
+    def __repr__(self):
+        return f"SparseVector({self.n}, {dict(sorted(self._d.items()))})"
 
-            def __eq__(self, other):
-                if not isinstance(other, SparseVector):
-                    return NotImplemented
-                return self.n == other.n and self._d == other._d
+    def __eq__(self, other):
+        if not isinstance(other, SparseVector):
+            return NotImplemented
+        return self.n == other.n and self._d == other._d
 
-            def _check(self, other):
-                if self.n != other.n:
-                    raise ValueError("dimension mismatch")
+    def _check(self, other):
+        if self.n != other.n:
+            raise ValueError("dimension mismatch")
 
-            def __add__(self, other):
-                if not isinstance(other, SparseVector):
-                    return NotImplemented
-                self._check(other)
-                big, small = (self, other) if len(self._d) >= len(other._d) else (other, self)
-                out = SparseVector(self.n)
-                out._d = dict(big._d)
-                for i, x in small._d.items():
-                    out[i] = out._d.get(i, 0) + x                 # drops zeros via __setitem__
-                return out
+    def __add__(self, other):
+        if not isinstance(other, SparseVector):
+            return NotImplemented
+        self._check(other)
+        big, small = (self, other) if len(self._d) >= len(other._d) else (other, self)
+        out = SparseVector(self.n)
+        out._d = dict(big._d)
+        for i, x in small._d.items():
+            out[i] = out._d.get(i, 0) + x                 # drops zeros via __setitem__
+        return out
 
-            def __matmul__(self, other):
-                if not isinstance(other, SparseVector):
-                    return NotImplemented
-                self._check(other)
-                a, b = (self._d, other._d) if len(self._d) <= len(other._d) else (other._d, self._d)
-                return sum(x * b.get(i, 0) for i, x in a.items())
+    def __matmul__(self, other):
+        if not isinstance(other, SparseVector):
+            return NotImplemented
+        self._check(other)
+        a, b = (self._d, other._d) if len(self._d) <= len(other._d) else (other._d, self._d)
+        return sum(x * b.get(i, 0) for i, x in a.items())
 
-        v = SparseVector(10**9, {3: 2.0, 7: 1.0})
-        w = SparseVector(10**9, {7: 4.0, 99: 5.0})
-        print(v @ w, (v + w)[7], v[-1], len(v))
-        u = v + SparseVector(10**9, {3: -2.0})
-        print(u, u == SparseVector(10**9, {7: 1.0}))
-      ` },
+v = SparseVector(10**9, {3: 2.0, 7: 1.0})
+w = SparseVector(10**9, {7: 4.0, 99: 5.0})
+print(v @ w, (v + w)[7], v[-1], len(v))
+u = v + SparseVector(10**9, {3: -2.0})
+print(u, u == SparseVector(10**9, {7: 1.0}))
+` },
       complexity: R`<p>Get/set O(1) average; <code>+</code> O(nnz(v) + nnz(w)); <code>@</code> O(min(nnz)); memory O(nnz).</p>`,
       followUps: ['Support <code>scalar * v</code> and <code>-v</code>', 'Make it a <code>collections.abc.Sequence</code>: which mixin would be catastrophically slow for n = 10<sup>9</sup>?']
     }
@@ -3367,52 +4118,111 @@ print(b.members)</pre>`,
       R`<p>Hint 2: Map each pre-release identifier to a comparable tuple: numeric → <code>(0, int(x), "")</code>, alphanumeric → <code>(1, 0, x)</code>. Then numeric &lt; alphanumeric, numbers compare numerically, and tuple comparison handles "longer wins".</p>`,
       R`<p>Hint 3: Key = <code>(major, minor, patch, 0 if pre else 1, tuple(mapped ids))</code>. Use it in <code>__eq__</code>, <code>__lt__</code>, <code>__hash__</code>; decorate with <code>@total_ordering</code>; keep the original text for <code>__repr__</code>.</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['[v.text for v in sorted(map(SemVer, ["1.0.0", "1.0.0-rc.1", "1.0.0-beta.11", "1.0.0-beta.2", "1.0.0-beta", "1.0.0-alpha.beta", "1.0.0-alpha.1", "1.0.0-alpha"]))]']],
+       ['[\'1.0.0-alpha\', \'1.0.0-alpha.1\', \'1.0.0-alpha.beta\', \'1.0.0-beta\', \'1.0.0-beta.2\', \'1.0.0-beta.11\', \'1.0.0-rc.1\', \'1.0.0\']']],
+      [[['[v.text for v in sorted(map(SemVer, ["1.10.0", "1.2.0", "1.9.9", "0.9.12", "1.2.10", "1.2.9"]))]']],
+       ['[\'0.9.12\', \'1.2.0\', \'1.2.9\', \'1.2.10\', \'1.9.9\', \'1.10.0\']']],
+      [[['SemVer("1.0.0+build.5") == SemVer("1.0.0")',
+         'len({SemVer("2.0.0+a"), SemVer("2.0.0+b")})',
+         'SemVer("1.0.0-rc.1+x") == SemVer("1.0.0-rc.1+y")',
+         'SemVer("1.0.0+a") < SemVer("1.0.0+b")']],
+       ['True',
+        '1',
+        'True',
+        'False']],
+      [[['SemVer("1.0.0-alpha") < SemVer("1.0.0")',
+         'SemVer("1.0.0-1") < SemVer("1.0.0-a")',
+         'SemVer("1.0.0-alpha") < SemVer("1.0.0-alpha.1")',
+         'SemVer("1.0.0-2") < SemVer("1.0.0-10")',
+         'SemVer("1.0.0-a") < SemVer("1.0.0-b")',
+         'SemVer("1.0.0-B") < SemVer("1.0.0-a")',
+         'SemVer("1.0.0-rc.1") > SemVer("1.0.0-beta.11")']],
+       ['True',
+        'True',
+        'True',
+        'True',
+        'True',
+        'True',
+        'True']],
+      [[['SemVer("1.0")',
+         'SemVer("1.0.0.0")',
+         'SemVer("a.b.c")',
+         'SemVer("01.0.0")',
+         'SemVer("1.0.0-")',
+         'SemVer("")',
+         'SemVer("-1.0.0")']],
+       ['!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError']],
+      [[['SemVer("1.0.0-beta.2")',
+         'max(map(SemVer, ["1.0.0", "1.0.1-rc", "0.9.9"]))',
+         'hash(SemVer("3.1.4")) == hash(SemVer("3.1.4+x"))',
+         'SemVer("1.0.0") == "1.0.0"',
+         'SemVer("1.0.0") < "2"']],
+       ['SemVer(\'1.0.0-beta.2\')',
+        'SemVer(\'1.0.1-rc\')',
+        'True',
+        'False',
+        '!TypeError']],
+      [[['vs = [SemVer("%d.%d.%d" % (i % 100, (i // 100) % 100, i // 10000)) for i in range(100000)]',
+         'sorted(vs)[0].text',
+         'sorted(vs)[-1].text',
+         'len(set(vs))']],
+       ['\'0.0.0\'',
+        '\'99.99.9\'',
+        '100000']],
+    ] },
     solution: {
       approach: R`<p>Parse once into a key tuple that encodes all SemVer precedence rules, then let tuple comparison do the work. Equality and hashing use the same key (so build metadata is ignored consistently).</p>`,
       code: { lang: 'python', run: true, code: R`
-        import re
-        from functools import total_ordering
+import re
+from functools import total_ordering
 
-        _CORE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+_CORE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 
-        @total_ordering
-        class SemVer:
-            __slots__ = ("text", "_key")
+@total_ordering
+class SemVer:
+    __slots__ = ("text", "_key")
 
-            def __init__(self, text):
-                self.text = text
-                core, _, pre = text.split("+", 1)[0].partition("-")
-                m = _CORE.match(core)
-                if not m or (pre == "" and "-" in text.split("+", 1)[0]):
-                    raise ValueError(f"invalid version {text!r}")
-                ids = tuple((0, int(x), "") if x.isdigit() else (1, 0, x) for x in pre.split(".")) if pre else ()
-                self._key = (*map(int, m.groups()), 0 if pre else 1, ids)
+    def __init__(self, text):
+        self.text = text
+        core, _, pre = text.split("+", 1)[0].partition("-")
+        m = _CORE.match(core)
+        if not m or (pre == "" and "-" in text.split("+", 1)[0]):
+            raise ValueError(f"invalid version {text!r}")
+        ids = tuple((0, int(x), "") if x.isdigit() else (1, 0, x) for x in pre.split(".")) if pre else ()
+        self._key = (*map(int, m.groups()), 0 if pre else 1, ids)
 
-            def __repr__(self):
-                return f"SemVer({self.text!r})"
+    def __repr__(self):
+        return f"SemVer({self.text!r})"
 
-            def __eq__(self, other):
-                if not isinstance(other, SemVer):
-                    return NotImplemented
-                return self._key == other._key
+    def __eq__(self, other):
+        if not isinstance(other, SemVer):
+            return NotImplemented
+        return self._key == other._key
 
-            def __lt__(self, other):
-                if not isinstance(other, SemVer):
-                    return NotImplemented
-                return self._key < other._key
+    def __lt__(self, other):
+        if not isinstance(other, SemVer):
+            return NotImplemented
+        return self._key < other._key
 
-            def __hash__(self):
-                return hash(self._key)
+    def __hash__(self):
+        return hash(self._key)
 
-        raw = ["1.0.0", "1.0.0-rc.1", "1.0.0-alpha.beta", "1.0.0-beta.11", "1.0.0-alpha",
-               "1.0.0-beta.2", "1.0.0-alpha.1", "0.9.12", "1.10.0", "1.2.0"]
-        print([v.text for v in sorted(map(SemVer, raw))])
-        print(SemVer("1.0.0+build.5") == SemVer("1.0.0"), len({SemVer("2.0.0+a"), SemVer("2.0.0+b")}))
-        try:
-            SemVer("1.0")
-        except ValueError as e:
-            print("ValueError:", e)
-      ` },
+raw = ["1.0.0", "1.0.0-rc.1", "1.0.0-alpha.beta", "1.0.0-beta.11", "1.0.0-alpha",
+       "1.0.0-beta.2", "1.0.0-alpha.1", "0.9.12", "1.10.0", "1.2.0"]
+print([v.text for v in sorted(map(SemVer, raw))])
+print(SemVer("1.0.0+build.5") == SemVer("1.0.0"), len({SemVer("2.0.0+a"), SemVer("2.0.0+b")}))
+try:
+    SemVer("1.0")
+except ValueError as e:
+    print("ValueError:", e)
+` },
       dry: { head: ['version', 'key'], rows: [['1.0.0-alpha', '(1, 0, 0, 0, ((1, 0, "alpha"),))'], ['1.0.0-alpha.1', '(1, 0, 0, 0, ((1, 0, "alpha"), (0, 1, "")))'], ['1.0.0-beta.2', '(1, 0, 0, 0, ((1, 0, "beta"), (0, 2, "")))'], ['1.0.0-beta.11', '(1, 0, 0, 0, ((1, 0, "beta"), (0, 11, "")))'], ['1.0.0', '(1, 0, 0, 1, ()) → highest']] },
       complexity: R`<p>Parsing O(L); comparisons O(k) for k pre-release identifiers; sorting O(n log n · k).</p>`,
       followUps: ['Implement <code>bump_minor()</code> returning a new SemVer', 'Implement range matching like <code>^1.2.0</code> with <code>__contains__</code> on a Range class']
@@ -3459,63 +4269,161 @@ print(b.members)</pre>`,
       R`<p>Hint 2: Implement the five abstract methods: <code>__getitem__</code> (move to end, count hit; on KeyError count miss and re-raise), <code>__setitem__</code> (assign, move to end, evict while too big), <code>__delitem__</code>, <code>__iter__</code>, <code>__len__</code>.</p>`,
       R`<p>Hint 3: The mixin <code>__contains__</code> calls <code>self[key]</code>, which would change recency and the hit counter. Override <code>__contains__</code> to check the OrderedDict directly. Note the mixin <code>get()</code> also counts a miss when it catches <code>KeyError</code>, which is what we want.</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['c = LRUCache(2)',
+         'c["a"] = 1',
+         'c["b"] = 2',
+         'c["a"]',
+         'c["c"] = 3',
+         'list(c)',
+         '"b" in c',
+         '(c.hits, c.misses)']],
+       ['1',
+        '[\'a\', \'c\']',
+        'False',
+        '(1, 0)']],
+      [[['c = LRUCache(2)',
+         'c["a"] = 1',
+         'c["b"] = 2',
+         '"a" in c',
+         'c["c"] = 3',
+         'list(c)',
+         '(c.hits, c.misses)']],
+       ['True',
+        '[\'b\', \'c\']',
+        '(0, 0)']],
+      [[['c = LRUCache(2)',
+         'c["x"]',
+         'c.misses',
+         'c.get("zzz", "d")',
+         'c.misses',
+         'c.hits']],
+       ['!KeyError',
+        '1',
+        '\'d\'',
+        '2',
+        '0']],
+      [[['c = LRUCache(2)',
+         'c["a"] = 1',
+         'c["b"] = 2',
+         'c["a"] = 10',
+         'c["c"] = 3',
+         'list(c)',
+         'len(c)',
+         'c["a"]']],
+       ['[\'a\', \'c\']',
+        '2',
+        '10']],
+      [[['c = LRUCache(2)',
+         'c.setdefault("d", 4)',
+         'c.pop("d")',
+         'len(c)',
+         'c.pop("q", "none")',
+         'c.pop("q")',
+         'del c["zz"]',
+         'c.update({"x": 1, "y": 2, "z": 3})',
+         'list(c)']],
+       ['4',
+        '4',
+        '0',
+        '\'none\'',
+        '!KeyError',
+        '!KeyError',
+        '[\'y\', \'z\']']],
+      [[['LRUCache(0)',
+         'c = LRUCache(1)',
+         'c["a"] = 1',
+         'c["b"] = 2',
+         'list(c)',
+         'c["a"]',
+         '(c.hits, c.misses)']],
+       ['!ValueError',
+        '[\'b\']',
+        '!KeyError',
+        '(0, 1)']],
+      [[['c = LRUCache(3)',
+         'c.update(a=1, b=2, c=3)',
+         'c["a"]',
+         'list(c)',
+         'c["d"] = 4',
+         'list(c)']],
+       ['1',
+        '[\'b\', \'c\', \'a\']',
+        '[\'c\', \'a\', \'d\']']],
+      [[['c = LRUCache(1000)',
+         'for i in range(10**6): c[i % 5000] = i',
+         'len(c)',
+         'list(c)[:2]',
+         'list(c)[-1]',
+         'c.misses',
+         'sum(1 for k in range(5000) if k in c)',
+         'c[4000]',
+         'c.hits']],
+       ['1000',
+        '[4000, 4001]',
+        '4999',
+        '0',
+        '1000',
+        '999000',
+        '1']],
+    ] },
     solution: {
       approach: R`<p>Five abstract methods over an <code>OrderedDict</code>, plus an override of <code>__contains__</code> so membership tests are side-effect free. Everything else (<code>get</code>, <code>pop</code>, <code>update</code>, <code>setdefault</code>, <code>keys</code>, <code>items</code>, equality) comes from <code>MutableMapping</code> and automatically respects recency/eviction.</p>`,
       code: { lang: 'python', run: true, code: R`
-        from collections import OrderedDict
-        from collections.abc import MutableMapping
+from collections import OrderedDict
+from collections.abc import MutableMapping
 
-        class LRUCache(MutableMapping):
-            def __init__(self, capacity, *args, **kwargs):
-                if capacity < 1:
-                    raise ValueError("capacity must be >= 1")
-                self.capacity = capacity
-                self._od = OrderedDict()
-                self.hits = self.misses = 0
-                self.update(*args, **kwargs)              # mixin -> our __setitem__
+class LRUCache(MutableMapping):
+    def __init__(self, capacity, *args, **kwargs):
+        if capacity < 1:
+            raise ValueError("capacity must be >= 1")
+        self.capacity = capacity
+        self._od = OrderedDict()
+        self.hits = self.misses = 0
+        self.update(*args, **kwargs)              # mixin -> our __setitem__
 
-            def __getitem__(self, key):
-                try:
-                    value = self._od[key]
-                except KeyError:
-                    self.misses += 1
-                    raise
-                self._od.move_to_end(key)                 # now most recently used
-                self.hits += 1
-                return value
+    def __getitem__(self, key):
+        try:
+            value = self._od[key]
+        except KeyError:
+            self.misses += 1
+            raise
+        self._od.move_to_end(key)                 # now most recently used
+        self.hits += 1
+        return value
 
-            def __setitem__(self, key, value):
-                self._od[key] = value
-                self._od.move_to_end(key)
-                while len(self._od) > self.capacity:
-                    self._od.popitem(last=False)          # evict least recently used
+    def __setitem__(self, key, value):
+        self._od[key] = value
+        self._od.move_to_end(key)
+        while len(self._od) > self.capacity:
+            self._od.popitem(last=False)          # evict least recently used
 
-            def __delitem__(self, key):
-                del self._od[key]
+    def __delitem__(self, key):
+        del self._od[key]
 
-            def __iter__(self):
-                return iter(self._od)                     # oldest -> newest
+    def __iter__(self):
+        return iter(self._od)                     # oldest -> newest
 
-            def __len__(self):
-                return len(self._od)
+    def __len__(self):
+        return len(self._od)
 
-            def __contains__(self, key):                  # no recency change, no stats
-                return key in self._od
+    def __contains__(self, key):                  # no recency change, no stats
+        return key in self._od
 
-            def __repr__(self):
-                return f"LRUCache({self.capacity}, {dict(self._od)})"
+    def __repr__(self):
+        return f"LRUCache({self.capacity}, {dict(self._od)})"
 
-        c = LRUCache(2)
-        c["a"] = 1
-        c["b"] = 2
-        c["a"]                                            # touch a
-        c["c"] = 3                                        # evicts b
-        print(list(c), "b" in c, (c.hits, c.misses))
-        print(c.get("zzz", "default"), c.misses)          # mixin get -> __getitem__ -> miss
-        c.setdefault("d", 4)                              # mixin: evicts a
-        print(c)                                          # LRUCache(2, {'c': 3, 'd': 4})
-        print(c.pop("c"), len(c))                         # mixin pop -> 3 1
-      ` },
+c = LRUCache(2)
+c["a"] = 1
+c["b"] = 2
+c["a"]                                            # touch a
+c["c"] = 3                                        # evicts b
+print(list(c), "b" in c, (c.hits, c.misses))
+print(c.get("zzz", "default"), c.misses)          # mixin get -> __getitem__ -> miss
+c.setdefault("d", 4)                              # mixin: evicts a
+print(c)                                          # LRUCache(2, {'c': 3, 'd': 4})
+print(c.pop("c"), len(c))                         # mixin pop -> 3 1
+` },
       dry: { head: ['op', 'OrderedDict (old → new)', 'evicted', 'hits/misses'], rows: [['c["a"]=1', 'a', '—', '0/0'], ['c["b"]=2', 'a b', '—', '0/0'], ['c["a"]', 'b a', '—', '1/0'], ['c["c"]=3', 'a c', 'b', '1/0'], ['"b" in c', 'a c (unchanged)', '—', '1/0'], ['get("zzz")', 'a c', '—', '1/1'], ['setdefault("d", 4)', 'c d', 'a', '1/2 (setdefault tried c["d"] first)']] },
       complexity: R`<p>Every operation O(1) average (hash lookup + linked-list relink inside OrderedDict). Memory O(capacity).</p>`,
       followUps: ['Make it thread-safe with a lock: which methods need it?', 'Add a TTL per entry (expire on read)', 'How does <code>functools.lru_cache</code> implement this in C?']
@@ -3563,69 +4471,162 @@ print(b.members)</pre>`,
       R`<p>Hint 2: Implement <code>__get__(self, obj, objtype=None)</code> (return <code>self</code> if <code>obj is None</code>, else <code>getattr(obj, self.private)</code>, translating the error) and <code>__set__(self, obj, value)</code> (validate, then <code>setattr(obj, self.private, value)</code>).</p>`,
       R`<p>Hint 3: Put the shared logic in a base class <code>Validator</code> with an abstract <code>validate(value)</code>; <code>Positive</code> and <code>OneOf</code> only implement validation. Because it defines <code>__set__</code>, it is a <b>data descriptor</b>, so it wins over the instance dict (step 1 of the lookup ladder).</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['a, b = Order(5, 9.5, "buy"), Order(1, 100, "sell")',
+         'a',
+         'b',
+         'a.qty = 7',
+         '(a.qty, b.qty)']],
+       ['Order(qty=5, price=9.5, side=\'buy\')',
+        'Order(qty=1, price=100, side=\'sell\')',
+        '(7, 1)']],
+      [[['Order.qty.public',
+         'type(Order.qty).__name__',
+         'Order.side.choices',
+         'Order.qty is Order.qty',
+         'Order.price.private']],
+       ['\'qty\'',
+        '\'Positive\'',
+        '(\'buy\', \'sell\')',
+        'True',
+        '\'_price\'']],
+      [[['a = Order(1, 1.0, "buy")',
+         'a.price = -1',
+         'a.side = "hold"',
+         'a.qty = True',
+         'a.qty = "5"',
+         'a.qty = 0',
+         'a.qty = 0.5',
+         'a.qty',
+         'a.price']],
+       ['!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '0.5',
+        '1.0']],
+      [[[String.raw`def msg(f):
+    try:
+        f()
+    except ValueError as e:
+        return str(e)`,
+         'a = Order(1, 1.0, "buy")',
+         '"price" in msg(lambda: setattr(a, "price", -1))',
+         '"side" in msg(lambda: setattr(a, "side", "hold"))',
+         '"qty" in msg(lambda: setattr(a, "qty", 0))',
+         'msg(lambda: setattr(a, "qty", 3))']],
+       ['True',
+        'True',
+        'True']],
+      [[['o = Order.__new__(Order)',
+         'o.qty',
+         'o.qty = 3',
+         'o.qty',
+         'o.price']],
+       ['!AttributeError',
+        '3',
+        '!AttributeError']],
+      [[['Order(0, 1, "buy")',
+         'Order(1, 1, "hold")',
+         'Order(-1, 1, "buy")',
+         'Order(1, 0, "buy")',
+         'Order(1, 1, "sell")']],
+       ['!ValueError',
+        '!ValueError',
+        '!ValueError',
+        '!ValueError',
+        'Order(qty=1, price=1, side=\'sell\')']],
+      [[[String.raw`class Item:
+    weight = Positive()
+    kind = OneOf("a", "b", "c")`,
+         'i = Item()',
+         'i.weight = 2',
+         'i.kind = "c"',
+         '(i.weight, i.kind)',
+         'Item.weight.public',
+         'i.kind = "d"',
+         'Item.kind.choices',
+         'i.kind']],
+       ['(2, \'c\')',
+        '\'weight\'',
+        '!ValueError',
+        '(\'a\', \'b\', \'c\')',
+        '\'c\'']],
+      [[['os = [Order(i + 1, 1.5, "buy") for i in range(10000)]',
+         'sum(o.qty for o in os)',
+         'os[0].qty = 100',
+         'os[1].qty',
+         'all(o.side == "buy" for o in os)',
+         'os[5].__dict__']],
+       ['50005000',
+        '2',
+        'True',
+        '{\'_qty\': 6, \'_price\': 1.5, \'_side\': \'buy\'}']],
+    ] },
     solution: {
       approach: R`<p>An abstract <code>Validator</code> data descriptor implements the protocol once; subclasses implement only <code>validate</code>. <code>__set_name__</code> wires the attribute name in automatically. This is the same pattern used by Django model fields and the official Python "Descriptor HowTo" guide.</p>`,
       code: { lang: 'python', run: true, code: R`
-        from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod
 
-        class Validator(ABC):
-            def __set_name__(self, owner, name):
-                self.public = name
-                self.private = "_" + name
+class Validator(ABC):
+    def __set_name__(self, owner, name):
+        self.public = name
+        self.private = "_" + name
 
-            def __get__(self, obj, objtype=None):
-                if obj is None:
-                    return self                          # accessed on the class
-                try:
-                    return getattr(obj, self.private)
-                except AttributeError:
-                    raise AttributeError(f"{self.public} has not been set") from None
-
-            def __set__(self, obj, value):
-                self.validate(value)
-                setattr(obj, self.private, value)
-
-            @abstractmethod
-            def validate(self, value):
-                """Raise ValueError if value is not allowed."""
-
-        class Positive(Validator):
-            def validate(self, value):
-                if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
-                    raise ValueError(f"{self.public} must be > 0, got {value!r}")
-
-        class OneOf(Validator):
-            def __init__(self, *choices):
-                self.choices = choices
-
-            def validate(self, value):
-                if value not in self.choices:
-                    raise ValueError(f"{self.public} must be one of {self.choices}, got {value!r}")
-
-        class Order:
-            qty = Positive()
-            price = Positive()
-            side = OneOf("buy", "sell")
-
-            def __init__(self, qty, price, side):
-                self.qty, self.price, self.side = qty, price, side   # all validated
-
-            def __repr__(self):
-                return f"Order(qty={self.qty}, price={self.price}, side={self.side!r})"
-
-        a, b = Order(5, 9.5, "buy"), Order(1, 100, "sell")
-        print(a, b)                                       # independent per-instance values
-        print(type(Order.qty).__name__, Order.qty.public)
-        for field, bad in (("price", -1), ("side", "hold"), ("qty", True)):
-            try:
-                setattr(a, field, bad)
-            except ValueError as e:
-                print("ValueError:", e)
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self                          # accessed on the class
         try:
-            Order.__new__(Order).qty
-        except AttributeError as e:
-            print("AttributeError:", e)
-      ` },
+            return getattr(obj, self.private)
+        except AttributeError:
+            raise AttributeError(f"{self.public} has not been set") from None
+
+    def __set__(self, obj, value):
+        self.validate(value)
+        setattr(obj, self.private, value)
+
+    @abstractmethod
+    def validate(self, value):
+        """Raise ValueError if value is not allowed."""
+
+class Positive(Validator):
+    def validate(self, value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+            raise ValueError(f"{self.public} must be > 0, got {value!r}")
+
+class OneOf(Validator):
+    def __init__(self, *choices):
+        self.choices = choices
+
+    def validate(self, value):
+        if value not in self.choices:
+            raise ValueError(f"{self.public} must be one of {self.choices}, got {value!r}")
+
+class Order:
+    qty = Positive()
+    price = Positive()
+    side = OneOf("buy", "sell")
+
+    def __init__(self, qty, price, side):
+        self.qty, self.price, self.side = qty, price, side   # all validated
+
+    def __repr__(self):
+        return f"Order(qty={self.qty}, price={self.price}, side={self.side!r})"
+
+a, b = Order(5, 9.5, "buy"), Order(1, 100, "sell")
+print(a, b)                                       # independent per-instance values
+print(type(Order.qty).__name__, Order.qty.public)
+for field, bad in (("price", -1), ("side", "hold"), ("qty", True)):
+    try:
+        setattr(a, field, bad)
+    except ValueError as e:
+        print("ValueError:", e)
+try:
+    Order.__new__(Order).qty
+except AttributeError as e:
+    print("AttributeError:", e)
+` },
       dry: { head: ['event', 'descriptor method', 'effect'], rows: [['class Order body runs', '__set_name__ ×3', 'public/private names stored'], ['Order(5, 9.5, "buy")', '__set__ → validate', 'a._qty=5, a._price=9.5, a._side="buy"'], ['a.price = -1', '__set__ → Positive.validate', 'ValueError (price)'], ['Order.qty', '__get__(None, Order)', 'returns the descriptor'], ['fresh_obj.qty', '__get__ → missing _qty', 'AttributeError: qty has not been set']] },
       complexity: R`<p>O(1) per get/set plus the cost of <code>validate</code> (O(k) for k choices in OneOf; use a frozenset for large choice lists).</p>`,
       followUps: ['Make it work with <code>__slots__</code> classes (hint: store in a slot named by <code>private</code>)', 'Add a <code>Typed(int)</code> descriptor and compose validators', 'Compare with pydantic field validation: when is each appropriate?']
@@ -3656,113 +4657,217 @@ print(b.members)</pre>`,
       R`<p>Hint 2: <code>__radd__ = __add__</code> and <code>__rmul__ = __mul__</code> (commutative), but <code>__rsub__</code> must compute <code>other - self</code>. Multiplication: <code>out[i + j] += a[i] * b[j]</code>.</p>`,
       R`<p>Hint 3: Hash: if the degree is ≤ 0 return <code>hash(constant)</code>, else <code>hash(tuple(coeffs))</code>. Horner: <code>acc = 0; for c in reversed(coeffs): acc = acc * x + c</code>. Repr: iterate from highest degree, handle signs, coefficient 1/−1 and powers 0/1.</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['p = Poly([1, 0, 3])',
+         'q = Poly([-1, 1])',
+         'p',
+         'q',
+         'p * q',
+         '1 - p',
+         '2 * p + q']],
+       ['3x^2 + 1',
+        'x - 1',
+        '3x^3 - 3x^2 + x - 1',
+        '-3x^2',
+        '6x^2 + x + 1']],
+      [[['p = Poly([1, 0, 3])',
+         'q = Poly([-1, 1])',
+         'p(2)',
+         '(p * q)(2)',
+         'p.degree',
+         'Poly([0, 0]).degree',
+         'p(0)',
+         'p(-1)',
+         'p(0.5)',
+         '(p + q)(3)']],
+       ['13',
+        '13',
+        '2',
+        '-1',
+        '1',
+        '4',
+        '1.75',
+        '30']],
+      [[['Poly([])',
+         'Poly([0, 0, 0])',
+         'Poly([1, 2, 0, 0])',
+         'Poly([1, 2, 0, 0]) == Poly([1, 2])',
+         'Poly([0]) == 0',
+         'Poly([1, 2]) - Poly([1, 2])',
+         'Poly([1]) * Poly([])',
+         '-Poly([1, -2])',
+         'Poly([0.5, 1.5])']],
+       ['0',
+        '0',
+        '2x + 1',
+        'True',
+        'True',
+        '0',
+        '0',
+        '2x - 1',
+        '1.5x + 0.5']],
+      [[['Poly([2, 0, 0]) == 2',
+         '2 == Poly([2])',
+         'hash(Poly([2])) == hash(2)',
+         'len({Poly([7]), 7})',
+         'Poly([1, 1]) == 1',
+         'Poly([1, 2]) == "x"',
+         'len({Poly([1, 2]), Poly([1, 2, 0])})',
+         'hash(Poly([])) == hash(0)']],
+       ['True',
+        'True',
+        'True',
+        '1',
+        'False',
+        'False',
+        '1',
+        'True']],
+      [[['p = Poly([1, 0, 3])',
+         'q = Poly([-1, 1])',
+         'p + 1',
+         '1 + p',
+         'p - 1',
+         'p * 2.5',
+         'sum([p, q, Poly([0, 0, -3])])',
+         'p + "x"',
+         'p * None',
+         'p + True']],
+       ['3x^2 + 2',
+        '3x^2 + 2',
+        '3x^2',
+        '7.5x^2 + 2.5',
+        'x',
+        '!TypeError',
+        '!TypeError',
+        '!TypeError']],
+      [[['p = Poly([1, 0, 3])',
+         'p.coeffs = ()',
+         'p.coeffs']],
+       ['!AttributeError',
+        '(1, 0, 3)']],
+      [[['big = Poly([1] * 1001)',
+         'big.degree',
+         'big(1)',
+         'big(2) + 1 == 2**1001',
+         '(big * big).degree',
+         '(big * big)(1)',
+         'big * big == Poly([min(i, 2000 - i) + 1 for i in range(2001)])',
+         'big == big + 0']],
+       ['1000',
+        '1001',
+        'True',
+        '2000',
+        '1002001',
+        'True',
+        'True']],
+    ] },
     solution: {
       approach: R`<p>An immutable value object with a canonical form (no trailing zeros, constant 0 as empty tuple). One coercion helper makes all mixed-type operators symmetric through the reflected methods, and equality/hash agree with plain numbers for constants.</p>`,
       code: { lang: 'python', run: true, code: R`
-        from numbers import Number
+from numbers import Number
 
-        class Poly:
-            __slots__ = ("coeffs",)
+class Poly:
+    __slots__ = ("coeffs",)
 
-            def __init__(self, coeffs):
-                c = list(coeffs)
-                while c and c[-1] == 0:
-                    c.pop()                                   # canonical form
-                object.__setattr__(self, "coeffs", tuple(c))
+    def __init__(self, coeffs):
+        c = list(coeffs)
+        while c and c[-1] == 0:
+            c.pop()                                   # canonical form
+        object.__setattr__(self, "coeffs", tuple(c))
 
-            def __setattr__(self, name, value):
-                raise AttributeError("Poly is immutable")
+    def __setattr__(self, name, value):
+        raise AttributeError("Poly is immutable")
 
-            @staticmethod
-            def _coerce(x):
-                if isinstance(x, Poly):
-                    return x
-                if isinstance(x, Number) and not isinstance(x, bool):
-                    return Poly([x])
-                return None
+    @staticmethod
+    def _coerce(x):
+        if isinstance(x, Poly):
+            return x
+        if isinstance(x, Number) and not isinstance(x, bool):
+            return Poly([x])
+        return None
 
-            @property
-            def degree(self):
-                return len(self.coeffs) - 1                   # zero polynomial -> -1
+    @property
+    def degree(self):
+        return len(self.coeffs) - 1                   # zero polynomial -> -1
 
-            def __add__(self, other):
-                o = self._coerce(other)
-                if o is None:
-                    return NotImplemented
-                n = max(len(self.coeffs), len(o.coeffs))
-                a = self.coeffs + (0,) * (n - len(self.coeffs))
-                b = o.coeffs + (0,) * (n - len(o.coeffs))
-                return Poly(x + y for x, y in zip(a, b))
+    def __add__(self, other):
+        o = self._coerce(other)
+        if o is None:
+            return NotImplemented
+        n = max(len(self.coeffs), len(o.coeffs))
+        a = self.coeffs + (0,) * (n - len(self.coeffs))
+        b = o.coeffs + (0,) * (n - len(o.coeffs))
+        return Poly(x + y for x, y in zip(a, b))
 
-            __radd__ = __add__
+    __radd__ = __add__
 
-            def __neg__(self):
-                return Poly(-c for c in self.coeffs)
+    def __neg__(self):
+        return Poly(-c for c in self.coeffs)
 
-            def __sub__(self, other):
-                o = self._coerce(other)
-                return NotImplemented if o is None else self + (-o)
+    def __sub__(self, other):
+        o = self._coerce(other)
+        return NotImplemented if o is None else self + (-o)
 
-            def __rsub__(self, other):                        # other - self
-                o = self._coerce(other)
-                return NotImplemented if o is None else o + (-self)
+    def __rsub__(self, other):                        # other - self
+        o = self._coerce(other)
+        return NotImplemented if o is None else o + (-self)
 
-            def __mul__(self, other):
-                o = self._coerce(other)
-                if o is None:
-                    return NotImplemented
-                if not self.coeffs or not o.coeffs:
-                    return Poly([])
-                out = [0] * (len(self.coeffs) + len(o.coeffs) - 1)
-                for i, a in enumerate(self.coeffs):
-                    for j, b in enumerate(o.coeffs):
-                        out[i + j] += a * b
-                return Poly(out)
+    def __mul__(self, other):
+        o = self._coerce(other)
+        if o is None:
+            return NotImplemented
+        if not self.coeffs or not o.coeffs:
+            return Poly([])
+        out = [0] * (len(self.coeffs) + len(o.coeffs) - 1)
+        for i, a in enumerate(self.coeffs):
+            for j, b in enumerate(o.coeffs):
+                out[i + j] += a * b
+        return Poly(out)
 
-            __rmul__ = __mul__
+    __rmul__ = __mul__
 
-            def __call__(self, x):                            # Horner's rule
-                acc = 0
-                for c in reversed(self.coeffs):
-                    acc = acc * x + c
-                return acc
+    def __call__(self, x):                            # Horner's rule
+        acc = 0
+        for c in reversed(self.coeffs):
+            acc = acc * x + c
+        return acc
 
-            def __eq__(self, other):
-                o = self._coerce(other)
-                return NotImplemented if o is None else self.coeffs == o.coeffs
+    def __eq__(self, other):
+        o = self._coerce(other)
+        return NotImplemented if o is None else self.coeffs == o.coeffs
 
-            def __hash__(self):
-                if self.degree <= 0:
-                    return hash(self.coeffs[0] if self.coeffs else 0)   # agree with plain numbers
-                return hash(self.coeffs)
+    def __hash__(self):
+        if self.degree <= 0:
+            return hash(self.coeffs[0] if self.coeffs else 0)   # agree with plain numbers
+        return hash(self.coeffs)
 
-            def __repr__(self):
-                if not self.coeffs:
-                    return "0"
-                parts = []
-                for power in range(self.degree, -1, -1):
-                    c = self.coeffs[power]
-                    if c == 0:
-                        continue
-                    sign = "-" if c < 0 else "+"
-                    mag = abs(c)
-                    body = "" if (mag == 1 and power) else str(mag)
-                    body += "" if power == 0 else ("x" if power == 1 else f"x^{power}")
-                    parts.append((sign, body))
-                first_sign, first = parts[0]
-                text = ("-" if first_sign == "-" else "") + first
-                return text + "".join(f" {s} {b}" for s, b in parts[1:])
+    def __repr__(self):
+        if not self.coeffs:
+            return "0"
+        parts = []
+        for power in range(self.degree, -1, -1):
+            c = self.coeffs[power]
+            if c == 0:
+                continue
+            sign = "-" if c < 0 else "+"
+            mag = abs(c)
+            body = "" if (mag == 1 and power) else str(mag)
+            body += "" if power == 0 else ("x" if power == 1 else f"x^{power}")
+            parts.append((sign, body))
+        first_sign, first = parts[0]
+        text = ("-" if first_sign == "-" else "") + first
+        return text + "".join(f" {s} {b}" for s, b in parts[1:])
 
-        p, q = Poly([1, 0, 3]), Poly([-1, 1])
-        print(p, "|", q, "|", p * q, "|", 1 - p, "|", 2 * p + q)
-        print(p(2), (p * q)(2), p.degree, Poly([0, 0]).degree)
-        print(Poly([2, 0, 0]) == 2, hash(Poly([2])) == hash(2), len({Poly([7]), 7}))
-        print(sum([p, q, Poly([0, 0, -3])]))                  # sum starts at 0 -> __radd__
-        try:
-            p + "x"
-        except TypeError as e:
-            print("TypeError:", e)
-      ` },
+p, q = Poly([1, 0, 3]), Poly([-1, 1])
+print(p, "|", q, "|", p * q, "|", 1 - p, "|", 2 * p + q)
+print(p(2), (p * q)(2), p.degree, Poly([0, 0]).degree)
+print(Poly([2, 0, 0]) == 2, hash(Poly([2])) == hash(2), len({Poly([7]), 7}))
+print(sum([p, q, Poly([0, 0, -3])]))                  # sum starts at 0 -> __radd__
+try:
+    p + "x"
+except TypeError as e:
+    print("TypeError:", e)
+` },
       dry: { head: ['expression', 'dispatch', 'result'], rows: [['p * q', 'Poly.__mul__', '3x^3 - 3x^2 + x - 1'], ['1 - p', 'int.__sub__ → NI; Poly.__rsub__(1)', '-3x^2'], ['2 * p + q', '__rmul__ then __add__', '6x^2 + x + 1'], ['sum([p, q, -3x²])', '0 + p → __radd__; … ', 'x'], ['Poly([2,0,0]) == 2', '_coerce(2) → Poly([2])', 'True; hashes equal']] },
       complexity: R`<p>Add/sub O(n), multiply O(n·m) (Karatsuba or FFT for very large degrees), evaluation O(n) with Horner, hashing O(n).</p>`,
       followUps: ['Add <code>__pow__</code> with exponentiation by squaring', 'Implement polynomial long division with <code>__divmod__</code>', 'Why must <code>__rsub__</code> not be <code>__sub__</code>?']
@@ -3772,7 +4877,7 @@ print(b.members)</pre>`,
   practice.push({
     title: 'Interval value type: in, &, |, ordering, and merging',
     level: 'Hard', tags: ['__contains__', '__and__', '__or__', 'total_ordering', '__slots__', 'merge intervals'], companies: ['Google', 'Meta', 'Uber', 'Airbnb'],
-    statement: R`<p>Implement an immutable, slotted, hashable closed interval <code>Interval(lo, hi)</code> (<code>lo ≤ hi</code>, else <code>ValueError</code>) with: <code>x in iv</code> (point membership) and <code>other_iv in iv</code> (containment), <code>a &amp; b</code> (intersection, or <code>None</code> if disjoint), <code>a | b</code> (union of overlapping or touching intervals; <code>ValueError</code> otherwise), ordering by <code>(lo, hi)</code>, <code>len(iv)</code> = number of integers covered for int intervals, and a repr <code>[3, 7]</code>. Then use it to solve "merge overlapping intervals" in a few lines: <code>merge(list_of_intervals)</code>.</p>`,
+    statement: R`<p>Implement an immutable, slotted, hashable closed interval <code>Interval(lo, hi)</code> (<code>lo ≤ hi</code>, else <code>ValueError</code>) with: <code>x in iv</code> (point membership) and <code>other_iv in iv</code> (containment), <code>a &amp; b</code> (intersection, or <code>None</code> if disjoint), <code>a | b</code> (union of intervals that overlap or share an endpoint; <code>ValueError</code> otherwise, so <code>[1, 2] | [3, 4]</code> is an error), ordering by <code>(lo, hi)</code>, <code>len(iv)</code> = number of integers covered for int intervals, and a repr <code>[3, 7]</code>. Then use it to solve "merge overlapping intervals" in a few lines: <code>merge(list_of_intervals)</code>.</p>`,
     constraints: R`Up to 10<sup>5</sup> intervals; integer endpoints in [−10<sup>9</sup>, 10<sup>9</sup>].`,
     example: R`<p><code>merge([Interval(1, 3), Interval(8, 10), Interval(2, 6), Interval(15, 18), Interval(6, 7)])</code> → ${H.c('g', '[[1, 7], [8, 10], [15, 18]]')}; <code>Interval(1, 5) &amp; Interval(4, 9)</code> → ${H.c('g', '[4, 5]')}; <code>Interval(1, 2) | Interval(5, 6)</code> → ${H.c('r', 'ValueError')}</p>`,
     brute: {
@@ -3804,83 +4909,161 @@ print(b.members)</pre>`,
       R`<p>Hint 2: <code>__contains__(self, x)</code>: if <code>x</code> is an Interval check containment, otherwise check <code>lo ≤ x ≤ hi</code>. Ordering via <code>@total_ordering</code> on the key <code>(lo, hi)</code>; hash the same key.</p>`,
       R`<p>Hint 3: <code>merge</code>: sort, then fold: for each interval, if it overlaps the last kept one replace the last with <code>last | cur</code>, else append. Return <code>NotImplemented</code> from <code>&amp;</code>/<code>|</code> for non-Intervals.</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['merge([Interval(1, 3), Interval(8, 10), Interval(2, 6), Interval(15, 18), Interval(6, 7)])']],
+       ['[[1, 7], [8, 10], [15, 18]]']],
+      [[['Interval(1, 5) & Interval(4, 9)',
+         '(Interval(1, 5) & Interval(7, 9)) is None',
+         'Interval(1, 5) & Interval(5, 9)',
+         'Interval(1, 9) & Interval(3, 4)']],
+       ['[4, 5]',
+        'True',
+        '[5, 5]',
+        '[3, 4]']],
+      [[['4 in Interval(1, 5)',
+         '6 in Interval(1, 5)',
+         '1 in Interval(1, 5)',
+         '5 in Interval(1, 5)',
+         'Interval(2, 3) in Interval(1, 5)',
+         'Interval(0, 3) in Interval(1, 5)',
+         'Interval(1, 5) in Interval(1, 5)',
+         'len(Interval(3, 7))',
+         'len(Interval(4, 4))']],
+       ['True',
+        'False',
+        'True',
+        'True',
+        'True',
+        'False',
+        'True',
+        '5',
+        '1']],
+      [[['Interval(5, 1)',
+         'Interval(1, 2) | Interval(5, 6)',
+         'Interval(1, 2) | Interval(2, 6)',
+         'Interval(1, 2) | Interval(3, 4)',
+         'Interval(1, 5) & 3',
+         'Interval(1, 5) < 3',
+         'Interval(1, 5) | Interval(2, 3)']],
+       ['!ValueError',
+        '!ValueError',
+        '[1, 6]',
+        '!ValueError',
+        '!TypeError',
+        '!TypeError',
+        '[1, 5]']],
+      [[['sorted([Interval(2, 3), Interval(1, 9), Interval(1, 2)])',
+         'max([Interval(1, 2), Interval(1, 9)])',
+         'len({Interval(1, 2), Interval(1, 2)})',
+         'Interval(1, 2) == Interval(1, 2)',
+         'Interval(1, 2) <= Interval(1, 3)',
+         'Interval(1, 2) == (1, 2)',
+         'Interval(1, 2).lo = 5']],
+       ['[[1, 2], [1, 9], [2, 3]]',
+        '[1, 9]',
+        '1',
+        'True',
+        'True',
+        'False',
+        '!AttributeError']],
+      [[['merge([])',
+         'merge([Interval(1, 1)])',
+         'merge([Interval(1, 4), Interval(2, 3)])',
+         'merge([Interval(5, 6), Interval(1, 2), Interval(3, 4)])',
+         'merge([Interval(-5, -1), Interval(-3, 2), Interval(10, 10)])',
+         'merge([Interval(1, 2)] * 3)']],
+       ['[]',
+        '[[1, 1]]',
+        '[[1, 4]]',
+        '[[1, 2], [3, 4], [5, 6]]',
+        '[[-5, 2], [10, 10]]',
+        '[[1, 2]]']],
+      [[['len(merge([Interval(i * 2, i * 2 + 1) for i in range(100000)]))',
+         'merge([Interval(i, i + 1) for i in range(100000)])',
+         'merge([Interval(-10**9, 10**9)])',
+         'len(Interval(-10**9, 10**9))']],
+       ['100000',
+        '[[0, 100000]]',
+        '[[-1000000000, 1000000000]]',
+        '2000000001']],
+    ] },
     solution: {
       approach: R`<p>Put the interval algebra into dunders so the algorithm reads like the math: <code>sorted(...)</code> uses <code>__lt__</code>, the fold uses <code>&amp;</code> to test overlap and <code>|</code> to combine. <code>__slots__</code> keeps 10<sup>5</sup> intervals compact; immutability keeps hashing safe.</p>`,
       code: { lang: 'python', run: true, code: R`
-        from functools import total_ordering
+from functools import total_ordering
 
-        @total_ordering
-        class Interval:
-            __slots__ = ("lo", "hi")
+@total_ordering
+class Interval:
+    __slots__ = ("lo", "hi")
 
-            def __init__(self, lo, hi):
-                if lo > hi:
-                    raise ValueError(f"empty interval [{lo}, {hi}]")
-                object.__setattr__(self, "lo", lo)
-                object.__setattr__(self, "hi", hi)
+    def __init__(self, lo, hi):
+        if lo > hi:
+            raise ValueError(f"empty interval [{lo}, {hi}]")
+        object.__setattr__(self, "lo", lo)
+        object.__setattr__(self, "hi", hi)
 
-            def __setattr__(self, name, value):
-                raise AttributeError("Interval is immutable")
+    def __setattr__(self, name, value):
+        raise AttributeError("Interval is immutable")
 
-            def __repr__(self):
-                return f"[{self.lo}, {self.hi}]"
+    def __repr__(self):
+        return f"[{self.lo}, {self.hi}]"
 
-            def __contains__(self, x):
-                if isinstance(x, Interval):
-                    return self.lo <= x.lo and x.hi <= self.hi
-                return self.lo <= x <= self.hi
+    def __contains__(self, x):
+        if isinstance(x, Interval):
+            return self.lo <= x.lo and x.hi <= self.hi
+        return self.lo <= x <= self.hi
 
-            def __len__(self):                       # integers covered (int endpoints)
-                return self.hi - self.lo + 1
+    def __len__(self):                       # integers covered (int endpoints)
+        return self.hi - self.lo + 1
 
-            def __and__(self, other):
-                if not isinstance(other, Interval):
-                    return NotImplemented
-                lo, hi = max(self.lo, other.lo), min(self.hi, other.hi)
-                return Interval(lo, hi) if lo <= hi else None
+    def __and__(self, other):
+        if not isinstance(other, Interval):
+            return NotImplemented
+        lo, hi = max(self.lo, other.lo), min(self.hi, other.hi)
+        return Interval(lo, hi) if lo <= hi else None
 
-            def __or__(self, other):
-                if not isinstance(other, Interval):
-                    return NotImplemented
-                if (self & other) is None:
-                    raise ValueError(f"{self} and {other} do not overlap")
-                return Interval(min(self.lo, other.lo), max(self.hi, other.hi))
+    def __or__(self, other):
+        if not isinstance(other, Interval):
+            return NotImplemented
+        if (self & other) is None:
+            raise ValueError(f"{self} and {other} do not overlap")
+        return Interval(min(self.lo, other.lo), max(self.hi, other.hi))
 
-            def _key(self):
-                return (self.lo, self.hi)
+    def _key(self):
+        return (self.lo, self.hi)
 
-            def __eq__(self, other):
-                if not isinstance(other, Interval):
-                    return NotImplemented
-                return self._key() == other._key()
+    def __eq__(self, other):
+        if not isinstance(other, Interval):
+            return NotImplemented
+        return self._key() == other._key()
 
-            def __lt__(self, other):
-                if not isinstance(other, Interval):
-                    return NotImplemented
-                return self._key() < other._key()
+    def __lt__(self, other):
+        if not isinstance(other, Interval):
+            return NotImplemented
+        return self._key() < other._key()
 
-            def __hash__(self):
-                return hash(self._key())
+    def __hash__(self):
+        return hash(self._key())
 
-        def merge(intervals):
-            out = []
-            for cur in sorted(intervals):            # uses __lt__
-                if out and (out[-1] & cur) is not None:
-                    out[-1] = out[-1] | cur          # uses __or__
-                else:
-                    out.append(cur)
-            return out
+def merge(intervals):
+    out = []
+    for cur in sorted(intervals):            # uses __lt__
+        if out and (out[-1] & cur) is not None:
+            out[-1] = out[-1] | cur          # uses __or__
+        else:
+            out.append(cur)
+    return out
 
-        ivs = [Interval(1, 3), Interval(8, 10), Interval(2, 6), Interval(15, 18), Interval(6, 7)]
-        print(merge(ivs))
-        print(Interval(1, 5) & Interval(4, 9), Interval(1, 5) & Interval(7, 9))
-        print(4 in Interval(1, 5), Interval(2, 3) in Interval(1, 5), len(Interval(3, 7)))
-        print(len({Interval(1, 2), Interval(1, 2)}), max(ivs))
-        try:
-            Interval(1, 2) | Interval(5, 6)
-        except ValueError as e:
-            print("ValueError:", e)
-      ` },
+ivs = [Interval(1, 3), Interval(8, 10), Interval(2, 6), Interval(15, 18), Interval(6, 7)]
+print(merge(ivs))
+print(Interval(1, 5) & Interval(4, 9), Interval(1, 5) & Interval(7, 9))
+print(4 in Interval(1, 5), Interval(2, 3) in Interval(1, 5), len(Interval(3, 7)))
+print(len({Interval(1, 2), Interval(1, 2)}), max(ivs))
+try:
+    Interval(1, 2) | Interval(5, 6)
+except ValueError as e:
+    print("ValueError:", e)
+` },
       dry: { head: ['sorted cur', 'last kept', 'last &amp; cur', 'action', 'out'], rows: [['[1, 3]', '—', '—', 'append', '[1,3]'], ['[2, 6]', '[1, 3]', '[2, 3]', 'last | cur', '[1,6]'], ['[6, 7]', '[1, 6]', '[6, 6]', 'last | cur', '[1,7]'], ['[8, 10]', '[1, 7]', 'None', 'append', '[1,7] [8,10]'], ['[15, 18]', '[8, 10]', 'None', 'append', '[1,7] [8,10] [15,18]']] },
       complexity: R`<p>merge: O(n log n) for sorting + O(n) fold. Each dunder O(1). Memory: slotted objects, ~56 bytes each plus the endpoint ints.</p>`,
       followUps: ['Add <code>__sub__</code> returning a list of 0 to 2 intervals', 'Build an <code>IntervalSet</code> that is a <code>collections.abc.Set</code>', 'Should <code>[1, 2] | [3, 4]</code> merge for integer intervals (adjacent, not overlapping)? Make it configurable']

@@ -283,6 +283,15 @@ SELECT AVG(price) FROM products;
 SELECT name, category, price FROM products WHERE price > 308.33 ORDER BY price DESC;` } },
       mcq: { q: 'Why can you NOT write <code>WHERE price &gt; AVG(price)</code>?', options: ['WHERE runs row by row before any grouping, so no aggregate exists yet', 'AVG only works on integers', 'Because price is a reserved word', 'It works but is slow'], answer: 0, explain: 'Logical order is FROM → WHERE → GROUP BY → HAVING → SELECT. Aggregates are computed after WHERE, so WHERE cannot reference them; a scalar subquery computes the aggregate separately.' },
       hints: [`<p>Hint 1: You need one number (the average) computed over the whole table, then a per-row comparison. That is a "one value for everyone" situation.</p>`, `<p>Hint 2: Put <code>(SELECT AVG(price) FROM products)</code> exactly where you would have typed 308.33. It is uncorrelated, so it runs once.</p>`, `<p>Hint 3: Use strict <code>&gt;</code>. If the table were empty, AVG returns NULL and nothing is returned — which is correct. Recipe: SELECT columns → FROM products → WHERE price &gt; (scalar subquery) → ORDER BY price DESC.</p>`],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['name', 'category', 'price'], rows: [['Laptop', 'Electronics', 1200], ['Phone', 'Electronics', 800]] },
+        { setup: 'UPDATE products SET price = 100;', rows: [] },
+        { setup: 'DELETE FROM products;', rows: [] },
+        { setup: 'DELETE FROM products WHERE id <> 4;', rows: [] },
+        { setup: 'DELETE FROM products; INSERT INTO products (id, name, category, price) VALUES (1, \'A\', \'X\', 10), (2, \'B\', \'X\', 20), (3, \'C\', \'X\', 30);', cols: ['name', 'category', 'price'], rows: [['C', 'X', 30]] },
+        { setup: 'UPDATE products SET price = price * 10 WHERE id = 7;', cols: ['name', 'category', 'price'], rows: [['Laptop', 'Electronics', 1200], ['Phone', 'Electronics', 800]] },
+        { setup: 'UPDATE products SET price = 0 WHERE id IN (1, 2);', cols: ['name', 'category', 'price'], rows: [['Desk', 'Furniture', 300], ['Chair', 'Furniture', 180], ['Headphones', 'Electronics', 150]] }
+      ] },
       solution: {
         approach: `<p>Replace the hard-coded number with an uncorrelated <b>scalar subquery</b>. The engine computes the average once and compares every product against it, so the query is always up to date.</p>`,
         code: { lang: 'sql', db: 'shop', code: `SELECT name, category, price
@@ -466,6 +475,15 @@ WHERE e.salary > (SELECT m.salary
                   WHERE m.id = manager_id);   -- returns 0 rows, silently` } },
       mcq: { q: 'Inside a subquery, an unqualified column name is resolved…', options: ['In the innermost FROM first, then outward', 'In the outer query first', 'Randomly — it is an error', 'Only in the table named first in the outer FROM'], answer: 0, explain: 'SQL scoping searches the nearest (inner) scope first. If the inner table has a column with that name, it wins. Qualify columns with aliases to avoid accidental binding.' },
       hints: [`<p>Hint 1: For each employee you need ONE related row — the manager — found by <code>m.id = e.manager_id</code>. That is a per-row lookup.</p>`, `<p>Hint 2: Use a correlated scalar subquery <code>(SELECT m.salary FROM employees m WHERE m.id = e.manager_id)</code>; it is single-row because <code>id</code> is the primary key. A self join <code>employees e JOIN employees m ON m.id = e.manager_id</code> is the equivalent alternative.</p>`, `<p>Hint 3: Qualify every column. The CEO's manager_id is NULL → subquery returns NULL → comparison unknown → excluded automatically. Recipe: outer employees e → WHERE e.salary &gt; (manager's salary) → also select manager name/salary.</p>`],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['employee', 'salary', 'manager', 'manager_salary'], rows: [['Imran', 85000, 'Sneha', 82000], ['Neha', 105000, 'Karan', 102000]] },
+        { setup: 'UPDATE employees SET salary = 102000 WHERE id = 7;', cols: ['employee', 'salary', 'manager', 'manager_salary'], rows: [['Imran', 85000, 'Sneha', 82000]] },
+        { setup: 'UPDATE employees SET salary = 300000 WHERE id = 16;', cols: ['employee', 'salary', 'manager', 'manager_salary'], rows: [['Dev', 300000, 'Zoya', 98000], ['Imran', 85000, 'Sneha', 82000], ['Neha', 105000, 'Karan', 102000]] },
+        { setup: 'UPDATE employees SET salary = 1 WHERE id = 1;', cols: ['employee', 'salary', 'manager', 'manager_salary'], rows: [['Imran', 85000, 'Sneha', 82000], ['Lata', 90000, 'Asha', 1], ['Meera', 150000, 'Asha', 1], ['Neha', 105000, 'Karan', 102000], ['Ravi', 180000, 'Asha', 1], ['Zoya', 98000, 'Asha', 1]] },
+        { setup: 'UPDATE employees SET manager_id = NULL;', rows: [] },
+        { setup: 'UPDATE employees SET manager_id = 99 WHERE id = 7;', cols: ['employee', 'salary', 'manager', 'manager_salary'], rows: [['Imran', 85000, 'Sneha', 82000]] },
+        { setup: 'UPDATE employees SET salary = 50000;', rows: [] }
+      ] },
       solution: {
         approach: `<p>For each employee, look up the manager's salary with a correlated scalar subquery keyed on the primary key (so it is guaranteed single-row), and keep rows where the employee earns more. The self-join version is shown as the alternative; both are correct and usually get the same plan.</p>`,
         code: { lang: 'sql', db: 'company', code: `SELECT e.name                                                  AS employee,
@@ -656,6 +674,15 @@ FROM customers
 WHERE id NOT IN (SELECT customer_id FROM orders);` } },
       mcq: { q: 'The subquery list is (1, 2, NULL). What is <code>7 NOT IN (1, 2, NULL)</code>?', options: ['UNKNOWN (NULL), so the row is filtered out', 'TRUE, because 7 is not 1 or 2', 'FALSE', 'An error'], answer: 0, explain: '7≠1 is TRUE, 7≠2 is TRUE, 7≠NULL is UNKNOWN; TRUE AND TRUE AND UNKNOWN = UNKNOWN. WHERE keeps only TRUE.' },
       hints: [`<p>Hint 1: "never" means "there does not exist an order for this customer" — an anti-join.</p>`, `<p>Hint 2: Use <code>NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id)</code>. A NULL customer_id never equals any c.id, so guest orders are ignored naturally.</p>`, `<p>Hint 3: Alternatives: <code>LEFT JOIN orders … WHERE o.id IS NULL</code> (test a NOT NULL column of the right table), or NOT IN with <code>WHERE customer_id IS NOT NULL</code> inside. Recipe: for each customer → probe orders → keep if no row.</p>`],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['name'], rows: [['Eli'], ['Fatima']] },
+        { setup: 'DELETE FROM order_items; DELETE FROM orders;', cols: ['name'], rows: [['Asha'], ['Ben'], ['Chen'], ['Dana'], ['Eli'], ['Fatima']] },
+        { setup: 'UPDATE orders SET customer_id = NULL;', cols: ['name'], rows: [['Asha'], ['Ben'], ['Chen'], ['Dana'], ['Eli'], ['Fatima']] },
+        { setup: 'INSERT INTO orders VALUES (110, 5, \'2024-09-01\', \'cancelled\');', cols: ['name'], rows: [['Fatima']] },
+        { setup: 'INSERT INTO orders VALUES (110, 5, \'2024-09-01\', \'placed\');INSERT INTO orders VALUES (111, 6, \'2024-09-02\', \'placed\');', rows: [] },
+        { setup: 'DELETE FROM customers;', rows: [] },
+        { setup: 'UPDATE orders SET customer_id = 1 WHERE customer_id IS NOT NULL; UPDATE orders SET customer_id = 9 WHERE id = 109;', cols: ['name'], rows: [['Ben'], ['Chen'], ['Dana'], ['Eli'], ['Fatima']] }
+      ] },
       solution: {
         approach: `<p>Write the anti-join with <b>NOT EXISTS</b>: it returns only TRUE/FALSE, never UNKNOWN, so NULLs in <code>orders.customer_id</code> cannot poison the result. With an index on <code>orders(customer_id)</code> each probe is a quick index seek; most engines plan it as a hash anti-join.</p>`,
         code: { lang: 'sql', db: 'shop', code: `SELECT c.name
@@ -885,6 +912,16 @@ GROUP BY o.customer_id
 HAVING SUM(oi.qty * oi.unit_price) > (SELECT AVG(qty * unit_price) FROM order_items);` } },
       mcq: { q: 'The question asks for "average spend per customer". Which pipeline is right?', options: ['Sum per customer first, then AVG over those sums', 'AVG over all order_items rows', 'AVG over orders, ignoring customers', 'SUM of everything divided by number of products'], answer: 0, explain: 'Average of per-customer totals needs two aggregation levels: first GROUP BY customer to get each total, then average those totals. A CTE makes the two levels explicit.' },
       hints: [`<p>Hint 1: There are two aggregation levels: per customer (SUM), then across customers (AVG of those sums).</p>`, `<p>Hint 2: Write <code>WITH spend AS (SELECT customer_id, SUM(...) AS total ... GROUP BY customer_id)</code>, then compare <code>total &gt; (SELECT AVG(total) FROM spend)</code> — the CTE is referenced twice.</p>`, `<p>Hint 3: Apply the cancelled/guest filters inside the CTE so both the totals and the average use the same rows. Recipe: CTE spend → main query joins customers → WHERE total &gt; (SELECT AVG(total) FROM spend).</p>`],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['name', 'total', 'avg_customer_spend'], rows: [['Asha', 2625, 1316.25]] },
+        { setup: 'UPDATE orders SET status = \'cancelled\' WHERE customer_id = 1;', cols: ['name', 'total', 'avg_customer_spend'], rows: [['Dana', 1190, 880], ['Ben', 1060, 880]] },
+        { setup: 'UPDATE orders SET status = \'delivered\' WHERE status = \'cancelled\';', cols: ['name', 'total', 'avg_customer_spend'], rows: [['Asha', 2625, 1391.25]] },
+        { setup: 'DELETE FROM order_items WHERE order_id IN (101, 108);', cols: ['name', 'total', 'avg_customer_spend'], rows: [['Dana', 1190, 671.25], ['Ben', 1060, 671.25]] },
+        { setup: 'INSERT INTO orders VALUES (110, 5, \'2024-09-03\', \'delivered\');INSERT INTO order_items VALUES (110, 1, 3, 1000);INSERT INTO orders VALUES (111, 6, \'2024-09-03\', \'delivered\');INSERT INTO order_items VALUES (111, 6, 1, 10);', cols: ['name', 'total', 'avg_customer_spend'], rows: [['Eli', 3000, 1379.17], ['Asha', 2625, 1379.17]] },
+        { setup: 'UPDATE orders SET customer_id = NULL WHERE customer_id = 1;', cols: ['name', 'total', 'avg_customer_spend'], rows: [['Dana', 1190, 880], ['Ben', 1060, 880]] },
+        { setup: 'DELETE FROM orders WHERE customer_id IN (1, 2, 3);', rows: [] },
+        { setup: 'DELETE FROM order_items; INSERT INTO order_items VALUES (101, 1, 1, 100), (103, 1, 1, 100), (105, 1, 1, 100), (106, 1, 1, 50);', cols: ['name', 'total', 'avg_customer_spend'], rows: [['Asha', 100, 87.5], ['Ben', 100, 87.5], ['Chen', 100, 87.5]] }
+      ] },
       solution: {
         approach: `<p>Build one CTE with the per-customer totals (filters applied once), then reuse it twice: once as the row source and once inside a scalar subquery for the average. Each aggregation level is visible and testable.</p>`,
         code: { lang: 'sql', db: 'shop', code: `WITH spend AS (
@@ -1123,6 +1160,15 @@ GROUP BY o.order_date
 ORDER BY day;` } },
       mcq: { q: 'Which table should be on the LEFT side of the LEFT JOIN?', options: ['The generated calendar of days', 'The orders table', 'order_items', 'It does not matter'], answer: 0, explain: 'The calendar must drive the query so every day survives; facts are attached when they exist and COALESCE turns the missing ones into 0.' },
       hints: [`<p>Hint 1: The rows you need (every day) do not exist in any table — you must <b>generate</b> them first.</p>`, `<p>Hint 2: <code>WITH RECURSIVE days(d) AS (SELECT '2024-07-01' UNION ALL SELECT date(d, '+1 day') FROM days WHERE d &lt; '2024-07-07')</code>, then aggregate revenue per date in a second CTE.</p>`, `<p>Hint 3: <code>days LEFT JOIN daily ON daily.order_date = days.d</code>, then <code>COALESCE(revenue, 0)</code>. Put the cancelled filter inside the revenue CTE (filtering in the outer WHERE would turn the LEFT JOIN back into an inner join).</p>`],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['day', 'revenue'], rows: [['2024-07-01', 1500], ['2024-07-02', 0], ['2024-07-03', 880], ['2024-07-04', 0], ['2024-07-05', 0], ['2024-07-06', 60], ['2024-07-07', 0]] },
+        { setup: 'DELETE FROM orders;', cols: ['day', 'revenue'], rows: [['2024-07-01', 0], ['2024-07-02', 0], ['2024-07-03', 0], ['2024-07-04', 0], ['2024-07-05', 0], ['2024-07-06', 0], ['2024-07-07', 0]] },
+        { setup: 'INSERT INTO orders VALUES (110, 1, \'2024-07-07\', \'shipped\');INSERT INTO order_items VALUES (110, 7, 4, 15);INSERT INTO orders VALUES (111, 1, \'2024-06-30\', \'delivered\');INSERT INTO order_items VALUES (111, 7, 1, 15);INSERT INTO orders VALUES (112, 1, \'2024-07-08\', \'delivered\');INSERT INTO order_items VALUES (112, 7, 1, 15);', cols: ['day', 'revenue'], rows: [['2024-07-01', 1500], ['2024-07-02', 0], ['2024-07-03', 880], ['2024-07-04', 0], ['2024-07-05', 0], ['2024-07-06', 60], ['2024-07-07', 60]] },
+        { setup: 'UPDATE orders SET status = \'cancelled\';', cols: ['day', 'revenue'], rows: [['2024-07-01', 0], ['2024-07-02', 0], ['2024-07-03', 0], ['2024-07-04', 0], ['2024-07-05', 0], ['2024-07-06', 0], ['2024-07-07', 0]] },
+        { setup: 'INSERT INTO orders VALUES (110, 2, \'2024-07-01\', \'placed\');INSERT INTO order_items VALUES (110, 7, 2, 15);INSERT INTO orders VALUES (111, 3, \'2024-07-01\', \'placed\');INSERT INTO order_items VALUES (111, 6, 1, 40);', cols: ['day', 'revenue'], rows: [['2024-07-01', 1570], ['2024-07-02', 0], ['2024-07-03', 880], ['2024-07-04', 0], ['2024-07-05', 0], ['2024-07-06', 60], ['2024-07-07', 0]] },
+        { setup: 'INSERT INTO orders VALUES (110, 2, \'2024-07-02\', \'placed\');', cols: ['day', 'revenue'], rows: [['2024-07-01', 1500], ['2024-07-02', 0], ['2024-07-03', 880], ['2024-07-04', 0], ['2024-07-05', 0], ['2024-07-06', 60], ['2024-07-07', 0]] },
+        { setup: 'UPDATE orders SET order_date = \'2024-07-05\' WHERE id IN (101, 102, 103);', cols: ['day', 'revenue'], rows: [['2024-07-01', 0], ['2024-07-02', 0], ['2024-07-03', 0], ['2024-07-04', 0], ['2024-07-05', 2425], ['2024-07-06', 60], ['2024-07-07', 0]] }
+      ] },
       solution: {
         approach: `<p>Generate the calendar with a recursive CTE, aggregate the facts per day in a second CTE, and LEFT JOIN facts onto the calendar so every day appears. Missing days get NULL, which COALESCE turns into 0.</p>`,
         code: { lang: 'sql', db: 'shop', code: `WITH RECURSIVE days(d) AS (
@@ -1420,6 +1466,16 @@ JOIN employees e2 ON e2.manager_id = e1.id
 WHERE ceo.name = 'Asha';` } },
       mcq: { q: 'In the recursive member, which join condition walks DOWN from managers to their reports?', options: ['<code>e.manager_id = t.id</code> (employee row points to a row already found)', '<code>e.id = t.manager_id</code>', '<code>e.id = t.id</code>', '<code>e.manager_id = t.manager_id</code>'], answer: 0, explain: 'Rows already in the CTE are managers; their reports are employees whose manager_id equals one of those ids. The other direction (e.id = t.manager_id) walks up to the boss.' },
       hints: [`<p>Hint 1: Anchor on Asha with level 0 and path 'Asha'. Every round should find people whose manager was found in the previous round.</p>`, `<p>Hint 2: Recursive member: <code>SELECT e.id, e.name, t.level + 1, t.path || ' &gt; ' || e.name FROM employees e JOIN team t ON e.manager_id = t.id</code>.</p>`, `<p>Hint 3: Exclude Asha herself in the final SELECT (<code>WHERE level &gt; 0</code>), order by path for a tree-like listing. It stops automatically when a round finds no reports.</p>`],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['name', 'level', 'path'], rows: [['Lata', 1, 'Asha > Lata'], ['Tom', 2, 'Asha > Lata > Tom'], ['Meera', 1, 'Asha > Meera'], ['Rohan', 2, 'Asha > Meera > Rohan'], ['Sneha', 2, 'Asha > Meera > Sneha'], ['Imran', 3, 'Asha > Meera > Sneha > Imran'], ['Ravi', 1, 'Asha > Ravi'], ['Divya', 2, 'Asha > Ravi > Divya'], ['Priya', 3, 'Asha > Ravi > Divya > Priya'], ['Vikram', 3, 'Asha > Ravi > Divya > Vikram'], ['Karan', 2, 'Asha > Ravi > Karan'], ['Arjun', 3, 'Asha > Ravi > Karan > Arjun'], ['Neha', 3, 'Asha > Ravi > Karan > Neha'], ['Zoya', 1, 'Asha > Zoya'], ['Dev', 2, 'Asha > Zoya > Dev']] },
+        { setup: 'INSERT INTO employees VALUES (17, \'Level4\', NULL, 14, 50000, \'2024-01-01\', \'HR Associate\');', cols: ['name', 'level', 'path'], rows: [['Lata', 1, 'Asha > Lata'], ['Tom', 2, 'Asha > Lata > Tom'], ['Level4', 3, 'Asha > Lata > Tom > Level4'], ['Meera', 1, 'Asha > Meera'], ['Rohan', 2, 'Asha > Meera > Rohan'], ['Sneha', 2, 'Asha > Meera > Sneha'], ['Imran', 3, 'Asha > Meera > Sneha > Imran'], ['Ravi', 1, 'Asha > Ravi'], ['Divya', 2, 'Asha > Ravi > Divya'], ['Priya', 3, 'Asha > Ravi > Divya > Priya'], ['Vikram', 3, 'Asha > Ravi > Divya > Vikram'], ['Karan', 2, 'Asha > Ravi > Karan'], ['Arjun', 3, 'Asha > Ravi > Karan > Arjun'], ['Neha', 3, 'Asha > Ravi > Karan > Neha'], ['Zoya', 1, 'Asha > Zoya'], ['Dev', 2, 'Asha > Zoya > Dev']] },
+        { setup: 'INSERT INTO employees VALUES (17, \'Level4\', NULL, 14, 50000, \'2024-01-01\', \'Engineer\');INSERT INTO employees VALUES (18, \'Level5\', NULL, 17, 40000, \'2024-01-01\', \'Engineer\');', cols: ['name', 'level', 'path'], rows: [['Lata', 1, 'Asha > Lata'], ['Tom', 2, 'Asha > Lata > Tom'], ['Level4', 3, 'Asha > Lata > Tom > Level4'], ['Level5', 4, 'Asha > Lata > Tom > Level4 > Level5'], ['Meera', 1, 'Asha > Meera'], ['Rohan', 2, 'Asha > Meera > Rohan'], ['Sneha', 2, 'Asha > Meera > Sneha'], ['Imran', 3, 'Asha > Meera > Sneha > Imran'], ['Ravi', 1, 'Asha > Ravi'], ['Divya', 2, 'Asha > Ravi > Divya'], ['Priya', 3, 'Asha > Ravi > Divya > Priya'], ['Vikram', 3, 'Asha > Ravi > Divya > Vikram'], ['Karan', 2, 'Asha > Ravi > Karan'], ['Arjun', 3, 'Asha > Ravi > Karan > Arjun'], ['Neha', 3, 'Asha > Ravi > Karan > Neha'], ['Zoya', 1, 'Asha > Zoya'], ['Dev', 2, 'Asha > Zoya > Dev']] },
+        { setup: 'UPDATE employees SET manager_id = 3 WHERE id = 4;', cols: ['name', 'level', 'path'], rows: [['Lata', 1, 'Asha > Lata'], ['Tom', 2, 'Asha > Lata > Tom'], ['Meera', 1, 'Asha > Meera'], ['Karan', 2, 'Asha > Meera > Karan'], ['Arjun', 3, 'Asha > Meera > Karan > Arjun'], ['Neha', 3, 'Asha > Meera > Karan > Neha'], ['Rohan', 2, 'Asha > Meera > Rohan'], ['Sneha', 2, 'Asha > Meera > Sneha'], ['Imran', 3, 'Asha > Meera > Sneha > Imran'], ['Ravi', 1, 'Asha > Ravi'], ['Divya', 2, 'Asha > Ravi > Divya'], ['Priya', 3, 'Asha > Ravi > Divya > Priya'], ['Vikram', 3, 'Asha > Ravi > Divya > Vikram'], ['Zoya', 1, 'Asha > Zoya'], ['Dev', 2, 'Asha > Zoya > Dev']] },
+        { setup: 'UPDATE employees SET manager_id = NULL WHERE id <> 1;', rows: [] },
+        { setup: 'DELETE FROM employees WHERE id > 1;', rows: [] },
+        { setup: 'UPDATE employees SET manager_id = 1 WHERE id > 1;', cols: ['name', 'level', 'path'], rows: [['Arjun', 1, 'Asha > Arjun'], ['Dev', 1, 'Asha > Dev'], ['Divya', 1, 'Asha > Divya'], ['Imran', 1, 'Asha > Imran'], ['Karan', 1, 'Asha > Karan'], ['Lata', 1, 'Asha > Lata'], ['Meera', 1, 'Asha > Meera'], ['Neha', 1, 'Asha > Neha'], ['Priya', 1, 'Asha > Priya'], ['Ravi', 1, 'Asha > Ravi'], ['Rohan', 1, 'Asha > Rohan'], ['Sneha', 1, 'Asha > Sneha'], ['Tom', 1, 'Asha > Tom'], ['Vikram', 1, 'Asha > Vikram'], ['Zoya', 1, 'Asha > Zoya']] },
+        { setup: 'UPDATE employees SET manager_id = NULL WHERE id = 2;', cols: ['name', 'level', 'path'], rows: [['Lata', 1, 'Asha > Lata'], ['Tom', 2, 'Asha > Lata > Tom'], ['Meera', 1, 'Asha > Meera'], ['Rohan', 2, 'Asha > Meera > Rohan'], ['Sneha', 2, 'Asha > Meera > Sneha'], ['Imran', 3, 'Asha > Meera > Sneha > Imran'], ['Zoya', 1, 'Asha > Zoya'], ['Dev', 2, 'Asha > Zoya > Dev']] }
+      ] },
       solution: {
         approach: `<p>Top-down recursive CTE: anchor = Asha, recursive member = employees whose manager is in the previous round, carrying level and path. It adapts to any depth and terminates because a tree has no cycles.</p>`,
         code: { lang: 'sql', db: 'company', code: `WITH RECURSIVE team(id, name, level, path) AS (
@@ -1631,6 +1687,15 @@ FROM customers c
 ORDER BY spend DESC, c.name;` } },
       mcq: { q: 'You replace the correlated subqueries with an INNER JOIN to a grouped CTE. What breaks?', options: ['Customers with no orders disappear (the "COUNT bug")', 'Spend doubles', 'Nothing — it is identical', 'ORDER BY stops working'], answer: 0, explain: 'COUNT over zero rows is 0, but an inner join to a grouped table has no row for those customers, so they vanish. Use LEFT JOIN and COALESCE to 0.' },
       hints: [`<p>Hint 1: Both subqueries read the same rows (non-cancelled orders of a customer). Aggregate them once, grouped by customer.</p>`, `<p>Hint 2: Count orders with <code>COUNT(DISTINCT o.id)</code> — after joining to order_items each order appears once per line item.</p>`, `<p>Hint 3: <code>customers LEFT JOIN stats</code> and <code>COALESCE(…, 0)</code> to keep customers with no orders. Recipe: CTE stats(customer_id, orders, spend) → LEFT JOIN → COALESCE → ORDER BY spend DESC, name.</p>`],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['name', 'orders', 'spend'], rows: [['Asha', 3, 2625], ['Dana', 1, 1190], ['Ben', 2, 1060], ['Chen', 1, 390], ['Eli', 0, 0], ['Fatima', 0, 0]] },
+        { setup: 'INSERT INTO orders VALUES (110, 5, \'2024-09-05\', \'placed\');', cols: ['name', 'orders', 'spend'], rows: [['Asha', 3, 2625], ['Dana', 1, 1190], ['Ben', 2, 1060], ['Chen', 1, 390], ['Eli', 1, 0], ['Fatima', 0, 0]] },
+        { setup: 'INSERT INTO orders VALUES (110, 5, \'2024-09-05\', \'placed\');INSERT INTO orders VALUES (111, 6, \'2024-09-06\', \'cancelled\');INSERT INTO order_items VALUES (111, 7, 1, 15);', cols: ['name', 'orders', 'spend'], rows: [['Asha', 3, 2625], ['Dana', 1, 1190], ['Ben', 2, 1060], ['Chen', 1, 390], ['Eli', 1, 0], ['Fatima', 0, 0]] },
+        { setup: 'DELETE FROM orders; DELETE FROM order_items;', cols: ['name', 'orders', 'spend'], rows: [['Asha', 0, 0], ['Ben', 0, 0], ['Chen', 0, 0], ['Dana', 0, 0], ['Eli', 0, 0], ['Fatima', 0, 0]] },
+        { setup: 'UPDATE orders SET status = \'cancelled\';', cols: ['name', 'orders', 'spend'], rows: [['Asha', 0, 0], ['Ben', 0, 0], ['Chen', 0, 0], ['Dana', 0, 0], ['Eli', 0, 0], ['Fatima', 0, 0]] },
+        { setup: 'DELETE FROM order_items WHERE order_id = 101;', cols: ['name', 'orders', 'spend'], rows: [['Dana', 1, 1190], ['Asha', 3, 1125], ['Ben', 2, 1060], ['Chen', 1, 390], ['Eli', 0, 0], ['Fatima', 0, 0]] },
+        { setup: 'INSERT INTO orders VALUES (110, 1, \'2024-09-05\', \'placed\');INSERT INTO order_items VALUES (110, 7, 1, 15);INSERT INTO order_items VALUES (110, 8, 1, 30);INSERT INTO order_items VALUES (110, 9, 1, 60);', cols: ['name', 'orders', 'spend'], rows: [['Asha', 4, 2730], ['Dana', 1, 1190], ['Ben', 2, 1060], ['Chen', 1, 390], ['Eli', 0, 0], ['Fatima', 0, 0]] }
+      ] },
       solution: {
         approach: `<p>Decorrelate by hand: one grouped CTE reads orders + items once, then a LEFT JOIN attaches the numbers to every customer. <code>COUNT(DISTINCT o.id)</code> avoids counting line items as orders, and COALESCE restores the zero rows that the correlated COUNT used to produce.</p>`,
         code: { lang: 'sql', db: 'shop', code: `WITH stats AS (
@@ -1638,7 +1703,7 @@ ORDER BY spend DESC, c.name;` } },
                COUNT(DISTINCT o.id)        AS orders,   -- DISTINCT: one order has many items
                SUM(oi.qty * oi.unit_price) AS spend
         FROM orders o
-        JOIN order_items oi ON oi.order_id = o.id
+        LEFT JOIN order_items oi ON oi.order_id = o.id   -- LEFT: an order without items is still an order
         WHERE o.status <> 'cancelled'
         GROUP BY o.customer_id
      )
@@ -1670,6 +1735,15 @@ ORDER BY salary DESC
 LIMIT 1;           -- loses the tie` } },
     mcq: { q: 'Which filter keeps all tied top earners?', options: ['<code>salary = (SELECT MAX(salary) … same filter)</code>', '<code>LIMIT 1</code>', '<code>LIMIT 2</code>', '<code>DISTINCT salary</code>'], answer: 0, explain: 'Comparing every row with the maximum keeps every row that equals it, however many there are.' },
     hints: [`<p>Hint 1: First find the single top value, then keep every row equal to it.</p>`, `<p>Hint 2: Scalar subquery <code>(SELECT MAX(salary) FROM employees WHERE title = 'Engineer')</code>.</p>`, `<p>Hint 3: Apply the same title filter inside and outside the subquery, otherwise a non-engineer's salary becomes the target.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['name', 'salary'], rows: [['Neha', 105000], ['Priya', 105000]] },
+      { setup: 'UPDATE employees SET salary = 110000 WHERE id = 6;', cols: ['name', 'salary'], rows: [['Arjun', 110000]] },
+      { setup: 'UPDATE employees SET title = \'Senior Engineer\' WHERE id IN (7, 9);', cols: ['name', 'salary'], rows: [['Arjun', 95000]] },
+      { setup: 'UPDATE employees SET title = \'Manager\' WHERE title = \'Engineer\';', rows: [] },
+      { setup: 'UPDATE employees SET salary = 100000 WHERE title = \'Engineer\';', cols: ['name', 'salary'], rows: [['Arjun', 100000], ['Neha', 100000], ['Priya', 100000], ['Vikram', 100000]] },
+      { setup: 'INSERT INTO employees VALUES (17, \'Zed\', 1, 2, 999999, \'2024-01-01\', \'Principal Engineer\');INSERT INTO employees VALUES (18, \'engineer low\', 1, 2, 999999, \'2024-01-01\', \'engineer\');', cols: ['name', 'salary'], rows: [['Neha', 105000], ['Priya', 105000]] },
+      { setup: 'DELETE FROM employees WHERE title = \'Engineer\' AND id <> 8;', cols: ['name', 'salary'], rows: [['Vikram', 88000]] }
+    ] },
     solution: {
       approach: `<p>Compute the maximum engineer salary once with an uncorrelated scalar subquery, then return every engineer equal to it. Ties survive naturally.</p>`,
       code: { lang: 'sql', db: 'company', code: `SELECT name, salary
@@ -1691,6 +1765,15 @@ ORDER BY name;` },
     brute: { why: `<p>Hard-coding <code>dept_id IN (2, 4)</code> works today but silently breaks when a department moves or a new Mumbai team opens. The list should come from the data.</p>`, code: { lang: 'sql', db: 'company', code: `SELECT name FROM employees WHERE dept_id IN (2, 4);   -- hard-coded ids` } },
     mcq: { q: 'Can <code>dept_id IN (SELECT id FROM departments WHERE location = \'Mumbai\')</code> return an employee twice?', options: ['No — IN is a semi-join, each outer row appears at most once', 'Yes, once per matching department', 'Only if there are NULLs', 'Only in SQLite'], answer: 0, explain: 'IN asks "is there at least one match?" and never multiplies outer rows, unlike a JOIN.' },
     hints: [`<p>Hint 1: Build the list of Mumbai department ids with a subquery.</p>`, `<p>Hint 2: <code>WHERE dept_id IN (SELECT id FROM departments WHERE location = 'Mumbai')</code>.</p>`, `<p>Hint 3: The CEO's NULL dept_id never matches anything, which is correct here.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['name'], rows: [['Dev'], ['Imran'], ['Meera'], ['Rohan'], ['Sneha'], ['Zoya']] },
+      { setup: 'UPDATE departments SET location = \'Pune\' WHERE id = 2;', cols: ['name'], rows: [['Dev'], ['Zoya']] },
+      { setup: 'UPDATE departments SET location = \'Mumbai\' WHERE id = 1;', cols: ['name'], rows: [['Arjun'], ['Dev'], ['Divya'], ['Imran'], ['Karan'], ['Meera'], ['Neha'], ['Priya'], ['Ravi'], ['Rohan'], ['Sneha'], ['Vikram'], ['Zoya']] },
+      { setup: 'UPDATE departments SET location = \'Delhi\' WHERE location = \'Mumbai\';', rows: [] },
+      { setup: 'UPDATE employees SET dept_id = NULL WHERE id IN (3, 15);', cols: ['name'], rows: [['Dev'], ['Imran'], ['Rohan'], ['Sneha']] },
+      { setup: 'UPDATE departments SET location = \'mumbai\' WHERE id = 4;', cols: ['name'], rows: [['Imran'], ['Meera'], ['Rohan'], ['Sneha']] },
+      { setup: 'UPDATE employees SET dept_id = 99 WHERE id = 10; INSERT INTO departments VALUES (6, \'Ops\', \'Mumbai\');', cols: ['name'], rows: [['Dev'], ['Imran'], ['Meera'], ['Sneha'], ['Zoya']] }
+    ] },
     solution: {
       approach: `<p>An uncorrelated column subquery produces the current Mumbai department ids; <code>IN</code> keeps employees whose dept_id is in that list.</p>`,
       code: { lang: 'sql', db: 'company', code: `SELECT name
@@ -1718,6 +1801,15 @@ FROM departments d
 JOIN projects p ON p.dept_id = d.id;     -- Engineering x3` } },
     mcq: { q: 'Inside <code>EXISTS (SELECT … )</code>, what does the SELECT list matter?', options: ['Nothing — only whether a row exists', 'It must be SELECT *', 'It must be SELECT 1', 'It decides which columns are returned'], answer: 0, explain: 'EXISTS only checks for at least one row; SELECT 1, SELECT * and SELECT NULL are equivalent.' },
     hints: [`<p>Hint 1: "at least one" = existence check, not a join.</p>`, `<p>Hint 2: <code>WHERE EXISTS (SELECT 1 FROM projects p WHERE p.dept_id = d.id)</code>.</p>`, `<p>Hint 3: EXISTS stops at the first matching project, so Engineering is checked once and kept once.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['name'], rows: [['Engineering'], ['Sales'], ['HR'], ['Marketing']] },
+      { setup: 'DELETE FROM assignments; DELETE FROM projects;', rows: [] },
+      { setup: 'INSERT INTO projects VALUES (7, \'Legal Tech\', 5, 1000);', cols: ['name'], rows: [['Engineering'], ['Sales'], ['HR'], ['Marketing'], ['Legal']] },
+      { setup: 'UPDATE projects SET dept_id = NULL WHERE dept_id = 4;', cols: ['name'], rows: [['Engineering'], ['Sales'], ['HR']] },
+      { setup: 'UPDATE projects SET dept_id = 99 WHERE id = 5;', cols: ['name'], rows: [['Engineering'], ['Sales'], ['Marketing']] },
+      { setup: 'UPDATE projects SET dept_id = 1;', cols: ['name'], rows: [['Engineering']] },
+      { setup: 'DELETE FROM departments WHERE id = 1;', cols: ['name'], rows: [['Sales'], ['HR'], ['Marketing']] }
+    ] },
     solution: {
       approach: `<p>Correlated EXISTS semi-join: for each department, probe projects for one matching row. No duplicates by construction.</p>`,
       code: { lang: 'sql', db: 'company', code: `SELECT d.name
@@ -1741,6 +1833,14 @@ UNION ALL SELECT 3, 9, 27
 UNION ALL SELECT 4, 16, 64;      -- and 8 more lines by hand` } },
     mcq: { q: 'Your recursive member is <code>SELECT n + 1 FROM s WHERE n &lt;= 12</code> with anchor 1. How many rows?', options: ['13', '12', '11', 'Infinite'], answer: 0, explain: 'When n = 12 the condition 12 ≤ 12 is still true, so 13 is produced. Use n &lt; 12 to stop at 12.' },
     hints: [`<p>Hint 1: Anchor the series at 1; each recursive round adds 1 to the previous row.</p>`, `<p>Hint 2: <code>WITH RECURSIVE s(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM s WHERE n &lt; 12)</code>.</p>`, `<p>Hint 3: Compute squares and cubes in the outer SELECT, not inside the recursion.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['n', 'square', 'cube'], rows: [[1, 1, 1], [2, 4, 8], [3, 9, 27], [4, 16, 64], [5, 25, 125], [6, 36, 216], [7, 49, 343], [8, 64, 512], [9, 81, 729], [10, 100, 1000], [11, 121, 1331], [12, 144, 1728]] },
+      { setup: 'DELETE FROM order_items; DELETE FROM orders; DELETE FROM customers; DELETE FROM products;', cols: ['n', 'square', 'cube'], rows: [[1, 1, 1], [2, 4, 8], [3, 9, 27], [4, 16, 64], [5, 25, 125], [6, 36, 216], [7, 49, 343], [8, 64, 512], [9, 81, 729], [10, 100, 1000], [11, 121, 1331], [12, 144, 1728]] },
+      { setup: 'INSERT INTO customers SELECT id + 100, name, city, signup_date FROM customers;', cols: ['n', 'square', 'cube'], rows: [[1, 1, 1], [2, 4, 8], [3, 9, 27], [4, 16, 64], [5, 25, 125], [6, 36, 216], [7, 49, 343], [8, 64, 512], [9, 81, 729], [10, 100, 1000], [11, 121, 1331], [12, 144, 1728]] },
+      { setup: 'CREATE TABLE s (n INTEGER); INSERT INTO s VALUES (1), (2), (3);', cols: ['n', 'square', 'cube'], rows: [[1, 1, 1], [2, 4, 8], [3, 9, 27], [4, 16, 64], [5, 25, 125], [6, 36, 216], [7, 49, 343], [8, 64, 512], [9, 81, 729], [10, 100, 1000], [11, 121, 1331], [12, 144, 1728]] },
+      { setup: 'UPDATE products SET price = 0;', cols: ['n', 'square', 'cube'], rows: [[1, 1, 1], [2, 4, 8], [3, 9, 27], [4, 16, 64], [5, 25, 125], [6, 36, 216], [7, 49, 343], [8, 64, 512], [9, 81, 729], [10, 100, 1000], [11, 121, 1331], [12, 144, 1728]] },
+      { setup: 'DROP TABLE order_items; DROP TABLE orders; DROP TABLE products; DROP TABLE customers;', cols: ['n', 'square', 'cube'], rows: [[1, 1, 1], [2, 4, 8], [3, 9, 27], [4, 16, 64], [5, 25, 125], [6, 36, 216], [7, 49, 343], [8, 64, 512], [9, 81, 729], [10, 100, 1000], [11, 121, 1331], [12, 144, 1728]] }
+    ] },
     solution: {
       approach: `<p>Generate the series with a recursive CTE, then derive columns in the final SELECT.</p>`,
       code: { lang: 'sql', db: 'shop', code: `WITH RECURSIVE s(n) AS (
@@ -1769,6 +1869,16 @@ ORDER BY salary DESC
 LIMIT 1 OFFSET 3;        -- 105000: wrong because of the tie` } },
     mcq: { q: 'How do you make "no 4th salary" return a NULL row instead of nothing?', options: ['Wrap the query as a scalar subquery: <code>SELECT (SELECT …) AS nth</code>', 'Add <code>IS NULL</code>', 'Use <code>COUNT(*)</code>', 'Use <code>LIMIT 0</code>'], answer: 0, explain: 'A scalar subquery with no row evaluates to NULL, and the outer SELECT always produces exactly one row.' },
     hints: [`<p>Hint 1: A salary is the Nth highest distinct one exactly when N − 1 distinct salaries are greater than it.</p>`, `<p>Hint 2: Correlated count: <code>(SELECT COUNT(DISTINCT x.salary) FROM employees x WHERE x.dept_id = 1 AND x.salary &gt; e.salary) = 3</code>.</p>`, `<p>Hint 3: Use DISTINCT on the outer salary too, and wrap everything in <code>SELECT (…) AS fourth_highest</code> to get NULL when absent. Alternative: <code>SELECT DISTINCT … LIMIT 1 OFFSET 3</code> inside the scalar wrapper.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['fourth_highest'], rows: [[102000]] },
+      { setup: 'UPDATE employees SET dept_id = 2 WHERE dept_id = 1 AND salary < 100000;', cols: ['fourth_highest'], rows: [[102000]] },
+      { setup: 'UPDATE employees SET dept_id = 2 WHERE dept_id = 1 AND id > 4;', cols: ['fourth_highest'], rows: [[null]] },
+      { setup: 'UPDATE employees SET salary = 100000 WHERE dept_id = 1;', cols: ['fourth_highest'], rows: [[null]] },
+      { setup: 'UPDATE employees SET dept_id = NULL WHERE dept_id = 1;', cols: ['fourth_highest'], rows: [[null]] },
+      { setup: 'UPDATE employees SET salary = 180000 WHERE dept_id = 1 AND id IN (4, 5);', cols: ['fourth_highest'], rows: [[88000]] },
+      { setup: 'INSERT INTO employees VALUES (17, \'Rich\', 2, 1, 900000, \'2024-01-01\', \'Engineer\');INSERT INTO employees VALUES (18, \'Rich2\', 2, 1, 800000, \'2024-01-01\', \'Engineer\');', cols: ['fourth_highest'], rows: [[102000]] },
+      { setup: 'UPDATE employees SET salary = salary + 1 WHERE id IN (6, 8);', cols: ['fourth_highest'], rows: [[102000]] }
+    ] },
     solution: {
       approach: `<p>Use the correlated "how many distinct salaries beat me" count to find the value with exactly N − 1 above it, and wrap it in a scalar subquery so the result is one row, NULL if missing. The alternative applies DISTINCT before OFFSET.</p>`,
       code: { lang: 'sql', db: 'company', code: `SELECT (
@@ -1799,6 +1909,15 @@ FROM products p
 JOIN order_items oi ON p.id <> oi.product_id;   -- returns all 9 products` } },
     mcq: { q: '"Not matching ANY row" corresponds to…', options: ['NOT EXISTS (… = …)', 'JOIN … ON a &lt;&gt; b', 'IN (…)', 'LEFT JOIN without a WHERE'], answer: 0, explain: 'NOT EXISTS with an equality inside means no row equals it. A join on &lt;&gt; matches almost everything.' },
     hints: [`<p>Hint 1: This is an anti-join: keep products for which no order line exists.</p>`, `<p>Hint 2: <code>NOT EXISTS (SELECT 1 FROM order_items oi WHERE oi.product_id = p.id)</code>.</p>`, `<p>Hint 3: Prefer NOT EXISTS over NOT IN so a future NULL product_id cannot empty the result.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['name'], rows: [['Atlas']] },
+      { setup: 'INSERT INTO order_items VALUES (101, 9, 1, 60);', rows: [] },
+      { setup: 'DELETE FROM order_items;', cols: ['name'], rows: [['Atlas'], ['Chair'], ['Cookbook'], ['Desk'], ['Headphones'], ['Lamp'], ['Laptop'], ['Novel'], ['Phone']] },
+      { setup: 'INSERT INTO products (id, name, category, price) VALUES (10, \'Aardvark\', \'Books\', 5);', cols: ['name'], rows: [['Aardvark'], ['Atlas']] },
+      { setup: 'INSERT INTO order_items VALUES (101, NULL, 1, 1);', cols: ['name'], rows: [['Atlas']] },
+      { setup: 'DELETE FROM order_items WHERE product_id IN (1, 2, 3);', cols: ['name'], rows: [['Atlas'], ['Headphones'], ['Laptop'], ['Phone']] },
+      { setup: 'DELETE FROM products;', rows: [] }
+    ] },
     solution: {
       approach: `<p>NOT EXISTS anti-join on product_id. Null-safe and planned as a hash anti-join or index probes.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT p.name
@@ -1821,6 +1940,15 @@ FROM orders
 GROUP BY customer_id;` } },
     mcq: { q: 'Which pattern returns the full row holding the per-group maximum, portably?', options: ['Correlated <code>order_date = (SELECT MAX(...) WHERE same customer)</code>', 'GROUP BY with bare columns', 'ORDER BY order_date DESC LIMIT 1', 'DISTINCT customer_id'], answer: 0, explain: 'Compare each row with its own group maximum (or use ROW_NUMBER in the next module). Bare columns are not standard SQL.' },
     hints: [`<p>Hint 1: For each order row, ask "is this the latest date for this customer?".</p>`, `<p>Hint 2: <code>o.order_date = (SELECT MAX(o2.order_date) FROM orders o2 WHERE o2.customer_id = o.customer_id)</code>.</p>`, `<p>Hint 3: Exclude NULL customer_id; if two orders share the max date both are returned — add a tie-breaker on id if needed.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['id', 'customer_id', 'order_date', 'status'], rows: [[108, 1, '2024-09-02', 'shipped'], [107, 2, '2024-08-20', 'delivered'], [105, 3, '2024-08-10', 'delivered'], [106, 4, '2024-08-12', 'shipped']] },
+      { setup: 'INSERT INTO orders VALUES (110, 1, \'2024-10-01\', \'placed\');', cols: ['id', 'customer_id', 'order_date', 'status'], rows: [[110, 1, '2024-10-01', 'placed'], [107, 2, '2024-08-20', 'delivered'], [105, 3, '2024-08-10', 'delivered'], [106, 4, '2024-08-12', 'shipped']] },
+      { setup: 'INSERT INTO orders VALUES (110, 5, \'2024-01-01\', \'cancelled\');INSERT INTO orders VALUES (111, NULL, \'2025-01-01\', \'placed\');', cols: ['id', 'customer_id', 'order_date', 'status'], rows: [[108, 1, '2024-09-02', 'shipped'], [107, 2, '2024-08-20', 'delivered'], [105, 3, '2024-08-10', 'delivered'], [106, 4, '2024-08-12', 'shipped'], [110, 5, '2024-01-01', 'cancelled']] },
+      { setup: 'UPDATE orders SET customer_id = NULL;', rows: [] },
+      { setup: 'DELETE FROM orders;', rows: [] },
+      { setup: 'UPDATE orders SET order_date = \'2024-06-30\' WHERE id = 108;', cols: ['id', 'customer_id', 'order_date', 'status'], rows: [[102, 1, '2024-07-15', 'delivered'], [107, 2, '2024-08-20', 'delivered'], [105, 3, '2024-08-10', 'delivered'], [106, 4, '2024-08-12', 'shipped']] },
+      { setup: 'UPDATE orders SET customer_id = 2;', cols: ['id', 'customer_id', 'order_date', 'status'], rows: [[108, 2, '2024-09-02', 'shipped']] }
+    ] },
     solution: {
       approach: `<p>Correlated "greatest-n-per-group": keep each order whose date equals the maximum date of its own customer. Index <code>orders(customer_id, order_date)</code> makes each inner MAX a single seek.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT o.id, o.customer_id, o.order_date, o.status
@@ -1848,6 +1976,15 @@ LEFT JOIN categories p ON p.id = c.parent_id
 LEFT JOIN categories g ON g.id = p.parent_id;     -- misses the 4th level ('All')` } },
     mcq: { q: 'Where should the breadcrumb string start?', options: ['In the anchor, with the root name', 'In the final SELECT', 'In a separate CTE', 'It cannot be built in SQL'], answer: 0, explain: 'Top-down: anchor the root with path = name; each round appends the child name to the parent path.' },
     hints: [`<p>Hint 1: Walk top-down from the root, carrying the path.</p>`, `<p>Hint 2: Anchor <code>SELECT id, 0, name FROM categories WHERE parent_id IS NULL</code>; recursive member joins <code>c.parent_id = t.id</code>.</p>`, `<p>Hint 3: Append with <code>t.path || ' &gt; ' || c.name</code> and add 1 to depth. In PostgreSQL cast the anchor path to text.</p>`],
+    tests: { engine: 'sqlite', cmp: 'set', cases: [
+      { cols: ['id', 'depth', 'breadcrumb'], rows: [[1, 0, 'All'], [2, 1, 'All > Electronics'], [4, 2, 'All > Electronics > Phones'], [5, 2, 'All > Electronics > Laptops'], [6, 2, 'All > Electronics > Audio'], [7, 3, 'All > Electronics > Audio > Headphones'], [8, 3, 'All > Electronics > Audio > Speakers'], [3, 1, 'All > Furniture'], [9, 2, 'All > Furniture > Office'], [10, 3, 'All > Furniture > Office > Chairs']] },
+      { setup: 'INSERT INTO categories VALUES (11, \'Gaming Chairs\', 10);', cols: ['id', 'depth', 'breadcrumb'], rows: [[1, 0, 'All'], [2, 1, 'All > Electronics'], [4, 2, 'All > Electronics > Phones'], [5, 2, 'All > Electronics > Laptops'], [6, 2, 'All > Electronics > Audio'], [7, 3, 'All > Electronics > Audio > Headphones'], [8, 3, 'All > Electronics > Audio > Speakers'], [3, 1, 'All > Furniture'], [9, 2, 'All > Furniture > Office'], [10, 3, 'All > Furniture > Office > Chairs'], [11, 4, 'All > Furniture > Office > Chairs > Gaming Chairs']] },
+      { setup: 'INSERT INTO categories VALUES (11, \'X\', 10), (12, \'Y\', 11), (13, \'Z\', 12);', cols: ['id', 'depth', 'breadcrumb'], rows: [[1, 0, 'All'], [2, 1, 'All > Electronics'], [4, 2, 'All > Electronics > Phones'], [5, 2, 'All > Electronics > Laptops'], [6, 2, 'All > Electronics > Audio'], [7, 3, 'All > Electronics > Audio > Headphones'], [8, 3, 'All > Electronics > Audio > Speakers'], [3, 1, 'All > Furniture'], [9, 2, 'All > Furniture > Office'], [10, 3, 'All > Furniture > Office > Chairs'], [11, 4, 'All > Furniture > Office > Chairs > X'], [12, 5, 'All > Furniture > Office > Chairs > X > Y'], [13, 6, 'All > Furniture > Office > Chairs > X > Y > Z']] },
+      { setup: 'UPDATE categories SET parent_id = 4 WHERE id = 7;', cols: ['id', 'depth', 'breadcrumb'], rows: [[1, 0, 'All'], [2, 1, 'All > Electronics'], [4, 2, 'All > Electronics > Phones'], [7, 3, 'All > Electronics > Phones > Headphones'], [5, 2, 'All > Electronics > Laptops'], [6, 2, 'All > Electronics > Audio'], [8, 3, 'All > Electronics > Audio > Speakers'], [3, 1, 'All > Furniture'], [9, 2, 'All > Furniture > Office'], [10, 3, 'All > Furniture > Office > Chairs']] },
+      { setup: 'DELETE FROM categories WHERE id > 1;', cols: ['id', 'depth', 'breadcrumb'], rows: [[1, 0, 'All']] },
+      { setup: 'UPDATE categories SET name = \'Everything\' WHERE id = 1;', cols: ['id', 'depth', 'breadcrumb'], rows: [[1, 0, 'Everything'], [2, 1, 'Everything > Electronics'], [4, 2, 'Everything > Electronics > Phones'], [5, 2, 'Everything > Electronics > Laptops'], [6, 2, 'Everything > Electronics > Audio'], [7, 3, 'Everything > Electronics > Audio > Headphones'], [8, 3, 'Everything > Electronics > Audio > Speakers'], [3, 1, 'Everything > Furniture'], [9, 2, 'Everything > Furniture > Office'], [10, 3, 'Everything > Furniture > Office > Chairs']] },
+      { setup: 'UPDATE categories SET parent_id = 1 WHERE id IN (4, 5);', cols: ['id', 'depth', 'breadcrumb'], rows: [[1, 0, 'All'], [2, 1, 'All > Electronics'], [6, 2, 'All > Electronics > Audio'], [7, 3, 'All > Electronics > Audio > Headphones'], [8, 3, 'All > Electronics > Audio > Speakers'], [3, 1, 'All > Furniture'], [9, 2, 'All > Furniture > Office'], [10, 3, 'All > Furniture > Office > Chairs'], [4, 1, 'All > Phones'], [5, 1, 'All > Laptops']] }
+    ] },
     solution: {
       approach: `<p>Top-down recursive CTE from the root, appending each child's name to its parent's path and incrementing depth.</p>`,
       code: { lang: 'sql', db: 'network', code: `WITH RECURSIVE crumbs(id, depth, breadcrumb) AS (
@@ -1877,6 +2014,15 @@ LEFT JOIN employees m2 ON m2.id = m1.manager_id
 WHERE e.name = 'Imran';` } },
     mcq: { q: 'Walking UP the hierarchy, the recursive join is…', options: ['<code>m.id = c.manager_id</code>', '<code>m.manager_id = c.id</code>', '<code>m.id = c.id</code>', '<code>m.manager_id = c.manager_id</code>'], answer: 0, explain: 'The next row is the manager of the row found last time: its id equals that row\'s manager_id.' },
     hints: [`<p>Hint 1: Anchor on Imran with steps = 0; each round fetches the manager of the previous row.</p>`, `<p>Hint 2: Recursion ends when manager_id is NULL (the join finds nothing).</p>`, `<p>Hint 3: Concatenate in step order: <code>group_concat(name, ' &lt; ')</code> over a subquery ordered by steps (or carry the string inside the recursion).</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['chain_of_command'], rows: [['Imran < Sneha < Meera < Asha']] },
+      { setup: 'UPDATE employees SET manager_id = 1 WHERE name = \'Imran\';', cols: ['chain_of_command'], rows: [['Imran < Asha']] },
+      { setup: 'UPDATE employees SET manager_id = NULL WHERE name = \'Imran\';', cols: ['chain_of_command'], rows: [['Imran']] },
+      { setup: 'UPDATE employees SET manager_id = 15 WHERE id = 11;', cols: ['chain_of_command'], rows: [['Imran < Sneha < Zoya < Asha']] },
+      { setup: 'UPDATE employees SET manager_id = 2 WHERE id = 3;', cols: ['chain_of_command'], rows: [['Imran < Sneha < Meera < Ravi < Asha']] },
+      { setup: 'DELETE FROM employees WHERE name = \'Imran\';', rows: [] },
+      { setup: 'INSERT INTO employees VALUES (17, \'Inserted Boss\', 2, 1, 1, \'2024-01-01\', \'X\');UPDATE employees SET manager_id = 17 WHERE id = 11;', cols: ['chain_of_command'], rows: [['Imran < Sneha < Inserted Boss < Asha']] }
+    ] },
     solution: {
       approach: `<p>Bottom-up recursion carrying the chain string itself, then pick the longest (last) row. This avoids depending on aggregate ordering.</p>`,
       code: { lang: 'sql', db: 'company', code: `WITH RECURSIVE chain(id, manager_id, steps, path) AS (
@@ -1906,6 +2052,15 @@ LIMIT 1;                                          -- the row that reached the CE
 WHERE budget > (SELECT SUM(salary) FROM employees);   -- not per department` } },
     mcq: { q: 'What makes this subquery correlated?', options: ['It filters employees by <code>e.dept_id = p.dept_id</code>, the outer project\'s department', 'It uses SUM', 'It is in WHERE', 'It returns one value'], answer: 0, explain: 'Referencing the outer row (p.dept_id) inside the subquery makes it correlated.' },
     hints: [`<p>Hint 1: Each project needs its own department's payroll.</p>`, `<p>Hint 2: <code>(SELECT SUM(e.salary) FROM employees e WHERE e.dept_id = p.dept_id)</code>.</p>`, `<p>Hint 3: Compare in WHERE and repeat it in SELECT (or use a CTE of payroll per dept and JOIN).</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['name', 'budget', 'dept_payroll'], rows: [['Data Lake', 900000, 800000], ['Q4 Campaign', 200000, 162000]] },
+      { setup: 'INSERT INTO projects VALUES (7, \'Legal Tech\', 5, 1000000);', cols: ['name', 'budget', 'dept_payroll'], rows: [['Data Lake', 900000, 800000], ['Q4 Campaign', 200000, 162000]] },
+      { setup: 'UPDATE projects SET budget = 800000 WHERE id = 6;', cols: ['name', 'budget', 'dept_payroll'], rows: [['Q4 Campaign', 200000, 162000]] },
+      { setup: 'UPDATE projects SET dept_id = NULL;', rows: [] },
+      { setup: 'UPDATE employees SET salary = 1 WHERE dept_id = 2;', cols: ['name', 'budget', 'dept_payroll'], rows: [['Data Lake', 900000, 800000], ['CRM Rollout', 300000, 4], ['Q4 Campaign', 200000, 162000]] },
+      { setup: 'DELETE FROM employees WHERE dept_id = 4;', cols: ['name', 'budget', 'dept_payroll'], rows: [['Data Lake', 900000, 800000]] },
+      { setup: 'UPDATE projects SET budget = 1;', rows: [] }
+    ] },
     solution: {
       approach: `<p>Aggregate payroll per department once in a CTE and join it to projects; the inner join also drops departments without employees. The correlated version is equivalent.</p>`,
       code: { lang: 'sql', db: 'company', code: `WITH payroll AS (
@@ -1943,6 +2098,15 @@ WHERE a.project_id IN (SELECT project_id FROM assignments WHERE emp_id = 7)
   AND e.id <> 7;                        -- ANY, not EVERY` } },
     mcq: { q: '"X did all of S" is best rewritten as…', options: ['There is no element of S that X did not do (double NOT EXISTS)', 'X did at least one of S', 'X did more than |S| things', 'X and S share a row'], answer: 0, explain: 'Universal quantification becomes a double negation in SQL: NOT EXISTS (s in S such that NOT EXISTS (X did s)).' },
     hints: [`<p>Hint 1: Rephrase: keep e if there is <b>no</b> Neha project that e is <b>not</b> on.</p>`, `<p>Hint 2: Outer NOT EXISTS over Neha's assignments; inner NOT EXISTS over e's assignments for that project.</p>`, `<p>Hint 3: Counting alternative: count e's assignments among Neha's projects and compare with Neha's project count. Exclude Neha herself.</p>`],
+    tests: { engine: 'sqlite', cmp: 'set', cases: [
+      { cols: ['name'], rows: [['Priya']] },
+      { setup: 'INSERT INTO assignments VALUES (4, 2, 10);', cols: ['name'], rows: [['Karan'], ['Priya']] },
+      { setup: 'INSERT INTO assignments VALUES (7, 3, 10);', rows: [] },
+      { setup: 'INSERT INTO assignments VALUES (7, 3, 10), (9, 3, 5), (5, 1, 5);', cols: ['name'], rows: [['Priya']] },
+      { setup: 'DELETE FROM assignments WHERE emp_id = 9 AND project_id = 1;', rows: [] },
+      { setup: 'DELETE FROM assignments WHERE emp_id = 7 AND project_id = 2;', cols: ['name'], rows: [['Karan'], ['Arjun'], ['Priya']] },
+      { setup: 'INSERT INTO assignments VALUES (6, 2, 1), (8, 1, 1), (10, 1, 1), (10, 2, 1);', cols: ['name'], rows: [['Arjun'], ['Vikram'], ['Priya'], ['Rohan']] }
+    ] },
     solution: {
       approach: `<p>Relational division with double NOT EXISTS: for each candidate, look for a Neha project the candidate lacks; keep the candidate if none is found.</p>`,
       code: { lang: 'sql', db: 'company', code: `SELECT e.name
@@ -1980,6 +2144,15 @@ FROM bom b LEFT JOIN part_costs pc ON pc.part = b.child
 WHERE b.parent = 'Bike';          -- one level only, no multiplication` } },
     mcq: { q: 'When recursing from Wheel (needed ×2) to Spoke (32 per wheel), the carried quantity becomes…', options: ['2 × 32 = 64', '2 + 32 = 34', '32', '2'], answer: 0, explain: 'Quantities multiply down a path: each of the 2 wheels needs 32 spokes.' },
     hints: [`<p>Hint 1: Anchor = ('Bike', 1). Each round: child qty = parent qty × bom.qty.</p>`, `<p>Hint 2: After the recursion, GROUP BY part and SUM(qty), because a part can be reached by several paths.</p>`, `<p>Hint 3: Join part_costs (inner join keeps only priced leaf parts) and compute qty × unit_cost; a window or a UNION ALL row gives the grand total.</p>`],
+    tests: { engine: 'sqlite', cmp: 'set', cases: [
+      { cols: ['part', 'qty', 'unit_cost', 'cost'], rows: [['Tube', 3, 10, 30], ['Bolt', 8, 0.25, 2], ['Rim', 2, 20, 40], ['Tire', 2, 15, 30], ['Spoke', 64, 0.5, 32], ['TOTAL', null, null, 134]] },
+      { setup: 'UPDATE bom SET qty = 4 WHERE parent = \'Bike\' AND child = \'Wheel\';', cols: ['part', 'qty', 'unit_cost', 'cost'], rows: [['Tube', 3, 10, 30], ['Bolt', 8, 0.25, 2], ['Rim', 4, 20, 80], ['Tire', 4, 15, 60], ['Spoke', 128, 0.5, 64], ['TOTAL', null, null, 236]] },
+      { setup: 'INSERT INTO bom VALUES (\'Seat\', \'Foam\', 3); INSERT INTO part_costs VALUES (\'Foam\', 1.5);', cols: ['part', 'qty', 'unit_cost', 'cost'], rows: [['Tube', 3, 10, 30], ['Bolt', 8, 0.25, 2], ['Rim', 2, 20, 40], ['Tire', 2, 15, 30], ['Spoke', 64, 0.5, 32], ['Foam', 3, 1.5, 4.5], ['TOTAL', null, null, 138.5]] },
+      { setup: 'DELETE FROM bom WHERE child = \'Seat\'; DELETE FROM bom WHERE parent = \'Seat\';', cols: ['part', 'qty', 'unit_cost', 'cost'], rows: [['Tube', 3, 10, 30], ['Bolt', 6, 0.25, 1.5], ['Rim', 2, 20, 40], ['Tire', 2, 15, 30], ['Spoke', 64, 0.5, 32], ['TOTAL', null, null, 133.5]] },
+      { setup: 'INSERT INTO bom VALUES (\'Spoke\', \'Wire\', 2); INSERT INTO part_costs VALUES (\'Wire\', 0.1); DELETE FROM part_costs WHERE part = \'Spoke\';', cols: ['part', 'qty', 'unit_cost', 'cost'], rows: [['Tube', 3, 10, 30], ['Bolt', 8, 0.25, 2], ['Rim', 2, 20, 40], ['Tire', 2, 15, 30], ['Wire', 128, 0.1, 12.8], ['TOTAL', null, null, 114.8]] },
+      { setup: 'UPDATE part_costs SET unit_cost = unit_cost * 2;', cols: ['part', 'qty', 'unit_cost', 'cost'], rows: [['Tube', 3, 20, 60], ['Bolt', 8, 0.5, 4], ['Rim', 2, 40, 80], ['Tire', 2, 30, 60], ['Spoke', 64, 1, 64], ['TOTAL', null, null, 268]] },
+      { setup: 'INSERT INTO bom VALUES (\'Frame\', \'Seat\', 2);', cols: ['part', 'qty', 'unit_cost', 'cost'], rows: [['Tube', 3, 10, 30], ['Bolt', 12, 0.25, 3], ['Rim', 2, 20, 40], ['Tire', 2, 15, 30], ['Spoke', 64, 0.5, 32], ['TOTAL', null, null, 135]] }
+    ] },
     solution: {
       approach: `<p>Explode the BOM with a recursive CTE carrying the multiplied quantity, aggregate per part, then price leaf parts. A final UNION ALL adds the total row.</p>`,
       code: { lang: 'sql', db: 'network', code: `WITH RECURSIVE explode(part, qty) AS (
@@ -2021,6 +2194,15 @@ SELECT 'TOTAL', NULL, NULL, SUM(cost) FROM priced;` },
 SELECT path, cost FROM trip WHERE city = 'MAA' ORDER BY cost LIMIT 1;` } },
     mcq: { q: 'Why wrap city codes in commas in the visited path (<code>,DEL,BOM,</code>)?', options: ['So <code>instr</code> matches whole codes, not substrings of other codes', 'Commas are faster', 'SQLite requires it', 'To sort paths'], answer: 0, explain: 'With ids like 2 and 12, searching "2" in "12" gives a false hit. Delimiters on both sides make the membership test exact.' },
     hints: [`<p>Hint 1: Enumerate simple paths from DEL with a recursive CTE carrying city, path and cost.</p>`, `<p>Hint 2: Block revisits: <code>WHERE instr(t.path, ',' || r.dst || ',') = 0</code>.</p>`, `<p>Hint 3: Filter <code>city = 'MAA'</code>, ORDER BY cost, LIMIT 1. Optional pruning: stop extending paths already at MAA.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['route', 'cost', 'hops'], rows: [['DEL BOM BLR MAA', 220, 3]] },
+      { setup: 'INSERT INTO routes VALUES (\'DEL\',\'MAA\',150);', cols: ['route', 'cost', 'hops'], rows: [['DEL MAA', 150, 1]] },
+      { setup: 'DELETE FROM routes WHERE src = \'BLR\' AND dst = \'MAA\';', cols: ['route', 'cost', 'hops'], rows: [['DEL BOM GOA MAA', 280, 3]] },
+      { setup: 'DELETE FROM routes WHERE dst = \'MAA\';', rows: [] },
+      { setup: 'UPDATE routes SET cost = 10 WHERE src = \'DEL\' AND dst = \'BLR\'; UPDATE routes SET cost = 5 WHERE src = \'BLR\';', cols: ['route', 'cost', 'hops'], rows: [['DEL BLR MAA', 15, 2]] },
+      { setup: 'INSERT INTO routes VALUES (\'DEL\',\'X1\',1),(\'X1\',\'X2\',1),(\'X2\',\'X3\',1),(\'X3\',\'MAA\',1),(\'X3\',\'DEL\',1);', cols: ['route', 'cost', 'hops'], rows: [['DEL X1 X2 X3 MAA', 4, 4]] },
+      { setup: 'UPDATE routes SET cost = cost * 10 WHERE src = \'BOM\'; INSERT INTO routes VALUES (\'MAA\',\'BOM\',1);', cols: ['route', 'cost', 'hops'], rows: [['DEL BLR MAA', 290, 2]] }
+    ] },
     solution: {
       approach: `<p>Recursive enumeration of simple paths with a delimited visited list, then pick the cheapest that ends in MAA. Paths that already reached the destination are not extended further.</p>`,
       code: { lang: 'sql', db: 'network', code: `WITH RECURSIVE trip(city, path, cost, hops) AS (
@@ -2055,6 +2237,15 @@ GROUP BY m.id, m.name
 ORDER BY team_cost DESC;` } },
     mcq: { q: 'The closure anchor <code>SELECT id, id FROM employees</code> means…', options: ['Every employee is the root of their own subtree', 'Only the CEO is processed', 'It creates duplicates to remove later', 'It joins managers to managers'], answer: 0, explain: 'Starting one walk per employee produces every (ancestor, descendant) pair, so grouping by ancestor gives each subtree.' },
     hints: [`<p>Hint 1: You need every (ancestor, descendant) pair, not just one root's subtree.</p>`, `<p>Hint 2: Anchor <code>(id, id)</code> for all employees; recurse <code>JOIN employees e ON e.manager_id = c.descendant</code> keeping the ancestor.</p>`, `<p>Hint 3: GROUP BY ancestor; subtract 1 from COUNT and the manager's salary from SUM; HAVING COUNT(*) &gt; 1 keeps only managers.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['manager', 'team_size', 'team_cost'], rows: [['Asha', 15, 1494000], ['Ravi', 6, 620000], ['Meera', 3, 237000], ['Karan', 2, 200000], ['Divya', 2, 193000], ['Sneha', 1, 85000], ['Zoya', 1, 64000], ['Lata', 1, 55000]] },
+      { setup: 'INSERT INTO employees VALUES (17, \'Intern\', NULL, 16, 10000, \'2024-01-01\', \'Engineer\');', cols: ['manager', 'team_size', 'team_cost'], rows: [['Asha', 16, 1504000], ['Ravi', 6, 620000], ['Meera', 3, 237000], ['Karan', 2, 200000], ['Divya', 2, 193000], ['Sneha', 1, 85000], ['Zoya', 2, 74000], ['Lata', 1, 55000], ['Dev', 1, 10000]] },
+      { setup: 'UPDATE employees SET manager_id = 1 WHERE id > 1;', cols: ['manager', 'team_size', 'team_cost'], rows: [['Asha', 15, 1494000]] },
+      { setup: 'UPDATE employees SET manager_id = NULL WHERE id > 1;', rows: [] },
+      { setup: 'UPDATE employees SET salary = salary * 2 WHERE id = 14;', cols: ['manager', 'team_size', 'team_cost'], rows: [['Asha', 15, 1549000], ['Ravi', 6, 620000], ['Meera', 3, 237000], ['Karan', 2, 200000], ['Divya', 2, 193000], ['Lata', 1, 110000], ['Sneha', 1, 85000], ['Zoya', 1, 64000]] },
+      { setup: 'DELETE FROM employees WHERE id IN (6, 7, 8, 9);', cols: ['manager', 'team_size', 'team_cost'], rows: [['Asha', 11, 1101000], ['Meera', 3, 237000], ['Ravi', 2, 227000], ['Sneha', 1, 85000], ['Zoya', 1, 64000], ['Lata', 1, 55000]] },
+      { setup: 'UPDATE employees SET manager_id = 2 WHERE id = 3;', cols: ['manager', 'team_size', 'team_cost'], rows: [['Asha', 15, 1494000], ['Ravi', 10, 1007000], ['Meera', 3, 237000], ['Karan', 2, 200000], ['Divya', 2, 193000], ['Sneha', 1, 85000], ['Zoya', 1, 64000], ['Lata', 1, 55000]] }
+    ] },
     solution: {
       approach: `<p>Build the transitive closure of the reporting relation with a recursive CTE (one walk per employee), then aggregate descendants per ancestor.</p>`,
       code: { lang: 'sql', db: 'company', code: `WITH RECURSIVE closure(ancestor, descendant) AS (
@@ -2092,6 +2283,15 @@ WHERE a.name = 'Arjun'
   AND a.manager_id = b.manager_id;     -- empty: they have different managers` } },
     mcq: { q: 'After computing both ancestor lists with distances, how do you choose the LOWEST common one?', options: ['Join the two lists on id and take the smallest distance', 'Take the largest distance', 'Take the CEO', 'UNION the lists'], answer: 0, explain: 'Ancestors in both lists are common; the closest one has the smallest distance from the employees.' },
     hints: [`<p>Hint 1: Compute all ancestors of Arjun with their distance (bottom-up recursion), same for Vikram.</p>`, `<p>Hint 2: Two recursive CTEs in one WITH RECURSIVE; JOIN them on ancestor id.</p>`, `<p>Hint 3: ORDER BY the distance from either side and LIMIT 1. Include distance 0 so that if one employee manages the other, that manager is the answer.</p>`],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['lowest_common_manager', 'from_arjun', 'from_vikram'], rows: [['Ravi', 2, 2]] },
+      { setup: 'UPDATE employees SET manager_id = 5 WHERE name = \'Arjun\';', cols: ['lowest_common_manager', 'from_arjun', 'from_vikram'], rows: [['Divya', 1, 1]] },
+      { setup: 'UPDATE employees SET manager_id = 8 WHERE name = \'Arjun\';', cols: ['lowest_common_manager', 'from_arjun', 'from_vikram'], rows: [['Vikram', 1, 0]] },
+      { setup: 'UPDATE employees SET manager_id = 3 WHERE name = \'Arjun\';', cols: ['lowest_common_manager', 'from_arjun', 'from_vikram'], rows: [['Asha', 2, 3]] },
+      { setup: 'UPDATE employees SET manager_id = 6 WHERE name = \'Vikram\';', cols: ['lowest_common_manager', 'from_arjun', 'from_vikram'], rows: [['Arjun', 0, 1]] },
+      { setup: 'UPDATE employees SET manager_id = 2 WHERE name = \'Arjun\'; UPDATE employees SET manager_id = 2 WHERE name = \'Vikram\';', cols: ['lowest_common_manager', 'from_arjun', 'from_vikram'], rows: [['Ravi', 1, 1]] },
+      { setup: 'UPDATE employees SET manager_id = 11 WHERE name = \'Vikram\';', cols: ['lowest_common_manager', 'from_arjun', 'from_vikram'], rows: [['Asha', 3, 3]] }
+    ] },
     solution: {
       approach: `<p>Walk up from each employee with a recursive CTE recording distance, intersect the two ancestor sets with a join, and return the common ancestor nearest to the employees.</p>`,
       code: { lang: 'sql', db: 'company', code: `WITH RECURSIVE

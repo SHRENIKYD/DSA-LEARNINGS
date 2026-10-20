@@ -226,6 +226,18 @@ std::size_t byteOffsetBrute(const int* base, const int* elem) {
 }` } },
       mcq: { q: 'If <code>elem - base</code> (as <code>int*</code>) is 3, what is the byte distance on a platform where <code>sizeof(int)</code> is 4?', options: ['3', '12', '4', 'depends on the values stored'], answer: 1, explain: 'Pointer subtraction counts elements; bytes = elements × sizeof(int) = 3 × 4 = 12. Values stored never matter.' },
       hints: [`<p>Subtracting two <code>int*</code> gives a count of <b>ints</b>, not bytes. Subtracting two <code>char*</code> gives bytes, because a char is 1 byte.</p>`, `<p>Convert both addresses to <code>const char*</code> with <code>reinterpret_cast</code> (allowed for inspecting bytes) and subtract.</p>`, `<p>Recipe: <code>elems = elem - base;</code> <code>bytes = (const char*)elem - (const char*)base;</code> Check: <code>bytes == elems * sizeof(int)</code>. The result type of pointer subtraction is <code>std::ptrdiff_t</code> (signed).</p>`],
+      tests: { sig: 'int int -> long[]', fn: 'offs',
+        harness: { cpp: "vector<long long> offs(int n, int i) { vector<int> a(n + 1); const int* b = a.data(); const int* e = a.data() + i; return {(long long)byteOffset(b, e), (long long)elemOffset(b, e)}; }" }, cases: [
+        [[5,3], [12,3]],
+        [[5,0], [0,0]],
+        [[1,1], [4,1]],
+        [[1,0], [0,0]],
+        [[10,10], [40,10]],
+        [[1000000,999999], [3999996,999999]],
+        [[1000000,1000000], [4000000,1000000]],
+        [[2,1], [4,1]],
+        [[100,37], [148,37]]
+      ] },
       solution: {
         approach: `<p>Two subtractions, O(1). Pointer subtraction in C++ is scaled by the element size, so view the addresses as <code>char*</code> when you want raw bytes.</p>`,
         code: { lang: 'cpp', code: `#include <cstddef>
@@ -431,6 +443,20 @@ bool minMaxBrute(const int* a, int n, int* outMin, int* outMax) {
 }` } },
       mcq: { q: 'Inside <code>minMax</code>, which line correctly stores the minimum for the caller?', options: ['<code>outMin = &amp;best;</code>', '<code>*outMin = best;</code>', '<code>&amp;outMin = best;</code>', '<code>outMin = best;</code>'], answer: 1, explain: '<code>*outMin = best</code> writes into the caller\'s variable. <code>outMin = &amp;best</code> only re-aims the local copy of the pointer (and at a local that dies on return!).' },
       hints: [`<p>The caller passes <code>&amp;lo</code> and <code>&amp;hi</code>. Writing to <code>*outMin</code> writes into <code>lo</code>.</p>`, `<p>Start <code>mn = mx = a[0]</code>, then walk the rest once. Only write through the out-pointers at the very end (so a failure never leaves half-written results).</p>`, `<p>Guard first: <code>if (n &lt;= 0 || !a || !outMin || !outMax) return false;</code>. Then loop <code>for (const int* p = a + 1; p != a + n; ++p)</code> updating mn/mx, then <code>*outMin = mn; *outMax = mx; return true;</code></p>`],
+      tests: { sig: 'int[] int -> int[]', fn: 'mm',
+        harness: { cpp: "vector<int> mm(vector<int> a, int mode) { int lo = -777, hi = 777; int n = a.size(); bool r;\n  if (mode == 0) r = minMax(a.data(), n, &lo, &hi);\n  else if (mode == 1) r = minMax(nullptr, n, &lo, &hi);\n  else if (mode == 2) r = minMax(a.data(), n, nullptr, &hi);\n  else r = minMax(a.data(), n, &lo, nullptr);\n  return {r ? 1 : 0, lo, hi}; }" }, cases: [
+        [[[4,-2,9,0],0], [1,-2,9]],
+        [[[],0], [0,-777,777]],
+        [[[5],0], [1,5,5]],
+        [[[-3,-3,-3],0], [1,-3,-3]],
+        [[[2147483647,-2147483648],0], [1,-2147483648,2147483647]],
+        [[[1,2,3],1], [0,-777,777]],
+        [[[1,2,3],2], [0,-777,777]],
+        [[[1,2,3],3], [0,-777,777]],
+        [[[7,7,8,6,6],0], [1,6,8]],
+        [[[-1,-2,-3,-4],0], [1,-4,-1]],
+        [[{"$concat":[{"$rep":5,"n":500000},[-9,100],{"$rep":5,"n":499998}]},0], [1,-9,100]]
+      ] },
       solution: {
         approach: `<p>Validate pointers, single linear scan with two running values, publish results through the out-pointers at the end.</p>`,
         code: { lang: 'cpp', code: `#include <iostream>
@@ -651,6 +677,22 @@ void reverseBrute(int* first, int* last) {
 }` } },
       mcq: { q: 'Given the half-open range <code>[first, last)</code>, where should the right-hand pointer start?', options: ['<code>last</code>', '<code>last - 1</code>, after checking the range is not empty', '<code>last + 1</code>', '<code>first + 1</code>'], answer: 1, explain: '<code>last</code> is one past the end and must not be dereferenced; <code>last - 1</code> is the final real element. Check emptiness first, because <code>first - 1</code> (if first == last) would be UB.' },
       hints: [`<p>Swap the outermost pair, then move both pointers one step inward. Repeat.</p>`, `<p>Use <code>lo = first</code> and <code>hi = last</code>, and pre-decrement <code>hi</code> only inside the loop condition when it is safe: <code>while (lo != hi &amp;&amp; lo != --hi)</code>.</p>`, `<p>Recipe: loop while <code>lo &lt; hi</code> after setting <code>hi = last - 1</code> (only if not empty); <code>std::swap(*lo, *hi); ++lo; --hi;</code>. The loop stops when they meet (odd length) or cross (even length).</p>`],
+      tests: { sig: 'int[] int int -> void', fn: 'rr', mutate: 0,
+        harness: { cpp: "void rr(vector<int>& v, int lo, int hi) { reverseRange(v.data() + lo, v.data() + hi); }" }, cases: [
+        [[[1,2,3,4,5],0,5], [5,4,3,2,1]],
+        [[[1,2,3,4,5],1,4], [1,4,3,2,5]],
+        [[[1,2,3,4],0,4], [4,3,2,1]],
+        [[[1,2,3,4],2,2], [1,2,3,4]],
+        [[[1,2,3,4],3,4], [1,2,3,4]],
+        [[[],0,0], []],
+        [[[9],0,1], [9]],
+        [[[1,2],0,2], [2,1]],
+        [[[1,2,3],1,3], [1,3,2]],
+        [[[-1,0,1],0,3], [1,0,-1]],
+        [[[5,5,6],0,3], [6,5,5]],
+        [[{"$range":[0,500000]},0,500000], {"$range":[499999,-1,-1]}],
+        [[{"$range":[0,499999]},0,499999], {"$range":[499998,-1,-1]}]
+      ] },
       solution: {
         approach: `<p>Classic two-pointer swap from both ends. The <code>lo != hi &amp;&amp; lo != --hi</code> form is the same trick <code>std::reverse</code> implementations use: it never forms a pointer before <code>first</code>.</p>`,
         code: { lang: 'cpp', code: `#include <iostream>
@@ -846,6 +888,23 @@ Node* kthFromEndBrute(Node* head, int k) {
 }` } },
       mcq: { q: 'You move a <code>fast</code> pointer k steps ahead first. During those k steps it becomes <code>nullptr</code> early. What does that mean?', options: ['The list has fewer than k nodes, so return nullptr', 'k is exactly the length', 'The list has a cycle', 'Continue moving slow anyway'], answer: 0, explain: 'If fast hits null before completing k moves, there are fewer than k nodes; the safe, defined answer is nullptr. (If it becomes null exactly after the k-th move, the answer is head.)' },
       hints: [`<p>Keep two pointers k nodes apart. When the front one falls off the end (becomes <code>nullptr</code>), the back one is k from the end.</p>`, `<p>Phase 1: advance <code>fast</code> k times, checking for <code>nullptr</code> <b>before</b> each move. Phase 2: move both until <code>fast == nullptr</code>.</p>`, `<p>Recipe: <code>for (i=0;i&lt;k;++i){ if(!fast) return nullptr; fast = fast-&gt;next; }</code> then <code>while(fast){ fast = fast-&gt;next; slow = slow-&gt;next; }</code> and return <code>slow</code>. Empty list: the first check returns nullptr immediately.</p>`],
+      tests: { sig: 'int[] int -> int', fn: 'kth',
+        harness: { cpp: "int kth(vector<int> vals, int k) { int n = vals.size(); vector<Node> nodes(n); for (int i = 0; i < n; ++i) { nodes[i].val = vals[i]; nodes[i].next = i + 1 < n ? &nodes[i + 1] : nullptr; }\n  Node* r = kthFromEnd(n ? &nodes[0] : nullptr, k); if (!r) return -1; if (r->val != vals[r - nodes.data()]) return -2; return (int)(r - nodes.data()); }" }, cases: [
+        [[[1,2,3,4,5],2], 3],
+        [[[1,2,3,4,5],9], -1],
+        [[[],1], -1],
+        [[[1,2,3,4,5],1], 4],
+        [[[1,2,3,4,5],5], 0],
+        [[[1,2,3,4,5],6], -1],
+        [[[7],1], 0],
+        [[[7],2], -1],
+        [[[3,3,3,3],2], 2],
+        [[[1,2],2], 0],
+        [[{"$range":[0,100000]},100000], 0],
+        [[{"$range":[0,100000]},1], 99999],
+        [[{"$range":[0,99999]},100000], -1],
+        [[{"$rep":4,"n":100000},50000], 50000]
+      ] },
       solution: {
         approach: `<p>Gap of k between two pointers; null marks the end of the list and doubles as the "not enough nodes" signal.</p>`,
         code: { lang: 'cpp', code: `#include <iostream>
@@ -1057,6 +1116,20 @@ void zeroMaxBrute(std::vector<int>& v) {
 }` } },
       mcq: { q: 'Why is it safe for <code>maxRef</code> to return <code>int&amp;</code>?', options: ['References are always safe to return', 'The element lives inside the caller\'s vector, which outlives the call', 'The compiler copies the element automatically', 'Because int is a small type'], answer: 1, explain: 'The reference points into storage owned by the caller. Returning a reference to a local variable would dangle; returning one into a parameter passed by non-const reference is fine (until the vector reallocates!).' },
       hints: [`<p>Track the <b>index</b> (or a pointer/iterator) of the best element, not just its value, so you can return a reference to that exact slot.</p>`, `<p>Taking the parameter as <code>std::vector&lt;int&gt;&amp;</code> (non-const lvalue reference) makes temporaries like <code>std::vector&lt;int&gt;{1,2}</code> fail to bind: a compile-time guard against returning a reference into a dying temporary.</p>`, `<p>Recipe: <code>if (v.empty()) throw std::invalid_argument("empty");</code> <code>size_t best = 0;</code> loop i from 1, update when <code>v[i] &gt; v[best]</code> (strict, so first tie wins), <code>return v[best];</code>.</p>`],
+      tests: { sig: 'int[] -> int[]', fn: 'mr',
+        harness: { cpp: "vector<int> mr(vector<int> v) { try { int& r = maxRef(v); r = 0; return v; } catch (const invalid_argument&) { return {-777777}; } }" }, cases: [
+        [[[3,8,1,8]], [3,0,1,8]],
+        [[[]], [-777777]],
+        [[[5]], [0]],
+        [[[-5,-2,-9]], [-5,0,-9]],
+        [[[1,2,3]], [1,2,0]],
+        [[[3,2,1]], [0,2,1]],
+        [[[2147483647,2147483647]], [0,2147483647]],
+        [[[0,0,0]], [0,0,0]],
+        [[[-1]], [0]],
+        [[[4,4,9,9,4]], [4,4,0,9,4]],
+        [[{"$concat":[{"$range":[0,500000]},[500000],{"$range":[0,500000]}]}], {"$concat":[{"$range":[0,500000]},[0],{"$range":[0,500000]}]}]
+      ] },
       solution: {
         approach: `<p>One scan tracking the index of the maximum; return <code>v[best]</code>, which is an <code>int&amp;</code> into the caller's vector. The non-const lvalue reference parameter rejects temporaries at compile time.</p>`,
         code: { lang: 'cpp', code: `#include <iostream>
@@ -1311,6 +1384,23 @@ int* findFirstM(int* first, int* last, int target) {      // duplicated logic
 }` } },
       mcq: { q: 'Inside the non-const overload, which is the safe way to reuse the const version?', options: ['Call it and <code>const_cast</code> the result back to <code>int*</code>', 'Use <code>reinterpret_cast</code>', 'Change the const version to take <code>int*</code>', 'It is impossible without duplication'], answer: 0, explain: 'The non-const overload received non-const pointers, so the array is known to be writable; casting away const on the result is well-defined. This is the standard "implement non-const via const" idiom.' },
       hints: [`<p>Write the loop once in the <code>const</code> version: it can accept both const and non-const arrays (int* converts to const int* automatically).</p>`, `<p>In the non-const overload, call the const version, then <code>const_cast&lt;int*&gt;</code> the result. Safe, because the original objects are non-const (the caller gave you <code>int*</code>).</p>`, `<p>Recipe: <code>const int* r = findFirst(static_cast&lt;const int*&gt;(first), static_cast&lt;const int*&gt;(last), target); return const_cast&lt;int*&gt;(r);</code>. The <code>static_cast</code>s pick the const overload explicitly and avoid infinite recursion.</p>`],
+      tests: { sig: 'int[] int int -> int[]', fn: 'ff',
+        harness: { cpp: "vector<int> ff(vector<int> a, int target, int mode) { int n = a.size(); int* base = a.data(); int idx;\n  if (mode == 0) { const int* r = findFirst((const int*)base, (const int*)(base + n), target); idx = r - base; vector<int> o = {idx}; return o; }\n  int* r = findFirst(base, base + n, target); idx = r - base; if (r != base + n) *r = -999; vector<int> o = {idx}; o.insert(o.end(), a.begin(), a.end()); return o; }" }, cases: [
+        [[[5,7,9,7],7,1], [1,5,-999,9,7]],
+        [[[5,7,9,7],7,0], [1]],
+        [[[5,7,9,7],4,0], [4]],
+        [[[5,7,9,7],4,1], [4,5,7,9,7]],
+        [[[],1,0], [0]],
+        [[[],1,1], [0]],
+        [[[3],3,0], [0]],
+        [[[3],3,1], [0,-999]],
+        [[[1,2,3],3,1], [2,1,2,-999]],
+        [[[2,2,2],2,1], [0,-999,2,2]],
+        [[[-1,0,1],-1,0], [0]],
+        [[[1,2,3],1,1], [0,-999,2,3]],
+        [[{"$rep":1,"n":1000000},2,0], [1000000]],
+        [[{"$concat":[{"$rep":1,"n":999999},[2]]},2,0], [999999]]
+      ] },
       solution: {
         approach: `<p>Single implementation with read-only access, plus a thin non-const wrapper that restores mutability only where it is provably legal. Same pattern as <code>std::vector::operator[]</code> const/non-const pairs and <code>strchr</code> in C.</p>`,
         code: { lang: 'cpp', code: `#include <iostream>
@@ -1533,6 +1623,17 @@ void rowSumsBrute(const int (*m)[4], int rows, long long* out) {
 }` } },
       mcq: { q: 'What does <code>int m[3][4]</code> decay to when passed to a function?', options: ['<code>int**</code>', '<code>int (*)[4]</code>: pointer to an array of 4 ints', '<code>int*</code>', '<code>int (*)[3][4]</code>'], answer: 1, explain: 'Only the outer dimension decays: m becomes a pointer to its first element, and its first element is a row of type int[4]. An int** would expect an array of pointers, which this is not.' },
       hints: [`<p><code>m[r]</code> is row r (an <code>int[4]</code>), and <code>m[r][c]</code> is <code>*(*(m + r) + c)</code>. Pointer arithmetic on <code>m</code> moves by whole rows.</p>`, `<p><code>int**</code> means "pointer to a pointer"; following it would read the first 8 bytes of the matrix as an address. The real layout is 12 contiguous ints, no pointers stored anywhere.</p>`, `<p>Recipe: for each <code>r</code>, accumulate <code>m[r][c]</code> for c in 0..3 into a <code>long long</code> and store <code>out[r]</code>. Template version: <code>template&lt;size_t R, size_t C&gt; array&lt;long long, R&gt; rowSums(const int (&amp;m)[R][C])</code>.</p>`],
+      tests: { sig: 'int[][] -> long[]', fn: 'rs',
+        harness: { cpp: "vector<long long> rs(vector<vector<int>> m) { int rows = m.size(); unique_ptr<int[][4]> p(new int[rows][4]); for (int r = 0; r < rows; ++r) for (int c2 = 0; c2 < 4; ++c2) p[r][c2] = m[r][c2];\n  vector<long long> out(rows); rowSums(p.get(), rows, out.data());\n  if (rows == 2) { int m2[2][4]; for (int r = 0; r < 2; ++r) for (int c2 = 0; c2 < 4; ++c2) m2[r][c2] = m[r][c2]; auto t = rowSumsT(m2); if (t[0] != out[0] || t[1] != out[1]) throw runtime_error(\"template version differs\"); }\n  return out; }" }, cases: [
+        [[[[1,2,3,4],[5,6,7,8],[9,10,11,12]]], [10,26,42]],
+        [[[[0,0,0,0]]], [0]],
+        [[[[-1,-2,-3,-4]]], [-10]],
+        [[[[2147483647,2147483647,2147483647,2147483647],[-2147483648,-2147483648,-2147483648,-2147483648]]], [8589934588,-8589934592]],
+        [[[[1,1,1,1],[2,2,2,2]]], [4,8]],
+        [[[[10,-10,5,-5],[7,7,7,7]]], [0,28]],
+        [[[[100,200,300,400],[0,0,0,1]]], [1000,1]],
+        [[{"$rep":[2147483647,2147483647,2147483647,2147483647],"n":10000}], {"$rep":8589934588,"n":10000}]
+      ] },
       solution: {
         approach: `<p>Iterate rows through the decayed row pointer and sum each row. The template version takes the matrix by reference, so no decay happens and both dimensions are known at compile time.</p>`,
         code: { lang: 'cpp', code: `#include <array>
@@ -1781,6 +1882,18 @@ std::string longestBuggy(const std::vector<std::string>& input) {
 }` } },
       mcq: { q: 'Which change makes the one-pass version safe <b>regardless of how many names arrive</b>?', options: ['Check <code>longest != nullptr</code> before using it', 'Store the <b>index</b> of the longest name instead of a pointer', 'Use <code>names.shrink_to_fit()</code> after each push', 'Make <code>longest</code> a <code>const</code> pointer'], answer: 1, explain: 'An index stays meaningful after reallocation; <code>names[best]</code> always reaches the element in the current buffer. A dangling pointer is not null, so a null check does nothing. <code>reserve(input.size())</code> would also work here because the final size is known.' },
       hints: [`<p>Ask "what can invalidate a pointer into a vector?" Any growth past capacity moves every element.</p>`, `<p>Indices survive reallocation. Track <code>size_t best</code>, and compare against <code>names[best].size()</code>.</p>`, `<p>Recipe: <code>names.push_back(s); if (names.size() == 1 || s.size() &gt; names[best].size()) best = names.size() - 1;</code> Return <code>names[best]</code> (empty-input guard). Alternative: <code>names.reserve(input.size())</code> before the loop, but comment why, because a future edit can silently break it.</p>`],
+      tests: { sig: 'string[] -> string', fn: 'longestName', cases: [
+        [[["ann","bartholomew","cy","dorothea"]], "bartholomew"],
+        [[["a"]], "a"],
+        [[["ab","cd","ef"]], "ab"],
+        [[["x","yy","zz"]], "yy"],
+        [[["same","size","SAME"]], "same"],
+        [[["a","b","c","d","e","f","g"]], "a"],
+        [[["","a"]], "a"],
+        [[["long","longer","longest","longer"]], "longest"],
+        [[{"$rep":"bob","n":100000}], "bob"],
+        [[["zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz","zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"]], "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"]
+      ] },
       solution: {
         approach: `<p>Replace the pointer with an index. Strict <code>&gt;</code> keeps the first longest on ties. Optionally also <code>reserve</code> for performance, but correctness must not depend on it.</p>`,
         code: { lang: 'cpp', code: `#include <iostream>
@@ -1836,6 +1949,9 @@ int main() {
 }` } },
     mcq: { q: 'After <code>p = q;</code>, which statement is true?', options: ['a now equals b', 'p and q hold the same address; no int changed', 'b now equals a', 'p is now null'], answer: 1, explain: 'Assigning one pointer to another copies the address only. The pointed-at ints are untouched.' },
     hints: [`<p>Make a 4-row table (a, b, p, q). For each line ask: does it change a <b>pointer</b> (no star on the left) or a <b>target</b> (star on the left)?</p>`, `<p><code>*p += *q</code> changes a. <code>p = q</code> changes p only. <code>*p = *p * 2</code> changes whatever p points at <b>now</b>.</p>`, `<p>Final state: a = 10, b = 14, p == q == &amp;b. Printing a bool with <code>cout</code> shows 1/0 unless you use <code>std::boolalpha</code>.</p>`],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "10 14 1" }
+    ] },
     solution: {
       approach: `<p>Trace pointer vs target changes line by line.</p>`,
       code: { lang: 'cpp', code: `#include <iostream>
@@ -1868,6 +1984,21 @@ int main() {
 }` } },
     mcq: { q: 'Which loop condition is correct for <code>[first, last)</code>?', options: ['<code>p &lt;= last</code>', '<code>p != last</code>', '<code>p != last + 1</code>', '<code>*p != 0</code>'], answer: 1, explain: '<code>last</code> is one past the end: stop when you reach it. <code>&lt;=</code> would dereference <code>last</code>, and a zero sentinel only works for C strings.' },
     hints: [`<p>Start a pointer <code>p</code> at <code>first</code> and move it with <code>++p</code> until it equals <code>last</code>.</p>`, `<p>Accumulate into <code>long long</code> to avoid <code>int</code> overflow with large inputs.</p>`, `<p>Recipe: <code>long long s = 0; for (const int* p = first; p != last; ++p) s += *p; return s;</code>. Empty range: loop body never runs, returns 0.</p>`],
+    tests: { sig: 'int[] int int -> long', fn: 'sr',
+      harness: { cpp: "long long sr(vector<int> a, int lo, int hi) { return sumRange(a.data() + lo, a.data() + hi); }" }, cases: [
+      [[[4,-1,6],0,3], 9],
+      [[[4,-1,6],0,0], 0],
+      [[[4,-1,6],1,3], 5],
+      [[[],0,0], 0],
+      [[[7],0,1], 7],
+      [[[-1000000000,-1000000000],0,2], -2000000000],
+      [[[1000000000,1000000000,1000000000],0,3], 3000000000],
+      [[[1,2,3,4,5],2,4], 7],
+      [[[1,2,3,4,5],5,5], 0],
+      [[{"$rep":1000000000,"n":10000000},0,10000000], "10000000000000000"],
+      [[{"$range":[1,1000001]},0,1000000], 500000500000],
+      [[{"$rep":-1000000000,"n":10000000},5,10000000], -9999995000000000]
+    ] },
     solution: {
       approach: `<p>Half-open range walk with a moving pointer, the same shape as every STL algorithm.</p>`,
       code: { lang: 'cpp', code: `#include <iostream>
@@ -1877,6 +2008,7 @@ long long sumRange(const int* first, const int* last) {
         s += *p;                                  // read the current element
     return s;
 }
+
 int main() {
     int a[] = {4, -1, 6};
     std::cout << sumRange(a, a + 3) << ' ' << sumRange(a, a) << '\\n';   // 9 0
@@ -1902,6 +2034,23 @@ int countCharBrute(const char* s, char c) {
 }` } },
     mcq: { q: 'What stops the loop in a C-string walk?', options: ['A stored length field', 'The terminating <code>\'\\0\'</code> byte', 'The pointer becoming nullptr', 'sizeof(s)'], answer: 1, explain: 'C-strings carry no length (they are decayed arrays); the zero byte is the end marker. The pointer itself never becomes null by incrementing.' },
     hints: [`<p>Null-check first: <code>if (!s) return 0;</code>. Dereferencing a null pointer to look for <code>'\\0'</code> would crash.</p>`, `<p>Loop <code>for (const char* p = s; *p != '\\0'; ++p)</code>, comparing <code>*p</code> to <code>c</code>.</p>`, `<p>Recipe: counter starts 0; each match increments; return counter. Compactly: <code>while (*s) cnt += (*s++ == c);</code> (uses the <code>*p++</code> idiom).</p>`],
+    tests: { sig: 'string char bool -> int', fn: 'cc',
+      harness: { cpp: "int cc(string s, char c, bool isNull) { return isNull ? countChar(nullptr, c) : countChar(s.c_str(), c); }" }, cases: [
+      [["banana","a",false], 3],
+      [["banana","b",false], 1],
+      [["banana","z",false], 0],
+      [["","a",false], 0],
+      [["aaaa","a",false], 4],
+      [["Hello, World!","l",false], 3],
+      [["Hello, World!","L",false], 0],
+      [["a b c"," ",false], 2],
+      [["x","x",false], 1],
+      [["tab\there","\t",false], 1],
+      [["AbAb","A",false], 2],
+      [["banana","a",true], 0],
+      [[{"$rep":"ab","n":500000},"b",false], 500000],
+      [[{"$rep":"x","n":1000000},"y",false], 0]
+    ] },
     solution: {
       approach: `<p>Guard against null, then a sentinel-terminated pointer walk.</p>`,
       code: { lang: 'cpp', code: `#include <iostream>
@@ -1912,6 +2061,7 @@ int countChar(const char* s, char c) {
         if (*p == c) ++cnt;
     return cnt;
 }
+
 int main() {
     std::cout << countChar("banana", 'a') << ' ' << countChar(nullptr, 'a') << '\\n';   // 3 0
 }` },
@@ -1934,6 +2084,21 @@ void swapValues(int* a, int* b) {
 }` } },
     mcq: { q: 'Why does <code>void swapP(int* a, int* b) { int* t = a; a = b; b = t; }</code> have no visible effect?', options: ['Pointers cannot be swapped', 'a and b are copies of the caller\'s pointers', 'It needs const', 'It swaps the ints instead'], answer: 1, explain: 'Parameters are copies. To change the caller\'s pointers you need <code>int*&amp;</code> or <code>int**</code>.' },
     hints: [`<p>You need to modify the caller's pointer variables themselves, so pass them by reference (<code>int*&amp;</code>) or by address (<code>int**</code>).</p>`, `<p>Inside, only copy addresses around; never use <code>*</code> on the int level, so null pointers are fine.</p>`, `<p>Recipe (reference): <code>int* t = a; a = b; b = t;</code>. Recipe (C style): <code>int* t = *a; *a = *b; *b = t;</code> and call it as <code>swapPointersC(&amp;p, &amp;q)</code>.</p>`],
+    tests: { sig: 'int int int -> int[]', fn: 'sp',
+      harness: { cpp: "vector<int> sp(int x, int y, int flags) { int* p = (flags & 1) ? nullptr : &x; int* q = (flags & 2) ? nullptr : &y; int* p0 = p; int* q0 = q;\n  if (flags & 4) swapPointersC(&p, &q); else swapPointers(p, q);\n  return {x, y, p == q0 ? 1 : 0, q == p0 ? 1 : 0, p ? *p : -1, q ? *q : -1}; }" }, cases: [
+      [[1,2,0], [1,2,1,1,2,1]],
+      [[1,2,4], [1,2,1,1,2,1]],
+      [[1,2,1], [1,2,1,1,2,-1]],
+      [[1,2,2], [1,2,1,1,-1,1]],
+      [[1,2,3], [1,2,1,1,-1,-1]],
+      [[1,2,5], [1,2,1,1,2,-1]],
+      [[1,2,6], [1,2,1,1,-1,1]],
+      [[1,2,7], [1,2,1,1,-1,-1]],
+      [[-5,5,0], [-5,5,1,1,5,-5]],
+      [[0,0,4], [0,0,1,1,0,0]],
+      [[2147483647,-2147483648,0], [2147483647,-2147483648,1,1,-2147483648,2147483647]],
+      [[9,9,4], [9,9,1,1,9,9]]
+    ] },
     solution: {
       approach: `<p>Operate one level up: swap the pointer variables, which requires access to the caller's pointers.</p>`,
       code: { lang: 'cpp', code: `#include <iostream>
@@ -1947,6 +2112,7 @@ void swapPointersC(int** a, int** b) {  // addresses of the caller's pointers
     *a = *b;
     *b = t;
 }
+
 int main() {
     int x = 1, y = 2;
     int* p = &x;
@@ -1995,6 +2161,9 @@ int main() {
 }` } },
     mcq: { q: 'Is line (3), <code>p = &amp;x;</code>, legal when p is <code>const int*</code>?', options: ['No, p is const', 'Yes: the const applies to the int, not the pointer', 'Only if x is const', 'Only with const_cast'], answer: 1, explain: 'const to the left of * locks the target (read-only view), not the pointer. Re-aiming is allowed; writing through p is not.' },
     hints: [`<p>Track three things in a table: x, y, and what p points at. Remember r is permanently x.</p>`, `<p>Reference assignment copies values. Pointer-to-const can move. Const-pointer cannot move but can write.</p>`, `<p>After (1) x=2; (2) x=3; (3) p→x; (4) y=10; (5) y = 10 + *p = 10 + 3 = 13. Printing r prints x.</p>`],
+    tests: { io: true, cases: [
+      { stdin: "", stdout: "3 13 3 3" }
+    ] },
     solution: {
       approach: `<p>Apply the two rules: references never re-bind; const placement decides what is locked.</p>`,
       code: { lang: 'cpp', code: `#include <iostream>
@@ -2037,6 +2206,30 @@ int myStrcmpBrute(const char* a, const char* b) {
 }` } },
     mcq: { q: 'In <code>while ((*d++ = *s++) != \'\\0\');</code>, when does the loop stop?', options: ['Before copying the terminator', 'Right after copying the terminator', 'When d becomes null', 'Never; it is UB'], answer: 1, explain: 'The assignment copies the char, its value is tested; the terminator is copied first and then the test fails, so the destination is properly terminated.' },
     hints: [`<p>strcpy: the classic idiom copies and advances both pointers in one expression: <code>*d++ = *s++</code>. Keep the original <code>dst</code> to return it.</p>`, `<p>strcmp: advance both while the chars are equal and not the terminator. Then return the difference of the current chars <b>as unsigned char</b> (so bytes ≥ 128 compare correctly).</p>`, `<p>Recipe: <code>while (*a &amp;&amp; *a == *b) { ++a; ++b; }</code> <code>return (unsigned char)*a - (unsigned char)*b;</code>. If one string is a prefix of the other, the comparison hits <code>'\\0'</code> vs a char, which correctly gives the shorter string a smaller result.</p>`],
+    tests: { sig: 'string string int -> string', fn: 'sc',
+      harness: { cpp: "string sc(string a, string b, int mode) { if (mode == 0) { int r = myStrcmp(a.c_str(), b.c_str()); return r < 0 ? \"neg\" : r > 0 ? \"pos\" : \"zero\"; }\n  vector<char> buf(a.size() + 1, 'Z'); char* r = myStrcpy(buf.data(), a.c_str()); if (r != buf.data()) return \"wrong return\"; return string(buf.data()) + \"|\" + to_string(buf.size()); }" }, cases: [
+      [["apple","apply",0], "neg"],
+      [["ab","abc",0], "neg"],
+      [["same","same",0], "zero"],
+      [["abc","ab",0], "pos"],
+      [["","",0], "zero"],
+      [["","a",0], "neg"],
+      [["a","",0], "pos"],
+      [["b","a",0], "pos"],
+      [["A","a",0], "neg"],
+      [["é","e",0], "pos"],
+      [["e","é",0], "neg"],
+      [["abcÿ","abcz",0], "pos"],
+      [["Z","Y",0], "pos"],
+      [["pointer","",1], "pointer|8"],
+      [["","",1], "|1"],
+      [["a","",1], "a|2"],
+      [["hello world","",1], "hello world|12"],
+      [["été","",1], "été|6"],
+      [[{"$rep":"q","n":1000000},{"$rep":"q","n":1000000},0], "zero"],
+      [[{"$rep":"q","n":1000000},{"$concat":[{"$rep":"q","n":999999},"r"]},0], "neg"],
+      [[{"$rep":"q","n":200000},"",1], {"$concat":[{"$rep":"q","n":200000},"|200001"]}]
+    ] },
     solution: {
       approach: `<p>Single-pass pointer walks using the postfix-increment idiom; unsigned comparison for strcmp.</p>`,
       code: { lang: 'cpp', code: `#include <iostream>
@@ -2083,6 +2276,21 @@ int* dedupBrute(int* first, int* last) {
 }` } },
     mcq: { q: 'What does the write pointer <code>w</code> always point at?', options: ['The last duplicate seen', 'The last kept unique element', 'One past the end of the input', 'The next element to read'], answer: 1, explain: 'Invariant: [first, w] holds the unique prefix and *w is the last kept value; a new value is written at ++w.' },
     hints: [`<p>Two pointers: <code>r</code> reads every element, <code>w</code> marks the last unique element written. Since the input is sorted, a duplicate always equals <code>*w</code>.</p>`, `<p>When <code>*r != *w</code>, advance <code>w</code> and copy: <code>*++w = *r;</code>.</p>`, `<p>Recipe: handle empty range; <code>w = first</code>; for <code>r = first + 1</code> to <code>last</code>: if <code>*r != *w</code> then <code>*++w = *r</code>. Return <code>w + 1</code> (one past the last unique).</p>`],
+    tests: { sig: 'int[] -> int[]', fn: 'dd',
+      harness: { cpp: "vector<int> dd(vector<int> a) { int* e = dedupSorted(a.data(), a.data() + a.size()); return vector<int>(a.data(), e); }" }, cases: [
+      [[[1,1,2,3,3,3,4]], [1,2,3,4]],
+      [[[]], []],
+      [[[5]], [5]],
+      [[[2,2]], [2]],
+      [[[1,2,3]], [1,2,3]],
+      [[[-3,-3,-1,0,0,7]], [-3,-1,0,7]],
+      [[[4,4,4,4,4]], [4]],
+      [[[1,2,2,3]], [1,2,3]],
+      [[[-2147483648,-2147483648,2147483647,2147483647]], [-2147483648,2147483647]],
+      [[{"$concat":[{"$rep":1,"n":500000},{"$rep":2,"n":500000}]}], [1,2]],
+      [[{"$range":[0,1000000]}], {"$range":[0,1000000]}],
+      [[{"$rep":7,"n":1000000}], [7]]
+    ] },
     solution: {
       approach: `<p>Read/write two-pointer compaction; the returned pointer is a one-past-end marker, matching STL conventions (pair with <code>v.erase(newEnd, v.end())</code> for vectors).</p>`,
       code: { lang: 'cpp', code: `#include <iostream>
@@ -2122,6 +2330,21 @@ int* makeArrayStatic() { static int a[3] = {1, 2, 3}; return a; }
 int* makeArrayHeap() { return new int[3]{1, 2, 3}; }` } },
     mcq: { q: 'Why does <code>greet</code> dangle even though its parameter is a <code>const&amp;</code>?', options: ['It does not dangle', 'The returned reference binds to a temporary created inside the function, which dies at the end of the return statement', 'Because name is const', 'Because strings are on the heap'], answer: 1, explain: 'Lifetime extension does not apply to return statements: the temporary from "Hi " + name is destroyed before the caller receives the reference. GCC warns "returning reference to temporary".' },
     hints: [`<p>For each function, name the object the result refers to and the moment it dies.</p>`, `<p>The cure in modern C++ is to return by value: <code>std::array&lt;int, 3&gt;</code>, <code>std::string</code>. Return value optimization makes it cheap.</p>`, `<p>For firstWord: either take a <code>std::string_view</code> parameter (then the view refers to the caller's data, which outlives the call) or return a <code>std::string</code>. Document that the returned view is valid only while the caller's string is.</p>`],
+    tests: { sig: 'int string -> string', fn: 'dl',
+      harness: { cpp: "string dl(int mode, string s) { if (mode == 0) { auto a = makeArray(); return to_string(a[0]) + \",\" + to_string(a[1]) + \",\" + to_string(a[2]); } if (mode == 1) return greet(s); std::string_view w = firstWord(s); return string(w); }" }, cases: [
+      [[0,""], "1,2,3"],
+      [[1,"Ann"], "Hi Ann"],
+      [[1,""], "Hi "],
+      [[1,"Bob Smith"], "Hi Bob Smith"],
+      [[2,"hello world"], "hello"],
+      [[2,"single"], "single"],
+      [[2,""], ""],
+      [[2," lead"], ""],
+      [[2,"a b c"], "a"],
+      [[2,"trailing "], "trailing"],
+      [[1,{"$rep":"n","n":100000}], {"$concat":["Hi ",{"$rep":"n","n":100000}]}],
+      [[2,{"$concat":[{"$rep":"w","n":100000}," x"]}], {"$rep":"w","n":100000}]
+    ] },
     solution: {
       approach: `<p>Return owning values, or make views refer to data the caller owns.</p>`,
       code: { lang: 'cpp', code: `#include <array>
@@ -2167,6 +2390,23 @@ int main() {
 }` } },
     mcq: { q: 'Why reduce k with <code>k %= n</code> first?', options: ['To make it faster only', 'Rotating by n is the identity, and without it <code>first + k</code> would point far outside the array (UB)', 'Because k is signed', 'It is not needed'], answer: 1, explain: 'Pointer arithmetic beyond one-past-end is undefined. k mod n gives the equivalent in-range rotation and is required for correctness, not just speed.' },
     hints: [`<p>Rotating right by k moves the last k elements to the front, keeping each block's internal order.</p>`, `<p>Reverse everything, then reverse the first k, then reverse the remaining n − k: the block orders and internal orders come out right.</p>`, `<p>Recipe: <code>n = last - first; if (n == 0) return; k %= n; reverse(first, last); reverse(first, first + k); reverse(first + k, last);</code> with your own pointer-based reverse.</p>`],
+    tests: { sig: 'int[] long -> void', fn: 'rt', mutate: 0,
+      harness: { cpp: "void rt(vector<int>& v, long long k) { rotateRight(v.data(), v.data() + v.size(), k); }" }, cases: [
+      [[[1,2,3,4,5,6,7],3], [5,6,7,1,2,3,4]],
+      [[[1,2,3,4,5,6,7],10], [5,6,7,1,2,3,4]],
+      [[[],5], []],
+      [[[1],0], [1]],
+      [[[1],"1000000000000000000"], [1]],
+      [[[1,2],1], [2,1]],
+      [[[1,2,3],0], [1,2,3]],
+      [[[1,2,3],3], [1,2,3]],
+      [[[1,2,3],"1000000000000000000"], [3,1,2]],
+      [[[-1,5,5,9],1], [9,-1,5,5]],
+      [[[4,5],2], [4,5]],
+      [[{"$range":[0,500000]},1], {"$concat":[[499999],{"$range":[0,499999]}]}],
+      [[{"$range":[0,200000]},"1000000000000000000"], {"$range":[0,200000]}],
+      [[{"$range":[0,199999]},"999999999999999999"], {"$concat":[{"$range":[199875,199999]},{"$range":[0,199875]}]}]
+    ] },
     solution: {
       approach: `<p>Three in-place reversals with pointers; k reduced modulo N so all pointers stay within [first, last].</p>`,
       code: { lang: 'cpp', code: `#include <iostream>
@@ -2210,6 +2450,21 @@ void mergeBrute(int* a, int m, const int* b, int n) {
 }` } },
     mcq: { q: 'Why fill from the back instead of the front?', options: ['It is faster for the CPU cache', 'The back of a is free space, so writing there never overwrites unread a-values', 'Sorting requires it', 'To avoid using pointers'], answer: 1, explain: 'The write pointer starts at a + m + n − 1, always at or after the read pointer into a, so no unmerged value is clobbered.' },
     hints: [`<p>Three pointers: <code>pa</code> at the last real a-value, <code>pb</code> at the last b-value, <code>w</code> at the last slot of a.</p>`, `<p>Each step writes the larger of <code>*pa</code> and <code>*pb</code> to <code>*w</code> and moves that pointer and <code>w</code> left.</p>`, `<p>Use counts (<code>i</code>, <code>j</code>) to avoid forming pointers before <code>a</code>: <code>while (j &gt; 0)</code> { if <code>i &gt; 0 &amp;&amp; a[i-1] &gt; b[j-1]</code> take from a, else from b }. Leftover a-values are already in place.</p>`],
+    tests: { sig: 'int[] int[] -> int[]', fn: 'mg',
+      harness: { cpp: "vector<int> mg(vector<int> a, vector<int> b) { int m = a.size(), n = b.size(); vector<int> buf(m + n, -555); copy(a.begin(), a.end(), buf.begin()); mergeInto(buf.data(), m, b.data(), n); return buf; }" }, cases: [
+      [[[1,4,7],[2,5]], [1,2,4,5,7]],
+      [[[],[]], []],
+      [[[],[1,2]], [1,2]],
+      [[[1,2],[]], [1,2]],
+      [[[1,2,3],[4,5,6]], [1,2,3,4,5,6]],
+      [[[4,5,6],[1,2,3]], [1,2,3,4,5,6]],
+      [[[2,2,2],[2,2]], [2,2,2,2,2]],
+      [[[-5,0,5],[-6,-1,6]], [-6,-5,-1,0,5,6]],
+      [[[1],[1]], [1,1]],
+      [[[2147483647],[-2147483648]], [-2147483648,2147483647]],
+      [[{"$range":[0,200000,2]},{"$range":[1,200000,2]}], {"$range":[0,200000]}],
+      [[{"$range":[100000,200000]},{"$range":[0,100000]}], {"$range":[0,200000]}]
+    ] },
     solution: {
       approach: `<p>Backward merge with read indices expressed as pointers <code>a + i</code>, <code>b + j</code>; loop ends when b is exhausted.</p>`,
       code: { lang: 'cpp', code: `#include <iostream>
@@ -2259,6 +2514,24 @@ void* memmoveBrute(void* dst, const void* src, std::size_t n) {
 }` } },
     mcq: { q: 'dst = src + 2 and n = 4. Which direction must you copy?', options: ['Forwards (low to high addresses)', 'Backwards (high to low addresses)', 'Either works', 'It is impossible without a buffer'], answer: 1, explain: 'dst starts inside the source range after src; copying from the end first reads each source byte before it gets overwritten.' },
     hints: [`<p>You cannot do arithmetic on <code>void*</code>. Convert both to <code>unsigned char*</code> (byte pointers).</p>`, `<p>If dst &lt; src (or the ranges do not overlap), copy forward; if dst &gt; src, copy backward from the last byte. Comparing pointers into different objects with <code>&lt;</code> is unspecified, so use <code>std::less&lt;&gt;</code> (a total order) or compare <code>uintptr_t</code> values.</p>`, `<p>Recipe: <code>if (d == s || n == 0) return dst;</code> <code>if (std::less&lt;const unsigned char*&gt;{}(d, s))</code> forward loop <code>while (n--) *d++ = *s++;</code> else <code>d += n; s += n; while (n--) *--d = *--s;</code>.</p>`],
+    tests: { sig: 'string int int int -> string', fn: 'mmv',
+      harness: { cpp: "string mmv(string s, int dst, int src, int n) { vector<char> buf(s.begin(), s.end()); buf.push_back(0); void* r = myMemmove(buf.data() + dst, buf.data() + src, n); if (r != buf.data() + dst) return \"wrong return\"; return string(buf.data(), s.size()); }" }, cases: [
+      [["abcdef",2,0,4], "ababcd"],
+      [["abcdef",0,2,4], "cdefef"],
+      [["abcdef",1,0,0], "abcdef"],
+      [["abcdef",0,0,6], "abcdef"],
+      [["abcdef",3,0,3], "abcabc"],
+      [["abcdef",0,3,3], "defdef"],
+      [["abcdef",1,0,5], "aabcde"],
+      [["abcdef",0,1,5], "bcdeff"],
+      [["a",0,0,1], "a"],
+      [["abcdefgh",4,0,4], "abcdabcd"],
+      [["abcdefgh",0,4,4], "efghefgh"],
+      [["abcdefgh",5,2,3], "abcdecde"],
+      [["abcdefgh",2,5,3], "abfghfgh"],
+      [[{"$rep":"abcdefghij","n":100000},3,0,999997], {"$concat":["abc",{"$rep":"abcdefghij","n":99999},"abcdefg"]}],
+      [[{"$rep":"abcdefghij","n":100000},0,3,999997], {"$concat":["defghij",{"$rep":"abcdefghij","n":99999},"hij"]}]
+    ] },
     solution: {
       approach: `<p>Choose the copy direction so that every source byte is read before it can be overwritten. Byte pointers for arithmetic; <code>std::less</code> for a well-defined pointer comparison.</p>`,
       code: { lang: 'cpp', code: `#include <cstddef>
@@ -2319,6 +2592,23 @@ void removeAllBrute(Node** head, int target) {
 }` } },
     mcq: { q: 'With <code>Node** link</code> pointing at the pointer that leads to the current node, how do you unlink the current node?', options: ['<code>link = link-&gt;next;</code>', '<code>*link = (*link)-&gt;next;</code> after saving the node to delete', '<code>delete *link; *link = (*link)-&gt;next;</code>', '<code>**link = nullptr;</code>'], answer: 1, explain: 'Save <code>Node* dead = *link;</code>, then overwrite the link with <code>dead-&gt;next</code>, then delete. Option 3 reads (*link)->next after deleting it: use-after-free.' },
     hints: [`<p>A <code>Node**</code> can point at <code>head</code> itself or at any node's <code>next</code> field. All those links are the same type, so one code path handles them all.</p>`, `<p>If <code>(*link)-&gt;val</code> matches: save the node, redirect <code>*link</code> to its next, delete it, and do <b>not</b> advance (the new <code>*link</code> must be checked too). Otherwise advance: <code>link = &amp;(*link)-&gt;next;</code>.</p>`, `<p>Recipe: <code>for (Node** link = head; *link; ) { Node* cur = *link; if (cur-&gt;val == target) { *link = cur-&gt;next; delete cur; } else link = &amp;cur-&gt;next; }</code>. Order matters: read <code>cur-&gt;next</code> before <code>delete cur</code>.</p>`],
+    tests: { sig: 'int[] int -> int[]', fn: 'ra',
+      harness: { cpp: "vector<int> ra(vector<int> vals, int target) { Node* head = nullptr; Node** tail = &head; for (int v : vals) { *tail = new Node{v, nullptr}; tail = &(*tail)->next; }\n  removeAll(&head, target); vector<int> out; while (head) { out.push_back(head->val); Node* n = head->next; delete head; head = n; } return out; }" }, cases: [
+      [[[6,1,6,6,2],6], [1,2]],
+      [[[],1], []],
+      [[[1],1], []],
+      [[[1],2], [1]],
+      [[[5,5,5],5], []],
+      [[[1,2,3],3], [1,2]],
+      [[[1,2,3],1], [2,3]],
+      [[[1,2,3],2], [1,3]],
+      [[[1,2,1,2,1],1], [2,2]],
+      [[[-1,-1,0],-1], [0]],
+      [[[7,8,9],10], [7,8,9]],
+      [[{"$rep":3,"n":100000},3], []],
+      [[{"$rep":3,"n":100000},4], {"$rep":3,"n":100000}],
+      [[{"$concat":[{"$rep":1,"n":50000},{"$rep":2,"n":50000}]},1], {"$rep":2,"n":50000}]
+    ] },
     solution: {
       approach: `<p>Indirect pointer cursor over the links themselves (Linus Torvalds' "good taste" example). One uniform loop; each node is deleted only after its next pointer has been read.</p>`,
       code: { lang: 'cpp', code: `#include <iostream>
@@ -2373,6 +2663,22 @@ long long sumRaw(const int* p, std::size_t n) {
 }` } },
     mcq: { q: 'How can the constructor learn the length of a C array argument?', options: ['<code>sizeof(arr) / sizeof(arr[0])</code> inside a constructor taking <code>T* arr</code>', 'A template constructor taking <code>T (&amp;arr)[N]</code>, which binds by reference so no decay happens', 'It cannot', 'Using <code>strlen</code>'], answer: 1, explain: 'Binding to a reference to array is one of the decay exceptions; N is deduced from the argument type.' },
     hints: [`<p>Store <code>T* data_</code> and <code>std::size_t size_</code>. Iterators can simply be <code>T*</code>: <code>begin()</code> returns <code>data_</code>, <code>end()</code> returns <code>data_ + size_</code>.</p>`, `<p>C array: <code>template&lt;std::size_t N&gt; ArrayView(T (&amp;arr)[N])</code>. Vector: take <code>std::vector&lt;std::remove_const_t&lt;T&gt;&gt;&amp;</code> (and a const overload for <code>ArrayView&lt;const X&gt;</code>). Conversion to const: a converting constructor from <code>ArrayView&lt;U&gt;</code> constrained with <code>requires std::is_convertible_v&lt;U(*)[], T(*)[]&gt;</code>.</p>`, `<p><code>subview(off, cnt)</code>: check <code>off &lt;= size_</code> and <code>cnt &lt;= size_ - off</code> (written this way to avoid overflow), then return <code>{data_ + off, cnt}</code>. Remember the view does not own data: it dangles if the array dies.</p>`],
+    tests: { sig: 'int[] int int int -> long[]', fn: 'av',
+      harness: { cpp: "vector<long long> av(vector<int> a, int off, int cnt, int idx) {\n  int carr[5] = {1, 2, 3, 4, 5}; ArrayView<int> cv(carr); if (cv.size() != 5 || cv.empty() || cv[4] != 5) throw runtime_error(\"C array constructor lost the length\");\n  ArrayView<int> e; if (!e.empty() || e.size() != 0) throw runtime_error(\"default view not empty\");\n  ArrayView<int> v(a); const vector<int>& ca = a; ArrayView<const int> cview(ca); if (cview.size() != a.size()) throw runtime_error(\"const vector view\");\n  vector<long long> r; r.push_back(v.size()); r.push_back(sum(v));\n  try { ArrayView<int> s = v.subview(off, cnt); r.push_back(s.size()); r.push_back(sum(s)); } catch (const out_of_range&) { r.push_back(-1); r.push_back(-1); }\n  try { r.push_back(v.at(idx)); } catch (const out_of_range&) { r.push_back(-999999999999LL); }\n  if (!a.empty()) { v[0] = 42; if (a[0] != 42) throw runtime_error(\"view is not writable through\"); }\n  return r; }" }, cases: [
+      [[[1,2,3,4,5],1,3,2], [5,15,3,9,3]],
+      [[[1,2,3,4,5],1,3,7], [5,15,3,9,-999999999999]],
+      [[[1,2,3,4,5],0,5,0], [5,15,5,15,1]],
+      [[[1,2,3,4,5],5,0,4], [5,15,0,0,5]],
+      [[[1,2,3,4,5],5,1,5], [5,15,-1,-1,-999999999999]],
+      [[[1,2,3,4,5],6,0,0], [5,15,-1,-1,1]],
+      [[[1,2,3,4,5],2,4,3], [5,15,-1,-1,4]],
+      [[[],0,0,0], [0,0,0,0,-999999999999]],
+      [[[9],0,1,0], [1,9,1,9,9]],
+      [[[9],1,0,0], [1,9,0,0,9]],
+      [[[2147483647,2147483647],0,2,1], [2,4294967294,2,4294967294,2147483647]],
+      [[[-1,-2,-3],1,2,2], [3,-6,2,-5,-3]],
+      [[[1,2,3],3,0,3], [3,6,0,0,-999999999999]]
+    ] },
     solution: {
       approach: `<p>Same design as <code>std::span</code>: a pointer and a length stored together, constructors that capture the length at the point where it is still known (no decay), raw pointers as iterators, and checked accessors. The class is trivially copyable and cheap to pass by value.</p>`,
       code: { lang: 'cpp', code: `#include <cstddef>
@@ -2463,6 +2769,20 @@ const char* labelStatic(int id) {
 }` } },
     mcq: { q: 'Which single tool would report bugs B and D at runtime with stack traces of the allocation and the free?', options: ['-Wall', 'AddressSanitizer (-fsanitize=address)', 'UBSan only', 'gdb watchpoints'], answer: 1, explain: 'Both are heap-use-after-free; ASan poisons and quarantines freed heap memory and prints the access, free and allocation stacks.' },
     hints: [`<p>For every pointer/reference/view/lambda capture, ask: <i>who owns the thing it refers to, and when does that owner die?</i></p>`, `<p>A: return <code>std::string</code>. B: store an index. C: return <code>std::string</code>. D: use <code>std::unique_ptr</code> or return a value. E: capture by value with <code>mutable</code>.</p>`, `<p>After fixing, compile with <code>-Wall -Wextra -fsanitize=address,undefined</code> and add a test that inserts enough items to force several vector reallocations (that is what exposes B).</p>`],
+    tests: { sig: 'int[] -> string', fn: 'gaunt',
+      harness: { cpp: "string gaunt(vector<int> qty) { inv.clear(); cheapestIdx.reset(); for (size_t i = 0; i < qty.size(); ++i) add(label((int)i), qty[i]);\n  string first = cheapestIdx ? upper(inv[*cheapestIdx].name) : string(\"none\"); auto s = stock(); auto ctr = counter(); ctr(); int second = ctr(); return first + \" \" + to_string(*s) + \" \" + to_string(second); }" }, cases: [
+      [[[]], "none 5 2"],
+      [[[10]], "ITEM-0 5 2"],
+      [[[5,3,8]], "ITEM-1 5 2"],
+      [[[4,4,4]], "ITEM-0 5 2"],
+      [[[100,99,98,97,96,95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1]], "ITEM-99 5 2"],
+      [[[1,2,3,4,5]], "ITEM-0 5 2"],
+      [[[5,4,3,2,1]], "ITEM-4 5 2"],
+      [[[0,-1,-1]], "ITEM-1 5 2"],
+      [[[100,99,98,1,50,1]], "ITEM-3 5 2"],
+      [[[7,7]], "ITEM-0 5 2"],
+      [[{"$range":[100000,0,-1]}], "ITEM-99999 5 2"]
+    ] },
     solution: {
       approach: `<p>Replace every non-owning handle whose target can die with either an owning value or a stable handle (index). Lambdas own their state via value capture.</p>`,
       code: { lang: 'cpp', code: `#include <cctype>

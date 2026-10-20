@@ -377,7 +377,7 @@ int main() {
           <p><b>Why:</b> after the inserts the smallest (1) is at the root → getMin = 1. extractMin removes it; 5 moves to the root and sinks below 3, so the new root is 3.</p>`,
         brute: {
           why: `<p>Keep values in an unsorted list. Insert is O(1), but <b>every</b> getMin/extractMin scans all N values → O(N) each. With 10<sup>5</sup> operations that is up to 10<sup>10</sup> steps. The wasted work: each scan forgets everything it learned about which values are small.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             class SlowMinHeap {
                 private List<Integer> list = new ArrayList<>();
 
@@ -399,7 +399,80 @@ int main() {
                 }
 
                 int size() { return list.size(); }
-            }`
+            }`, alt: [
+          { lang: 'python', code: `class SlowMinHeap:
+    def __init__(self):
+        self.items = []
+
+    def insert(self, x):
+        self.items.append(x)                      # O(1)
+
+    def getMin(self):
+        if not self.items:
+            return -1
+        best = self.items[0]
+        for v in self.items:
+            best = min(best, v)                   # O(N) scan every time
+        return best
+
+    def extractMin(self):
+        if not self.items:
+            return -1
+        bi = 0
+        for i in range(1, len(self.items)):
+            if self.items[i] < self.items[bi]:
+                bi = i                            # O(N) scan
+        return self.items.pop(bi)                 # O(N) shift
+
+    def size(self):
+        return len(self.items)` },
+          { lang: 'js', code: `class SlowMinHeap {
+  constructor() { this.list = []; }
+
+  insert(x) { this.list.push(x); }               // O(1)
+
+  getMin() {
+    if (this.list.length === 0) return -1;
+    let best = this.list[0];
+    for (const v of this.list) best = Math.min(best, v); // O(N) scan every time
+    return best;
+  }
+
+  extractMin() {
+    if (this.list.length === 0) return -1;
+    let bi = 0;
+    for (let i = 1; i < this.list.length; i++)
+      if (this.list[i] < this.list[bi]) bi = i;  // O(N) scan
+    return this.list.splice(bi, 1)[0];           // O(N) shift
+  }
+
+  size() { return this.list.length; }
+}` },
+          { lang: 'cpp', code: `class SlowMinHeap {
+    vector<int> list;
+public:
+    void insert(int x) { list.push_back(x); }        // O(1)
+
+    int getMin() {
+        if (list.empty()) return -1;
+        int best = list[0];
+        for (int v : list) best = min(best, v);      // O(N) scan every time
+        return best;
+    }
+
+    int extractMin() {
+        if (list.empty()) return -1;
+        int bi = 0;
+        for (int i = 1; i < (int)list.size(); i++)
+            if (list[i] < list[bi]) bi = i;          // O(N) scan
+        int v = list[bi];
+        list.erase(list.begin() + bi);               // O(N) shift
+        return v;
+    }
+
+    int size() { return list.size(); }
+};` }
+        ] }
         },
         mcq: {
           q: 'A heap is stored in an array. Where are the children of index 4, and where is its parent?',
@@ -1277,7 +1350,7 @@ console.log(order.join(' '));             // 1 4 7
         example: `${H.arr([2, 7, 4, 1, 8, 1], { label: 'stones', hl: { 1: 'y', 4: 'y' } })}<p>Output ${H.c('p', '1')}. <b>Why:</b> 8 vs 7 → 1 left → [2, 4, 1, 1, 1]; 4 vs 2 → 2 → [2, 1, 1, 1]; 2 vs 1 → 1 → [1, 1, 1]; 1 vs 1 → gone → [1]. One stone of weight 1 remains.</p>`,
         brute: {
           why: `<p>Sort the list every turn and take the last two: O(N log N) per turn × up to N turns = O(N<sup>2</sup> log N). The waste: after each smash only one value changes, yet we re-sort everything.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int lastStoneWeight(int[] stones) {
                 List<Integer> list = new ArrayList<>();
                 for (int s : stones) list.add(s);
@@ -1288,7 +1361,37 @@ console.log(order.join(' '));             // 1 4 7
                     if (y != x) list.add(y - x);
                 }
                 return list.isEmpty() ? 0 : list.get(0);
-            }`
+            }`, alt: [
+          { lang: 'python', code: `def last_stone_weight(stones):
+    lst = list(stones)
+    while len(lst) > 1:
+        lst.sort()                                   # full sort every turn
+        y = lst.pop()
+        x = lst.pop()
+        if y != x:
+            lst.append(y - x)
+    return lst[0] if lst else 0` },
+          { lang: 'js', code: `function lastStoneWeight(stones) {
+  const list = [...stones];
+  while (list.length > 1) {
+    list.sort((a, b) => a - b);                      // full sort every turn
+    const y = list.pop();
+    const x = list.pop();
+    if (y !== x) list.push(y - x);
+  }
+  return list.length === 0 ? 0 : list[0];
+}` },
+          { lang: 'cpp', code: `int lastStoneWeight(vector<int> stones) {
+    vector<int> list = stones;
+    while (list.size() > 1) {
+        sort(list.begin(), list.end());              // full sort every turn
+        int y = list.back(); list.pop_back();
+        int x = list.back(); list.pop_back();
+        if (y != x) list.push_back(y - x);
+    }
+    return list.empty() ? 0 : list[0];
+}` }
+        ] }
         },
         mcq: {
           q: 'You repeatedly need the two LARGEST values and insert a new value. Which structure?',
@@ -1704,12 +1807,25 @@ function kClosest(pts, k) {
         example: `${H.arr([3, 2, 1, 5, 6, 4], { label: 'nums', hl: { 3: 'p', 4: 'g' } })}<p>k = 2 → Output ${H.c('p', '5')}.</p><p><b>Why:</b> sorted descending it is 6, ${H.c('p', '5')}, 4, 3, 2, 1. The 1st largest is ${H.c('g', '6')}, the 2nd is ${H.c('p', '5')}.</p>`,
         brute: {
           why: `<p>Sort the whole array and pick <code>nums[n-k]</code>: O(N log N). It works, but it orders all N values when we only care about the top k. With a stream of numbers you would have to re-sort every time.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int findKthLargest(int[] nums, int k) {
                 int[] copy = nums.clone();
                 Arrays.sort(copy);              // ascending
                 return copy[copy.length - k];   // k-th from the end
-            }`
+            }`, alt: [
+          { lang: 'python', code: `def find_kth_largest(nums, k):
+    copy = sorted(nums)                              # ascending
+    return copy[len(copy) - k]                       # k-th from the end` },
+          { lang: 'js', code: `function findKthLargest(nums, k) {
+  const copy = [...nums].sort((a, b) => a - b);      // ascending
+  return copy[copy.length - k];                      // k-th from the end
+}` },
+          { lang: 'cpp', code: `int findKthLargest(vector<int> nums, int k) {
+    vector<int> copy = nums;
+    sort(copy.begin(), copy.end());                  // ascending
+    return copy[copy.size() - k];                    // k-th from the end
+}` }
+        ] }
         },
         mcq: {
           q: 'You keep a heap of the k largest values seen so far. Which heap, and where is the answer?',
@@ -1843,7 +1959,7 @@ public:
         example: `${H.arr([1, 23, 12, 9, 30, 2, 50], { label: 'arr', hl: { 1: 'p', 4: 'p', 6: 'p' } })}<p>k = 3 → Output ${H.c('p', '[50, 30, 23]')}.</p><p><b>Why:</b> the three biggest values are 50, 30 and 23; listed from biggest to smallest.</p>`,
         brute: {
           why: `<p>Repeat k times: scan the array for the largest value not yet taken. That is O(N·k) — with N = k = 10<sup>5</sup> it is 10<sup>10</sup> steps. Each scan re-checks the same numbers again and again.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             List<Integer> kLargest(int[] arr, int k) {
                 boolean[] used = new boolean[arr.length];
                 List<Integer> res = new ArrayList<>();
@@ -1855,7 +1971,43 @@ public:
                     res.add(arr[best]);
                 }
                 return res;
-            }`
+            }`, alt: [
+          { lang: 'python', code: `def k_largest(arr, k):
+    used = [False] * len(arr)
+    res = []
+    for _ in range(k):
+        best = -1
+        for i in range(len(arr)):                    # full scan every round
+            if not used[i] and (best == -1 or arr[i] > arr[best]):
+                best = i
+        used[best] = True
+        res.append(arr[best])
+    return res` },
+          { lang: 'js', code: `function kLargest(arr, k) {
+  const used = new Array(arr.length).fill(false);
+  const res = [];
+  for (let t = 0; t < k; t++) {
+    let best = -1;
+    for (let i = 0; i < arr.length; i++)             // full scan every round
+      if (!used[i] && (best === -1 || arr[i] > arr[best])) best = i;
+    used[best] = true;
+    res.push(arr[best]);
+  }
+  return res;
+}` },
+          { lang: 'cpp', code: `vector<int> kLargest(vector<int> arr, int k) {
+    vector<bool> used(arr.size(), false);
+    vector<int> res;
+    for (int t = 0; t < k; t++) {
+        int best = -1;
+        for (int i = 0; i < (int)arr.size(); i++)    // full scan every round
+            if (!used[i] && (best == -1 || arr[i] > arr[best])) best = i;
+        used[best] = true;
+        res.push_back(arr[best]);
+    }
+    return res;
+}` }
+        ] }
         },
         mcq: {
           q: 'After the scan, your min-heap of size k holds the answer. Polling it gives values in which order, and what do you do?',
@@ -2213,7 +2365,7 @@ vector<int> mergeKArrays(const vector<vector<int>>& arrs) {
           <p><b>Why:</b> it is simply all 8 values in sorted order; equal values (the two 1s and two 4s) may come from either list.</p>`,
         brute: {
           why: `<p>Merge lists one at a time: result = merge(result, L0), then merge(result, L1), … The growing result is re-walked K times, so total work is about N·K (10<sup>4</sup> × 10<sup>4</sup> = 10<sup>8</sup> steps in the worst case). Another brute: dump all values into an array and sort, O(N log N) with O(N) extra space, ignoring that the lists were already sorted.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             class Brute {
                 public ListNode mergeKLists(ListNode[] lists) {
                     ListNode result = null;
@@ -2231,7 +2383,60 @@ vector<int> mergeKArrays(const vector<vector<int>>& arrs) {
                     t.next = (a != null) ? a : b;
                     return dummy.next;
                 }
-            }`
+            }`, alt: [
+          { lang: 'python', code: `def merge_k_lists(lists):
+    result = None
+    for l in lists:
+        result = merge_two(result, l)                # re-walks result each time
+    return result
+
+def merge_two(a, b):
+    dummy = t = ListNode(0)
+    while a and b:
+        if a.val <= b.val:
+            t.next = a
+            a = a.next
+        else:
+            t.next = b
+            b = b.next
+        t = t.next
+    t.next = a if a else b
+    return dummy.next` },
+          { lang: 'js', code: `function mergeKLists(lists) {
+  let result = null;
+  for (const l of lists) result = mergeTwo(result, l); // re-walks result each time
+  return result;
+}
+
+function mergeTwo(a, b) {
+  const dummy = new ListNode(0);
+  let t = dummy;
+  while (a !== null && b !== null) {
+    if (a.val <= b.val) { t.next = a; a = a.next; }
+    else { t.next = b; b = b.next; }
+    t = t.next;
+  }
+  t.next = a !== null ? a : b;
+  return dummy.next;
+}` },
+          { lang: 'cpp', code: `ListNode* mergeTwo(ListNode* a, ListNode* b) {
+    ListNode dummy(0);
+    ListNode* t = &dummy;
+    while (a && b) {
+        if (a->val <= b->val) { t->next = a; a = a->next; }
+        else { t->next = b; b = b->next; }
+        t = t->next;
+    }
+    t->next = a ? a : b;
+    return dummy.next;
+}
+
+ListNode* mergeKLists(vector<ListNode*>& lists) {
+    ListNode* result = nullptr;
+    for (ListNode* l : lists) result = mergeTwo(result, l); // re-walks result each time
+    return result;
+}` }
+        ] }
         },
         mcq: {
           q: 'At any moment, how many nodes can the heap contain?',
@@ -2824,7 +3029,7 @@ public:
           <p><b>Why:</b> with {1, 2} the two middle values average to 1.5. With {1, 2, 3} the single middle value is 2.</p>`,
         brute: {
           why: `<p>Store numbers in a list; on every findMedian, sort and pick the middle → O(N log N) per call. With 5·10<sup>4</sup> calls that is around 10<sup>10</sup> work. Even keeping the list sorted with insertion costs O(N) per add because elements must shift.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             class SlowMedianFinder {
                 private List<Integer> data = new ArrayList<>();
 
@@ -2837,7 +3042,46 @@ public:
                     if (n % 2 == 1) return s.get(n / 2);
                     return (s.get(n / 2 - 1) + s.get(n / 2)) / 2.0;
                 }
-            }`
+            }`, alt: [
+          { lang: 'python', code: `class SlowMedianFinder:
+    def __init__(self):
+        self.data = []
+
+    def addNum(self, num):
+        self.data.append(num)
+
+    def findMedian(self):
+        s = sorted(self.data)                        # full sort each call
+        n = len(s)
+        if n % 2 == 1:
+            return float(s[n // 2])
+        return (s[n // 2 - 1] + s[n // 2]) / 2.0` },
+          { lang: 'js', code: `class SlowMedianFinder {
+  constructor() { this.data = []; }
+
+  addNum(num) { this.data.push(num); }
+
+  findMedian() {
+    const s = [...this.data].sort((a, b) => a - b);  // full sort each call
+    const n = s.length;
+    if (n % 2 === 1) return s[Math.floor(n / 2)];
+    return (s[n / 2 - 1] + s[n / 2]) / 2;
+  }
+}` },
+          { lang: 'cpp', code: `class SlowMedianFinder {
+    vector<int> data;
+public:
+    void addNum(int num) { data.push_back(num); }
+
+    double findMedian() {
+        vector<int> s = data;
+        sort(s.begin(), s.end());                    // full sort each call
+        int n = s.size();
+        if (n % 2 == 1) return s[n / 2];
+        return (s[n / 2 - 1] + s[n / 2]) / 2.0;
+    }
+};` }
+        ] }
         },
         mcq: {
           q: 'Which pair of heaps lets you read the median in O(1)?',
@@ -3442,8 +3686,8 @@ console.log(t.countPrefix('ap'));         // 3
           ['search("app")', H.c('g', 'true'), 'now a word ends there']
         ])}`,
         brute: {
-          why: `<p>Keep all words in a list. <code>search</code> compares against every word, and <code>startsWith</code> calls <code>w.startsWith(prefix)</code> on every word → O(N·L) per call. With 3·10<sup>4</sup> words and calls that is about 10<sup>9</sup>+ character comparisons. Shared prefixes are compared again and again.</p>`,
-          code: `
+          why: `<p>Keep all words in a list. <code>search</code> compares against every word, and <code>startsWith</code> runs a prefix test on every word → O(N·L) per call. With 3·10<sup>4</sup> words and calls that is about 10<sup>9</sup>+ character comparisons. Shared prefixes are compared again and again.</p>`,
+          code: { lang: 'java', code: `
             class SlowTrie {
                 private List<String> words = new ArrayList<>();
 
@@ -3458,7 +3702,56 @@ console.log(t.countPrefix('ap'));         // 3
                     for (String w : words) if (w.startsWith(prefix)) return true; // O(N·L)
                     return false;
                 }
-            }`
+            }`, alt: [
+          { lang: 'python', code: `class SlowTrie:
+    def __init__(self):
+        self.words = []
+
+    def insert(self, word):
+        self.words.append(word)
+
+    def search(self, word):
+        for w in self.words:
+            if w == word:                            # O(N*L)
+                return True
+        return False
+
+    def startsWith(self, prefix):
+        for w in self.words:
+            if w.startswith(prefix):                 # O(N*L)
+                return True
+        return False` },
+          { lang: 'js', code: `class SlowTrie {
+  constructor() { this.words = []; }
+
+  insert(word) { this.words.push(word); }
+
+  search(word) {
+    for (const w of this.words) if (w === word) return true;         // O(N*L)
+    return false;
+  }
+
+  startsWith(prefix) {
+    for (const w of this.words) if (w.startsWith(prefix)) return true; // O(N*L)
+    return false;
+  }
+}` },
+          { lang: 'cpp', code: `class SlowTrie {
+    vector<string> words;
+public:
+    void insert(string word) { words.push_back(word); }
+
+    bool search(string word) {
+        for (const string& w : words) if (w == word) return true;               // O(N*L)
+        return false;
+    }
+
+    bool startsWith(string prefix) {
+        for (const string& w : words) if (w.compare(0, prefix.size(), prefix) == 0) return true; // O(N*L)
+        return false;
+    }
+};` }
+        ] }
         },
         mcq: {
           q: 'After inserting only "apple", what do search("app") and startsWith("app") return?',
@@ -3928,14 +4221,35 @@ int maxSubarrayXor(const vector<int>& a) {
           <p>Output ${H.c('p', '28')}. <b>Why:</b> 5 and 25 differ in the three highest bits (16 + 8 + 4 = 28). No pair can turn on bit 4 and bit 3 and bit 2 together any better.</p>`,
         brute: {
           why: `<p>Check every pair: N·(N-1)/2 ≈ 2·10<sup>10</sup> XORs for N = 2·10<sup>5</sup> → far too slow. The waste: for each x we look at every y, although only the y with the most opposite high bits matters.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int findMaximumXOR(int[] nums) {
                 int best = 0;
                 for (int i = 0; i < nums.length; i++)
                     for (int j = i; j < nums.length; j++)
                         best = Math.max(best, nums[i] ^ nums[j]);   // O(N^2) pairs
                 return best;
-            }`
+            }`, alt: [
+          { lang: 'python', code: `def find_maximum_xor(nums):
+    best = 0
+    for i in range(len(nums)):
+        for j in range(i, len(nums)):
+            best = max(best, nums[i] ^ nums[j])      # O(N^2) pairs
+    return best` },
+          { lang: 'js', code: `function findMaximumXOR(nums) {
+  let best = 0;
+  for (let i = 0; i < nums.length; i++)
+    for (let j = i; j < nums.length; j++)
+      best = Math.max(best, nums[i] ^ nums[j]);      // O(N^2) pairs
+  return best;
+}` },
+          { lang: 'cpp', code: `int findMaximumXOR(vector<int> nums) {
+    int best = 0;
+    for (int i = 0; i < (int)nums.size(); i++)
+        for (int j = i; j < (int)nums.size(); j++)
+            best = max(best, nums[i] ^ nums[j]);     // O(N^2) pairs
+    return best;
+}` }
+        ] }
         },
         mcq: {
           q: 'x = 01010₂. At the top bit the trie has only a 0-branch, at the next bit both branches exist. What do you do?',
@@ -4113,7 +4427,7 @@ public:
       <p><b>Why:</b> after add(3) the values are 2, 3, 4, 5, 8; the three largest are 8, 5, ${H.c('p', '4')} → 4. After add(5): 8, 5, ${H.c('p', '5')} → 5.</p>`,
     brute: {
       why: `<p>Keep every value in a list and sort on every add: O(N log N) per call, 10<sup>4</sup> calls on a growing list → around 10<sup>9</sup> operations. We keep re-sorting values that can never be the answer again (anything below the current k-th largest).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         class KthLargestSlow {
             private final List<Integer> all = new ArrayList<>();
             private final int k;
@@ -4128,7 +4442,41 @@ public:
                 Collections.sort(all);              // full sort each call
                 return all.get(all.size() - k);
             }
-        }`
+        }`, alt: [
+          { lang: 'python', code: `class KthLargestSlow:
+    def __init__(self, k, nums):
+        self.k = k
+        self.all = list(nums)
+
+    def add(self, val):
+        self.all.append(val)
+        self.all.sort()                              # full sort each call
+        return self.all[len(self.all) - self.k]` },
+          { lang: 'js', code: `class KthLargestSlow {
+  constructor(k, nums) {
+    this.k = k;
+    this.all = [...nums];
+  }
+
+  add(val) {
+    this.all.push(val);
+    this.all.sort((a, b) => a - b);                  // full sort each call
+    return this.all[this.all.length - this.k];
+  }
+}` },
+          { lang: 'cpp', code: `class KthLargestSlow {
+    vector<int> all;
+    int k;
+public:
+    KthLargestSlow(int k, vector<int>& nums) : all(nums), k(k) {}
+
+    int add(int val) {
+        all.push_back(val);
+        sort(all.begin(), all.end());                // full sort each call
+        return all[all.size() - k];
+    }
+};` }
+        ] }
     },
     mcq: { q: 'Which state is enough to answer every add() call?', options: ['A min-heap holding only the k largest values seen', 'A max-heap of all values', 'A sorted array of all values', 'Only the current maximum'], answer: 0, explain: 'Values smaller than the current k-th largest can never become the k-th largest again (new values only push them further down), so a min-heap of size k is all we need; its top is the answer.' },
     hints: [
@@ -4277,7 +4625,7 @@ public:
       ${H.arr([2, 5, 1], { label: 'b', hl: { 0: 'r', 2: 'r' } })}<p>Output ${H.c('r', 'false')}: parent 2 &gt; child 1.</p>`,
     brute: {
       why: `<p>A naive check compares every element against <b>every</b> element below it in the tree (all descendants): O(N log N) or worse, and much more code. The heap rule is local — checking parent vs direct children is enough because ≤ is transitive.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         boolean isMinHeapSlow(int[] a) {
             int n = a.length;
             for (int i = 0; i < n; i++) {
@@ -4292,7 +4640,51 @@ public:
                 }
             }
             return true;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def is_min_heap(a):
+    n = len(a)
+    for i in range(n):
+        # walk every descendant of i using an explicit stack
+        st = [i]
+        while st:
+            j = st.pop()
+            if a[j] < a[i]:
+                return False
+            if 2 * j + 1 < n:
+                st.append(2 * j + 1)
+            if 2 * j + 2 < n:
+                st.append(2 * j + 2)
+    return True` },
+          { lang: 'js', code: `function isMinHeap(a) {
+  const n = a.length;
+  for (let i = 0; i < n; i++) {
+    // walk every descendant of i using an explicit stack
+    const st = [i];
+    while (st.length > 0) {
+      const j = st.pop();
+      if (a[j] < a[i]) return false;
+      if (2 * j + 1 < n) st.push(2 * j + 1);
+      if (2 * j + 2 < n) st.push(2 * j + 2);
+    }
+  }
+  return true;
+}` },
+          { lang: 'cpp', code: `bool isMinHeap(vector<int>& a) {
+    int n = a.size();
+    for (int i = 0; i < n; i++) {
+        // walk every descendant of i using an explicit stack
+        stack<int> st;
+        st.push(i);
+        while (!st.empty()) {
+            int j = st.top(); st.pop();
+            if (a[j] < a[i]) return false;
+            if (2 * j + 1 < n) st.push(2 * j + 1);
+            if (2 * j + 2 < n) st.push(2 * j + 2);
+        }
+    }
+    return true;
+}` }
+        ] }
     },
     mcq: { q: 'Which indices actually need checking?', options: ['Only the non-leaves: 0 .. n/2 - 1', 'Every index 0 .. n-1 including leaves', 'Only index 0', 'Only the last level'], answer: 0, explain: 'Indices n/2 and above are leaves (their left child 2i+1 would be ≥ n). Leaves have no children, so there is nothing to compare.' },
     hints: [
@@ -4382,7 +4774,7 @@ public:
     example: `${H.arr([4, 3, 2, 6], { label: 'ropes', hl: { 1: 'y', 2: 'y' } })}<p>Output ${H.c('p', '29')}. <b>Why:</b> join 2 + 3 = 5 (cost 5) → [4, 5, 6]; join 4 + 5 = 9 (cost 9) → [6, 9]; join 6 + 9 = 15 (cost 15). Total 5 + 9 + 15 = 29. Joining the long ropes early would make them count again and again.</p>`,
     brute: {
       why: `<p>Each round, scan for the two shortest ropes: O(N) per round × N rounds = O(N<sup>2</sup>) — 4·10<sup>10</sup> for N = 2·10<sup>5</sup>. Trying every order (all join trees) is exponential.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         long connectRopesSlow(int[] ropes) {
             List<Long> r = new ArrayList<>();
             for (int x : ropes) r.add((long) x);
@@ -4394,7 +4786,41 @@ public:
                 r.add(a + b);
             }
             return cost;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def min_cost(ropes):
+    r = list(ropes)
+    cost = 0
+    while len(r) > 1:
+        r.sort()                                     # O(N log N) every round
+        a = r.pop(0)
+        b = r.pop(0)
+        cost += a + b
+        r.append(a + b)
+    return cost` },
+          { lang: 'js', code: `function minCost(ropes) {
+  const r = [...ropes];
+  let cost = 0;
+  while (r.length > 1) {
+    r.sort((x, y) => x - y);                         // O(N log N) every round
+    const a = r.shift(), b = r.shift();
+    cost += a + b;
+    r.push(a + b);
+  }
+  return cost;
+}` },
+          { lang: 'cpp', code: `long long minCost(vector<int> ropes) {
+    vector<long long> r(ropes.begin(), ropes.end());
+    long long cost = 0;
+    while (r.size() > 1) {
+        sort(r.begin(), r.end());                    // O(N log N) every round
+        long long a = r[0], b = r[1];
+        r.erase(r.begin(), r.begin() + 2);
+        cost += a + b;
+        r.push_back(a + b);
+    }
+    return cost;
+}` }
+        ] }
     },
     mcq: { q: 'Why always join the two shortest ropes first?', options: ['A rope joined early is paid for again in every later join, so short ones should be the ones repeated', 'Because the heap requires it', 'Longest-first gives the same answer', 'To keep the number of ropes even'], answer: 0, explain: 'Each original rope is paid once per join it takes part in (its depth in the join tree). Putting the shortest ropes deepest minimises the total — the same exchange argument as Huffman coding.' },
     hints: [
@@ -4531,7 +4957,7 @@ public:
     example: `<p>["flower", "flow", "flight"] → ${H.c('p', '"fl"')}. <b>Why:</b> all three start with f, l; at the third letter they split into o and i.</p><p>["dog", "racecar", "car"] → ${H.c('r', '""')}: the root already has two different children (d, r, c).</p>`,
     brute: {
       why: `<p>Try every prefix of the first word, longest first, and check all other words with <code>startsWith</code>: O(L · N · L). Fine for these limits, but repeats the same comparisons for every candidate length.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         String lcpSlow(String[] strs) {
             String first = strs[0];
             for (int len = first.length(); len >= 0; len--) {
@@ -4541,7 +4967,34 @@ public:
                 if (ok) return p;
             }
             return "";
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def longest_common_prefix(strs):
+    first = strs[0]
+    for ln in range(len(first), -1, -1):
+        p = first[:ln]
+        if all(s.startswith(p) for s in strs):
+            return p
+    return ""` },
+          { lang: 'js', code: `function longestCommonPrefix(strs) {
+  const first = strs[0];
+  for (let len = first.length; len >= 0; len--) {
+    const p = first.substring(0, len);
+    if (strs.every((s) => s.startsWith(p))) return p;
+  }
+  return "";
+}` },
+          { lang: 'cpp', code: `string longestCommonPrefix(vector<string>& strs) {
+    string first = strs[0];
+    for (int len = first.size(); len >= 0; len--) {
+        string p = first.substr(0, len);
+        bool ok = true;
+        for (const string& s : strs)
+            if (s.compare(0, p.size(), p) != 0) { ok = false; break; }
+        if (ok) return p;
+    }
+    return "";
+}` }
+        ] }
     },
     mcq: { q: 'While walking down from the root, when must you stop?', options: ['When the node has more than one child OR a word ends at it', 'Only when the node has no children', 'After exactly min-length steps, always', 'When you reach a node with isEnd = false'], answer: 0, explain: 'Two children means the words disagree on the next letter. A word ending here (e.g. "fl" in the list) means that word is fully used, so the prefix cannot grow.' },
     hints: [
@@ -4686,7 +5139,7 @@ public:
     example: `${H.arr([1, 1, 1, 2, 2, 3], { label: 'nums', hl: { 0: 'p', 1: 'p', 2: 'p', 3: 'b', 4: 'b' } })}<p>k = 2 → ${H.c('p', '[1, 2]')}. <b>Why:</b> 1 appears 3 times, 2 appears 2 times, 3 once; the top two counts belong to 1 and 2.</p>`,
     brute: {
       why: `<p>Count with a map, then sort all distinct values by count: O(D log D) where D can be ~N. Correct, but we order the whole list when we need only k of them.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[] topKSlow(int[] nums, int k) {
             Map<Integer, Integer> f = new HashMap<>();
             for (int x : nums) f.merge(x, 1, Integer::sum);
@@ -4695,7 +5148,30 @@ public:
             int[] res = new int[k];
             for (int i = 0; i < k; i++) res[i] = keys.get(i);
             return res;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def top_k_frequent(nums, k):
+    f = {}
+    for x in nums:
+        f[x] = f.get(x, 0) + 1
+    keys = sorted(f, key=lambda v: -f[v])            # sort all by count desc
+    return keys[:k]` },
+          { lang: 'js', code: `function topKFrequent(nums, k) {
+  const f = new Map();
+  for (const x of nums) f.set(x, (f.get(x) || 0) + 1);
+  const keys = [...f.keys()];
+  keys.sort((a, b) => f.get(b) - f.get(a));          // sort all by count desc
+  return keys.slice(0, k);
+}` },
+          { lang: 'cpp', code: `vector<int> topKFrequent(vector<int> nums, int k) {
+    unordered_map<int, int> f;
+    for (int x : nums) f[x]++;
+    vector<int> keys;
+    for (auto& kv : f) keys.push_back(kv.first);
+    sort(keys.begin(), keys.end(), [&](int a, int b) { return f[a] > f[b]; }); // sort all by count desc
+    keys.resize(k);
+    return keys;
+}` }
+        ] }
     },
     mcq: { q: 'After counting, you keep a heap of size k ordered by count. Which kind?', options: ['Min-heap by count (top = least frequent kept, the one to evict)', 'Max-heap by count of size k', 'Min-heap by value', 'No heap: a TreeSet of values'], answer: 0, explain: 'Same "bouncer" rule as K largest: we keep the k largest counts, so the top must be the smallest count among them.' },
     hints: [
@@ -4831,14 +5307,31 @@ public:
     example: `<p>points = [[3, 3], [5, -1], [-2, 4]], k = 2 → ${H.c('p', '[[3, 3], [-2, 4]]')}.</p>${H.table(['point', 'x² + y²'], [['(3, 3)', H.c('g', '18')], ['(5, -1)', H.c('r', '26')], ['(-2, 4)', H.c('g', '20')]])}<p><b>Why:</b> the two smallest squared distances are 18 and 20.</p>`,
     brute: {
       why: `<p>Sort all points by distance: O(N log N). It works but orders points we will throw away; with a huge stream of points sorting is impossible.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[][] kClosestSlow(int[][] points, int k) {
             int[][] p = points.clone();
             Arrays.sort(p, (a, b) -> Integer.compare(a[0] * a[0] + a[1] * a[1], b[0] * b[0] + b[1] * b[1]));
             return Arrays.copyOf(p, k);
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def k_closest(points, k):
+    p = sorted(points, key=lambda q: q[0] * q[0] + q[1] * q[1])
+    return p[:k]` },
+          { lang: 'js', code: `function kClosest(points, k) {
+  const p = [...points];
+  p.sort((a, b) => a[0] * a[0] + a[1] * a[1] - (b[0] * b[0] + b[1] * b[1]));
+  return p.slice(0, k);
+}` },
+          { lang: 'cpp', code: `vector<vector<int>> kClosest(vector<vector<int>> points, int k) {
+    vector<vector<int>> p = points;
+    sort(p.begin(), p.end(), [](const vector<int>& a, const vector<int>& b) {
+        return a[0] * a[0] + a[1] * a[1] < b[0] * b[0] + b[1] * b[1];
+    });
+    p.resize(k);
+    return p;
+}` }
+        ] }
     },
-    mcq: { q: 'Why compare x² + y² instead of √(x² + y²)?', options: ['Square root keeps the order, so it is wasted work and introduces floating-point error', 'Square root would change the answer', 'Java has no square root', 'x² + y² can overflow less than √'], answer: 0, explain: 'For non-negative numbers, a &lt; b ⇔ √a &lt; √b. Comparing the squares gives the same ranking with exact integer arithmetic.' },
+    mcq: { q: 'Why compare x² + y² instead of √(x² + y²)?', options: ['Square root keeps the order, so it is wasted work and introduces floating-point error', 'Square root would change the answer', 'Square roots are not available in the standard library', 'x² + y² can overflow less than √'], answer: 0, explain: 'For non-negative numbers, a &lt; b ⇔ √a &lt; √b. Comparing the squares gives the same ranking with exact integer arithmetic.' },
     hints: [
       `<p>“k closest” = “k smallest distances” → max-heap of size k, top = the farthest point we are keeping.</p>`,
       `<p>Comparator on squared distance, descending: <code>Integer.compare(d(b), d(a))</code>. Offer each point; poll when size &gt; k.</p>`,
@@ -4963,15 +5456,39 @@ public:
     constraints: `1 ≤ N ≤ 10<sup>6</sup>, 0 ≤ k &lt; N`,
     example: `${H.arr([6, 5, 3, 2, 8, 10, 9], { label: 'arr (k = 3)' })}${H.arr([2, 3, 5, 6, 8, 9, 10], { label: 'sorted', hl: { 0: 'g' } })}<p><b>Why a window works:</b> the smallest value (2) sits at index 3, at most k = 3 away from index 0. So the first k + 1 elements always contain the next smallest value.</p>`,
     brute: {
-      why: `<p><code>Arrays.sort</code> costs O(N log N) and ignores the hint. Insertion sort uses the hint (each element moves ≤ k steps) for O(N·k), which is bad when k is large.</p>`,
-      code: `
+      why: `<p>A library sort (<code>Arrays.sort</code> / <code>sorted</code> / <code>sort</code>) costs O(N log N) and ignores the hint. Insertion sort uses the hint (each element moves ≤ k steps) for O(N·k), which is bad when k is large.</p>`,
+      code: { lang: 'java', code: `
         void sortKSlow(int[] a, int k) {
             for (int i = 1; i < a.length; i++) {      // insertion sort: each element shifts at most k times
                 int x = a[i], j = i - 1;
                 while (j >= 0 && a[j] > x) { a[j + 1] = a[j]; j--; }
                 a[j + 1] = x;
             }
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def sort_k(a, k):
+    for i in range(1, len(a)):                       # insertion sort: each element shifts at most k times
+        x = a[i]
+        j = i - 1
+        while j >= 0 and a[j] > x:
+            a[j + 1] = a[j]
+            j -= 1
+        a[j + 1] = x` },
+          { lang: 'js', code: `function sortK(a, k) {
+  for (let i = 1; i < a.length; i++) {               // insertion sort: each element shifts at most k times
+    const x = a[i];
+    let j = i - 1;
+    while (j >= 0 && a[j] > x) { a[j + 1] = a[j]; j--; }
+    a[j + 1] = x;
+  }
+}` },
+          { lang: 'cpp', code: `void sortK(vector<int>& a, int k) {
+    for (int i = 1; i < (int)a.size(); i++) {        // insertion sort: each element shifts at most k times
+        int x = a[i], j = i - 1;
+        while (j >= 0 && a[j] > x) { a[j + 1] = a[j]; j--; }
+        a[j + 1] = x;
+    }
+}` }
+        ] }
     },
     mcq: { q: 'How big must the heap be?', options: ['k + 1 elements', 'k elements', '2k elements', 'N elements'], answer: 0, explain: 'The correct value for position i is somewhere in a[i..i+k] — that is k + 1 candidates, so the window/heap must hold k + 1 elements before each poll.' },
     hints: [
@@ -5106,7 +5623,7 @@ public:
     example: `<p>roots = [cat, bat, rat], sentence = "the cattle was rattled by the battery" → ${H.c('p', '"the cat was rat by the bat"')}.</p><p><b>Why:</b> “cattle” starts with “cat”, “rattled” with “rat”, “battery” with “bat”; the other words have no root as a prefix.</p>`,
     brute: {
       why: `<p>For every word, test every root with <code>startsWith</code> and keep the shortest match: O(W · R · L). With 10<sup>5</sup> words and 1000 roots that is 10<sup>8</sup>+ character checks, and we re-compare common prefixes of roots again and again.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         String replaceWordsSlow(List<String> roots, String sentence) {
             StringBuilder sb = new StringBuilder();
             for (String w : sentence.split(" ")) {
@@ -5117,7 +5634,39 @@ public:
                 sb.append(best);
             }
             return sb.toString();
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def replace_words(roots, sentence):
+    out = []
+    for w in sentence.split(" "):
+        best = w
+        for r in roots:
+            if w.startswith(r) and len(r) < len(best):
+                best = r
+        out.append(best)
+    return " ".join(out)` },
+          { lang: 'js', code: `function replaceWords(roots, sentence) {
+  const out = [];
+  for (const w of sentence.split(" ")) {
+    let best = w;
+    for (const r of roots)
+      if (w.startsWith(r) && r.length < best.length) best = r;
+    out.push(best);
+  }
+  return out.join(" ");
+}` },
+          { lang: 'cpp', code: `string replaceWords(vector<string>& roots, string sentence) {
+    string result, w;
+    istringstream in(sentence);
+    while (in >> w) {
+        string best = w;
+        for (const string& r : roots)
+            if (w.compare(0, r.size(), r) == 0 && r.size() < best.size()) best = r;
+        if (!result.empty()) result += ' ';
+        result += best;
+    }
+    return result;
+}` }
+        ] }
     },
     mcq: { q: 'Walking a word down the trie, when do you stop?', options: ['At the FIRST node with isEnd = true (shortest root) or when a letter is missing', 'At the deepest node with isEnd = true', 'Only at the end of the word', 'When the node has two children'], answer: 0, explain: 'The first word-end on the path is the shortest root. A missing letter means no root is a prefix, so the word stays as it is.' },
     hints: [
@@ -5279,7 +5828,7 @@ public:
     example: `${H.table(['', 'c0', 'c1', 'c2'], [['r0', '1', '5', '9'], ['r1', '10', '11', '13'], ['r2', '12', '13', '15']])}<p>k = 8 → ${H.c('p', '13')}. <b>Why:</b> in sorted order: 1, 5, 9, 10, 11, 12, 13, ${H.c('p', '13')}, 15 — the 8th is 13.</p>`,
     brute: {
       why: `<p>Copy all n<sup>2</sup> values into an array and sort: O(n<sup>2</sup> log n) time and O(n<sup>2</sup>) memory, ignoring that rows are already sorted.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int kthSmallestSlow(int[][] m, int k) {
             int n = m.length;
             int[] all = new int[n * n];
@@ -5287,7 +5836,27 @@ public:
             for (int[] row : m) for (int v : row) all[w++] = v;
             Arrays.sort(all);
             return all[k - 1];
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def kth_smallest(m, k):
+    vals = []
+    for row in m:
+        for v in row:
+            vals.append(v)
+    vals.sort()
+    return vals[k - 1]` },
+          { lang: 'js', code: `function kthSmallest(m, k) {
+  const all = [];
+  for (const row of m) for (const v of row) all.push(v);
+  all.sort((a, b) => a - b);
+  return all[k - 1];
+}` },
+          { lang: 'cpp', code: `int kthSmallest(vector<vector<int>>& m, int k) {
+    vector<int> all;
+    for (const auto& row : m) for (int v : row) all.push_back(v);
+    sort(all.begin(), all.end());
+    return all[k - 1];
+}` }
+        ] }
     },
     mcq: { q: 'Using the merge-K idea, what goes into the heap first?', options: ['The first element of each row: {value, row, col = 0}', 'The whole first row', 'The diagonal', 'All n² elements'], answer: 0, explain: 'Each row is a sorted list; its head is the first column. Polling the smallest head and pushing its right neighbour walks the matrix in sorted order.' },
     hints: [
@@ -5430,7 +5999,7 @@ public:
     example: `<p>[[4, 10, 15, 24, 26], [0, 9, 12, 20], [5, 18, 22, 30]] → ${H.c('p', '[20, 24]')}.</p><p><b>Why:</b> 24 is in list 0, 20 in list 1, 22 in list 2 — all inside [20, 24], width 4. No range of width &lt; 4 contains one number from each list.</p>`,
     brute: {
       why: `<p>Try every pair (a, b) of values as range ends and check every list for a member inside: O(V<sup>2</sup> · k · log L) with V = total values (~1.75·10<sup>5</sup>) — hopeless. The waste: most candidate ranges are clearly dominated.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[] smallestRangeSlow(List<List<Integer>> lists) {
             List<Integer> vals = new ArrayList<>();
             for (List<Integer> l : lists) vals.addAll(l);
@@ -5448,7 +6017,61 @@ public:
                     if (ok && (best == null || b - a < best[1] - best[0])) best = new int[]{a, b};
                 }
             return best;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def smallest_range(lists):
+    vals = sorted(v for l in lists for v in l)
+    best = None
+    for i in range(len(vals)):
+        for j in range(i, len(vals)):
+            a, b = vals[i], vals[j]
+            ok = True
+            for l in lists:
+                has = False
+                for v in l:
+                    if a <= v <= b:
+                        has = True
+                        break
+                if not has:
+                    ok = False
+                    break
+            if ok and (best is None or b - a < best[1] - best[0]):
+                best = [a, b]
+    return best` },
+          { lang: 'js', code: `function smallestRange(lists) {
+  const vals = lists.flat().sort((x, y) => x - y);
+  let best = null;
+  for (let i = 0; i < vals.length; i++)
+    for (let j = i; j < vals.length; j++) {
+      const a = vals[i], b = vals[j];
+      let ok = true;
+      for (const l of lists) {
+        let has = false;
+        for (const v of l) if (v >= a && v <= b) { has = true; break; }
+        if (!has) { ok = false; break; }
+      }
+      if (ok && (best === null || b - a < best[1] - best[0])) best = [a, b];
+    }
+  return best;
+}` },
+          { lang: 'cpp', code: `vector<int> smallestRange(vector<vector<int>>& lists) {
+    vector<int> vals;
+    for (auto& l : lists) vals.insert(vals.end(), l.begin(), l.end());
+    sort(vals.begin(), vals.end());
+    vector<int> best;
+    for (int i = 0; i < (int)vals.size(); i++)
+        for (int j = i; j < (int)vals.size(); j++) {
+            int a = vals[i], b = vals[j];
+            bool ok = true;
+            for (auto& l : lists) {
+                bool has = false;
+                for (int v : l) if (v >= a && v <= b) { has = true; break; }
+                if (!has) { ok = false; break; }
+            }
+            if (ok && (best.empty() || b - a < best[1] - best[0])) best = {a, b};
+        }
+    return best;
+}` }
+        ] }
     },
     mcq: { q: 'The heap holds one current element per list. Which element do you advance each step?', options: ['The minimum (heap top) — it is the only way the range can shrink', 'The maximum', 'A random list', 'All of them at once'], answer: 0, explain: 'The range is [heap min, current max]. Advancing anything other than the minimum can only keep or raise the max without lifting the min, so it never helps.' },
     hints: [
@@ -5618,7 +6241,7 @@ public:
     example: `<p>nums = [1, 3, -1, -3, 5, 3, 6, 7], k = 3 → ${H.c('p', '[1, -1, -1, 3, 5, 6]')}.</p>${H.table(['window', 'sorted', 'median'], [['1 3 -1', '-1 1 3', '1'], ['3 -1 -3', '-3 -1 3', '-1'], ['-1 -3 5', '-3 -1 5', '-1'], ['-3 5 3', '-3 3 5', '3'], ['5 3 6', '3 5 6', '5'], ['3 6 7', '3 6 7', '6']])}`,
     brute: {
       why: `<p>Copy and sort every window: O((N - k + 1) · k log k) — with N = 10<sup>5</sup>, k = 5·10<sup>4</sup> that is ~4·10<sup>10</sup>. Consecutive windows share k - 1 elements, yet we rebuild order from scratch every time.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         double[] medianSlidingWindowSlow(int[] nums, int k) {
             double[] res = new double[nums.length - k + 1];
             for (int i = 0; i + k <= nums.length; i++) {
@@ -5627,7 +6250,34 @@ public:
                 res[i] = k % 2 == 1 ? w[k / 2] : ((double) w[k / 2 - 1] + w[k / 2]) / 2.0;
             }
             return res;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def median_sliding_window(nums, k):
+    res = []
+    for i in range(len(nums) - k + 1):
+        w = sorted(nums[i:i + k])
+        if k % 2 == 1:
+            res.append(float(w[k // 2]))
+        else:
+            res.append((w[k // 2 - 1] + w[k // 2]) / 2.0)
+    return res` },
+          { lang: 'js', code: `function medianSlidingWindow(nums, k) {
+  const res = [];
+  for (let i = 0; i + k <= nums.length; i++) {
+    const w = nums.slice(i, i + k).sort((a, b) => a - b);
+    res.push(k % 2 === 1 ? w[(k - 1) / 2] : (w[k / 2 - 1] + w[k / 2]) / 2);
+  }
+  return res;
+}` },
+          { lang: 'cpp', code: `vector<double> medianSlidingWindow(vector<int>& nums, int k) {
+    vector<double> res;
+    for (int i = 0; i + k <= (int)nums.size(); i++) {
+        vector<int> w(nums.begin() + i, nums.begin() + i + k);
+        sort(w.begin(), w.end());
+        res.push_back(k % 2 == 1 ? w[k / 2] : ((double)w[k / 2 - 1] + w[k / 2]) / 2.0);
+    }
+    return res;
+}` }
+        ] }
     },
     mcq: { q: 'Removing an arbitrary value from a library heap (Java PriorityQueue.remove(Object), Python list.remove + heapify) is O(k). How do you delete the outgoing element in O(log k) amortized?', options: ['Lazy deletion: count it in a map and discard it when it reaches a heap top', 'Rebuild both heaps every step', 'Use a HashSet instead of heaps', 'Sort the heap array'], answer: 0, explain: 'Keep "to delete" counts and fix the live sizes; dead values are popped only when they surface at a top. Each value is pushed and popped once overall.' },
     hints: [
@@ -5861,7 +6511,7 @@ public:
     example: `${H.table(['', '0', '1', '2', '3'], [['0', 'o', 'a', 'a', 'n'], ['1', 'e', 't', 'a', 'e'], ['2', 'i', 'h', 'k', 'r'], ['3', 'i', 'f', 'l', 'v']])}<p>words = [oath, pea, eat, rain] → ${H.c('p', '[oath, eat]')}. <b>Why:</b> o(0,0) → a(0,1) → t(1,1) → h(2,1) spells oath; e(1,3) → a(1,2) → t(1,1) spells eat; no p exists and “rain” has no connected path.</p>`,
     brute: {
       why: `<p>Run the single-word DFS (Word Search I) for each of the 3·10<sup>4</sup> words: each DFS can explore m·n·4·3<sup>L-1</sup> paths. Words sharing prefixes (“oath”, “oat”, “oak”) repeat identical work.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         class WordSearchSlow {
             public List<String> findWords(char[][] b, String[] words) {
                 List<String> res = new ArrayList<>();
@@ -5885,7 +6535,75 @@ public:
                 b[r][c] = t;                                       // unmark
                 return ok;
             }
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def find_words(b, words):
+    def dfs(w, i, r, c):
+        if i == len(w):
+            return True
+        if r < 0 or c < 0 or r >= len(b) or c >= len(b[0]) or b[r][c] != w[i]:
+            return False
+        t = b[r][c]
+        b[r][c] = '#'                                # mark used
+        ok = (dfs(w, i + 1, r + 1, c) or dfs(w, i + 1, r - 1, c)
+              or dfs(w, i + 1, r, c + 1) or dfs(w, i + 1, r, c - 1))
+        b[r][c] = t                                  # unmark
+        return ok
+
+    res = []
+    for w in words:
+        found = False
+        for r in range(len(b)):
+            for c in range(len(b[0])):
+                if not found and dfs(w, 0, r, c):
+                    found = True
+        if found:
+            res.append(w)
+    return res` },
+          { lang: 'js', code: `function findWords(b, words) {
+  function dfs(w, i, r, c) {
+    if (i === w.length) return true;
+    if (r < 0 || c < 0 || r >= b.length || c >= b[0].length || b[r][c] !== w[i]) return false;
+    const t = b[r][c];
+    b[r][c] = '#';                                   // mark used
+    const ok = dfs(w, i + 1, r + 1, c) || dfs(w, i + 1, r - 1, c)
+            || dfs(w, i + 1, r, c + 1) || dfs(w, i + 1, r, c - 1);
+    b[r][c] = t;                                     // unmark
+    return ok;
+  }
+
+  const res = [];
+  for (const w of words) {
+    let found = false;
+    for (let r = 0; r < b.length && !found; r++)
+      for (let c = 0; c < b[0].length && !found; c++)
+        if (dfs(w, 0, r, c)) found = true;
+    if (found) res.push(w);
+  }
+  return res;
+}` },
+          { lang: 'cpp', code: `bool dfs(vector<vector<char>>& b, const string& w, int i, int r, int c) {
+    if (i == (int)w.size()) return true;
+    if (r < 0 || c < 0 || r >= (int)b.size() || c >= (int)b[0].size() || b[r][c] != w[i]) return false;
+    char t = b[r][c];
+    b[r][c] = '#';                                   // mark used
+    bool ok = dfs(b, w, i + 1, r + 1, c) || dfs(b, w, i + 1, r - 1, c)
+           || dfs(b, w, i + 1, r, c + 1) || dfs(b, w, i + 1, r, c - 1);
+    b[r][c] = t;                                     // unmark
+    return ok;
+}
+
+vector<string> findWords(vector<vector<char>>& b, vector<string>& words) {
+    vector<string> res;
+    for (const string& w : words) {
+        bool found = false;
+        for (int r = 0; r < (int)b.size() && !found; r++)
+            for (int c = 0; c < (int)b[0].size() && !found; c++)
+                if (dfs(b, w, 0, r, c)) found = true;
+        if (found) res.push_back(w);
+    }
+    return res;
+}` }
+        ] }
     },
     mcq: { q: 'What does the trie give the board DFS?', options: ['Instant pruning: stop as soon as the path is not a prefix of any word', 'Faster neighbour lookup', 'Sorting of the output', 'Nothing; it is only for storage'], answer: 0, explain: 'One DFS from each cell walks the trie in parallel. If the current node has no child for the next letter, no word can continue, so the branch dies immediately.' },
     hints: [
@@ -6070,7 +6788,7 @@ public:
     example: `<p>nums = [0, 1, 2, 3, 4], queries = [[3, 1], [1, 3], [5, 6]] → ${H.c('p', '[3, 3, 7]')}.</p>${H.table(['query', 'allowed nums', 'best'], [['x = 3, m = 1', '0, 1', '3 ^ 0 = 3'], ['x = 1, m = 3', '0, 1, 2, 3', '1 ^ 2 = 3'], ['x = 5, m = 6', '0..4', '5 ^ 2 = 7']])}`,
     brute: {
       why: `<p>For each query scan all nums: O(N · Q) = 10<sup>10</sup>. The waste: each query rebuilds knowledge about which numbers are allowed and which have opposite high bits.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[] maximizeXorSlow(int[] nums, int[][] queries) {
             int[] ans = new int[queries.length];
             for (int q = 0; q < queries.length; q++) {
@@ -6079,7 +6797,35 @@ public:
                 ans[q] = best;
             }
             return ans;
-        }`
+        }`, alt: [
+          { lang: 'python', code: `def maximize_xor(nums, queries):
+    ans = []
+    for x, m in queries:
+        best = -1
+        for v in nums:
+            if v <= m:
+                best = max(best, v ^ x)
+        ans.append(best)
+    return ans` },
+          { lang: 'js', code: `function maximizeXor(nums, queries) {
+  const ans = [];
+  for (const [x, m] of queries) {
+    let best = -1;
+    for (const v of nums) if (v <= m) best = Math.max(best, v ^ x);
+    ans.push(best);
+  }
+  return ans;
+}` },
+          { lang: 'cpp', code: `vector<int> maximizeXor(vector<int>& nums, vector<vector<int>>& queries) {
+    vector<int> ans;
+    for (auto& q : queries) {
+        int best = -1;
+        for (int v : nums) if (v <= q[1]) best = max(best, v ^ q[0]);
+        ans.push_back(best);
+    }
+    return ans;
+}` }
+        ] }
     },
     mcq: { q: 'How do you make "only nums ≤ m" easy for a trie?', options: ['Answer queries offline sorted by m, inserting nums in ascending order as they become allowed', 'Build one trie per query', 'Delete numbers greater than m after each query', 'Sort nums descending and insert all'], answer: 0, explain: 'With queries sorted by m, the allowed set only grows. Insert each number once when its turn comes; every query then sees exactly the numbers ≤ its m.' },
     hints: [
@@ -6267,16 +7013,16 @@ public:
   interview.push(
     { q: 'What is a heap and why is it stored in an array?', level: 'B', a: `<p>A binary heap is a <b>complete</b> binary tree (filled level by level, left to right) with the <b>heap order</b>: every parent ≤ its children in a min-heap (≥ in a max-heap). Because the tree has no gaps, level-order positions map perfectly to array indices: parent <code>(i-1)/2</code>, children <code>2i+1</code>, <code>2i+2</code>. No pointers, great memory locality, and growth is just an array resize. Peek is O(1), insert and extract are O(log N) because the height is ⌊log₂N⌋.</p>`, followUps: ['What changes with 1-based indexing?', 'Why must the tree be complete?'] },
     { q: 'Walk me through insert and extract-min.', level: 'B', a: `<p><b>Insert:</b> place the value at the end (keeps the shape), then <b>sift up</b>: while it is smaller than its parent, swap. <b>Extract-min:</b> save the root, move the last element to the root, shrink, then <b>sift down</b>: swap with the <b>smaller</b> child while larger than it. Choosing the smaller child guarantees the new parent is ≤ its sibling. Both walk one root-to-leaf path → O(log N).</p>`, followUps: ['Why the smaller child and not the left child?', 'How would you implement decrease-key?'] },
-    { q: 'Prove that build-heap is O(N).', level: 'I', a: `<p>Bottom-up heapify calls sift-down on indices n/2-1 down to 0. A node at height h sinks at most h levels, and there are at most ⌈N/2<sup>h+1</sup>⌉ nodes of height h. Total work ≤ ∑ N/2<sup>h+1</sup> · h = (N/2) ∑ h/2<sup>h</sup> ≤ (N/2) · 2 = N. Intuition: half the nodes are leaves doing nothing, a quarter move one level, and only the root can move log N levels. Top-down inserts would be O(N log N) because the many leaves would take the long trips.</p>`, followUps: ['Why go from n/2-1 down to 0 and not upward?', 'Where does Java use this internally?'] },
+    { q: 'Prove that build-heap is O(N).', level: 'I', a: `<p>Bottom-up heapify calls sift-down on indices n/2-1 down to 0. A node at height h sinks at most h levels, and there are at most ⌈N/2<sup>h+1</sup>⌉ nodes of height h. Total work ≤ ∑ N/2<sup>h+1</sup> · h = (N/2) ∑ h/2<sup>h</sup> ≤ (N/2) · 2 = N. Intuition: half the nodes are leaves doing nothing, a quarter move one level, and only the root can move log N levels. Top-down inserts would be O(N log N) because the many leaves would take the long trips.</p>`, followUps: ['Why go from n/2-1 down to 0 and not upward?', 'Where do standard libraries use this internally?'] },
     { q: 'Kth largest element: compare the approaches.', level: 'I', a: `<p><b>Sort:</b> O(N log N), trivial. <b>Min-heap of size K:</b> O(N log K) time, O(K) memory, works on streams — my default. <b>Heapify all + K polls:</b> O(N + K log N). <b>Quickselect:</b> O(N) average, O(N<sup>2</sup>) worst case (mitigated with random pivots or introselect), in place but mutates the array. <b>Counting:</b> O(N + range) when values are small. I would code the heap and mention quickselect as the optimisation, discussing whether mutating input or worst-case guarantees matter.</p>`, followUps: ['Implement quickselect with Lomuto partitioning.', 'What if the data is spread over 100 machines?'] },
     { q: 'How do you make a max-heap in Java, and what are the comparator pitfalls?', level: 'B', a: `<p><code>new PriorityQueue&lt;&gt;(Collections.reverseOrder())</code> or <code>new PriorityQueue&lt;&gt;((a, b) -&gt; Integer.compare(b, a))</code>. Pitfalls: <code>b - a</code> overflows; iteration and <code>toString</code> are in heap order, not sorted; <code>remove(Object)</code>/<code>contains</code> are O(N); objects whose priority field changes while inside the queue corrupt the heap; ties come out in no guaranteed order — add a tie-breaker (e.g. a sequence number) if order matters; <code>poll()</code> returns null when empty, which crashes on unboxing. Other languages: Python pushes <code>-x</code> (or <code>(-key, item)</code> tuples) into <code>heapq</code>; C++ <code>priority_queue&lt;int&gt;</code> is already a max-heap; JS needs its own heap class with a “bigger first” comparator.</p>`, followUps: ['How do you do multi-key ordering?', 'Which queue would you use across threads?'] },
     { q: 'Merge K sorted lists — explain both optimal solutions.', level: 'I', a: `<p><b>Heap of heads:</b> push all non-null heads into a min-heap; repeatedly poll the smallest, append it to a dummy-headed result, and push its next node. Heap size ≤ K → O(N log K) time, O(K) space. <b>Divide and conquer:</b> merge lists pairwise in rounds (like merge sort); log K rounds, each touching all N nodes → O(N log K), O(1) extra if iterative. Merging one by one is O(N·K). The same K-way merge powers external sorting and LSM compaction.</p>`, followUps: ['How would you merge K sorted files that do not fit in memory?', 'What is a loser tree?'] },
     { q: 'Design a data structure for the median of a data stream.', level: 'I', a: `<p>Two heaps: <code>low</code> max-heap for the smaller half, <code>high</code> min-heap for the larger half, with invariants max(low) ≤ min(high) and size(low) ∈ {size(high), size(high)+1}. Add: push to low, move low's top to high, and if high is larger move its top back. Median: low's top if the count is odd, else the average of both tops (computed in long/double to avoid overflow). Add is O(log N), median O(1).</p>`, followUps: ['How do you support deletions (sliding window)?', 'What if 99% of numbers are in 0..100?', 'Exact p99 over billions of events?'] },
-    { q: 'What is a trie and when would you choose it over a HashSet?', level: 'B', a: `<p>A trie is a tree where each edge is a character and each node marks whether a word ends there. Insert/search/startsWith are O(L) for a word of length L, independent of how many words are stored. A HashSet also gives O(L) exact lookups with less memory, so I choose a trie when I need <b>prefix</b> operations (autocomplete, counting words with a prefix), <b>longest-prefix match</b> (routing tables, replace words), sorted traversal, or pruning a search (Word Search II).</p>`, followUps: ['How much memory does a 26-array trie use?', 'What is a radix tree?'] },
+    { q: 'What is a trie and when would you choose it over a hash set (<code>HashSet</code> / <code>set</code> / <code>Set</code> / <code>unordered_set</code>)?', level: 'B', a: `<p>A trie is a tree where each edge is a character and each node marks whether a word ends there. Insert/search/startsWith are O(L) for a word of length L, independent of how many words are stored. A hash set also gives O(L) exact lookups with less memory, so I choose a trie when I need <b>prefix</b> operations (autocomplete, counting words with a prefix), <b>longest-prefix match</b> (routing tables, replace words), sorted traversal, or pruning a search (Word Search II).</p>`, followUps: ['How much memory does a 26-array trie use?', 'What is a radix tree?'] },
     { q: 'How would you build autocomplete returning the top 5 suggestions by popularity?', level: 'A', a: `<p>Trie of queries with a popularity count at word ends. Naive: walk to the prefix node, DFS its subtree, keep a min-heap of size 5 — O(P + subtree size), too slow for short prefixes like "a". Better: precompute at every node a list of its top-5 completions (merged bottom-up) so a query is O(P). Updates re-propagate along the path. At scale: shard by prefix, cache hot prefixes, rebuild the trie offline from logs periodically, and blend with personalisation/ML ranking. Sizes are bounded by storing only the top K per node.</p>`, followUps: ['How do you handle typos?', 'How often do you rebuild, and how do you deploy the new trie?'] },
-    { q: 'Explain maximum XOR of two numbers using a binary trie.', level: 'A', a: `<p>Insert every number as a 31-bit path (bit 30 to 0) into a trie with children 0/1. For each x, walk from the top and prefer the child with the opposite bit; if it exists, that XOR bit becomes 1, else take the same bit. Greedy is correct because 2<sup>b</sup> exceeds the sum of all lower bits. Total O(N · 31) time, O(N · 31) nodes — use a flat <code>int[][2]</code> array to keep memory reasonable. Variants: max XOR subarray (prefix XORs), max XOR with element ≤ m (offline sorting), deletions (counts per node).</p>`, followUps: ['How do you handle negative numbers?', 'Can you do it without a trie (HashSet of prefixes)?'] },
+    { q: 'Explain maximum XOR of two numbers using a binary trie.', level: 'A', a: `<p>Insert every number as a 31-bit path (bit 30 to 0) into a trie with children 0/1. For each x, walk from the top and prefer the child with the opposite bit; if it exists, that XOR bit becomes 1, else take the same bit. Greedy is correct because 2<sup>b</sup> exceeds the sum of all lower bits. Total O(N · 31) time, O(N · 31) nodes — use a flat two-column array (<code>int[][2]</code> in Java, <code>array&lt;int,2&gt;</code> in C++) to keep memory reasonable. Variants: max XOR subarray (prefix XORs), max XOR with element ≤ m (offline sorting), deletions (counts per node).</p>`, followUps: ['How do you handle negative numbers?', 'Can you do it without a trie (HashSet of prefixes)?'] },
     { q: 'How does Dijkstra use a priority queue, and why lazy deletion?', level: 'A', a: `<p>Dijkstra repeatedly takes the unvisited vertex with the smallest tentative distance — a min-heap keyed by distance. Library heaps (Java <code>PriorityQueue</code>, Python <code>heapq</code>, C++ <code>priority_queue</code>) have no decrease-key, so when we find a shorter distance we simply push a new (dist, node) pair. When polling, we skip entries whose distance is larger than the best known (stale entries). The heap may hold up to E entries, giving O(E log E) = O(E log V). An indexed heap with decrease-key gives O(E log V) with less memory; Fibonacci heaps give O(E + V log V) theoretically but are slow in practice.</p>`, followUps: ['What breaks with negative edges?', 'When is a plain array O(V²) Dijkstra better?'] },
-    { q: 'You need to schedule tasks by priority, but equal-priority tasks must run FIFO. How?', level: 'I', a: `<p>PriorityQueue is not stable, so add a monotonically increasing sequence number at insertion time and compare by (priority, sequence). Comparator: <code>Comparator.comparingInt((Task t) -&gt; t.priority).thenComparingLong(t -&gt; t.seq)</code>. This is how many job schedulers and event loops (timers with the same deadline) guarantee fairness. For multi-threaded producers use <code>PriorityBlockingQueue</code> with the same comparator and an <code>AtomicLong</code> counter.</p>`, followUps: ['How would you add aging so low-priority tasks do not starve?', 'How do delayed tasks (DelayQueue) work?'] },
+    { q: 'You need to schedule tasks by priority, but equal-priority tasks must run FIFO. How?', level: 'I', a: `<p>A heap-based priority queue is not stable, so add a monotonically increasing sequence number at insertion time and order by (priority, sequence). Java: <code>Comparator.comparingInt((Task t) -&gt; t.priority).thenComparingLong(t -&gt; t.seq)</code>; Python: push tuples <code>(priority, seq, task)</code> into <code>heapq</code>; C++: a struct or tuple with <code>seq</code> as the last key; JS: a comparator that falls back to <code>seq</code>. This is how many job schedulers and event loops (timers with the same deadline) guarantee fairness. For multi-threaded producers use a thread-safe queue (Java <code>PriorityBlockingQueue</code>, Python <code>queue.PriorityQueue</code>) with the same ordering and an atomic counter.</p>`, followUps: ['How would you add aging so low-priority tasks do not starve?', 'How do delayed tasks (DelayQueue) work?'] },
     { q: 'In the AI era, where do heaps and tries show up in real systems?', level: 'E', a: `<p><b>Heaps:</b> top-k retrieval in vector search (keep the k best similarity scores while scanning or traversing an HNSW graph uses bounded heaps), top-k/top-p token sampling, request schedulers in LLM inference servers (priority and fairness queues), timers, Dijkstra/A* in routing and agent planning, K-way merges in LSM-based storage. <b>Tries:</b> tokenizer vocabularies with longest-match lookup, constrained/grammar decoding (mask tokens not allowed by a trie of valid outputs), autocomplete and search suggestions, IP routing. Knowing the complexity lets you judge AI-generated code that silently uses O(N) operations inside hot loops.</p>`, followUps: ['How would you constrain an LLM to output only valid product IDs?', 'Why does HNSW keep two heaps during search?'] }
   );
 

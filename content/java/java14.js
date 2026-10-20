@@ -249,6 +249,39 @@ class MoneyBad {
 }` },
       mcq: { q: 'Where should "currency must be 3 upper-case letters" be enforced so that no Money can ever be built without it?', options: ['In the compact canonical constructor', 'In a static factory only', 'In the accessor currency()', 'In toString()'], answer: 0, explain: 'Every constructor of a record must end up calling the canonical one, so a check there cannot be bypassed. A factory can be bypassed by calling new Money(...) directly.' },
       hints: [`<p>Hint 1: in a compact constructor you may <b>re-assign the parameter</b> (${C('currency = currency.strip().toUpperCase();')}) — the field gets the normalized value because assignment happens after your code.</p>`, `<p>Hint 2: store money as an integer number of cents (${C('long')}). Parsing "12.5": split on ".", pad the fraction to 2 digits ("5" → "50").</p>`, `<p>Hint 3: edge cases — null currency (${C('Objects.requireNonNull')}), "us" (2 letters), negative cents, overflow on plus/times. Recipe: validate → normalize → let javac assign; operations return <b>new</b> Money objects.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static String[] chk(String[] ops) {
+    Money cur = null; String msg = "";
+    List<String> out = new ArrayList<>();
+    for (String op : ops) {
+      String[] p = op.split(":", 3);
+      try {
+        switch (p[0]) {
+          case "of": cur = Money.of(p[1]); out.add(cur.toString()); break;
+          case "plus": cur = cur.plus(Money.of(p[1])); out.add(cur.toString()); break;
+          case "plusNew": cur = cur.plus(new Money(Long.parseLong(p[1]), p[2])); out.add(cur.toString()); break;
+          case "times": cur = cur.times(Integer.parseInt(p[1])); out.add(cur.toString()); break;
+          case "new": cur = new Money(Long.parseLong(p[1]), p[2]); out.add(cur.toString()); break;
+          case "newNull": new Money(5, null); out.add("created"); break;
+          case "eqnew": out.add(String.valueOf(cur.equals(new Money(Long.parseLong(p[1]), p[2])))); break;
+          case "msg": out.add(msg); break;
+        }
+      } catch (RuntimeException e) { msg = String.valueOf(e.getMessage()); out.add(e.getClass().getSimpleName()); }
+    }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+          [[['of:12.5 usd', 'times:3']], ['12.50 USD', '37.50 USD']],
+          [[['of:12.5 usd', 'plus:0.75 USD']], ['12.50 USD', '13.25 USD']],
+          [[['of:12.5 usd', 'plus:1 EUR', 'msg']], ['12.50 USD', 'IllegalArgumentException', 'USD vs EUR']],
+          [[['of:5 usd', 'eqnew:500: usd']], ['5.00 USD', 'true']],
+          [[['new:-1:usd', 'new:100:us', 'new:100:usd1', 'newNull', 'new:0:eur']], ['IllegalArgumentException', 'IllegalArgumentException', 'IllegalArgumentException', 'NullPointerException', '0.00 EUR']],
+          [[['of:0.05 usd', 'of:7 EUR', 'of:0 usd', 'of:  3.4   gbp ']], ['0.05 USD', '7.00 EUR', '0.00 USD', '3.40 GBP']],
+          [[['new:1000000000000000:usd', 'times:2147483647']], ['10000000000000.00 USD', 'ArithmeticException']],
+          [[['new:9223372036854775807:usd', 'plusNew:1:usd']], ['92233720368547758.07 USD', 'ArithmeticException']],
+          [[['of:3 usd', 'times:0', 'of:3 usd', 'times:-1']], ['3.00 USD', '0.00 USD', '3.00 USD', 'IllegalArgumentException']]
+        ] },
       solution: {
         approach: `<p>Make the record the single source of truth. The compact constructor normalizes the currency and checks all invariants, so every Money — whether made by ${C('new')}, ${C('of')}, ${C('plus')} or ${C('times')} — is valid. Arithmetic uses exact long operations and returns new objects (immutability). ${C('toString')} is overridden for a friendly format.</p>`,
         code: `
@@ -506,6 +539,35 @@ class OldEval {
 }` },
       mcq: { q: 'You add a new record Div to the permits list. What happens to eval() that has no default?', options: ['It stops compiling until you add a Div case', 'It compiles and throws at runtime for Div', 'It silently returns 0', 'Java falls back to the first case'], answer: 0, explain: 'The switch is no longer exhaustive over the sealed type, so javac reports an error at exactly the places that need updating. That is the whole point of sealed + no default.' },
       hints: [`<p>Hint 1: the shape of the data (a closed set of node kinds) is exactly what sealed + records describe. Each record holds its children as ${C('Expr')}.</p>`, `<p>Hint 2: use <b>record patterns</b> to pull children out: ${C('case Add(Expr l, Expr r) -> eval(l) + eval(r)')}. Recursion follows the tree shape.</p>`, `<p>Hint 3: base case is ${C('Num')}. For ${C('show')}, wrap Add in parentheses so precedence is preserved. Recipe: one case per record; recurse on children; combine.</p>`],
+      tests: { sig: 'string -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static String[] toks; static int pos;
+  static Expr parse() {
+    String t = toks[pos++];
+    if (!t.equals("(")) return new Num(Integer.parseInt(t));
+    String op = toks[pos++];
+    Expr r;
+    if (op.equals("neg")) r = new Neg(parse());
+    else { Expr a = parse(); Expr b = parse(); r = op.equals("+") ? new Add(a, b) : new Mul(a, b); }
+    pos++;
+    return r;
+  }
+  static String[] chk(String s) {
+    toks = s.replace("(", " ( ").replace(")", " ) ").trim().split("\\\\s+"); pos = 0;
+    Expr e = parse();
+    return new String[]{ Calc.show(e), String.valueOf(Calc.eval(e)) };
+  }
+}` }, cases: [
+          [['(* (+ 2 3) (neg 4))'], ['(2 + 3) * -4', '-20']],
+          [['7'], ['7', '7']],
+          [['(neg (neg 5))'], ['--5', '5']],
+          [['(+ 1 (+ 2 3))'], ['(1 + (2 + 3))', '6']],
+          [['(* 2147483647 2)'], ['2147483647 * 2', '-2']],
+          [['(neg -3)'], ['--3', '3']],
+          [['(* (* 2 3) 4)'], ['2 * 3 * 4', '24']],
+          [['(+ (neg 1) (* 2 (+ 3 4)))'], ['(-1 + 2 * (3 + 4))', '13']],
+          [[{ $concat: [{ $rep: '(neg ', n: 1000 }, '1', { $rep: ')', n: 1000 }] }], [{ $concat: [{ $rep: '-', n: 1000 }, '1'] }, '1']]
+        ] },
       solution: {
         approach: `<p>The sealed interface fixes the set of node kinds; each record carries exactly its children. Both operations are a single exhaustive switch using record patterns, so the compiler guarantees every node type is handled and future additions are flagged.</p>`,
         code: `
@@ -840,6 +902,106 @@ class FmtOld {
 }` },
       mcq: { q: 'Where must <code>case String s when s.isBlank()</code> go relative to <code>case String s</code>?', options: ['Before it — otherwise it is dominated and will not compile', 'After it — guards are checked last', 'Anywhere — order does not matter in pattern switches', 'It must be inside the String case as an if'], answer: 0, explain: 'Cases are tried top to bottom. An unguarded String pattern above would match every String first, so javac reports the guarded one as dominated.' },
       hints: [`<p>Hint 1: one ${C('switch (o)')} with type patterns. Use ${C('case null')} first, otherwise a null element throws NPE.</p>`, `<p>Hint 2: guards handle the special values: ${C('case Integer i when i < 0')} and ${C('case String s when s.isBlank()')} go <b>before</b> their unguarded twins. Arrays are types too: ${C('case int[] a')}.</p>`, `<p>Hint 3: for List/Map recurse with streams and ${C('Collectors.joining(", ", "[", "]")')}. Use ${C('Math.abs((long) i)')} so ${C('Integer.MIN_VALUE')} does not stay negative. ${C('default')} goes last.</p>`],
+      tests: { sig: 'string -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(String kind) {
+    String[] p = kind.split(":", 2);
+    Object o;
+    switch (p[0]) {
+      case "int": o = Integer.valueOf(p[1]); break;
+      case "double": o = Double.valueOf(p[1]); break;
+      case "str": o = p.length > 1 ? p[1] : ""; break;
+      case "null": o = null; break;
+      case "ints": o = p.length > 1 && !p[1].isEmpty() ? Arrays.stream(p[1].split(",")).mapToInt(Integer::parseInt).toArray() : new int[0]; break;
+      case "list": o = Arrays.asList(1, -5, "hi", " ", null, 2.5, new int[]{ 1, 2 }, List.of(3)); break;
+      case "map": o = new TreeMap<>(Map.of("k", 1)); break;
+      case "mapNested": { Map<String, Object> m = new LinkedHashMap<>(); m.put("a", List.of(-1, "x")); m.put("b", new LinkedHashMap<>(Map.of(2, 2.0))); o = m; break; }
+      case "emptyList": o = List.of(); break;
+      case "emptyMap": o = Map.of(); break;
+      case "bool": o = Boolean.TRUE; break;
+      case "char": o = 'x'; break;
+      case "long": o = Long.valueOf(p[1]); break;
+      case "deep": { Object x = 1; for (int i = 0; i < Integer.parseInt(p[1]); i++) x = List.of(x); o = x; break; }
+      default: o = new StringBuilder("sb");
+    }
+    return Fmt.fmt(o);
+  }
+}` }, cases: [
+          [['int:5'], '5'],
+          [['int:-5'], '(5)'],
+          [['int:0'], '0'],
+          [['int:-2147483648'], '(2147483648)'],
+          [['double:2.5'], '2.50'],
+          [['double:0'], '0.00'],
+          [['double:-3.14159'], '-3.14'],
+          [['double:1e10'], '10000000000.00'],
+          [['str:hi'], '"hi"'],
+          [['str'], '<blank>'],
+          [['str:   '], '<blank>'],
+          [['null'], 'null'],
+          [['ints:1,2'], '[1, 2]'],
+          [['ints'], '[]'],
+          [['list'], '[1, (5), "hi", <blank>, null, 2.50, [1, 2], [3]]'],
+          [['map'], '{"k": 1}'],
+          [['mapNested'], '{"a": [(1), "x"], "b": {2: 2.00}}'],
+          [['emptyList'], '[]'],
+          [['emptyMap'], '{}'],
+          [['bool'], 'true'],
+          [['char'], 'x'],
+          [['long:-5'], '-5'],
+          [['other'], 'sb'],
+          [['deep:50'], '[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]']
+        ] },
+      tests: { sig: 'string -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(String kind) {
+    String[] p = kind.split(":", 2);
+    Object o;
+    switch (p[0]) {
+      case "int": o = Integer.valueOf(p[1]); break;
+      case "double": o = Double.valueOf(p[1]); break;
+      case "str": o = p.length > 1 ? p[1] : ""; break;
+      case "null": o = null; break;
+      case "ints": o = p.length > 1 && !p[1].isEmpty() ? Arrays.stream(p[1].split(",")).mapToInt(Integer::parseInt).toArray() : new int[0]; break;
+      case "list": o = Arrays.asList(1, -5, "hi", " ", null, 2.5, new int[]{ 1, 2 }, List.of(3)); break;
+      case "map": o = new TreeMap<>(Map.of("k", 1)); break;
+      case "mapNested": { Map<String, Object> m = new LinkedHashMap<>(); m.put("a", List.of(-1, "x")); m.put("b", new LinkedHashMap<>(Map.of(2, 2.0))); o = m; break; }
+      case "emptyList": o = List.of(); break;
+      case "emptyMap": o = Map.of(); break;
+      case "bool": o = Boolean.TRUE; break;
+      case "char": o = 'x'; break;
+      case "long": o = Long.valueOf(p[1]); break;
+      case "deep": { Object x = 1; for (int i = 0; i < Integer.parseInt(p[1]); i++) x = List.of(x); o = x; break; }
+      default: o = new StringBuilder("sb");
+    }
+    return Fmt.fmt(o);
+  }
+}` }, cases: [
+          [['int:5'], '5'],
+          [['int:-5'], '(5)'],
+          [['int:0'], '0'],
+          [['int:-2147483648'], '(2147483648)'],
+          [['double:2.5'], '2.50'],
+          [['double:0'], '0.00'],
+          [['double:-3.14159'], '-3.14'],
+          [['double:1e10'], '10000000000.00'],
+          [['str:hi'], '"hi"'],
+          [['str'], '<blank>'],
+          [['str:   '], '<blank>'],
+          [['null'], 'null'],
+          [['ints:1,2'], '[1, 2]'],
+          [['ints'], '[]'],
+          [['list'], '[1, (5), "hi", <blank>, null, 2.50, [1, 2], [3]]'],
+          [['map'], '{"k": 1}'],
+          [['mapNested'], '{"a": [(1), "x"], "b": {2: 2.00}}'],
+          [['emptyList'], '[]'],
+          [['emptyMap'], '{}'],
+          [['bool'], 'true'],
+          [['char'], 'x'],
+          [['long:-5'], '-5'],
+          [['other'], 'sb'],
+          [['deep:50'], '[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]']
+        ] },
       solution: {
         approach: `<p>Turn the specification into an ordered list of cases: null, guarded specials, plain types, containers (recursive), default. The compiler checks dominance and that the switch expression is exhaustive (the default makes it so).</p>`,
         code: `
@@ -1088,6 +1250,19 @@ class StripNaive {
 }` },
       mcq: { q: 'A text block\'s content lines start at column 10 and the closing """ is at column 6. How many spaces does each content line keep?', options: ['4', '0', '6', '10'], answer: 0, explain: 'The closing delimiter line counts towards the minimum: min(10, 6) = 6 spaces are stripped, so 10 − 6 = 4 remain.' },
       hints: [`<p>Hint 1: two passes. Pass 1 finds the minimum indentation; pass 2 builds the output. Use ${C('raw.split("\\n", -1)')} so a trailing empty line is kept.</p>`, `<p>Hint 2: skip blank lines when computing the minimum <b>except the last line</b>. Leading whitespace = ${C('line.length() - line.stripLeading().length()')}.</p>`, `<p>Hint 3: blank lines become ${C('""')}; others become ${C('line.substring(min).stripTrailing()')}. Edge: all-blank input → min 0. Compare with ${C('raw.stripIndent()')} to test.</p>`],
+      tests: { sig: 'string -> string', fn: 'strip', cases: [
+          [['    {\n      "a": 1   \n    }\n    '], '{\n  "a": 1\n}\n'],
+          [['      x\n    y\n  '], '    x\n  y\n'],
+          [['  a\n  b\n'], '  a\n  b\n'],
+          [['  a\n\n    b  '], 'a\n\n  b'],
+          [[''], ''],
+          [['   '], ''],
+          [['\ta\n\t\tb'], 'a\n\tb'],
+          [['a\nb'], 'a\nb'],
+          [['\n\n'], '\n\n'],
+          [['x  \ny\t'], 'x\ny'],
+          [[{ $concat: [{ $rep: '  a\n', n: 20000 }, '  '] }], { $rep: 'a\n', n: 20000 }]
+        ] },
       solution: {
         approach: `<p>Exactly the JLS algorithm: (1) split keeping the last line; (2) min over significant lines (non-blank or last); (3) cut that prefix, trim the end, blank → empty; (4) join with "\\n". Validate against the JDK's own ${C('stripIndent')} on many inputs.</p>`,
         code: `
@@ -1376,6 +1551,92 @@ class DumpNaive {
 }` },
       mcq: { q: 'Which call returns a private field declared in the superclass?', options: ['<code>getSuperclass().getDeclaredFields()</code>', '<code>getFields()</code> on the subclass', '<code>getDeclaredFields()</code> on the subclass', 'None — private fields are not inherited so reflection cannot see them'], answer: 0, explain: 'getDeclaredFields only covers the class it is called on, and getFields only public members. Walk the getSuperclass() chain and call getDeclaredFields at each level.' },
       hints: [`<p>Hint 1: branch on ${C('c.isRecord()')}. For records, ${C('rc.getAccessor().invoke(o)')} reads each component without touching private fields.</p>`, `<p>Hint 2: for classes, walk ${C('for (k = c; k != Object.class; k = k.getSuperclass())')} and push onto the <b>front</b> of a deque so the topmost superclass comes first.</p>`, `<p>Hint 3: skip ${C('Modifier.isStatic(f.getModifiers())')}; call ${C('f.setAccessible(true)')} before ${C('f.get(o)')}; use ${C('LinkedHashMap')} to keep order. Synthetic fields (e.g. ${C('this$0')} of inner classes) can be skipped with ${C('f.isSynthetic()')}.</p>`],
+      tests: { sig: 'string -> string', fn: 'chk', harness: { java: `
+class Animal { private String name = "rex"; int legs = 4; }
+class Dog extends Animal { boolean good = true; static int COUNT = 9; transient int t = 1; }
+class Empty { }
+class NullField { String s = null; int n = 3; }
+class Outer { class In { int v = 5; } }
+class LA { int a = 1; }
+class LB extends LA { int b = 2; }
+class LC extends LB { int c = 3; }
+class L0 { int f0 = 0; } class L1 extends L0 { int f1 = 1; } class L2 extends L1 { int f2 = 2; } class L3 extends L2 { int f3 = 3; }
+class L4 extends L3 { int f4 = 4; } class L5 extends L4 { int f5 = 5; } class L6 extends L5 { int f6 = 6; } class L7 extends L6 { int f7 = 7; }
+class L8 extends L7 { int f8 = 8; } class L9 extends L8 { int f9 = 9; }
+record EmptyRec() { }
+record Rec(int a, List<String> b) { }
+class Check {
+  static String chk(String kind) throws Exception {
+    Object o;
+    switch (kind) {
+      case "greeter": o = new Dumper.Greeter(); break;
+      case "record": o = new Dumper.P(1, "b"); break;
+      case "dog": o = new Dog(); break;
+      case "empty": o = new Empty(); break;
+      case "null": o = new NullField(); break;
+      case "inner": o = new Outer().new In(); break;
+      case "three": o = new LC(); break;
+      case "depth10": o = new L9(); break;
+      case "emptyRecord": o = new EmptyRec(); break;
+      default: o = new Rec(2, List.of("x", "y"));
+    }
+    return Dumper.toMap(o).toString();
+  }
+}` }, cases: [
+          [['greeter'], '{pub=1, prot=2, title=Ms, count=1, names=[]}'],
+          [['record'], '{x=1, y=b}'],
+          [['dog'], '{name=rex, legs=4, good=true, t=1}'],
+          [['empty'], '{}'],
+          [['null'], '{s=null, n=3}'],
+          [['inner'], '{v=5}'],
+          [['three'], '{a=1, b=2, c=3}'],
+          [['depth10'], '{f0=0, f1=1, f2=2, f3=3, f4=4, f5=5, f6=6, f7=7, f8=8, f9=9}'],
+          [['emptyRecord'], '{}'],
+          [['rec'], '{a=2, b=[x, y]}']
+        ] },
+      tests: { sig: 'string -> string', fn: 'chk', harness: { java: `
+class Animal { private String name = "rex"; int legs = 4; }
+class Dog extends Animal { boolean good = true; static int COUNT = 9; transient int t = 1; }
+class Empty { }
+class NullField { String s = null; int n = 3; }
+class Outer { class In { int v = 5; } }
+class LA { int a = 1; }
+class LB extends LA { int b = 2; }
+class LC extends LB { int c = 3; }
+class L0 { int f0 = 0; } class L1 extends L0 { int f1 = 1; } class L2 extends L1 { int f2 = 2; } class L3 extends L2 { int f3 = 3; }
+class L4 extends L3 { int f4 = 4; } class L5 extends L4 { int f5 = 5; } class L6 extends L5 { int f6 = 6; } class L7 extends L6 { int f7 = 7; }
+class L8 extends L7 { int f8 = 8; } class L9 extends L8 { int f9 = 9; }
+record EmptyRec() { }
+record Rec(int a, List<String> b) { }
+class Check {
+  static String chk(String kind) throws Exception {
+    Object o;
+    switch (kind) {
+      case "greeter": o = new Dumper.Greeter(); break;
+      case "record": o = new Dumper.P(1, "b"); break;
+      case "dog": o = new Dog(); break;
+      case "empty": o = new Empty(); break;
+      case "null": o = new NullField(); break;
+      case "inner": o = new Outer().new In(); break;
+      case "three": o = new LC(); break;
+      case "depth10": o = new L9(); break;
+      case "emptyRecord": o = new EmptyRec(); break;
+      default: o = new Rec(2, List.of("x", "y"));
+    }
+    return Dumper.toMap(o).toString();
+  }
+}` }, cases: [
+          [['greeter'], '{pub=1, prot=2, title=Ms, count=1, names=[]}'],
+          [['record'], '{x=1, y=b}'],
+          [['dog'], '{name=rex, legs=4, good=true, t=1}'],
+          [['empty'], '{}'],
+          [['null'], '{s=null, n=3}'],
+          [['inner'], '{v=5}'],
+          [['three'], '{a=1, b=2, c=3}'],
+          [['depth10'], '{f0=0, f1=1, f2=2, f3=3, f4=4, f5=5, f6=6, f7=7, f8=8, f9=9}'],
+          [['emptyRecord'], '{}'],
+          [['rec'], '{a=2, b=[x, y]}']
+        ] },
       solution: {
         approach: `<p>Two strategies behind one method: records via their components (the public, stable API); plain classes via a superclass walk with declared fields. Collect the class chain top-down first so parent fields appear first, then read each non-static, non-synthetic field after opening it.</p>`,
         code: `
@@ -1660,6 +1921,48 @@ class ManualRunner {
 }` },
       mcq: { q: 'A test method throws ArithmeticException when called via Method.invoke. What does your runner actually catch?', options: ['InvocationTargetException whose getCause() is the ArithmeticException', 'ArithmeticException directly', 'IllegalAccessException', 'Nothing — invoke swallows exceptions'], answer: 0, explain: 'Reflection wraps any exception thrown by the target method in InvocationTargetException. Compare e.getCause() against expected().' },
       hints: [`<p>Hint 1: ${C('@Retention(RUNTIME)')} + ${C('@Target(METHOD)')}. For "no expected exception" use a private marker class as the default, because annotation defaults cannot be ${C('null')}.</p>`, `<p>Hint 2: loop over ${C('getDeclaredMethods()')}, sort by name, skip methods without the annotation; new instance per test via ${C('getDeclaredConstructor().newInstance()')}.</p>`, `<p>Hint 3: four outcomes — returns normally (pass unless expected set), throws (unwrap ${C('InvocationTargetException')}; pass if ${C('expected().isInstance(cause)')}). Count and print the summary.</p>`],
+      tests: { sig: 'string -> string', fn: 'chk', harness: { java: `
+class AllPass { @Test void a() { } @Test void b() { } }
+class SubclassExpected { @Test(expected = RuntimeException.class) void x() { throw new IllegalStateException("s"); } }
+class WrongException { @Test(expected = ArithmeticException.class) void x() { throw new NullPointerException("npe"); } }
+class FreshState { int n; @Test void a() { n++; if (n != 1) throw new AssertionError("state leaked"); } @Test void b() { n++; if (n != 1) throw new AssertionError("state leaked"); } }
+class NoTests { void helper() { } }
+class Sorted { @Test void zeta() { } @Test void alpha() { } @Test void mid() { throw new AssertionError("m"); } }
+class ManyTests {
+  @Test void t01() { } @Test void t02() { } @Test void t03() { } @Test void t04() { } @Test void t05() { } @Test void t06() { }
+  @Test void t07() { } @Test void t08() { } @Test void t09() { } @Test void t10() { } @Test void t11() { throw new AssertionError("x"); } @Test void t12() { }
+}
+class Check {
+  static String chk(String kind) throws Exception {
+    PrintStream old = System.out;
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    System.setOut(new PrintStream(buf, true));
+    try {
+      Class<?> c;
+      switch (kind) {
+        case "calc": c = CalcTests.class; break;
+        case "allpass": c = AllPass.class; break;
+        case "subclass": c = SubclassExpected.class; break;
+        case "wrong": c = WrongException.class; break;
+        case "fresh": c = FreshState.class; break;
+        case "none": c = NoTests.class; break;
+        case "sorted": c = Sorted.class; break;
+        default: c = ManyTests.class;
+      }
+      MiniJUnit.run(c);
+    } finally { System.setOut(old); }
+    return buf.toString().trim().replace("\\n", "|");
+  }
+}` }, cases: [
+          [['calc'], 'PASS adds|FAIL broken: java.lang.AssertionError: 2*2 should be 5|PASS divZero|FAIL noThrow: expected ArithmeticException|2 passed, 2 failed'],
+          [['allpass'], 'PASS a|PASS b|2 passed, 0 failed'],
+          [['subclass'], 'PASS x|1 passed, 0 failed'],
+          [['wrong'], 'FAIL x: java.lang.NullPointerException: npe|0 passed, 1 failed'],
+          [['fresh'], 'PASS a|PASS b|2 passed, 0 failed'],
+          [['none'], '0 passed, 0 failed'],
+          [['sorted'], 'PASS alpha|FAIL mid: java.lang.AssertionError: m|PASS zeta|2 passed, 1 failed'],
+          [['many'], 'PASS t01|PASS t02|PASS t03|PASS t04|PASS t05|PASS t06|PASS t07|PASS t08|PASS t09|PASS t10|FAIL t11: java.lang.AssertionError: x|PASS t12|11 passed, 1 failed']
+        ] },
       solution: {
         approach: `<p>The annotation carries the test metadata; reflection discovers and invokes the methods. Each test is isolated (fresh instance, its own try/catch) so failures do not cascade. Expected-exception logic compares the <b>unwrapped</b> cause against the annotation's class.</p>`,
         code: `
@@ -1881,6 +2184,50 @@ class HardWiredExport {
 }` },
       mcq: { q: 'In a modular app, what does the host module declare to discover Exporter implementations at runtime?', options: ['<code>uses com.app.Exporter;</code>', '<code>requires com.plugins.xml;</code>', '<code>opens com.app to com.plugins.xml;</code>', '<code>exports com.plugins.xml;</code>'], answer: 0, explain: 'The consumer declares uses; each provider module declares provides Exporter with Impl. The host never requires the plugin modules, so plugins can be added by dropping jars on the module path.' },
       hints: [`<p>Hint 1: the interface lives in an API package the host <b>exports</b>; plugins ${C('requires')} the API module and ${C('provides')} implementations. The host only ${C('uses')} the interface.</p>`, `<p>Hint 2: build a ${C('Map<String, Exporter>')} keyed by lower-cased format; fill it from ${C('ServiceLoader.load(Exporter.class)')} plus built-ins; use ${C('putIfAbsent')} to detect duplicates.</p>`, `<p>Hint 3: error message should list ${C('new TreeSet<>(map.keySet())')}. CSV: header from the first row's keys (use LinkedHashMap rows for order). JSON: quote strings, leave numbers bare.</p>`],
+      tests: { sig: 'string string string -> string', fn: 'chk', harness: { java: `
+class YamlExporter implements Exporter {
+  public String format() { return "YAML"; }
+  public String export(List<Map<String, Object>> rows) { return "yaml:" + rows.size(); }
+}
+class CsvUpper implements Exporter {
+  public String format() { return "CSV"; }
+  public String export(List<Map<String, Object>> rows) { return "x"; }
+}
+class Check {
+  static String chk(String builtins, String request, String rowsKind) {
+    List<Map<String, Object>> rows = new ArrayList<>();
+    if (rowsKind.equals("two")) {
+      Map<String, Object> a = new LinkedHashMap<>(); a.put("id", 1); a.put("name", "Asha"); rows.add(a);
+      Map<String, Object> b = new LinkedHashMap<>(); b.put("id", 2); b.put("name", "Ben"); rows.add(b);
+    } else if (rowsKind.equals("mixed")) {
+      Map<String, Object> a = new LinkedHashMap<>(); a.put("id", 1); a.put("ok", true); a.put("name", "A"); rows.add(a);
+    }
+    List<Exporter> list = new ArrayList<>();
+    for (String b : builtins.split(",")) {
+      switch (b) {
+        case "csv": list.add(new CsvExporter()); break;
+        case "json": list.add(new JsonExporter()); break;
+        case "yaml": list.add(new YamlExporter()); break;
+        default: list.add(new CsvUpper());
+      }
+    }
+    try { return new Registry(list.toArray(new Exporter[0])).export(request, rows); }
+    catch (RuntimeException e) { return e.getClass().getSimpleName() + ": " + e.getMessage(); }
+  }
+}` }, cases: [
+          [['csv,json', 'csv', 'two'], 'id,name\n1,Asha\n2,Ben'],
+          [['csv,json', 'JSON', 'two'], '[{"id":1,"name":"Asha"},{"id":2,"name":"Ben"}]'],
+          [['csv,json', 'xml', 'two'], 'IllegalArgumentException: no exporter for xml, available: [csv, json]'],
+          [['csv,csv', 'csv', 'two'], 'IllegalStateException: duplicate exporter for csv'],
+          [['csv,json', 'CSV', 'two'], 'id,name\n1,Asha\n2,Ben'],
+          [['csv,json,yaml', 'Yaml', 'two'], 'yaml:2'],
+          [['csv,json', 'csv', 'empty'], ''],
+          [['csv,json', 'json', 'empty'], '[]'],
+          [['csv,json', 'json', 'mixed'], '[{"id":1,"ok":true,"name":"A"}]'],
+          [['csv,json', 'csv', 'mixed'], 'id,ok,name\n1,true,A'],
+          [['csv,json,yaml', 'xml', 'two'], 'IllegalArgumentException: no exporter for xml, available: [csv, json, yaml]'],
+          [['csv,upper', 'csv', 'two'], 'IllegalStateException: duplicate exporter for csv']
+        ] },
       solution: {
         approach: `<p>Inversion of dependencies: the host owns the <b>interface</b>, plugins own the <b>implementations</b>, and ${C('ServiceLoader')} connects them at runtime. Module descriptors: API module ${C('exports com.app.export.api;')}; host ${C('uses com.app.export.api.Exporter;')}; each plugin ${C('requires com.app.export.api; provides com.app.export.api.Exporter with com.plugins.xml.XmlExporter;')}. The registry merges discovered and built-in exporters, enforcing unique names.</p>`,
         code: `
@@ -2164,6 +2511,7 @@ class LyingBench {
 }` },
       mcq: { q: 'The builder loop reports 3 ns/op for building a 8-char String. The most likely explanation is…', options: ['Dead-code elimination: the unused result let C2 remove most of the work', 'StringBuilder is a JVM intrinsic that costs nothing', 'nanoTime has 3 ns resolution', 'The CPU cached the string'], answer: 0, explain: 'Allocating and filling a String cannot take 3 ns. When the result never escapes, escape analysis + DCE can remove the allocation and the copying.' },
       hints: [`<p>Hint 1: list the five sins — cold start, unused result, constant inputs, single run, shared method/OSR. Each maps to one JMH feature.</p>`, `<p>Hint 2: put ${C('prefix')} and ${C('id')} in a ${C('@State(Scope.Thread)')} class with ${C('@Setup')} (e.g. random id), and make each approach its own ${C('@Benchmark')} method that <b>returns</b> the String.</p>`, `<p>Hint 3: add ${C('@Warmup')}, ${C('@Measurement')}, ${C('@Fork(3)')}, ${C('Mode.AverageTime')} in ns, and run with ${C('-prof gc')}. Add a third variant (${C('prefix + "-" + id')}, which uses invokedynamic StringConcatFactory) for completeness.</p>`],
+      tests: { skip: 'needs the JMH harness (org.openjdk.jmh) and its annotation processor, which a plain JVM process does not have; the answer is a benchmark class, not a function with checkable output' },
       solution: {
         approach: `<p>Map every flaw to a JMH mechanism: warm-up iterations for JIT tiers; returning values for DCE; @State fields set in @Setup for constant folding; forks + measurement iterations for noise and profile isolation; separate @Benchmark methods so each gets its own compiled code. Add ${C('-prof gc')} because allocation explains most of the gap (format parses the pattern and allocates a Formatter).</p>`,
         code: { lang: 'java', check: false, code: `
@@ -2599,6 +2947,9 @@ class GuessTopToBottom {
 }` },
       mcq: { q: 'What value of x does B.show() print during the FIRST construction?', options: ['0', '7', 'It does not compile', 'It throws NullPointerException'], answer: 0, explain: 'The object memory starts zeroed. A() runs before B\'s field initializers, and show() is dispatched to B (runtime type), so it reads the default 0.' },
       hints: [`<p>Hint 1: split the work into <b>class initialization</b> (static, once, superclass first) and <b>object construction</b> (every ${C('new')}).</p>`, `<p>Hint 2: a constructor body runs as: ${C('super(...)')} → this class's field initializers and instance blocks (textual order) → rest of the body.</p>`, `<p>Hint 3: virtual dispatch works inside constructors — ${C('show()')} in A() calls B.show. B's ${C('x')} is still 0. Fix: make ${C('show')} ${C('private')}/${C('final')}, or call it after construction (factory method).</p>`],
+      tests: { io: true, cases: [
+          { stdin: '', stdout: 'A-static B-static A-init A() B.show(x=0) B-init(x=7) B()\nA-init A() B.show(x=0) B-init(x=7) B()\nSafeA() SafeB.show(x=7)' }
+        ] },
       solution: {
         approach: `<p>Run the JLS algorithm: (1) initialize A then B (static blocks, once); (2) for each ${C('new B()')}: allocate with defaults → B() → super() → A's instance init → A() body → (dynamic) B.show sees x = 0 → back in B: x = 7, instance block → B() body. The fix is to never call overridable methods from a constructor: make the call a ${C('private')} helper or move it to a factory that calls ${C('show()')} after ${C('new')} completes.</p>`,
         code: `
@@ -2683,6 +3034,9 @@ class ConcatPuzzle {
 }` },
     mcq: { q: 'Why does <code>s += 1</code> compile for a short while <code>s = s + 1</code> does not?', options: ['Compound assignment includes an implicit cast back to the variable type', 'short + int is a short', 'The compiler optimizes += to ++', 'It is a bug in javac'], answer: 0, explain: 'JLS 15.26.2: E1 op= E2 means E1 = (T)((E1) op (E2)). s + 1 alone is an int, which cannot be assigned to short without a cast.' },
     hints: [`<p>Hint 1: write the <b>type</b> of every sub-expression. ${C("c + 1")} is int; ${C('"" + c')} is String.</p>`, `<p>Hint 2: ${C('+')} is left-associative. Group from the left: ${C('((10 + 20) + "30") + 40')}…</p>`, `<p>Hint 3: compound assignments (${C('+=')}) cast back to the left type; ${C('println(char)')} prints a character, ${C('println(int)')} a number.</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: '66\nB\nA1\nB\n51\n30304050\n2' }
+      ] },
     solution: {
       approach: `<p>Apply two rules: <b>binary numeric promotion</b> (char/short/byte operands become int) and <b>left-to-right string conversion</b> (+ with a String operand concatenates). Compound assignment hides a narrowing cast.</p>`,
       code: `
@@ -2729,6 +3083,27 @@ class PointBean {
 }` },
     mcq: { q: 'Where does the NaN check go so that Point.ORIGIN, withX and new Point all respect it?', options: ['The compact canonical constructor', 'The accessor x()', 'A separate validate() method callers must remember', 'toString()'], answer: 0, explain: 'All creation paths — new, withX (which calls new), static constants — go through the canonical constructor.' },
     hints: [`<p>Hint 1: ${C('Double.isFinite(x)')} is false for NaN and ±Infinity.</p>`, `<p>Hint 2: a static field is allowed in a record: ${C('static final Point ORIGIN = new Point(0, 0);')}.</p>`, `<p>Hint 3: ${C('Math.hypot(dx, dy)')} computes the distance without overflow. The wither returns ${C('new Point(newX, y)')}.</p>`],
+    tests: { sig: 'string string -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static String[] chk(String xs, String ys) {
+    double x = Double.parseDouble(xs), y = Double.parseDouble(ys);
+    try {
+      Point p = new Point(x, y);
+      Set<Point> set = new HashSet<>(Set.of(p));
+      return new String[]{ p.toString(), String.valueOf(p.distanceTo(Point.ORIGIN)), String.valueOf(set.contains(new Point(x, y))), p.withX(9).toString() };
+    } catch (IllegalArgumentException e) { return new String[]{ "IAE" }; }
+  }
+}` }, cases: [
+        [['3', '4'], ['Point[x=3.0, y=4.0]', '5.0', 'true', 'Point[x=9.0, y=4.0]']],
+        [['1', '2'], ['Point[x=1.0, y=2.0]', '2.23606797749979', 'true', 'Point[x=9.0, y=2.0]']],
+        [['NaN', '0'], ['IAE']],
+        [['0', 'Infinity'], ['IAE']],
+        [['-Infinity', '1'], ['IAE']],
+        [['0', '0'], ['Point[x=0.0, y=0.0]', '0.0', 'true', 'Point[x=9.0, y=0.0]']],
+        [['-0.0', '0'], ['Point[x=-0.0, y=0.0]', '0.0', 'true', 'Point[x=9.0, y=0.0]']],
+        [['1e308', '1e308'], ['Point[x=1.0E308, y=1.0E308]', '1.4142135623730951E308', 'true', 'Point[x=9.0, y=1.0E308]']],
+        [['-3', '-4'], ['Point[x=-3.0, y=-4.0]', '5.0', 'true', 'Point[x=9.0, y=-4.0]']]
+      ] },
     solution: {
       approach: `<p>The record gives value semantics (equals/hashCode/toString) and immutability for free; the compact constructor enforces the finite-coordinate invariant on every creation path.</p>`,
       code: `
@@ -2800,6 +3175,9 @@ class WrapperPuzzle {
 }` },
     mcq: { q: '<code>map.get(1)</code> on a <code>Map&lt;Long, String&gt;</code> returns null because…', options: ['1 is boxed to Integer, and Integer.equals(Long) is false', 'Map.of maps are empty', 'get() needs a cast', 'Long keys are compared by identity'], answer: 0, explain: 'get takes Object, so the int literal is boxed to Integer. Integer(1).equals(Long(1)) is false, so no key matches. Write map.get(1L).' },
     hints: [`<p>Hint 1: ${C('Integer x = 100')} is ${C('Integer.valueOf(100)')} — cached for −128..127.</p>`, `<p>Hint 2: if one operand of ${C('==')} is a primitive, the other is <b>unboxed</b> and values are compared.</p>`, `<p>Hint 3: wrapper ${C('equals')} first checks the <b>class</b>: ${C('Long.equals(Integer)')} is always false.</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: 'true\nfalse\ntrue\ntrue\nfalse\ntrue\nnull one' }
+      ] },
     solution: {
       approach: `<p>Classify each comparison: reference vs reference (identity — depends on cache), reference vs primitive (unboxing — value), equals (same class + same value).</p>`,
       code: `
@@ -2854,6 +3232,22 @@ class ReceiptBad {
 }` },
     mcq: { q: 'Your text block ends with the closing """ on its own line. What does that mean for the result?', options: ['The string ends with a newline', 'The string has no newline at the end', 'It is a compile error', 'A trailing space is added'], answer: 0, explain: 'The last content line is followed by a line terminator before the closing delimiter line, so the value ends with \\n.' },
     hints: [`<p>Hint 1: format one money value with a helper: ${C('String.format("%d.%02d", c / 100, c % 100)')}.</p>`, `<p>Hint 2: build the item lines with a stream and ${C('Collectors.joining("\\n")')}; plug them into a text block template with ${C('%s')} placeholders.</p>`, `<p>Hint 3: the template's own lines must not have trailing spaces; use ${C('"%-10s  x%d  %8s"')} for each item and ${C('"%-16s%8s"')} for TOTAL.</p>`],
+    tests: { sig: 'int string[] -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(int orderNo, String[] rows) {
+    List<Item> items = new ArrayList<>();
+    for (String r : rows) { String[] p = r.split(","); items.add(new Item(p[0], Integer.parseInt(p[1]), Long.parseLong(p[2]))); }
+    try { return Receipt.receipt(orderNo, items); } catch (ArithmeticException e) { return "ArithmeticException"; }
+  }
+}` }, cases: [
+        [[42, ['Coffee,2,350', 'Muffin,1,325']], 'RECEIPT #42\n------------------------\nCoffee      x2      7.00\nMuffin      x1      3.25\n------------------------\nTOTAL              10.25\n'],
+        [[1, ['Gum,1,5']], 'RECEIPT #1\n------------------------\nGum         x1      0.05\n------------------------\nTOTAL               0.05\n'],
+        [[7, ['ABCDEFGHIJ,3,99999999999']], 'RECEIPT #7\n------------------------\nABCDEFGHIJ  x3  2999999999.97\n------------------------\nTOTAL           2999999999.97\n'],
+        [[9, ['a,1,100', 'b,2,250', 'c,10,1']], 'RECEIPT #9\n------------------------\na           x1      1.00\nb           x2      5.00\nc           x10      0.10\n------------------------\nTOTAL               6.10\n'],
+        [[3, ['Big,2,5000000000000000000']], 'ArithmeticException'],
+        [[5, ['Zero,3,0']], 'RECEIPT #5\n------------------------\nZero        x3      0.00\n------------------------\nTOTAL               0.00\n'],
+        [[100, { $rep: 'Pen,1,100', n: 100 }], 'RECEIPT #100\n------------------------\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\nPen         x1      1.00\n------------------------\nTOTAL             100.00\n']
+      ] },
     solution: {
       approach: `<p>Separate <b>layout</b> (a text block template, readable as-is) from <b>data</b> (formatted item lines and totals). Keep money in long cents and format only at the edge.</p>`,
       code: String.raw`
@@ -2948,6 +3342,9 @@ class TwrPuzzle {
 }` },
     mcq: { q: 'In try-with-resources, the body throws X and close() throws Y. What does the catch block receive?', options: ['X, with Y in X.getSuppressed()', 'Y, with X lost', 'Y, with X as its cause', 'Both, as two separate catches'], answer: 0, explain: 'The primary exception is the one from the body; exceptions thrown while closing are added via addSuppressed so no information is lost.' },
     hints: [`<p>Hint 1: a ${C('return')} (or ${C('throw')}) in finally <b>replaces</b> whatever was in flight — exceptions included.</p>`, `<p>Hint 2: try-with-resources ≈ nested try/finally blocks, innermost resource (declared last) closed first.</p>`, `<p>Hint 3: order is body → close B → close A → catch → finally. Suppressed array order follows close order.</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: 'finally wins\nbody\nclose B\nclose A\nbody suppressed=2 close B\nfinally' }
+      ] },
     solution: {
       approach: `<p>Desugar the statement: resources are closed in reverse order inside an implicit finally, and their exceptions are added to the primary exception with ${C('addSuppressed')}. Only then does your ${C('catch')} see the primary exception, and your ${C('finally')} runs last.</p>`,
       code: `
@@ -3004,6 +3401,37 @@ class ParcelBad {
 }` },
     mcq: { q: 'Which pair of cases must come in this order?', options: ['<code>case Letter l when l.grams() &lt;= 20</code> before <code>case Letter l</code>', '<code>case Box b</code> before <code>case Letter l</code>', '<code>case Pallet p</code> must be last', 'Order never matters with sealed types'], answer: 0, explain: 'An unguarded Letter case would dominate the guarded one (compile error). Different record types can be in any order relative to each other.' },
     hints: [`<p>Hint 1: "per started 20 g above 20 g" = ${C('(grams - 20 + 19) / 20')} extra units; "per started kg" = ${C('(long) Math.ceil(kg)')}.</p>`, `<p>Hint 2: fragile ×1.5 rounded up in integers: ${C('(base * 3 + 1) / 2')}. Use record patterns with guards: ${C('case Box(double kg, boolean fragile) when fragile')}.</p>`, `<p>Hint 3: put validation in each record's compact constructor; the switch then only prices valid parcels.</p>`],
+    tests: { sig: 'string double bool -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(String type, double v, boolean fragile) {
+    try {
+      Parcel p = type.equals("letter") ? new Letter((int) v) : type.equals("box") ? new Box(v, fragile) : new Pallet((int) v);
+      return String.valueOf(Shipping.cost(p));
+    } catch (IllegalArgumentException e) { return "IAE"; }
+  }
+}` }, cases: [
+        [['letter', 15, false], '50'],
+        [['letter', 20, false], '50'],
+        [['letter', 21, false], '75'],
+        [['letter', 45, false], '100'],
+        [['letter', 2000, false], '2525'],
+        [['letter', 0, false], 'IAE'],
+        [['letter', -5, false], 'IAE'],
+        [['box', 2.5, false], '1100'],
+        [['box', 2.5, true], '1650'],
+        [['box', 1, false], '700'],
+        [['box', 1.0001, false], '900'],
+        [['box', 0.5, true], '1050'],
+        [['box', 50, true], '15750'],
+        [['box', 0, false], 'IAE'],
+        [['box', -1, true], 'IAE'],
+        [['pallet', 1, false], '1500'],
+        [['pallet', 9, false], '13500'],
+        [['pallet', 10, false], '13500'],
+        [['pallet', 11, false], '14850'],
+        [['pallet', 1000, false], '1350000'],
+        [['pallet', 0, false], 'IAE']
+      ] },
     solution: {
       approach: `<p>Sealed interface + records make the parcel kinds a closed set; each record validates itself. A single exhaustive switch with guards prices them, and the compiler will flag the switch if someone adds ${C('Envelope')} later.</p>`,
       code: `
@@ -3070,6 +3498,31 @@ class VendingBad {
 }` },
     mcq: { q: 'Why switch over a Step(state, event) record instead of nesting two switches?', options: ['Nested record patterns let the compiler check exhaustiveness over every (state, event) combination in one place', 'It is faster at runtime', 'Nested switches are not allowed in Java 21', 'Records cannot be used inside a switch otherwise'], answer: 0, explain: 'case Step(HasMoney(var m), Select(var item)) reads like the transition table, and javac verifies that every combination of the two sealed hierarchies is covered.' },
     hints: [`<p>Hint 1: two sealed interfaces (State, Event) with records, plus ${C('record Step(State s, Event e)')}.</p>`, `<p>Hint 2: specific cases first, then broader ones: ${C('case Step(HasMoney(var m), Select(var item)) when price(item) <= m')} before the unguarded one.</p>`, `<p>Hint 3: catch-alls per state keep it exhaustive without default: ${C('case Step(Idle i, var e) -> i')}, ${C('case Step(Dispensed d, var e) -> new Idle()')}.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static String[] chk(String[] events) {
+    State s = new Idle();
+    List<String> out = new ArrayList<>();
+    for (String ev : events) {
+      String[] p = ev.split(":");
+      Event e = p[0].equals("i") ? new Insert(Integer.parseInt(p[1])) : p[0].equals("s") ? new Select(p[1]) : new Cancel();
+      s = Vending.next(s, e);
+      out.add(s.toString());
+    }
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+        [[['i:100', 's:cola', 'i:100', 's:cola', 'c']], ['HasMoney[cents=100]', 'HasMoney[cents=100]', 'HasMoney[cents=200]', 'Dispensed[item=cola, change=50]', 'Idle[]']],
+        [[['s:cola', 'c', 'i:5']], ['Idle[]', 'Idle[]', 'HasMoney[cents=5]']],
+        [[['i:100', 's:gum']], ['HasMoney[cents=100]', 'HasMoney[cents=100]']],
+        [[['i:100', 's:chips']], ['HasMoney[cents=100]', 'Dispensed[item=chips, change=0]']],
+        [[['i:100', 's:chips', 'i:25']], ['HasMoney[cents=100]', 'Dispensed[item=chips, change=0]', 'HasMoney[cents=25]']],
+        [[['i:150', 's:cola', 's:cola']], ['HasMoney[cents=150]', 'Dispensed[item=cola, change=0]', 'Idle[]']],
+        [[['i:150', 's:cola', 'c']], ['HasMoney[cents=150]', 'Dispensed[item=cola, change=0]', 'Idle[]']],
+        [[['i:50', 'i:50', 'i:50', 's:cola']], ['HasMoney[cents=50]', 'HasMoney[cents=100]', 'HasMoney[cents=150]', 'Dispensed[item=cola, change=0]']],
+        [[['i:1000000', 's:cola']], ['HasMoney[cents=1000000]', 'Dispensed[item=cola, change=999850]']],
+        [[['i:100', 'c', 'c']], ['HasMoney[cents=100]', 'Idle[]', 'Idle[]']]
+      ] },
     solution: {
       approach: `<p>Encode states and events as sealed record hierarchies; each state carries only its own data. The transition function pattern-matches on the pair, listing specific transitions first and per-state catch-alls last, so javac proves every combination is handled.</p>`,
       code: `
@@ -3155,6 +3608,9 @@ class OverloadPuzzle {
 }` },
     mcq: { q: 'Adding <code>static void d(String s)</code> makes <code>d(null)</code>…', options: ['a compile error: ambiguous (neither char[] nor String is more specific)', 'call d(String)', 'call d(char[])', 'call d(Object)'], answer: 0, explain: 'null is applicable to all three; char[] and String are unrelated types, so there is no single most specific method.' },
     hints: [`<p>Hint 1: phase 1 = exact/widening only (no boxing, no varargs); phase 2 = boxing allowed; phase 3 = varargs. Stop at the first phase that finds something.</p>`, `<p>Hint 2: within a phase choose the <b>most specific</b> method (its parameter type is a subtype / narrower primitive of the others).</p>`, `<p>Hint 3: ${C('a()')} with zero arguments can only match varargs. ${C('null')} matches every reference type; ${C('char[]')} is more specific than ${C('Object')}.</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: 'a-long\na-long\na-Integer\na-Object\na-varargs\nb-Object\nc-double\nd-char[]' }
+      ] },
     solution: {
       approach: `<p>Run the three phases per call and pick the most specific method in the first successful phase.</p>`,
       code: `
@@ -3205,6 +3661,25 @@ record SignupManual(String name, int age) {
 }` },
     mcq: { q: 'You put <code>@Target(ElementType.RECORD_COMPONENT)</code> on @Range. Where can reflection find it?', options: ['On <code>getRecordComponents()[i]</code> only — it is not propagated to the field or accessor', 'On the private field only', 'On the accessor method only', 'Nowhere — records drop annotations'], answer: 0, explain: 'Annotations on record components propagate to fields/accessors/parameters only if their @Target allows those element kinds. With RECORD_COMPONENT only, they stay on the component.' },
     hints: [`<p>Hint 1: ${C('@Retention(RUNTIME) @Target(ElementType.RECORD_COMPONENT)')} for both annotations.</p>`, `<p>Hint 2: loop ${C('r.getClass().getRecordComponents()')}, read the value via ${C('rc.getAccessor().invoke(r)')}, then check ${C('rc.getAnnotation(...)')}.</p>`, `<p>Hint 3: collect <b>all</b> violations instead of throwing at the first, so the user can fix everything at once.</p>`],
+    tests: { sig: 'string string int string -> string', fn: 'chk', harness: { java: `
+record Order2(@Range(min = 1, max = 3) int q, @NotBlank String label, @NotBlank String other) { }
+class Check {
+  static String chk(String kind, String name, int age, String note) throws Exception {
+    Record r = kind.equals("signup") ? new Signup(name, age, note) : new Order2(age, name, note);
+    return String.valueOf(Validator.validate(r));
+  }
+}` }, cases: [
+        [['signup', ' ', 200, null], '[name: must not be blank, age: 200 not in [0, 150]]'],
+        [['signup', 'Asha', 30, null], '[]'],
+        [['signup', null, 0, 'x'], '[name: must not be blank]'],
+        [['signup', 'A', -1, ''], '[age: -1 not in [0, 150]]'],
+        [['signup', 'A', 150, null], '[]'],
+        [['signup', 'A', 0, null], '[]'],
+        [['signup', 'A', 151, null], '[age: 151 not in [0, 150]]'],
+        [['signup', '', 2147483647, 'n'], '[name: must not be blank, age: 2147483647 not in [0, 150]]'],
+        [['order', 'ok', 0, ' '], '[q: 0 not in [1, 3], other: must not be blank]'],
+        [['order', 'ok', 3, 'fine'], '[]']
+      ] },
     solution: {
       approach: `<p>Annotations declare the rules on the data; one reflective validator enforces them for any record. Collect violations in component order for helpful error messages.</p>`,
       code: `
@@ -3275,6 +3750,9 @@ class LazyPuzzle {
 }` },
     mcq: { q: 'How do you avoid calling expensive() when the Optional already has a value?', options: ['<code>orElseGet(LazyPuzzle::expensive)</code>', '<code>orElse(null)</code>', '<code>get()</code>', 'Wrap it in <code>Optional.of</code>'], answer: 0, explain: 'orElseGet takes a Supplier and calls it only when the Optional is empty.' },
     hints: [`<p>Hint 1: picture one element at a time travelling down the pipeline (vertical processing).</p>`, `<p>Hint 2: ${C('findFirst')} is a short-circuiting terminal operation — it stops pulling after the first element that reaches it.</p>`, `<p>Hint 3: method arguments are evaluated before the method runs; ${C('orElse(x)')} always computes x. ${C('Stream.iterate')} is infinite — ${C('limit')} makes it finite.</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: 'BANANA [f:apple, f:banana, m:banana]\ncomputing\nx\nx\n[1, 2, 4, 8, 16]' }
+      ] },
     solution: {
       approach: `<p>Trace element by element: apple → filter false; banana → filter true → map → findFirst done. Then apply Java's eager argument evaluation to orElse.</p>`,
       code: `
@@ -3327,6 +3805,46 @@ class NaiveSimplify {
 }` },
     mcq: { q: 'Why simplify the children BEFORE applying rules to the parent?', options: ['Rules like x + 0 only become visible after the child (0 * y) has been reduced to 0', 'It is required by switch syntax', 'Top-down is not allowed with records', 'To avoid stack overflow'], answer: 0, explain: 'Bottom-up rewriting normalizes subtrees first, so each parent sees the simplest possible children and a single rule pass per node is enough for these rules.' },
     hints: [`<p>Hint 1: split into two functions: ${C('simplify')} rebuilds the node from simplified children; ${C('rewrite')} applies one rule at the root.</p>`, `<p>Hint 2: nested patterns read like the rules: ${C('case Add(var x, Num(int z)) when z == 0 -> x')}; ${C('case Neg(Neg(var x)) -> x')}.</p>`, `<p>Hint 3: put constant folding (${C('Add(Num a, Num b)')}) first; it is unguarded but more specific than ${C('Add(Num z, var x)')}, so no dominance error. End with ${C('default -> e')}.</p>`],
+    tests: { sig: 'string -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static String[] toks; static int pos;
+  static Expr parse() {
+    String t = toks[pos++];
+    if (!t.equals("(")) return Character.isLetter(t.charAt(0)) ? new Var(t) : new Num(Integer.parseInt(t));
+    String op = toks[pos++];
+    Expr r;
+    if (op.equals("neg")) r = new Neg(parse());
+    else { Expr a = parse(); Expr b = parse(); r = op.equals("+") ? new Add(a, b) : new Mul(a, b); }
+    pos++;
+    return r;
+  }
+  static String[] chk(String s) {
+    toks = s.replace("(", " ( ").replace(")", " ) ").trim().split("\\\\s+"); pos = 0;
+    Expr e = parse();
+    return new String[]{ Simplifier.show(e), Simplifier.show(Simplifier.simplify(e)) };
+  }
+}` }, cases: [
+        [['(+ (* x 1) (neg (neg (* 0 y))))'], ['((x * 1) + --(0 * y))', 'x']],
+        [['(* (+ 2 3) z)'], ['((2 + 3) * z)', '(5 * z)']],
+        [['(+ x 0)'], ['(x + 0)', 'x']],
+        [['(+ 0 x)'], ['(0 + x)', 'x']],
+        [['(* 1 x)'], ['(1 * x)', 'x']],
+        [['(* x 0)'], ['(x * 0)', '0']],
+        [['(* x 1)'], ['(x * 1)', 'x']],
+        [['(neg 5)'], ['-5', '-5']],
+        [['(neg (neg x))'], ['--x', 'x']],
+        [['(neg -3)'], ['--3', '3']],
+        [['(+ x y)'], ['(x + y)', '(x + y)']],
+        [['(* (+ 1 2) (+ 3 4))'], ['((1 + 2) * (3 + 4))', '21']],
+        [['(+ (+ x 0) (+ 0 y))'], ['((x + 0) + (0 + y))', '(x + y)']],
+        [['(* 0 (+ x y))'], ['(0 * (x + y))', '0']],
+        [['(neg (+ 1 2))'], ['-(1 + 2)', '-3']],
+        [['(neg (neg (neg x)))'], ['---x', '-x']],
+        [['(* (neg 1) x)'], ['(-1 * x)', '(-1 * x)']],
+        [['(+ 2147483647 1)'], ['(2147483647 + 1)', '-2147483648']],
+        [[{ $concat: [{ $rep: '(neg ', n: 500 }, 'x', { $rep: ')', n: 500 }] }], [{ $concat: [{ $rep: '-', n: 500 }, 'x'] }, 'x']],
+        [[{ $concat: [{ $rep: '(+ ', n: 500 }, 'x', { $rep: ' 0)', n: 500 }] }], [{ $concat: [{ $rep: '(', n: 500 }, 'x', { $rep: ' + 0)', n: 500 }] }, 'x']]
+      ] },
     solution: {
       approach: `<p>Bottom-up rewriting: simplify children recursively, rebuild the node, then match the rebuilt node against an ordered list of algebraic rules written as nested record patterns. Because children are already normal, a single rewrite per node suffices for this rule set.</p>`,
       code: `
@@ -3409,6 +3927,42 @@ class ManualRetry {
 }` },
     mcq: { q: 'Inside the InvocationHandler, method.invoke(target, args) throws InvocationTargetException. What should the proxy rethrow to callers?', options: ['e.getCause() — the target\'s real exception', 'The InvocationTargetException itself', 'A new RuntimeException wrapping it', 'Nothing; return null'], answer: 0, explain: 'Callers of the interface expect the interface method\'s own exceptions. Rethrowing the wrapper leaks reflection details (and a checked wrapper would become UndeclaredThrowableException).' },
     hints: [`<p>Hint 1: ${C('@Retention(RUNTIME) @Target(METHOD) @interface Retry { int times() default 3; }')}. The ${C('Method')} passed to the handler is the <b>interface</b> method, so read the annotation from it.</p>`, `<p>Hint 2: loop attempts; ${C('try { return method.invoke(target, args); } catch (InvocationTargetException e) { last = e.getCause(); }')}.</p>`, `<p>Hint 3: if ${C('method.getDeclaringClass() == Object.class')}, just invoke once. After the loop, ${C('throw last')} — the handler's ${C('invoke')} is declared ${C('throws Throwable')}, so checked exceptions declared on the interface pass through.</p>`],
+    tests: { sig: 'string int -> string[]', fn: 'chk', harness: { java: `
+class Check {
+  static class Impl implements Inventory {
+    int calls, failures;
+    Impl(int failures) { this.failures = failures; }
+    public String flaky() { if (calls++ < failures) throw new IllegalStateException("down"); return "ok"; }
+    public String alwaysDown() { calls++; throw new IllegalStateException("down"); }
+    public String stable() { if (calls++ < failures) throw new IllegalStateException("blip"); return "stable"; }
+    public String toString() { return "impl-obj"; }
+  }
+  static String[] chk(String kind, int failures) {
+    Impl real = new Impl(failures);
+    Inventory inv = Resilience.resilient(real, Inventory.class);
+    String out;
+    try {
+      switch (kind) {
+        case "flaky": out = inv.flaky(); break;
+        case "alwaysDown": out = inv.alwaysDown(); break;
+        case "stable": out = inv.stable(); break;
+        case "toString": out = inv.toString(); break;
+        default: out = String.valueOf(inv.hashCode() == real.hashCode());
+      }
+    } catch (Throwable t) { out = t.getClass().getSimpleName() + ":" + t.getMessage(); }
+    return new String[]{ out, String.valueOf(real.calls) };
+  }
+}` }, cases: [
+        [['flaky', 0], ['ok', '1']],
+        [['flaky', 1], ['ok', '2']],
+        [['flaky', 2], ['ok', '3']],
+        [['flaky', 3], ['IllegalStateException:down', '3']],
+        [['alwaysDown', 0], ['IllegalStateException:down', '2']],
+        [['stable', 0], ['stable', '1']],
+        [['stable', 1], ['IllegalStateException:blip', '1']],
+        [['toString', 0], ['impl-obj', '0']],
+        [['hashCode', 0], ['true', '0']]
+      ] },
     solution: {
       approach: `<p>Separate the cross-cutting policy (retry) from business code: the annotation marks <b>which</b> methods, the proxy implements <b>how</b>. Unwrap reflection's InvocationTargetException so callers see the original failure.</p>`,
       code: `
@@ -3485,6 +4039,48 @@ class ManualJson {
 }` },
     mcq: { q: 'Which case label catches every record regardless of its type?', options: ['<code>case Record r</code>', '<code>case Object o when o.getClass().isRecord()</code> only', '<code>case record r</code>', 'Records cannot be matched generically'], answer: 0, explain: 'Every record class extends java.lang.Record, so a type pattern on Record matches all of them; then getRecordComponents() describes the fields.' },
     hints: [`<p>Hint 1: order cases from specific to general: null, String, Number, Boolean, Enum, Collection, Map, Record, default.</p>`, `<p>Hint 2: for records: ${C('for (RecordComponent rc : r.getClass().getRecordComponents())')} → ${C('"\\"" + rc.getName() + "\\":" + toJson(rc.getAccessor().invoke(r))')}.</p>`, `<p>Hint 3: sealed discriminator: ${C('Arrays.stream(r.getClass().getInterfaces()).anyMatch(Class::isSealed)')}. Reflection throws checked exceptions — wrap them in an unchecked one inside the stream.</p>`],
+    tests: { sig: 'string -> string', fn: 'chk', harness: { java: `
+class Check {
+  static String chk(String kind) {
+    Object o;
+    switch (kind) {
+      case "order": o = new Order(7, List.of(new Card("4242"), new Cash()), Map.of("gift", true), Status.PAID); break;
+      case "quotes": o = List.of("say \\"hi\\"", 1.5); break;
+      case "null": o = null; break;
+      case "backslash": o = "a\\\\b"; break;
+      case "enum": o = Status.NEW; break;
+      case "emptyList": o = List.of(); break;
+      case "emptyMap": o = Map.of(); break;
+      case "cash": o = new Cash(); break;
+      case "card": o = new Card("1"); break;
+      case "intKey": o = Map.of(1, "a"); break;
+      case "nestedList": o = List.of(List.of(1, 2), List.of()); break;
+      case "bool": o = Arrays.asList(true, false, null); break;
+      case "long": o = 9007199254740993L; break;
+      case "deep": { Object x = 1; for (int i = 0; i < 100; i++) x = List.of(x); o = x; break; }
+      case "ordered": { Map<String, Object> m = new LinkedHashMap<>(); m.put("b", 1); m.put("a", List.of("x")); o = m; break; }
+      default: o = new Object();
+    }
+    try { return Json.toJson(o); } catch (IllegalArgumentException e) { return "IAE"; }
+  }
+}` }, cases: [
+        [['order'], '{"id":7,"payments":[{"type":"Card","last4":"4242"},{"type":"Cash"}],"flags":{"gift":true},"status":"PAID"}'],
+        [['quotes'], '["say \\"hi\\"",1.5]'],
+        [['null'], 'null'],
+        [['backslash'], '"a\\\\b"'],
+        [['enum'], '"NEW"'],
+        [['emptyList'], '[]'],
+        [['emptyMap'], '{}'],
+        [['cash'], '{"type":"Cash"}'],
+        [['card'], '{"type":"Card","last4":"1"}'],
+        [['intKey'], '{"1":"a"}'],
+        [['nestedList'], '[[1,2],[]]'],
+        [['bool'], '[true,false,null]'],
+        [['long'], '9007199254740993'],
+        [['ordered'], '{"b":1,"a":["x"]}'],
+        [['deep'], '[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]'],
+        [['object'], 'IAE']
+      ] },
     solution: {
       approach: `<p>One recursive pattern switch handles the JSON value kinds; records are serialized generically from their component metadata, and the sealed-parent check adds a discriminator. Escaping is centralized in one ${C('quote')} helper.</p>`,
       code: `
@@ -3589,6 +4185,9 @@ class InitTriggers {
 }` },
     mcq: { q: 'In production you see NoClassDefFoundError: Could not initialize class X, but X.class is in the jar. What should you look for?', options: ['An earlier ExceptionInInitializerError for X in the logs (the real cause)', 'A missing jar on the classpath', 'A corrupted class file', 'A JIT bug'], answer: 0, explain: 'After a static initializer fails once, every later use throws NoClassDefFoundError. The root cause is the first failure (often in another thread, minutes earlier). JDK 17+ attaches it as the cause.' },
     hints: [`<p>Hint 1: initialization triggers (JLS 12.4.1): ${C('new')}, static method call, read/write of a static field that is <b>not a constant variable</b>, ${C('Class.forName')}, subclass init.</p>`, `<p>Hint 2: ${C('static final int CONST = 42')} is a constant variable → its value is copied into the caller's bytecode. ${C('Integer BOXED')} is not (not primitive/String).</p>`, `<p>Hint 3: a static initializer that throws → first access: ${C('ExceptionInInitializerError')}; later accesses: ${C('NoClassDefFoundError')}.</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: '42\n3\nConfig init\n7\nEIIE cause: java.lang.NumberFormatException: For input string: "oops"\nNCDFE: Could not initialize class Broken' }
+      ] },
     solution: {
       approach: `<p>Check each access against the JLS list of initialization triggers, remember constant inlining, and the "erroneous state" rule after a failed initializer.</p>`,
       code: `
@@ -3638,6 +4237,50 @@ class ManualWiring {
 }` },
     mcq: { q: 'Which data structure detects A → B → A while resolving?', options: ['A stack/ordered set of types currently being constructed (the DFS path)', 'The singleton cache', 'A queue of pending types (BFS)', 'A count of constructor parameters'], answer: 0, explain: 'Resolution is a depth-first traversal of the dependency graph. If a type appears again while it is still on the current path, there is a cycle — exactly DFS back-edge detection.' },
     hints: [`<p>Hint 1: maps: ${C('bindings: Class -> Class')}, ${C('singletons: Class -> Object')}; plus a ${C('LinkedHashSet<Class<?>> resolving')} for the current path.</p>`, `<p>Hint 2: constructor choice: ${C('getDeclaredConstructors()')}, prefer the ${C('@Inject')}-annotated one, else require exactly one. Resolve ${C('ctor.getParameterTypes()')} recursively, then ${C('newInstance(args)')}.</p>`, `<p>Hint 3: if ${C('resolving')} already contains the type, build the message from the path plus the type. Remove the type from the path in a ${C('finally')}. Interfaces without bindings → error.</p>`],
+    tests: { sig: 'string -> string', fn: 'chk', harness: { java: `
+class CycX { CycX(CycY y) { } } class CycY { CycY(CycZ z) { } } class CycZ { CycZ(CycX x) { } }
+class Selfie { Selfie(Selfie s) { } }
+class TwoCtors { TwoCtors() { } TwoCtors(String s) { } }
+abstract class AbstractRepo implements Repo { }
+class S1 { final Clock c; S1(Clock c) { this.c = c; } }
+class S2 { final Clock c; S2(Clock c) { this.c = c; } }
+class Check {
+  static String chk(String kind) {
+    Container c = new Container();
+    try {
+      switch (kind) {
+        case "order": {
+          c.bind(Repo.class, MemRepo.class);
+          OrderService s = c.get(OrderService.class);
+          return s.describe(7) + " " + (s == c.get(OrderService.class));
+        }
+        case "cycle": return String.valueOf(c.get(A.class));
+        case "cycle3": return String.valueOf(c.get(CycX.class));
+        case "selfCycle": return String.valueOf(c.get(Selfie.class));
+        case "unbound": return String.valueOf(c.get(Repo.class));
+        case "abstract": c.bind(Repo.class, AbstractRepo.class); return String.valueOf(c.get(Repo.class));
+        case "ambiguous": return String.valueOf(c.get(TwoCtors.class));
+        case "shared": return String.valueOf(c.get(S1.class).c == c.get(S2.class).c);
+        case "recovers": {
+          try { c.get(A.class); } catch (IllegalStateException e) { }
+          return c.get(Clock.class) != null ? "ok" : "null";
+        }
+        default: return c.get(Clock.class).now() + "";
+      }
+    } catch (IllegalStateException e) { return "ISE: " + e.getMessage(); }
+  }
+}` }, cases: [
+        [['order'], 'order-7 @ 1700000000 true'],
+        [['cycle'], 'ISE: cycle: A -> B -> A'],
+        [['cycle3'], 'ISE: cycle: CycX -> CycY -> CycZ -> CycX'],
+        [['selfCycle'], 'ISE: cycle: Selfie -> Selfie'],
+        [['unbound'], 'ISE: no binding for Repo'],
+        [['abstract'], 'ISE: no binding for Repo'],
+        [['ambiguous'], 'ISE: TwoCtors: annotate exactly one constructor with @Inject'],
+        [['shared'], 'true'],
+        [['recovers'], 'ok'],
+        [['noArg'], '1700000000']
+      ] },
     solution: {
       approach: `<p>Dependency resolution is DFS over the constructor-parameter graph: post-order creation (dependencies first), memoization for singleton scope, and back-edge detection on the current path for cycles. Reflection supplies the edges (constructor parameter types) and the instantiation.</p>`,
       code: `

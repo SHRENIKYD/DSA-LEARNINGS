@@ -127,7 +127,7 @@
     h += '<a class="card gamecard" href="#game/' + g.id + '"><span class="kick xp">Today\'s game · ' + esc(g.kicker) + '</span><b class="ttl">' + esc(g.title) + '</b><span class="muted sm">' + esc(g.goal) + '</span><span class="b3 ghost">PLAY · +' + Play.XP.game + ' XP</span></a>';
     if (window.Learn && window.PATHS) {
       var rv = Learn.routeView(), nx = rv.next[0];
-      h += '<a class="card routecard" href="route.html"><span class="kick">Your route · ' + esc(Learn.LANG_NAMES[rv.pref.lang]) + ' · ' + rv.pref.hours + ' h/week</span><b class="ttl">' + esc(rv.sch.plan.route.name) + '</b>' + bar(rv.pctHours / 100) +
+      h += '<a class="card routecard" href="#route"><span class="kick">Your route · ' + esc(Learn.LANG_NAMES[rv.pref.lang]) + ' · ' + rv.pref.hours + ' h/week</span><b class="ttl">' + esc(rv.sch.plan.route.name) + '</b>' + bar(rv.pctHours / 100) +
         '<span class="muted sm">' + rv.pctHours + '% done · ' + rv.mastered + ' of ' + rv.core + ' modules mastered · about ' + rv.weeksLeft + ' weeks left' + (nx ? '. Next: ' + esc(nx.meta.title) + '. ' + esc(nx.why) : '') + '</span><span class="b3 ghost">OPEN YOUR ROUTE PLAN</span></a>';
     }
     var nv = Object.keys(window.IM_VIDEOS || {}).length;
@@ -321,6 +321,81 @@
     page('me', head('Your journey so far', '#me') + '<div class="tiles"><div><b>⚡ ' + S.xp + '</b><span>total XP</span></div><div><b>✓ ' + S.totals.doneItems + '</b><span>activities</span></div><div><b>▶ ' + Object.keys(play.games || {}).length + '</b><span>games discovered</span></div></div>' +
       '<div class="card"><span class="kick">Your next milestone</span><b class="ttl">Level ' + (S.level.level + 1) + '</b>' + bar(S.level.into / S.level.need) + '<p class="muted sm">' + (S.level.need - S.level.into) + ' XP to go. Every bit of practice counts.</p></div><div class="list"><a class="set" href="#expedition">Daily quests & streak ›</a><a class="set" href="#badges">Achievements ›</a><a class="set" href="#passport">Stamp passport ›</a><a class="set" href="#world">Explore the world ›</a></div>');
   }
+  /* The full route plan. All route, mastery and project logic lives in Learn and PATHS; this only draws it. */
+  function routeScreen(restore) {
+    if (!(window.Learn && window.PATHS)) return home();
+    var p = Learn.pref(), v = Learn.routeView(p), R = v.sch.plan.route, sc = v.sch, D = done(), HRS = [5, 10, 20, 40];
+    var LVN = { B: 'Beginner', I: 'Intermediate', A: 'Advanced', E: 'Expert' };
+    function mname(id) { var m = Learn.meta(id); return m ? m.title : id; }
+    function stateTag(x) {
+      if (!x.st.live) return '<span class="rt-st soon">being written</span>';
+      if (x.st.mastered) return '<span class="rt-st mastered">★ mastered</span>';
+      if (x.st.satisfied) return '<span class="rt-st done">✓ ' + (x.st.tested && !x.st.visited ? 'tested out' : 'complete') + '</span>';
+      if (x.st.pct) return '<span class="rt-st part">' + x.st.pct + '%</span>';
+      return '';
+    }
+    var h = head('Your route', '#home');
+    h += '<div class="card"><span class="kick">Overall</span><b class="ttl">' + esc(R.name) + '</b>' + bar(v.pctHours / 100) + '<span class="muted sm">' + v.pctHours + '% done · ' + v.projectsDone + ' of ' + v.projects.length + ' projects done · about ' + v.weeksLeft + ' weeks left at ' + p.hours + ' h/week</span></div>';
+    h += '<fieldset class="rt-pick"><legend class="kick">Destination</legend>' + PATHS.ROUTES.map(function (r) {
+      return '<label class="rt-opt' + (r.id === p.id ? ' on' : '') + '"><input type="radio" name="rtRoute" value="' + esc(r.id) + '"' + (r.id === p.id ? ' checked' : '') + '><b>' + esc(r.name) + '</b><span class="muted sm">' + esc(r.blurb) + '</span><small>' + r.langs.map(function (l) { return esc(Learn.LANG_NAMES[l]); }).join(' · ') + '</small></label>';
+    }).join('') + '</fieldset>';
+    h += '<div class="card"><label class="rt-field" for="rtLang"><span class="kick">Code language</span></label><select id="rtLang"' + (R.langs.length < 2 ? ' disabled' : '') + '>' + R.langs.map(function (l) { return '<option value="' + l + '"' + (l === p.lang ? ' selected' : '') + '>' + esc(Learn.LANG_NAMES[l]) + '</option>'; }).join('') + '</select>' +
+      '<fieldset class="rt-hours"><legend class="kick">Hours per week</legend>' + HRS.map(function (x) { return '<label class="rt-h' + (x === p.hours ? ' on' : '') + '"><input type="radio" name="rtHours" value="' + x + '"' + (x === p.hours ? ' checked' : '') + '><span>' + x + ' h</span></label>'; }).join('') + '</fieldset></div>';
+    h += '<section aria-labelledby="rtSchedH" class="card"><div class="row sb"><b id="rtSchedH" class="ttl">Schedule</b><span class="mono sm muted">' + sc.total + ' h in all</span></div><dl class="rt-sched">' +
+      '<div><dt>Required modules</dt><dd>' + sc.core + ' h</dd></div><div><dt>Recommended modules</dt><dd>' + sc.rec + ' h</dd></div><div><dt>Spaced revision (' + Math.round(PATHS.REVISION * 100) + '%)</dt><dd>' + sc.revision + ' h</dd></div><div><dt>Projects</dt><dd>' + sc.projects + ' h</dd></div>' +
+      '<div class="tot"><dt>Route total</dt><dd>' + sc.total + ' h</dd></div></dl><div class="rt-weeks">' + HRS.map(function (x) { return '<div' + (x === p.hours ? ' class="on"' : '') + '><b>' + sc.weeks[x] + '</b><span>weeks at ' + x + ' h</span></div>'; }).join('') + '</div>' +
+      '<p class="muted sm">Optional modules and extensions add about ' + sc.extWeeks[p.hours] + ' weeks at ' + p.hours + ' h/week. Hours come from each module’s own estimate, which includes its practice. Weeks are the total divided by your weekly hours, rounded up.' +
+      (v.coverage.length ? ' <b>' + v.coverage.length + ' required modules do not yet have every solution in ' + esc(Learn.LANG_NAMES[p.lang]) + '.</b>' : ' Every required module has its solutions in ' + esc(Learn.LANG_NAMES[p.lang]) + '.') + '</p></section>';
+    h += '<section aria-labelledby="rtNextH"><h2 id="rtNextH" class="rt-h2">Study next</h2>' + (v.next.length ? v.next.map(function (n) {
+      if (n.kind === 'project') return '<a class="card rt-next" href="#proj-' + esc(n.id) + '" data-proj-link="' + esc(n.id) + '"><span class="kick">Project · about ' + n.meta.hours + ' h</span><b class="ttl">' + esc(n.meta.title) + '</b><span class="muted sm">' + esc(n.why) + '</span></a>';
+      var miss = Learn.missing(n.id, p.lang, D);
+      return '<a class="card rt-next" href="' + esc(Learn.href(n.id)) + '"><span class="kick">' + esc(LVN[n.meta.level] || '') + ' · ' + n.meta.hours + ' h</span><b class="ttl">' + esc(n.meta.title) + '</b><span class="muted sm">' + esc(n.why) + '</span>' +
+        (miss.length ? '<small class="rt-miss">Missing first: ' + miss.map(function (x) { return esc(mname(x)); }).join(', ') + '</small>' : '') + '</a>';
+    }).join('') : '<div class="card"><span class="muted sm">Every required module and project is complete. Pick an extension below, or a new route.</span></div>') + '</section>';
+    var due = Learn.due();
+    if (due.length) h += '<section class="card rt-due" aria-labelledby="rtDueH"><b id="rtDueH" class="ttl">' + due.length + ' review' + (due.length === 1 ? '' : 's') + ' due today</b>' + due.slice(0, 5).map(function (r) { var m = Learn.meta(r.mod); return '<a href="' + esc(m ? m.track + '.html#' + r.id : '#route') + '">' + esc(r.title) + '</a>'; }).join('') + '</section>';
+    var byStage = {};
+    v.items.forEach(function (x) { (byStage[x.stage] = byStage[x.stage] || []).push(x); });
+    h += '<h2 class="rt-h2">Stages</h2><p class="muted sm">Required modules make the route. A stage is complete when its required modules are mastered and its project is done.</p>';
+    h += R.stages.map(function (st, si) {
+      var list = byStage[si] || [], sg = v.stages[si], pr = sg.project;
+      return '<section class="card rt-stage' + (sg.complete ? ' complete' : '') + '" aria-labelledby="rtS' + si + '"><div class="row sb"><b id="rtS' + si + '" class="ttl"><span class="rt-n" aria-hidden="true">' + (si + 1) + '</span>' + esc(st.name) + '</b></div>' +
+        '<span class="rt-stat' + (sg.complete ? ' ok' : '') + '">' + (sg.complete ? '★ Stage complete' : sg.mastered + ' of ' + sg.required + ' required modules mastered' + (pr ? ' · project ' + (pr.done ? 'done' : 'not done yet') : '')) + '</span>' +
+        '<ol class="rt-mods">' + list.map(function (x) {
+          var m = x.meta, miss = Learn.missing(x.id, p.lang, D);
+          return '<li class="rt-mod' + (x.st.satisfied ? ' ok' : '') + '"><a href="' + esc(Learn.href(x.id)) + '"><b>' + esc(m ? m.title : x.id) + '</b><span class="muted sm">' + esc(m ? (LVN[m.level] || '') + ' · ' + m.hours + ' h' : '') + '</span></a><span class="rt-kind k-' + x.kind + '">' + (x.kind === 'core' ? 'required' : x.kind === 'rec' ? 'recommended' : 'optional') + '</span>' + stateTag(x) +
+            (miss.length && !x.st.satisfied ? '<small class="rt-miss">Needs first: ' + miss.map(function (y) { return '<a href="' + esc(Learn.href(y)) + '">' + esc(mname(y)) + '</a>'; }).join(', ') + '</small>' : '') + '</li>';
+        }).join('') + '</ol>' +
+        (st.behavioral ? '<p class="sm"><b>Behavioural prep here:</b> ' + st.behavioral.map(function (b) { return '<a class="rt-lnk" href="' + esc(Learn.href(b)) + '">' + esc(mname(b)) + '</a>'; }).join(', ') + '</p>' : '') +
+        (pr ? '<div class="rt-proj' + (pr.done ? ' done' : '') + '" id="proj-' + esc(pr.id) + '" tabindex="-1"><span class="kick">Project · about ' + pr.project.hours + ' h' + (pr.done ? ' · done' : '') + '</span><b>' + esc(pr.project.name) + '</b><p class="sm">' + esc(pr.project.brief) + '</p>' +
+          '<fieldset class="rt-chk"><legend>Done when every criterion is ticked (' + pr.ticked + ' of ' + pr.total + ')</legend>' + pr.project.rubric.map(function (c, i) { return '<label><input type="checkbox" data-proj="' + esc(pr.id) + '" data-i="' + i + '"' + (pr.ticks[i] ? ' checked' : '') + '><span>' + esc(c) + '</span></label>'; }).join('') + '</fieldset></div>' : '') + '</section>';
+    }).join('');
+    h += '<section aria-labelledby="rtExtH"><h2 id="rtExtH" class="rt-h2">Extensions after the route</h2><div class="rt-ext">' + sc.plan.extensions.map(function (id) { var st = Learn.status(id, D), m = Learn.meta(id); return '<a class="rt-x' + (st.satisfied ? ' ok' : '') + '" href="' + esc(Learn.href(id)) + '">' + esc(mname(id)) + '<small>' + (m ? m.hours + ' h' : '') + (st.satisfied ? ' · done' : '') + '</small></a>'; }).join('') + '</div></section>';
+    var keep = restore && restore.top;
+    page('home', h, { cls: 'rt-scr' });
+    var scr = $('#scr');
+    if (keep) scr.scrollTop = keep;
+    if (restore && restore.focus) { var f = scr.querySelector(restore.focus); if (f) f.focus(); }
+    function again(focus) { routeScreen({ top: scr.scrollTop, focus: focus }); }
+    scr.addEventListener('change', function (e) {
+      var t = e.target;
+      if (t.name === 'rtRoute') { Learn.setPref({ id: t.value }); again('input[name="rtRoute"][value="' + t.value + '"]'); }
+      else if (t.name === 'rtHours') { Learn.setPref({ hours: +t.value }); again('input[name="rtHours"][value="' + t.value + '"]'); }
+      else if (t.id === 'rtLang') { Learn.setPref({ lang: t.value }); again('#rtLang'); }
+      else if (t.getAttribute && t.getAttribute('data-proj')) {
+        var pid = t.getAttribute('data-proj'), i = t.getAttribute('data-i');
+        Learn.setCriterion(pid, +i, t.checked);
+        again('input[data-proj="' + pid + '"][data-i="' + i + '"]');
+      }
+    });
+    scr.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('[data-proj-link]');
+      if (!a) return;
+      e.preventDefault();
+      var box = $('#proj-' + a.getAttribute('data-proj-link'));
+      if (box) { box.scrollIntoView({ block: 'start' }); box.focus(); }
+    });
+  }
   function welcomeView() {
     page('home', '<div class="welcome"><img class="welcome-icon" src="app/icon.png" alt="Interview Mastery"><span class="kick">A little curiosity. A world of possibility.</span><h1>Learn it.<br>Play it.<br>Make it yours.</h1><p class="muted">Explore ' + TRACKS.length + ' tracks and ' + Games.list.length + ' concept games. Understand an idea, try it yourself, then collect the marks of your journey.</p>' + BIT + '<p class="speech">I’m Bit. Let’s turn one small step into a habit.</p><button class="b3" id="beginJourney">LET’S EXPLORE ↗</button><a class="b3 ghost" href="login.html?next=index.html">SIGN IN TO SYNC PROGRESS</a><p class="muted sm">You can start without an account. Your progress stays on this device until you sign in.</p></div>', { noTabs: true });
     $('#beginJourney').addEventListener('click', function () { lsSet('imastery.welcomed', true); Sound.play('open'); location.hash = '#home'; });
@@ -339,6 +414,7 @@
       case 'search': return searchView();
       case 'expedition': return expeditionView();
       case 'progress': return progressView();
+      case 'route': return routeScreen();
       case 'welcome': return welcomeView();
       case 'module': return moduleView(p[1]);
       case 'arena': return arena(p[1], p[2]);

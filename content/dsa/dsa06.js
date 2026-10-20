@@ -324,7 +324,7 @@ print(count_pairs_less([5, 1, 3], 100))       # 3 (every pair)`
         example: `${H.arr([2, 7, 11, 15], { label: 'a', hl: { 0: 'p', 1: 'p' } })}<p>target = ${H.c('p', '9')} → Output: ${H.c('p', '[0, 1]')}</p><p><b>Why:</b> ${H.c('p', 'a[0] + a[1] = 2 + 7 = 9')}. No other pair works (2 + 11 = 13, 2 + 15 = 17, 7 + 11 = 18, ...).</p>`,
         brute: {
           why: `<p>Try every pair <code>(i, j)</code> with two nested loops. That is about N<sup>2</sup>/2 = 5·10<sup>9</sup> checks for N = 10<sup>5</sup> → far too slow. The wasted work: we never use the fact that the array is <b>sorted</b>. Once <code>a[i] + a[j]</code> is already too big, every later <code>j</code> is even bigger, yet the brute force still checks them.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int[] brute(int[] a, int target) {
                 for (int i = 0; i < a.length; i++) {
                     for (int j = i + 1; j < a.length; j++) {
@@ -332,7 +332,29 @@ print(count_pairs_less([5, 1, 3], 100))       # 3 (every pair)`
                     }
                 }
                 return new int[]{-1, -1};
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def two_sum_sorted(a, target):
+    for i in range(len(a)):
+        for j in range(i + 1, len(a)):
+            if a[i] + a[j] == target:
+                return [i, j]
+    return [-1, -1]` }, { lang: 'js', code: String.raw`
+function twoSumSorted(a, target) {
+  for (let i = 0; i < a.length; i++) {
+    for (let j = i + 1; j < a.length; j++) {
+      if (a[i] + a[j] === target) return [i, j];
+    }
+  }
+  return [-1, -1];
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> twoSumSorted(const vector<int>& a, int target) {
+    for (int i = 0; i < (int) a.size(); i++) {
+        for (int j = i + 1; j < (int) a.size(); j++) {
+            if ((long long) a[i] + a[j] == target) return {i, j};
+        }
+    }
+    return {-1, -1};
+}` }] }
         },
         mcq: {
           q: `Sorted array, L points to 3 and R points to 17, target = 14. The sum is 20. What should you do?`,
@@ -803,7 +825,7 @@ print(three_sum([0, 0, 0, 0]))            # [[0, 0, 0]]`
         example: `${H.arr([-1, 0, 1, 2, -1, -4], { label: 'nums' })}${H.arr([-4, -1, -1, 0, 1, 2], { label: 'sorted', hl: { 1: 'p', 2: 'p', 3: 'g', 4: 'g', 5: 'p' } })}<p>Output: ${H.c('p', '[[-1, -1, 2], [-1, 0, 1]]')}</p><p><b>Why:</b> ${H.c('p', '-1 + -1 + 2 = 0')} and ${H.c('g', '-1 + 0 + 1 = 0')}. The second -1 would find <code>[-1, 0, 1]</code> again, so it is skipped — we return each triplet only once.</p>`,
         brute: {
           why: `<p>Three nested loops try every trio: N<sup>3</sup>/6 ≈ 4.5·10<sup>9</sup> for N = 3000 → TLE. On top of that, removing duplicate triplets needs a hash set of sorted lists. The wasted work: for a fixed pair (i, j) we scan every k, although in a sorted array the right partner can be found by walking pointers.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             List<List<Integer>> brute(int[] nums) {
                 Set<List<Integer>> seen = new HashSet<>();
                 int n = nums.length;
@@ -816,7 +838,42 @@ print(three_sum([0, 0, 0, 0]))            # [[0, 0, 0]]`
                                 seen.add(t);
                             }
                 return new ArrayList<>(seen);
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def three_sum(nums):
+    seen = set()
+    n = len(nums)
+    for i in range(n):
+        for j in range(i + 1, n):
+            for k in range(j + 1, n):
+                if nums[i] + nums[j] + nums[k] == 0:
+                    t = tuple(sorted((nums[i], nums[j], nums[k])))    # same trio in any order looks the same
+                    seen.add(t)
+    return [list(t) for t in seen]` }, { lang: 'js', code: String.raw`
+function threeSum(nums) {
+  const seen = new Map();
+  const n = nums.length;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++)
+      for (let k = j + 1; k < n; k++)
+        if (nums[i] + nums[j] + nums[k] === 0) {
+          const t = [nums[i], nums[j], nums[k]].sort((x, y) => x - y);   // same trio in any order looks the same
+          seen.set(t.join(','), t);
+        }
+  return [...seen.values()];
+}` }, { lang: 'cpp', code: String.raw`
+vector<vector<int>> threeSum(vector<int> nums) {
+    set<vector<int>> seen;
+    int n = nums.size();
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j < n; j++)
+            for (int k = j + 1; k < n; k++)
+                if (nums[i] + nums[j] + nums[k] == 0) {
+                    vector<int> t = {nums[i], nums[j], nums[k]};
+                    sort(t.begin(), t.end());          // same trio in any order looks the same
+                    seen.insert(t);
+                }
+    return vector<vector<int>>(seen.begin(), seen.end());
+}` }] }
         },
         mcq: {
           q: `After sorting, you fix <code>a[i] = -3</code>. What must the other two numbers (to the right of i) add up to?`,
@@ -1190,14 +1247,34 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
         example: `${H.arr([1, 8, 6, 2, 5, 4, 8, 3, 7], { label: 'height', hl: { 1: 'p', 8: 'p', 2: 'b', 3: 'b', 4: 'b', 5: 'b', 6: 'b', 7: 'b' } })}<p>Output: ${H.c('p', '49')}</p><p><b>Why:</b> walls at index ${H.c('p', '1 (height 8)')} and ${H.c('p', '8 (height 7)')}. The water can rise only to the shorter wall, 7, and the width is 8 - 1 = 7 → 7 × 7 = 49. Walls 1 and 6 (both 8) give only 8 × 5 = 40.</p>`,
         brute: {
           why: `<p>Compute the area for every pair <code>(i, j)</code>: N(N-1)/2 ≈ 5·10<sup>9</sup> pairs for N = 10<sup>5</sup> → TLE. The wasted work: once we know the shorter wall of a pair, every narrower pair that keeps that wall is guaranteed to be worse, but brute force still measures them all.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int brute(int[] h) {
                 int best = 0;
                 for (int i = 0; i < h.length; i++)
                     for (int j = i + 1; j < h.length; j++)
                         best = Math.max(best, Math.min(h[i], h[j]) * (j - i));
                 return best;
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def max_area(height):
+    best = 0
+    for i in range(len(height)):
+        for j in range(i + 1, len(height)):
+            best = max(best, min(height[i], height[j]) * (j - i))
+    return best` }, { lang: 'js', code: String.raw`
+function maxArea(height) {
+  let best = 0;
+  for (let i = 0; i < height.length; i++)
+    for (let j = i + 1; j < height.length; j++)
+      best = Math.max(best, Math.min(height[i], height[j]) * (j - i));
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int maxArea(const vector<int>& height) {
+    int best = 0;
+    for (int i = 0; i < (int) height.size(); i++)
+        for (int j = i + 1; j < (int) height.size(); j++)
+            best = max(best, min(height[i], height[j]) * (j - i));
+    return best;
+}` }] }
         },
         mcq: {
           q: `L has height 3, R has height 9, width 6. Which pointer should move and why?`,
@@ -1644,8 +1721,8 @@ void moveZeroes(vector<int>& a) {
         constraints: `1 ≤ N ≤ 3·10<sup>4</sup>, -100 ≤ nums[i] ≤ 100, nums sorted`,
         example: `${H.arr([1, 1, 2, 3, 3], { label: 'nums', hl: { 1: 'r', 4: 'r' } })}<p>Output: ${H.c('p', 'k = 3')}, nums starts with ${H.c('g', '[1, 2, 3]')}</p><p><b>Why:</b> the values are 1, 2, 3; the ${H.c('r', 'red')} cells are repeats of the value right before them.</p>`,
         brute: {
-          why: `<p>Copy unique values into a new list (or a <code>TreeSet</code>) and copy them back — easy but uses O(N) extra memory, which the problem forbids. Another naive idea, "shift everything left each time you see a duplicate", costs O(N) per removal → O(N<sup>2</sup>). The waste: we move the same elements again and again.</p>`,
-          code: `
+          why: `<p>Copy unique values into a new list (or a sorted set: <code>TreeSet</code> / <code>sorted(set(...))</code> / <code>std::set</code>) and copy them back — easy but uses O(N) extra memory, which the problem forbids. Another naive idea, "shift everything left each time you see a duplicate", costs O(N) per removal → O(N<sup>2</sup>). The waste: we move the same elements again and again.</p>`,
+          code: { lang: 'java', code: `
             int brute(int[] nums) {
                 List<Integer> uniq = new ArrayList<>();
                 for (int x : nums) {
@@ -1653,7 +1730,31 @@ void moveZeroes(vector<int>& a) {
                 }
                 for (int i = 0; i < uniq.size(); i++) nums[i] = uniq.get(i);
                 return uniq.size();
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def remove_duplicates(nums):
+    uniq = []
+    for x in nums:
+        if not uniq or uniq[-1] != x:
+            uniq.append(x)                  # extra O(N) memory
+    for i in range(len(uniq)):
+        nums[i] = uniq[i]
+    return len(uniq)` }, { lang: 'js', code: String.raw`
+function removeDuplicates(nums) {
+  const uniq = [];
+  for (const x of nums) {
+    if (uniq.length === 0 || uniq[uniq.length - 1] !== x) uniq.push(x);   // extra O(N) memory
+  }
+  for (let i = 0; i < uniq.length; i++) nums[i] = uniq[i];
+  return uniq.length;
+}` }, { lang: 'cpp', code: String.raw`
+int removeDuplicates(vector<int>& nums) {
+    vector<int> uniq;
+    for (int x : nums) {
+        if (uniq.empty() || uniq.back() != x) uniq.push_back(x);   // extra O(N) memory
+    }
+    for (int i = 0; i < (int) uniq.size(); i++) nums[i] = uniq[i];
+    return uniq.size();
+}` }] }
         },
         mcq: {
           q: `slow = 2 and a = [1, 2, 3, 3, 4]. fast = 4 reads the value 4. What happens?`,
@@ -1751,7 +1852,7 @@ public:
         example: `${H.arr([0, 1, 0, 3, 12], { label: 'nums', hl: { 0: 'r', 2: 'r' } })}${H.arr([1, 3, 12, 0, 0], { label: 'output', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'm', 4: 'm' } })}<p><b>Why:</b> the non-zeros ${H.c('g', '1, 3, 12')} keep their order (1 before 3 before 12) and the two ${H.c('r', 'zeros')} end up at the back.</p>`,
         brute: {
           why: `<p>Each time you see a 0, bubble it to the end by swapping with its right neighbour step by step. A zero near the front walks N cells, and there can be N zeros → O(N<sup>2</sup>). Or copy non-zeros into a new array → O(N) extra memory (not allowed). The waste: zeros are moved many times instead of the non-zeros being placed once.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             void brute(int[] a) {
                 int n = a.length;
                 for (int pass = 0; pass < n; pass++) {          // repeat like bubble sort
@@ -1761,7 +1862,33 @@ public:
                         }
                     }
                 }
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def move_zeroes(nums):
+    n = len(nums)
+    for _ in range(n):                           # repeat like bubble sort
+        for i in range(n - 1):
+            if nums[i] == 0 and nums[i + 1] != 0:    # push the zero one step right
+                nums[i], nums[i + 1] = nums[i + 1], nums[i]` }, { lang: 'js', code: String.raw`
+function moveZeroes(nums) {
+  const n = nums.length;
+  for (let pass = 0; pass < n; pass++) {         // repeat like bubble sort
+    for (let i = 0; i + 1 < n; i++) {
+      if (nums[i] === 0 && nums[i + 1] !== 0) {  // push the zero one step right
+        const t = nums[i]; nums[i] = nums[i + 1]; nums[i + 1] = t;
+      }
+    }
+  }
+}` }, { lang: 'cpp', code: String.raw`
+void moveZeroes(vector<int>& nums) {
+    int n = nums.size();
+    for (int pass = 0; pass < n; pass++) {          // repeat like bubble sort
+        for (int i = 0; i + 1 < n; i++) {
+            if (nums[i] == 0 && nums[i + 1] != 0) { // push the zero one step right
+                swap(nums[i], nums[i + 1]);
+            }
+        }
+    }
+}` }] }
         },
         mcq: {
           q: `Why do we <b>swap</b> a[slow] and a[fast] instead of just writing a[slow] = a[fast]?`,
@@ -2152,7 +2279,7 @@ int findPairsHash(const vector<int>& nums, int k) {
         example: `${H.arr([3, 1, 4, 1, 5], { label: 'nums' })}<p>k = 2 → Output: ${H.c('p', '2')}</p><p><b>Why:</b> the pairs are ${H.c('g', '(1, 3)')} and ${H.c('g', '(3, 5)')}. There are two 1s, but (1, 3) is the same pair of values, so it counts once. (4 has no partner 2 or 6.)</p>`,
         brute: {
           why: `<p>Check every pair <code>(i, j)</code> and put matching value-pairs into a hash set to remove repeats: N<sup>2</sup>/2 = 5·10<sup>7</sup> checks for N = 10<sup>4</sup> — borderline, and hopeless at 10<sup>5</sup>. The waste: once the array is sorted, for a fixed <code>a[i]</code> the matching partner can only be further right, and later <code>i</code>s need partners even further right — so <code>j</code> never has to go back.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int brute(int[] nums, int k) {
                 Set<Long> seen = new HashSet<>();                 // encode pair (x, y) as one long
                 for (int i = 0; i < nums.length; i++)
@@ -2160,7 +2287,30 @@ int findPairsHash(const vector<int>& nums, int k) {
                         if (i != j && (long) nums[j] - nums[i] == k)
                             seen.add((long) nums[i] * 100_000_000L + nums[j]);
                 return seen.size();
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def find_pairs(nums, k):
+    seen = set()                                # remember each pair (x, y)
+    for i in range(len(nums)):
+        for j in range(len(nums)):
+            if i != j and nums[j] - nums[i] == k:
+                seen.add((nums[i], nums[j]))
+    return len(seen)` }, { lang: 'js', code: String.raw`
+function findPairs(nums, k) {
+  const seen = new Set();                       // remember each pair (x, y)
+  for (let i = 0; i < nums.length; i++)
+    for (let j = 0; j < nums.length; j++)
+      if (i !== j && nums[j] - nums[i] === k)
+        seen.add(nums[i] + ',' + nums[j]);
+  return seen.size;
+}` }, { lang: 'cpp', code: String.raw`
+int findPairs(vector<int> nums, int k) {
+    set<pair<int, int>> seen;                   // remember each pair (x, y)
+    for (int i = 0; i < (int) nums.size(); i++)
+        for (int j = 0; j < (int) nums.size(); j++)
+            if (i != j && (long long) nums[j] - nums[i] == k)
+                seen.insert({nums[i], nums[j]});
+    return seen.size();
+}` }] }
         },
         mcq: {
           q: `Why not put L at the start and R at the end like in 2-Sum?`,
@@ -2539,7 +2689,7 @@ print(max_vowels("leetcode", 3))    # 2`
         example: `${H.arr([2, 1, 5, 1, 3, 2], { label: 'a', hl: { 2: 'p', 3: 'p', 4: 'p' } })}<p>K = 3 → Output: ${H.c('p', '9')}</p><p><b>Why:</b> the windows of size 3 are [2,1,5] = 8, [1,5,1] = 7, ${H.c('p', '[5,1,3] = 9')}, [1,3,2] = 6. The largest is 9.</p>`,
         brute: {
           why: `<p>For each of the N - K + 1 starting points, add up K numbers: O(N·K). With N = 10<sup>5</sup> and K = 5·10<sup>4</sup> that is 2.5·10<sup>9</sup> additions → TLE. The waste: windows that start one step apart share K - 1 numbers, and we keep adding those same numbers again.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             long brute(int[] a, int k) {
                 long best = Long.MIN_VALUE;
                 for (int s = 0; s + k <= a.length; s++) {
@@ -2548,7 +2698,33 @@ print(max_vowels("leetcode", 3))    # 2`
                     best = Math.max(best, sum);
                 }
                 return best;
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def max_sum_subarray_of_size_k(a, k):
+    best = float('-inf')
+    for s in range(len(a) - k + 1):
+        total = 0
+        for j in range(s, s + k):
+            total += a[j]              # re-adds the overlap every time
+        best = max(best, total)
+    return best` }, { lang: 'js', code: String.raw`
+function maxSumSubarrayOfSizeK(a, k) {
+  let best = -Infinity;
+  for (let s = 0; s + k <= a.length; s++) {
+    let sum = 0;
+    for (let j = s; j < s + k; j++) sum += a[j];   // re-adds the overlap every time
+    best = Math.max(best, sum);
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+long long maxSumSubarrayOfSizeK(const vector<int>& a, int k) {
+    long long best = LLONG_MIN;
+    for (int s = 0; s + k <= (int) a.size(); s++) {
+        long long sum = 0;
+        for (int j = s; j < s + k; j++) sum += a[j];   // re-adds the overlap every time
+        best = max(best, sum);
+    }
+    return best;
+}` }] }
         },
         mcq: {
           q: `The window [4, 7, 1] has sum 12. It slides one step right and 6 enters. What is the new sum?`,
@@ -3013,7 +3189,7 @@ int longestGood(const vector<int>& a, long long limit) {
         example: `${H.arr([2, 3, 1, 2, 4, 3], { label: 'a', hl: { 4: 'p', 5: 'p' } })}<p>K = 7 → Output: ${H.c('p', '2')}</p><p><b>Why:</b> ${H.c('p', '[4, 3]')} sums to 7 ≥ 7 with only 2 elements. No single element reaches 7 (the biggest is 4), so length 1 is impossible.</p>`,
         brute: {
           why: `<p>For every start <code>i</code>, extend <code>j</code> until the sum reaches K and record <code>j - i + 1</code>. Worst case O(N<sup>2</sup>) = 10<sup>10</sup> for N = 10<sup>5</sup>. The waste: when we move to start <code>i + 1</code>, we throw away the sum we built and re-add almost the same elements; we also re-scan positions <code>j</code> we already know were not enough.</p>`,
-          code: `
+          code: { lang: 'java', code: `
             int brute(int[] a, int k) {
                 int best = Integer.MAX_VALUE;
                 for (int i = 0; i < a.length; i++) {
@@ -3027,7 +3203,45 @@ int longestGood(const vector<int>& a, long long limit) {
                     }
                 }
                 return best == Integer.MAX_VALUE ? 0 : best;
-            }`
+            }`, alt: [{ lang: 'python', code: String.raw`
+def min_sub_array_len(k, a):
+    best = float('inf')
+    for i in range(len(a)):
+        total = 0
+        for j in range(i, len(a)):
+            total += a[j]
+            if total >= k:                        # first time it's enough for this start
+                best = min(best, j - i + 1)
+                break                             # longer windows from i are worse
+    return 0 if best == float('inf') else best` }, { lang: 'js', code: String.raw`
+function minSubArrayLen(k, a) {
+  let best = Infinity;
+  for (let i = 0; i < a.length; i++) {
+    let sum = 0;
+    for (let j = i; j < a.length; j++) {
+      sum += a[j];
+      if (sum >= k) {                             // first time it's enough for this start
+        best = Math.min(best, j - i + 1);
+        break;                                    // longer windows from i are worse
+      }
+    }
+  }
+  return best === Infinity ? 0 : best;
+}` }, { lang: 'cpp', code: String.raw`
+int minSubArrayLen(int k, const vector<int>& a) {
+    int best = INT_MAX;
+    for (int i = 0; i < (int) a.size(); i++) {
+        long long sum = 0;
+        for (int j = i; j < (int) a.size(); j++) {
+            sum += a[j];
+            if (sum >= k) {                       // first time it's enough for this start
+                best = min(best, j - i + 1);
+                break;                            // longer windows from i are worse
+            }
+        }
+    }
+    return best == INT_MAX ? 0 : best;
+}` }] }
         },
         mcq: {
           q: `Window a[L..R] already has sum ≥ K. Why is it safe to remove a[L] and never look at windows starting at L again?`,
@@ -3337,15 +3551,28 @@ public:
     constraints: `1 ≤ s.length ≤ 2·10<sup>5</sup>, printable ASCII characters`,
     example: `<p>s = "${H.c('g', 'A')} man, a plan, a canal: Panam${H.c('g', 'a')}" → ${H.c('p', 'true')}</p><p><b>Why:</b> keeping only letters/digits and lowercasing gives "amanaplanacanalpanama", which mirrors itself. s = "race a car" → "raceacar" → ${H.c('r', 'false')} ('e' vs 'a' in the middle).</p>`,
     brute: {
-      why: `<p>Build a cleaned copy with a <code>StringBuilder</code>, reverse it, compare. That is O(N) time but O(N) extra memory — two extra strings of up to 2·10<sup>5</sup> characters. The waste: we copy everything just to compare characters we could read in place.</p>`,
-      code: `
+      why: `<p>Build a cleaned copy with a string builder (<code>StringBuilder</code> / a list joined at the end / <code>std::string</code>), reverse it, compare. That is O(N) time but O(N) extra memory — two extra strings of up to 2·10<sup>5</sup> characters. The waste: we copy everything just to compare characters we could read in place.</p>`,
+      code: { lang: 'java', code: `
         boolean brute(String s) {
             StringBuilder sb = new StringBuilder();
             for (char c : s.toCharArray())
                 if (Character.isLetterOrDigit(c)) sb.append(Character.toLowerCase(c));
             String clean = sb.toString();
             return clean.equals(sb.reverse().toString());   // extra O(N) memory
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def is_palindrome(s):
+    clean = "".join(c.lower() for c in s if c.isalnum())
+    return clean == clean[::-1]          # extra O(N) memory` }, { lang: 'js', code: String.raw`
+function isPalindrome(s) {
+  const clean = s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return clean === clean.split('').reverse().join('');   // extra O(N) memory
+}` }, { lang: 'cpp', code: String.raw`
+bool isPalindrome(const string& s) {
+    string clean;
+    for (char c : s)
+        if (isalnum((unsigned char) c)) clean += (char) tolower((unsigned char) c);
+    return clean == string(clean.rbegin(), clean.rend());   // extra O(N) memory
+}` }] }
     },
     mcq: {
       q: `L points to ',' and R points to 'a'. What should happen?`,
@@ -3445,13 +3672,28 @@ public:
     example: `${H.arr([-4, -1, 0, 3, 10], { label: 'nums', hl: { 0: 'y', 4: 'y' } })}${H.arr([0, 1, 9, 16, 100], { label: 'output', hl: { 4: 'p' } })}<p><b>Why:</b> squaring makes -4 bigger than 3, so the order breaks. But the <b>biggest</b> square is always at one of the two <b>ends</b> (most negative or most positive) — here ${H.c('p', '10² = 100')}.</p>`,
     brute: {
       why: `<p>Square everything, then sort: O(N log N). Correct, but it ignores that the input is already sorted: the squares form a "valley" (decreasing, then increasing) and two sorted halves can be merged in O(N).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[] brute(int[] nums) {
             int[] out = new int[nums.length];
             for (int i = 0; i < nums.length; i++) out[i] = nums[i] * nums[i];
             Arrays.sort(out);                     // O(N log N)
             return out;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def sorted_squares(nums):
+    out = [x * x for x in nums]
+    out.sort()                      # O(N log N)
+    return out` }, { lang: 'js', code: String.raw`
+function sortedSquares(nums) {
+  const out = nums.map((x) => x * x);
+  out.sort((a, b) => a - b);        // O(N log N)
+  return out;
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> sortedSquares(const vector<int>& nums) {
+    vector<int> out(nums.size());
+    for (int i = 0; i < (int) nums.size(); i++) out[i] = nums[i] * nums[i];
+    sort(out.begin(), out.end());   // O(N log N)
+    return out;
+}` }] }
     },
     mcq: {
       q: `Where is the LARGEST square of a sorted array with negatives?`,
@@ -3548,7 +3790,7 @@ public:
     example: `${H.arr([1, 12, -5, -6, 50, 3], { label: 'nums', hl: { 1: 'p', 2: 'p', 3: 'p', 4: 'p' } })}<p>k = 4 → ${H.c('p', '12.75')}</p><p><b>Why:</b> window sums are 2, ${H.c('p', '51')}, 42; the best is 51 and 51 / 4 = 12.75.</p>`,
     brute: {
       why: `<p>For each of the N - k + 1 starts, add k numbers: O(N·k), up to 2.5·10<sup>9</sup> operations. Neighbouring windows share k - 1 numbers that get re-added every time.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         double brute(int[] nums, int k) {
             double best = -Double.MAX_VALUE;
             for (int s = 0; s + k <= nums.length; s++) {
@@ -3557,11 +3799,37 @@ public:
                 best = Math.max(best, (double) sum / k);
             }
             return best;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def find_max_average(nums, k):
+    best = float('-inf')
+    for s in range(len(nums) - k + 1):
+        total = 0
+        for j in range(s, s + k):
+            total += nums[j]
+        best = max(best, total / k)
+    return best` }, { lang: 'js', code: String.raw`
+function findMaxAverage(nums, k) {
+  let best = -Infinity;
+  for (let s = 0; s + k <= nums.length; s++) {
+    let sum = 0;
+    for (let j = s; j < s + k; j++) sum += nums[j];
+    best = Math.max(best, sum / k);
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+double findMaxAverage(const vector<int>& nums, int k) {
+    double best = -DBL_MAX;
+    for (int s = 0; s + k <= (int) nums.size(); s++) {
+        long long sum = 0;
+        for (int j = s; j < s + k; j++) sum += nums[j];
+        best = max(best, (double) sum / k);
+    }
+    return best;
+}` }] }
     },
     mcq: {
       q: `Why compare window SUMS instead of averages inside the loop?`,
-      options: [`Sums are always positive`, `All windows have the same size k, so the largest sum is the largest average — divide once at the end`, `Averages cannot be compared`, `It is required by Java`],
+      options: [`Sums are always positive`, `All windows have the same size k, so the largest sum is the largest average — divide once at the end`, `Averages cannot be compared`, `The language requires it`],
       answer: 1,
       explain: `Dividing every window by the same k does not change which one is largest; doing it once avoids floating-point work and rounding noise.`
     },
@@ -3643,11 +3911,23 @@ public:
     example: `<p>nums1 = [1, 2, 3, ${H.c('m', '0, 0, 0')}], m = 3; nums2 = [2, 5, 6], n = 3 → ${H.c('p', '[1, 2, 2, 3, 5, 6]')}</p><p><b>Why fill from the back?</b> The empty cells are at the <b>end</b>. Placing the <b>largest</b> remaining value there never overwrites a value of nums1 we still need to read.</p>`,
     brute: {
       why: `<p>Copy nums2 into the empty tail and call the library sort (<code>Arrays.sort</code>, <code>sort()</code>, <code>std::sort</code>): O((m + n) log(m + n)). It works but ignores that both inputs are already sorted. Merging from the <b>front</b> in place would overwrite unread values of nums1 or force O(N) shifts per insert.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         void brute(int[] nums1, int m, int[] nums2, int n) {
             for (int i = 0; i < n; i++) nums1[m + i] = nums2[i];
             Arrays.sort(nums1);
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def merge(nums1, m, nums2, n):
+    for i in range(n):
+        nums1[m + i] = nums2[i]
+    nums1.sort()` }, { lang: 'js', code: String.raw`
+function merge(nums1, m, nums2, n) {
+  for (let i = 0; i < n; i++) nums1[m + i] = nums2[i];
+  nums1.sort((a, b) => a - b);
+}` }, { lang: 'cpp', code: String.raw`
+void merge(vector<int>& nums1, int m, const vector<int>& nums2, int n) {
+    for (int i = 0; i < n; i++) nums1[m + i] = nums2[i];
+    sort(nums1.begin(), nums1.end());
+}` }] }
     },
     mcq: {
       q: `Why does merging from the BACK not overwrite unread values?`,
@@ -3736,7 +4016,7 @@ public:
     example: `<p>nums = [-1, 2, 1, -4], target = 1 → ${H.c('p', '2')}</p><p><b>Why:</b> ${H.c('p', '-1 + 2 + 1 = 2')} is 1 away from the target; every other triple is further (e.g. -4 + 1 + 2 = -1 is 2 away).</p>`,
     brute: {
       why: `<p>Three nested loops over all triples: N<sup>3</sup>/6 ≈ 2·10<sup>7</sup> for N = 500 — passes here but is the textbook "you missed the pattern" answer. The waste: for fixed i and L, scanning every R even though, in sorted order, the sum moves monotonically with R.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[] nums, int target) {
             int best = nums[0] + nums[1] + nums[2];
             for (int i = 0; i < nums.length; i++)
@@ -3746,7 +4026,36 @@ public:
                         if (Math.abs(s - target) < Math.abs(best - target)) best = s;
                     }
             return best;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def three_sum_closest(nums, target):
+    best = nums[0] + nums[1] + nums[2]
+    for i in range(len(nums)):
+        for j in range(i + 1, len(nums)):
+            for k in range(j + 1, len(nums)):
+                s = nums[i] + nums[j] + nums[k]
+                if abs(s - target) < abs(best - target):
+                    best = s
+    return best` }, { lang: 'js', code: String.raw`
+function threeSumClosest(nums, target) {
+  let best = nums[0] + nums[1] + nums[2];
+  for (let i = 0; i < nums.length; i++)
+    for (let j = i + 1; j < nums.length; j++)
+      for (let k = j + 1; k < nums.length; k++) {
+        const s = nums[i] + nums[j] + nums[k];
+        if (Math.abs(s - target) < Math.abs(best - target)) best = s;
+      }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int threeSumClosest(vector<int> nums, int target) {
+    int best = nums[0] + nums[1] + nums[2];
+    for (int i = 0; i < (int) nums.size(); i++)
+        for (int j = i + 1; j < (int) nums.size(); j++)
+            for (int k = j + 1; k < (int) nums.size(); k++) {
+                int s = nums[i] + nums[j] + nums[k];
+                if (abs(s - target) < abs(best - target)) best = s;
+            }
+    return best;
+}` }] }
     },
     mcq: {
       q: `Sorted, i fixed, current sum is 7 and target is 10. Which pointer moves?`,
@@ -3865,14 +4174,37 @@ public:
     example: `${H.arr([2, 0, 2, 1, 1, 0], { label: 'nums' })}${H.arr([0, 0, 1, 1, 2, 2], { label: 'output', hl: { 0: 'r', 1: 'r', 4: 'b', 5: 'b' } })}<p><b>Why:</b> three zones grow: ${H.c('r', '0s')} at the front, ${H.c('b', '2s')} at the back, 1s naturally end in the middle.</p>`,
     brute: {
       why: `<p>Counting sort: count 0s, 1s and 2s, then overwrite — O(N) but <b>two passes</b>. A library sort is O(N log N). The one-pass version keeps three regions with three pointers.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         void brute(int[] nums) {
             int[] cnt = new int[3];
             for (int x : nums) cnt[x]++;                 // pass 1: count
             int w = 0;
             for (int c = 0; c < 3; c++)                  // pass 2: rewrite
                 for (int t = 0; t < cnt[c]; t++) nums[w++] = c;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def sort_colors(nums):
+    cnt = [0] * 3
+    for x in nums:
+        cnt[x] += 1                         # pass 1: count
+    w = 0
+    for c in range(3):                      # pass 2: rewrite
+        for _ in range(cnt[c]):
+            nums[w] = c
+            w += 1` }, { lang: 'js', code: String.raw`
+function sortColors(nums) {
+  const cnt = [0, 0, 0];
+  for (const x of nums) cnt[x]++;           // pass 1: count
+  let w = 0;
+  for (let c = 0; c < 3; c++)               // pass 2: rewrite
+    for (let t = 0; t < cnt[c]; t++) nums[w++] = c;
+}` }, { lang: 'cpp', code: String.raw`
+void sortColors(vector<int>& nums) {
+    int cnt[3] = {0, 0, 0};
+    for (int x : nums) cnt[x]++;            // pass 1: count
+    int w = 0;
+    for (int c = 0; c < 3; c++)             // pass 2: rewrite
+        for (int t = 0; t < cnt[c]; t++) nums[w++] = c;
+}` }] }
     },
     mcq: {
       q: `mid sees a 2 and swaps it with nums[high]. Why do we NOT move mid forward afterwards?`,
@@ -3969,7 +4301,7 @@ public:
     example: `${H.arr([0, 0, 1, 1, 1, 1, 2, 3, 3], { label: 'nums', hl: { 4: 'r', 5: 'r' } })}<p>Output ${H.c('p', 'k = 7')}, nums starts with ${H.c('g', '[0, 0, 1, 1, 2, 3, 3]')}</p><p><b>Why:</b> the third and fourth 1 (${H.c('r', 'red')}) would exceed two copies.</p>`,
     brute: {
       why: `<p>Count copies with a running counter and, on a third copy, shift the whole tail left: O(N) per removal → O(N<sup>2</sup>). The waste: elements are moved many times instead of being written once to their final slot.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[] nums) {
             int n = nums.length, i = 2;
             while (i < n) {
@@ -3981,7 +4313,41 @@ public:
                 }
             }
             return Math.min(n, nums.length);
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def remove_duplicates(nums):
+    n, i = len(nums), 2
+    while i < n:
+        if nums[i] == nums[i - 1] and nums[i] == nums[i - 2]:
+            for j in range(i, n - 1):
+                nums[j] = nums[j + 1]       # shift tail left
+            n -= 1
+        else:
+            i += 1
+    return min(n, len(nums))` }, { lang: 'js', code: String.raw`
+function removeDuplicates(nums) {
+  let n = nums.length, i = 2;
+  while (i < n) {
+    if (nums[i] === nums[i - 1] && nums[i] === nums[i - 2]) {
+      for (let j = i; j + 1 < n; j++) nums[j] = nums[j + 1];   // shift tail left
+      n--;
+    } else {
+      i++;
+    }
+  }
+  return Math.min(n, nums.length);
+}` }, { lang: 'cpp', code: String.raw`
+int removeDuplicates(vector<int>& nums) {
+    int n = nums.size(), i = 2;
+    while (i < n) {
+        if (nums[i] == nums[i - 1] && nums[i] == nums[i - 2]) {
+            for (int j = i; j + 1 < n; j++) nums[j] = nums[j + 1];   // shift tail left
+            n--;
+        } else {
+            i++;
+        }
+    }
+    return min(n, (int) nums.size());
+}` }] }
     },
     mcq: {
       q: `With slow = next free slot, which comparison decides whether nums[fast] is a third copy?`,
@@ -4062,7 +4428,7 @@ public:
     example: `${H.arr([1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0], { label: 'nums', hl: { 5: 'y', 6: 'p', 7: 'p', 8: 'p', 9: 'p', 10: 'y' } })}<p>k = 2 → ${H.c('p', '6')}</p><p><b>Why:</b> flip the zeros at index 5 and 10 → indices 5..10 are all ones (length 6). Rephrased: the longest window containing <b>at most 2 zeros</b>.</p>`,
     brute: {
       why: `<p>For every start, extend while the zero count ≤ k: O(N<sup>2</sup>) = 10<sup>10</sup> in the worst case. The waste: when the start moves by one, we re-scan almost the same window.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[] nums, int k) {
             int best = 0;
             for (int i = 0; i < nums.length; i++) {
@@ -4074,7 +4440,42 @@ public:
                 }
             }
             return best;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def longest_ones(nums, k):
+    best = 0
+    for i in range(len(nums)):
+        zeros = 0
+        for j in range(i, len(nums)):
+            if nums[j] == 0:
+                zeros += 1
+            if zeros > k:
+                break
+            best = max(best, j - i + 1)
+    return best` }, { lang: 'js', code: String.raw`
+function longestOnes(nums, k) {
+  let best = 0;
+  for (let i = 0; i < nums.length; i++) {
+    let zeros = 0;
+    for (let j = i; j < nums.length; j++) {
+      if (nums[j] === 0) zeros++;
+      if (zeros > k) break;
+      best = Math.max(best, j - i + 1);
+    }
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int longestOnes(const vector<int>& nums, int k) {
+    int best = 0;
+    for (int i = 0; i < (int) nums.size(); i++) {
+        int zeros = 0;
+        for (int j = i; j < (int) nums.size(); j++) {
+            if (nums[j] == 0) zeros++;
+            if (zeros > k) break;
+            best = max(best, j - i + 1);
+        }
+    }
+    return best;
+}` }] }
     },
     mcq: {
       q: `Which template flavour fits "longest window with at most k zeros"?`,
@@ -4171,7 +4572,7 @@ public:
     example: `${H.arr([10, 5, 2, 6], { label: 'nums' })}<p>k = 100 → ${H.c('p', '8')}</p><p><b>Why:</b> [10], [5], [2], [6], [10,5], [5,2], [2,6], [5,2,6] all have product &lt; 100; ${H.c('r', '[10,5,2] = 100')} is not strictly less.</p>`,
     brute: {
       why: `<p>For each start, multiply forward until the product reaches k: O(N<sup>2</sup>) ≈ 9·10<sup>8</sup> for N = 3·10<sup>4</sup> in the worst case (all ones). The waste: products of overlapping windows are rebuilt from scratch.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[] nums, int k) {
             int count = 0;
             for (int i = 0; i < nums.length; i++) {
@@ -4183,7 +4584,41 @@ public:
                 }
             }
             return count;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def num_subarray_product_less_than_k(nums, k):
+    count = 0
+    for i in range(len(nums)):
+        prod = 1
+        for j in range(i, len(nums)):
+            prod *= nums[j]
+            if prod >= k:
+                break                  # positives: product only grows
+            count += 1
+    return count` }, { lang: 'js', code: String.raw`
+function numSubarrayProductLessThanK(nums, k) {
+  let count = 0;
+  for (let i = 0; i < nums.length; i++) {
+    let prod = 1;
+    for (let j = i; j < nums.length; j++) {
+      prod *= nums[j];
+      if (prod >= k) break;      // positives: product only grows
+      count++;
+    }
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+int numSubarrayProductLessThanK(const vector<int>& nums, int k) {
+    int count = 0;
+    for (int i = 0; i < (int) nums.size(); i++) {
+        long long prod = 1;
+        for (int j = i; j < (int) nums.size(); j++) {
+            prod *= nums[j];
+            if (prod >= k) break;      // positives: product only grows
+            count++;
+        }
+    }
+    return count;
+}` }] }
     },
     mcq: {
       q: `After shrinking, the window is nums[L..R] with product &lt; k. How many NEW valid subarrays end at R?`,
@@ -4278,7 +4713,7 @@ public:
     example: `${H.arr([1, 2, 3, 4, 5, 6, 1], { label: 'cards', hl: { 0: 'm', 1: 'm', 2: 'm', 3: 'm', 4: 'g', 5: 'g', 6: 'g' } })}<p>k = 3 → ${H.c('p', '12')}</p><p><b>Why:</b> take ${H.c('g', '5, 6, 1')} from the right end. Equivalently, the cards you <b>leave</b> form one contiguous middle window of size N - k = 4; leaving the cheapest window ${H.c('m', '[1,2,3,4] = 10')} gives 22 - 10 = 12.</p>`,
     brute: {
       why: `<p>Recursion "take left or take right" explores 2<sup>k</sup> sequences — hopeless. Even the smarter "try every split: i from the left, k - i from the right, summing each time" is O(k<sup>2</sup>) without running sums. The insight: whichever cards you take, the rest is a contiguous window.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[] c, int k) {
             int n = c.length, best = 0;
             for (int left = 0; left <= k; left++) {          // take 'left' from front, k-left from back
@@ -4288,7 +4723,41 @@ public:
                 best = Math.max(best, sum);
             }
             return best;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def max_score(card_points, k):
+    c = card_points
+    n, best = len(c), 0
+    for left in range(k + 1):              # take 'left' from front, k-left from back
+        total = 0
+        for i in range(left):
+            total += c[i]
+        for i in range(k - left):
+            total += c[n - 1 - i]
+        best = max(best, total)
+    return best` }, { lang: 'js', code: String.raw`
+function maxScore(cardPoints, k) {
+  const c = cardPoints;
+  const n = c.length;
+  let best = 0;
+  for (let left = 0; left <= k; left++) {  // take 'left' from front, k-left from back
+    let sum = 0;
+    for (let i = 0; i < left; i++) sum += c[i];
+    for (let i = 0; i < k - left; i++) sum += c[n - 1 - i];
+    best = Math.max(best, sum);
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int maxScore(const vector<int>& cardPoints, int k) {
+    const vector<int>& c = cardPoints;
+    int n = c.size(), best = 0;
+    for (int left = 0; left <= k; left++) {    // take 'left' from front, k-left from back
+        int sum = 0;
+        for (int i = 0; i < left; i++) sum += c[i];
+        for (int i = 0; i < k - left; i++) sum += c[n - 1 - i];
+        best = max(best, sum);
+    }
+    return best;
+}` }] }
     },
     mcq: {
       q: `Taking k cards from the two ends is the same as…`,
@@ -4389,7 +4858,7 @@ public:
     example: `<p>people = [3, 2, 2, 1], limit = 3 → ${H.c('p', '3')}</p><p><b>Why:</b> sorted [1, 2, 2, 3]: ${H.c('g', '(1, 2)')} share a boat (3 ≤ 3), ${H.c('b', '(2)')} alone, ${H.c('b', '(3)')} alone. Nobody can pair with 3 (even 1 + 3 = 4 &gt; 3).</p>`,
     brute: {
       why: `<p>Try all ways to pair people (a matching problem): exponential. A simpler greedy "pair each person with the heaviest partner that fits" via repeated scanning is O(N<sup>2</sup>). Sorting + two pointers gives O(N log N).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[] people, int limit) {
             int n = people.length, boats = 0;
             boolean[] used = new boolean[n];
@@ -4409,7 +4878,65 @@ public:
                 boats++;
             }
             return boats;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def num_rescue_boats(people, limit):
+    n, boats = len(people), 0
+    used = [False] * n
+    idx = sorted(range(n), key=lambda i: -people[i])          # heaviest first
+    for a in range(n):
+        i = idx[a]
+        if used[i]:
+            continue
+        used[i] = True
+        best_j = -1
+        for b in range(a + 1, n):                             # heaviest partner that fits
+            j = idx[b]
+            if not used[j] and people[i] + people[j] <= limit:
+                best_j = j
+                break
+        if best_j >= 0:
+            used[best_j] = True
+        boats += 1
+    return boats` }, { lang: 'js', code: String.raw`
+function numRescueBoats(people, limit) {
+  const n = people.length;
+  let boats = 0;
+  const used = new Array(n).fill(false);
+  const idx = people.map((_, i) => i).sort((a, b) => people[b] - people[a]);   // heaviest first
+  for (let a = 0; a < n; a++) {
+    const i = idx[a];
+    if (used[i]) continue;
+    used[i] = true;
+    let bestJ = -1;
+    for (let b = a + 1; b < n; b++) {                         // heaviest partner that fits
+      const j = idx[b];
+      if (!used[j] && people[i] + people[j] <= limit) { bestJ = j; break; }
+    }
+    if (bestJ >= 0) used[bestJ] = true;
+    boats++;
+  }
+  return boats;
+}` }, { lang: 'cpp', code: String.raw`
+int numRescueBoats(vector<int> people, int limit) {
+    int n = people.size(), boats = 0;
+    vector<bool> used(n, false);
+    vector<int> idx(n);
+    iota(idx.begin(), idx.end(), 0);
+    sort(idx.begin(), idx.end(), [&](int a, int b) { return people[a] > people[b]; });   // heaviest first
+    for (int a = 0; a < n; a++) {
+        int i = idx[a];
+        if (used[i]) continue;
+        used[i] = true;
+        int bestJ = -1;
+        for (int b = a + 1; b < n; b++) {                     // heaviest partner that fits
+            int j = idx[b];
+            if (!used[j] && people[i] + people[j] <= limit) { bestJ = j; break; }
+        }
+        if (bestJ >= 0) used[bestJ] = true;
+        boats++;
+    }
+    return boats;
+}` }] }
     },
     mcq: {
       q: `The heaviest remaining person cannot share a boat with the lightest. What is the best move?`,
@@ -4501,7 +5028,7 @@ public:
     example: `${H.arr([1, 1, 2, 1, 1], { label: 'nums', hl: { 0: 'y', 1: 'y', 3: 'y', 4: 'y' } })}<p>k = 3 → ${H.c('p', '2')}</p><p><b>Why:</b> ${H.c('g', '[1,1,2,1]')} and ${H.c('g', '[1,2,1,1]')} contain exactly three odd numbers. Via the trick: atMost(3) = 14, atMost(2) = 12, 14 − 12 = 2.</p>`,
     brute: {
       why: `<p>Check every subarray, counting odds as you extend: O(N<sup>2</sup>) ≈ 2.5·10<sup>9</sup> for N = 5·10<sup>4</sup>. A window cannot count "exactly k" directly because a valid window can be extended by even numbers on both sides in many ways.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[] nums, int k) {
             int count = 0;
             for (int i = 0; i < nums.length; i++) {
@@ -4513,7 +5040,42 @@ public:
                 }
             }
             return count;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def number_of_subarrays(nums, k):
+    count = 0
+    for i in range(len(nums)):
+        odd = 0
+        for j in range(i, len(nums)):
+            odd += nums[j] & 1
+            if odd == k:
+                count += 1
+            elif odd > k:
+                break
+    return count` }, { lang: 'js', code: String.raw`
+function numberOfSubarrays(nums, k) {
+  let count = 0;
+  for (let i = 0; i < nums.length; i++) {
+    let odd = 0;
+    for (let j = i; j < nums.length; j++) {
+      odd += nums[j] & 1;
+      if (odd === k) count++;
+      else if (odd > k) break;
+    }
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+int numberOfSubarrays(const vector<int>& nums, int k) {
+    int count = 0;
+    for (int i = 0; i < (int) nums.size(); i++) {
+        int odd = 0;
+        for (int j = i; j < (int) nums.size(); j++) {
+            odd += nums[j] & 1;
+            if (odd == k) count++;
+            else if (odd > k) break;
+        }
+    }
+    return count;
+}` }] }
     },
     mcq: {
       q: `Why compute atMost(k) − atMost(k − 1) instead of counting "exactly k" with one window?`,
@@ -4623,7 +5185,7 @@ public:
     example: `${H.arr([4, 2, 0, 3, 2, 5], { label: 'height', hl: { 1: 'b', 2: 'b', 3: 'b', 4: 'b' } })}<p>Output ${H.c('p', '9')}</p><p><b>Why:</b> water above bar i = min(highest bar on its left, highest on its right) − height[i]. Bars 1..4 hold ${H.c('b', '2 + 4 + 1 + 2 = 9')} (the level is 4, capped by the left wall 4).</p>`,
     brute: {
       why: `<p>For every bar, scan left and right for the tallest bars: O(n<sup>2</sup>). The prefix-max / suffix-max arrays fix the time (O(n)) but cost O(n) memory. The waste in both: we compute full maxima on both sides, but only the <b>smaller</b> side matters.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[] h) {
             int n = h.length, water = 0;
             for (int i = 0; i < n; i++) {
@@ -4633,7 +5195,42 @@ public:
                 water += Math.min(lmax, rmax) - h[i];
             }
             return water;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+class Solution:
+    def trap(self, height):
+        h = height
+        n, water = len(h), 0
+        for i in range(n):
+            lmax = max(h[:i + 1])
+            rmax = max(h[i:])
+            water += min(lmax, rmax) - h[i]
+        return water` }, { lang: 'js', code: String.raw`
+function trap(height) {
+  const h = height;
+  const n = h.length;
+  let water = 0;
+  for (let i = 0; i < n; i++) {
+    let lmax = 0, rmax = 0;
+    for (let j = 0; j <= i; j++) lmax = Math.max(lmax, h[j]);
+    for (let j = i; j < n; j++) rmax = Math.max(rmax, h[j]);
+    water += Math.min(lmax, rmax) - h[i];
+  }
+  return water;
+}` }, { lang: 'cpp', code: String.raw`
+class Solution {
+public:
+    int trap(const vector<int>& height) {
+        const vector<int>& h = height;
+        int n = h.size(), water = 0;
+        for (int i = 0; i < n; i++) {
+            int lmax = 0, rmax = 0;
+            for (int j = 0; j <= i; j++) lmax = max(lmax, h[j]);
+            for (int j = i; j < n; j++) rmax = max(rmax, h[j]);
+            water += min(lmax, rmax) - h[i];
+        }
+        return water;
+    }
+};` }] }
     },
     mcq: {
       q: `h[L] &lt; h[R]. Why can we settle the water at L using only leftMax?`,
@@ -4744,7 +5341,7 @@ public:
     example: `<p>s = "ADOBECODE${H.c('p', 'BANC')}", t = "ABC" → ${H.c('p', '"BANC"')}</p><p><b>Why:</b> "ADOBEC" (length 6) also contains A, B and C, but "BANC" (length 4) is the shortest such window.</p>`,
     brute: {
       why: `<p>Check every substring (O(n<sup>2</sup>) of them) and test whether it covers t: O(n<sup>2</sup> · 52) — far too slow for 10<sup>5</sup>. The waste: windows that share almost all characters are re-counted from scratch.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         String brute(String s, String t) {
             String best = "";
             for (int i = 0; i < s.length(); i++) {
@@ -4760,7 +5357,55 @@ public:
                 }
             }
             return best;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def min_window(s, t):
+    best = ""
+    for i in range(len(s)):
+        cnt = [0] * 128
+        for c in t:
+            cnt[ord(c)] += 1
+        missing = len(t)
+        for j in range(i, len(s)):
+            cnt[ord(s[j])] -= 1
+            if cnt[ord(s[j])] >= 0:
+                missing -= 1
+            if missing == 0:
+                if best == "" or j - i + 1 < len(best):
+                    best = s[i:j + 1]
+                break                          # longer windows from i are worse
+    return best` }, { lang: 'js', code: String.raw`
+function minWindow(s, t) {
+  let best = '';
+  for (let i = 0; i < s.length; i++) {
+    const cnt = new Array(128).fill(0);
+    for (const c of t) cnt[c.charCodeAt(0)]++;
+    let missing = t.length;
+    for (let j = i; j < s.length; j++) {
+      if (cnt[s.charCodeAt(j)]-- > 0) missing--;
+      if (missing === 0) {
+        if (best === '' || j - i + 1 < best.length) best = s.slice(i, j + 1);
+        break;                                 // longer windows from i are worse
+      }
+    }
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+string minWindow(const string& s, const string& t) {
+    string best = "";
+    for (int i = 0; i < (int) s.size(); i++) {
+        int cnt[128] = {0};
+        for (char c : t) cnt[(int) c]++;
+        int missing = t.size();
+        for (int j = i; j < (int) s.size(); j++) {
+            if (cnt[(int) s[j]]-- > 0) missing--;
+            if (missing == 0) {
+                if (best.empty() || j - i + 1 < (int) best.size()) best = s.substr(i, j - i + 1);
+                break;                         // longer windows from i are worse
+            }
+        }
+    }
+    return best;
+}` }] }
     },
     mcq: {
       q: `Which template flavour is this?`,
@@ -4878,7 +5523,7 @@ public:
     example: `${H.arr([1, 2, 1, 2, 3], { label: 'nums' })}<p>k = 2 → ${H.c('p', '7')}</p><p><b>Why:</b> [1,2], [2,1], [1,2], [2,3], [1,2,1], [2,1,2], [1,2,1,2]. Via the trick: atMost(2) = 12, atMost(1) = 5 → 12 − 5 = 7.</p>`,
     brute: {
       why: `<p>For every start, extend and track distinct values with a set: O(N<sup>2</sup>) = 4·10<sup>8</sup> set operations — too slow. "Exactly k" is not monotone (adding an element can keep it at k or push it to k + 1), so a single window cannot count it.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[] nums, int k) {
             int count = 0;
             for (int i = 0; i < nums.length; i++) {
@@ -4890,7 +5535,42 @@ public:
                 }
             }
             return count;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def subarrays_with_k_distinct(nums, k):
+    count = 0
+    for i in range(len(nums)):
+        seen = set()
+        for j in range(i, len(nums)):
+            seen.add(nums[j])
+            if len(seen) == k:
+                count += 1
+            elif len(seen) > k:
+                break
+    return count` }, { lang: 'js', code: String.raw`
+function subarraysWithKDistinct(nums, k) {
+  let count = 0;
+  for (let i = 0; i < nums.length; i++) {
+    const seen = new Set();
+    for (let j = i; j < nums.length; j++) {
+      seen.add(nums[j]);
+      if (seen.size === k) count++;
+      else if (seen.size > k) break;
+    }
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+int subarraysWithKDistinct(const vector<int>& nums, int k) {
+    int count = 0;
+    for (int i = 0; i < (int) nums.size(); i++) {
+        unordered_set<int> seen;
+        for (int j = i; j < (int) nums.size(); j++) {
+            seen.insert(nums[j]);
+            if ((int) seen.size() == k) count++;
+            else if ((int) seen.size() > k) break;
+        }
+    }
+    return count;
+}` }] }
     },
     mcq: {
       q: `atMost(k) counts 12 windows, atMost(k − 1) counts 5. What does 12 − 5 represent?`,
@@ -5011,7 +5691,7 @@ public:
     example: `<p>nums = [1, -1, 5], k = 5 → ${H.c('p', '1')} (just ${H.c('g', '[5]')}).</p><p><b>Why the plain window fails:</b> it grows to [1, -1, 5] (sum 5), drops the 1 → sum 4 &lt; 5 and stops; it never drops the -1, which would have <b>raised</b> the sum. It would answer ${H.c('r', '3')}.</p>`,
     brute: {
       why: `<p>All pairs (i, j) with prefix sums: O(N<sup>2</sup>) = 10<sup>10</sup>. The sliding window is O(N) but wrong with negatives (goodness is not monotone). We need prefix sums plus a smarter way to discard useless starting points.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int brute(int[] nums, int k) {
             int n = nums.length, best = Integer.MAX_VALUE;
             long[] P = new long[n + 1];
@@ -5020,7 +5700,37 @@ public:
                 for (int j = i + 1; j <= n; j++)
                     if (P[j] - P[i] >= k) { best = Math.min(best, j - i); break; }
             return best == Integer.MAX_VALUE ? -1 : best;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def shortest_subarray(nums, k):
+    n, best = len(nums), float('inf')
+    P = [0] * (n + 1)
+    for i in range(n):
+        P[i + 1] = P[i] + nums[i]
+    for i in range(n):
+        for j in range(i + 1, n + 1):
+            if P[j] - P[i] >= k:
+                best = min(best, j - i)
+                break
+    return -1 if best == float('inf') else best` }, { lang: 'js', code: String.raw`
+function shortestSubarray(nums, k) {
+  const n = nums.length;
+  let best = Infinity;
+  const P = new Array(n + 1).fill(0);
+  for (let i = 0; i < n; i++) P[i + 1] = P[i] + nums[i];
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j <= n; j++)
+      if (P[j] - P[i] >= k) { best = Math.min(best, j - i); break; }
+  return best === Infinity ? -1 : best;
+}` }, { lang: 'cpp', code: String.raw`
+int shortestSubarray(const vector<int>& nums, int k) {
+    int n = nums.size(), best = INT_MAX;
+    vector<long long> P(n + 1, 0);
+    for (int i = 0; i < n; i++) P[i + 1] = P[i] + nums[i];
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j <= n; j++)
+            if (P[j] - P[i] >= k) { best = min(best, j - i); break; }
+    return best == INT_MAX ? -1 : best;
+}` }] }
     },
     mcq: {
       q: `Prefix sums P[2] = 7 and later P[5] = 4. Can start index 2 ever give a shorter valid subarray than start index 5?`,
@@ -5132,7 +5842,7 @@ public:
   });
   quiz.push({
     q: `Why does opposite-direction 2-Sum need the array to be <b>sorted</b>?`,
-    options: [`So that duplicates are removed`, `So that "too big → R--" and "too small → L++" are guaranteed to throw away only useless numbers`, `Because Java requires it`, `To make it O(1) memory`],
+    options: [`So that duplicates are removed`, `So that "too big → R--" and "too small → L++" are guaranteed to throw away only useless numbers`, `Because the language requires it`, `To make it O(1) memory`],
     answer: 1,
     explain: `The proof that a dropped number cannot be in any answer relies on a[L] being the smallest and a[R] the largest numbers still in play.`
   });

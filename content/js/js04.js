@@ -249,6 +249,32 @@ function findLeaksBrute(fn, suspects) {
 }` },
         mcq: { q: 'Why does <code>total = 0</code> (no keyword) create a global in a sloppy function?', options: ['The scope-chain lookup reaches the global scope without finding <code>total</code>, and sloppy mode then creates it there', '<code>total</code> is hoisted to the top of the function', 'Assignments are always global in JavaScript', 'Because <code>0</code> is a primitive'], answer: 0, explain: 'Assignment walks the scope chain like a read. If nothing is found, sloppy mode creates a property on the global object; strict mode throws ReferenceError instead.' },
         hints: [`<p>Hint 1: a leak is simply "a global property name that exists <b>after</b> the call but did not exist <b>before</b> it".</p>`, `<p>Hint 2: snapshot <code>Object.getOwnPropertyNames(globalThis)</code> into a <code>Set</code> before the call; after the call, filter the new list against the set.</p>`, `<p>Hint 3: property creation order is preserved for string keys, so the filtered list is already in creation order. Implicit globals are <i>configurable</i>, so <code>delete globalThis[name]</code> cleans them up.</p>`],
+        tests: { sig: 'string -> string', fn: 'leak', harness: { js: `function leak(kind) {
+  const g = globalThis;
+  const fns = {
+    buggy() { total = 0; for (idx = 0; idx < 3; idx++) { total += idx; } let safe = 1; return safe; },
+    clean() { const x = 1; var y = 2; return x + y; },
+    existing() { g.__preexisting = 1; },
+    twice() { dup1 = 1; dup1 = 2; dup2 = 3; },
+    viaThis() { this.viaThisName = 1; },
+    many() { for (let i = 0; i < 1000; i++) g['mass' + i] = i; },
+    order() { zeta = 1; alpha = 2; mid = 3; }
+  };
+  if (kind === 'existing') { g.__preexisting = 0; }
+  const leaks = findLeaks(fns[kind]);
+  const out = { leaks: leaks.length > 20 ? [leaks.length, leaks[0], leaks[leaks.length - 1]] : leaks };
+  out.cleaned = leaks.every((n) => !(n in g));
+  if (kind === 'existing') { out.stillThere = '__preexisting' in g; delete g.__preexisting; }
+  return out;
+}` }, cases: [
+          [["buggy"],{"leaks":["total","idx"],"cleaned":true}],
+          [["clean"],{"leaks":[],"cleaned":true}],
+          [["existing"],{"leaks":[],"cleaned":true,"stillThere":true}],
+          [["twice"],{"leaks":["dup1","dup2"],"cleaned":true}],
+          [["viaThis"],{"leaks":["viaThisName"],"cleaned":true}],
+          [["order"],{"leaks":["zeta","alpha","mid"],"cleaned":true}],
+          [["many"],{"leaks":[1000,"mass0","mass999"],"cleaned":true}]
+        ] },
         solution: {
           approach: `<p>Take a "before" snapshot of the global object's own property names, run the function, take an "after" list, and keep the names that are not in "before". Clean up with <code>delete</code>. This is how test runners (Mocha's <code>--check-leaks</code>) detect leaked globals.</p>`,
           code: { lang: 'js', run: true, code: `
@@ -519,6 +545,35 @@ function resolveBrute(chain, id) {
 }` },
         mcq: { q: 'A scope has <code>{ x: undefined }</code>. Is <code>x</code> "found" there?', options: ['Yes — the binding exists, its value just happens to be undefined', 'No — undefined means not declared', 'Only in strict mode', 'Only if it is a let'], answer: 0, explain: 'Declared-with-undefined and undeclared are different: one prints undefined, the other throws ReferenceError. Use hasOwnProperty / the in operator, not a value check.' },
         hints: [`<p>Hint 1: walk the array from index 0 (innermost) outward and stop at the first scope that <b>has</b> the name.</p>`, `<p>Hint 2: use <code>Object.prototype.hasOwnProperty.call(scope.vars, id)</code> so names with value <code>undefined</code> still count, and inherited names like <code>toString</code> do not.</p>`, `<p>Hint 3: write a small <code>findScope(chain, id)</code> returning the scope or null; build both <code>resolve</code> and <code>assign</code> on top of it. In <code>assign</code>, null + strict → throw; null + sloppy → put it into <code>chain[chain.length - 1].vars</code>.</p>`],
+        tests: { sig: 'string string string string string -> string', fn: 'sc', harness: { js: `function sc(op, chainJson, id, value, strict) {
+  const fix = (v) => (v === '__undef__' ? undefined : v);
+  let chain;
+  if (chainJson === 'BIG') { chain = []; for (let k = 0; k < 50; k++) { const vars = { x: k }; for (let j = 0; j < 99; j++) vars['v' + k + '_' + j] = j; chain.push({ name: 's' + k, vars }); } }
+  else { chain = JSON.parse(chainJson); chain.forEach((s) => { for (const k of Object.keys(s.vars)) s.vars[k] = fix(s.vars[k]); }); }
+  try {
+    if (op === 'resolve') { const r = resolve(chain, id); return { value: r.value === undefined ? '<undefined>' : r.value, foundIn: r.foundIn }; }
+    const where = assign(chain, id, JSON.parse(value), strict === 'strict');
+    return { where, state: chain.map((s) => s.name + ':' + (id in s.vars ? JSON.stringify(s.vars[id]) : '-')) };
+  } catch (e) { return e.name + ': ' + e.message; }
+}` }, cases: [
+          [["resolve","[{\"name\":\"inner\",\"vars\":{\"c\":3,\"maybe\":\"__undef__\"}},{\"name\":\"outer\",\"vars\":{\"b\":\"outer b\"}},{\"name\":\"global\",\"vars\":{\"a\":1,\"b\":\"global b\"}}]","b","",""],{"value":"outer b","foundIn":"outer"}],
+          [["resolve","[{\"name\":\"inner\",\"vars\":{\"c\":3,\"maybe\":\"__undef__\"}},{\"name\":\"outer\",\"vars\":{\"b\":\"outer b\"}},{\"name\":\"global\",\"vars\":{\"a\":1,\"b\":\"global b\"}}]","a","",""],{"value":1,"foundIn":"global"}],
+          [["resolve","[{\"name\":\"inner\",\"vars\":{\"c\":3,\"maybe\":\"__undef__\"}},{\"name\":\"outer\",\"vars\":{\"b\":\"outer b\"}},{\"name\":\"global\",\"vars\":{\"a\":1,\"b\":\"global b\"}}]","c","",""],{"value":3,"foundIn":"inner"}],
+          [["resolve","[{\"name\":\"inner\",\"vars\":{\"c\":3,\"maybe\":\"__undef__\"}},{\"name\":\"outer\",\"vars\":{\"b\":\"outer b\"}},{\"name\":\"global\",\"vars\":{\"a\":1,\"b\":\"global b\"}}]","maybe","",""],{"value":"<undefined>","foundIn":"inner"}],
+          [["resolve","[{\"name\":\"inner\",\"vars\":{\"c\":3,\"maybe\":\"__undef__\"}},{\"name\":\"outer\",\"vars\":{\"b\":\"outer b\"}},{\"name\":\"global\",\"vars\":{\"a\":1,\"b\":\"global b\"}}]","z","",""],"ReferenceError: z is not defined"],
+          [["resolve","[{\"name\":\"inner\",\"vars\":{\"c\":3,\"maybe\":\"__undef__\"}},{\"name\":\"outer\",\"vars\":{\"b\":\"outer b\"}},{\"name\":\"global\",\"vars\":{\"a\":1,\"b\":\"global b\"}}]","toString","",""],"ReferenceError: toString is not defined"],
+          [["resolve","[{\"name\":\"only\",\"vars\":{}}]","q","",""],"ReferenceError: q is not defined"],
+          [["resolve","[{\"name\":\"only\",\"vars\":{\"q\":0}}]","q","",""],{"value":0,"foundIn":"only"}],
+          [["assign","[{\"name\":\"inner\",\"vars\":{\"c\":3,\"maybe\":\"__undef__\"}},{\"name\":\"outer\",\"vars\":{\"b\":\"outer b\"}},{\"name\":\"global\",\"vars\":{\"a\":1,\"b\":\"global b\"}}]","a","99","strict"],{"where":"global","state":["inner:-","outer:-","global:99"]}],
+          [["assign","[{\"name\":\"inner\",\"vars\":{\"c\":3,\"maybe\":\"__undef__\"}},{\"name\":\"outer\",\"vars\":{\"b\":\"outer b\"}},{\"name\":\"global\",\"vars\":{\"a\":1,\"b\":\"global b\"}}]","b","\"new\"","strict"],{"where":"outer","state":["inner:-","outer:\"new\"","global:\"global b\""]}],
+          [["assign","[{\"name\":\"inner\",\"vars\":{\"c\":3,\"maybe\":\"__undef__\"}},{\"name\":\"outer\",\"vars\":{\"b\":\"outer b\"}},{\"name\":\"global\",\"vars\":{\"a\":1,\"b\":\"global b\"}}]","leak","1","sloppy"],{"where":"global","state":["inner:-","outer:-","global:1"]}],
+          [["assign","[{\"name\":\"inner\",\"vars\":{\"c\":3,\"maybe\":\"__undef__\"}},{\"name\":\"outer\",\"vars\":{\"b\":\"outer b\"}},{\"name\":\"global\",\"vars\":{\"a\":1,\"b\":\"global b\"}}]","q","1","strict"],"ReferenceError: q is not defined"],
+          [["assign","[{\"name\":\"inner\",\"vars\":{\"c\":3,\"maybe\":\"__undef__\"}},{\"name\":\"outer\",\"vars\":{\"b\":\"outer b\"}},{\"name\":\"global\",\"vars\":{\"a\":1,\"b\":\"global b\"}}]","maybe","5","strict"],{"where":"inner","state":["inner:5","outer:-","global:-"]}],
+          [["assign","[{\"name\":\"inner\",\"vars\":{\"c\":3,\"maybe\":\"__undef__\"}},{\"name\":\"outer\",\"vars\":{\"b\":\"outer b\"}},{\"name\":\"global\",\"vars\":{\"a\":1,\"b\":\"global b\"}}]","c","null","sloppy"],{"where":"inner","state":["inner:null","outer:-","global:-"]}],
+          [["resolve","BIG","x","",""],{"value":0,"foundIn":"s0"}],
+          [["resolve","BIG","v49_98","",""],{"value":98,"foundIn":"s49"}],
+          [["assign","BIG","nothing","7","sloppy"],{"where":"s49","state":["s0:-","s1:-","s2:-","s3:-","s4:-","s5:-","s6:-","s7:-","s8:-","s9:-","s10:-","s11:-","s12:-","s13:-","s14:-","s15:-","s16:-","s17:-","s18:-","s19:-","s20:-","s21:-","s22:-","s23:-","s24:-","s25:-","s26:-","s27:-","s28:-","s29:-","s30:-","s31:-","s32:-","s33:-","s34:-","s35:-","s36:-","s37:-","s38:-","s39:-","s40:-","s41:-","s42:-","s43:-","s44:-","s45:-","s46:-","s47:-","s48:-","s49:7"]}]
+        ] },
         solution: {
           approach: `<p>Linear walk from innermost to outermost using an own-property check — exactly what the spec's <code>ResolveBinding</code> does with environment records and their <code>[[OuterEnv]]</code> links.</p>`,
           code: { lang: 'js', run: true, code: `
@@ -761,6 +816,29 @@ function runOnePass(program) {
 }` },
         mcq: { q: 'After the creation phase, what does memory hold for <code>var f = 5; function f(){}</code>?', options: ['f = the function', 'f = undefined', 'f = 5', 'a SyntaxError'], answer: 0, explain: 'Function declarations are instantiated after var bindings are created, so f holds the function until the execution phase reaches f = 5.' },
         hints: [`<p>Hint 1: use two loops. The first only looks at declarations; the second runs everything in order.</p>`, `<p>Hint 2: store a special <code>TDZ</code> marker for <code>let</code>, <code>undefined</code> for <code>var</code> (unless a function already took the name), and a function object for <code>func</code> (always overwrite).</p>`, `<p>Hint 3: execution: <code>var</code>/<code>let</code> assign; <code>func</code> does nothing; <code>log</code>: missing or TDZ → ReferenceError; <code>call</code>: missing/TDZ → ReferenceError, not a function → TypeError. Push the error and stop.</p>`],
+        tests: { sig: 'string -> string', fn: 'hs', harness: { js: `function hs(json) {
+  let prog;
+  if (json === 'BIG') { prog = []; for (let i = 0; i < 500; i++) prog.push({ type: 'var', name: 'v' + i, value: i }); for (let i = 0; i < 500; i++) prog.push({ type: 'log', name: 'v' + i }); } else prog = JSON.parse(json);
+  const r = simulate(prog);
+  return r.length > 100 ? { len: r.length, first: r[0], last: r[r.length - 1] } : r;
+}` }, cases: [
+          [["[{\"type\":\"log\",\"name\":\"a\"},{\"type\":\"call\",\"name\":\"f\"},{\"type\":\"var\",\"name\":\"a\",\"value\":1},{\"type\":\"func\",\"name\":\"f\",\"returns\":\"hi\"},{\"type\":\"log\",\"name\":\"a\"}]"],["undefined","hi","1"]],
+          [["[{\"type\":\"call\",\"name\":\"g\"},{\"type\":\"var\",\"name\":\"g\",\"value\":5}]"],["TypeError"]],
+          [["[{\"type\":\"log\",\"name\":\"n\"},{\"type\":\"let\",\"name\":\"n\",\"value\":3}]"],["ReferenceError"]],
+          [["[{\"type\":\"log\",\"name\":\"foo\"},{\"type\":\"var\",\"name\":\"foo\",\"value\":\"bar\"},{\"type\":\"func\",\"name\":\"foo\",\"returns\":1},{\"type\":\"log\",\"name\":\"foo\"}]"],["function","bar"]],
+          [["[]"],[]],
+          [["[{\"type\":\"log\",\"name\":\"nope\"}]"],["ReferenceError"]],
+          [["[{\"type\":\"call\",\"name\":\"nope\"}]"],["ReferenceError"]],
+          [["[{\"type\":\"let\",\"name\":\"n\",\"value\":0},{\"type\":\"log\",\"name\":\"n\"}]"],["0"]],
+          [["[{\"type\":\"let\",\"name\":\"n\",\"value\":false},{\"type\":\"log\",\"name\":\"n\"}]"],["false"]],
+          [["[{\"type\":\"var\",\"name\":\"a\",\"value\":1},{\"type\":\"call\",\"name\":\"a\"},{\"type\":\"log\",\"name\":\"a\"}]"],["TypeError"]],
+          [["[{\"type\":\"func\",\"name\":\"f\",\"returns\":42},{\"type\":\"call\",\"name\":\"f\"},{\"type\":\"call\",\"name\":\"f\"}]"],["42","42"]],
+          [["[{\"type\":\"call\",\"name\":\"f\"},{\"type\":\"func\",\"name\":\"f\",\"returns\":\"x\"}]"],["x"]],
+          [["[{\"type\":\"var\",\"name\":\"a\"},{\"type\":\"log\",\"name\":\"a\"}]"],["undefined"]],
+          [["[{\"type\":\"log\",\"name\":\"a\"},{\"type\":\"log\",\"name\":\"zz\"},{\"type\":\"var\",\"name\":\"a\",\"value\":1}]"],["undefined","ReferenceError"]],
+          [["[{\"type\":\"func\",\"name\":\"foo\",\"returns\":1},{\"type\":\"var\",\"name\":\"foo\",\"value\":2},{\"type\":\"log\",\"name\":\"foo\"}]"],["2"]],
+          [["BIG"],{"len":500,"first":"0","last":"499"}]
+        ] },
         solution: {
           approach: `<p>Mirror the engine: pass 1 = creation phase (declarations only, functions win), pass 2 = execution phase (assignments happen on their own line; errors stop everything).</p>`,
           code: { lang: 'js', run: true, code: `
@@ -1037,6 +1115,44 @@ class EnvBrute {
 }` },
         mcq: { q: 'Which value should mark "binding exists but is in its TDZ"?', options: ['A unique sentinel (e.g. a Symbol) that user code can never produce', '<code>undefined</code>', '<code>null</code>', 'Delete the key until init'], answer: 0, explain: 'undefined and null are legal values. Deleting the key would make the lookup fall through to an outer scope — wrong, because the inner binding must shadow the outer one even during its TDZ.' },
         hints: [`<p>Hint 1: each Env owns a <code>Map</code> from name → <code>{ kind, value }</code> plus an <code>outer</code> pointer.</p>`, `<p>Hint 2: use a private <code>Symbol('TDZ')</code> as the initial value. The lookup must <b>stop</b> at the first Env that has the name, even if it is still TDZ — that is what makes shadowing TDZ work.</p>`, `<p>Hint 3: <code>find(name)</code> walks the chain and returns the record or null; <code>get</code>/<code>set</code> check: null → not defined; TDZ → before initialization; set + const → TypeError.</p>`],
+        tests: { sig: 'string -> string[]', fn: 'envRun', harness: { js: `function envRun(kind) {
+  const show = (f) => { try { return String(f()); } catch (e) { return e.name + ': ' + e.message; } };
+  const shownName = (f) => { try { f(); return 'no error'; } catch (e) { return e.name; } };
+  const g = new Env();
+  switch (kind) {
+    case 'shadow-tdz': { g.declare('x', 'let'); g.init('x', 1); const b = new Env(g); b.declare('x', 'let'); const r = [show(() => b.get('x'))]; b.init('x', 2); r.push(show(() => b.get('x')), show(() => g.get('x'))); return r; }
+    case 'const': { g.declare('PI', 'const'); g.init('PI', 3.14); const b = new Env(g); return [show(() => b.set('PI', 3)), show(() => b.get('PI'))]; }
+    case 'missing': return [show(() => new Env(g).get('nope')), show(() => g.set('nope', 1))];
+    case 'redeclare': { g.declare('x', 'let'); return [shownName(() => g.declare('x', 'let')), shownName(() => g.declare('x', 'const'))]; }
+    case 'set-let': { g.declare('a', 'let'); g.init('a', 1); g.set('a', 5); return [show(() => g.get('a'))]; }
+    case 'set-tdz': { g.declare('a', 'let'); return [show(() => g.set('a', 1))]; }
+    case 'set-outer': { g.declare('x', 'let'); g.init('x', 1); const b = new Env(g); b.set('x', 9); return [show(() => g.get('x')), show(() => b.get('x'))]; }
+    case 'same-name-diff-env': { g.declare('x', 'let'); const b = new Env(g); b.declare('x', 'const'); return ['ok']; }
+    case 'const-tdz': { g.declare('k', 'const'); return [show(() => g.set('k', 1)), show(() => g.get('k'))]; }
+    case 'undefined-value': { g.declare('u', 'let'); g.init('u', undefined); return [show(() => g.get('u'))]; }
+    case 'three-levels': { g.declare('top', 'const'); g.init('top', 'T'); const m = new Env(g), i = new Env(m); m.declare('mid', 'let'); m.init('mid', 'M'); return [show(() => i.get('top')), show(() => i.get('mid')), show(() => g.get('mid'))]; }
+    case 'deep-100': { let e = g; g.declare('n0', 'let'); g.init('n0', 0); for (let i = 1; i < 100; i++) { e = new Env(e); e.declare('n' + i, 'let'); e.init('n' + i, i); } return [show(() => e.get('n0')), show(() => e.get('n99')), show(() => e.get('n50'))]; }
+    case 'tdz-shadow-const': { g.declare('v', 'const'); g.init('v', 1); const b = new Env(g); b.declare('v', 'let'); return [show(() => b.set('v', 2)), show(() => g.get('v'))]; }
+    case 'sibling-isolation': { const a = new Env(g), b = new Env(g); a.declare('s', 'let'); a.init('s', 1); return [show(() => b.get('s')), show(() => a.get('s'))]; }
+    case 'reassign-multiple': { g.declare('c', 'let'); g.init('c', 1); for (let i = 0; i < 1000; i++) g.set('c', i); return [show(() => g.get('c'))]; }
+  }
+}` }, cases: [
+          [["shadow-tdz"],["ReferenceError: Cannot access 'x' before initialization","2","1"]],
+          [["const"],["TypeError: Assignment to constant variable.","3.14"]],
+          [["missing"],["ReferenceError: nope is not defined","ReferenceError: nope is not defined"]],
+          [["redeclare"],["SyntaxError","SyntaxError"]],
+          [["set-let"],["5"]],
+          [["set-tdz"],["ReferenceError: Cannot access 'a' before initialization"]],
+          [["set-outer"],["9","9"]],
+          [["same-name-diff-env"],["ok"]],
+          [["const-tdz"],["ReferenceError: Cannot access 'k' before initialization","ReferenceError: Cannot access 'k' before initialization"]],
+          [["undefined-value"],["undefined"]],
+          [["three-levels"],["T","M","ReferenceError: mid is not defined"]],
+          [["deep-100"],["0","99","50"]],
+          [["tdz-shadow-const"],["ReferenceError: Cannot access 'v' before initialization","1"]],
+          [["sibling-isolation"],["ReferenceError: s is not defined","1"]],
+          [["reassign-multiple"],["999"]]
+        ] },
         solution: {
           approach: `<p>Each environment is a Map plus an outer link. A sentinel marks uninitialised bindings. Lookups stop at the first environment that declares the name, so an inner binding in its TDZ correctly shadows an initialised outer one.</p>`,
           code: { lang: 'js', run: true, code: `
@@ -1305,6 +1421,35 @@ function createCounterBrute(start = 0, step = 1) {
 }` },
         mcq: { q: 'Two counters made by two calls to <code>createCounter()</code> — why are they independent?', options: ['Each call creates a new environment with its own <code>current</code> variable', 'Because <code>let</code> copies values', 'Because objects are passed by value', 'They are not independent'], answer: 0, explain: 'Every invocation of the outer function creates a fresh scope; the returned closures point at that specific scope.' },
         hints: [`<p>Hint 1: keep <code>let current = start</code> as a local variable of <code>createCounter</code>.</p>`, `<p>Hint 2: return an object literal of arrow functions that all read/write <code>current</code>; they share one environment.</p>`, `<p>Hint 3: in <code>next()</code>, save the value first, then advance: <code>const v = current; current += step; return v;</code>. No <code>this</code> needed, so methods can be detached safely.</p>`],
+        tests: { sig: 'string string[] -> string[]', fn: 'cnt', harness: { js: `function cnt(spec, ops) {
+  const args = spec === '' ? [] : spec.split(',').map(Number);
+  const c = createCounter(...args), b = createCounter(...args), out = [];
+  for (const op of ops) {
+    const m = /^(B\\.)?(next|peek|reset)(\\*(\\d+))?$/.exec(op);
+    if (m) {
+      const k = m[1] ? b : c, times = m[4] ? +m[4] : 1; let r;
+      for (let i = 0; i < times; i++) r = k[m[2]]();
+      out.push(m[2] === 'reset' ? 'ok' : r);
+    } else if (op === 'hasValue') out.push(String(c.value) + '/' + String(c.current));
+    else if (op === 'detached') { const f = c.next; out.push(f()); }
+    else if (op === 'keys') out.push(Object.keys(c).sort().join(','));
+  }
+  return out;
+}` }, cases: [
+          [["10,5",["next","next","peek","reset","next"]],[10,15,20,"ok",10]],
+          [["",["next","next","peek"]],[0,1,2]],
+          [["7",["next","next"]],[7,8]],
+          [["5,-2",["next","next","next","peek"]],[5,3,1,-1]],
+          [["3,0",["next","next","peek"]],[3,3,3]],
+          [["-3,2",["next","next","reset","peek"]],[-3,-1,"ok",-3]],
+          [["0,1",["next","B.next","next","B.next","peek","B.peek"]],[0,0,1,1,2,2]],
+          [["0,1",["next","next","B.reset","peek"]],[0,1,"ok",2]],
+          [["10,5",["hasValue","keys"]],["undefined/undefined","next,peek,reset"]],
+          [["10,5",["next","detached","peek"]],[10,15,20]],
+          [["0,1",["reset","peek"]],["ok",0]],
+          [["0,1",["next*100000","peek"]],[99999,100000]],
+          [["5,3",["next*50000","reset","next"]],[150002,"ok",5]]
+        ] },
         solution: {
           approach: `<p>Classic closure-based private state: one environment per counter, three closures sharing it. Because the methods never use <code>this</code>, they work even when passed around as callbacks.</p>`,
           code: { lang: 'js', run: true, code: `
@@ -1590,6 +1735,47 @@ function memoizeBrute(fn) {
 }` },
         mcq: { q: 'Why use nested Maps instead of one Map with a string key?', options: ['Map keys can be any value compared by identity, so each argument can be a key level without stringifying', 'Nested Maps use less memory', 'Strings cannot be Map keys', 'It sorts arguments automatically'], answer: 0, explain: 'A trie of Maps keyed by the actual argument values gives identity semantics (and SameValueZero for NaN) with O(k) lookups for k arguments.' },
         hints: [`<p>Hint 1: think of the argument list as a path in a tree (a trie): level 1 is keyed by the first argument, level 2 by the second, and so on.</p>`, `<p>Hint 2: every node is a <code>Map</code>. Store the result at the end of the path under a private <code>Symbol</code> key so it can never collide with a real argument and so different arities end at different nodes.</p>`, `<p>Hint 3: use <code>node.has(RESULT)</code> (not a truthiness test) so <code>0</code>/<code>undefined</code> results are cached. Keep a private <code>count</code> for <code>size()</code>.</p>`],
+        tests: { sig: 'string -> string', fn: 'mz', harness: { js: `function mz(kind) {
+  let computed = 0;
+  const mk = (f) => memoize(function (...a) { computed++; return f.apply(this, a); });
+  switch (kind) {
+    case 'demo': {
+      const m = mk((a, b) => String(a) + '|' + String(b)), o = { x: 1 };
+      m(1, 2); m(1, 2); m(o, 2); m(o, 2); m({ x: 1 }, 2); m(1); m(NaN, NaN); m(NaN, NaN);
+      return { computed, size: m.size() };
+    }
+    case 'falsy': { const m = mk(() => 0), n = mk(() => ''), q = mk(() => null), u = mk(() => undefined); m(); m(); n(1); n(1); q(2); q(2); u(3); u(3); return { computed, size: m.size() + n.size() + q.size() + u.size() }; }
+    case 'zero-arity': { const m = mk(() => 7); return [m(), m(), computed, m.size()]; }
+    case 'arity': { const m = mk((...a) => a.length); return [m(1), m(1, undefined), m(1), m(1, undefined), computed, m.size()]; }
+    case 'neg-zero': { const m = mk((x) => 1 / x); m(0); const r = m(-0); return [r, computed]; }
+    case 'order': { const m = mk((a, b) => a - b); return [m(1, 2), m(2, 1), m(1, 2), computed]; }
+    case 'types': { const m = mk((x) => typeof x); return [m(1), m('1'), m(true), m(null), m(undefined), m(1), m('1'), computed, m.size()]; }
+    case 'this': { const o = { k: 5, f: memoize(function (a) { return this.k + a; }) }; return [o.f(1), o.f(1), o.f(2)]; }
+    case 'results': { const m = mk((a, b) => a * b); return [m(2, 3), m(2, 3), m(3, 2), m(0, 9), m(0, 9), computed]; }
+    case 'ten-args': { const m = mk((...a) => a.reduce((s, x) => s + x, 0)); const a = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; return [m(...a), m(...a), computed, m.size()]; }
+    case 'size-empty': { const m = mk(() => 1); return [m.size()]; }
+    case 'distinct-objects': { const m = mk((o) => o.id); const a = { id: 1 }, b = { id: 1 }; return [m(a), m(b), m(a), computed, m.size()]; }
+    case 'symbol-fn': { const s = Symbol('s'), m = mk((x) => x === s); return [m(s), m(s), m(Symbol('s')), computed]; }
+    case 'many': { const m = mk((i) => i * 2); for (let i = 0; i < 100000; i++) m(i); return { computed, size: m.size(), last: m(99999), after: computed }; }
+    case 'many-repeat': { const m = mk((i) => i); for (let i = 0; i < 100000; i++) m(i % 10); return { computed, size: m.size() }; }
+  }
+}` }, cases: [
+          [["demo"],{"computed":5,"size":5}],
+          [["falsy"],{"computed":4,"size":4}],
+          [["zero-arity"],[7,7,1,1]],
+          [["arity"],[1,2,1,2,2,2]],
+          [["neg-zero"],[null,1]],
+          [["order"],[-1,1,-1,2]],
+          [["types"],["number","string","boolean","object","undefined","number","string",5,5]],
+          [["this"],[6,6,7]],
+          [["results"],[6,6,6,0,0,3]],
+          [["ten-args"],[55,55,1,1]],
+          [["size-empty"],[0]],
+          [["distinct-objects"],[1,1,1,2,2]],
+          [["symbol-fn"],[true,true,false,2]],
+          [["many"],{"computed":100000,"size":100000,"last":199998,"after":100000}],
+          [["many-repeat"],{"computed":10,"size":10}]
+        ] },
         solution: {
           approach: `<p>A trie of Maps captured in the closure. Walking k arguments is O(k); Map key comparison (SameValueZero) gives reference equality for objects and treats NaN as equal to itself. A Symbol marks "a result is stored here".</p>`,
           code: { lang: 'js', run: true, code: `
@@ -1837,6 +2023,27 @@ console.log(createHandlersBuggy(['Home', 'Cart', 'Help'])[1]()); // Clicked unde
 ` } },
         mcq: { q: 'Which change alone fixes the buggy function?', options: ['Change <code>var i</code> to <code>let i</code> in the loop header', 'Change <code>var handlers</code> to <code>const handlers</code>', 'Use an arrow function instead of <code>function</code>', 'Add <code>"use strict"</code>'], answer: 0, explain: 'Only the loop variable\'s binding matters. let gives each iteration its own i. Arrow functions change this-binding, not variable capture.' },
         hints: [`<p>Hint 1: each handler needs its <b>own</b> copy of the index — ask yourself "how many <code>i</code> variables exist?"</p>`, `<p>Hint 2: <code>let</code> in the for header gives one binding per iteration; in ES5, an IIFE taking <code>i</code> as a parameter (or <code>labels.map((label, k) =&gt; …)</code>) does the same.</p>`, `<p>Hint 3: capture the label too (<code>const label = labels[k]</code>) so later changes to the array do not affect handlers — decide which behaviour you want and say it out loud in the interview.</p>`],
+        tests: { sig: 'string string[] -> string', fn: 'ch', harness: { js: `function ch(variant, labels) {
+  const f = variant === 'let' ? createHandlers : variant === 'es5' ? createHandlersES5 : createHandlersMap;
+  const hs = f(labels), r = hs.map((h) => h());
+  return r.length > 100 ? { len: r.length, first: r[0], last: r[r.length - 1], mid: r[Math.floor(r.length / 2)] } : r;
+}` }, cases: [
+          [["let",["Home","Cart","Help"]],["Clicked Home (#0)","Clicked Cart (#1)","Clicked Help (#2)"]],
+          [["let",["Only"]],["Clicked Only (#0)"]],
+          [["let",[]],[]],
+          [["let",["x","x","x"]],["Clicked x (#0)","Clicked x (#1)","Clicked x (#2)"]],
+          [["es5",["Home","Cart","Help"]],["Clicked Home (#0)","Clicked Cart (#1)","Clicked Help (#2)"]],
+          [["es5",["Only"]],["Clicked Only (#0)"]],
+          [["es5",[]],[]],
+          [["es5",["x","x","x"]],["Clicked x (#0)","Clicked x (#1)","Clicked x (#2)"]],
+          [["map",["Home","Cart","Help"]],["Clicked Home (#0)","Clicked Cart (#1)","Clicked Help (#2)"]],
+          [["map",["Only"]],["Clicked Only (#0)"]],
+          [["map",[]],[]],
+          [["map",["x","x","x"]],["Clicked x (#0)","Clicked x (#1)","Clicked x (#2)"]],
+          [["let",{"$concat":[[],{"$rep":"L","n":10000}]}],{"len":10000,"first":"Clicked L (#0)","last":"Clicked L (#9999)","mid":"Clicked L (#5000)"}],
+          [["es5",{"$rep":"L","n":10000}],{"len":10000,"first":"Clicked L (#0)","last":"Clicked L (#9999)","mid":"Clicked L (#5000)"}],
+          [["map",{"$rep":"L","n":10000}],{"len":10000,"first":"Clicked L (#0)","last":"Clicked L (#9999)","mid":"Clicked L (#5000)"}]
+        ] },
         solution: {
           approach: `<p>Give each handler its own binding: <code>let</code> per-iteration binding (modern), or a factory/IIFE whose parameter is a new variable per call (ES5). <code>map</code> is the most idiomatic: its callback parameter is fresh per element.</p>`,
           code: { lang: 'js', run: true, code: `
@@ -1892,6 +2099,21 @@ function createCounterBrute(n) {
 }` },
     mcq: { q: 'Where should the running value live?', options: ['In a variable inside <code>createCounter</code>, captured by the returned function', 'In a global variable', 'In <code>this</code>', 'In a parameter of the returned function'], answer: 0, explain: 'Each createCounter call gets its own scope, so each returned counter keeps its own value.' },
     hints: [`<p>Hint 1: the parameter <code>n</code> itself is already a variable in the outer scope — you can mutate it.</p>`, `<p>Hint 2: post-increment returns the old value: <code>return n++;</code>.</p>`, `<p>Hint 3: recipe: <code>return () =&gt; n++;</code> — one line, one closure.</p>`],
+    tests: { sig: 'int[] int -> int[]', fn: 'cn', harness: { js: `function cn(ns, calls) {
+  const cs = ns.map((n) => createCounter(n)), out = [];
+  for (let k = 0; k < calls; k++) for (const c of cs) out.push(c());
+  return out;
+}` }, cases: [
+      [[[10],3],[10,11,12]],
+      [[[10,-2],2],[10,-2,11,-1]],
+      [[[0],1],[0]],
+      [[[1000],1],[1000]],
+      [[[-1000],2],[-1000,-999]],
+      [[[5,5,5],2],[5,5,5,6,6,6]],
+      [[[1000],0],[]],
+      [[[-1000],1000],{"$range":[-1000,0]}],
+      [[[1000],1000],{"$range":[1000,2000]}]
+    ] },
     solution: {
       approach: `<p>Return an arrow function that post-increments the captured <code>n</code>. Each call to <code>createCounter</code> creates a fresh <code>n</code>.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1926,6 +2148,25 @@ function createCounterBrute(init) {
 }` },
     mcq: { q: 'Why remember <code>init</code> separately from the current value?', options: ['reset() needs the original starting value after current has changed', 'JavaScript copies parameters', 'To avoid the TDZ', 'It is not needed'], answer: 0, explain: 'The parameter init is captured and never modified; current is a separate captured variable that changes.' },
     hints: [`<p>Hint 1: two captured variables: <code>init</code> (never changes) and <code>current</code>.</p>`, `<p>Hint 2: pre-increment (<code>++current</code>) returns the new value — exactly what increment() must return.</p>`, `<p>Hint 3: return an object of arrow functions; no <code>this</code> anywhere.</p>`],
+    tests: { sig: 'int string[] -> int[]', fn: 'c2', harness: { js: `function c2(init, ops) {
+  const c = createCounter(init), out = [];
+  for (const op of ops) {
+    if (op === 'inc') out.push(c.increment()); else if (op === 'dec') out.push(c.decrement()); else if (op === 'reset') out.push(c.reset());
+    else if (op === 'detached') { const f = c.increment; out.push(f()); }
+  }
+  return out;
+}` }, cases: [
+      [[5,["inc","reset","dec"]],[6,5,4]],
+      [[0,["dec","dec","reset","inc"]],[-1,-2,0,1]],
+      [[-7,["reset","inc"]],[-7,-6]],
+      [[1000,["inc","inc"]],[1001,1002]],
+      [[-1000,["dec","reset"]],[-1001,-1000]],
+      [[3,["detached","detached","inc"]],[4,5,6]],
+      [[2,[]],[]],
+      [[0,["reset","reset"]],[0,0]],
+      [[-1000,{"$rep":"inc","n":1000}],{"$range":[-999,1]}],
+      [[1000,{"$rep":"dec","n":1000}],{"$range":[999,-1,-1]}]
+    ] },
     solution: {
       approach: `<p>Three closures over one shared environment holding <code>current</code>, plus the captured <code>init</code> parameter for reset.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -1965,6 +2206,35 @@ function onceBrute(fn) {
 }` },
     mcq: { q: 'What is the correct state to remember?', options: ['A boolean "called" flag', 'The last result only', 'The arguments', 'Nothing — use fn.length'], answer: 0, explain: 'A separate flag is unambiguous; results can be falsy.' },
     hints: [`<p>Hint 1: keep <code>let called = false</code> in the closure.</p>`, `<p>Hint 2: set the flag before calling fn so re-entrant calls are blocked too.</p>`, `<p>Hint 3: forward arguments and <code>this</code>: <code>fn.apply(this, args)</code>; use a regular <code>function</code> for the wrapper so <code>this</code> is dynamic.</p>`],
+    tests: { sig: 'string -> string', fn: 'oc', harness: { js: `function oc(kind) {
+  let n = 0;
+  switch (kind) {
+    case 'sum': { const f = once((a, b, c) => { n++; return a + b + c; }); return [f(1, 2, 3), U(f(2, 3, 6)), n]; }
+    case 'zero': { const f = once(() => { n++; return 0; }); return [f(), U(f()), n]; }
+    case 'this': { const o = { name: 'svc', start: once(function () { n++; return this.name + ' started'; }) }; return [o.start(), U(o.start()), n]; }
+    case 'undefined-result': { const f = once(() => { n++; }); return [U(f()), U(f()), n]; }
+    case 'throws': { const f = once(() => { n++; throw new Error('first'); }); let e1 = 'none'; try { f(); } catch (e) { e1 = e.message; } return [e1, U(f()), n]; }
+    case 'independent': { const fn = () => { n++; return 'x'; }; const a = once(fn), b = once(fn); return [a(), b(), U(a()), U(b()), n]; }
+    case 'ten-args': { const f = once((...a) => a.length); return [f(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), U(f(1))]; }
+    case 'arg-forward': { const f = once((x) => x); return [f(null), U(f(5))]; }
+    case 'many': { const f = once(() => { n++; return 1; }); let last; for (let i = 0; i < 100000; i++) last = f(); return [n, U(last)]; }
+    case 'falsy-first': { const f = once(() => { n++; return false; }); return [f(), U(f()), n]; }
+    case 'no-call-yet': { const f = once(() => { n++; return 1; }); return [n]; }
+  }
+}
+function U(v) { return v === undefined ? 'undefined' : v; }` }, cases: [
+      [["sum"],[6,"undefined",1]],
+      [["zero"],[0,"undefined",1]],
+      [["this"],["svc started","undefined",1]],
+      [["undefined-result"],["undefined","undefined",1]],
+      [["throws"],["first","undefined",1]],
+      [["independent"],["x","x","undefined","undefined",2]],
+      [["ten-args"],[10,"undefined"]],
+      [["arg-forward"],[null,"undefined"]],
+      [["many"],[1,"undefined"]],
+      [["falsy-first"],[false,"undefined",1]],
+      [["no-call-yet"],[0]]
+    ] },
     solution: {
       approach: `<p>A boolean flag captured by the wrapper. First call flips it and delegates; later calls return undefined.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2003,6 +2273,26 @@ function nextIdBrute(prefix) {
 }` },
     mcq: { q: 'Which values must be captured separately?', options: ['the current number and the total issued count (plus prefix and start)', 'only the prefix', 'only the current number', 'nothing; use Date.now()'], answer: 0, explain: 'reset() changes the current number but not the issued count, so they need separate variables.' },
     hints: [`<p>Hint 1: four captured values: <code>prefix</code>, <code>start</code>, <code>current</code>, <code>total</code>.</p>`, `<p>Hint 2: <code>String(n).padStart(3, '0')</code> pads; numbers longer than 3 digits are left as they are.</p>`, `<p>Hint 3: next(): build the id from current, then <code>current++</code> and <code>total++</code>.</p>`],
+    tests: { sig: 'string int string[] -> string[]', fn: 'idg', harness: { js: `function idg(prefix, start, ops) {
+  const g = start === 0 ? createIdGenerator(prefix) : createIdGenerator(prefix, start), h = createIdGenerator('b'), out = [];
+  for (const op of ops) {
+    const m = /^(h\\.)?(next|reset|issued)(\\*(\\d+))?$/.exec(op); const k = m[1] ? h : g, times = m[4] ? +m[4] : 1; let r;
+    for (let i = 0; i < times; i++) r = k[m[2]]();
+    out.push(m[2] === 'reset' ? 'ok' : r);
+  }
+  return out;
+}` }, cases: [
+      [["user",0,["next","next","reset","next","issued"]],["user-001","user-002","ok","user-001",3]],
+      [["order",1000,["next","next"]],["order-1000","order-1001"]],
+      [["x",999,["next","next"]],["x-999","x-1000"]],
+      [["a",5,["next","issued","reset","issued","next","issued"]],["a-005",1,"ok",1,"a-005",2]],
+      [["a",1000000,["next","next"]],["a-1000000","a-1000001"]],
+      [["u",0,["issued"]],[0]],
+      [["u",0,["next","h.next","next","h.next","h.issued","issued"]],["u-001","b-001","u-002","b-002",2,2]],
+      [["u",7,["next","next","reset","reset","next"]],["u-007","u-008","ok","ok","u-007"]],
+      [["p",0,["next*100000","issued","reset","issued","next"]],["p-100000",100000,"ok",100000,"p-001"]],
+      [["pre-fix",99,["next","next","next"]],["pre-fix-099","pre-fix-100","pre-fix-101"]]
+    ] },
     solution: {
       approach: `<p>Factory with private counters per generator; three closures share them.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2049,6 +2339,33 @@ function memoizeBrute(fn) {
 }` },
     mcq: { q: 'For <code>sum(a, b)</code> with numbers, which key is correct and cheap?', options: ["<code>a + ',' + b</code>", '<code>a + b</code>', '<code>[a, b]</code> (array as Map key)', '<code>String(a * b)</code>'], answer: 0, explain: 'a + b collides (2,2 and 1,3); a new array is a new object each call so Map lookups never hit; a joined string with a separator is unique for numbers.' },
     hints: [`<p>Hint 1: the cache and the counter are private variables of <code>memoize</code>.</p>`, `<p>Hint 2: build a string key from all arguments with a separator: <code>args.join(',')</code> is safe for numbers.</p>`, `<p>Hint 3: check with <code>cache.has(key)</code>; only on a miss increment the counter and call fn.</p>`],
+    tests: { sig: 'string -> string', fn: 'mm', harness: { js: `function mm(kind) {
+  switch (kind) {
+    case 'sum': { const m = memoize((a, b) => a + b); return [m(2, 2), m(2, 2), m(1, 3), m(3, 1), m.getCallCount()]; }
+    case 'sum-statement': { const m = memoize((a, b) => a + b); m(2, 2); m(2, 2); m(1, 3); return [m.getCallCount()]; }
+    case 'fact': { const m = memoize((n) => (n <= 1 ? 1 : n * m(n - 1))); return [m(5), m(3), m.getCallCount()]; }
+    case 'fib': { const m = memoize((n) => (n < 2 ? n : m(n - 1) + m(n - 2))); return [m(10), m(10), m.getCallCount()]; }
+    case 'initial': { const m = memoize((a, b) => a + b); return [m.getCallCount()]; }
+    case 'zero-result': { const m = memoize((a, b) => a * b); return [m(0, 5), m(0, 5), m(5, 0), m.getCallCount()]; }
+    case 'order-matters': { let seen = []; const m = memoize((a, b) => { seen.push(a + ',' + b); return a - b; }); return [m(2, 3), m(3, 2), m(2, 3), seen.join(' ')]; }
+    case 'big-distinct': { const m = memoize((a, b) => a + b); let s = 0; for (let i = 0; i < 100000; i++) s += m(i, 100000 - i); return [s, m.getCallCount()]; }
+    case 'big-repeat': { const m = memoize((a, b) => a + b); let s = 0; for (let i = 0; i < 100000; i++) s += m(3, 4); return [s, m.getCallCount()]; }
+    case 'fact-10': { const m = memoize((n) => (n <= 1 ? 1 : n * m(n - 1))); return [m(10), m.getCallCount(), m(7), m.getCallCount()]; }
+    case 'max-args': { const m = memoize((a, b) => a + b); return [m(100000, 100000), m(100000, 100000), m.getCallCount()]; }
+  }
+}` }, cases: [
+      [["sum"],[4,4,4,4,3]],
+      [["sum-statement"],[2]],
+      [["fact"],[120,6,5]],
+      [["fib"],[55,55,11]],
+      [["initial"],[0]],
+      [["zero-result"],[0,0,0,2]],
+      [["order-matters"],[-1,1,-1,"2,3 3,2"]],
+      [["big-distinct"],[10000000000,100000]],
+      [["big-repeat"],[700000,1]],
+      [["fact-10"],[3628800,10,5040,10]],
+      [["max-args"],[200000,200000,1]]
+    ] },
     solution: {
       approach: `<p>Closure over a Map cache and a counter. The key is the argument list joined with commas (safe because inputs are numbers).</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2092,6 +2409,37 @@ function createAccountBrute(owner, opening = 0) {
 }` },
     mcq: { q: 'Why return <code>history.map(e =&gt; ({ ...e }))</code> instead of <code>history</code>?', options: ['Returning the internal array would let callers mutate private state', 'map is faster', 'Arrays cannot be returned from closures', 'To sort the history'], answer: 0, explain: 'A closure hides the variable, but if you hand out a reference to a mutable object the caller can still change it. Return a copy (or a frozen copy).' },
     hints: [`<p>Hint 1: keep <code>let bal</code> and <code>const history = []</code> inside <code>createAccount</code>.</p>`, `<p>Hint 2: write one private <code>validate(amount)</code> helper and one private <code>record(type, amount)</code> helper.</p>`, `<p>Hint 3: <code>statement()</code> returns copies of the entries; consider <code>Object.freeze</code> on the returned API object so methods cannot be replaced.</p>`],
+    tests: { sig: 'string string string[] -> string', fn: 'acctRun', harness: { js: `function acctRun(owner, opening, ops) {
+  const a = opening === '' ? createAccount(owner) : createAccount(owner, +opening), out = [];
+  const tryOp = (f) => { try { return f(); } catch (e) { return e.name + (e.name === 'Error' ? ': ' + e.message : ''); } };
+  for (const op of ops) {
+    if (op === 'b') out.push(a.balance());
+    else if (op === 's') out.push(a.statement());
+    else if (op === 'slen') out.push(a.statement().length);
+    else if (op === 'mut') { const st = a.statement(); st.length = 0; out.push('mut'); }
+    else if (op === 'mut2') { const st = a.statement(); if (st[0]) st[0].amount = 12345; out.push('mut2'); }
+    else if (op === 'bal-prop') out.push(String(a.bal) + '/' + String(a.history));
+    else if (op === 'owner') out.push(a.owner);
+    else if (op === 'frozen') out.push(Object.isFrozen(a));
+    else {
+      const m = /^([dw])(\\*(\\d+))?:(.*)$/.exec(op), times = m[3] ? +m[3] : 1;
+      const raw = m[4], amt = raw.startsWith('s') ? raw.slice(1) : Number(raw);
+      let r; for (let i = 0; i < times; i++) r = tryOp(() => (m[1] === 'd' ? a.deposit(amt) : a.withdraw(amt)));
+      out.push(r);
+    }
+  }
+  return out;
+}` }, cases: [
+      [["Asha","100",["d:50","w:500","d:-5","b","s"]],[150,"Error: Insufficient funds","RangeError",150,[{"type":"open","amount":100,"balance":100},{"type":"deposit","amount":50,"balance":150}]]],
+      [["Asha","",["b","d:0","w:0","d:NaN","d:Infinity","w:-1","d:s5","b"]],[0,"RangeError","RangeError","RangeError","RangeError","RangeError","RangeError",0]],
+      [["Ben","100",["w:100","b","w:0.5"]],[0,0,"Error: Insufficient funds"]],
+      [["Ben","100",["d:0.5","w:0.25","s"]],[100.5,100.25,[{"type":"open","amount":100,"balance":100},{"type":"deposit","amount":0.5,"balance":100.5},{"type":"withdraw","amount":0.25,"balance":100.25}]]],
+      [["Cy","10",["mut","slen","mut2","s"]],["mut",1,"mut2",[{"type":"open","amount":10,"balance":10}]]],
+      [["Cy","10",["bal-prop","owner","frozen"]],["undefined/undefined","Cy",true]],
+      [["Di","0",["w:1","d:1","w:1","b","slen"]],["Error: Insufficient funds",1,0,0,3]],
+      [["Ed","5",["d*100000:1","b","slen"]],[100005,100005,100001]],
+      [["Fay","1",["w:1","d:1","w:2"]],[0,1,"Error: Insufficient funds"]]
+    ] },
     solution: {
       approach: `<p>Module pattern: private state + private helpers in the factory scope, a frozen public API of closures, and defensive copies for anything mutable that leaves the closure.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2153,6 +2501,27 @@ function sumBrute(...nums) {
 }` },
     mcq: { q: 'How do you make branches like <code>s(1)</code> and <code>s(2)</code> independent?', options: ['Each call returns a NEW function closing over a NEW accumulated total (no mutation)', 'Reset a global total after each ()', 'Use this.total', 'Use setTimeout'], answer: 0, explain: 'Immutable accumulation: next = acc + newNumbers, captured by a fresh closure. Old closures still hold their old totals.' },
     hints: [`<p>Hint 1: write a helper <code>make(acc)</code> that returns a function closing over <code>acc</code>.</p>`, `<p>Hint 2: inside it: no arguments → return <code>acc</code>; otherwise return <code>make(acc + sumOf(args))</code>.</p>`, `<p>Hint 3: <code>sum</code> itself is just <code>make(0)</code> applied to the first call: <code>const sum = (...a) =&gt; make(0)(...a)</code>.</p>`],
+    tests: { sig: 'int[][][] -> int[]', fn: 'cur', harness: { js: `function cur(chains) {
+  const out = [];
+  const apply = (f, chain) => { let r = f; for (const nums of chain) r = r(...nums); return r; };
+  const first = apply(sum, chains[0]);
+  if (typeof first === 'number') { out.push(first); return out; }
+  for (const ch of chains.slice(1)) out.push(apply(first, ch));
+  return out;
+}` }, cases: [
+      [[[[[1],[2],[3],[]]]],[6]],
+      [[[[[1,2],[3],[]]]],[6]],
+      [[[[[]]]],[0]],
+      [[[[[10]],[[1],[]],[[2],[]]]],[11,12]],
+      [[[[[1]],[[]]]],[1]],
+      [[[[[-1],[1],[]]]],[0]],
+      [[[[[1,2,3,4,5],[]]]],[15]],
+      [[[[[0],[]]]],[0]],
+      [[[[[5]],[[5],[5],[]],[[]],[[1,1],[]]]],[15,5,7]],
+      [[[[[1000000000],[1000000000],[]]]],[2000000000]],
+      [[[{"$concat":[{"$rep":[1],"n":10000},[[]]]}]],[10000]],
+      [[[{"$concat":[{"$rep":[1,2],"n":5000},[[]]]}]],[15000]]
+    ] },
     solution: {
       approach: `<p>Each step creates a new closure with the accumulated total so far; nothing is mutated, so any partial chain is a reusable, independent value.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2187,6 +2556,31 @@ let calls = 0; // shared by every wrapper - wrong
 const beforeBrute = (n, fn) => (...args) => (++calls < n ? fn(...args) : undefined);` },
     mcq: { q: 'Why set <code>fn = undefined</code> inside <code>before</code> once the limit is reached?', options: ['So the closure stops retaining fn (and whatever fn captured), allowing GC', 'To throw an error on next call', 'Because fn is const', 'It is required by the spec'], answer: 0, explain: 'Closures keep captured values alive. Dropping the reference is a small but real memory hygiene step (lodash does exactly this).' },
     hints: [`<p>Hint 1: each wrapper captures its own <code>count</code> and (for before) <code>lastResult</code>.</p>`, `<p>Hint 2: before: increment first; if <code>count &lt; n</code> call fn and store result; when count reaches n, drop fn.</p>`, `<p>Hint 3: after: <code>if (++count &gt;= n) return fn.apply(this, args);</code> Use regular <code>function</code> wrappers to forward <code>this</code>.</p>`],
+    tests: { sig: 'string int int -> string', fn: 'ba', harness: { js: `function ba(kind, n, k) {
+  let real = 0; const res = [];
+  const f = function (x) { real++; return (this && this.tag ? this.tag : 'r') + x; };
+  const obj = { tag: 'T' };
+  let w;
+  if (kind.startsWith('before')) w = before(n, f); else w = after(n, f);
+  for (let c = 1; c <= k; c++) res.push(U(kind.endsWith('-this') ? (obj.m = w, obj.m(c)) : w(c)));
+  if (k > 100) return { real, first: res[0], last: res[res.length - 1], uCount: res.filter((x) => x === 'undefined').length };
+  return { res, real };
+}
+function U(v) { return v === undefined ? 'undefined' : v; }` }, cases: [
+      [["before",3,5],{"res":["r1","r2","r2","r2","r2"],"real":2}],
+      [["before",0,3],{"res":["undefined","undefined","undefined"],"real":0}],
+      [["before",1,3],{"res":["undefined","undefined","undefined"],"real":0}],
+      [["before",2,1],{"res":["r1"],"real":1}],
+      [["before",2,0],{"res":[],"real":0}],
+      [["after",3,5],{"res":["undefined","undefined","r3","r4","r5"],"real":3}],
+      [["after",0,3],{"res":["r1","r2","r3"],"real":3}],
+      [["after",1,3],{"res":["r1","r2","r3"],"real":3}],
+      [["after",2,1],{"res":["undefined"],"real":0}],
+      [["before-this",2,3],{"res":["T1","T1","T1"],"real":1}],
+      [["after-this",2,3],{"res":["undefined","T2","T3"],"real":2}],
+      [["before",1000000,1000000],{"real":999999,"first":"r1","last":"r999999","uCount":0}],
+      [["after",1000000,1000000],{"real":1,"first":"undefined","last":"r1000000","uCount":999999}]
+    ] },
     solution: {
       approach: `<p>Two tiny closures, each with private counters. <code>before</code> remembers the last result and releases fn after the limit.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2235,6 +2629,36 @@ function createEmitterBrute() {
 }` },
     mcq: { q: 'What makes each unsubscribe function remove exactly its own subscription?', options: ['It closes over a unique subscription token/record created in that on() call', 'It compares listener functions', 'It uses the event name only', 'It clears all listeners'], answer: 0, explain: 'Each on() call creates a new record object; the returned closure captures that record and deletes only it.' },
     hints: [`<p>Hint 1: store, per event, a <code>Set</code> of subscription records <code>{ listener }</code> — a new object per <code>on()</code> call.</p>`, `<p>Hint 2: the unsubscribe closure captures the record and does <code>set.delete(record)</code> — idempotent automatically.</p>`, `<p>Hint 3: in emit, iterate over a snapshot (<code>[...set]</code>) and skip records already removed (<code>set.has(rec)</code>).</p>`],
+    tests: { sig: 'string -> string', fn: 'emRun', harness: { js: `function emRun(kind) {
+  const em = createEmitter(), seen = [];
+  switch (kind) {
+    case 'basic': { const log = (x) => seen.push(x); const off = em.on('save', log); em.on('save', log); const r1 = em.emit('save', 1); off(); off(); const r2 = em.emit('save', 2); return { r: [r1, r2, em.count('save')], seen }; }
+    case 'self-unsub': { const off = em.on('x', () => { off(); seen.push('s'); }); return [em.emit('x'), em.emit('x'), em.count('x'), seen]; }
+    case 'order': { em.on('x', () => seen.push(1)); em.on('x', () => seen.push(2)); em.on('x', () => seen.push(3)); return [em.emit('x'), seen]; }
+    case 'none': return [em.emit('nothing'), em.count('nothing')];
+    case 'same-listener-twice': { const f = () => seen.push('f'); const off1 = em.on('x', f); em.on('x', f); off1(); return [em.emit('x'), em.count('x'), seen]; }
+    case 'args': { em.on('x', (a, b, c) => seen.push([a, b, c])); em.emit('x', 1, 'two', null); return seen; }
+    case 'events': { em.on('a', () => seen.push('A')); em.on('b', () => seen.push('B')); em.on('b', () => seen.push('B2')); return [em.emit('a'), em.emit('b'), em.count('a'), em.count('b'), seen]; }
+    case 'many': { const offs = []; let n = 0; for (let i = 0; i < 10000; i++) offs.push(em.on('x', () => { n++; })); const r = em.emit('x'); const c = em.count('x'); offs.forEach((o) => o()); return [r, n, c, em.count('x'), em.emit('x')]; }
+    case 'resubscribe': { const f = () => seen.push('f'); const off = em.on('x', f); off(); em.on('x', f); return [em.emit('x'), seen]; }
+    case 'unsub-others-first-then-emit': { const a = em.on('x', () => seen.push('a')); const b = em.on('x', () => seen.push('b')); b(); return [em.emit('x'), seen, a === b]; }
+    case 'unsub-before-emit-all': { const o = em.on('x', () => {}); o(); return [em.emit('x'), em.count('x')]; }
+    case 'listener-added-during-emit': { em.on('x', () => { seen.push('a'); em.on('x', () => seen.push('late')); }); const r1 = em.emit('x'); const r2 = em.emit('x'); return [r1, r2, seen]; }
+  }
+}` }, cases: [
+      [["basic"],{"r":[2,1,1],"seen":[1,1,2]}],
+      [["self-unsub"],[1,0,0,["s"]]],
+      [["order"],[3,[1,2,3]]],
+      [["none"],[0,0]],
+      [["same-listener-twice"],[1,1,["f"]]],
+      [["args"],[[1,"two",null]]],
+      [["events"],[1,2,1,2,["A","B","B2"]]],
+      [["many"],[10000,10000,10000,0,0]],
+      [["resubscribe"],[1,["f"]]],
+      [["unsub-others-first-then-emit"],[1,["a"],false]],
+      [["unsub-before-emit-all"],[0,0]],
+      [["listener-added-during-emit"],[1,2,["a","a","late"]]]
+    ] },
     solution: {
       approach: `<p>Map of event → Set of unique records. Each <code>on()</code> returns a closure over its own record, so removal is O(1), exact and idempotent. Emitting iterates a snapshot.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2295,6 +2719,31 @@ function memoizeForever(fn) {
 }` },
     mcq: { q: 'Why inject <code>now</code> instead of calling <code>Date.now()</code> directly?', options: ['Tests can control time precisely without waiting or fake timers', 'Date.now is slow', 'Closures cannot call Date.now', 'It is required for Map'], answer: 0, explain: 'Dependency-injecting the clock makes time-based logic deterministic and testable — a standard production technique.' },
     hints: [`<p>Hint 1: store <code>{ value, at }</code> per key in a Map captured by the closure.</p>`, `<p>Hint 2: on each call compute <code>age = now() - entry.at</code>; reuse only if <code>age &lt; ttlMs</code>.</p>`, `<p>Hint 3: on recompute overwrite the entry with a fresh timestamp; <code>clear</code> just calls <code>cache.clear()</code>.</p>`],
+    tests: { sig: 'int string[] -> string', fn: 'ttl', harness: { js: `function ttl(ttlMs, ops) {
+  let time = 0, computed = 0; const out = [];
+  const f = memoizeTTL((k) => { computed++; return k + '@' + time; }, ttlMs, () => time);
+  for (const op of ops) {
+    if (op.startsWith('t:')) time = +op.slice(2);
+    else if (op === 'clear') f.clear();
+    else if (op.startsWith('num:')) out.push(f(Number(op.slice(4))));
+    else if (op.startsWith('x*')) { let r; for (let i = 0; i < +op.slice(2); i++) r = f('k'); out.push(r); }
+    else out.push(f(op));
+  }
+  return { out, computed };
+}
+function ttlDefault() {
+  let computed = 0; const f = memoizeTTL((k) => { computed++; return k; }, 10000000); f('a'); f('a'); f('b'); return computed;
+}` }, cases: [
+      [[1000,["INFY","t:500","INFY","t:1000","INFY"]],{"out":["INFY@0","INFY@0","INFY@1000"],"computed":2}],
+      [[1000,["a","b","t:999","a","b","t:1000","a","b"]],{"out":["a@0","b@0","a@0","b@0","a@1000","b@1000"],"computed":4}],
+      [[1000,["a","t:999","a","t:1000","a","t:1999","a","t:2000","a"]],{"out":["a@0","a@0","a@1000","a@1000","a@2000"],"computed":3}],
+      [[1000,["a","clear","a"]],{"out":["a@0","a@0"],"computed":2}],
+      [[1,["a","a","t:1","a"]],{"out":["a@0","a@0","a@1"],"computed":2}],
+      [[10000000,["a","t:9999999","a"]],{"out":["a@0","a@0"],"computed":1}],
+      [[1000,["num:1","num:1","x*1"]],{"out":["1@0","1@0","k@0"],"computed":2}],
+      [[1000,[]],{"out":[],"computed":0}],
+      [[500,["x*100000","t:499","x*100000","t:500","x*100000"]],{"out":["k@0","k@0","k@500"],"computed":2}]
+    ] },
     solution: {
       approach: `<p>Closure over a Map of timestamped entries and the injected clock. Lazy expiry: entries are checked when read, no timers needed.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2348,32 +2797,68 @@ function memoizeLRUBrute(fn, capacity) {
 }` },
     mcq: { q: 'Which built-in property makes an O(1) LRU in JavaScript easy?', options: ['A Map iterates keys in insertion order, so delete + set moves a key to the end', 'Objects sort keys alphabetically', 'WeakMap evicts automatically', 'Arrays have O(1) splice'], answer: 0, explain: 'The first key of a Map (map.keys().next().value) is the oldest inserted; re-inserting on each use keeps the least recently used at the front.' },
     hints: [`<p>Hint 1: one Map is enough: its insertion order <b>is</b> your recency list.</p>`, `<p>Hint 2: on a hit, <code>delete</code> then <code>set</code> the same key to move it to the most-recent end.</p>`, `<p>Hint 3: on a miss with a full cache, evict <code>cache.keys().next().value</code> before inserting. Keep hits/misses/evictions as private counters in the closure.</p>`],
+    tests: { sig: 'int int[] -> string', fn: 'lruRun', harness: { js: `function lruRun(cap, keys) {
+  let calls = 0;
+  const f = memoizeLRU((n) => { calls++; return n * n; }, cap);
+  const res = []; for (const k of keys) res.push(f(k));
+  if (keys.length > 1000) { const ks = f.keys(); return { stats: f.stats(), calls, first: ks[0], last: ks[ks.length - 1], n: ks.length }; }
+  return { res, keys: f.keys(), stats: f.stats(), calls };
+}` }, cases: [
+      [[2,[1,2,1,3]],{"res":[1,4,1,9],"keys":[1,3],"stats":{"hits":1,"misses":3,"evictions":1,"size":2},"calls":3}],
+      [[2,[1,2,1,3,2]],{"res":[1,4,1,9,4],"keys":[3,2],"stats":{"hits":1,"misses":4,"evictions":2,"size":2},"calls":4}],
+      [[1,[1,1,2,2,1]],{"res":[1,1,4,4,1],"keys":[1],"stats":{"hits":2,"misses":3,"evictions":2,"size":1},"calls":3}],
+      [[3,[1,2,3,1,2,3]],{"res":[1,4,9,1,4,9],"keys":[1,2,3],"stats":{"hits":3,"misses":3,"evictions":0,"size":3},"calls":3}],
+      [[3,[1,2,3,1]],{"res":[1,4,9,1],"keys":[2,3,1],"stats":{"hits":1,"misses":3,"evictions":0,"size":3},"calls":3}],
+      [[3,[]],{"res":[],"keys":[],"stats":{"hits":0,"misses":0,"evictions":0,"size":0},"calls":0}],
+      [[2,[0,0,-3,0,5]],{"res":[0,0,9,0,25],"keys":[0,5],"stats":{"hits":2,"misses":3,"evictions":1,"size":2},"calls":3}],
+      [[2,[1,2,3,4]],{"res":[1,4,9,16],"keys":[3,4],"stats":{"hits":0,"misses":4,"evictions":2,"size":2},"calls":4}],
+      [[3,[1,2,3,4,1]],{"res":[1,4,9,16,1],"keys":[3,4,1],"stats":{"hits":0,"misses":5,"evictions":2,"size":3},"calls":5}],
+      [[100000,{"$concat":[{"$range":[0,150000]},{"$range":[0,150000]},{"$range":[0,150000]},{"$range":[0,150000]},{"$range":[0,150000]},{"$range":[0,150000]}]}],{"stats":{"hits":0,"misses":900000,"evictions":800000,"size":100000},"calls":900000,"first":50000,"last":149999,"n":100000}],
+      [[100000,{"$concat":[{"$range":[0,80000]},{"$range":[0,80000]},{"$range":[0,80000]},{"$range":[0,80000]},{"$range":[0,80000]},{"$range":[0,80000]},{"$range":[0,80000]},{"$range":[0,80000]},{"$range":[0,80000]},{"$range":[0,80000]},{"$range":[0,80000]},{"$range":[0,80000]}]}],{"stats":{"hits":880000,"misses":80000,"evictions":0,"size":80000},"calls":80000,"first":0,"last":79999,"n":80000}]
+    ] },
     solution: {
-      approach: `<p>A closure over one Map (ordered by recency) plus counters. Hit → delete + re-set (O(1)); miss → maybe evict the first key (O(1)), then insert.</p>`,
+      approach: `<p>A Map from key to a node of a doubly linked list ordered least → most recently used, plus counters. Hit → unlink the node and append it at the MRU end (O(1)); miss → evict the node after the head sentinel if full (O(1)), then append the new node. (The shortcut of deleting and re-setting keys in a Map and evicting <code>map.keys().next()</code> looks O(1), but V8 keeps deleted slots until a rehash, so evicting from the front slows down badly at this scale.)</p>`,
       code: { lang: 'js', run: true, code: `
 function memoizeLRU(fn, capacity) {
-  const cache = new Map();
+  // Doubly linked list ordered LRU -> MRU between two sentinels, plus a Map key -> node.
+  const map = new Map();
+  const head = { prev: null, next: null }, tail = { prev: head, next: null };
+  head.next = tail;
   let hits = 0, misses = 0, evictions = 0;
 
+  const unlink = (node) => { node.prev.next = node.next; node.next.prev = node.prev; };
+  const append = (node) => {             // becomes the most recently used
+    node.prev = tail.prev; node.next = tail;
+    tail.prev.next = node; tail.prev = node;
+  };
+
   function memo(key) {
-    if (cache.has(key)) {
+    const hit = map.get(key);
+    if (hit) {
       hits++;
-      const value = cache.get(key);
-      cache.delete(key);          // move to most-recent end
-      cache.set(key, value);
-      return value;
+      unlink(hit);                       // move to the MRU end, O(1)
+      append(hit);
+      return hit.value;
     }
     misses++;
     const value = fn(key);
-    if (cache.size >= capacity) {
-      cache.delete(cache.keys().next().value); // least recently used
+    if (map.size >= capacity) {
+      const lru = head.next;             // least recently used
+      unlink(lru);
+      map.delete(lru.key);
       evictions++;
     }
-    cache.set(key, value);
+    const node = { key, value, prev: null, next: null };
+    append(node);
+    map.set(key, node);
     return value;
   }
-  memo.stats = () => ({ hits, misses, evictions, size: cache.size });
-  memo.keys = () => [...cache.keys()];
+  memo.stats = () => ({ hits, misses, evictions, size: map.size });
+  memo.keys = () => {
+    const out = [];
+    for (let n = head.next; n !== tail; n = n.next) out.push(n.key);
+    return out;
+  };
   return memo;
 }
 
@@ -2406,6 +2891,34 @@ function resolveBrute(program) {
 }` },
     mcq: { q: 'Inside a block, a <code>use b</code> appears before <code>let b</code>, and the global scope also has an initialised <code>b</code>. What is the result?', options: ['TDZ:b — the block\'s b exists from the block start and shadows the global b', 'b@global', 'ReferenceError:b', 'undefined'], answer: 0, explain: 'Lexical declarations are created when the block is entered. Lookup stops at the first scope that has the name, even if that binding is still uninitialised.' },
     hints: [`<p>Hint 1: on entering any scope, first create all its <b>direct</b> <code>let</code>/<code>const</code> names in state <code>'tdz'</code>. On entering a function (or global) scope, also collect all <code>var</code> names in its body, recursing into <code>block</code>s but <b>not</b> into nested <code>fn</code>s, and mark them <code>'ready'</code>.</p>`, `<p>Hint 2: then execute statements in order: let/const → set to <code>'ready'</code> in the current scope; use → walk up the parent chain and stop at the first scope that has the name; block/fn → recurse with a new child scope.</p>`, `<p>Hint 3: keep a global counter for labels (<code>'block' + (++id)</code>, <code>'fn' + (++id)</code>). A scope is <code>{ label, vars: Map, parent }</code>.</p>`],
+    tests: { sig: 'string -> string', fn: 'sa', harness: { js: `function sa(json) {
+  let prog;
+  if (json === 'DEEP') { let inner = [['use', 'v'], ['use', 'g']]; for (let d = 100; d >= 1; d--) inner = d === 50 ? [['let', 'v'], ['block', inner]] : [['block', inner]]; prog = [['var', 'g']].concat(inner); }
+  else if (json === 'LONG') { prog = []; for (let i = 0; i < 5000; i++) prog.push(['var', 'v' + i]); for (let i = 0; i < 5000; i++) prog.push(['use', 'v' + i]); }
+  else prog = JSON.parse(json);
+  const r = analyze(prog);
+  return r.length > 100 ? { len: r.length, first: r[0], last: r[r.length - 1] } : r;
+}` }, cases: [
+      [["[[\"use\",\"a\"],[\"var\",\"a\"],[\"let\",\"b\"],[\"block\",[[\"use\",\"b\"],[\"let\",\"b\"],[\"use\",\"b\"],[\"var\",\"c\"]]],[\"use\",\"c\"],[\"fn\",[[\"use\",\"a\"],[\"var\",\"a\"],[\"use\",\"b\"],[\"use\",\"zz\"]]]]"],["a@global","TDZ:b","b@block1","c@global","a@fn2","b@global","ReferenceError:zz"]],
+      [["[[\"fn\",[[\"block\",[[\"var\",\"x\"]]],[\"use\",\"x\"]]],[\"use\",\"x\"]]"],["x@fn1","ReferenceError:x"]],
+      [["[[\"use\",\"x\"],[\"let\",\"x\"]]"],["TDZ:x"]],
+      [["[[\"use\",\"x\"],[\"const\",\"x\"],[\"use\",\"x\"]]"],["TDZ:x","x@global"]],
+      [["[[\"block\",[[\"let\",\"y\"]]],[\"use\",\"y\"]]"],["ReferenceError:y"]],
+      [["[[\"var\",\"a\"],[\"fn\",[[\"use\",\"a\"]]]]"],["a@global"]],
+      [["[[\"var\",\"a\"],[\"fn\",[[\"use\",\"a\"],[\"var\",\"a\"]]]]"],["a@fn1"]],
+      [["[[\"block\",[[\"let\",\"a\"],[\"use\",\"a\"]]],[\"fn\",[[\"block\",[[\"let\",\"b\"],[\"use\",\"b\"]]]]]]"],["a@block1","b@block3"]],
+      [["[[\"fn\",[[\"let\",\"z\"],[\"use\",\"z\"]]]]"],["z@fn1"]],
+      [["[[\"block\",[[\"use\",\"a\"]]],[\"let\",\"a\"]]"],["TDZ:a"]],
+      [["[]"],[]],
+      [["[[\"block\",[[\"use\",\"v\"],[\"var\",\"v\"]]]]"],["v@global"]],
+      [["[[\"block\",[[\"fn\",[[\"var\",\"q\"]]],[\"use\",\"q\"]]]]"],["ReferenceError:q"]],
+      [["[[\"block\",[[\"block\",[[\"var\",\"deep\"]]]]],[\"use\",\"deep\"]]"],["deep@global"]],
+      [["[[\"let\",\"a\"],[\"block\",[[\"let\",\"a\"],[\"block\",[[\"use\",\"a\"]]]]],[\"use\",\"a\"]]"],["a@block1","a@global"]],
+      [["[[\"fn\",[[\"var\",\"a\"],[\"fn\",[[\"use\",\"a\"]]]]]]"],["a@fn1"]],
+      [["[[\"use\",\"u\"]]"],["ReferenceError:u"]],
+      [["DEEP"],["v@block49","g@global"]],
+      [["LONG"],{"len":5000,"first":"v0@global","last":"v4999@global"}]
+    ] },
     solution: {
       approach: `<p>Simulate the two phases for every scope: a creation pass (lexical names → TDZ; for function/global scopes, hoisted var names → ready) followed by an execution pass that initialises let/const on their line and resolves uses by walking the parent chain. This is exactly the engine's environment-record model.</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2482,6 +2995,47 @@ function createSignalBrute(v) {
 function createEffectBrute(fn) { allEffects.push(fn); fn(); }` },
     mcq: { q: 'How does <code>read()</code> know which effect is reading it?', options: ['A module-level "currently running effect" variable, set by createEffect around the fn call and captured by read via closure scope', 'It parses the effect\'s source code', 'Through this', 'Via the call stack API'], answer: 0, explain: 'The tracking context is a variable in the shared outer (module) scope. createEffect sets it before running fn and restores it after; read() adds that effect to its own private subscriber Set.' },
     hints: [`<p>Hint 1: keep <code>let currentEffect = null</code> at module scope. Each signal closes over its own <code>value</code> and a private <code>Set</code> of subscribers.</p>`, `<p>Hint 2: <code>createEffect</code> wraps fn in a runner that saves the previous <code>currentEffect</code>, sets itself, runs fn in <code>try</code>, and restores in <code>finally</code> (supports nested effects).</p>`, `<p>Hint 3: <code>createMemo(fn)</code> = a private signal + an effect that writes <code>fn()</code> into it; return the signal's reader.</p>`],
+    tests: { sig: 'string -> string', fn: 'sg', harness: { js: `function sg(kind) {
+  const logs = [];
+  switch (kind) {
+    case 'demo': {
+      const [count, setCount] = createSignal(1), [name, setName] = createSignal('Asha');
+      const double = createMemo(() => count() * 2);
+      createEffect(() => logs.push('double is ' + double())); createEffect(() => logs.push('hello ' + name()));
+      setCount(5); setCount(5); setName('Ben'); return logs;
+    }
+    case 'immediate': { const [a] = createSignal(1); createEffect(() => logs.push('ran ' + a())); return logs; }
+    case 'unchanged': { const [a, setA] = createSignal(1); createEffect(() => logs.push(a())); setA(1); setA(2); setA(2); return logs; }
+    case 'nan-and-zero': { const [a, setA] = createSignal(NaN); createEffect(() => logs.push(String(Object.is(a(), -0) ? '-0' : a()))); setA(NaN); setA(0); setA(-0); setA(-0); return logs; }
+    case 'double-read': { const [a, setA] = createSignal(1); createEffect(() => logs.push(a() + a())); setA(2); return logs; }
+    case 'two-signals': { const [a, setA] = createSignal(1), [b, setB] = createSignal(10); createEffect(() => logs.push(a() + b())); setA(2); setB(20); return logs; }
+    case 'chain': { const [a, setA] = createSignal(1); const m1 = createMemo(() => a() + 1), m2 = createMemo(() => m1() * 10); createEffect(() => logs.push(m2())); setA(2); setA(3); return logs; }
+    case 'memo-filters': { const [a, setA] = createSignal(1); let runs = 0; const parity = createMemo(() => { runs++; return a() % 2; }); createEffect(() => logs.push('parity ' + parity())); setA(3); setA(5); setA(6); return [logs, runs]; }
+    case 'memo-value': { const [a, setA] = createSignal(2); const sq = createMemo(() => a() * a()); const r = [sq()]; setA(5); r.push(sq()); return r; }
+    case 'no-deps': { createEffect(() => logs.push('static')); return logs; }
+    case 'write-returns': { const [a, setA] = createSignal(1); return [String(setA(2)), String(setA(2)), a()]; }
+    case 'many-effects': { const [a, setA] = createSignal(0); let n = 0; for (let i = 0; i < 1000; i++) createEffect(() => { a(); n++; }); const before = n; setA(1); return [before, n]; }
+    case 'independent-signals': { const [a, setA] = createSignal(1), [b, setB] = createSignal(1); createEffect(() => logs.push('a' + a())); createEffect(() => logs.push('b' + b())); setB(2); setA(2); return logs; }
+    case 'effect-restores-context': { const [a, setA] = createSignal(1), [b, setB] = createSignal(1); createEffect(() => { a(); }); const m = createMemo(() => b()); createEffect(() => logs.push('m' + m())); setB(2); return logs; }
+    case 'object-identity': { const o = {}, [s, setS] = createSignal(o); createEffect(() => logs.push('run')); createEffect(() => { s(); logs.push('read'); }); setS(o); setS({}); return logs; }
+  }
+}` }, cases: [
+      [["demo"],["double is 2","hello Asha","double is 10","hello Ben"]],
+      [["immediate"],["ran 1"]],
+      [["unchanged"],[1,2]],
+      [["nan-and-zero"],["NaN","0","-0"]],
+      [["double-read"],[2,4]],
+      [["two-signals"],[11,12,22]],
+      [["chain"],[20,30,40]],
+      [["memo-filters"],[["parity 1","parity 0"],4]],
+      [["memo-value"],[4,25]],
+      [["no-deps"],["static"]],
+      [["write-returns"],["undefined","undefined",2]],
+      [["many-effects"],[1000,2000]],
+      [["independent-signals"],["a1","b1","b2","a2"]],
+      [["effect-restores-context"],["m1","m2"]],
+      [["object-identity"],["run","read","read"]]
+    ] },
     solution: {
       approach: `<p>Three layers of closures: each signal privately owns its value and subscribers; a shared module-scope tracking variable tells <code>read</code> who is listening; each effect runner closes over its fn. Writes notify only subscribers (snapshot to avoid infinite iteration while effects re-subscribe).</p>`,
       code: { lang: 'js', run: true, code: `
@@ -2553,6 +3107,58 @@ function cacheValueBrute(fetcher) {
 }` },
     mcq: { q: 'Why store the <b>promise</b> in the Map before it resolves?', options: ['Callers arriving while the request is in flight can await the same promise instead of starting a new request', 'Promises are smaller than values', 'Maps cannot store objects', 'To make the request faster'], answer: 0, explain: 'The promise represents the in-flight work. Sharing it coalesces concurrent requests into one.' },
     hints: [`<p>Hint 1: the closure holds <code>const inFlight = new Map()</code> from key → promise.</p>`, `<p>Hint 2: if the key exists, return the stored promise. Otherwise create it with <code>Promise.resolve().then(() =&gt; fetcher(key))</code> so synchronous throws also become rejections.</p>`, `<p>Hint 3: chain <code>.finally(() =&gt; inFlight.delete(key))</code> and store <b>that</b> promise, so both success and failure clear the entry.</p>`],
+    tests: { io: true, harness: { js: `function dedupeMain() {
+  const flush = async () => { for (let i = 0; i < 10; i++) await null; };
+  const deferred = () => { let res, rej; const p = new Promise((a, b) => { res = a; rej = b; }); return { p, res, rej }; };
+  const out = (...a) => console.log(...a);
+  (async () => {
+    const pending = new Map(); let calls = 0; const keysSeen = [];
+    const fetcher = (key) => { calls++; keysSeen.push(String(key)); const d = deferred(); pending.set(key, d); return d.p; };
+    const get = dedupe(fetcher);
+    const p1 = get(1), p2 = get(1), p3 = get(2), p4 = get(1);
+    out('same promise:', p1 === p2, p1 === p4, p1 === p3);
+    await flush();
+    out('calls in flight:', calls, keysSeen.join(','));
+    const user1 = { id: 1 };
+    pending.get(1).res(user1); pending.get(2).res({ id: 2 });
+    const [a, b, c, d] = await Promise.all([p1, p2, p3, p4]);
+    out('shared result:', a === user1, b === user1, d === user1, c.id);
+    const p5 = get(1);
+    await flush();
+    out('refetch after settle:', calls, p5 === p1);
+    pending.get(1).res({ id: 1 });
+    await p5;
+    const bad1 = get('bad'), bad2 = get('bad');
+    await flush();
+    pending.get('bad').rej(new Error('500'));
+    const r = await Promise.allSettled([bad1, bad2]);
+    out('rejections:', r.map((x) => x.status + ':' + (x.reason && x.reason.message)).join(','), bad1 === bad2);
+    const before = calls;
+    const retry = get('bad'); await flush();
+    out('retry fetches again:', calls - before, retry === bad1);
+    pending.get('bad').res('ok');
+    out('retry value:', await retry);
+    const sync = dedupe(() => { throw new Error('sync boom'); });
+    let thrown = 'no';
+    let pr; try { pr = sync('k'); } catch (e) { thrown = 'threw'; }
+    out('sync throw is thrown?', thrown, pr instanceof Promise);
+    const e1 = await pr.catch((e) => e.message);
+    out('sync throw rejects:', e1);
+    const types = []; const typed = dedupe((k) => { types.push(typeof k); return Promise.resolve(k); });
+    await Promise.all([typed(1), typed('1'), typed(1), typed('1')]);
+    out('keys 1 vs "1":', types.join(','));
+    let big = 0; const bigGet = dedupe(() => { big++; return new Promise(() => {}); });
+    const ps = []; for (let i = 0; i < 10000; i++) ps.push(bigGet(7));
+    await flush();
+    out('10000 callers:', big, ps.every((p) => p === ps[0]));
+    const seenArgs = []; const argsGet = dedupe((k) => { seenArgs.push(k); return Promise.resolve(k); });
+    await argsGet('abc');
+    out('fetcher receives key:', seenArgs.join(','));
+  })();
+}
+dedupeMain();` }, cases: [
+      {"stdin":"","stdout":"same promise: true true false\ncalls in flight: 2 1,2\nshared result: true true true 2\nrefetch after settle: 3 false\nrejections: rejected:500,rejected:500 true\nretry fetches again: 1 false\nretry value: ok\nsync throw is thrown? no true\nsync throw rejects: sync boom\nkeys 1 vs \"1\": number,string\n10000 callers: 1 true\nfetcher receives key: abc\ncalls after burst: 2 | same object for 1: true | user2\ncalls after settle + refetch: 3\nrejected,rejected | calls: 4\nretry happened: 500 for bad | calls: 5"}
+    ] },
     solution: {
       approach: `<p>Closure over a Map of in-flight promises (request coalescing — the same idea as Go's singleflight, DataLoader and SWR/React Query dedupe). Cleanup in <code>finally</code> means the cache only lives as long as the request.</p>`,
       code: { lang: 'js', run: true, code: `

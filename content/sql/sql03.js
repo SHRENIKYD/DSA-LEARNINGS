@@ -577,6 +577,15 @@ FROM orders;` }
         `<p>Hint 2: Every KPI is a plain aggregate: COUNT(*), SUM, AVG, MIN, MAX. AVG already ignores NULL — you do not need to compute it by hand.</p>`,
         `<p>Hint 3: Missing amounts = rows minus non-NULL values: <code>COUNT(*) - COUNT(amount)</code>. Recipe: WHERE status = 'delivered' → the six aggregates → ROUND the average.</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['orders', 'revenue', 'avg_order', 'smallest', 'biggest', 'missing_amounts'], rows: [[10, 3190, 354.44, 25, 1020, 1]] },
+        { setup: 'UPDATE orders SET status = \'pending\' WHERE status = \'delivered\';', cols: ['orders', 'revenue', 'avg_order', 'smallest', 'biggest', 'missing_amounts'], rows: [[0, null, null, null, null, 0]] },
+        { setup: 'UPDATE orders SET amount = NULL WHERE status = \'delivered\';', cols: ['orders', 'revenue', 'avg_order', 'smallest', 'biggest', 'missing_amounts'], rows: [[10, null, null, null, null, 10]] },
+        { setup: 'DELETE FROM orders WHERE status = \'delivered\' AND id <> 1;', cols: ['orders', 'revenue', 'avg_order', 'smallest', 'biggest', 'missing_amounts'], rows: [[1, 920, 920, 920, 920, 0]] },
+        { setup: 'INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (15, 1, \'2024-05-01\', \'delivered\', 0);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (16, 2, \'2024-05-02\', \'delivered\', -10);', cols: ['orders', 'revenue', 'avg_order', 'smallest', 'biggest', 'missing_amounts'], rows: [[12, 3180, 289.09, -10, 1020, 1]] },
+        { setup: 'UPDATE orders SET amount = 100 WHERE status = \'delivered\' AND amount IS NULL; UPDATE orders SET amount = 7 WHERE id = 2;', cols: ['orders', 'revenue', 'avg_order', 'smallest', 'biggest', 'missing_amounts'], rows: [[10, 3162, 316.2, 7, 1020, 0]] },
+        { setup: 'DELETE FROM orders;', cols: ['orders', 'revenue', 'avg_order', 'smallest', 'biggest', 'missing_amounts'], rows: [[0, null, null, null, null, 0]] }
+      ] },
       solution: {
         approach: `<p>Filter rows with WHERE, then let each aggregate do its job in one pass. Use the built-in AVG (correct denominator, decimal result) and the classic <code>COUNT(*) - COUNT(col)</code> trick to count NULLs.</p>`,
         code: { lang: 'sql', db: 'shop', code: `SELECT COUNT(*)                  AS orders,
@@ -733,6 +742,15 @@ FROM customers;` }
         `<p>Hint 2: "phone OR email" in one expression: <code>COALESCE(phone, email)</code> is NULL only when both are missing. Count that.</p>`,
         `<p>Hint 3: unreachable = total − reachable; countries needs DISTINCT. Recipe: COUNT(*), COUNT(phone), COUNT(email), COUNT(COALESCE(phone,email)), the difference, COUNT(DISTINCT country).</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['total', 'with_phone', 'with_email', 'reachable', 'unreachable', 'countries'], rows: [[6, 4, 4, 5, 1, 4]] },
+        { setup: 'UPDATE customers SET phone = NULL, email = NULL;', cols: ['total', 'with_phone', 'with_email', 'reachable', 'unreachable', 'countries'], rows: [[6, 0, 0, 0, 6, 4]] },
+        { setup: 'UPDATE customers SET phone = \'1\', email = \'x@y.z\';', cols: ['total', 'with_phone', 'with_email', 'reachable', 'unreachable', 'countries'], rows: [[6, 6, 6, 6, 0, 4]] },
+        { setup: 'DELETE FROM customers;', cols: ['total', 'with_phone', 'with_email', 'reachable', 'unreachable', 'countries'], rows: [[0, 0, 0, 0, 0, 0]] },
+        { setup: 'UPDATE customers SET country = NULL WHERE id IN (1, 4, 6);', cols: ['total', 'with_phone', 'with_email', 'reachable', 'unreachable', 'countries'], rows: [[6, 4, 4, 5, 1, 3]] },
+        { setup: 'INSERT INTO customers (id, name, country) VALUES (7, \'G\', \'Chile\'), (8, \'H\', \'Chile\');', cols: ['total', 'with_phone', 'with_email', 'reachable', 'unreachable', 'countries'], rows: [[8, 4, 4, 5, 3, 5]] },
+        { setup: 'UPDATE customers SET country = \'India\';', cols: ['total', 'with_phone', 'with_email', 'reachable', 'unreachable', 'countries'], rows: [[6, 4, 4, 5, 1, 1]] }
+      ] },
       solution: {
         approach: `<p>Turn "has phone or email" into a single nullable expression with COALESCE and let COUNT skip the NULLs. Use subtraction for the complement and DISTINCT for unique countries.</p>`,
         code: { lang: 'sql', db: 'shop', code: `SELECT COUNT(*)                                   AS total,
@@ -889,6 +907,14 @@ ORDER BY order_date;` }
         `<p>Hint 2: Month comes from an expression: <code>substr(order_date, 1, 7)</code> (or <code>strftime('%Y-%m', order_date)</code>). Keep the year — grouping by month number alone would merge Jan 2024 with Jan 2025.</p>`,
         `<p>Hint 3: SUM of only NULLs is NULL → wrap it: <code>COALESCE(SUM(amount), 0)</code>. Recipe: SELECT month expr, status, COUNT(*), COALESCE(SUM) → GROUP BY month, status → ORDER BY month, status.</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['month', 'status', 'orders', 'amount'], rows: [['2024-01', 'delivered', 2, 1055], ['2024-02', 'cancelled', 1, 30], ['2024-02', 'delivered', 2, 65], ['2024-02', 'returned', 1, 120], ['2024-03', 'delivered', 3, 1970], ['2024-03', 'pending', 1, 15], ['2024-04', 'cancelled', 1, 120], ['2024-04', 'delivered', 3, 100]] },
+        { setup: 'UPDATE orders SET amount = NULL WHERE status = \'cancelled\';', cols: ['month', 'status', 'orders', 'amount'], rows: [['2024-01', 'delivered', 2, 1055], ['2024-02', 'cancelled', 1, 0], ['2024-02', 'delivered', 2, 65], ['2024-02', 'returned', 1, 120], ['2024-03', 'delivered', 3, 1970], ['2024-03', 'pending', 1, 15], ['2024-04', 'cancelled', 1, 0], ['2024-04', 'delivered', 3, 100]] },
+        { setup: 'DELETE FROM orders;', rows: [] },
+        { setup: 'UPDATE orders SET order_date = \'2024-01-31\';', cols: ['month', 'status', 'orders', 'amount'], rows: [['2024-01', 'cancelled', 2, 150], ['2024-01', 'delivered', 10, 3190], ['2024-01', 'pending', 1, 15], ['2024-01', 'returned', 1, 120]] },
+        { setup: 'INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (15, 1, \'2025-01-05\', \'delivered\', 10);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (16, 2, \'2023-01-05\', \'pending\', 20);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (17, 3, \'2024-02-29\', \'returned\', 5);', cols: ['month', 'status', 'orders', 'amount'], rows: [['2023-01', 'pending', 1, 20], ['2024-01', 'delivered', 2, 1055], ['2024-02', 'cancelled', 1, 30], ['2024-02', 'delivered', 2, 65], ['2024-02', 'returned', 2, 125], ['2024-03', 'delivered', 3, 1970], ['2024-03', 'pending', 1, 15], ['2024-04', 'cancelled', 1, 120], ['2024-04', 'delivered', 3, 100], ['2025-01', 'delivered', 1, 10]] },
+        { setup: 'UPDATE orders SET status = \'delivered\' WHERE status <> \'delivered\';', cols: ['month', 'status', 'orders', 'amount'], rows: [['2024-01', 'delivered', 2, 1055], ['2024-02', 'delivered', 4, 215], ['2024-03', 'delivered', 4, 1985], ['2024-04', 'delivered', 4, 220]] }
+      ] },
       solution: {
         approach: `<p>Make the month with an expression, group by (month, status), count rows, sum amounts with a NULL-safe COALESCE, and order explicitly.</p>`,
         code: { lang: 'sql', db: 'shop', code: `SELECT substr(order_date, 1, 7)    AS month,
@@ -1054,6 +1080,15 @@ HAVING COUNT(*) >= 2;` }
         `<p>Hint 2: Row condition (status) → WHERE. Group conditions (number of orders, total spend) → HAVING with COUNT(*) and SUM(amount).</p>`,
         `<p>Hint 3: Recipe: FROM orders → WHERE delivered → GROUP BY customer_id → HAVING COUNT(*) &gt;= 2 AND SUM(amount) &gt; 100 → ORDER BY spend DESC. Remember SUM skips NULL.</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['customer_id', 'orders', 'spend'], rows: [[1, 3, 1025], [2, 3, 205]] },
+        { setup: 'UPDATE orders SET amount = 60 WHERE id = 4; ', cols: ['customer_id', 'orders', 'spend'], rows: [[1, 3, 1025], [2, 3, 205]] },
+        { setup: 'INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (15, 5, \'2024-05-01\', \'delivered\', 1);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (16, 4, \'2024-05-01\', \'delivered\', 100);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (17, 6, \'2024-05-02\', \'delivered\', 50);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (18, 6, \'2024-05-03\', \'delivered\', 50);', cols: ['customer_id', 'orders', 'spend'], rows: [[1, 3, 1025], [5, 2, 1021], [4, 2, 1000], [2, 3, 205]] },
+        { setup: 'INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (15, 5, \'2024-05-01\', \'delivered\', 101);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (16, 4, \'2024-05-02\', \'delivered\', 200);', cols: ['customer_id', 'orders', 'spend'], rows: [[5, 2, 1121], [4, 2, 1100], [1, 3, 1025], [2, 3, 205]] },
+        { setup: 'UPDATE orders SET status = \'cancelled\' WHERE customer_id = 2;', cols: ['customer_id', 'orders', 'spend'], rows: [[1, 3, 1025]] },
+        { setup: 'UPDATE orders SET amount = NULL;', rows: [] },
+        { setup: 'UPDATE orders SET amount = 10000 WHERE id = 14; UPDATE orders SET amount = 5000 WHERE id = 2;', cols: ['customer_id', 'orders', 'spend'], rows: [[3, 2, 10040], [2, 3, 5070], [1, 3, 1025]] }
+      ] },
       solution: {
         approach: `<p>Filter rows to delivered orders first (cheap, shrinks the data), group by customer, then filter groups using both aggregates in HAVING.</p>`,
         code: { lang: 'sql', db: 'shop', code: `SELECT customer_id,
@@ -1280,6 +1315,15 @@ GROUP BY grade;` }
         `<p>Hint 2: First TRUE wins, so go from the highest threshold down (90, 75, 60, 40), and catch NULL with <code>WHEN score IS NULL</code> at the top.</p>`,
         `<p>Hint 3: Recipe: WHERE subject = 'Math' → SELECT CASE … END AS grade, COUNT(*) → GROUP BY grade → ORDER BY grade. COUNT(*) (not COUNT(score)) so the ABSENT row is counted.</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['grade', 'students'], rows: [['A', 2], ['ABSENT', 1], ['C', 1], ['D', 2], ['F', 1]] },
+        { setup: 'UPDATE scores SET score = 90 WHERE student_id = 1 AND subject = \'Math\'; UPDATE scores SET score = 40 WHERE student_id = 2 AND subject = \'Math\'; UPDATE scores SET score = 75 WHERE student_id = 3 AND subject = \'Math\'; UPDATE scores SET score = 60 WHERE student_id = 4 AND subject = \'Math\'; UPDATE scores SET score = 89 WHERE student_id = 5 AND subject = \'Math\'; UPDATE scores SET score = 39 WHERE student_id = 6 AND subject = \'Math\';', cols: ['grade', 'students'], rows: [['A', 1], ['ABSENT', 1], ['B', 2], ['C', 1], ['D', 1], ['F', 1]] },
+        { setup: 'DELETE FROM scores WHERE subject = \'Math\';', rows: [] },
+        { setup: 'UPDATE scores SET score = NULL WHERE subject = \'Math\';', cols: ['grade', 'students'], rows: [['ABSENT', 7]] },
+        { setup: 'UPDATE scores SET score = 100 WHERE subject = \'Math\';', cols: ['grade', 'students'], rows: [['A', 7]] },
+        { setup: 'UPDATE scores SET score = 0 WHERE subject = \'Math\' AND student_id < 4;', cols: ['grade', 'students'], rows: [['A', 1], ['ABSENT', 1], ['D', 2], ['F', 3]] },
+        { setup: 'UPDATE scores SET score = 74 WHERE subject = \'Math\' AND student_id IN (1, 2, 3);', cols: ['grade', 'students'], rows: [['A', 1], ['ABSENT', 1], ['C', 3], ['D', 2]] }
+      ] },
       solution: {
         approach: `<p>Map each score to a grade with an ordered searched CASE (NULL first, then thresholds descending), then group by the computed label and count rows. COUNT(*) matters: COUNT(score) would report 0 absentees.</p>`,
         code: { lang: 'sql', db: 'school', code: `SELECT CASE WHEN score IS NULL THEN 'ABSENT'
@@ -1491,6 +1535,14 @@ GROUP BY student_id;` }
         `<p>Hint 2: Each subject column is an aggregate over a CASE that only lets that subject's score through. Leave out ELSE so missing values stay NULL; MAX (or MIN) picks the single value.</p>`,
         `<p>Hint 3: passed = <code>COUNT(CASE WHEN score &gt;= 40 THEN 1 END)</code> (no ELSE) or <code>SUM(CASE … THEN 1 ELSE 0 END)</code>. NULL scores fail the comparison → not counted. ORDER BY student_id.</p>`
       ],
+      tests: { engine: 'sqlite', cases: [
+        { cols: ['student_id', 'math', 'science', 'english', 'passed'], rows: [[1, 92, 85, 78, 3], [2, 35, 48, 66, 2], [3, 74, null, 88, 2], [4, 58, 39, null, 1], [5, 99, 91, 95, 3], [6, 41, null, 52, 2], [7, null, 67, 71, 2]] },
+        { setup: 'DELETE FROM scores WHERE student_id = 3;', cols: ['student_id', 'math', 'science', 'english', 'passed'], rows: [[1, 92, 85, 78, 3], [2, 35, 48, 66, 2], [4, 58, 39, null, 1], [5, 99, 91, 95, 3], [6, 41, null, 52, 2], [7, null, 67, 71, 2]] },
+        { setup: 'DELETE FROM scores;', rows: [] },
+        { setup: 'UPDATE scores SET score = NULL;', cols: ['student_id', 'math', 'science', 'english', 'passed'], rows: [[1, null, null, null, 0], [2, null, null, null, 0], [3, null, null, null, 0], [4, null, null, null, 0], [5, null, null, null, 0], [6, null, null, null, 0], [7, null, null, null, 0]] },
+        { setup: 'UPDATE scores SET score = 40 WHERE student_id = 2 AND subject = \'Math\'; UPDATE scores SET score = 39 WHERE student_id = 2 AND subject = \'Science\';', cols: ['student_id', 'math', 'science', 'english', 'passed'], rows: [[1, 92, 85, 78, 3], [2, 40, 39, 66, 2], [3, 74, null, 88, 2], [4, 58, 39, null, 1], [5, 99, 91, 95, 3], [6, 41, null, 52, 2], [7, null, 67, 71, 2]] },
+        { setup: 'INSERT INTO scores VALUES (8, \'English\', 77), (0, \'Science\', 12);', cols: ['student_id', 'math', 'science', 'english', 'passed'], rows: [[0, null, 12, null, 0], [1, 92, 85, 78, 3], [2, 35, 48, 66, 2], [3, 74, null, 88, 2], [4, 58, 39, null, 1], [5, 99, 91, 95, 3], [6, 41, null, 52, 2], [7, null, 67, 71, 2], [8, null, null, 77, 1]] }
+      ] },
       solution: {
         approach: `<p>Group by student; for each subject, <code>MAX(CASE WHEN subject = … THEN score END)</code> extracts that subject's score or NULL. Count passes with a COUNT over a CASE that has no ELSE.</p>`,
         code: { lang: 'sql', db: 'school', code: `SELECT student_id,
@@ -1703,6 +1755,31 @@ GROUP BY channel;` }
         `<p>Hint 2: Guard each denominator with <code>NULLIF(SUM(…), 0)</code>; force decimal math with <code>100.0</code> / <code>1.0 *</code>; replace NULL totals with <code>COALESCE(SUM(signups), 0)</code>.</p>`,
         `<p>Hint 3: Label the NULL group with <code>COALESCE(channel, 'unknown')</code> in both SELECT and GROUP BY. Recipe: GROUP BY label → SUM clicks, COALESCE(SUM signups,0) → ROUND(100.0*signups/NULLIF(clicks,0),1) → ROUND(1.0*spend/NULLIF(signups,0),2).</p>`
       ],
+      tests: { engine: 'both', pg: `CREATE TABLE campaigns (
+  id      INTEGER PRIMARY KEY,
+  channel TEXT,                -- NULL = untracked source
+  name    TEXT NOT NULL,
+  clicks  INTEGER NOT NULL,
+  signups INTEGER,             -- NULL = tracking pixel was broken
+  spend   INTEGER NOT NULL
+);
+INSERT INTO campaigns VALUES
+  (1, 'search', 'Brand keywords',   400, 40,   2000),
+  (2, 'search', 'Generic keywords', 900, 27,   4500),
+  (3, 'social', 'Reels promo',        0, 0,     500),
+  (4, 'social', 'Influencer',       250, NULL, 3000),
+  (5, 'email',  'Newsletter',       120, 18,      0),
+  (6, NULL,     'Untracked QR',      60, 6,     300),
+  (7, 'email',  'Win-back',           0, NULL,    0),
+  (8, 'tv',     'Cricket ad',         0, NULL, 9000);`, cases: [
+        { cols: ['channel', 'clicks', 'signups', 'conv_pct', 'cost_per_signup'], rows: [['email', 120, 18, 15, 0], ['search', 1300, 67, 5.2, 97.01], ['social', 250, 0, 0, null], ['tv', 0, 0, null, null], ['unknown', 60, 6, 10, 50]] },
+        { setup: 'DELETE FROM campaigns;', rows: [] },
+        { setup: 'INSERT INTO campaigns VALUES (9, \'search\', \'Extra\', 100, 10, 1000);', cols: ['channel', 'clicks', 'signups', 'conv_pct', 'cost_per_signup'], rows: [['email', 120, 18, 15, 0], ['search', 1400, 77, 5.5, 97.4], ['social', 250, 0, 0, null], ['tv', 0, 0, null, null], ['unknown', 60, 6, 10, 50]] },
+        { setup: 'UPDATE campaigns SET signups = NULL WHERE channel = \'search\';', cols: ['channel', 'clicks', 'signups', 'conv_pct', 'cost_per_signup'], rows: [['email', 120, 18, 15, 0], ['search', 1300, 0, 0, null], ['social', 250, 0, 0, null], ['tv', 0, 0, null, null], ['unknown', 60, 6, 10, 50]] },
+        { setup: 'UPDATE campaigns SET channel = NULL WHERE channel = \'tv\';', cols: ['channel', 'clicks', 'signups', 'conv_pct', 'cost_per_signup'], rows: [['email', 120, 18, 15, 0], ['search', 1300, 67, 5.2, 97.01], ['social', 250, 0, 0, null], ['unknown', 60, 6, 10, 1550]] },
+        { setup: 'UPDATE campaigns SET clicks = 0;', cols: ['channel', 'clicks', 'signups', 'conv_pct', 'cost_per_signup'], rows: [['email', 0, 18, null, 0], ['search', 0, 67, null, 97.01], ['social', 0, 0, null, null], ['tv', 0, 0, null, null], ['unknown', 0, 6, null, 50]] },
+        { setup: 'INSERT INTO campaigns VALUES (9, \'tv\', \'Second ad\', 30, 3, 100), (10, \'ads\', \'New\', 7, 1, 5);', cols: ['channel', 'clicks', 'signups', 'conv_pct', 'cost_per_signup'], rows: [['ads', 7, 1, 14.3, 5], ['email', 120, 18, 15, 0], ['search', 1300, 67, 5.2, 97.01], ['social', 250, 0, 0, null], ['tv', 30, 3, 10, 3033.33], ['unknown', 60, 6, 10, 50]] }
+      ] },
       solution: {
         approach: `<p>Group by a COALESCE-d channel label, compute totals, and build each ratio from totals with decimal arithmetic and a NULLIF-guarded denominator. COALESCE only where a zero is the honest answer (signup totals), NULL where the ratio is undefined.</p>`,
         code: { lang: 'sql', db: 'app', code: `SELECT COALESCE(channel, 'unknown')                                  AS channel,
@@ -1740,6 +1817,15 @@ GROUP BY dept;` }
       `<p>Hint 2: Headcount counts people → COUNT(*). Payroll → SUM(salary) wrapped in COALESCE(…, 0).</p>`,
       `<p>Hint 3: Pending = COUNT(*) − COUNT(salary). Label with COALESCE(dept, 'Unassigned') in SELECT and GROUP BY; ORDER BY headcount DESC, dept.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['dept', 'headcount', 'payroll', 'pending_offers'], rows: [['Engineering', 4, 320000, 1], ['Sales', 4, 222000, 0], ['HR', 2, 93000, 0], ['Marketing', 1, 70000, 0], ['Unassigned', 1, 40000, 0]] },
+      { setup: 'UPDATE employees SET dept = NULL;', cols: ['dept', 'headcount', 'payroll', 'pending_offers'], rows: [['Unassigned', 12, 745000, 1]] },
+      { setup: 'UPDATE employees SET salary = NULL WHERE dept = \'HR\';', cols: ['dept', 'headcount', 'payroll', 'pending_offers'], rows: [['Engineering', 4, 320000, 1], ['Sales', 4, 222000, 0], ['HR', 2, 0, 2], ['Marketing', 1, 70000, 0], ['Unassigned', 1, 40000, 0]] },
+      { setup: 'DELETE FROM employees;', rows: [] },
+      { setup: 'INSERT INTO employees (id, name, dept, salary, email) VALUES (13, \'Zed\', \'Legal\', 1, NULL);', cols: ['dept', 'headcount', 'payroll', 'pending_offers'], rows: [['Engineering', 4, 320000, 1], ['Sales', 4, 222000, 0], ['HR', 2, 93000, 0], ['Legal', 1, 1, 0], ['Marketing', 1, 70000, 0], ['Unassigned', 1, 40000, 0]] },
+      { setup: 'INSERT INTO employees (id, name, dept, salary, email) VALUES (13, \'U1\', NULL, 5, NULL);INSERT INTO employees (id, name, dept, salary, email) VALUES (14, \'U2\', NULL, NULL, NULL);', cols: ['dept', 'headcount', 'payroll', 'pending_offers'], rows: [['Engineering', 4, 320000, 1], ['Sales', 4, 222000, 0], ['Unassigned', 3, 40005, 1], ['HR', 2, 93000, 0], ['Marketing', 1, 70000, 0]] },
+      { setup: 'UPDATE employees SET dept = \'Unassigned\' WHERE id = 7;', cols: ['dept', 'headcount', 'payroll', 'pending_offers'], rows: [['Engineering', 4, 320000, 1], ['Sales', 4, 222000, 0], ['Unassigned', 2, 85000, 0], ['HR', 1, 48000, 0], ['Marketing', 1, 70000, 0]] }
+    ] },
     solution: {
       approach: `<p>Group by the labelled department; COUNT(*) for people, COALESCE(SUM) for money, and the COUNT difference for NULL salaries.</p>`,
       code: { lang: 'sql', db: 'company', code: `SELECT COALESCE(dept, 'Unassigned')   AS dept,
@@ -1773,6 +1859,15 @@ GROUP BY email;` }
       `<p>Hint 2: A duplicate email is a bucket with 2 or more rows → HAVING COUNT(*) &gt; 1.</p>`,
       `<p>Hint 3: NULL emails would form a bucket too; add WHERE email IS NOT NULL to be explicit. Recipe: WHERE email IS NOT NULL → GROUP BY email → HAVING COUNT(*) &gt; 1.</p>`
     ],
+    tests: { engine: 'sqlite', cmp: 'set', cases: [
+      { cols: ['email'], rows: [['ben@co.com']] },
+      { setup: 'UPDATE employees SET email = NULL;', rows: [] },
+      { setup: 'UPDATE employees SET email = \'ben@co.com\' WHERE id IN (1, 3);', cols: ['email'], rows: [['ben@co.com']] },
+      { setup: 'UPDATE employees SET email = \'a@co.com\' WHERE id IN (1, 2); UPDATE employees SET email = \'b@co.com\' WHERE id IN (3, 4);', cols: ['email'], rows: [['a@co.com'], ['b@co.com']] },
+      { setup: 'UPDATE employees SET email = id || \'@co.com\';', rows: [] },
+      { setup: 'UPDATE employees SET email = \'Ben@co.com\' WHERE id = 12;', rows: [] },
+      { setup: 'UPDATE employees SET email = \'same@co.com\';', cols: ['email'], rows: [['same@co.com']] }
+    ] },
     solution: {
       approach: `<p>Group by email and keep groups with more than one row. Filtering NULL first makes intent explicit (and protects against a table with several NULL emails being reported as a "duplicate NULL").</p>`,
       code: { lang: 'sql', db: 'company', code: `SELECT email
@@ -1804,6 +1899,15 @@ HAVING COUNT(*) >= 3;   -- counts duplicate rows` }
       `<p>Hint 2: The threshold is on a per-club count → HAVING COUNT(DISTINCT student_id) &gt;= 3.</p>`,
       `<p>Hint 3: Select the same expression as members and ORDER BY members DESC.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['club', 'members'], rows: [['Chess', 4], ['Robotics', 3]] },
+      { setup: 'INSERT INTO club_signups VALUES (6, \'Drama\', \'2024-06-09\');', cols: ['club', 'members'], rows: [['Chess', 4], ['Drama', 3], ['Robotics', 3]] },
+      { setup: 'INSERT INTO club_signups VALUES (5, \'Drama\', \'2024-06-09\');INSERT INTO club_signups VALUES (5, \'Drama\', \'2024-06-10\');INSERT INTO club_signups VALUES (5, \'Drama\', \'2024-06-11\');', cols: ['club', 'members'], rows: [['Chess', 4], ['Robotics', 3]] },
+      { setup: 'DELETE FROM club_signups;', rows: [] },
+      { setup: 'INSERT INTO club_signups VALUES (2, \'Football\', \'2024-06-09\');INSERT INTO club_signups VALUES (3, \'Football\', \'2024-06-09\');INSERT INTO club_signups VALUES (7, \'Football\', \'2024-06-09\');', cols: ['club', 'members'], rows: [['Chess', 4], ['Football', 4], ['Robotics', 3]] },
+      { setup: 'DELETE FROM club_signups WHERE club = \'Chess\';', cols: ['club', 'members'], rows: [['Robotics', 3]] },
+      { setup: 'INSERT INTO club_signups VALUES (1, \'Chess\', \'2024-06-20\');INSERT INTO club_signups VALUES (1, \'Chess\', \'2024-06-21\');INSERT INTO club_signups VALUES (5, \'Chess\', \'2024-06-21\');INSERT INTO club_signups VALUES (6, \'Chess\', \'2024-06-21\');', cols: ['club', 'members'], rows: [['Chess', 6], ['Robotics', 3]] }
+    ] },
     solution: {
       approach: `<p>Group by club, count distinct students, keep groups reaching the threshold.</p>`,
       code: { lang: 'sql', db: 'school', code: `SELECT club, COUNT(DISTINCT student_id) AS members
@@ -1834,6 +1938,14 @@ GROUP BY status;` }
       `<p>Hint 2: The denominator is the whole table, not the group: <code>(SELECT COUNT(*) FROM orders)</code>.</p>`,
       `<p>Hint 3: Multiply by 100.0 before dividing; ROUND(…, 1); wrap the denominator in NULLIF(…, 0) for an empty table.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['status', 'orders', 'amount', 'pct'], rows: [['delivered', 10, 3190, 71.4], ['cancelled', 2, 150, 14.3], ['pending', 1, 15, 7.1], ['returned', 1, 120, 7.1]] },
+      { setup: 'DELETE FROM orders;', rows: [] },
+      { setup: 'UPDATE orders SET status = \'delivered\';', cols: ['status', 'orders', 'amount', 'pct'], rows: [['delivered', 14, 3475, 100]] },
+      { setup: 'UPDATE orders SET amount = NULL WHERE status = \'pending\' OR status = \'returned\';', cols: ['status', 'orders', 'amount', 'pct'], rows: [['delivered', 10, 3190, 71.4], ['cancelled', 2, 150, 14.3], ['pending', 1, 0, 7.1], ['returned', 1, 0, 7.1]] },
+      { setup: 'DELETE FROM orders WHERE status = \'delivered\' AND id > 2;', cols: ['status', 'orders', 'amount', 'pct'], rows: [['cancelled', 2, 150, 33.3], ['delivered', 2, 1055, 33.3], ['pending', 1, 15, 16.7], ['returned', 1, 120, 16.7]] },
+      { setup: 'UPDATE orders SET status = \'pending\' WHERE id IN (1, 2, 3);', cols: ['status', 'orders', 'amount', 'pct'], rows: [['delivered', 8, 2135, 57.1], ['pending', 4, 1100, 28.6], ['cancelled', 1, 120, 7.1], ['returned', 1, 120, 7.1]] }
+    ] },
     solution: {
       approach: `<p>Aggregate per status, divide by a scalar subquery for the grand total, using decimal arithmetic and a zero guard.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT status,
@@ -1876,6 +1988,14 @@ GROUP BY month, country;` }
       `<p>Hint 2: All four numbers come from the same rows → conditional aggregation: SUM(CASE WHEN state = 'approved' THEN 1 ELSE 0 END) and SUM(CASE WHEN … THEN amount ELSE 0 END).</p>`,
       `<p>Hint 3: Use ELSE 0 so all-declined groups show 0. NULL country groups automatically. Month: substr(trans_date, 1, 7).</p>`
     ],
+    tests: { engine: 'sqlite', cmp: 'set', cases: [
+      { cols: ['month', 'country', 'trans_count', 'approved_count', 'trans_total_amount', 'approved_total_amount'], rows: [['2024-12', 'US', 2, 1, 3000, 1000], ['2025-01', null, 1, 1, 300, 300], ['2025-01', 'DE', 2, 1, 2500, 2000], ['2025-01', 'IN', 2, 0, 1100, 0], ['2025-01', 'US', 1, 1, 2000, 2000]] },
+      { setup: 'DELETE FROM transactions;', rows: [] },
+      { setup: 'INSERT INTO transactions VALUES (130, NULL, \'declined\', 50, \'2025-01-16\');INSERT INTO transactions VALUES (131, NULL, \'declined\', 60, \'2024-12-01\');', cols: ['month', 'country', 'trans_count', 'approved_count', 'trans_total_amount', 'approved_total_amount'], rows: [['2024-12', null, 1, 0, 60, 0], ['2024-12', 'US', 2, 1, 3000, 1000], ['2025-01', null, 2, 1, 350, 300], ['2025-01', 'DE', 2, 1, 2500, 2000], ['2025-01', 'IN', 2, 0, 1100, 0], ['2025-01', 'US', 1, 1, 2000, 2000]] },
+      { setup: 'UPDATE transactions SET state = \'declined\';', cols: ['month', 'country', 'trans_count', 'approved_count', 'trans_total_amount', 'approved_total_amount'], rows: [['2024-12', 'US', 2, 0, 3000, 0], ['2025-01', null, 1, 0, 300, 0], ['2025-01', 'DE', 2, 0, 2500, 0], ['2025-01', 'IN', 2, 0, 1100, 0], ['2025-01', 'US', 1, 0, 2000, 0]] },
+      { setup: 'UPDATE transactions SET state = \'approved\';', cols: ['month', 'country', 'trans_count', 'approved_count', 'trans_total_amount', 'approved_total_amount'], rows: [['2024-12', 'US', 2, 2, 3000, 3000], ['2025-01', null, 1, 1, 300, 300], ['2025-01', 'DE', 2, 2, 2500, 2500], ['2025-01', 'IN', 2, 2, 1100, 1100], ['2025-01', 'US', 1, 1, 2000, 2000]] },
+      { setup: 'INSERT INTO transactions VALUES (130, \'FR\', \'approved\', 10, \'2025-02-01\');INSERT INTO transactions VALUES (131, \'FR\', \'approved\', 20, \'2025-02-28\');INSERT INTO transactions VALUES (132, \'FR\', \'declined\', 5, \'2025-03-01\');', cols: ['month', 'country', 'trans_count', 'approved_count', 'trans_total_amount', 'approved_total_amount'], rows: [['2024-12', 'US', 2, 1, 3000, 1000], ['2025-01', null, 1, 1, 300, 300], ['2025-01', 'DE', 2, 1, 2500, 2000], ['2025-01', 'IN', 2, 0, 1100, 0], ['2025-01', 'US', 1, 1, 2000, 2000], ['2025-02', 'FR', 2, 2, 30, 30], ['2025-03', 'FR', 1, 0, 5, 0]] }
+    ] },
     solution: {
       approach: `<p>Single pass: group by month and country; plain COUNT/SUM for totals, CASE-filtered SUMs for approved figures.</p>`,
       code: { lang: 'sql', db: 'app', code: `SELECT substr(trans_date, 1, 7)                                  AS month,
@@ -1912,6 +2032,15 @@ GROUP BY query_name;` }
       `<p>Hint 2: Force decimals: <code>AVG(1.0 * rating / position)</code>. For the percentage use <code>AVG(CASE WHEN rating &lt; 3 THEN 100.0 ELSE 0 END)</code> or 100.0 * SUM(...) / COUNT(*).</p>`,
       `<p>Hint 3: GROUP BY query_name, ROUND(…, 2) both.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['query_name', 'quality', 'poor_query_percentage'], rows: [['Bird', 0.24, 100], ['Cat', 0.66, 33.33], ['Dog', 2.5, 33.33]] },
+      { setup: 'DELETE FROM queries;', rows: [] },
+      { setup: 'INSERT INTO queries VALUES (\'Fish\', \'Goldfish\', 1, 3);', cols: ['query_name', 'quality', 'poor_query_percentage'], rows: [['Bird', 0.24, 100], ['Cat', 0.66, 33.33], ['Dog', 2.5, 33.33], ['Fish', 3, 0]] },
+      { setup: 'INSERT INTO queries VALUES (\'Fish\', \'Koi\', 500, 1);INSERT INTO queries VALUES (\'Fish\', \'Trout\', 2, 2);INSERT INTO queries VALUES (\'Fish\', \'Salmon\', 3, 5);', cols: ['query_name', 'quality', 'poor_query_percentage'], rows: [['Bird', 0.24, 100], ['Cat', 0.66, 33.33], ['Dog', 2.5, 33.33], ['Fish', 0.89, 66.67]] },
+      { setup: 'UPDATE queries SET rating = 5;', cols: ['query_name', 'quality', 'poor_query_percentage'], rows: [['Bird', 0.9, 0], ['Cat', 1.13, 0], ['Dog', 2.51, 0]] },
+      { setup: 'UPDATE queries SET rating = 2 WHERE query_name = \'Dog\';', cols: ['query_name', 'quality', 'poor_query_percentage'], rows: [['Bird', 0.24, 100], ['Cat', 0.66, 33.33], ['Dog', 1, 100]] },
+      { setup: 'UPDATE queries SET position = 1;', cols: ['query_name', 'quality', 'poor_query_percentage'], rows: [['Bird', 1.5, 100], ['Cat', 3, 33.33], ['Dog', 3.67, 33.33]] }
+    ] },
     solution: {
       approach: `<p>Group by query name; AVG of a decimal ratio for quality; conditional AVG of 100/0 for the poor percentage.</p>`,
       code: { lang: 'sql', db: 'app', code: `SELECT query_name,
@@ -1944,6 +2073,15 @@ HAVING COUNT(*) >= 3;` }
       `<p>Hint 2: Make the pair the bucket key: GROUP BY actor_id, director_id.</p>`,
       `<p>Hint 3: HAVING COUNT(*) &gt;= 3 keeps pairs with 3+ rows.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['actor_id', 'director_id'], rows: [[1, 1], [2, 1]] },
+      { setup: 'INSERT INTO cooperation VALUES (1, 2, 9);', cols: ['actor_id', 'director_id'], rows: [[1, 1], [1, 2], [2, 1]] },
+      { setup: 'DELETE FROM cooperation;', rows: [] },
+      { setup: 'INSERT INTO cooperation VALUES (3, 3, 9), (3, 3, 10);', cols: ['actor_id', 'director_id'], rows: [[1, 1], [2, 1], [3, 3]] },
+      { setup: 'INSERT INTO cooperation VALUES (2, 3, 9), (2, 3, 10), (2, 3, 11), (2, 3, 12), (3, 2, 13), (3, 2, 14), (3, 2, 15);', cols: ['actor_id', 'director_id'], rows: [[1, 1], [2, 1], [2, 3], [3, 2]] },
+      { setup: 'DELETE FROM cooperation WHERE timestamp < 3;', cols: ['actor_id', 'director_id'], rows: [[2, 1]] },
+      { setup: 'UPDATE cooperation SET director_id = 1;', cols: ['actor_id', 'director_id'], rows: [[1, 1], [2, 1]] }
+    ] },
     solution: {
       approach: `<p>Two-column grouping plus a HAVING threshold.</p>`,
       code: { lang: 'sql', db: 'app', code: `SELECT actor_id, director_id
@@ -1959,7 +2097,7 @@ ORDER BY actor_id, director_id;` },
   practice.push({
     title: 'Second Highest Salary (NULL If None)',
     level: 'Medium', tags: ['MAX', 'subquery', 'NULL'], companies: ['Amazon', 'Apple', 'Accenture'],
-    statement: `<p>Return the second highest <b>distinct</b> salary from <code>employees</code> (DB <b>company</b>) as a column <code>SecondHighestSalary</code>. If there is no second highest salary, return a single row containing NULL. (LeetCode 176.) The same query, restricted to <code>dept = 'Marketing'</code>, must return NULL.</p>`,
+    statement: `<p>Return the second highest <b>distinct</b> salary from <code>employees</code> (DB <b>company</b>) as a column <code>SecondHighestSalary</code>. If there is no second highest salary, return a single row containing NULL. (LeetCode 176.) The same pattern, restricted to <code>dept = 'Marketing'</code>, must return NULL; the company-wide query is the last result.</p>`,
     constraints: `<p>salary may be NULL; ties possible.</p>`,
     example: `${H.table(['SecondHighestSalary'], [['105000']])}<p>Highest is 120000 (Asha); next distinct is 105000 (Chen). For Marketing (only Ivan) → <span class="c-y">NULL</span>.</p>`,
     brute: {
@@ -1976,17 +2114,28 @@ LIMIT 1 OFFSET 1;          -- zero rows, not NULL` }
       `<p>Hint 2: <code>MAX(salary) WHERE salary &lt; (SELECT MAX(salary) …)</code> handles ties automatically.</p>`,
       `<p>Hint 3: A plain aggregate always returns one row, so "no second salary" naturally becomes NULL — no special casing.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['SecondHighestSalary'], rows: [[105000]] },
+      { setup: 'UPDATE employees SET salary = 100;', cols: ['SecondHighestSalary'], rows: [[null]] },
+      { setup: 'DELETE FROM employees WHERE id <> 1;', cols: ['SecondHighestSalary'], rows: [[null]] },
+      { setup: 'DELETE FROM employees;', cols: ['SecondHighestSalary'], rows: [[null]] },
+      { setup: 'UPDATE employees SET salary = NULL;', cols: ['SecondHighestSalary'], rows: [[null]] },
+      { setup: 'UPDATE employees SET salary = 120000 WHERE id = 3;', cols: ['SecondHighestSalary'], rows: [[95000]] },
+      { setup: 'UPDATE employees SET salary = -salary;', cols: ['SecondHighestSalary'], rows: [[-45000]] },
+      { setup: 'UPDATE employees SET salary = NULL WHERE id <> 1 AND id <> 2;', cols: ['SecondHighestSalary'], rows: [[95000]] }
+    ] },
     solution: {
       approach: `<p>Use the "aggregate over empty input returns NULL" rule: take MAX over all salaries strictly below the overall MAX.</p>`,
-      code: { lang: 'sql', db: 'company', code: `SELECT MAX(salary) AS SecondHighestSalary
-FROM employees
-WHERE salary < (SELECT MAX(salary) FROM employees);
-
--- Same pattern for one department (returns one NULL row for Marketing)
+      code: { lang: 'sql', db: 'company', code: `-- Same pattern for one department (returns one NULL row for Marketing)
 SELECT MAX(salary) AS SecondHighestSalary
 FROM employees
 WHERE dept = 'Marketing'
-  AND salary < (SELECT MAX(salary) FROM employees WHERE dept = 'Marketing');` },
+  AND salary < (SELECT MAX(salary) FROM employees WHERE dept = 'Marketing');
+
+-- The whole company (the final result)
+SELECT MAX(salary) AS SecondHighestSalary
+FROM employees
+WHERE salary < (SELECT MAX(salary) FROM employees);` },
       alt: [{ lang: 'sql', db: 'company', title: 'LIMIT/OFFSET fixed: DISTINCT + wrap in a scalar subquery', code: `SELECT (SELECT DISTINCT salary
         FROM employees
         WHERE salary IS NOT NULL
@@ -2016,6 +2165,14 @@ GROUP BY customer_id, month;   -- long format, not the requested pivot` }
       `<p>Hint 2: One conditional SUM per month column: <code>SUM(CASE WHEN order_date LIKE '2024-01%' THEN amount ELSE 0 END) AS jan</code>.</p>`,
       `<p>Hint 3: total = SUM(amount); WHERE status = 'delivered'; ORDER BY total DESC.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['customer_id', 'jan', 'feb', 'mar', 'apr', 'total'], rows: [[1, 920, 0, 50, 55, 1025], [5, 0, 0, 1020, 0, 1020], [4, 0, 0, 900, 0, 900], [2, 135, 25, 0, 45, 205], [3, 0, 40, 0, 0, 40]] },
+      { setup: 'UPDATE orders SET status = \'cancelled\' WHERE customer_id = 1;', cols: ['customer_id', 'jan', 'feb', 'mar', 'apr', 'total'], rows: [[5, 0, 0, 1020, 0, 1020], [4, 0, 0, 900, 0, 900], [2, 135, 25, 0, 45, 205], [3, 0, 40, 0, 0, 40]] },
+      { setup: 'DELETE FROM orders;', rows: [] },
+      { setup: 'INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (15, 6, \'2024-01-01\', \'delivered\', 1);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (16, 6, \'2024-04-30\', \'delivered\', 2);', cols: ['customer_id', 'jan', 'feb', 'mar', 'apr', 'total'], rows: [[1, 920, 0, 50, 55, 1025], [5, 0, 0, 1020, 0, 1020], [4, 0, 0, 900, 0, 900], [2, 135, 25, 0, 45, 205], [3, 0, 40, 0, 0, 40], [6, 1, 0, 0, 2, 3]] },
+      { setup: 'INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (15, 3, \'2024-03-31\', \'delivered\', 5000);', cols: ['customer_id', 'jan', 'feb', 'mar', 'apr', 'total'], rows: [[3, 0, 40, 5000, 0, 5040], [1, 920, 0, 50, 55, 1025], [5, 0, 0, 1020, 0, 1020], [4, 0, 0, 900, 0, 900], [2, 135, 25, 0, 45, 205]] },
+      { setup: 'UPDATE orders SET amount = NULL WHERE customer_id = 2;', cols: ['customer_id', 'jan', 'feb', 'mar', 'apr', 'total'], rows: [[1, 920, 0, 50, 55, 1025], [5, 0, 0, 1020, 0, 1020], [4, 0, 0, 900, 0, 900], [3, 0, 40, 0, 0, 40], [2, 0, 0, 0, 0, 0]] }
+    ] },
     solution: {
       approach: `<p>Group by customer and build each month column with a CASE-filtered SUM; ELSE 0 makes empty months 0.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT customer_id,
@@ -2023,7 +2180,7 @@ GROUP BY customer_id, month;   -- long format, not the requested pivot` }
        SUM(CASE WHEN order_date LIKE '2024-02%' THEN amount ELSE 0 END) AS feb,
        SUM(CASE WHEN order_date LIKE '2024-03%' THEN amount ELSE 0 END) AS mar,
        SUM(CASE WHEN order_date LIKE '2024-04%' THEN amount ELSE 0 END) AS apr,
-       SUM(amount)                                                       AS total
+       COALESCE(SUM(amount), 0)                                          AS total
 FROM orders
 WHERE status = 'delivered'
 GROUP BY customer_id
@@ -2052,6 +2209,15 @@ GROUP BY dept;` }
       `<p>Hint 2: The company number is a scalar subquery <code>(SELECT AVG(salary) FROM employees)</code> usable inside HAVING.</p>`,
       `<p>Hint 3: WHERE dept IS NOT NULL → GROUP BY dept → HAVING AVG(salary) &gt; (subquery) → ORDER BY dept_avg DESC.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['dept', 'dept_avg'], rows: [['Engineering', 106667], ['Marketing', 70000]] },
+      { setup: 'UPDATE employees SET salary = 1000000 WHERE id = 10;', rows: [] },
+      { setup: 'UPDATE employees SET dept = NULL;', rows: [] },
+      { setup: 'UPDATE employees SET salary = 50000;', rows: [] },
+      { setup: 'UPDATE employees SET salary = NULL WHERE dept = \'Engineering\';', cols: ['dept', 'dept_avg'], rows: [['Marketing', 70000], ['Sales', 55500]] },
+      { setup: 'UPDATE employees SET salary = 100000 WHERE id IN (7, 8);', cols: ['dept', 'dept_avg'], rows: [['Engineering', 106667], ['HR', 100000]] },
+      { setup: 'UPDATE employees SET dept = \'Engineering\' WHERE id IN (4, 5, 6);', cols: ['dept', 'dept_avg'], rows: [['Engineering', 81667], ['Marketing', 70000]] }
+    ] },
     solution: {
       approach: `<p>Aggregate per department and filter groups by comparing with a scalar subquery computed once.</p>`,
       code: { lang: 'sql', db: 'company', code: `SELECT dept, ROUND(AVG(salary)) AS dept_avg
@@ -2088,6 +2254,16 @@ GROUP BY request_at;` }
       `<p>Hint 2: Per day → GROUP BY request_at. The rate is cancelled ÷ total over the same rows: <code>AVG(CASE WHEN status &lt;&gt; 'completed' THEN 1.0 ELSE 0 END)</code>.</p>`,
       `<p>Hint 3: Restrict dates with BETWEEN, ROUND(…, 2), ORDER BY day. Recipe: trips ⨝ users c (client, unbanned) ⨝ users d (driver, unbanned) → WHERE date range → GROUP BY day → AVG of flag.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['day', 'cancellation_rate'], rows: [['2025-10-01', 0.5], ['2025-10-02', 0], ['2025-10-03', 0.5]] },
+      { setup: 'INSERT INTO trips VALUES (11, 1, 10, \'cancelled_by_client\', \'2025-10-02\');', cols: ['day', 'cancellation_rate'], rows: [['2025-10-01', 0.5], ['2025-10-02', 0.33], ['2025-10-03', 0.5]] },
+      { setup: 'INSERT INTO trips VALUES (11, 1, 10, \'cancelled_by_driver\', \'2025-10-02\');INSERT INTO trips VALUES (12, 3, 12, \'completed\', \'2025-10-02\');', cols: ['day', 'cancellation_rate'], rows: [['2025-10-01', 0.5], ['2025-10-02', 0.25], ['2025-10-03', 0.5]] },
+      { setup: 'INSERT INTO trips VALUES (11, 1, 10, \'completed\', \'2025-10-04\');INSERT INTO trips VALUES (12, 1, 10, \'cancelled_by_client\', \'2025-09-30\');', cols: ['day', 'cancellation_rate'], rows: [['2025-10-01', 0.5], ['2025-10-02', 0], ['2025-10-03', 0.5]] },
+      { setup: 'UPDATE users SET banned = \'No\';', cols: ['day', 'cancellation_rate'], rows: [['2025-10-01', 0.75], ['2025-10-02', 0], ['2025-10-03', 0.33]] },
+      { setup: 'UPDATE users SET banned = \'Yes\' WHERE user_id = 3;', cols: ['day', 'cancellation_rate'], rows: [['2025-10-01', 0], ['2025-10-02', 0], ['2025-10-03', 1]] },
+      { setup: 'UPDATE trips SET status = \'completed\';', cols: ['day', 'cancellation_rate'], rows: [['2025-10-01', 0], ['2025-10-02', 0], ['2025-10-03', 0]] },
+      { setup: 'INSERT INTO trips VALUES (11, 1, 10, \'cancelled_by_client\', \'2025-10-03\');INSERT INTO trips VALUES (12, 3, 11, \'cancelled_by_driver\', \'2025-10-03\');', cols: ['day', 'cancellation_rate'], rows: [['2025-10-01', 0.5], ['2025-10-02', 0], ['2025-10-03', 0.75]] }
+    ] },
     solution: {
       approach: `<p>Join users twice (as client and as driver) keeping only unbanned ones, so both parts of the ratio see the same rows. Then a conditional AVG per day produces the rate in one pass. (JOINs are covered in depth next module; here they are just a row filter.)</p>`,
       code: { lang: 'sql', db: 'app', code: `SELECT t.request_at AS day,
@@ -2133,6 +2309,15 @@ GROUP BY category;      -- missing the zero categories` }
       `<p>Hint 2: An aggregate query without GROUP BY always yields exactly one row. Write one per category with a conditional SUM and stack them with UNION ALL.</p>`,
       `<p>Hint 3: SUM over an empty input is NULL — wrap in COALESCE(…, 0) in case the department has no rows at all. Alternative: a VALUES list of categories LEFT JOINed to the grouped counts.</p>`
     ],
+    tests: { engine: 'sqlite', cmp: 'set', cases: [
+      { cols: ['category', 'employees'], rows: [['Low Salary', 0], ['Average Salary', 4], ['High Salary', 0]] },
+      { setup: 'INSERT INTO employees (id, name, dept, salary, email) VALUES (13, \'A\', \'Sales\', 49999, NULL);INSERT INTO employees (id, name, dept, salary, email) VALUES (14, \'B\', \'Sales\', 50000, NULL);INSERT INTO employees (id, name, dept, salary, email) VALUES (15, \'C\', \'Sales\', 100000, NULL);INSERT INTO employees (id, name, dept, salary, email) VALUES (16, \'D\', \'Sales\', 100001, NULL);INSERT INTO employees (id, name, dept, salary, email) VALUES (17, \'E\', \'Sales\', NULL, NULL);', cols: ['category', 'employees'], rows: [['Low Salary', 1], ['Average Salary', 6], ['High Salary', 1]] },
+      { setup: 'DELETE FROM employees WHERE dept = \'Sales\';', cols: ['category', 'employees'], rows: [['Low Salary', 0], ['Average Salary', 0], ['High Salary', 0]] },
+      { setup: 'UPDATE employees SET salary = 200000 WHERE dept = \'Sales\';', cols: ['category', 'employees'], rows: [['Low Salary', 0], ['Average Salary', 0], ['High Salary', 4]] },
+      { setup: 'UPDATE employees SET salary = 10 WHERE dept = \'Sales\';', cols: ['category', 'employees'], rows: [['Low Salary', 4], ['Average Salary', 0], ['High Salary', 0]] },
+      { setup: 'UPDATE employees SET salary = NULL WHERE dept = \'Sales\';', cols: ['category', 'employees'], rows: [['Low Salary', 0], ['Average Salary', 0], ['High Salary', 0]] },
+      { setup: 'UPDATE employees SET dept = \'Sales\' WHERE dept = \'HR\'; UPDATE employees SET salary = 20 WHERE id = 8;', cols: ['category', 'employees'], rows: [['Low Salary', 2], ['Average Salary', 4], ['High Salary', 0]] }
+    ] },
     solution: {
       approach: `<p>Three single-row aggregate queries (each counting its own category with SUM(CASE)) glued with UNION ALL. Each always returns one row, so every category appears with its count or 0.</p>`,
       code: { lang: 'sql', db: 'company', code: `SELECT 'Low Salary' AS category,
@@ -2166,7 +2351,7 @@ ORDER BY cats.ord;` }],
   practice.push({
     title: 'Customers Who Bought From Every Category',
     level: 'Hard', tags: ['relational division', 'COUNT DISTINCT', 'HAVING'], companies: ['Amazon', 'Instacart'],
-    statement: `<p>Return the <code>name</code> of customers (DB <b>shop</b>) who have ordered at least one product from <b>every</b> category in <code>products</code> (any order status). (LeetCode 1045 style.) Tables: customers, orders, order_items, products.</p>`,
+    statement: `<p>Return the <code>name</code> of customers (DB <b>shop</b>) who have ordered at least one product from <b>every</b> category in <code>products</code> (any order status), together with the number of distinct categories they bought from as <code>categories</code>. (LeetCode 1045 style.) Tables: customers, orders, order_items, products.</p>`,
     constraints: `<p>The set of categories can change — don't hard-code 4.</p>`,
     example: `${H.table(['name', 'categories'], [['<span class="c-g">Aarav</span>', '4']])}<p>Aarav bought Electronics (laptop), Sports (football, yoga mat), Books (cookbook, novel) and Home (desk lamp). Bella has Electronics, Books, Sports — no Home.</p>`,
     brute: {
@@ -2185,6 +2370,16 @@ HAVING COUNT(*) >= 4;      -- counts items, not distinct categories` }
       `<p>Hint 2: Per customer, count <b>distinct</b> categories.</p>`,
       `<p>Hint 3: Compare in HAVING with a scalar subquery <code>(SELECT COUNT(DISTINCT category) FROM products)</code>.</p>`
     ],
+    tests: { engine: 'sqlite', cmp: 'set', cases: [
+      { cols: ['name', 'categories'], rows: [['Aarav', 4]] },
+      { setup: 'INSERT INTO order_items VALUES (2, 7, 1);', cols: ['name', 'categories'], rows: [['Aarav', 4], ['Bella', 4]] },
+      { setup: 'INSERT INTO products VALUES (8, \'Toy\', \'Toys\', 5);', rows: [] },
+      { setup: 'DELETE FROM products WHERE category = \'Home\';', cols: ['name', 'categories'], rows: [['Aarav', 3], ['Bella', 3]] },
+      { setup: 'DELETE FROM order_items;', rows: [] },
+      { setup: 'UPDATE orders SET status = \'cancelled\'; INSERT INTO order_items VALUES (7, 7, 1), (7, 3, 1), (7, 5, 1);', cols: ['name', 'categories'], rows: [['Aarav', 4], ['Emma', 4]] },
+      { setup: 'DELETE FROM products WHERE category <> \'Electronics\';', cols: ['name', 'categories'], rows: [['Aarav', 1], ['Bella', 1], ['Deepa', 1], ['Emma', 1]] },
+      { setup: 'DELETE FROM orders WHERE customer_id = 1;', rows: [] }
+    ] },
     solution: {
       approach: `<p>Relational division by counting: join to reach the category of each purchased item, group by customer, and require the distinct-category count to equal the total number of categories.</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT c.name, COUNT(DISTINCT p.category) AS categories
@@ -2220,6 +2415,16 @@ JOIN activity b ON b.player_id = a.player_id
       `<p>Hint 2: Join that back to activity and flag rows where event_date = date(first_login, '+1 day').</p>`,
       `<p>Hint 3: fraction = flagged players ÷ all players: <code>1.0 * SUM(flag) / COUNT(DISTINCT player_id)</code>, ROUND to 2.</p>`
     ],
+    tests: { engine: 'sqlite', cases: [
+      { cols: ['fraction'], rows: [[0.5]] },
+      { setup: 'INSERT INTO activity VALUES (5, 1, \'2025-03-31\', 1);INSERT INTO activity VALUES (5, 1, \'2025-04-01\', 1);', cols: ['fraction'], rows: [[0.6]] },
+      { setup: 'INSERT INTO activity VALUES (5, 1, \'2024-02-28\', 1);INSERT INTO activity VALUES (5, 1, \'2024-02-29\', 1);', cols: ['fraction'], rows: [[0.6]] },
+      { setup: 'DELETE FROM activity WHERE player_id IN (1, 4);', cols: ['fraction'], rows: [[0]] },
+      { setup: 'INSERT INTO activity VALUES (5, 1, \'2025-01-01\', 1);INSERT INTO activity VALUES (5, 1, \'2025-01-03\', 1);INSERT INTO activity VALUES (5, 1, \'2025-01-02\', 1);', cols: ['fraction'], rows: [[0.6]] },
+      { setup: 'INSERT INTO activity VALUES (5, 1, \'2025-01-01\', 1);INSERT INTO activity VALUES (5, 1, \'2025-01-03\', 1);INSERT INTO activity VALUES (5, 1, \'2025-01-04\', 1);', cols: ['fraction'], rows: [[0.4]] },
+      { setup: 'DELETE FROM activity WHERE player_id IN (2, 3);', cols: ['fraction'], rows: [[1]] },
+      { setup: 'INSERT INTO activity VALUES (5, 1, \'2025-12-31\', 1);INSERT INTO activity VALUES (5, 1, \'2026-01-01\', 1);INSERT INTO activity VALUES (6, 1, \'2025-12-31\', 1);', cols: ['fraction'], rows: [[0.5]] }
+    ] },
     solution: {
       approach: `<p>Aggregate twice: first MIN per player to find the anchor date, then a conditional SUM over the joined rows divided by the number of players.</p>`,
       code: { lang: 'sql', db: 'app', code: `SELECT ROUND(1.0 * SUM(CASE WHEN a.event_date = date(f.first_login, '+1 day') THEN 1 ELSE 0 END)
@@ -2254,6 +2459,16 @@ HAVING SUM(amount) >= 50;    -- combined total: returns 1, 4, 5` }
       `<p>Hint 2: Conditional aggregation: <code>SUM(CASE WHEN order_date LIKE '2024-03%' THEN amount ELSE 0 END)</code> and the same for April.</p>`,
       `<p>Hint 3: Put both conditions in HAVING (joined with AND); join customers for names; WHERE status = 'delivered'.</p>`
     ],
+    tests: { engine: 'sqlite', cmp: 'set', cases: [
+      { cols: ['name', 'march', 'april'], rows: [['Aarav', 50, 55]] },
+      { setup: 'INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (15, 4, \'2024-04-10\', \'delivered\', 50);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (16, 5, \'2024-04-11\', \'delivered\', 49);', cols: ['name', 'march', 'april'], rows: [['Aarav', 50, 55], ['Deepa', 900, 50]] },
+      { setup: 'INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (15, 2, \'2024-03-10\', \'delivered\', 25);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (16, 2, \'2024-03-11\', \'delivered\', 25);', cols: ['name', 'march', 'april'], rows: [['Aarav', 50, 55]] },
+      { setup: 'INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (15, 4, \'2024-04-10\', \'cancelled\', 500);', cols: ['name', 'march', 'april'], rows: [['Aarav', 50, 55]] },
+      { setup: 'INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (15, 4, \'2023-04-10\', \'delivered\', 500);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (16, 5, \'2025-04-10\', \'delivered\', 500);', cols: ['name', 'march', 'april'], rows: [['Aarav', 50, 55]] },
+      { setup: 'INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (15, 3, \'2024-03-10\', \'delivered\', 60);INSERT INTO orders (id, customer_id, order_date, status, amount) VALUES (16, 3, \'2024-04-20\', \'delivered\', 60);', cols: ['name', 'march', 'april'], rows: [['Aarav', 50, 55], ['Carlos', 60, 60]] },
+      { setup: 'UPDATE orders SET amount = NULL WHERE customer_id = 1;', rows: [] },
+      { setup: 'UPDATE orders SET status = \'delivered\';', cols: ['name', 'march', 'april'], rows: [['Aarav', 50, 55], ['Emma', 1020, 120]] }
+    ] },
     solution: {
       approach: `<p>Group per customer, compute each month's total with a CASE-filtered SUM, and require both in HAVING. The same pattern scales to "every month of the quarter".</p>`,
       code: { lang: 'sql', db: 'shop', code: `SELECT c.name,

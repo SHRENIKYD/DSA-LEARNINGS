@@ -559,6 +559,18 @@ class Rules {
 }` },
       mcq: { q: 'Which combination expresses "long AND hasDigit AND hasUpper AND NOT hasSpace"?', options: ['<code>longEnough.and(hasDigit).and(hasUpper).and(hasSpace.negate())</code>', '<code>longEnough.or(hasDigit).or(hasUpper).negate()</code>', '<code>hasSpace.and(longEnough).negate()</code>', '<code>longEnough.compose(hasDigit)</code>'], answer: 0, explain: '<code>and</code> chains AND-conditions; <code>negate()</code> flips one rule. Predicates have no <code>compose</code>.' },
       hints: [`<p>Hint 1: each rule is a question about one String with a yes/no answer → that is exactly <code>Predicate&lt;String&gt;</code>.</p>`, `<p>Hint 2: <code>s.chars().anyMatch(Character::isDigit)</code> checks "contains a digit" in one line. Combine rules with <code>and</code> and <code>negate</code> (or <code>Predicate.not</code>).</p>`, `<p>Hint 3: Recipe — define 4 predicates, combine into <code>strong</code>, then <code>pws.stream().filter(strong).toList()</code>. Empty input gives an empty list; order is kept because streams from a List are ordered.</p>`],
+      tests: { sig: 'list<string> -> list<string>', fn: 'valid', cases: [
+          [[['Secret12', 'short1A', 'NoDigitsHere', 'Has Space9A', 'OK2Gooooo']], ['Secret12', 'OK2Gooooo']],
+          [[[]], []],
+          [[['Abcdefg1']], ['Abcdefg1']],
+          [[['Abcdef1']], []],
+          [[['abcdefg1']], []],
+          [[['ABCDEFGH']], []],
+          [[['Abcdefg1 ']], []],
+          [[['']], []],
+          [[['Zz9zzzzz', 'zz9zzzzz', 'Zz9zzzzz']], ['Zz9zzzzz', 'Zz9zzzzz']],
+          [[{ $rep: 'Secret12', n: 10000 }], { $rep: 'Secret12', n: 10000 }]
+        ] },
       solution: {
         approach: `<p>Name each rule as a <code>Predicate</code>, compose once, filter once. Adding a rule = one new line. Each predicate short-circuits, so the cheap length test runs first.</p>`,
         code: `class PasswordRules {
@@ -785,6 +797,24 @@ class BruteBoard {
 }` },
       mcq: { q: 'Which piece sorts score in DESCENDING order without affecting the other keys?', options: ['<code>comparingInt(Player::score).reversed()</code> placed first, then <code>.thenComparingInt(...)</code>', '<code>comparingInt(Player::score).thenComparingInt(Player::minutes).reversed()</code>', '<code>comparing(Player::score, Comparator.naturalOrder())</code>', '<code>Collections.reverse</code> after sorting by score'], answer: 0, explain: '<code>reversed()</code> reverses <b>everything built so far</b>. Calling it at the very end would also reverse minutes and names. Reverse right after the first key (or use <code>comparing(Player::score, Comparator.reverseOrder())</code>).' },
       hints: [`<p>Hint 1: a multi-key sort is a <b>chain</b>: first key, then tie-breakers. <code>Comparator.comparing...().thenComparing...()</code> builds exactly that.</p>`, `<p>Hint 2: use <code>comparingInt</code> for int keys (no boxing), and <code>thenComparing(Player::name, String.CASE_INSENSITIVE_ORDER)</code> for the name.</p>`, `<p>Hint 3: careful where <code>reversed()</code> goes — it flips the whole comparator built so far. Recipe: <code>comparingInt(Player::score).reversed().thenComparingInt(Player::minutes).thenComparing(Player::name, String.CASE_INSENSITIVE_ORDER)</code>, then <code>sorted(...).map(Player::name).toList()</code>.</p>`],
+      tests: { sig: 'string[] -> list<string>', fn: 'run', harness: { java: `
+class Check {
+  static List<String> run(String[] rows) {
+    List<Player> ps = new ArrayList<>();
+    for (String r : rows) { String[] p = r.split(","); ps.add(new Player(p[0], p[1], Integer.parseInt(p[2]), Integer.parseInt(p[3]))); }
+    return Leaderboard.order(ps);
+  }
+}` }, cases: [
+          [[['zoe,red,90,30', 'Amir,blue,90,25', 'bob,red,95,50', 'ann,blue,90,25']], ['bob', 'Amir', 'ann', 'zoe']],
+          [[['solo,t,0,0']], ['solo']],
+          [[['Bob,t,5,5', 'alice,t,5,5']], ['alice', 'Bob']],
+          [[['ann,t,5,5', 'Ann,t,5,5']], ['ann', 'Ann']],
+          [[['Ann,t,5,5', 'ann,t,5,5']], ['Ann', 'ann']],
+          [[['a,t,-5,1', 'b,t,-3,9', 'c,t,0,0']], ['c', 'b', 'a']],
+          [[['a,t,10,30', 'b,t,10,5', 'c,t,10,5']], ['b', 'c', 'a']],
+          [[['a,t,2147483647,2147483647', 'b,t,2147483647,0', 'c,t,-2147483648,0']], ['b', 'a', 'c']],
+          [[{ $concat: [{ $rep: 'a,t,1,1', n: 100000 }, ['z,t,2,2']] }], { $concat: [['z'], { $rep: 'a', n: 100000 }] }]
+        ] },
       solution: {
         approach: `<p>Build the comparator once as a constant from method references; every key is visible on its own line. <code>sorted</code> is stable, and the full tie-breaker chain makes the order deterministic.</p>`,
         code: `record Player(String name, String team, int score, int minutes) {}
@@ -1017,6 +1047,17 @@ System.out.println(list);              // [1, 2, 3, 99]` }
 }` },
       mcq: { q: 'Where should <code>distinct()</code> go relative to <code>limit(3)</code>?', options: ['Before <code>limit(3)</code>, otherwise duplicates can use up the 3 slots', 'After <code>limit(3)</code> — it is cheaper', 'It does not matter', 'distinct is not needed because sorted removes duplicates'], answer: 0, explain: 'limit counts whatever reaches it. [100, 92, 92] would fill the quota with a duplicate if distinct came after.' },
       hints: [`<p>Hint 1: say the steps in English — remove invalid, remove duplicates, sort high to low, take three. Each phrase is one stream operation.</p>`, `<p>Hint 2: <code>filter(s -&gt; s &gt;= 0)</code>, <code>distinct()</code>, <code>sorted(Comparator.reverseOrder())</code>, <code>limit(3)</code>, <code>toList()</code>.</p>`, `<p>Hint 3: order matters for correctness (distinct before limit) and efficiency (filter first). Empty input → empty list automatically. For a huge N an <code>IntStream</code> with a 101-slot counting array is O(N) — mention it as a follow-up.</p>`],
+      tests: { sig: 'list<int> -> list<int>', fn: 'top3', cases: [
+          [[[88, 92, -1, 92, 75, 100, 88]], [100, 92, 88]],
+          [[[50, 50]], [50]],
+          [[[]], []],
+          [[[-1, -5]], []],
+          [[[0]], [0]],
+          [[[0, 0, -1]], [0]],
+          [[[10, 20, 30, 40, 50]], [50, 40, 30]],
+          [[[3, 2]], [3, 2]],
+          [[{ $concat: [{ $range: [0, 101] }, { $rep: -1, n: 500000 }, { $rep: 7, n: 500000 }] }], [100, 99, 98]]
+        ] },
       solution: {
         approach: `<p>A direct translation of the English recipe into a pipeline. <code>sorted</code> is the only barrier; <code>limit</code> then short-circuits after three elements leave the sort.</p>`,
         code: `class TopScores {
@@ -1238,6 +1279,9 @@ System.out.println(r);</pre>`,
 }` },
       mcq: { q: 'After "BB" and "CCC" pass <code>limit(2)</code>, what happens to "dd"?', options: ['It is never pulled from the source', 'It goes through peek but not filter', 'It is mapped but discarded by limit', 'It is printed by peek only'], answer: 0, explain: 'limit(2) reaches its quota with CCC; before pulling the next element the source asks "cancellation requested?" → yes, so "dd" and "e" are never touched.' },
       hints: [`<p>Hint 1: process element by element. Follow "a" all the way down before thinking about "bb".</p>`, `<p>Hint 2: "a" is printed by peek, then dropped by the filter (length 1). "bb" goes peek → filter → map → limit (1 of 2).</p>`, `<p>Hint 3: after the 2nd element passes <code>limit(2)</code>, the source stops. Count: peek ran 3 times, filter 3 times, map 2 times.</p>`],
+      tests: { io: true, cases: [
+          { stdin: '', stdout: 'saw a\nsaw bb\nmap bb\nsaw ccc\nmap ccc\n[BB, CCC]' }
+        ] },
       solution: {
         approach: `<p>Trace vertically. Output:</p><pre>saw a
 saw bb
@@ -1525,6 +1569,17 @@ System.out.println(Stream.of("a", "b", "c").collect(pipeJoin));          // a|b|
 }` },
       mcq: { q: 'Which comparator orders map entries by count DESC, then word ASC?', options: ['<code>Map.Entry.&lt;String, Long&gt;comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey())</code>', '<code>Map.Entry.comparingByKey().reversed()</code>', '<code>Map.Entry.comparingByValue().thenComparing(Map.Entry.comparingByKey()).reversed()</code>', '<code>Comparator.naturalOrder()</code>'], answer: 0, explain: 'Reverse only the value comparison, then add the key tie-breaker. Reversing at the end would also reverse alphabetical order. The type witness <code>&lt;String, Long&gt;</code> helps inference.' },
       hints: [`<p>Hint 1: "how many times does each word appear" = a frequency map: <code>groupingBy(Function.identity(), counting())</code>.</p>`, `<p>Hint 2: stream the map's <code>entrySet()</code>, sort with a two-key comparator, <code>limit(k)</code>, <code>map(Map.Entry::getKey)</code>.</p>`, `<p>Hint 3: careful with <code>reversed()</code> placement (it reverses everything before it). Recipe: count → sort entries (count desc, word asc) → take k → keys. Follow-up for huge D: a size-k heap gives O(N + D log k).</p>`],
+      tests: { sig: 'string[] int -> list<string>', fn: 'topKFrequent', cases: [
+          [[['i', 'love', 'leetcode', 'i', 'love', 'coding'], 2], ['i', 'love']],
+          [[['the', 'day', 'is', 'sunny', 'the', 'the', 'the', 'sunny', 'is', 'is'], 4], ['the', 'is', 'sunny', 'day']],
+          [[['a'], 1], ['a']],
+          [[['b', 'a', 'c'], 3], ['a', 'b', 'c']],
+          [[['b', 'a', 'c', 'c'], 1], ['c']],
+          [[['x', 'y', 'x', 'y', 'z'], 2], ['x', 'y']],
+          [[['b', 'a', 'a', 'b'], 1], ['a']],
+          [[{ $rep: 'a', n: 200000 }, 1], ['a']],
+          [[{ $concat: [{ $rep: 'b', n: 100000 }, { $rep: 'a', n: 99999 }, ['c']] }, 3], ['b', 'a', 'c']]
+        ] },
       solution: {
         approach: `<p>Count in one pass with <code>groupingBy</code>, then sort the (word, count) entries with an explicit comparator and take the first k.</p>`,
         code: `class TopKWords {
@@ -1768,6 +1823,26 @@ class BrutePopularity {
 }` },
       mcq: { q: 'Which call turns <code>Stream&lt;Order&gt;</code> into a <code>Stream&lt;String&gt;</code> of all items?', options: ['<code>flatMap(o -&gt; o.items().stream())</code>', '<code>map(Order::items)</code>', '<code>map(o -&gt; o.items().stream())</code>', '<code>mapToObj(Order::items)</code>'], answer: 0, explain: '<code>map(Order::items)</code> gives Stream&lt;List&lt;String&gt;&gt;; <code>map(… .stream())</code> gives Stream&lt;Stream&lt;String&gt;&gt;. Only flatMap flattens. mapToObj exists only on primitive streams.' },
       hints: [`<p>Hint 1: "across all orders" = flatten first. Each order is a box of items.</p>`, `<p>Hint 2: <code>flatMap(o -&gt; o.items().stream())</code>, then <code>groupingBy(Function.identity(), counting())</code>.</p>`, `<p>Hint 3: sort the entry set with <code>comparingByValue().reversed().thenComparing(comparingByKey())</code> and map to <code>key + "=" + value</code>. Empty orders contribute nothing automatically.</p>`],
+      tests: { sig: 'string[] -> list<string>', fn: 'run', harness: { java: `
+class Check {
+  static List<String> run(String[] rows) {
+    List<Order> os = new ArrayList<>();
+    for (String r : rows) {
+      int c = r.indexOf(':'); String items = r.substring(c + 1);
+      os.add(new Order(r.substring(0, c), items.isEmpty() ? List.of() : Arrays.asList(items.split(","))));
+    }
+    return Popularity.popularity(os);
+  }
+}` }, cases: [
+          [[['ana:pen,ink,pen', 'bo:pen', 'cy:', 'dee:ink,cap']], ['pen=3', 'ink=2', 'cap=1']],
+          [[[]], []],
+          [[['a:', 'b:']], []],
+          [[['a:z,y,x']], ['x=1', 'y=1', 'z=1']],
+          [[['a:k,k,k,k']], ['k=4']],
+          [[['a:b,a', 'b:a,b', 'c:c']], ['a=2', 'b=2', 'c=1']],
+          [[{ $rep: 'c:x,y', n: 100000 }], ['x=100000', 'y=100000']],
+          [[{ $concat: [{ $rep: 'c:x', n: 100000 }, { $rep: 'd:y,y', n: 50001 }] }], ['y=100002', 'x=100000']]
+        ] },
       solution: {
         approach: `<p>Flatten with flatMap, count with groupingBy, sort the entries with a two-key comparator, format.</p>`,
         code: `record Order(String customer, List<String> items) {}
@@ -2041,6 +2116,22 @@ class LockedVersion {
 }` },
       mcq: { q: 'What is the idiomatic thread-safe way to build the per-user totals in parallel?', options: ['<code>collect(groupingByConcurrent(Txn::user, summingLong(Txn::amount)))</code> (or groupingBy)', '<code>forEach</code> into a <code>Collections.synchronizedMap</code> with get-then-put', 'Make <code>perUser</code> volatile', 'Use <code>peek</code> instead of <code>forEach</code>'], answer: 0, explain: 'Collectors give each thread its own state (or a concurrent map with atomic merges). A synchronized map still has a race in get-then-put (two separate calls), and volatile only fixes visibility of the reference, not atomicity.' },
       hints: [`<p>Hint 1: list the shared things being written: a <code>HashMap</code> (not thread-safe, can even corrupt its buckets) and <code>total[0] += …</code> (read-modify-write, not atomic).</p>`, `<p>Hint 2: replace side effects with a <b>reduction</b>: <code>groupingBy</code>/<code>groupingByConcurrent</code> with <code>summingLong</code>, and <code>mapToLong(Txn::amount).sum()</code> for the total.</p>`, `<p>Hint 3: sum is associative with identity 0, so it is parallel-safe. Edge cases: empty list → empty map and total 0; 10<sup>7</sup> items × big amounts → use long (or <code>Math.addExact</code> to detect overflow).</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run', harness: { java: `
+class Check {
+  static String[] run(String[] rows) {
+    List<Txn> ts = new ArrayList<>(rows.length);
+    for (String r : rows) { int c = r.indexOf(':'); ts.add(new Txn(r.substring(0, c), Long.parseLong(r.substring(c + 1)))); }
+    return new String[]{ new TreeMap<>(FixedAggregation.perUser(ts)).toString(), String.valueOf(FixedAggregation.total(ts)) };
+  }
+}` }, cases: [
+          [[['u1:5', 'u2:7', 'u1:3']], ['{u1=8, u2=7}', '15']],
+          [[[]], ['{}', '0']],
+          [[['a:1']], ['{a=1}', '1']],
+          [[['a:3000000000', 'a:3000000000']], ['{a=6000000000}', '6000000000']],
+          [[['a:1', 'b:2', 'c:3', 'a:4', 'b:5']], ['{a=5, b=7, c=3}', '15']],
+          [[{ $rep: 'u:3', n: 1000000 }], ['{u=3000000}', '3000000']],
+          [[{ $concat: [{ $rep: 'x:1', n: 500000 }, { $rep: 'y:2', n: 500000 }] }], ['{x=500000, y=1000000}', '1500000']]
+        ] },
       solution: {
         approach: `<p>Delete all shared mutable state. Express both results as reductions; the framework handles per-thread accumulation and merging. <code>groupingByConcurrent</code> merges into one <code>ConcurrentHashMap</code> with atomic <code>merge</code> calls; plain <code>groupingBy</code> builds per-thread maps and merges them — both are correct.</p>`,
         code: `record Txn(String user, long amount) {}
@@ -2306,6 +2397,75 @@ class Ladder {
 }` },
       mcq: { q: 'Which step must use <code>flatMap</code> instead of <code>map</code>?', options: ['<code>Account::primaryCard</code>, because it already returns an Optional', '<code>Customer::account</code>', '<code>Card::last4</code>', 'none — map always works'], answer: 0, explain: 'map with an Optional-returning function gives Optional&lt;Optional&lt;Card&gt;&gt;. flatMap unwraps one level. Plain nullable getters use map (null → empty).' },
       hints: [`<p>Hint 1: start with <code>Optional.ofNullable(c)</code> because the customer itself may be null.</p>`, `<p>Hint 2: <code>map(Customer::account)</code> (nullable getter), <code>flatMap(Account::primaryCard)</code> (Optional getter), <code>map(Card::last4)</code>, <code>filter(s -&gt; !s.isBlank())</code>.</p>`, `<p>Hint 3: finish with <code>.map(s -&gt; "**** " + s).orElse("NO CARD")</code> — a constant fallback, so orElse is fine. Test all four "missing" cases.</p>`],
+      tests: { sig: 'string string -> string', fn: 'run', harness: { java: `
+class Check {
+  static String run(String kind, String last4) {
+    Customer c;
+    switch (kind) {
+      case "null": c = null; break;
+      case "noaccount": c = new Customer("Cy", null); break;
+      case "nocard": c = new Customer("Ben", new Account(null)); break;
+      default: c = new Customer("Asha", new Account(new Card(last4)));
+    }
+    return Masked.maskedCard(c);
+  }
+}` }, cases: [
+          [['card', '4242'], '**** 4242'],
+          [['nocard', null], 'NO CARD'],
+          [['noaccount', null], 'NO CARD'],
+          [['null', null], 'NO CARD'],
+          [['card', null], 'NO CARD'],
+          [['card', ''], 'NO CARD'],
+          [['card', '   '], 'NO CARD'],
+          [['card', '0'], '**** 0'],
+          [['card', { $rep: '9', n: 100000 }], { $concat: ['**** ', { $rep: '9', n: 100000 }] }]
+        ] },
+      tests: { sig: 'string string -> string', fn: 'run', harness: { java: `
+class Check {
+  static String run(String kind, String last4) {
+    Customer c;
+    switch (kind) {
+      case "null": c = null; break;
+      case "noaccount": c = new Customer("Cy", null); break;
+      case "nocard": c = new Customer("Ben", new Account(null)); break;
+      default: c = new Customer("Asha", new Account(new Card(last4)));
+    }
+    return Masked.maskedCard(c);
+  }
+}` }, cases: [
+          [['card', '4242'], '**** 4242'],
+          [['nocard', null], 'NO CARD'],
+          [['noaccount', null], 'NO CARD'],
+          [['null', null], 'NO CARD'],
+          [['card', null], 'NO CARD'],
+          [['card', ''], 'NO CARD'],
+          [['card', '   '], 'NO CARD'],
+          [['card', '0'], '**** 0'],
+          [['card', { $rep: '9', n: 100000 }], { $concat: ['**** ', { $rep: '9', n: 100000 }] }]
+        ] },
+      tests: { sig: 'string string -> string', fn: 'run', harness: { java: `
+class Check {
+  static String run(String kind, String last4) {
+    Customer c;
+    switch (kind) {
+      case "null": c = null; break;
+      case "noaccount": c = new Customer("Cy", null); break;
+      case "nocard": c = new Customer("Ben", new Account(null)); break;
+      default: c = new Customer("Asha", new Account(new Card(last4)));
+    }
+    return Masked.maskedCard(c);
+  }
+}` }, cases: [
+          [['card', '4242'], '**** 4242'],
+          [['nocard', null], 'NO CARD'],
+          [['noaccount', null], 'NO CARD'],
+          [['null', null], 'NO CARD'],
+          [['card', null], 'NO CARD'],
+          [['card', ''], 'NO CARD'],
+          [['card', '   '], 'NO CARD'],
+          [['card', '0'], '**** 0'],
+          [['card', { $rep: '9', n: 100000 }], { $concat: ['**** ', { $rep: '9', n: 100000 }] }]
+        ] },
       solution: {
         approach: `<p>One linear chain. Each link either passes the value on or turns the box empty; the fallback appears once at the end.</p>`,
         code: `record Card(String last4) {}
@@ -2358,6 +2518,18 @@ class Masked {
 }` },
     mcq: { q: 'Which test correctly detects odd numbers including negatives?', options: ['<code>x % 2 != 0</code>', '<code>x % 2 == 1</code>', '<code>x / 2 == 1</code>', '<code>x &amp; 2</code>'], answer: 0, explain: 'In Java the remainder takes the sign of the dividend: -5 % 2 == -1. Checking "not zero" (or <code>(x &amp; 1) == 1</code>) works for all ints.' },
     hints: [`<p>Hint 1: the three English steps are "keep odd", "square", "add up" → filter, map, sum.</p>`, `<p>Hint 2: <code>Arrays.stream(nums)</code> gives an <code>IntStream</code>; switch to <code>LongStream</code> with <code>asLongStream()</code> <b>before</b> squaring so the multiplication happens in long.</p>`, `<p>Hint 3: odd test = <code>x % 2 != 0</code>. Empty array → 0 automatically.</p>`],
+    tests: { sig: 'int[] -> long', fn: 'sumSqOdd', cases: [
+        [[[1, 2, 3, -5, 4]], 35],
+        [[[]], 0],
+        [[[2, 4, 6]], 0],
+        [[[-3]], 9],
+        [[[0]], 0],
+        [[[1]], 1],
+        [[[-100000, 100000]], 0],
+        [[[-99999, 99999]], 19999600002],
+        [[{ $rep: 99999, n: 1000000 }], '9999800001000000'],
+        [[{ $rep: -99999, n: 1000000 }], '9999800001000000']
+      ] },
     solution: {
       approach: `<p>Primitive stream pipeline: filter odd, widen to long, square, sum. No boxing, no overflow.</p>`,
       code: `class SumSqOdd {
@@ -2397,6 +2569,9 @@ System.out.println(s.count());</pre>`,
 }` },
     mcq: { q: 'When exactly does <code>s</code> become unusable?', options: ['As soon as <code>s.map(...)</code> is called', 'Only after <code>upper.toList()</code> runs', 'Never — count() works on any stream', 'After the JVM garbage-collects it'], answer: 0, explain: 'Calling any intermediate or terminal operation on a stream marks it "linked or consumed". The new stage <code>upper</code> owns the pipeline now; any further call on <code>s</code> throws IllegalStateException.' },
     hints: [`<p>Hint 1: a stream is not a data structure; it is a pipeline you can traverse once.</p>`, `<p>Hint 2: the first println works normally and prints <code>[A, B, C]</code>.</p>`, `<p>Hint 3: the second line throws <code>IllegalStateException: stream has already been operated upon or closed</code>. Fix: keep a <code>Supplier&lt;Stream&lt;String&gt;&gt;</code> and call <code>get()</code> for each use, or keep the List.</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: '[A, B, C]\nIllegalStateException: stream has already been operated upon or closed\n[A, B, C]\n3' }
+      ] },
     solution: {
       approach: `<p>Output:</p><pre>[A, B, C]
 Exception in thread "main" java.lang.IllegalStateException: stream has already been operated upon or closed</pre><p>Use a <code>Supplier</code> (or the source collection) to create a fresh stream each time.</p>`,
@@ -2441,6 +2616,16 @@ Exception in thread "main" java.lang.IllegalStateException: stream has already b
 }` },
     mcq: { q: 'What does <code>Stream.&lt;String&gt;empty().collect(Collectors.joining(", ", "[", "]"))</code> return?', options: ['<code>"[]"</code>', '<code>""</code>', '<code>null</code>', 'It throws NoSuchElementException'], answer: 0, explain: 'joining always adds the prefix and suffix, even for zero elements.' },
     hints: [`<p>Hint 1: drop the bad entries first: <code>filter(Objects::nonNull)</code>, then <code>filter(s -&gt; !s.isBlank())</code>.</p>`, `<p>Hint 2: <code>map(String::strip)</code> then <code>map(String::toUpperCase)</code>.</p>`, `<p>Hint 3: finish with <code>Collectors.joining(", ", "[", "]")</code> — it handles the empty case.</p>`],
+    tests: { sig: 'list<string> -> string', fn: 'clean', cases: [
+        [[['  ana ', null, '', 'bo', '   ']], '[ANA, BO]'],
+        [[[null, ' ']], '[]'],
+        [[[]], '[]'],
+        [[['solo']], '[SOLO]'],
+        [[[' a b ']], '[A B]'],
+        [[['x', 'x']], '[X, X]'],
+        [[['Mixed Case']], '[MIXED CASE]'],
+        [[{ $rep: ' x ', n: 100000 }], { $concat: ['[', { $rep: 'X, ', n: 99999 }, 'X]'] }]
+      ] },
     solution: {
       approach: `<p>Filter out nulls and blanks, normalise each name, and let <code>joining</code> handle separators and brackets.</p>`,
       code: `class CleanNames {
@@ -2486,6 +2671,9 @@ System.out.println(IntStream.range(1, 4).sum() + IntStream.rangeClosed(1, 4).sum
 }` },
     mcq: { q: 'What is the type of <code>Stream.of(arr)</code> when <code>arr</code> is an <code>int[]</code>?', options: ['<code>Stream&lt;int[]&gt;</code>', '<code>IntStream</code>', '<code>Stream&lt;Integer&gt;</code>', 'compile error'], answer: 0, explain: '<code>Stream.of(T... values)</code> needs an object array to spread. <code>int[]</code> is a single object, so T = int[] and the stream has one element.' },
     hints: [`<p>Hint 1: line 1 — how many <i>objects</i> did you pass to <code>Stream.of</code>?</p>`, `<p>Hint 2: line 3 — <code>'h'</code> is 104 and <code>'i'</code> is 105.</p>`, `<p>Hint 3: last line — range(1, 4) = 1+2+3 = 6; rangeClosed(1, 4) = 10; int + int = 16 (numbers, not string concatenation).</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: '1\n[1, 2, 3]\n104 105\nh-i\n16' }
+      ] },
     solution: {
       approach: `<p>Output:</p><pre>1
 [1, 2, 3]
@@ -2542,6 +2730,23 @@ class BruteAvg {
 }` },
     mcq: { q: 'Which downstream collector computes the per-department average directly?', options: ['<code>Collectors.averagingDouble(Emp::salary)</code>', '<code>Collectors.counting()</code>', '<code>Collectors.reducing(0.0, Double::sum)</code>', '<code>Collectors.summingDouble(Emp::salary)</code>'], answer: 0, explain: 'averagingDouble keeps a running sum and count per bucket and divides at the end (finisher). summing gives totals; counting gives counts.' },
     hints: [`<p>Hint 1: "average per department" = <code>groupingBy(Emp::dept, averagingDouble(Emp::salary))</code>.</p>`, `<p>Hint 2: stream the resulting map's <code>entrySet()</code> and sort with <code>comparingByValue</code> reversed, then <code>comparingByKey</code>.</p>`, `<p>Hint 3: format with <code>String.format("%.1f", value)</code> — note <code>%.1f</code> uses the default locale; pass <code>Locale.ROOT</code> to guarantee a dot.</p>`],
+    tests: { sig: 'string[] -> list<string>', fn: 'run', harness: { java: `
+class Check {
+  static List<String> run(String[] rows) {
+    List<Emp> es = new ArrayList<>();
+    for (String r : rows) { String[] p = r.split(","); es.add(new Emp(p[0], p[1], Double.parseDouble(p[2]))); }
+    return RankedDepts.ranked(es);
+  }
+}` }, cases: [
+        [[['Asha,Eng,120', 'Ben,Eng,95', 'Chen,Ops,70', 'Dia,Sales,80', 'Eli,Ops,75']], ['Eng=107.5', 'Sales=80.0', 'Ops=72.5']],
+        [[['a,X,0']], ['X=0.0']],
+        [[['a,B,50', 'b,A,50']], ['A=50.0', 'B=50.0']],
+        [[['a,A,100.04', 'b,B,100.06']], ['B=100.1', 'A=100.0']],
+        [[['a,A,1', 'b,A,2']], ['A=1.5']],
+        [[['a,A,2.25']], ['A=2.3']],
+        [[['a,A,10', 'b,B,20', 'c,C,15']], ['B=20.0', 'C=15.0', 'A=10.0']],
+        [[{ $concat: [{ $rep: 'e,E,1', n: 100000 }, { $rep: 'f,F,2', n: 100000 }] }], ['F=2.0', 'E=1.0']]
+      ] },
     solution: {
       approach: `<p>One pass to group and average, then sort the small entry set.</p>`,
       code: `record Emp(String name, String dept, double salary) {}
@@ -2599,6 +2804,9 @@ System.out.println("calls=" + calls);</pre>`,
 }` },
     mcq: { q: 'How many times is <code>make</code> called in total?', options: ['3 (x, z, w)', '2 (z, w)', '4 (x, y, z, w)', '5 (all of them)'], answer: 0, explain: '<code>orElse(make("x"))</code> evaluates its argument eagerly (x). The Supplier versions run only for the empty Optional (w). <code>or</code> takes a Supplier too and <code>a</code> is present, so v never runs. And z runs because e is empty — and it is eager anyway.' },
     hints: [`<p>Hint 1: Java evaluates <code>make("x")</code> before calling <code>orElse</code>, even though <code>a</code> has a value.</p>`, `<p>Hint 2: <code>orElseGet</code> and <code>or</code> take Suppliers — only invoked when the Optional is empty.</p>`, `<p>Hint 3: so "make" lines appear for x, z and w only. The order of printing: "make x" comes before the first "A".</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: 'make x\nA\nA\nmake z\nz\nmake w\nw\nA!\ncalls=3' }
+      ] },
     solution: {
       approach: `<p>Output:</p><pre>make x
 A
@@ -2649,6 +2857,20 @@ calls=3</pre>`,
 }` },
     mcq: { q: 'Which pipeline returns the second highest distinct value?', options: ['<code>distinct().sorted(reverseOrder()).skip(1).findFirst()</code>', '<code>sorted(reverseOrder()).skip(1).findFirst()</code>', '<code>max(naturalOrder()).skip(1)</code>', '<code>distinct().sorted().skip(1).findFirst()</code>'], answer: 0, explain: 'Without distinct, duplicates of the max occupy the second position. Ascending sort would return the second LOWEST. max returns an Optional, which has no skip.' },
     hints: [`<p>Hint 1: remove duplicates first, then order high → low.</p>`, `<p>Hint 2: <code>skip(1)</code> drops the highest; <code>findFirst()</code> returns an Optional — empty if nothing is left.</p>`, `<p>Hint 3: for O(N) with no sorting: <code>TreeSet</code> of size ≤ 2, or two variables. The stream version is O(N log N) but clear.</p>`],
+    tests: { sig: 'list<int> -> string', fn: 'run', harness: { java: `
+class Check {
+  static String run(List<Integer> l) { return String.valueOf(SecondHighest.secondHighest(l)); }
+}` }, cases: [
+        [[[100, 300, 300, 200]], 'Optional[200]'],
+        [[[5, 5]], 'Optional.empty'],
+        [[[]], 'Optional.empty'],
+        [[[7]], 'Optional.empty'],
+        [[[-1, -5, -1]], 'Optional[-5]'],
+        [[[2147483647, -2147483648]], 'Optional[-2147483648]'],
+        [[[1, 2, 3]], 'Optional[2]'],
+        [[[3, 2, 1]], 'Optional[2]'],
+        [[{ $range: [0, 1000000] }], 'Optional[999998]']
+      ] },
     solution: {
       approach: `<p>distinct → sort descending → skip one → findFirst. The Optional naturally represents "no second value".</p>`,
       code: `class SecondHighest {
@@ -2688,6 +2910,20 @@ calls=3</pre>`,
 }` },
     mcq: { q: 'Why pass <code>LinkedHashMap::new</code> to groupingBy here?', options: ['To keep keys in first-seen order so "first" is meaningful', 'To make counting faster', 'Because HashMap cannot hold Character keys', 'To sort characters alphabetically'], answer: 0, explain: 'HashMap iteration order depends on hash codes. LinkedHashMap preserves insertion order — the order characters first appeared.' },
     hints: [`<p>Hint 1: count all characters first (one pass), then find the first one with count 1.</p>`, `<p>Hint 2: <code>s.chars().mapToObj(c -&gt; (char) c)</code> then <code>groupingBy(Function.identity(), LinkedHashMap::new, counting())</code>.</p>`, `<p>Hint 3: stream the entry set, <code>filter(e -&gt; e.getValue() == 1)</code>, <code>map(Map.Entry::getKey)</code>, <code>findFirst()</code>. Empty string → empty Optional.</p>`],
+    tests: { sig: 'string -> string', fn: 'run', harness: { java: `
+class Check {
+  static String run(String s) { return String.valueOf(FirstUnique.firstUnique(s)); }
+}` }, cases: [
+        [['swiss'], 'Optional[w]'],
+        [['aabb'], 'Optional.empty'],
+        [[''], 'Optional.empty'],
+        [['a'], 'Optional[a]'],
+        [['aA'], 'Optional[a]'],
+        [['abcabcd'], 'Optional[d]'],
+        [['aabbc'], 'Optional[c]'],
+        [[{ $rep: 'a', n: 100000 }], 'Optional.empty'],
+        [[{ $concat: [{ $rep: 'a', n: 50000 }, 'b', { $rep: 'a', n: 49999 }] }], 'Optional[b]']
+      ] },
     solution: {
       approach: `<p>Two passes: an ordered frequency map, then the first entry with count 1.</p>`,
       code: `class FirstUnique {
@@ -2733,6 +2969,20 @@ calls=3</pre>`,
 }` },
     mcq: { q: 'What does <code>partitioningBy</code> return for an empty stream?', options: ['<code>{false=[], true=[]}</code> (both keys present)', 'An empty map <code>{}</code>', '<code>null</code>', 'It throws'], answer: 0, explain: 'partitioningBy always creates both partitions. groupingBy, by contrast, only creates keys it actually sees.' },
     hints: [`<p>Hint 1: two buckets keyed by a yes/no question → <code>partitioningBy(predicate, downstream)</code>.</p>`, `<p>Hint 2: prime test with streams: <code>x &gt;= 2 &amp;&amp; IntStream.rangeClosed(2, (int) Math.sqrt(x)).noneMatch(d -&gt; x % d == 0)</code>; noneMatch short-circuits on the first divisor.</p>`, `<p>Hint 3: <code>IntStream.rangeClosed(1, n).boxed().collect(partitioningBy(Primes::isPrime, counting()))</code>.</p>`],
+    tests: { sig: 'int -> long[]', fn: 'run', harness: { java: `
+class Check {
+  static long[] run(int n) { Map<Boolean, Long> m = PrimeSplit.countPrimes(n); return new long[]{ m.get(false), m.get(true) }; }
+}` }, cases: [
+        [[20], [12, 8]],
+        [[1], [1, 0]],
+        [[2], [1, 1]],
+        [[3], [1, 2]],
+        [[4], [2, 2]],
+        [[10], [6, 4]],
+        [[100], [75, 25]],
+        [[1000], [832, 168]],
+        [[100000], [90408, 9592]]
+      ] },
     solution: {
       approach: `<p>√x trial division expressed with <code>noneMatch</code> (short-circuits), then <code>partitioningBy</code> with <code>counting()</code>.</p>`,
       code: `class PrimeSplit {
@@ -2778,6 +3028,24 @@ calls=3</pre>`,
 }` },
     mcq: { q: 'What makes a good grouping key for anagrams?', options: ['The word\'s letters sorted, e.g. "eat" → "aet"', 'The word\'s length', 'The word\'s first letter', 'The word\'s hashCode'], answer: 0, explain: 'Anagrams contain exactly the same letters, so their sorted letters are identical. Length and first letter collide with non-anagrams; hashCode of the original word differs between anagrams.' },
     hints: [`<p>Hint 1: give each word a canonical "signature" that is equal for all its anagrams.</p>`, `<p>Hint 2: signature = sorted characters: <code>char[] c = w.toCharArray(); Arrays.sort(c); new String(c)</code>.</p>`, `<p>Hint 3: <code>groupingBy(Anagrams::key, LinkedHashMap::new, toList())</code> then <code>new ArrayList&lt;&gt;(map.values())</code>. For long words a 26-count key is O(L) instead of O(L log L).</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run', harness: { java: `
+class Check {
+  static String[] run(String[] words) {
+    List<String> out = new ArrayList<>();
+    for (List<String> g : Anagrams.groupAnagrams(words)) out.add(String.join(",", g));
+    return out.toArray(new String[0]);
+  }
+}` }, cases: [
+        [[['eat', 'tea', 'tan', 'ate', 'nat', 'bat']], ['eat,tea,ate', 'tan,nat', 'bat']],
+        [[['']], ['']],
+        [[['a']], ['a']],
+        [[['ab', 'ba', 'ab']], ['ab,ba,ab']],
+        [[['abc', 'abd', 'abe']], ['abc', 'abd', 'abe']],
+        [[['', '', 'a']], [',', 'a']],
+        [[['ba', 'cd', 'ab', 'dc']], ['ba,ab', 'cd,dc']],
+        [[{ $rep: 'abc', n: 10000 }], [{ $concat: [{ $rep: 'abc,', n: 9999 }, 'abc'] }]],
+        [[{ $concat: [{ $rep: 'abc', n: 5000 }, { $rep: 'cab', n: 5000 }] }], [{ $concat: [{ $rep: 'abc,', n: 4999 }, 'abc,', { $rep: 'cab,', n: 4999 }, 'cab'] }]]
+      ] },
     solution: {
       approach: `<p>One pass: compute a signature per word and bucket by it, keeping first-seen order with LinkedHashMap.</p>`,
       code: `class Anagrams {
@@ -2816,6 +3084,16 @@ calls=3</pre>`,
 }` },
     mcq: { q: 'With prefix sums <code>pre[i] = p[0] + … + p[i-1]</code>, the sum of window starting at i is…', options: ['<code>pre[i + k] - pre[i]</code>', '<code>pre[i + k - 1] - pre[i]</code>', '<code>pre[k] - pre[i]</code>', '<code>pre[i] - pre[i - k]</code> for every i ≥ 0'], answer: 0, explain: 'pre has N + 1 entries with pre[0] = 0, so elements i..i+k−1 sum to pre[i+k] − pre[i].' },
     hints: [`<p>Hint 1: recomputing every window repeats almost all the work of the previous window.</p>`, `<p>Hint 2: build <code>long[] pre</code> of size N + 1 (a simple loop, or <code>Arrays.parallelPrefix</code> on a copy). Each window sum is a subtraction.</p>`, `<p>Hint 3: <code>IntStream.rangeClosed(0, n - k).mapToObj(i -&gt; (pre[i + k] - pre[i]) / (double) k).toList()</code>. Divide as double, not int.</p>`],
+    tests: { sig: 'int[] int -> list<double>', fn: 'movingAvg', cmp: 'float', cases: [
+        [[[1, 3, 5, 7, 9], 3], [3, 5, 7]],
+        [[[4], 1], [4]],
+        [[[1, 2], 2], [1.5]],
+        [[[1, 2, 3], 1], [1, 2, 3]],
+        [[[-1, 0, 1, 4], 2], [-0.5, 0.5, 2.5]],
+        [[[0, 0, 0], 3], [0]],
+        [[[1, 2, 2], 2], [1.5, 2]],
+        [[{ $rep: 1000000, n: 1000000 }, 500000], { $rep: 1000000, n: 500001 }]
+      ] },
     solution: {
       approach: `<p>Prefix sums turn every window sum into O(1); an index stream produces the outputs in order.</p>`,
       code: `class MovingAverage {
@@ -2867,6 +3145,9 @@ System.out.println(r);</pre>`,
 }` },
     mcq: { q: 'How many "sorted …" lines are printed?', options: ['2', '4', '5', '0'], answer: 0, explain: 'sorted releases elements one at a time and checks downstream cancellation before each. After "b" passes limit(2), the quota is full, so "c" and "d" are never released — and never peeked.' },
     hints: [`<p>Hint 1: upstream of <code>sorted</code> runs vertically for every element: each list is peeked, flattened, each item peeked, then distinct either drops it or lets it into sorted's buffer.</p>`, `<p>Hint 2: after the source is exhausted, sorted's buffer is [a, b, c, d] (one "a" was dropped by distinct, but "item a" was printed twice).</p>`, `<p>Hint 3: sorted releases "a" (peek, limit 1/2), "b" (peek, limit 2/2 → cancel) and stops. Result "a,b".</p>`],
+    tests: { io: true, cases: [
+        { stdin: '', stdout: 'list [b, a]\nitem b\nitem a\nlist [c, a]\nitem c\nitem a\nlist [d]\nitem d\nsorted a\nsorted b\na,b' }
+      ] },
     solution: {
       approach: `<p>Output:</p><pre>list [b, a]
 item b
@@ -2921,6 +3202,25 @@ a,b</pre>`,
 }` },
     mcq: { q: 'Which heap keeps the k LARGEST elements in O(k) memory?', options: ['A min-heap of size k: when it exceeds k, remove the smallest', 'A max-heap of all elements', 'A min-heap of all elements', 'A max-heap of size k: remove the largest when full'], answer: 0, explain: 'The min-heap root is the weakest of the current top k; any new element bigger than it replaces it. Removing the largest would throw away the best candidates.' },
     hints: [`<p>Hint 1: the container (A) is a <code>PriorityQueue&lt;T&gt;</code> ordered by <code>cmp</code> (a min-heap w.r.t. cmp).</p>`, `<p>Hint 2: accumulator: <code>offer</code>, then <code>poll</code> if size &gt; k. Combiner (parallel): pour the smaller heap into the other with the same trimming. Finisher: drain into a list and sort descending.</p>`, `<p>Hint 3: <code>Collector.of(supplier, accumulator, combiner, finisher)</code>. Validate k ≥ 1. The finisher sorts only k items: O(k log k).</p>`],
+    tests: { sig: 'string int[] int -> int[]', fn: 'run', harness: { java: `
+class Check {
+  static int[] run(String kind, int[] xs, int k) {
+    Stream<Integer> st = IntStream.of(xs).boxed();
+    if (kind.equals("par")) st = st.parallel();
+    Comparator<Integer> cmp = kind.equals("rev") ? Comparator.<Integer>reverseOrder() : Comparator.<Integer>naturalOrder();
+    return st.collect(TopK.topK(k, cmp)).stream().mapToInt(Integer::intValue).toArray();
+  }
+}` }, cases: [
+        [['seq', [5, 1, 9, 3, 7, 9], 3], [9, 9, 7]],
+        [['seq', [2, 1], 5], [2, 1]],
+        [['seq', [], 3], []],
+        [['seq', [4, 4, 4], 1], [4]],
+        [['seq', [-5, -1, -9], 2], [-1, -5]],
+        [['rev', [5, 1, 9, 3, 7, 9], 2], [1, 3]],
+        [['par', { $range: [0, 1000000] }, 3], [999999, 999998, 999997]],
+        [['par', { $range: [0, 2000000] }, 10000], { $range: [1999999, 1989999, -1] }],
+        [['seq', { $range: [2000000, 0, -1] }, 2], [2000000, 1999999]]
+      ] },
     solution: {
       approach: `<p>Bounded min-heap per thread. Each element costs O(log k); merging two heaps costs O(k log k); the final sort O(k log k). Memory O(k) per thread.</p>`,
       code: `class TopK {
@@ -2984,6 +3284,28 @@ a,b</pre>`,
 }` },
     mcq: { q: 'Why does <code>Lazy</code> store a <code>Supplier&lt;Iterator&lt;T&gt;&gt;</code> instead of an <code>Iterator&lt;T&gt;</code>?', options: ['So each terminal run gets a fresh iterator chain (re-runnable, no shared state)', 'Because iterators cannot be generic', 'To make it thread-safe automatically', 'Suppliers are faster than iterators'], answer: 0, explain: 'An Iterator is single-use. Storing a recipe that builds a new iterator chain on demand keeps the pipeline lazy AND re-runnable — Java streams chose single-use instead.' },
     hints: [`<p>Hint 1: each stage = "given the upstream iterator, return a new iterator that does my job on demand". Nothing happens until someone calls <code>hasNext()/next()</code>.</p>`, `<p>Hint 2: <code>filter</code>'s <code>hasNext()</code> must look ahead: pull from upstream until a match is found and buffer it. <code>limit</code>'s <code>hasNext()</code> must check its counter <b>before</b> asking upstream (otherwise it pulls one extra element from an infinite source).</p>`, `<p>Hint 3: keep a <code>Supplier&lt;Iterator&lt;T&gt;&gt;</code> per stage; <code>toList()</code> calls <code>get()</code> once and drains the iterator.</p>`],
+    tests: { sig: 'int -> string[]', fn: 'run', harness: { java: `
+class Check {
+  static String[] run(int n) {
+    LazyDemo2.mapperCalls = 0;
+    Lazy<Integer> p = Lazy.iterate(1, x -> x + 1).map(x -> { LazyDemo2.mapperCalls++; return x * x; }).filter(x -> x % 2 == 0).limit(n);
+    String c0 = String.valueOf(LazyDemo2.mapperCalls);
+    List<Integer> l1 = p.toList();
+    String c1 = String.valueOf(LazyDemo2.mapperCalls);
+    List<Integer> l2 = p.toList();
+    String c2 = String.valueOf(LazyDemo2.mapperCalls);
+    String s1 = l1.size() <= 10 ? l1.toString() : l1.size() + " " + l1.get(l1.size() - 1);
+    String s2 = l2.size() <= 10 ? l2.toString() : l2.size() + " " + l2.get(l2.size() - 1);
+    return new String[]{ c0, s1, c1, s2, c2, Lazy.of(List.of("a", "bb", "ccc")).map(String::length).toList().toString() };
+  }
+}` }, cases: [
+        [[3], ['0', '[4, 16, 36]', '6', '[4, 16, 36]', '12', '[1, 2, 3]']],
+        [[0], ['0', '[]', '0', '[]', '0', '[1, 2, 3]']],
+        [[1], ['0', '[4]', '2', '[4]', '4', '[1, 2, 3]']],
+        [[2], ['0', '[4, 16]', '4', '[4, 16]', '8', '[1, 2, 3]']],
+        [[5], ['0', '[4, 16, 36, 64, 100]', '10', '[4, 16, 36, 64, 100]', '20', '[1, 2, 3]']],
+        [[1000], ['0', '1000 4000000', '2000', '1000 4000000', '4000', '[1, 2, 3]']]
+      ] },
     solution: {
       approach: `<p>Pull-based laziness with iterator decorators. Each operator returns a new <code>Lazy</code> holding a recipe that wraps the upstream iterator. The terminal operation builds the chain and drains it, so elements are pulled one at a time through every stage — the same observable behaviour as Java's push-based Sink chain.</p>`,
       code: `final class Lazy<T> {
@@ -3107,6 +3429,23 @@ class ManualReport {
 }` },
     mcq: { q: 'Which collector builds <code>Map&lt;String, Map&lt;String, Double&gt;&gt;</code> with BOTH levels sorted by key?', options: ['<code>groupingBy(Sale::city, TreeMap::new, groupingBy(Sale::category, TreeMap::new, summingDouble(Sale::amount)))</code>', '<code>groupingBy(Sale::city, groupingBy(Sale::category, summingDouble(Sale::amount)))</code>', '<code>toMap(Sale::city, Sale::amount, Double::sum)</code>', '<code>partitioningBy(Sale::city, summingDouble(Sale::amount))</code>'], answer: 0, explain: 'Nested groupingBy gives the two levels; passing TreeMap::new at each level sorts keys. The plain version uses HashMaps (unordered). toMap loses the category level; partitioningBy needs a boolean predicate.' },
     hints: [`<p>Hint 1: two-level aggregation = a <code>groupingBy</code> whose downstream is another <code>groupingBy</code>, finishing with <code>summingDouble</code>.</p>`, `<p>Hint 2: pass <code>TreeMap::new</code> at both levels so iteration is already sorted.</p>`, `<p>Hint 3: per city, join <code>key=value</code> pairs with <code>joining(", ")</code>; pick the top with <code>entrySet().stream().max(...)</code>. Make the tie-break explicit: <code>comparingByValue().thenComparing(comparingByKey(reverseOrder()))</code> so the alphabetically-first category wins a tie (max picks the greatest, and a reversed key order makes "a" greater than "b").</p>`],
+    tests: { sig: 'string[] -> list<string>', fn: 'run', harness: { java: `
+class Check {
+  static List<String> run(String[] rows) {
+    List<Sale> ss = new ArrayList<>();
+    for (String r : rows) { String[] p = r.split(","); ss.add(new Sale(p[0], p[1], Double.parseDouble(p[2]))); }
+    return SalesReport.report(ss);
+  }
+}` }, cases: [
+        [[['Pune,food,20', 'Pune,toys,12.5', 'Delhi,food,5', 'Pune,food,10', 'Delhi,books,8']], ['Delhi: books=8.0, food=5.0 | top=books', 'Pune: food=30.0, toys=12.5 | top=food']],
+        [[[]], []],
+        [[['A,x,1']], ['A: x=1.0 | top=x']],
+        [[['C,b,5', 'C,a,5']], ['C: a=5.0, b=5.0 | top=a']],
+        [[['pune,x,1', 'Delhi,x,1']], ['Delhi: x=1.0 | top=x', 'pune: x=1.0 | top=x']],
+        [[['C,a,0.1', 'C,a,0.2']], ['C: a=0.3 | top=a']],
+        [[['C,z,9', 'C,a,1', 'C,m,3']], ['C: a=1.0, m=3.0, z=9.0 | top=z']],
+        [[{ $rep: 'c,x,1', n: 100000 }], ['c: x=100000.0 | top=x']]
+      ] },
     solution: {
       approach: `<p>Aggregate with nested sorted groupingBy, then format each city with two small streams: one joining the category totals, one choosing the top category with an explicit tie-break.</p>`,
       code: `record Sale(String city, String category, double amount) {}

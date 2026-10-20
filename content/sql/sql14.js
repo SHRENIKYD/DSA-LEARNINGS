@@ -412,6 +412,80 @@ ORDER BY session_id;` } },
         `<p>Hint 2: Picking the best eligible replica per session is a <b>top-1-per-group</b> problem → <code>ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY ...)</code>.</p>`,
         `<p>Hint 3: Sort key = <code>(role = 'leader')</code> first (false = 0 sorts before true = 1, so followers win), then <code>rtt_ms</code>. Keep rows with rn = 1.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { setup: '', rows: [
+            ['s-asha', 'db-f1', 12],
+            ['s-guest', 'db-f2', 3],
+            ['s-mei', 'db-f1', 12],
+            ['s-new', 'db-f2', 3],
+            ['s-ravi', 'db-f1', 12]
+          ] },
+        { setup: 'UPDATE sessions SET last_write_lsn = NULL WHERE session_id = \'s-asha\'', rows: [
+            ['s-asha', 'db-f2', 3],
+            ['s-guest', 'db-f2', 3],
+            ['s-mei', 'db-f1', 12],
+            ['s-new', 'db-f2', 3],
+            ['s-ravi', 'db-f1', 12]
+          ] },
+        { setup: 'UPDATE replicas SET applied_lsn = 110 WHERE name = \'db-f2\'', rows: [
+            ['s-asha', 'db-f2', 3],
+            ['s-guest', 'db-f2', 3],
+            ['s-mei', 'db-f2', 3],
+            ['s-new', 'db-f2', 3],
+            ['s-ravi', 'db-f2', 3]
+          ] },
+        { setup: 'UPDATE replicas SET applied_lsn = 109 WHERE name = \'db-f1\'', rows: [
+            ['s-asha', 'db-leader', 2],
+            ['s-guest', 'db-f2', 3],
+            ['s-mei', 'db-f1', 12],
+            ['s-new', 'db-f2', 3],
+            ['s-ravi', 'db-f1', 12]
+          ] },
+        { setup: 'UPDATE replicas SET applied_lsn = 109 WHERE name = \'db-f1\'; UPDATE replicas SET applied_lsn = 109 WHERE name = \'db-f2\'; UPDATE replicas SET applied_lsn = 109 WHERE name = \'db-f3\'; UPDATE replicas SET applied_lsn = 109 WHERE name = \'db-f4\'', rows: [
+            ['s-asha', 'db-leader', 2],
+            ['s-guest', 'db-f2', 3],
+            ['s-mei', 'db-f2', 3],
+            ['s-new', 'db-f2', 3],
+            ['s-ravi', 'db-f2', 3]
+          ] },
+        { setup: 'DELETE FROM replicas WHERE name = \'db-f1\'; DELETE FROM replicas WHERE name = \'db-f2\'; DELETE FROM replicas WHERE name = \'db-f3\'; DELETE FROM replicas WHERE name = \'db-f4\'', rows: [
+            ['s-asha', 'db-leader', 2],
+            ['s-guest', 'db-leader', 2],
+            ['s-mei', 'db-leader', 2],
+            ['s-new', 'db-leader', 2],
+            ['s-ravi', 'db-leader', 2]
+          ] },
+        { setup: 'UPDATE sessions SET last_write_lsn = 104 WHERE session_id = \'s-mei\'', rows: [
+            ['s-asha', 'db-f1', 12],
+            ['s-guest', 'db-f2', 3],
+            ['s-mei', 'db-f2', 3],
+            ['s-new', 'db-f2', 3],
+            ['s-ravi', 'db-f1', 12]
+          ] },
+        { setup: 'UPDATE sessions SET last_write_lsn = 101 WHERE session_id = \'s-ravi\'', rows: [
+            ['s-asha', 'db-f1', 12],
+            ['s-guest', 'db-f2', 3],
+            ['s-mei', 'db-f1', 12],
+            ['s-new', 'db-f2', 3],
+            ['s-ravi', 'db-f2', 3]
+          ] },
+        { setup: 'INSERT INTO sessions VALUES (\'s-aaa\',1,0)', rows: [
+            ['s-aaa', 'db-f2', 3],
+            ['s-asha', 'db-f1', 12],
+            ['s-guest', 'db-f2', 3],
+            ['s-mei', 'db-f1', 12],
+            ['s-new', 'db-f2', 3],
+            ['s-ravi', 'db-f1', 12]
+          ] },
+        { setup: 'UPDATE replicas SET rtt_ms = 1 WHERE name = \'db-f4\'', rows: [
+            ['s-asha', 'db-f1', 12],
+            ['s-guest', 'db-f4', 1],
+            ['s-mei', 'db-f1', 12],
+            ['s-new', 'db-f2', 3],
+            ['s-ravi', 'db-f1', 12]
+          ] },
+        { setup: 'DELETE FROM sessions', rows: [] }
+      ] },
       solution: {
         approach: `<p>Join sessions to the replicas that have applied at least the session's write LSN, rank them per session (followers first, then nearest), keep rank 1. In production this logic lives in the app or a proxy (ProxySQL, pgcat, Vitess vtgate); the LSN comes from <code>pg_current_wal_lsn()</code> after the write and the replica position from <code>pg_last_wal_replay_lsn()</code>.</p>`,
         code: { lang: 'sql', db: 'repl', code: `WITH eligible AS (
@@ -684,6 +758,46 @@ ORDER BY q.read_id;` } },
         `<p>Hint 2: The answer row is the one with <code>ver = newest</code>; the repair list is <code>GROUP_CONCAT(node)</code> over rows with <code>ver &lt; newest</code>.</p>`,
         `<p>Hint 3: Aggregate per read with conditional expressions: <code>MAX(CASE WHEN ver = newest THEN v END)</code> for the answer, and <code>GROUP_CONCAT(CASE WHEN ver &lt; newest THEN node END)</code> (NULLs are skipped) for repairs.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { setup: '', rows: [
+            [1, 'cart:9', 'qty=2', 3, 'C,E'],
+            [2, 'theme:7', 'dark', 5, 'B,C']
+          ] },
+        { setup: 'INSERT INTO read_resp VALUES (3,\'A\',\'cart:9\'),(3,\'B\',\'cart:9\'),(3,\'D\',\'cart:9\')', rows: [
+            [1, 'cart:9', 'qty=2', 3, 'C,E'],
+            [2, 'theme:7', 'dark', 5, 'B,C'],
+            [3, 'cart:9', 'qty=2', 3, null]
+          ] },
+        { setup: 'INSERT INTO read_resp VALUES (3,\'A\',\'cart:9\'),(3,\'B\',\'cart:9\'),(3,\'C\',\'cart:9\'),(3,\'D\',\'cart:9\'),(3,\'E\',\'cart:9\')', rows: [
+            [1, 'cart:9', 'qty=2', 3, 'C,E'],
+            [2, 'theme:7', 'dark', 5, 'B,C'],
+            [3, 'cart:9', 'qty=2', 3, 'C,E']
+          ] },
+        { setup: 'INSERT INTO read_resp VALUES (3,\'A\',\'theme:7\')', rows: [
+            [1, 'cart:9', 'qty=2', 3, 'C,E'],
+            [2, 'theme:7', 'dark', 5, 'B,C'],
+            [3, 'theme:7', 'dark', 5, null]
+          ] },
+        { setup: 'DELETE FROM read_resp', rows: [] },
+        { setup: 'UPDATE kv_replicas SET ver = 9, v = \'new\' WHERE node = \'E\' AND k = \'cart:9\'', rows: [
+            [1, 'cart:9', 'new', 9, 'C,D'],
+            [2, 'theme:7', 'dark', 5, 'B,C']
+          ] },
+        { setup: 'INSERT INTO read_resp VALUES (3,\'E\',\'cart:9\'),(3,\'C\',\'cart:9\')', rows: [
+            [1, 'cart:9', 'qty=2', 3, 'C,E'],
+            [2, 'theme:7', 'dark', 5, 'B,C'],
+            [3, 'cart:9', 'qty=1', 2, 'E']
+          ] },
+        { setup: 'INSERT INTO read_resp VALUES (3,\'B\',\'theme:7\'),(3,\'C\',\'theme:7\')', rows: [
+            [1, 'cart:9', 'qty=2', 3, 'C,E'],
+            [2, 'theme:7', 'dark', 5, 'B,C'],
+            [3, 'theme:7', 'light', 4, null]
+          ] },
+        { setup: 'INSERT INTO read_resp VALUES (3,\'A\',\'nokey\')', rows: [
+            [1, 'cart:9', 'qty=2', 3, 'C,E'],
+            [2, 'theme:7', 'dark', 5, 'B,C']
+          ] }
+      ] },
       solution: {
         approach: `<p>Window max gives every answer the newest version of its read; one GROUP BY then picks the winning value and collects the lagging nodes. In Cassandra, the coordinator does exactly this in memory (using cell timestamps instead of integer versions) and, for reads at QUORUM, performs blocking read repair on the mismatched replicas before replying.</p>`,
         code: { lang: 'sql', db: 'repl', code: `WITH answers AS (
@@ -767,9 +881,12 @@ WITH hashed AS (
   SELECT 'hash(user_id) + salted hot keys',
          CASE WHEN followers > 1000000 THEN (h_user + salt) % 4 ELSE h_user END
   FROM hashed
-), load AS (
-  SELECT candidate, shard, COUNT(*) AS reqs
-  FROM candidates GROUP BY candidate, shard ORDER BY candidate, shard
+), load AS (                                    -- every candidate gets all 4 shards, empty ones count as 0
+  SELECT c.candidate, s.shard, COUNT(x.shard) AS reqs
+  FROM (SELECT DISTINCT candidate FROM candidates) AS c
+  CROSS JOIN (SELECT 0 AS shard UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3) AS s
+  LEFT JOIN candidates AS x ON x.candidate = c.candidate AND x.shard = s.shard
+  GROUP BY c.candidate, s.shard ORDER BY c.candidate, s.shard
 )
 SELECT candidate,
        GROUP_CONCAT(reqs, ' / ')                     AS reqs_per_shard,
@@ -1006,6 +1123,63 @@ ORDER BY shard;   -- 6/6/6/6 looks perfect... and is misleading` } },
         `<p>Hint 2: Count per (candidate, shard), then per candidate take <code>MAX(reqs)</code> and <code>AVG(reqs)</code>. Use <code>GROUP_CONCAT</code> for the per-shard list.</p>`,
         `<p>Hint 3: For salting: <code>CASE WHEN followers &gt; 1000000 THEN (h_user + salt) % 4 ELSE h_user END</code>, where salt is a hash of req_id mod 4 — each sub-key lands on a different neighbouring shard.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { setup: '', rows: [
+            ['hash(user_id) + salted hot keys', '31 / 29 / 31 / 29', 31, 1.03],
+            ['hash(user_id)', '16 / 14 / 16 / 74', 74, 2.47],
+            ['range(user_id)', '75 / 18 / 15 / 12', 75, 2.5],
+            ['tenant (directory)', '93 / 15 / 8 / 4', 93, 3.1]
+          ] },
+        { setup: 'DELETE FROM requests WHERE user_id = 1', rows: [
+            ['hash(user_id)', '16 / 14 / 16 / 14', 16, 1.07],
+            ['hash(user_id) + salted hot keys', '16 / 14 / 16 / 14', 16, 1.07],
+            ['range(user_id)', '15 / 18 / 15 / 12', 18, 1.2],
+            ['tenant (directory)', '33 / 15 / 8 / 4', 33, 2.2]
+          ], set: true },
+        { setup: 'DELETE FROM requests WHERE req_id > 60', rows: [
+            ['hash(user_id) + salted hot keys', '16 / 14 / 15 / 15', 16, 1.07],
+            ['hash(user_id)', '8 / 7 / 8 / 37', 37, 2.47],
+            ['range(user_id)', '40 / 8 / 6 / 6', 40, 2.67],
+            ['tenant (directory)', '48 / 6 / 4 / 2', 48, 3.2]
+          ] },
+        { setup: 'UPDATE users SET followers = 5 WHERE user_id = 1', rows: [
+            ['hash(user_id)', '16 / 14 / 16 / 74', 74, 2.47],
+            ['hash(user_id) + salted hot keys', '16 / 14 / 16 / 74', 74, 2.47],
+            ['range(user_id)', '75 / 18 / 15 / 12', 75, 2.5],
+            ['tenant (directory)', '93 / 15 / 8 / 4', 93, 3.1]
+          ], set: true },
+        { setup: 'UPDATE users SET followers = 2000000 WHERE user_id = 2', rows: [
+            ['hash(user_id) + salted hot keys', '31 / 32 / 28 / 29', 32, 1.07],
+            ['hash(user_id)', '16 / 14 / 16 / 74', 74, 2.47],
+            ['range(user_id)', '75 / 18 / 15 / 12', 75, 2.5],
+            ['tenant (directory)', '93 / 15 / 8 / 4', 93, 3.1]
+          ] },
+        { setup: 'UPDATE requests SET user_id = 13', rows: [
+            ['range(user_id)', '0 / 0 / 120 / 0', 120, 4],
+            ['tenant (directory)', '0 / 120 / 0 / 0', 120, 4],
+            ['hash(user_id)', '0 / 120 / 0 / 0', 120, 4],
+            ['hash(user_id) + salted hot keys', '0 / 120 / 0 / 0', 120, 4]
+          ], set: true },
+        { setup: 'DELETE FROM requests WHERE user_id NOT IN (7, 8)', rows: [
+            ['hash(user_id)', '3 / 0 / 0 / 3', 3, 2],
+            ['hash(user_id) + salted hot keys', '3 / 0 / 0 / 3', 3, 2],
+            ['range(user_id)', '0 / 6 / 0 / 0', 6, 4],
+            ['tenant (directory)', '6 / 0 / 0 / 0', 6, 4]
+          ], set: true },
+        { setup: 'DELETE FROM requests WHERE user_id > 1', rows: [
+            ['hash(user_id) + salted hot keys', '15 / 15 / 15 / 15', 15, 1],
+            ['range(user_id)', '60 / 0 / 0 / 0', 60, 4],
+            ['tenant (directory)', '60 / 0 / 0 / 0', 60, 4],
+            ['hash(user_id)', '0 / 0 / 0 / 60', 60, 4]
+          ], set: true },
+        { setup: 'DELETE FROM requests', rows: [] },
+        { setup: 'UPDATE range_map SET hi = 12 WHERE shard = 0; UPDATE range_map SET lo = 13, hi = 24 WHERE shard = 1', rows: [
+            ['hash(user_id) + salted hot keys', '31 / 29 / 31 / 29', 31, 1.03],
+            ['hash(user_id)', '16 / 14 / 16 / 74', 74, 2.47],
+            ['range(user_id)', '93 / 27 / 0 / 0', 93, 3.1],
+            ['tenant (directory)', '93 / 15 / 8 / 4', 93, 3.1]
+          ], set: true }
+      ] },
       solution: {
         approach: `<p><b>Measure, don't guess.</b> Compute load per shard under each candidate from real traffic. Results: salted hash ≈ 1.03×, plain hash 2.47× (celebrity), range 2.5× (celebrity is in the first range), tenant 3.1× (acme is huge). <b>Recommendation:</b> shard key <code>hash(user_id)</code> with hot-key salting for accounts above a follower threshold; keep a small directory override table so a whale tenant/user can be pinned to a dedicated shard. Co-locate a user's other tables on the same key so their transactions stay single-shard.</p>`,
         code: { lang: 'sql', db: 'shard', code: `WITH hashed AS (
@@ -1027,9 +1201,12 @@ ORDER BY shard;   -- 6/6/6/6 looks perfect... and is misleading` } },
   SELECT 'hash(user_id) + salted hot keys',
          CASE WHEN followers > 1000000 THEN (h_user + salt) % 4 ELSE h_user END
   FROM hashed
-), load AS (
-  SELECT candidate, shard, COUNT(*) AS reqs
-  FROM candidates GROUP BY candidate, shard ORDER BY candidate, shard
+), load AS (                                    -- every candidate gets all 4 shards, empty ones count as 0
+  SELECT c.candidate, s.shard, COUNT(x.shard) AS reqs
+  FROM (SELECT DISTINCT candidate FROM candidates) AS c
+  CROSS JOIN (SELECT 0 AS shard UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3) AS s
+  LEFT JOIN candidates AS x ON x.candidate = c.candidate AND x.shard = s.shard
+  GROUP BY c.candidate, s.shard ORDER BY c.candidate, s.shard
 )
 SELECT candidate,
        GROUP_CONCAT(reqs, ' / ')             AS reqs_per_shard,
@@ -1258,6 +1435,37 @@ SELECT * FROM chat.messages WHERE channel_id = 'general' ALLOW FILTERING;` } },
         `<p>Hint 2: Sizing: rows/partition × bytes/row. 1 M × 200 B = 200 MB/day, so busy channels need a smaller bucket (hour) — or an adaptive bucket stored in channel metadata.</p>`,
         `<p>Hint 3: Unread counts change constantly: use a <code>counter</code> table keyed by user, or store a per-user "last read message ts" per channel and compute unread on the fly from pattern 1's table.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', db: 'nosql', cases: [
+        { setup: '', rows: [
+            ['general', '2026-10-14', 3],
+            ['general', '2026-10-13', 2],
+            ['random', '2026-10-14', 1]
+          ], set: true },
+        { setup: 'DELETE FROM messages_by_channel', rows: [] },
+        { setup: 'INSERT INTO messages_by_channel VALUES (\'general\',\'2026-10-14\',\'09:16:00\',\'m7\',\'mei\',\'x\'),(\'general\',\'2026-10-14\',\'09:17:00\',\'m8\',\'mei\',\'y\')', rows: [
+            ['general', '2026-10-14', 5],
+            ['general', '2026-10-13', 2],
+            ['random', '2026-10-14', 1]
+          ], set: true },
+        { setup: 'INSERT INTO messages_by_channel VALUES (\'dev\',\'2026-10-15\',\'00:00:00\',\'m9\',\'mei\',\'x\')', rows: [
+            ['general', '2026-10-14', 3],
+            ['general', '2026-10-13', 2],
+            ['random', '2026-10-14', 1],
+            ['dev', '2026-10-15', 1]
+          ], set: true },
+        { setup: 'DELETE FROM messages_by_channel WHERE channel_id = \'general\'', rows: [
+            ['random', '2026-10-14', 1]
+          ] },
+        { setup: 'INSERT INTO messages_by_channel VALUES (\'random\',\'2026-10-14\',\'10:00:01\',\'m7\',\'a\',\'x\'),(\'random\',\'2026-10-14\',\'10:00:02\',\'m8\',\'a\',\'y\'),(\'random\',\'2026-10-14\',\'10:00:03\',\'m9\',\'a\',\'z\'),(\'random\',\'2026-10-14\',\'10:00:04\',\'m10\',\'a\',\'w\')', rows: [
+            ['random', '2026-10-14', 5],
+            ['general', '2026-10-14', 3],
+            ['general', '2026-10-13', 2]
+          ], set: true },
+        { setup: 'DELETE FROM messages_by_channel WHERE msg_id IN (\'m1\', \'m2\')', rows: [
+            ['general', '2026-10-14', 3],
+            ['random', '2026-10-14', 1]
+          ], set: true }
+      ] },
       solution: {
         approach: `<p><b>Table 1</b> <code>messages_by_channel</code>: partition <code>(channel_id, bucket)</code>, clustering <code>ts timeuuid DESC</code>. Bucket = day for normal channels; for channels flagged "hot" in a <code>channels</code> table, bucket = hour (1 M/24 ≈ 42 K msgs ≈ 8 MB per partition). Paging backwards: read the current bucket with <code>ts &lt; last_seen</code>, move to the previous bucket when it runs out. <b>Table 2</b> <code>messages_by_author</code>: partition <code>(author_id, month)</code> — a human cannot write enough in a month to overflow it. Written together with table 1 (logged batch, or app double-write with idempotent retries). <b>Table 3</b> <code>read_state</code>: partition <code>user_id</code>, clustering <code>channel_id</code>, storing <code>last_read_ts</code>; unread = count of rows in table 1 newer than it (capped at "99+"), which avoids counter-table drift. All queries are single-partition with LOCAL_QUORUM.</p>`,
         code: { lang: 'text', check: false, code: `CREATE TABLE chat.channels (
@@ -1495,6 +1703,7 @@ SELECT name FROM s WHERE p = 'C' AND e = 'C' ORDER BY name;` } }
         `<p>Hint 2: Many user-facing features only need <b>session</b> guarantees (read-your-writes): only the author must see their change immediately.</p>`,
         `<p>Hint 3: For strong writes, prefer a <b>conditional</b> write (<code>stock &gt;= 1</code>, <code>IF NOT EXISTS</code>) executed at the record's home region/leader, so you pay cross-region latency only on checkout, not browsing.</p>`
       ],
+      tests: { skip: 'the answer is a JSON configuration document of consistency choices (prose justifications per feature), not executable code' },
       solution: {
         approach: `<p>(a) <b>eventual</b> + CRDT/aggregated counters — staleness harmless. (b) <b>strong</b> conditional decrement at the item's home leader (or Paxos/LWT) — eventual oversells. (c) <b>session</b> (read-your-writes) — eventual would make the just-added item vanish on refresh. (d) <b>eventual / consistent prefix</b> — a new review appearing a second late is fine, but causal order of replies is nice-to-have. (e) <b>strong</b> with <code>INSERT ... IF NOT EXISTS</code> on (coupon, customer) — anything weaker allows double redemption in two regions. Result: only 2 of 5 features pay cross-region latency, and only at checkout time; browsing stays available (AP) during partitions.</p>`,
         code: { lang: 'json', code: `{
@@ -1717,7 +1926,7 @@ def transfer(conn, src, dst, amount, max_retries=5):
       level: 'Medium', tags: ['transactions', '2PC', 'NewSQL'], companies: ['Stripe', 'PayPal', 'Coinbase', 'Razorpay'],
       statement: `<p>Move 300 from <code>acct/asha</code> to <code>acct/zoe</code> (db <code>bank</code>). The accounts live in <b>different ranges</b> (different Raft groups). Write SQL that (1) lists the ranges/leaseholders the transaction touches, and (2) performs the transfer so that money is never created or destroyed: the credit happens <b>only if</b> the debit succeeded (sufficient funds), atomically. Then explain what the database does under the hood at COMMIT.</p>`,
       constraints: `Balances must never go negative (CHECK constraint). Any crash between the two updates must leave both accounts unchanged.`,
-      example: `<p>Participants: ${H.c('b', 'range 1 (leaseholder n1)')} and ${H.c('b', 'range 4 (leaseholder n5)')} → a distributed commit. After the transfer: asha ${H.c('g', '5000 → 4700')}, zoe ${H.c('g', '9100 → 9400')}. Total money unchanged (14 100).</p>`,
+      example: `<p>Participants: ${H.c('b', 'range 1 (leaseholder n1)')} and ${H.c('b', 'range 4 (leaseholder n5)')} → a distributed commit. After the transfer: asha ${H.c('g', '5000 → 4700')}, zoe ${H.c('g', '9100 → 9400')}. Total money unchanged (19 350).</p>`,
       brute: { why: `<p>Two independent auto-committed statements. If the process crashes after the debit, Asha loses 300 and Zoe never receives it; if the debit fails (insufficient funds), the credit still runs and money is created from nothing.</p>`, code: { lang: 'sql', db: 'bank', code: `-- each statement commits on its own: NOT atomic
 UPDATE accounts SET balance = balance - 300 WHERE acct = 'acct/asha';
 -- (crash here = money destroyed)
@@ -1729,6 +1938,45 @@ SELECT SUM(balance) AS total_money FROM accounts;` } },
         `<p>Hint 2: Wrap both updates in one <code>BEGIN ... COMMIT</code>. Guard the debit with <code>balance &gt;= 300</code>.</p>`,
         `<p>Hint 3: Make the credit conditional on the debit: in SQLite <code>changes() = 1</code>; in Postgres-compatible NewSQL use a CTE <code>WITH d AS (UPDATE ... RETURNING acct) UPDATE ... WHERE EXISTS (SELECT 1 FROM d)</code>, plus a client retry loop for 40001.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { setup: '', rows: [
+            [19350]
+          ] },
+        { setup: '', after: 'SELECT acct, balance FROM accounts WHERE acct IN (\'acct/asha\', \'acct/zoe\') ORDER BY acct', rows: [
+            ['acct/asha', 4700],
+            ['acct/zoe', 9400]
+          ] },
+        { setup: '', result: 0, rows: [
+            ['acct/asha', 1, 'n1', 'n1,n2,n3'],
+            ['acct/zoe', 4, 'n5', 'n5,n1,n2']
+          ], set: true },
+        { setup: 'UPDATE accounts SET balance = 299 WHERE acct = \'acct/asha\'', after: 'SELECT acct, balance FROM accounts WHERE acct IN (\'acct/asha\', \'acct/zoe\') ORDER BY acct', rows: [
+            ['acct/asha', 299],
+            ['acct/zoe', 9100]
+          ] },
+        { setup: 'UPDATE accounts SET balance = 300 WHERE acct = \'acct/asha\'', after: 'SELECT acct, balance FROM accounts WHERE acct IN (\'acct/asha\', \'acct/zoe\') ORDER BY acct', rows: [
+            ['acct/asha', 0],
+            ['acct/zoe', 9400]
+          ] },
+        { setup: 'UPDATE accounts SET balance = 299 WHERE acct = \'acct/asha\'', rows: [
+            [14649]
+          ] },
+        { setup: 'UPDATE accounts SET balance = 1000000 WHERE acct = \'acct/asha\'', after: 'SELECT acct, balance FROM accounts WHERE acct IN (\'acct/asha\', \'acct/zoe\') ORDER BY acct', rows: [
+            ['acct/asha', 999700],
+            ['acct/zoe', 9400]
+          ] },
+        { setup: 'UPDATE ranges SET end_key = \'acct/zz\' WHERE range_id = 3; UPDATE ranges SET start_key = \'acct/zz\' WHERE range_id = 4', result: 0, rows: [
+            ['acct/asha', 1, 'n1', 'n1,n2,n3'],
+            ['acct/zoe', 3, 'n4', 'n4,n5,n1']
+          ], set: true },
+        { setup: 'UPDATE ranges SET leaseholder = \'n3\' WHERE range_id = 1', result: 0, rows: [
+            ['acct/asha', 1, 'n3', 'n1,n2,n3'],
+            ['acct/zoe', 4, 'n5', 'n5,n1,n2']
+          ], set: true },
+        { setup: 'UPDATE accounts SET balance = 0 WHERE acct = \'acct/asha\'', rows: [
+            [14350]
+          ] }
+      ] },
       solution: {
         approach: `<p>Find participants, then run one transaction whose credit depends on the debit. Under the hood (CockroachDB): the gateway assigns an HLC timestamp, writes an intent for asha into range 1 (Raft majority), an intent for zoe into range 4 (Raft majority), and a transaction record in range 1. Commit = record becomes COMMITTED (with parallel commits: STAGING + all intents replicated). Readers that hit an intent check the record. If any leaseholder dies, its Raft group elects a new leader that still holds the intent. Contention → 40001 → the client retries the whole transaction.</p>`,
         code: { lang: 'sql', db: 'bank', code: `-- 1) who participates in the distributed commit?
@@ -1972,6 +2220,25 @@ db.trips.aggregate([{ $group: { _id: { city: "$city", hour: { $hour: "$ts" } }, 
         `<p>Hint 2: Do the math: pings/s, bytes/day for history (1.25 M/s × 50 B ≈ 5.4 TB/day), trip TPS. The numbers pick the families.</p>`,
         `<p>Hint 3: Connect stores with Kafka/CDC; shard the system of record by <b>region/city</b> — it matches access (trips are local), data residency, and blast radius.</p>`
       ],
+      tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+        { rows: [
+            ['t-1', 'completed', 23000]
+          ] },
+        { after: 'SELECT count(*) FROM trips', rows: [
+            [1]
+          ] },
+        { after: 'SELECT trip_id, driver_id, fare_paise FROM trips WHERE idempotency_key = \'req-7-001\'', rows: [
+            ['t-1', 42, 23000]
+          ] },
+        { after: 'INSERT INTO trips VALUES (\'t-3\', \'IN-BLR\', 7, NULL, \'requested\', NULL, \'req-7-001\', \'2026-10-14T09:01\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO trips VALUES (\'t-3\', \'IN-BLR\', 7, NULL, \'teleporting\', NULL, \'req-7-002\', \'2026-10-14T09:01\')', error: 'CHECK' },
+        { after: 'INSERT INTO trips VALUES (\'t-3\', \'IN-BLR\', 7, 42, \'completed\', -1, \'req-7-002\', \'2026-10-14T09:01\')', error: 'CHECK' },
+        { after: 'INSERT INTO trips VALUES (\'t-3\', \'IN-BLR\', 7, NULL, \'requested\', NULL, NULL, \'2026-10-14T09:01\')', error: 'NOT NULL' },
+        { after: 'INSERT INTO trips VALUES (\'t-3\', \'IN-BLR\', 8, NULL, \'requested\', NULL, \'req-8-001\', \'2026-10-14T09:02\'); SELECT trip_id FROM trips WHERE region = \'IN-BLR\' AND rider_id = 7', rows: [
+            ['t-1']
+          ] },
+        { rows: [], plan: 'SEARCH trips USING INDEX trips_by_rider \\(region=\\? AND rider_id=\\?\\)', after: 'EXPLAIN QUERY PLAN SELECT trip_id, status, fare_paise FROM trips WHERE region = \'IN-BLR\' AND rider_id = 7' }
+      ] },
       solution: {
         approach: `<p><b>(1) Live locations:</b> Redis GEO (or an in-house geohash/H3 service) sharded by city; ping = <code>GEOADD</code>, search = <code>GEOSEARCH</code> radius; TTL so stale drivers vanish. Losing it is OK — drivers re-ping within 4 s. <b>(2) Trips & fares:</b> relational ACID store as system of record — Postgres/MySQL sharded by region (Vitess/Citus), or a NewSQL cluster (CockroachDB/Spanner) with REGIONAL BY ROW for residency; idempotency keys on payment calls; a state machine for trip status. <b>(3) History:</b> pings stream to Kafka → Cassandra/Scylla <code>((driver_id, day), ts)</code> with 2-year TTL, or Parquet on object storage (~5 TB/day). <b>(4) Dashboards:</b> CDC from trips + the ping stream → ClickHouse/BigQuery, pre-aggregated by city-hour. Trade-offs: 4 systems to operate (justified by 4 very different workloads), eventual consistency between them (seconds), and per-region deployments for residency.</p>`,
         code: { lang: 'sql', title: 'System of record: trips (runnable SQLite sketch; production = sharded Postgres/NewSQL by region)', code: `CREATE TABLE trips (
@@ -2025,6 +2292,64 @@ ORDER BY lsn_behind DESC;   -- 110 hard-coded: wrong as soon as a new write arri
       `<p>Hint 2: Join (or correlated subquery) to <code>wal</code> on <code>lsn = r.applied_lsn</code> to get the commit time of the last applied entry.</p>`,
       `<p>Hint 3: Wrap it in a CTE and add <code>CASE WHEN lag_ms &gt; 300 THEN 'STALE' ELSE 'ok' END</code>; order by lag_ms DESC.</p>`
     ],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          ['db-f4', 'async', 9, 640, 'STALE'],
+          ['db-f3', 'async', 6, 460, 'STALE'],
+          ['db-f2', 'async', 3, 220, 'ok'],
+          ['db-f1', 'sync', 0, 0, 'ok'],
+          ['db-leader', 'leader', 0, 0, 'ok']
+        ] },
+      { setup: 'INSERT INTO wal VALUES (111,1800,7,\'x\',\'y\')', rows: [
+          ['db-f4', 'async', 10, 800, 'STALE'],
+          ['db-f3', 'async', 7, 620, 'STALE'],
+          ['db-f2', 'async', 4, 380, 'STALE'],
+          ['db-f1', 'sync', 1, 160, 'ok'],
+          ['db-leader', 'leader', 1, 160, 'ok']
+        ] },
+      { setup: 'INSERT INTO wal VALUES (111,1800,7,\'x\',\'y\'); UPDATE replicas SET applied_lsn = 108 WHERE name = \'db-f2\'', rows: [
+          ['db-f4', 'async', 10, 800, 'STALE'],
+          ['db-f3', 'async', 7, 620, 'STALE'],
+          ['db-f2', 'async', 3, 300, 'ok'],
+          ['db-f1', 'sync', 1, 160, 'ok'],
+          ['db-leader', 'leader', 1, 160, 'ok']
+        ] },
+      { setup: 'INSERT INTO wal VALUES (111,1800,7,\'x\',\'y\'); UPDATE replicas SET applied_lsn = 107 WHERE name = \'db-f2\'', rows: [
+          ['db-f4', 'async', 10, 800, 'STALE'],
+          ['db-f3', 'async', 7, 620, 'STALE'],
+          ['db-f2', 'async', 4, 380, 'STALE'],
+          ['db-f1', 'sync', 1, 160, 'ok'],
+          ['db-leader', 'leader', 1, 160, 'ok']
+        ] },
+      { setup: 'UPDATE replicas SET applied_lsn = 104 WHERE name = \'db-f1\'; UPDATE replicas SET applied_lsn = 104 WHERE name = \'db-f2\'', rows: [
+          ['db-f4', 'async', 9, 640, 'STALE'],
+          ['db-f1', 'sync', 6, 460, 'STALE'],
+          ['db-f2', 'async', 6, 460, 'STALE'],
+          ['db-f3', 'async', 6, 460, 'STALE'],
+          ['db-leader', 'leader', 0, 0, 'ok']
+        ] },
+      { setup: 'DELETE FROM replicas WHERE role <> \'leader\'', rows: [
+          ['db-leader', 'leader', 0, 0, 'ok']
+        ] },
+      { setup: 'UPDATE replicas SET applied_lsn = 999 WHERE name = \'db-f3\'', rows: [
+          ['db-f4', 'async', 9, 640, 'STALE'],
+          ['db-f2', 'async', 3, 220, 'ok'],
+          ['db-f1', 'sync', 0, 0, 'ok'],
+          ['db-leader', 'leader', 0, 0, 'ok']
+        ] },
+      { setup: 'DELETE FROM wal WHERE lsn = 110', rows: [
+          ['db-f4', 'async', 8, 560, 'STALE'],
+          ['db-f3', 'async', 5, 380, 'STALE'],
+          ['db-f2', 'async', 2, 140, 'ok']
+        ] },
+      { setup: 'UPDATE replicas SET applied_lsn = 110', rows: [
+          ['db-f1', 'sync', 0, 0, 'ok'],
+          ['db-f2', 'async', 0, 0, 'ok'],
+          ['db-f3', 'async', 0, 0, 'ok'],
+          ['db-f4', 'async', 0, 0, 'ok'],
+          ['db-leader', 'leader', 0, 0, 'ok']
+        ] }
+    ] },
     solution: {
       approach: `<p>Compute the leader's head position once, join each replica to the WAL row it last applied, and derive both lag measures. In Postgres the same report comes from <code>pg_stat_replication</code> (<code>replay_lag</code>, <code>pg_wal_lsn_diff(sent_lsn, replay_lsn)</code>); export it to your metrics system and alert on the time-based number.</p>`,
       code: { lang: 'sql', db: 'repl', code: `WITH head AS (
@@ -2062,6 +2387,62 @@ UNION ALL SELECT 3, (SELECT COUNT(*) FROM users WHERE user_id % 4 = 3);` } },
       `<p>Hint 2: Count distinct users with <code>COUNT(DISTINCT u.user_id)</code> and requests with <code>COUNT(q.req_id)</code> (NULL-safe).</p>`,
       `<p>Hint 3: Moved users: <code>SUM(user_id % 4 &lt;&gt; user_id % 5)</code> — a comparison is 0/1 in SQLite.</p>`
     ],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          [0, 6, 15],
+          [1, 6, 73],
+          [2, 6, 16],
+          [3, 6, 16]
+        ], result: 0 },
+      { setup: '', rows: [
+          [17, 24]
+        ] },
+      { setup: 'DELETE FROM requests', rows: [
+          [0, 6, 0],
+          [1, 6, 0],
+          [2, 6, 0],
+          [3, 6, 0]
+        ], result: 0 },
+      { setup: 'DELETE FROM requests', rows: [
+          [17, 24]
+        ] },
+      { setup: 'DELETE FROM users WHERE user_id > 12; DELETE FROM requests WHERE user_id > 12', rows: [
+          [0, 3, 9],
+          [1, 3, 66],
+          [2, 3, 9],
+          [3, 3, 9]
+        ], result: 0 },
+      { setup: 'DELETE FROM users WHERE user_id > 12; DELETE FROM requests WHERE user_id > 12', rows: [
+          [9, 12]
+        ] },
+      { setup: 'DELETE FROM requests WHERE user_id = 1', rows: [
+          [0, 6, 15],
+          [1, 6, 13],
+          [2, 6, 16],
+          [3, 6, 16]
+        ], result: 0 },
+      { setup: 'DELETE FROM requests WHERE user_id = 1', rows: [
+          [17, 24]
+        ] },
+      { setup: 'INSERT INTO users VALUES (25,\'u25\',\'IN\',\'acme\',1)', rows: [
+          [0, 6, 15],
+          [1, 7, 73],
+          [2, 6, 16],
+          [3, 6, 16]
+        ], result: 0 },
+      { setup: 'INSERT INTO users VALUES (25,\'u25\',\'IN\',\'acme\',1)', rows: [
+          [18, 25]
+        ] },
+      { setup: 'DELETE FROM users WHERE user_id IN (2, 3, 4)', rows: [
+          [0, 5, 12],
+          [1, 6, 73],
+          [2, 5, 13],
+          [3, 5, 13]
+        ], result: 0 },
+      { setup: 'DELETE FROM users WHERE user_id IN (2, 3, 4)', rows: [
+          [16, 21]
+        ] }
+    ] },
     solution: {
       approach: `<p>Group once by the shard expression; use a LEFT JOIN so shards without requests still appear. The moved count shows why production systems use a fixed, large number of logical partitions (e.g. 1024 or Redis's 16 384 slots) mapped to servers through a table — growing the cluster moves whole partitions, and the key → partition function never changes.</p>`,
       code: { lang: 'sql', db: 'shard', code: `SELECT u.user_id % 4               AS shard,
@@ -2094,10 +2475,144 @@ SELECT w, r FROM pairs WHERE w + r > 3;` } },
       `<p>Hint 2: <code>WITH RECURSIVE k(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM k, params WHERE x &lt; n)</code> generates 1..N.</p>`,
       `<p>Hint 3: Cross join k with itself as w and r, filter <code>w.x + r.x &gt; n</code>, compute <code>n - w.x</code> and <code>n - r.x</code>, order with <code>MIN(n - w.x, n - r.x) DESC</code>.</p>`
     ],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          [2, 2, 1, 1],
+          [1, 3, 2, 0],
+          [2, 3, 1, 0],
+          [3, 1, 0, 2],
+          [3, 2, 0, 1],
+          [3, 3, 0, 0]
+        ] },
+      { after: 'UPDATE params SET n = 1; SELECT * FROM strong_quorums', rows: [
+          [1, 1, 0, 0]
+        ] },
+      { after: 'UPDATE params SET n = 2; SELECT * FROM strong_quorums', rows: [
+          [1, 2, 1, 0],
+          [2, 1, 0, 1],
+          [2, 2, 0, 0]
+        ] },
+      { after: 'UPDATE params SET n = 4; SELECT * FROM strong_quorums', rows: [
+          [2, 3, 2, 1],
+          [3, 2, 1, 2],
+          [3, 3, 1, 1],
+          [1, 4, 3, 0],
+          [2, 4, 2, 0],
+          [3, 4, 1, 0],
+          [4, 1, 0, 3],
+          [4, 2, 0, 2],
+          [4, 3, 0, 1],
+          [4, 4, 0, 0]
+        ] },
+      { after: 'UPDATE params SET n = 5; SELECT * FROM strong_quorums', rows: [
+          [3, 3, 2, 2],
+          [2, 4, 3, 1],
+          [3, 4, 2, 1],
+          [4, 2, 1, 3],
+          [4, 3, 1, 2],
+          [4, 4, 1, 1],
+          [1, 5, 4, 0],
+          [2, 5, 3, 0],
+          [3, 5, 2, 0],
+          [4, 5, 1, 0],
+          [5, 1, 0, 4],
+          [5, 2, 0, 3],
+          [5, 3, 0, 2],
+          [5, 4, 0, 1],
+          [5, 5, 0, 0]
+        ] },
+      { after: 'UPDATE params SET n = 7; SELECT * FROM strong_quorums', rows: [
+          [4, 4, 3, 3],
+          [3, 5, 4, 2],
+          [4, 5, 3, 2],
+          [5, 3, 2, 4],
+          [5, 4, 2, 3],
+          [5, 5, 2, 2],
+          [2, 6, 5, 1],
+          [3, 6, 4, 1],
+          [4, 6, 3, 1],
+          [5, 6, 2, 1],
+          [6, 2, 1, 5],
+          [6, 3, 1, 4],
+          [6, 4, 1, 3],
+          [6, 5, 1, 2],
+          [6, 6, 1, 1],
+          [1, 7, 6, 0],
+          [2, 7, 5, 0],
+          [3, 7, 4, 0],
+          [4, 7, 3, 0],
+          [5, 7, 2, 0],
+          [6, 7, 1, 0],
+          [7, 1, 0, 6],
+          [7, 2, 0, 5],
+          [7, 3, 0, 4],
+          [7, 4, 0, 3],
+          [7, 5, 0, 2],
+          [7, 6, 0, 1],
+          [7, 7, 0, 0]
+        ] },
+      { after: 'UPDATE params SET n = 9; SELECT * FROM strong_quorums', rows: [
+          [5, 5, 4, 4],
+          [4, 6, 5, 3],
+          [5, 6, 4, 3],
+          [6, 4, 3, 5],
+          [6, 5, 3, 4],
+          [6, 6, 3, 3],
+          [3, 7, 6, 2],
+          [4, 7, 5, 2],
+          [5, 7, 4, 2],
+          [6, 7, 3, 2],
+          [7, 3, 2, 6],
+          [7, 4, 2, 5],
+          [7, 5, 2, 4],
+          [7, 6, 2, 3],
+          [7, 7, 2, 2],
+          [2, 8, 7, 1],
+          [3, 8, 6, 1],
+          [4, 8, 5, 1],
+          [5, 8, 4, 1],
+          [6, 8, 3, 1],
+          [7, 8, 2, 1],
+          [8, 2, 1, 7],
+          [8, 3, 1, 6],
+          [8, 4, 1, 5],
+          [8, 5, 1, 4],
+          [8, 6, 1, 3],
+          [8, 7, 1, 2],
+          [8, 8, 1, 1],
+          [1, 9, 8, 0],
+          [2, 9, 7, 0],
+          [3, 9, 6, 0],
+          [4, 9, 5, 0],
+          [5, 9, 4, 0],
+          [6, 9, 3, 0],
+          [7, 9, 2, 0],
+          [8, 9, 1, 0],
+          [9, 1, 0, 8],
+          [9, 2, 0, 7],
+          [9, 3, 0, 6],
+          [9, 4, 0, 5],
+          [9, 5, 0, 4],
+          [9, 6, 0, 3],
+          [9, 7, 0, 2],
+          [9, 8, 0, 1],
+          [9, 9, 0, 0]
+        ] },
+      { after: 'UPDATE params SET n = 3; SELECT * FROM strong_quorums', rows: [
+          [2, 2, 1, 1],
+          [1, 3, 2, 0],
+          [2, 3, 1, 0],
+          [3, 1, 0, 2],
+          [3, 2, 0, 1],
+          [3, 3, 0, 0]
+        ] }
+    ] },
     solution: {
       approach: `<p>Generate 1..N once, cross join for all pairs, keep the overlapping ones. The ordering surfaces the balanced choice (majority/majority) first, which is why QUORUM/QUORUM is the usual default; skewed choices (W = N) buy cheap reads at the cost of write availability.</p>`,
-      code: { lang: 'sql', code: `WITH RECURSIVE params(n) AS (SELECT 3),
-k(x) AS (
+      code: { lang: 'sql', code: `CREATE TEMP TABLE params AS SELECT 3 AS n;   -- replication factor N: change it and read the view again
+
+CREATE TEMP VIEW strong_quorums AS
+WITH RECURSIVE k(x) AS (
   SELECT 1
   UNION ALL
   SELECT x + 1 FROM k, params WHERE x < params.n
@@ -2110,7 +2625,9 @@ FROM k AS w
 CROSS JOIN k AS r
 CROSS JOIN params AS p
 WHERE w.x + r.x > p.n
-ORDER BY MIN(p.n - w.x, p.n - r.x) DESC, W, R;` },
+ORDER BY MIN(p.n - w.x, p.n - r.x) DESC, W, R;
+
+SELECT * FROM strong_quorums;` },
       complexity: `<p>O(N²) rows — at most 81 for N = 9.</p>`,
       followUps: ['Add a column for expected write latency if each extra ack waits for a slower replica.', 'How does LOCAL_QUORUM change the math in a 2-datacenter setup with 3 replicas each?']
     }
@@ -2131,6 +2648,38 @@ WHERE collection = 'orders' AND body LIKE '%"id":7%';   -- fragile string matchi
       `<p>Hint 2: Group by <code>json_extract(body, '$.customer.id')</code>; count orders with <code>COUNT(DISTINCT d.id)</code> because items multiply rows.</p>`,
       `<p>Hint 3: Units = <code>SUM(json_extract(i.value, '$.qty'))</code>, spend = <code>SUM(qty * price)</code>; take the name with <code>MAX(json_extract(body, '$.customer.name'))</code>.</p>`
     ],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          [7, 'Asha', 2, 15, 1169],
+          [3, 'Ravi', 1, 2, 398]
+        ] },
+      { setup: 'INSERT INTO docs VALUES (\'o4\', \'orders\', \'{"_id":"o4","customer":{"id":9,"name":"Zed"},"items":[{"sku":"A","qty":2,"price":5}]}\')', rows: [
+          [7, 'Asha', 2, 15, 1169],
+          [3, 'Ravi', 1, 2, 398],
+          [9, 'Zed', 1, 2, 10]
+        ] },
+      { setup: 'INSERT INTO docs VALUES (\'o4\', \'orders\', \'{"_id":"o4","customer":{"id":3,"name":"Ravi"},"items":[{"sku":"A","qty":1,"price":1},{"sku":"B","qty":1,"price":1},{"sku":"C","qty":1,"price":1},{"sku":"D","qty":1,"price":1}]}\')', rows: [
+          [7, 'Asha', 2, 15, 1169],
+          [3, 'Ravi', 2, 6, 402]
+        ] },
+      { setup: 'INSERT INTO docs VALUES (\'o4\', \'orders\', \'{"_id":"o4","customer":{"id":9,"name":"Zed"},"items":[]}\')', rows: [
+          [7, 'Asha', 2, 15, 1169],
+          [3, 'Ravi', 1, 2, 398]
+        ] },
+      { setup: 'DELETE FROM docs WHERE collection = \'orders\'', rows: [] },
+      { setup: 'INSERT INTO docs VALUES (\'x1\', \'invoices\', \'{"_id":"x1","customer":{"id":7,"name":"Asha"},"items":[{"sku":"A","qty":100,"price":100}]}\')', rows: [
+          [7, 'Asha', 2, 15, 1169],
+          [3, 'Ravi', 1, 2, 398]
+        ] },
+      { setup: 'DELETE FROM docs WHERE id = \'o3\'', rows: [
+          [7, 'Asha', 1, 4, 570],
+          [3, 'Ravi', 1, 2, 398]
+        ] },
+      { setup: 'INSERT INTO docs VALUES (\'o4\', \'orders\', \'{"_id":"o4","customer":{"id":7,"name":"Asha"},"items":[{"sku":"A","qty":1,"price":1}]}\'); INSERT INTO docs VALUES (\'o5\', \'orders\', \'{"_id":"o5","customer":{"id":3,"name":"Ravi"},"items":[{"sku":"A","qty":1,"price":100000}]}\')', rows: [
+          [3, 'Ravi', 2, 3, 100398],
+          [7, 'Asha', 3, 16, 1170]
+        ] }
+    ] },
     solution: {
       approach: `<p>Unnest the embedded array, then aggregate. <b>Embed</b> what is owned, bounded and read together (line items, shipping address snapshot); <b>reference</b> what is shared, large or changing independently (products by SKU, customers by id). Snapshots (name, price at purchase) are deliberate denormalisation: an order must show what was true when it was placed.</p>`,
       code: { lang: 'sql', db: 'nosql', code: `SELECT json_extract(d.body, '$.customer.id')                              AS customer_id,
@@ -2178,6 +2727,46 @@ ORDER BY id;   -- flags only seen_lsn < prev: finds 2, 6, 8 but misses 9` } },
       `<p>Hint 2: <code>MAX(seen_lsn) OVER (PARTITION BY session_id ORDER BY at_ms ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)</code> excludes the current row.</p>`,
       `<p>Hint 3: Compute it in a CTE, then filter <code>seen_lsn &lt; best_before</code> (NULL for first reads drops out automatically).</p>`
     ],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          [2, 's-asha', 'db-f3', 104, 110],
+          [6, 's-ravi', 'db-f4', 101, 107],
+          [8, 's-mei', 'db-f2', 107, 110],
+          [9, 's-mei', 'db-f2', 108, 110]
+        ] },
+      { setup: 'DELETE FROM read_log', rows: [] },
+      { setup: 'INSERT INTO read_log VALUES (10,\'s-x\',3000,\'db-f1\',50),(11,\'s-x\',3001,\'db-f2\',50),(12,\'s-x\',3002,\'db-f3\',49)', rows: [
+          [2, 's-asha', 'db-f3', 104, 110],
+          [6, 's-ravi', 'db-f4', 101, 107],
+          [8, 's-mei', 'db-f2', 107, 110],
+          [9, 's-mei', 'db-f2', 108, 110],
+          [12, 's-x', 'db-f3', 49, 50]
+        ] },
+      { setup: 'INSERT INTO read_log VALUES (10,\'s-x\',3000,\'db-f1\',50),(11,\'s-x\',3001,\'db-f2\',60),(12,\'s-x\',3002,\'db-f3\',55)', rows: [
+          [2, 's-asha', 'db-f3', 104, 110],
+          [6, 's-ravi', 'db-f4', 101, 107],
+          [8, 's-mei', 'db-f2', 107, 110],
+          [9, 's-mei', 'db-f2', 108, 110],
+          [12, 's-x', 'db-f3', 55, 60]
+        ] },
+      { setup: 'UPDATE read_log SET seen_lsn = 100', rows: [] },
+      { setup: 'INSERT INTO read_log VALUES (10,\'s-asha\',1000,\'db-f4\',90)', rows: [
+          [2, 's-asha', 'db-f3', 104, 110],
+          [6, 's-ravi', 'db-f4', 101, 107],
+          [8, 's-mei', 'db-f2', 107, 110],
+          [9, 's-mei', 'db-f2', 108, 110]
+        ] },
+      { setup: 'DELETE FROM read_log WHERE session_id <> \'s-mei\'', rows: [
+          [8, 's-mei', 'db-f2', 107, 110],
+          [9, 's-mei', 'db-f2', 108, 110]
+        ] },
+      { setup: 'INSERT INTO read_log VALUES (10,\'s-y\',5000,\'db-f1\',10)', rows: [
+          [2, 's-asha', 'db-f3', 104, 110],
+          [6, 's-ravi', 'db-f4', 101, 107],
+          [8, 's-mei', 'db-f2', 107, 110],
+          [9, 's-mei', 'db-f2', 108, 110]
+        ] }
+    ] },
     solution: {
       approach: `<p>A window frame ending one row before the current one gives the session's high-water mark. Violations are reads below it. In an app, store that high-water mark in the session (a cookie or token) and route reads only to replicas at or beyond it — the same LSN-token trick used for read-your-writes.</p>`,
       code: { lang: 'sql', db: 'repl', code: `WITH marked AS (
@@ -2219,6 +2808,72 @@ print("mod-N moved:", sum(before[k] != after[k] for k in keys))` } },
       `<p>Hint 2: Compute owners with all 5 nodes, then with C removed, and count differences.</p>`,
       `<p>Hint 3: Check the invariant: every moved key's old owner must be C (<code>all(before[k] == "C" for k in moved)</code>).</p>`
     ],
+    tests: { sig: 'int string[] string -> int[]', fn: 'run_compare', harness: { python: 'def run_compare(n, nodes, dead):\n    keys = [f"k{i}" for i in range(n)]\n    mod_moved, moved, only_dead, owned = compare(keys, nodes, dead)\n    return [mod_moved, moved, int(only_dead), owned]' }, cases: [
+      [
+        [
+          10000,
+          ['A', 'B', 'C', 'D', 'E'],
+          'C'
+        ],
+        [7994, 1961, 1, 1961]
+      ],
+      [
+        [
+          100,
+          ['A', 'B', 'C', 'D', 'E'],
+          'A'
+        ],
+        [83, 19, 1, 19]
+      ],
+      [
+        [
+          1,
+          ['A', 'B', 'C', 'D', 'E'],
+          'E'
+        ],
+        [0, 0, 1, 0]
+      ],
+      [
+        [
+          5000,
+          ['A', 'B', 'C'],
+          'B'
+        ],
+        [3277, 1699, 1, 1699]
+      ],
+      [
+        [
+          2000,
+          ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8'],
+          'n4'
+        ],
+        [1739, 282, 1, 282]
+      ],
+      [
+        [
+          300,
+          ['A', 'B'],
+          'A'
+        ],
+        [140, 152, 1, 152]
+      ],
+      [
+        [
+          500,
+          ['A', 'B', 'C', 'D', 'E'],
+          'Z'
+        ],
+        [0, 0, 1, 0]
+      ],
+      [
+        [
+          0,
+          ['A', 'B', 'C', 'D', 'E'],
+          'C'
+        ],
+        [0, 0, 1, 0]
+      ]
+    ] },
     solution: {
       approach: `<p>Rendezvous hashing gives each (key, node) pair a pseudo-random score and picks the max. Removing a node only affects keys where it was the max, so movement is the theoretical minimum (≈ 1/N). It is O(N) per lookup (fine for tens of nodes) and needs no virtual nodes for balance; consistent hashing with a sorted ring is O(log N) and preferred for very large clusters.</p>`,
       code: { lang: 'python', run: true, code: `import hashlib
@@ -2233,22 +2888,25 @@ def rendezvous_owner(key, nodes):
     return max(nodes, key=lambda n: h(f"{key}|{n}"))
 
 
+def compare(keys, nodes, dead):
+    """How many keys change owner when node 'dead' disappears: mod-N vs rendezvous."""
+    alive = [n for n in nodes if n != dead]
+    mod_moved = sum(nodes[h(k) % len(nodes)] != alive[h(k) % len(alive)] for k in keys)
+    hrw_before = {k: rendezvous_owner(k, nodes) for k in keys}
+    hrw_after = {k: rendezvous_owner(k, alive) for k in keys}
+    moved = [k for k in keys if hrw_before[k] != hrw_after[k]]
+    only_dead = all(hrw_before[k] == dead for k in moved)
+    return mod_moved, len(moved), only_dead, sum(v == dead for v in hrw_before.values())
+
+
 keys = [f"k{i}" for i in range(10000)]
 nodes = ["A", "B", "C", "D", "E"]
-alive = [n for n in nodes if n != "C"]
-
-mod_before = {k: nodes[h(k) % 5] for k in keys}
-mod_after = {k: alive[h(k) % 4] for k in keys}
-mod_moved = sum(mod_before[k] != mod_after[k] for k in keys)
-
-hrw_before = {k: rendezvous_owner(k, nodes) for k in keys}
-hrw_after = {k: rendezvous_owner(k, alive) for k in keys}
-moved = [k for k in keys if hrw_before[k] != hrw_after[k]]
+mod_moved, hrw_moved, only_dead, dead_owned = compare(keys, nodes, "C")
 
 print(f"mod-N moved:      {mod_moved}")
-print(f"rendezvous moved: {len(moved)}")
-print("only C's keys moved:", all(hrw_before[k] == "C" for k in moved))
-print("keys C owned:", sum(v == "C" for v in hrw_before.values()))
+print(f"rendezvous moved: {hrw_moved}")
+print("only C's keys moved:", only_dead)
+print("keys C owned:", dead_owned)
 ` },
       complexity: `<p>Rendezvous lookup O(N) hashes per key; movement on change ≈ K/N keys. Mod-N lookup O(1) but movement ≈ K·(N−1)/N.</p>`,
       followUps: ['How would you add weights (a node with 2× capacity)?', 'Why do Redis Cluster and Kafka use a fixed partition count instead of either scheme?']
@@ -2272,6 +2930,27 @@ GROUP BY half;` } },
       `<p>Hint 2: Pick the hottest shard with <code>ORDER BY SUM(reqs) DESC LIMIT 1</code>; within it compute a running total <code>SUM(reqs) OVER (ORDER BY user_id)</code> and the shard total <code>SUM(reqs) OVER ()</code>.</p>`,
       `<p>Hint 3: The split is the first row where <code>running * 2 &gt;= total</code>; right_load = total − running.</p>`
     ],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          [0, 1, 60, 15]
+        ] },
+      { setup: 'DELETE FROM requests WHERE user_id = 1', rows: [
+          [1, 9, 9, 9]
+        ] },
+      { setup: 'DELETE FROM requests WHERE user_id <= 6 AND user_id > 1', rows: [
+          [0, 1, 60, 0]
+        ] },
+      { setup: 'UPDATE requests SET user_id = 20 WHERE req_id % 2 = 0', rows: [
+          [3, 20, 64, 8]
+        ] },
+      { setup: 'DELETE FROM requests WHERE req_id > 10', rows: [
+          [0, 1, 5, 5]
+        ] },
+      { setup: 'UPDATE range_map SET hi = 1 WHERE shard = 0; UPDATE range_map SET lo = 2 WHERE shard = 1; UPDATE range_map SET lo = 2, hi = 12 WHERE shard = 1', rows: [
+          [0, 1, 60, 0]
+        ] },
+      { setup: 'DELETE FROM requests', rows: [] }
+    ] },
     solution: {
       approach: `<p>Load-based splitting (CockroachDB, Bigtable, DynamoDB adaptive capacity) finds the key where cumulative load crosses half — the result here shows the limit: the hot key itself becomes a one-key range. Next steps: salt the key, cache its reads, or isolate it on the strongest node.</p>`,
       code: { lang: 'sql', db: 'shard', code: `WITH per_user AS (
@@ -2317,6 +2996,77 @@ SELECT f3.dst, 3 FROM follows f1 JOIN follows f2 ON f2.src = f1.dst
       `<p>Hint 2: Bound it with <code>WHERE w.hops &lt; 6</code> and use <code>UNION</code> to avoid repeating identical rows.</p>`,
       `<p>Hint 3: Outside the CTE take <code>MIN(hops)</code> per person and drop id 1.</p>`
     ],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { setup: '', rows: [
+          ['Mei', 1],
+          ['Ravi', 1],
+          ['Tom', 2],
+          ['Zara', 2],
+          ['Leo', 3],
+          ['Nia', 3]
+        ] },
+      { setup: 'DELETE FROM follows', rows: [] },
+      { setup: 'DELETE FROM follows WHERE src = 1', rows: [] },
+      { setup: 'INSERT INTO follows VALUES (7,1),(7,6)', rows: [
+          ['Mei', 1],
+          ['Ravi', 1],
+          ['Tom', 2],
+          ['Zara', 2],
+          ['Leo', 3],
+          ['Nia', 3]
+        ] },
+      { setup: 'INSERT INTO people VALUES (8,\'P8\'),(9,\'P9\'),(10,\'P10\'),(11,\'P11\'),(12,\'P12\'),(13,\'P13\'),(14,\'P14\'),(15,\'P15\'); INSERT INTO follows VALUES (1,8),(8,9),(9,10),(10,11),(11,12),(12,13),(13,14),(14,15)', rows: [
+          ['Mei', 1],
+          ['P8', 1],
+          ['Ravi', 1],
+          ['P9', 2],
+          ['Tom', 2],
+          ['Zara', 2],
+          ['Leo', 3],
+          ['Nia', 3],
+          ['P10', 3],
+          ['P11', 4],
+          ['P12', 5],
+          ['P13', 6]
+        ] },
+      { setup: 'INSERT INTO people VALUES (8,\'P8\'),(9,\'P9\'),(10,\'P10\'),(11,\'P11\'),(12,\'P12\'); INSERT INTO follows VALUES (1,8),(8,9),(9,10),(10,11),(11,12)', rows: [
+          ['Mei', 1],
+          ['P8', 1],
+          ['Ravi', 1],
+          ['P9', 2],
+          ['Tom', 2],
+          ['Zara', 2],
+          ['Leo', 3],
+          ['Nia', 3],
+          ['P10', 3],
+          ['P11', 4],
+          ['P12', 5]
+        ] },
+      { setup: 'INSERT INTO follows VALUES (1,7)', rows: [
+          ['Mei', 1],
+          ['Nia', 1],
+          ['Ravi', 1],
+          ['Tom', 2],
+          ['Zara', 2],
+          ['Leo', 3]
+        ] },
+      { setup: 'INSERT INTO people VALUES (99,\'Loner\')', rows: [
+          ['Mei', 1],
+          ['Ravi', 1],
+          ['Tom', 2],
+          ['Zara', 2],
+          ['Leo', 3],
+          ['Nia', 3]
+        ] },
+      { setup: 'INSERT INTO follows VALUES (1,1),(2,1),(5,5)', rows: [
+          ['Mei', 1],
+          ['Ravi', 1],
+          ['Tom', 2],
+          ['Zara', 2],
+          ['Leo', 3],
+          ['Nia', 3]
+        ] }
+    ] },
     solution: {
       approach: `<p>Recursive CTE = BFS frontier expansion; MIN(hops) gives the shortest path length. It is fine for small graphs or shallow depths. Move to a graph DB (Neo4j/Neptune) when multi-hop traversals are the core workload over millions of edges, or you need path algorithms (shortest weighted path, PageRank, community detection) interactively. In Cypher: <code>MATCH p = shortestPath((a:Person {id:1})-[:FOLLOWS*..6]-&gt;(b)) RETURN b.name, length(p)</code>.</p>`,
       code: { lang: 'sql', db: 'nosql', code: `WITH RECURSIVE walk(id, hops) AS (
@@ -2365,6 +3115,48 @@ print(find_by_email_scatter("user4242@mail.com"))` } },
       `<p>Hint 2: Lookup = 1 call to <code>index[hash(email) % N]</code>, then 1 call to <code>shards[user_id % N]</code>.</p>`,
       `<p>Hint 3: Writes must update both; if the index update is async, a just-registered user may fail to log in for a moment — handle it (retry, or synchronous index write in a transaction).</p>`
     ],
+    tests: { sig: 'string -> string[]', fn: 'gsi', harness: { python: 'def gsi(op):\n    kind, _, rest = op.partition(":")\n    if kind == "find":\n        a, ca = find_by_email_scatter(rest)\n        b, cb = find_by_email_indexed(rest)\n        return [a["id"] if a else -1, ca, b["id"] if b else -1, cb]\n    uid, _, email = rest.partition(":")\n    try:\n        create_user(int(uid), email)\n        res = ["created"]\n    except ValueError:\n        res = ["taken"]\n    if kind == "create":\n        return res\n    a, ca = find_by_email_scatter(email)\n    b, cb = find_by_email_indexed(email)\n    return [a["id"] if a else -1, ca, b["id"] if b else -1, cb]' }, cases: [
+      [
+        ['find:user7@mail.com'],
+        ['7', '8', '7', '2']
+      ],
+      [
+        ['find:user4242@mail.com'],
+        ['4242', '8', '4242', '2']
+      ],
+      [
+        ['find:user9999@mail.com'],
+        ['9999', '8', '9999', '2']
+      ],
+      [
+        ['find:user0@mail.com'],
+        ['0', '8', '0', '2']
+      ],
+      [
+        ['find:nobody@mail.com'],
+        ['-1', '8', '-1', '1']
+      ],
+      [
+        ['find:USER7@mail.com'],
+        ['-1', '8', '-1', '1']
+      ],
+      [
+        ['create:20000:user7@mail.com'],
+        ['taken']
+      ],
+      [
+        ['create:20001:fresh@mail.com'],
+        ['created']
+      ],
+      [
+        ['dup:20002:user7@mail.com'],
+        ['7', '8', '7', '2']
+      ],
+      [
+        ['dup:20003:user8@mail.com'],
+        ['8', '8', '8', '2']
+      ]
+    ] },
     solution: {
       approach: `<p>A global (term-partitioned) index turns an N-way fan-out into 2 targeted calls. The cost moves to writes: two shards change per signup, so you either use a distributed transaction (NewSQL does this for you), or update the index asynchronously and accept a short window where the index is stale. Local (document-partitioned) indexes have the opposite trade-off: cheap writes, scatter-gather reads. Uniqueness of email also needs the global index (a conditional put on the index row).</p>`,
       code: { lang: 'python', run: true, code: `import hashlib
@@ -2381,11 +3173,11 @@ email_index = [dict() for _ in range(N)]     # global index, partitioned by emai
 
 
 def create_user(uid, email):
-    shards[uid % N][uid] = {"id": uid, "email": email}
     idx = email_index[h(email) % N]
-    if email in idx:                          # conditional put = uniqueness check
+    if email in idx:                          # conditional put = uniqueness check (before any data is written)
         raise ValueError("email taken")
     idx[email] = uid                          # in real life: same txn, or async + repair
+    shards[uid % N][uid] = {"id": uid, "email": email}
 
 
 def find_by_email_indexed(email):
@@ -2437,6 +3229,45 @@ SELECT 86400 * 40                         AS bytes_per_day,
       `<p>Hint 2: Size per partition = readings/day × bytes/reading. Compare 1 day vs 730 days.</p>`,
       `<p>Hint 3: A query spanning midnight touches 2 buckets — the client issues two single-partition queries and merges.</p>`
     ],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { result: 0, rows: [
+          [258000, 23],
+          [256200, 20],
+          [254400, 24]
+        ] },
+      { rows: [
+          ['dev-0', '2026-10-12', 48, 3.46],
+          ['dev-0', '2026-10-13', 48, 3.46],
+          ['dev-0', '2026-10-14', 48, 3.46],
+          ['dev-1', '2026-10-12', 48, 3.46],
+          ['dev-1', '2026-10-13', 48, 3.46],
+          ['dev-1', '2026-10-14', 48, 3.46],
+          ['dev-2', '2026-10-12', 48, 3.46],
+          ['dev-2', '2026-10-13', 48, 3.46],
+          ['dev-2', '2026-10-14', 48, 3.46]
+        ] },
+      { after: 'SELECT ts, temp_c FROM readings WHERE device_id = \'dev-0\' AND day = \'2026-10-12\' AND ts >= (SELECT MAX(ts) FROM readings WHERE device_id = \'dev-0\' AND day = \'2026-10-12\') - 3600 ORDER BY ts DESC', rows: [
+          [84600, 21],
+          [82800, 25],
+          [81000, 22]
+        ] },
+      { after: 'SELECT ts, temp_c FROM readings WHERE device_id = \'dev-2\' AND day = \'2026-10-13\' AND ts >= (SELECT MAX(ts) FROM readings WHERE device_id = \'dev-2\' AND day = \'2026-10-13\') - 3600 ORDER BY ts DESC', rows: [
+          [172200, 20],
+          [170400, 24],
+          [168600, 21]
+        ] },
+      { after: 'SELECT ts, temp_c FROM readings WHERE device_id = \'dev-9\' AND day = \'2026-10-13\' AND ts >= (SELECT MAX(ts) FROM readings WHERE device_id = \'dev-9\' AND day = \'2026-10-13\') - 3600 ORDER BY ts DESC', rows: [] },
+      { after: 'INSERT INTO readings VALUES (\'dev-1\', \'2026-10-14\', 259000, 30.5); SELECT ts, temp_c FROM readings WHERE device_id = \'dev-1\' AND day = \'2026-10-14\' AND ts >= (SELECT MAX(ts) FROM readings WHERE device_id = \'dev-1\' AND day = \'2026-10-14\') - 3600 ORDER BY ts DESC', rows: [
+          [259000, 30.5],
+          [258000, 23],
+          [256200, 20]
+        ] },
+      { after: 'INSERT INTO readings VALUES (\'dev-1\', \'2026-10-14\', 258000, 1.0)', error: 'UNIQUE|PRIMARY' },
+      { rows: [], plan: 'SEARCH readings USING PRIMARY KEY \\(device_id=\\? AND day=\\? AND ts>\\?\\)', after: 'EXPLAIN QUERY PLAN SELECT ts, temp_c FROM readings WHERE device_id = \'dev-1\' AND day = \'2026-10-14\' AND ts >= 258000 - 3600 ORDER BY ts DESC' },
+      { after: 'SELECT count(*) FROM readings', rows: [
+          [432]
+        ] }
+    ] },
     solution: {
       approach: `<p>Partition key <code>(device_id, day)</code>, clustering key <code>ts DESC</code>, TTL 2 years (Cassandra: <code>default_time_to_live</code>; use TimeWindowCompactionStrategy so whole expired SSTables drop cheaply). Each partition ≈ 3.5 MB/day. Queries name the bucket(s) explicitly. The SQLite emulation shows rows clustered by (device, day, ts) so the last-hour query is a single range scan.</p>`,
       code: { lang: 'sql', code: `CREATE TABLE readings (
@@ -2503,6 +3334,74 @@ print("LWW keeps:", sorted(winner["items"]), "-> eggs lost")` } },
       `<p>Hint 2: Deduplicate equal vectors first (same version seen from two replicas).</p>`,
       `<p>Hint 3: Merged vector = pointwise max over survivors; merged cart = union of survivors' items (deletes need tombstones or an OR-Set to work correctly).</p>`
     ],
+    tests: { sig: 'string[] -> string[]', fn: 'run_vv', harness: { python: 'def run_vv(rows):\n    versions = []\n    for r in rows:\n        name, vv, items = r.split("|")\n        clock = {k: int(c) for k, c in (p.split("=") for p in vv.split(",") if p)}\n        versions.append({"name": name, "vv": clock, "items": set(i for i in items.split(",") if i)})\n    sib, merged, items = resolve(versions)\n    return [",".join(s["name"] for s in sib), ",".join(f"{k}={merged[k]}" for k in sorted(merged)), ",".join(sorted(items))]' }, cases: [
+      [
+        [
+          ['A|r1=2|milk', 'B|r1=2,r2=1|milk,eggs', 'C|r1=3|milk,bread', 'C-copy|r1=3|milk,bread']
+        ],
+        ['B,C', 'r1=3,r2=1', 'bread,eggs,milk']
+      ],
+      [
+        [
+          ['A|r1=1|x']
+        ],
+        ['A', 'r1=1', 'x']
+      ],
+      [
+        [
+          []
+        ],
+        ['', '', '']
+      ],
+      [
+        [
+          ['A|r1=1|a', 'B|r1=1|b', 'C|r1=1|c']
+        ],
+        ['A', 'r1=1', 'a']
+      ],
+      [
+        [
+          ['A|r1=1|a', 'B|r1=2|b', 'C|r1=3|c']
+        ],
+        ['C', 'r1=3', 'c']
+      ],
+      [
+        [
+          ['A|r1=1|a', 'B|r2=1|b']
+        ],
+        ['A,B', 'r1=1,r2=1', 'a,b']
+      ],
+      [
+        [
+          ['A||a', 'B|r1=1|b']
+        ],
+        ['B', 'r1=1', 'b']
+      ],
+      [
+        [
+          ['A||a', 'B||b']
+        ],
+        ['A', '', 'a']
+      ],
+      [
+        [
+          ['A|r1=2,r2=1|a', 'B|r1=1,r2=2|b', 'C|r1=2,r2=2|c', 'D|r1=1|d']
+        ],
+        ['C', 'r1=2,r2=2', 'c']
+      ],
+      [
+        [
+          ['A|r1=1,r2=0|a', 'B|r1=1|b']
+        ],
+        ['', '', '']
+      ],
+      [
+        [
+          ['A|r1=3,r2=1,r3=1|a,z', 'B|r1=1,r2=3,r3=1|b', 'C|r1=1,r2=1,r3=3|c', 'D|r1=2,r2=2,r3=2|d']
+        ],
+        ['A,B,C,D', 'r1=3,r2=3,r3=3', 'a,b,c,d,z']
+      ]
+    ] },
     solution: {
       approach: `<p>Compute the "frontier" of the causal partial order: drop every version dominated by another. What remains are concurrent siblings. The client merges them (domain-specific: union for carts) and writes back with the pointwise-max vector, which dominates all siblings and therefore replaces them. Removals in a union merge can resurrect items, which is why production carts use OR-Set CRDTs (each add has a unique tag; removes delete observed tags).</p>`,
       code: { lang: 'python', run: true, code: `def leq(a, b):
@@ -2567,6 +3466,46 @@ SELECT post_id, cnt AS total_likes, cnt AS writes_to_hottest_row, 1 AS rows_used
       `<p>Hint 2: Insert one row per event with slot = hash(event_id) % 16 and <code>ON CONFLICT (post_id, slot) DO UPDATE SET cnt = cnt + 1</code>.</p>`,
       `<p>Hint 3: Read: <code>SUM(cnt)</code> for the total, <code>MAX(cnt)</code> for the hottest row, <code>COUNT(*)</code> for rows used. Only apply sharding to posts above a heat threshold.</p>`
     ],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          [42, 1000, 66, 16]
+        ] },
+      { after: 'SELECT count(*) FROM post_likes_sharded', rows: [
+          [16]
+        ] },
+      { after: 'SELECT slot, cnt FROM post_likes_sharded ORDER BY slot', rows: [
+          [0, 58],
+          [1, 64],
+          [2, 63],
+          [3, 60],
+          [4, 66],
+          [5, 61],
+          [6, 63],
+          [7, 66],
+          [8, 57],
+          [9, 65],
+          [10, 62],
+          [11, 61],
+          [12, 66],
+          [13, 61],
+          [14, 62],
+          [15, 65]
+        ] },
+      { after: 'SELECT count(*), sum(cnt) FROM post_likes_sharded WHERE slot BETWEEN 0 AND 15', rows: [
+          [16, 1000]
+        ] },
+      { after: 'INSERT INTO like_events VALUES (1001, 43), (1002, 43); INSERT INTO post_likes_sharded (post_id, slot, cnt) SELECT post_id, (((event_id * 2654435761) % 4294967296) >> 16) % 16, 1 FROM like_events WHERE post_id = 43 ON CONFLICT (post_id, slot) DO UPDATE SET cnt = cnt + 1; SELECT post_id, SUM(cnt) FROM post_likes_sharded GROUP BY post_id ORDER BY post_id', rows: [
+          [42, 1000],
+          [43, 2]
+        ] },
+      { after: 'SELECT count(*) FROM like_events WHERE post_id = 42', rows: [
+          [1000]
+        ] },
+      { after: 'INSERT INTO post_likes_sharded VALUES (42, 0, 1)', error: 'UNIQUE|PRIMARY' },
+      { after: 'SELECT slot FROM post_likes_sharded WHERE cnt = (SELECT MAX(cnt) FROM post_likes_sharded) ORDER BY slot LIMIT 1', rows: [
+          [4]
+        ] }
+    ] },
     solution: {
       approach: `<p>Split one hot key into K sub-keys; writes pick a slot at random (or by hash of the event), reads sum all K. In DynamoDB/Cassandra the sub-keys land on different partitions, so throughput scales ~K×. Make K adaptive (start at 1, raise for hot posts) and cache the summed value. Alternatives: buffer increments in memory/Kafka and flush aggregated deltas every second, or use a CRDT G-Counter per region.</p>`,
       code: { lang: 'sql', code: `CREATE TABLE like_events (event_id INTEGER PRIMARY KEY, post_id INTEGER NOT NULL);
@@ -2622,6 +3561,48 @@ print("total money:", sum(balances.values()), "(was 600)")` } },
       `<p>Hint 2: The coordinator writes the decision to a durable log <b>before</b> sending it. That record is the commit point.</p>`,
       `<p>Hint 3: Recovery: a new coordinator reads the log; if a decision exists, resend it; if none exists, it is safe to abort (no one was told to commit).</p>`
     ],
+    tests: { sig: 'int int int int int -> string[]', fn: 'run2pc', harness: { python: 'def run2pc(b_yes, crash, amount, a_bal, b_bal):\n    d, a, b = run("t", b_votes_yes=bool(b_yes), crash_after_votes=bool(crash), amount=amount, a_balance=a_bal, b_balance=b_bal)\n    return [d, a.balance, b.balance, a.state, b.state, int(a.locked), int(b.locked)]' }, cases: [
+      [
+        [1, 0, 200, 500, 100],
+        ['COMMIT', '300', '300', 'COMMITTED', 'COMMITTED', '0', '0']
+      ],
+      [
+        [0, 0, 200, 500, 100],
+        ['ABORT', '500', '100', 'ABORTED', 'ABORTED', '0', '0']
+      ],
+      [
+        [1, 1, 200, 500, 100],
+        ['COMMIT', '300', '300', 'COMMITTED', 'COMMITTED', '0', '0']
+      ],
+      [
+        [0, 1, 200, 500, 100],
+        ['ABORT', '500', '100', 'ABORTED', 'ABORTED', '0', '0']
+      ],
+      [
+        [1, 0, 500, 500, 100],
+        ['COMMIT', '0', '600', 'COMMITTED', 'COMMITTED', '0', '0']
+      ],
+      [
+        [1, 0, 501, 500, 100],
+        ['ABORT', '500', '100', 'ABORTED', 'ABORTED', '0', '0']
+      ],
+      [
+        [1, 1, 501, 500, 100],
+        ['ABORT', '500', '100', 'ABORTED', 'ABORTED', '0', '0']
+      ],
+      [
+        [1, 0, 0, 500, 100],
+        ['COMMIT', '500', '100', 'COMMITTED', 'COMMITTED', '0', '0']
+      ],
+      [
+        [0, 0, 0, 0, 0],
+        ['ABORT', '0', '0', 'ABORTED', 'ABORTED', '0', '0']
+      ],
+      [
+        [1, 1, 1, 0, 0],
+        ['ABORT', '0', '0', 'ABORTED', 'ABORTED', '0', '0']
+      ]
+    ] },
     solution: {
       approach: `<p>Phase 1 collects votes (each yes = durable promise + locks held). The decision is logged durably, then broadcast. A crash before logging → recovery aborts; after logging → recovery re-sends the logged decision. Participants in PREPARED cannot act alone, which is the blocking problem; Spanner/CockroachDB make the coordinator state a consensus-replicated record so "crash" means "another replica takes over in seconds". Alternatives: 3PC (rarely used, assumes bounded delays) or sagas with compensations.</p>`,
       code: { lang: 'python', run: true, code: `class Participant:
@@ -2644,10 +3625,10 @@ print("total money:", sum(balances.values()), "(was 600)")` } },
         self.locked, self.pending = False, 0
 
 
-def run(label, b_votes_yes=True, crash_after_votes=False):
-    a, b = Participant("A", 500), Participant("B", 100, b_votes_yes)
+def run(label, b_votes_yes=True, crash_after_votes=False, amount=200, a_balance=500, b_balance=100):
+    a, b = Participant("A", a_balance), Participant("B", b_balance, b_votes_yes)
     decision_log = []                                   # replicated in Spanner/CockroachDB
-    votes = [a.prepare(-200), b.prepare(+200)]
+    votes = [a.prepare(-amount), b.prepare(+amount)]
     decision = "COMMIT" if all(votes) else "ABORT"
     decision_log.append(decision)                       # the commit point
     if crash_after_votes:
@@ -2660,6 +3641,7 @@ def run(label, b_votes_yes=True, crash_after_votes=False):
         for p in (a, b):
             p.finish(decision)
     print(f"{label}: decision={decision_log[-1]} A={a.balance} B={b.balance} total={a.balance + b.balance}")
+    return decision_log[-1], a, b
 
 
 run("run1 all yes")
@@ -2698,6 +3680,38 @@ SELECT (SELECT SUM(user_id * 1000003 + balance) FROM old)       AS old_checksum,
       `<p>Hint 2: Replay upserts with <code>INSERT ... SELECT ... FROM changelog WHERE op = 'upsert' ORDER BY seq ON CONFLICT (user_id) DO UPDATE</code>, then <code>DELETE ... WHERE user_id IN (deletes)</code>. Both are idempotent.</p>`,
       `<p>Hint 3: Verify with count + an order-independent checksum such as <code>SUM(user_id * 1000003 + balance)</code> (production tools hash per chunk, e.g. Vitess VDiff).</p>`
     ],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          [0, 4],
+          [1, 6],
+          [2, 5],
+          [3, 5]
+        ] },
+      { result: -2, rows: [
+          [20, 20, 223003708, 223003708]
+        ] },
+      { after: 'INSERT INTO new_users (shard, user_id, name, balance) SELECT user_id % 4, user_id, name, balance FROM changelog WHERE op = \'upsert\' ORDER BY seq ON CONFLICT (user_id) DO UPDATE SET name = excluded.name, balance = excluded.balance; DELETE FROM new_users WHERE user_id IN (SELECT user_id FROM changelog WHERE op = \'delete\'); SELECT count(*), sum(user_id * 1000003 + balance) FROM new_users', rows: [
+          [20, 223003708]
+        ] },
+      { after: 'SELECT shard, balance FROM new_users WHERE user_id = 3', rows: [
+          [3, 999]
+        ] },
+      { after: 'SELECT count(*) FROM new_users WHERE user_id = 8', rows: [
+          [0]
+        ] },
+      { after: 'SELECT shard, name, balance FROM new_users WHERE user_id = 21', rows: [
+          [1, 'u21', 50]
+        ] },
+      { after: 'SELECT count(*) FROM changelog', rows: [
+          [3]
+        ] },
+      { after: 'SELECT (SELECT count(*) FROM old_s0) + (SELECT count(*) FROM old_s1)', rows: [
+          [20]
+        ] },
+      { after: 'DELETE FROM new_users WHERE user_id = 5; SELECT (SELECT count(*) FROM new_users) = (SELECT count(*) FROM old_s0) + (SELECT count(*) FROM old_s1)', rows: [
+          [0]
+        ] }
+    ] },
     solution: {
       approach: `<p>The standard live-migration recipe (Vitess MoveTables/Reshard, gh-ost, Notion's and Figma's Postgres resharding): (1) start CDC capture; (2) snapshot-copy into the new layout; (3) replay the change stream until lag is ~0; (4) verify counts and checksums chunk by chunk; (5) briefly pause writes (seconds), drain remaining changes, switch routing; (6) keep reverse replication to the old shards for fast rollback. The SQL below performs steps 2-4.</p>`,
       code: { lang: 'sql', code: `-- old layout: 2 shards
@@ -2764,10 +3778,35 @@ GROUP BY username HAVING COUNT(*) > 1;` } },
       `<p>Hint 2: In SQL that is a PRIMARY KEY / UNIQUE on a normalised username (<code>COLLATE NOCASE</code> or lower()) plus <code>INSERT ... ON CONFLICT DO NOTHING</code> and checking <code>changes()</code>.</p>`,
       `<p>Hint 3: Production: a CockroachDB/Spanner GLOBAL or REGIONAL table with a unique index, DynamoDB conditional put, or Cassandra <code>INSERT ... IF NOT EXISTS</code> (Paxos). Only the claim pays cross-region latency; profiles can stay regional.</p>`
     ],
+    tests: { engine: 'sqlite', check: '(rows, cols, c) => {\n  if (c.plan || c.noplan) { const d = rows.map(r => r[r.length - 1]).join(\'\\n\'); return (!c.plan || new RegExp(c.plan).test(d)) && (!c.noplan || !new RegExp(c.noplan).test(d)); }\n  let a = rows, b = c.rows || [];\n  if (c.set) { const k = r => JSON.stringify(r); a = a.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); b = b.slice().sort((x, y) => k(x) < k(y) ? -1 : 1); }\n  return a.length === b.length && a.every((r, i) => r.length === b[i].length && r.every((v, j) => v === b[i][j] || (typeof v === \'number\' && typeof b[i][j] === \'number\' && Math.abs(v - b[i][j]) < 1e-6)));\n}', cases: [
+      { rows: [
+          ['asha', 101, 'us']
+        ] },
+      { result: 0, rows: [
+          [1]
+        ] },
+      { result: 1, rows: [
+          [0]
+        ] },
+      { after: 'INSERT INTO usernames VALUES (\'ASHA\', 303, \'in\') ON CONFLICT (username) DO NOTHING; SELECT changes(), (SELECT count(*) FROM usernames)', rows: [
+          [0, 1]
+        ] },
+      { after: 'INSERT INTO usernames VALUES (\'bob\', 404, \'eu\') ON CONFLICT (username) DO NOTHING; SELECT changes(), (SELECT count(*) FROM usernames)', rows: [
+          [1, 2]
+        ] },
+      { after: 'INSERT INTO usernames VALUES (\'Asha\', 505, \'eu\')', error: 'UNIQUE' },
+      { after: 'SELECT user_id, home_region FROM usernames WHERE username = \'AsHa\'', rows: [
+          [101, 'us']
+        ] },
+      { after: 'INSERT INTO usernames VALUES (NULL, 606, \'eu\')', error: 'NOT NULL' },
+      { after: 'INSERT INTO usernames VALUES (\'cara\', 707, \'eu\'), (\'CARA\', 808, \'us\') ON CONFLICT (username) DO NOTHING; SELECT user_id FROM usernames WHERE username = \'cara\'', rows: [
+          [707]
+        ] }
+    ] },
     solution: {
       approach: `<p>Route every claim through one linearizable store keyed by the normalised username. The insert either creates the row (winner) or hits the unique key (loser) — decided by consensus, so both regions agree. Cost: one cross-region consensus round (~100 ms) only on signup/rename, which is rare. Keep user profiles in their home region; the username table maps name → user_id + home region. Avoid "reserve in cache then write" schemes unless the cache itself is the linearizable store.</p>`,
       code: { lang: 'sql', code: `CREATE TABLE usernames (
-  username    TEXT PRIMARY KEY COLLATE NOCASE,   -- 'Asha' and 'asha' are the same name
+  username    TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,   -- 'Asha' and 'asha' are the same name; SQLite allows NULL in a non-integer PRIMARY KEY unless NOT NULL
   user_id     INTEGER NOT NULL,
   home_region TEXT NOT NULL
 );

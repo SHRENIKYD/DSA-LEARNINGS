@@ -212,7 +212,10 @@ for n in (10, 20, 25):
         var frames = [], hl = {}, tags = {}, seen = {}, calls = 0, repeats = 0;
         frames.push({ narr: 'Plain recursion for <b>fib(' + n + ')</b>. Each circle is one function call; f3 means "fib(3)". Watch how often the <i>same</i> question gets solved again.', parts: [
           { type: 'tree', label: 'recursion tree (no notebook)', arr: full.slice() },
-          { type: 'code', label: 'code running', lang: 'java', code: 'long fib(int n) {\n  if (n < 2) return n;\n  return fib(n-1) + fib(n-2);\n}', hl: { 3: 'cur' } }
+          { type: 'code', label: 'code running', lang: 'java', code: 'long fib(int n) {\n  if (n < 2) return n;\n  return fib(n-1) + fib(n-2);\n}', hl: { 3: 'cur' }, alt: {
+            python: { code: 'def fib(n):\n    if n < 2:\n        return n\n    return fib(n - 1) + fib(n - 2)', map: { 3: 4 } },
+            js: { code: 'function fib(n) {\n  if (n < 2) return n;\n  return fib(n - 1) + fib(n - 2);\n}', map: {} },
+            cpp: { code: 'long long fib(int n) {\n  if (n < 2) return n;\n  return fib(n - 1) + fib(n - 2);\n}', map: {} } } }
         ] });
         (function post(idx, m) {
           if (m >= 2) { post(2 * idx + 1, m - 1); post(2 * idx + 2, m - 2); }
@@ -327,10 +330,23 @@ for n in (10, 20, 25):
       statement: `<p>The Fibonacci numbers are F(0) = 0, F(1) = 1 and F(n) = F(n−1) + F(n−2) for n &gt; 1. Given <code>n</code>, return F(n).</p>`,
       constraints: `0 ≤ n ≤ 30 (follow-up: n ≤ 90 with a 64-bit integer, or n up to 10<sup>18</sup> modulo 10<sup>9</sup>+7)`,
       example: `<p>Input <code>n = 6</code> → Output <b>8</b>.</p>${H.arr([0, 1, 1, 2, 3, 5, 8], { label: 'F', hl: { 4: 'b', 5: 'b', 6: 'g' } })}<p>${H.c('g', 'F(6) = 8')} because ${H.c('b', 'F(5) + F(4) = 5 + 3')}.</p>`,
-      brute: { why: `<p>Direct recursion recomputes the same F(k) over and over: about 1.6<sup>n</sup> calls. n = 30 is ~2.7 million calls (ok), but n = 50 is ~4·10<sup>10</sup> calls (TLE). The waste: F(n−2) is computed inside F(n−1) <i>and</i> again directly.</p>`, code: `int fib(int n) {
+      brute: { why: `<p>Direct recursion recomputes the same F(k) over and over: about 1.6<sup>n</sup> calls. n = 30 is ~2.7 million calls (ok), but n = 50 is ~4·10<sup>10</sup> calls (TLE). The waste: F(n−2) is computed inside F(n−1) <i>and</i> again directly.</p>`, code: { lang: 'java', code: `int fib(int n) {
     if (n < 2) return n;              // F(0)=0, F(1)=1
     return fib(n - 1) + fib(n - 2);   // overlapping calls -> exponential
+}`, alt: [
+          { lang: 'python', code: `def fib(n):
+    if n < 2:
+        return n                          # F(0)=0, F(1)=1
+    return fib(n - 1) + fib(n - 2)        # overlapping calls -> exponential` },
+          { lang: 'js', code: `function fib(n) {
+  if (n < 2) return n;                    // F(0)=0, F(1)=1
+  return fib(n - 1) + fib(n - 2);         // overlapping calls -> exponential
 }` },
+          { lang: 'cpp', code: `int fib(int n) {
+    if (n < 2) return n;                  // F(0)=0, F(1)=1
+    return fib(n - 1) + fib(n - 2);       // overlapping calls -> exponential
+}` }
+        ] } },
       mcq: { q: 'To compute F(n) bottom-up, how many earlier values do you need to keep at any moment?', options: ['All n values', 'Just the last two', 'Just the last one', 'log n values'], answer: 1, explain: 'F(i) only reads F(i−1) and F(i−2), so two variables are enough → O(1) space.' },
       tests: { sig: 'int -> int', fn: 'fib', cases: [
         [[0], 0], [[1], 1], [[2], 1], [[6], 8], [[10], 55], [[20], 6765], [[30], 832040]
@@ -584,7 +600,10 @@ for n in (1, 2, 3, 5, 10, 45):
           h[i - 1] = 'win'; h[i - 2] = 'win'; h[i] = 'cur';
           frames.push({ narr: 'dp[' + i + '] = dp[' + (i - 1) + '] + dp[' + (i - 2) + '] = ' + dp[i - 1] + ' + ' + dp[i - 2] + ' = <b>' + dp[i] + '</b>. Blue = the only two cells this step reads. Faded cells will <i>never</i> be read again …', parts: [
             { type: 'array', label: 'dp[]', values: dp.slice(), hl: h },
-            { type: 'code', label: 'loop body', lang: 'java', code: 'for (int i = 2; i <= n; i++)\n  dp[i] = dp[i-1] + dp[i-2];', hl: { 2: 'cur' } }
+            { type: 'code', label: 'loop body', lang: 'java', code: 'for (int i = 2; i <= n; i++)\n  dp[i] = dp[i-1] + dp[i-2];', hl: { 2: 'cur' }, alt: {
+              python: { code: 'for i in range(2, n + 1):\n    dp[i] = dp[i - 1] + dp[i - 2]', map: {} },
+              js: { code: 'for (let i = 2; i <= n; i++)\n  dp[i] = dp[i - 1] + dp[i - 2];', map: {} },
+              cpp: { code: 'for (int i = 2; i <= n; i++)\n  dp[i] = dp[i - 1] + dp[i - 2];', map: {} } } }
           ] });
         }
         var tb = 1, ob = 1;
@@ -681,11 +700,28 @@ for n in (1, 2, 3, 5, 10, 45):
       statement: `<p>You are climbing a staircase with <code>n</code> steps. Each time you can climb 1 or 2 steps. In how many distinct ways can you reach the top?</p>`,
       constraints: `1 ≤ n ≤ 45 (answer fits in a 32-bit int)`,
       example: `<p>Input <code>n = 4</code> → Output <b>5</b>.</p>${H.table(['way', 'moves'], [['1', '1+1+1+1'], ['2', '1+1+2'], ['3', '1+2+1'], ['4', '2+1+1'], ['5', '2+2']])}<p>Ways ending with a 1-step: ways(3) = 3. Ways ending with a 2-step: ways(2) = 2. ${H.c('g', '3 + 2 = 5')}.</p>`,
-      brute: { why: `<p>Try every sequence of 1s and 2s recursively: count(i) = count(i+1) + count(i+2). The same suffix (e.g. "from step 3") is recounted in many branches → ~1.6<sup>n</sup> calls; for n = 45 that is about 3.7 billion calls — far too slow.</p>`, code: `int count(int i, int n) {
+      brute: { why: `<p>Try every sequence of 1s and 2s recursively: count(i) = count(i+1) + count(i+2). The same suffix (e.g. "from step 3") is recounted in many branches → ~1.6<sup>n</sup> calls; for n = 45 that is about 3.7 billion calls — far too slow.</p>`, code: { lang: 'java', code: `int count(int i, int n) {
     if (i == n) return 1;          // reached the top exactly: one way
     if (i > n) return 0;           // overshot: not a valid way
     return count(i + 1, n) + count(i + 2, n);
+}`, alt: [
+          { lang: 'python', code: `def climb_stairs(i, n):
+    if i == n:
+        return 1                          # reached the top exactly: one way
+    if i > n:
+        return 0                          # overshot: not a valid way
+    return climb_stairs(i + 1, n) + climb_stairs(i + 2, n)` },
+          { lang: 'js', code: `function climbStairs(i, n) {
+  if (i === n) return 1;                  // reached the top exactly: one way
+  if (i > n) return 0;                    // overshot: not a valid way
+  return climbStairs(i + 1, n) + climbStairs(i + 2, n);
 }` },
+          { lang: 'cpp', code: `int climbStairs(int i, int n) {
+    if (i == n) return 1;                 // reached the top exactly: one way
+    if (i > n) return 0;                  // overshot: not a valid way
+    return climbStairs(i + 1, n) + climbStairs(i + 2, n);
+}` }
+        ] } },
       mcq: { q: 'You stand on step i. Which statement gives the correct recurrence?', options: ['ways(i) = ways(i−1) × ways(i−2)', 'ways(i) = ways(i−1) + ways(i−2)', 'ways(i) = 2 × ways(i−1)', 'ways(i) = ways(i−1) + 1'], answer: 1, explain: 'The last move was either a 1-step (from i−1) or a 2-step (from i−2). These two groups are disjoint and cover everything, so we add.' },
       tests: { sig: 'int -> int', fn: 'climbStairs', cases: [
         [[1], 1], [[2], 2], [[3], 3], [[4], 5], [[5], 8], [[10], 89], [[45], 1836311903]
@@ -1000,12 +1036,31 @@ int robCircle(const vector<int>& a) {     // robRange is defined first: C++ need
       statement: `<p>Houses along a street hold <code>nums[i]</code> money. Adjacent houses have connected alarms: robbing two adjacent houses on the same night calls the police. Return the maximum amount you can rob without alerting the police.</p>`,
       constraints: `1 ≤ n ≤ 100, 0 ≤ nums[i] ≤ 400`,
       example: `${H.arr([2, 7, 9, 3, 1], { hl: { 0: 'g', 2: 'g', 4: 'g' } })}<p>Output <b>12</b>: rob houses 0, 2 and 4 → ${H.c('g', '2 + 9 + 1 = 12')}. Robbing 7 and 3 gives only 10.</p>`,
-      brute: { why: `<p>Try every subset with no two adjacent members (recursion: at house i, either skip to i+1 or take and jump to i+2). The number of such subsets grows like Fibonacci (~1.6<sup>n</sup>); for n = 100 that is ~10<sup>21</sup>. The waste: "best from house 7 onward" is recomputed in countless branches.</p>`, code: `int best(int[] a, int i) {
+      brute: { why: `<p>Try every subset with no two adjacent members (recursion: at house i, either skip to i+1 or take and jump to i+2). The number of such subsets grows like Fibonacci (~1.6<sup>n</sup>); for n = 100 that is ~10<sup>21</sup>. The waste: "best from house 7 onward" is recomputed in countless branches.</p>`, code: { lang: 'java', code: `int best(int[] a, int i) {
     if (i >= a.length) return 0;               // no houses left
     int skip = best(a, i + 1);                 // leave house i
     int take = a[i] + best(a, i + 2);          // rob i, neighbour i+1 forbidden
     return Math.max(skip, take);
+}`, alt: [
+          { lang: 'python', code: `def rob(a, i):
+    if i >= len(a):
+        return 0                          # no houses left
+    skip = rob(a, i + 1)                  # leave house i
+    take = a[i] + rob(a, i + 2)           # rob i, neighbour i+1 forbidden
+    return max(skip, take)` },
+          { lang: 'js', code: `function rob(a, i) {
+  if (i >= a.length) return 0;            // no houses left
+  const skip = rob(a, i + 1);             // leave house i
+  const take = a[i] + rob(a, i + 2);      // rob i, neighbour i+1 forbidden
+  return Math.max(skip, take);
 }` },
+          { lang: 'cpp', code: `int rob(vector<int>& a, int i) {
+    if (i >= (int)a.size()) return 0;     // no houses left
+    int skip = rob(a, i + 1);             // leave house i
+    int take = a[i] + rob(a, i + 2);      // rob i, neighbour i+1 forbidden
+    return max(skip, take);
+}` }
+        ] } },
       mcq: { q: 'In dp[i] = max(dp[i−1], dp[i−2] + nums[i]), why dp[i−2] in the rob branch?', options: ['Because robbing i forbids house i−1, so only houses 0..i−2 remain usable', 'Because we must skip exactly one house every time', 'Because dp[i−1] is always smaller', 'It is a typo; it should be dp[i−1]'], answer: 0, explain: 'Robbing house i blocks i−1; the best you can add from the rest is the best plan for 0..i−2.' },
       tests: { sig: 'int[] -> int', fn: 'rob', cases: [
         [[[2, 7, 9, 3, 1]], 12], [[[1, 2, 3, 1]], 4], [[[5]], 5], [[[2, 1]], 2], [[[0, 0, 0]], 0],
@@ -1402,7 +1457,7 @@ print("min coins for 3 with 2:", min_coins([2], 3))            # -1
       statement: `<p>Given coin denominations <code>coins</code> (unlimited supply of each) and an integer <code>amount</code>, return the fewest number of coins needed to make up exactly that amount. If it cannot be made, return <code>-1</code>.</p>`,
       constraints: `1 ≤ coins.length ≤ 12, 1 ≤ coins[i] ≤ 2<sup>31</sup>−1, 0 ≤ amount ≤ 10<sup>4</sup>`,
       example: `<p>coins = [1, 3, 4], amount = 6 → Output <b>2</b> (${H.c('g', '3 + 3')}). Greedy would take ${H.c('r', '4 + 1 + 1 = 3 coins')}.</p><p>coins = [2], amount = 3 → <b>−1</b>.</p>`,
-      brute: { why: `<p>Recursively try every coin as the next coin: f(a) = 1 + min f(a − c). Without memo the tree has up to (#coins)<sup>amount / smallest coin</sup> nodes — for amount 100 and coins {1,2,5} that is astronomically many. The same remaining amount (say 37) is solved again in millions of branches.</p>`, code: `int minCoins(int[] coins, int a) {
+      brute: { why: `<p>Recursively try every coin as the next coin: f(a) = 1 + min f(a − c). Without memo the tree has up to (#coins)<sup>amount / smallest coin</sup> nodes — for amount 100 and coins {1,2,5} that is astronomically many. The same remaining amount (say 37) is solved again in millions of branches.</p>`, code: { lang: 'java', code: `int minCoins(int[] coins, int a) {
     if (a == 0) return 0;
     int best = Integer.MAX_VALUE;
     for (int c : coins) {
@@ -1412,7 +1467,40 @@ print("min coins for 3 with 2:", min_coins([2], 3))            # -1
         }
     }
     return best;   // MAX_VALUE means impossible; caller converts to -1
+}`, alt: [
+          { lang: 'python', code: `def coin_change(coins, a):
+    if a == 0:
+        return 0
+    best = float('inf')
+    for c in coins:
+        if c <= a:
+            sub = coin_change(coins, a - c)
+            if sub != float('inf'):
+                best = min(best, sub + 1)
+    return best   # inf means impossible; caller converts to -1` },
+          { lang: 'js', code: `function coinChange(coins, a) {
+  if (a === 0) return 0;
+  let best = Infinity;
+  for (const c of coins) {
+    if (c <= a) {
+      const sub = coinChange(coins, a - c);
+      if (sub !== Infinity) best = Math.min(best, sub + 1);
+    }
+  }
+  return best;   // Infinity means impossible; caller converts to -1
 }` },
+          { lang: 'cpp', code: `int coinChange(vector<int>& coins, int a) {
+    if (a == 0) return 0;
+    int best = INT_MAX;
+    for (int c : coins) {
+        if (c <= a) {
+            int sub = coinChange(coins, a - c);
+            if (sub != INT_MAX) best = min(best, sub + 1);
+        }
+    }
+    return best;   // INT_MAX means impossible; caller converts to -1
+}` }
+        ] } },
       mcq: { q: 'Which initial value is the safest "∞" for dp[a]?', options: ['The largest int (Integer.MAX_VALUE / INT_MAX)', 'amount + 1', '0', '-1'], answer: 1, explain: 'No valid answer needs more than amount coins (all coins ≥ 1), so amount + 1 means impossible — and dp + 1 never overflows. The largest int + 1 wraps to a negative number in Java (and is undefined behaviour in C++).' },
       tests: { sig: 'int[] int -> int', fn: 'coinChange', cases: [
         [[[1, 2, 5], 11], 3], [[[2], 3], -1], [[[1], 0], 0], [[[1, 3, 4], 6], 2],
@@ -1738,13 +1826,36 @@ print(knapsack([10, 20, 30], [60, 100, 120], 50))  # (220, [1, 2])
       statement: `<p>You have <code>n</code> items; item i weighs <code>wt[i]</code> and is worth <code>val[i]</code>. Your bag holds at most <code>W</code> weight. Each item can be taken at most once and cannot be broken. Return the maximum total value you can carry.</p>`,
       constraints: `1 ≤ n ≤ 1000, 1 ≤ W ≤ 1000, 1 ≤ wt[i] ≤ 1000, 1 ≤ val[i] ≤ 1000`,
       example: `<p>W = 7, items (weight:value) = ${H.c('m', '1:1')}, ${H.c('g', '3:4')}, ${H.c('g', '4:5')}, ${H.c('m', '5:7')} → Output <b>9</b>.</p><p>${H.c('g', '3:4 + 4:5')} weighs exactly 7 and is worth 9. The best-ratio item 5:7 plus 1:1 is only 8.</p>`,
-      brute: { why: `<p>Try all 2<sup>n</sup> subsets (take/skip recursion) and keep the best that fits. n = 1000 → 2<sup>1000</sup> subsets: hopeless. The waste: the question "best value from items i..n−1 with c capacity left" depends only on (i, c), yet it is answered again for every different set of earlier choices that leaves the same c.</p>`, code: `int best(int[] wt, int[] val, int i, int cap) {
+      brute: { why: `<p>Try all 2<sup>n</sup> subsets (take/skip recursion) and keep the best that fits. n = 1000 → 2<sup>1000</sup> subsets: hopeless. The waste: the question "best value from items i..n−1 with c capacity left" depends only on (i, c), yet it is answered again for every different set of earlier choices that leaves the same c.</p>`, code: { lang: 'java', code: `int best(int[] wt, int[] val, int i, int cap) {
     if (i == wt.length) return 0;                      // no items left
     int skip = best(wt, val, i + 1, cap);
     int take = 0;
     if (wt[i] <= cap) take = val[i] + best(wt, val, i + 1, cap - wt[i]);
     return Math.max(skip, take);
+}`, alt: [
+          { lang: 'python', code: `def knapsack(wt, val, i, cap):
+    if i == len(wt):
+        return 0                                       # no items left
+    skip = knapsack(wt, val, i + 1, cap)
+    take = 0
+    if wt[i] <= cap:
+        take = val[i] + knapsack(wt, val, i + 1, cap - wt[i])
+    return max(skip, take)` },
+          { lang: 'js', code: `function knapSack(wt, val, i, cap) {
+  if (i === wt.length) return 0;                       // no items left
+  const skip = knapSack(wt, val, i + 1, cap);
+  let take = 0;
+  if (wt[i] <= cap) take = val[i] + knapSack(wt, val, i + 1, cap - wt[i]);
+  return Math.max(skip, take);
 }` },
+          { lang: 'cpp', code: `int knapSack(vector<int>& wt, vector<int>& val, int i, int cap) {
+    if (i == (int)wt.size()) return 0;                 // no items left
+    int skip = knapSack(wt, val, i + 1, cap);
+    int take = 0;
+    if (wt[i] <= cap) take = val[i] + knapSack(wt, val, i + 1, cap - wt[i]);
+    return max(skip, take);
+}` }
+        ] } },
       mcq: { q: 'In the 1D version you loop capacity from small to large by mistake. What happens?', options: ['Nothing, same answer', 'Items can be counted more than once (it becomes unbounded knapsack)', 'It throws an exception', 'It returns 0'], answer: 1, explain: 'dp[c − w] was already updated with item i in this sweep, so taking it again reuses the same item.' },
       tests: { sig: 'int int[] int[] -> int', fn: 'knapSack', names: { python: 'knapsack' }, cases: [
         [[7, [1, 3, 4, 5], [1, 4, 5, 7]], 9], [[50, [10, 20, 30], [60, 100, 120]], 220], [[1, [2], [5]], 0],
@@ -2013,13 +2124,35 @@ print(cut_rod([3, 5, 8, 9, 10, 17, 17, 20], 8))     # (24, [1, 1, 1, 1, 1, 1, 1,
       statement: `<p>A rod of length <code>n</code> can be cut into integer-length pieces. <code>price[k]</code> is the selling price of a piece of length <code>k+1</code>. Pieces of the same length may be produced any number of times. Return the maximum total price obtainable (not cutting at all is allowed).</p>`,
       constraints: `1 ≤ n ≤ 1000, price.length = n, 1 ≤ price[k] ≤ 10<sup>5</sup>`,
       example: `<p>price = [1, 5, 8, 9, 10, 17, 17, 20], n = 8 → Output <b>22</b>.</p>${H.table(['cut', 'value'], [['8 (no cut)', '20'], ['2 + 2 + 2 + 2', '20'], [H.c('g', '2 + 6'), H.c('g', '5 + 17 = 22')]])}`,
-      brute: { why: `<p>Recursively choose the first piece length (1..n) and solve the rest: T(n) = Σ T(n−k) → 2<sup>n−1</sup> ways to cut. n = 1000 → impossible. The waste: "best for remaining length 5" is recomputed for every way of cutting the first 3 metres.</p>`, code: `int cut(int[] price, int len) {
+      brute: { why: `<p>Recursively choose the first piece length (1..n) and solve the rest: T(n) = Σ T(n−k) → 2<sup>n−1</sup> ways to cut. n = 1000 → impossible. The waste: "best for remaining length 5" is recomputed for every way of cutting the first 3 metres.</p>`, code: { lang: 'java', code: `int cut(int[] price, int len) {
     if (len == 0) return 0;
     int best = 0;
     for (int piece = 1; piece <= len; piece++)
         best = Math.max(best, price[piece - 1] + cut(price, len - piece));
     return best;
+}`, alt: [
+          { lang: 'python', code: `def cut_rod(price, length):
+    if length == 0:
+        return 0
+    best = 0
+    for piece in range(1, length + 1):
+        best = max(best, price[piece - 1] + cut_rod(price, length - piece))
+    return best` },
+          { lang: 'js', code: `function cutRod(price, len) {
+  if (len === 0) return 0;
+  let best = 0;
+  for (let piece = 1; piece <= len; piece++)
+    best = Math.max(best, price[piece - 1] + cutRod(price, len - piece));
+  return best;
 }` },
+          { lang: 'cpp', code: `int cutRod(vector<int>& price, int len) {
+    if (len == 0) return 0;
+    int best = 0;
+    for (int piece = 1; piece <= len; piece++)
+        best = max(best, price[piece - 1] + cutRod(price, len - piece));
+    return best;
+}` }
+        ] } },
       mcq: { q: 'Which statement about rod cutting\'s 1D dp is correct?', options: ['best[len] = max over piece of price[piece−1] + best[len − piece]', 'best[len] = best[len−1] + price[0]', 'It needs a backward loop like 0/1 knapsack', 'It cannot be done in less than O(2ⁿ)'], answer: 0, explain: 'Choose the last (or first) piece; the remainder is an independent smaller rod. Pieces are reusable, so no backward loop is needed.' },
       tests: { sig: 'int[] -> int', fn: 'cutRod', cases: [
         [[[1, 5, 8, 9]], 10], [[[1, 5, 8, 9, 10, 17, 17, 20]], 22], [[[3, 5, 8, 9, 10, 17, 17, 20]], 24],
@@ -2368,11 +2501,29 @@ print(lcs_len_two_rows("abc", "def"), repr(lcs_string("abc", "def")))      # 0 '
       statement: `<p>Given two strings <code>text1</code> and <code>text2</code>, return the length of their longest common subsequence, or 0 if there is none. A subsequence keeps the relative order of characters but may skip characters.</p>`,
       constraints: `1 ≤ text1.length, text2.length ≤ 1000; lowercase English letters only`,
       example: `<p>text1 = "${H.c('g', 'a')}b${H.c('g', 'c')}d${H.c('g', 'e')}", text2 = "${H.c('g', 'ace')}" → Output <b>3</b> ("ace" appears in order in both).</p><p>text1 = "abc", text2 = "def" → <b>0</b>.</p>`,
-      brute: { why: `<p>Recursion on (i, j): if chars match, 1 + f(i+1, j+1); else max(f(i+1, j), f(i, j+1)). Without memo, mismatches branch in two and the same (i, j) is reached along many paths → up to O(2<sup>n+m</sup>). With n = m = 1000, impossible. Only (n+1)(m+1) ≈ 10<sup>6</sup> distinct (i, j) pairs exist.</p>`, code: `int f(String a, String b, int i, int j) {
+      brute: { why: `<p>Recursion on (i, j): if chars match, 1 + f(i+1, j+1); else max(f(i+1, j), f(i, j+1)). Without memo, mismatches branch in two and the same (i, j) is reached along many paths → up to O(2<sup>n+m</sup>). With n = m = 1000, impossible. Only (n+1)(m+1) ≈ 10<sup>6</sup> distinct (i, j) pairs exist.</p>`, code: { lang: 'java', code: `int f(String a, String b, int i, int j) {
     if (i == a.length() || j == b.length()) return 0;     // one string used up
     if (a.charAt(i) == b.charAt(j)) return 1 + f(a, b, i + 1, j + 1);
     return Math.max(f(a, b, i + 1, j), f(a, b, i, j + 1));
+}`, alt: [
+          { lang: 'python', code: `def longest_common_subsequence(a, b, i, j):
+    if i == len(a) or j == len(b):
+        return 0                                       # one string used up
+    if a[i] == b[j]:
+        return 1 + longest_common_subsequence(a, b, i + 1, j + 1)
+    return max(longest_common_subsequence(a, b, i + 1, j),
+               longest_common_subsequence(a, b, i, j + 1))` },
+          { lang: 'js', code: `function longestCommonSubsequence(a, b, i, j) {
+  if (i === a.length || j === b.length) return 0;      // one string used up
+  if (a[i] === b[j]) return 1 + longestCommonSubsequence(a, b, i + 1, j + 1);
+  return Math.max(longestCommonSubsequence(a, b, i + 1, j), longestCommonSubsequence(a, b, i, j + 1));
 }` },
+          { lang: 'cpp', code: `int longestCommonSubsequence(const string& a, const string& b, int i, int j) {
+    if (i == (int)a.size() || j == (int)b.size()) return 0;   // one string used up
+    if (a[i] == b[j]) return 1 + longestCommonSubsequence(a, b, i + 1, j + 1);
+    return max(longestCommonSubsequence(a, b, i + 1, j), longestCommonSubsequence(a, b, i, j + 1));
+}` }
+        ] } },
       mcq: { q: 'text1[i−1] ≠ text2[j−1]. Which cells can give dp[i][j]?', options: ['Only the diagonal dp[i−1][j−1]', 'max(dp[i−1][j], dp[i][j−1])', 'dp[i−1][j−1] + 1', 'Always 0'], answer: 1, explain: 'At least one of the two last characters is not part of the LCS, so drop one of them and take the better result.' },
       tests: { sig: 'string string -> int', fn: 'longestCommonSubsequence', cases: [
         [['abcde', 'ace'], 3], [['abc', 'abc'], 3], [['abc', 'def'], 0], [['a', 'a'], 1], [['a', 'b'], 0],
@@ -2695,14 +2846,41 @@ print(edit_script("", "abc"))
       statement: `<p>Given two strings <code>word1</code> and <code>word2</code>, return the minimum number of operations required to convert word1 to word2. Allowed operations on word1: insert a character, delete a character, replace a character.</p>`,
       constraints: `0 ≤ word1.length, word2.length ≤ 500; lowercase English letters`,
       example: `<p>word1 = "horse", word2 = "ros" → Output <b>3</b>.</p>${H.table(['step', 'operation', 'word'], [['1', H.c('y', 'replace h → r'), 'rorse'], ['2', H.c('r', 'delete r'), 'rose'], ['3', H.c('r', 'delete e'), 'ros']])}`,
-      brute: { why: `<p>Recursion f(i, j) tries all three operations on every mismatch → 3-way branching, about 3<sup>n+m</sup> calls. With 500-letter words that never finishes. Yet there are only 501 × 501 ≈ 2.5·10<sup>5</sup> distinct (i, j) states.</p>`, code: `int f(String a, String b, int i, int j) {
+      brute: { why: `<p>Recursion f(i, j) tries all three operations on every mismatch → 3-way branching, about 3<sup>n+m</sup> calls. With 500-letter words that never finishes. Yet there are only 501 × 501 ≈ 2.5·10<sup>5</sup> distinct (i, j) states.</p>`, code: { lang: 'java', code: `int f(String a, String b, int i, int j) {
     if (i == 0) return j;                         // insert the remaining j chars
     if (j == 0) return i;                         // delete the remaining i chars
     if (a.charAt(i - 1) == b.charAt(j - 1)) return f(a, b, i - 1, j - 1);
     return 1 + Math.min(f(a, b, i - 1, j - 1),    // replace
                Math.min(f(a, b, i - 1, j),        // delete
                         f(a, b, i, j - 1)));      // insert
+}`, alt: [
+          { lang: 'python', code: `def min_distance(a, b, i, j):
+    if i == 0:
+        return j                                       # insert the remaining j chars
+    if j == 0:
+        return i                                       # delete the remaining i chars
+    if a[i - 1] == b[j - 1]:
+        return min_distance(a, b, i - 1, j - 1)
+    return 1 + min(min_distance(a, b, i - 1, j - 1),   # replace
+                   min_distance(a, b, i - 1, j),       # delete
+                   min_distance(a, b, i, j - 1))       # insert` },
+          { lang: 'js', code: `function minDistance(a, b, i, j) {
+  if (i === 0) return j;                               // insert the remaining j chars
+  if (j === 0) return i;                               // delete the remaining i chars
+  if (a[i - 1] === b[j - 1]) return minDistance(a, b, i - 1, j - 1);
+  return 1 + Math.min(minDistance(a, b, i - 1, j - 1), // replace
+                      minDistance(a, b, i - 1, j),     // delete
+                      minDistance(a, b, i, j - 1));    // insert
 }` },
+          { lang: 'cpp', code: `int minDistance(const string& a, const string& b, int i, int j) {
+    if (i == 0) return j;                              // insert the remaining j chars
+    if (j == 0) return i;                              // delete the remaining i chars
+    if (a[i - 1] == b[j - 1]) return minDistance(a, b, i - 1, j - 1);
+    return 1 + min({minDistance(a, b, i - 1, j - 1),   // replace
+                    minDistance(a, b, i - 1, j),       // delete
+                    minDistance(a, b, i, j - 1)});     // insert
+}` }
+        ] } },
       mcq: { q: 'Which cell corresponds to INSERTING word2[j−1] at the end of the current word1 prefix?', options: ['dp[i−1][j−1]', 'dp[i−1][j]', 'dp[i][j−1]', 'dp[i][j]'], answer: 2, explain: 'After inserting word2[j−1], that char is matched; what remains is converting word1[0..i−1] into word2[0..j−2] → dp[i][j−1].' },
       tests: { sig: 'string string -> int', fn: 'minDistance', cases: [
         [['horse', 'ros'], 3], [['intention', 'execution'], 5], [['', ''], 0], [['', 'abc'], 3], [['abc', ''], 3],
@@ -3105,12 +3283,33 @@ print(min_path([[1, 3, 1], [1, 5, 1], [4, 2, 1]]))                      # (7, [1
       statement: `<p>A robot starts at the top-left of an m × n grid and wants to reach the bottom-right, moving only right or down. <code>obstacleGrid[r][c] = 1</code> marks an obstacle the robot cannot enter; 0 is open. Return the number of distinct paths.</p>`,
       constraints: `1 ≤ m, n ≤ 100; answer ≤ 2·10<sup>9</sup>`,
       example: `${H.table(['grid', 'paths per cell'], [['0 0 0<br>0 ' + H.c('r', '1') + ' 0<br>0 0 0', '1 1 1<br>1 ' + H.c('r', '0') + ' 1<br>1 1 ' + H.c('g', '2')]])}<p>Output <b>2</b>: right-right-down-down and down-down-right-right; every other route crosses the obstacle.</p>`,
-      brute: { why: `<p>Recursively walk right or down from every cell and count arrivals: up to C(m+n−2, m−1) paths — for 100 × 100 about 10<sup>58</sup> recursive leaves. Every cell is re-explored once per route that reaches it, though its answer never changes.</p>`, code: `int count(int[][] g, int r, int c) {
+      brute: { why: `<p>Recursively walk right or down from every cell and count arrivals: up to C(m+n−2, m−1) paths — for 100 × 100 about 10<sup>58</sup> recursive leaves. Every cell is re-explored once per route that reaches it, though its answer never changes.</p>`, code: { lang: 'java', code: `int count(int[][] g, int r, int c) {
     int m = g.length, n = g[0].length;
     if (r >= m || c >= n || g[r][c] == 1) return 0;   // off-grid or blocked
     if (r == m - 1 && c == n - 1) return 1;           // reached the goal
     return count(g, r + 1, c) + count(g, r, c + 1);   // down or right
+}`, alt: [
+          { lang: 'python', code: `def unique_paths_with_obstacles(g, r, c):
+    m, n = len(g), len(g[0])
+    if r >= m or c >= n or g[r][c] == 1:
+        return 0                                       # off-grid or blocked
+    if r == m - 1 and c == n - 1:
+        return 1                                       # reached the goal
+    return (unique_paths_with_obstacles(g, r + 1, c)   # down
+            + unique_paths_with_obstacles(g, r, c + 1))  # or right` },
+          { lang: 'js', code: `function uniquePathsWithObstacles(g, r, c) {
+  const m = g.length, n = g[0].length;
+  if (r >= m || c >= n || g[r][c] === 1) return 0;     // off-grid or blocked
+  if (r === m - 1 && c === n - 1) return 1;            // reached the goal
+  return uniquePathsWithObstacles(g, r + 1, c) + uniquePathsWithObstacles(g, r, c + 1); // down or right
 }` },
+          { lang: 'cpp', code: `int uniquePathsWithObstacles(vector<vector<int>>& g, int r, int c) {
+    int m = g.size(), n = g[0].size();
+    if (r >= m || c >= n || g[r][c] == 1) return 0;    // off-grid or blocked
+    if (r == m - 1 && c == n - 1) return 1;            // reached the goal
+    return uniquePathsWithObstacles(g, r + 1, c) + uniquePathsWithObstacles(g, r, c + 1); // down or right
+}` }
+        ] } },
       mcq: { q: 'The first row is [0, 0, 1, 0]. What are the path counts for that row?', options: ['1 1 1 1', '1 1 0 0', '1 1 0 1', '0 0 0 0'], answer: 1, explain: 'In row 0 the only way in is from the left. The obstacle gives 0 and every cell after it inherits 0.' },
       tests: { sig: 'int[][] -> int', fn: 'uniquePathsWithObstacles', cases: [
         [[[[0, 0, 0], [0, 1, 0], [0, 0, 0]]], 2], [[[[0, 1], [0, 0]]], 1], [[[[1]]], 0], [[[[0]]], 1],
@@ -3187,12 +3386,31 @@ public:
       statement: `<p>Given an m × n grid of non-negative integers, find a path from the top-left to the bottom-right that minimizes the sum of all numbers along the path. You can only move right or down.</p>`,
       constraints: `1 ≤ m, n ≤ 200, 0 ≤ grid[i][j] ≤ 200`,
       example: `${H.table(['grid', 'cost'], [[H.c('g', '1') + ' ' + H.c('g', '3') + ' ' + H.c('g', '1') + '<br>1 5 ' + H.c('g', '1') + '<br>4 2 ' + H.c('g', '1'), '1 4 5<br>2 7 6<br>6 8 ' + H.c('g', '7')]])}<p>Output <b>7</b> via 1 → 3 → 1 → 1 → 1. Going down first (1 → 1 → 4 → 2 → 1) costs 9.</p>`,
-      brute: { why: `<p>Enumerate every right/down route (C(m+n−2, m−1) of them, ~10<sup>118</sup> for 200 × 200) and sum each. The cheapest cost to reach any middle cell is recomputed for every route through it.</p>`, code: `int best(int[][] g, int r, int c) {
+      brute: { why: `<p>Enumerate every right/down route (C(m+n−2, m−1) of them, ~10<sup>118</sup> for 200 × 200) and sum each. The cheapest cost to reach any middle cell is recomputed for every route through it.</p>`, code: { lang: 'java', code: `int best(int[][] g, int r, int c) {
     if (r == 0 && c == 0) return g[0][0];
     int up = r > 0 ? best(g, r - 1, c) : Integer.MAX_VALUE;
     int left = c > 0 ? best(g, r, c - 1) : Integer.MAX_VALUE;
     return g[r][c] + Math.min(up, left);              // exponential without memo
+}`, alt: [
+          { lang: 'python', code: `def min_path_sum(g, r, c):
+    if r == 0 and c == 0:
+        return g[0][0]
+    up = min_path_sum(g, r - 1, c) if r > 0 else float('inf')
+    left = min_path_sum(g, r, c - 1) if c > 0 else float('inf')
+    return g[r][c] + min(up, left)                     # exponential without memo` },
+          { lang: 'js', code: `function minPathSum(g, r, c) {
+  if (r === 0 && c === 0) return g[0][0];
+  const up = r > 0 ? minPathSum(g, r - 1, c) : Infinity;
+  const left = c > 0 ? minPathSum(g, r, c - 1) : Infinity;
+  return g[r][c] + Math.min(up, left);                 // exponential without memo
 }` },
+          { lang: 'cpp', code: `int minPathSum(vector<vector<int>>& g, int r, int c) {
+    if (r == 0 && c == 0) return g[0][0];
+    long long up = r > 0 ? minPathSum(g, r - 1, c) : LLONG_MAX;
+    long long left = c > 0 ? minPathSum(g, r, c - 1) : LLONG_MAX;
+    return g[r][c] + min(up, left);                    // exponential without memo
+}` }
+        ] } },
       mcq: { q: 'How should the first row be filled?', options: ['All zeros', 'Copy the grid values', 'Running (prefix) sums of the row, since it is reachable only from the left', 'All infinity'], answer: 2, explain: 'Cells in row 0 can only be entered from the left, so their cost is the sum of everything before them plus themselves.' },
       tests: { sig: 'int[][] -> int', fn: 'minPathSum', cases: [
         [[[[1, 3, 1], [1, 5, 1], [4, 2, 1]]], 7], [[[[1, 2, 3], [4, 5, 6]]], 12], [[[[0]]], 0], [[[[5]]], 5],
@@ -3267,11 +3485,28 @@ public:
     statement: `<p>The Tribonacci sequence is T0 = 0, T1 = 1, T2 = 1 and T(n+3) = T(n) + T(n+1) + T(n+2). Given <code>n</code>, return T(n).</p>`,
     constraints: `0 ≤ n ≤ 37 (answer fits in a 32-bit int)`,
     example: `${H.arr([0, 1, 1, 2, 4, 7], { label: 'T', hl: { 1: 'b', 2: 'b', 3: 'b', 4: 'g' } })}<p>n = 4 → <b>4</b> = ${H.c('b', '1 + 1 + 2')}.</p>`,
-    brute: { why: `<p>Three-way recursion recomputes small terms constantly: ~1.84<sup>n</sup> calls (≈ 6·10<sup>9</sup> for n = 37) — too slow.</p>`, code: `int trib(int n) {
+    brute: { why: `<p>Three-way recursion recomputes small terms constantly: ~1.84<sup>n</sup> calls (≈ 6·10<sup>9</sup> for n = 37) — too slow.</p>`, code: { lang: 'java', code: `int trib(int n) {
     if (n == 0) return 0;
     if (n <= 2) return 1;
     return trib(n - 1) + trib(n - 2) + trib(n - 3);
+}`, alt: [
+          { lang: 'python', code: `def tribonacci(n):
+    if n == 0:
+        return 0
+    if n <= 2:
+        return 1
+    return tribonacci(n - 1) + tribonacci(n - 2) + tribonacci(n - 3)` },
+          { lang: 'js', code: `function tribonacci(n) {
+  if (n === 0) return 0;
+  if (n <= 2) return 1;
+  return tribonacci(n - 1) + tribonacci(n - 2) + tribonacci(n - 3);
 }` },
+          { lang: 'cpp', code: `int tribonacci(int n) {
+    if (n == 0) return 0;
+    if (n <= 2) return 1;
+    return tribonacci(n - 1) + tribonacci(n - 2) + tribonacci(n - 3);
+}` }
+        ] } },
     mcq: { q: 'How many rolling variables does the O(1)-space solution need?', options: ['1', '2', '3', 'n'], answer: 2, explain: 'Each term reads the previous three terms.' },
     tests: { sig: 'int -> int', fn: 'tribonacci', cases: [
       [[0], 0], [[1], 1], [[2], 1], [[3], 2], [[4], 4], [[25], 1389537], [[37], 2082876103]
@@ -3328,11 +3563,29 @@ public:
     statement: `<p><code>cost[i]</code> is the cost of stepping on stair i. After paying, you may climb 1 or 2 stairs. You may start at stair 0 or stair 1. Return the minimum cost to reach the top (the position just past the last stair).</p>`,
     constraints: `2 ≤ cost.length ≤ 1000, 0 ≤ cost[i] ≤ 999`,
     example: `${H.arr([1, 100, 1, 1, 1, 100, 1, 1, 100, 1], { label: 'cost', hl: { 0: 'g', 2: 'g', 4: 'g', 6: 'g', 7: 'g', 9: 'g' } })}<p>Output <b>6</b>: start at stair 0 and step only on the six green stairs (0 → 2 → 4 → 6 → 7 → 9 → top), each costing 1, hopping over every 100.</p>`,
-    brute: { why: `<p>Recursively try 1 or 2 steps from each stair: 2-way branching → ~1.6<sup>n</sup> calls; n = 1000 is impossible. The cheapest way from stair 7 to the top is recomputed for every route that reaches stair 7.</p>`, code: `int from(int[] cost, int i) {
+    brute: { why: `<p>Recursively try 1 or 2 steps from each stair: 2-way branching → ~1.6<sup>n</sup> calls; n = 1000 is impossible. The cheapest way from stair 7 to the top is recomputed for every route that reaches stair 7.</p>`, code: { lang: 'java', code: `int from(int[] cost, int i) {
     if (i >= cost.length) return 0;                      // reached the top
     return cost[i] + Math.min(from(cost, i + 1), from(cost, i + 2));
 }
-int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
+int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }`, alt: [
+          { lang: 'python', code: `def from_stair(cost, i):
+    if i >= len(cost):
+        return 0                                       # reached the top
+    return cost[i] + min(from_stair(cost, i + 1), from_stair(cost, i + 2))
+
+def min_cost_climbing_stairs(cost):
+    return min(from_stair(cost, 0), from_stair(cost, 1))` },
+          { lang: 'js', code: `function fromStair(cost, i) {
+  if (i >= cost.length) return 0;                      // reached the top
+  return cost[i] + Math.min(fromStair(cost, i + 1), fromStair(cost, i + 2));
+}
+function minCostClimbingStairs(cost) { return Math.min(fromStair(cost, 0), fromStair(cost, 1)); }` },
+          { lang: 'cpp', code: `int fromStair(vector<int>& cost, int i) {
+    if (i >= (int)cost.size()) return 0;               // reached the top
+    return cost[i] + min(fromStair(cost, i + 1), fromStair(cost, i + 2));
+}
+int minCostClimbingStairs(vector<int>& cost) { return min(fromStair(cost, 0), fromStair(cost, 1)); }` }
+        ] } },
     mcq: { q: 'Let dp[i] = min cost to <i>stand on</i> position i (before paying cost[i]). What is dp[i]?', options: ['min(dp[i−1] + cost[i−1], dp[i−2] + cost[i−2])', 'dp[i−1] + dp[i−2]', 'cost[i] + cost[i−1]', 'max(dp[i−1], dp[i−2])'], answer: 0, explain: 'You arrived from i−1 (paying cost[i−1]) or from i−2 (paying cost[i−2]). dp[0] = dp[1] = 0 because you may start on either for free.' },
     tests: { sig: 'int[] -> int', fn: 'minCostClimbingStairs', cases: [
       [[[10, 15, 20]], 15], [[[1, 100, 1, 1, 1, 100, 1, 1, 100, 1]], 6], [[[0, 0]], 0], [[[5, 3]], 3],
@@ -3386,10 +3639,23 @@ public:
     statement: `<p>Given <code>numRows</code>, return the first numRows rows of Pascal's triangle. Each number is the sum of the two numbers directly above it; the edges are 1.</p>`,
     constraints: `1 ≤ numRows ≤ 30`,
     example: `<p>numRows = 5 →</p>${H.arr([1], { idx: false })}${H.arr([1, 1], { idx: false })}${H.arr([1, 2, 1], { idx: false })}${H.arr([1, 3, 3, 1], { idx: false, hl: { 1: 'b', 2: 'b' } })}${H.arr([1, 4, 6, 4, 1], { idx: false, hl: { 2: 'g' } })}<p>${H.c('g', '6')} = ${H.c('b', '3 + 3')}. Entry j of row i is C(i, j).</p>`,
-    brute: { why: `<p>Compute each entry C(i, j) independently with factorials: 30! overflows a 64-bit integer, and recomputing factorials per entry is wasteful (O(n) per entry). Or recursively C(i, j) = C(i−1, j−1) + C(i−1, j) without memo → exponential.</p>`, code: `long C(int n, int k) {
+    brute: { why: `<p>Compute each entry C(i, j) independently with factorials: 30! overflows a 64-bit integer, and recomputing factorials per entry is wasteful (O(n) per entry). Or recursively C(i, j) = C(i−1, j−1) + C(i−1, j) without memo → exponential.</p>`, code: { lang: 'java', code: `long C(int n, int k) {
     if (k == 0 || k == n) return 1;
     return C(n - 1, k - 1) + C(n - 1, k);      // exponential without memo
+}`, alt: [
+          { lang: 'python', code: `def C(n, k):
+    if k == 0 or k == n:
+        return 1
+    return C(n - 1, k - 1) + C(n - 1, k)      # exponential without memo` },
+          { lang: 'js', code: `function C(n, k) {
+  if (k === 0 || k === n) return 1;
+  return C(n - 1, k - 1) + C(n - 1, k);       // exponential without memo
 }` },
+          { lang: 'cpp', code: `long long C(int n, int k) {
+    if (k == 0 || k == n) return 1;
+    return C(n - 1, k - 1) + C(n - 1, k);     // exponential without memo
+}` }
+        ] } },
     mcq: { q: 'Which DP relation builds row i from row i−1?', options: ['row[i][j] = row[i−1][j−1] + row[i−1][j]', 'row[i][j] = row[i−1][j] × 2', 'row[i][j] = row[i][j−1] + 1', 'row[i][j] = i × j'], answer: 0, explain: 'Pascal\'s rule: C(i, j) = C(i−1, j−1) + C(i−1, j) — choose item i or not.' },
     tests: { sig: 'int -> list<list<int>>', fn: 'generate', cases: [
       [[1], [[1]]], [[2], [[1], [1, 1]]], [[3], [[1], [1, 1], [1, 2, 1]]],
@@ -3454,7 +3720,7 @@ public:
     statement: `<p>Given <code>n</code>, return an array <code>ans</code> of length n + 1 where ans[i] is the number of 1 bits in the binary form of i.</p>`,
     constraints: `0 ≤ n ≤ 10<sup>5</sup>; follow-up: O(n) without a built-in popcount`,
     example: `<p>n = 5 → <b>[0, 1, 1, 2, 1, 2]</b>.</p>${H.table(['i', 'binary', 'i &gt;&gt; 1', 'ans[i] = ans[i&gt;&gt;1] + (i &amp; 1)'], [['4', '100', '2 (10)', '1 + 0 = 1'], ['5', '101', '2 (10)', H.c('g', '1 + 1 = 2')]])}`,
-    brute: { why: `<p>Count bits of every i separately with a loop over its bits: O(n log n). Fine for 10<sup>5</sup>, but it ignores that i shifted right by one was already counted — the follow-up asks for O(n).</p>`, code: `int[] countBits(int n) {
+    brute: { why: `<p>Count bits of every i separately with a loop over its bits: O(n log n). Fine for 10<sup>5</sup>, but it ignores that i shifted right by one was already counted — the follow-up asks for O(n).</p>`, code: { lang: 'java', code: `int[] countBits(int n) {
     int[] ans = new int[n + 1];
     for (int i = 0; i <= n; i++) {
         int x = i, c = 0;
@@ -3462,7 +3728,35 @@ public:
         ans[i] = c;
     }
     return ans;
+}`, alt: [
+          { lang: 'python', code: `def count_bits(n):
+    ans = [0] * (n + 1)
+    for i in range(n + 1):
+        x, c = i, 0
+        while x > 0:
+            c += x & 1
+            x >>= 1                           # O(log i) per number
+        ans[i] = c
+    return ans` },
+          { lang: 'js', code: `function countBits(n) {
+  const ans = new Array(n + 1).fill(0);
+  for (let i = 0; i <= n; i++) {
+    let x = i, c = 0;
+    while (x > 0) { c += x & 1; x >>= 1; }    // O(log i) per number
+    ans[i] = c;
+  }
+  return ans;
 }` },
+          { lang: 'cpp', code: `vector<int> countBits(int n) {
+    vector<int> ans(n + 1);
+    for (int i = 0; i <= n; i++) {
+        int x = i, c = 0;
+        while (x > 0) { c += x & 1; x >>= 1; }  // O(log i) per number
+        ans[i] = c;
+    }
+    return ans;
+}` }
+        ] } },
     mcq: { q: 'Why is ans[i] = ans[i &gt;&gt; 1] + (i &amp; 1) valid DP?', options: ['i &gt;&gt; 1 &lt; i so it is already computed, and it has the same bits except the last one', 'Because of 2\'s complement', 'Because popcount is multiplicative', 'It only works for powers of two'], answer: 0, explain: 'Dropping the last bit gives a smaller number already in the table; add back the dropped bit.' },
     // check: compares against an independent popcount (binary string), so the big case needs no literal
     tests: { sig: 'int -> int[]', fn: 'countBits', check: '(args, out) => Array.isArray(out) && out.length === args[0] + 1 && out.every((v, i) => v === i.toString(2).split("").filter((ch) => ch === "1").length)', cases: [
@@ -3514,13 +3808,36 @@ public:
     statement: `<p>Same as House Robber, but the houses are arranged in a <b>circle</b>: the first house is adjacent to the last. Return the maximum amount you can rob without robbing two adjacent houses.</p>`,
     constraints: `1 ≤ n ≤ 100, 0 ≤ nums[i] ≤ 1000`,
     example: `<p>[2, 3, 2] → <b>3</b> (houses 0 and 2 are neighbours now). [1, 2, 3, 1] → <b>4</b> (1 + 3).</p>`,
-    brute: { why: `<p>Enumerate all non-adjacent subsets and reject those containing both the first and last house: exponential (~1.6<sup>n</sup>), and the same suffix questions are recomputed.</p>`, code: `int go(int[] a, int i, boolean tookFirst) {
+    brute: { why: `<p>Enumerate all non-adjacent subsets and reject those containing both the first and last house: exponential (~1.6<sup>n</sup>), and the same suffix questions are recomputed.</p>`, code: { lang: 'java', code: `int go(int[] a, int i, boolean tookFirst) {
     if (i >= a.length) return 0;
     if (i == a.length - 1 && tookFirst) return 0;          // last house touches the first
     int skip = go(a, i + 1, tookFirst);
     int take = a[i] + go(a, i + 2, tookFirst || i == 0);
     return Math.max(skip, take);
+}`, alt: [
+          { lang: 'python', code: `def rob(a, i, took_first):
+    if i >= len(a):
+        return 0
+    if i == len(a) - 1 and took_first:
+        return 0                                       # last house touches the first
+    skip = rob(a, i + 1, took_first)
+    take = a[i] + rob(a, i + 2, took_first or i == 0)
+    return max(skip, take)` },
+          { lang: 'js', code: `function rob(a, i, tookFirst) {
+  if (i >= a.length) return 0;
+  if (i === a.length - 1 && tookFirst) return 0;       // last house touches the first
+  const skip = rob(a, i + 1, tookFirst);
+  const take = a[i] + rob(a, i + 2, tookFirst || i === 0);
+  return Math.max(skip, take);
 }` },
+          { lang: 'cpp', code: `int rob(vector<int>& a, int i, bool tookFirst) {
+    if (i >= (int)a.size()) return 0;
+    if (i == (int)a.size() - 1 && tookFirst) return 0; // last house touches the first
+    int skip = rob(a, i + 1, tookFirst);
+    int take = a[i] + rob(a, i + 2, tookFirst || i == 0);
+    return max(skip, take);
+}` }
+        ] } },
     mcq: { q: 'How do you break the circle?', options: ['Solve the line twice: without the last house, and without the first house; take the max', 'Always skip house 0', 'Rob every other house', 'Double the array'], answer: 0, explain: 'First and last can\'t both be robbed, so at least one of them is excluded; each case is a plain line problem.' },
     tests: { sig: 'int[] -> int', fn: 'rob', cases: [
       [[[2, 3, 2]], 3], [[[1, 2, 3, 1]], 4], [[[1, 2, 3]], 3], [[[5]], 5], [[[1, 2]], 2], [[[0]], 0],
@@ -3590,12 +3907,32 @@ public:
     statement: `<p>Given an integer <code>amount</code> and an array of distinct coin denominations (unlimited supply), return the number of <b>combinations</b> that make up that amount. Order does not matter. If no combination works, return 0.</p>`,
     constraints: `1 ≤ coins.length ≤ 300, 1 ≤ coins[i] ≤ 5000, 0 ≤ amount ≤ 5000; answer fits in a signed 32-bit int`,
     example: `<p>amount = 5, coins = [1, 2, 5] → <b>4</b>: 5 · 2+2+1 · 2+1+1+1 · 1+1+1+1+1.</p>`,
-    brute: { why: `<p>Recursion choosing "how many of coin i" for each coin in order: exponential in amount/smallest coin. The same (coin index, remaining amount) pair is solved repeatedly.</p>`, code: `int ways(int[] coins, int i, int left) {
+    brute: { why: `<p>Recursion choosing "how many of coin i" for each coin in order: exponential in amount/smallest coin. The same (coin index, remaining amount) pair is solved repeatedly.</p>`, code: { lang: 'java', code: `int ways(int[] coins, int i, int left) {
     if (left == 0) return 1;
     if (i == coins.length || left < 0) return 0;
     return ways(coins, i, left - coins[i])     // use coin i again
          + ways(coins, i + 1, left);           // move on to the next coin type
+}`, alt: [
+          { lang: 'python', code: `def change(coins, i, left):
+    if left == 0:
+        return 1
+    if i == len(coins) or left < 0:
+        return 0
+    return (change(coins, i, left - coins[i])    # use coin i again
+            + change(coins, i + 1, left))        # move on to the next coin type` },
+          { lang: 'js', code: `function change(coins, i, left) {
+  if (left === 0) return 1;
+  if (i === coins.length || left < 0) return 0;
+  return change(coins, i, left - coins[i])     // use coin i again
+       + change(coins, i + 1, left);           // move on to the next coin type
 }` },
+          { lang: 'cpp', code: `int change(vector<int>& coins, int i, int left) {
+    if (left == 0) return 1;
+    if (i == (int)coins.size() || left < 0) return 0;
+    return change(coins, i, left - coins[i])   // use coin i again
+         + change(coins, i + 1, left);         // move on to the next coin type
+}` }
+        ] } },
     mcq: { q: 'Which loop order counts each combination exactly once?', options: ['for coin { for a = coin..amount }', 'for a { for coin }', 'Either, they are identical', 'for a = amount down to coin'], answer: 0, explain: 'Coins outer means coin types are added in a fixed order, so each multiset is built once. Amount outer counts orderings (LC 377).' },
     tests: { sig: 'int int[] -> int', fn: 'change', cases: [
       [[5, [1, 2, 5]], 4], [[3, [2]], 0], [[10, [10]], 1], [[0, [7]], 1], [[0, [1, 2]], 1], [[4, [1, 2, 3]], 4],
@@ -3653,12 +3990,33 @@ public:
     statement: `<p>Given an array of <b>distinct</b> positive integers <code>nums</code> and a <code>target</code>, return the number of possible <b>sequences</b> (order matters) of numbers from nums (with repetition) that add up to target.</p>`,
     constraints: `1 ≤ nums.length ≤ 200, 1 ≤ nums[i] ≤ 1000, 1 ≤ target ≤ 1000; answer fits in 32-bit int`,
     example: `<p>nums = [1, 2, 3], target = 4 → <b>7</b>: (1,1,1,1) (1,1,2) (1,2,1) (2,1,1) (2,2) (1,3) (3,1).</p>`,
-    brute: { why: `<p>Recursively pick the next number: f(t) = Σ f(t − x). Without memo the tree is exponential; f(1) and f(2) are recomputed in every branch.</p>`, code: `int count(int[] nums, int t) {
+    brute: { why: `<p>Recursively pick the next number: f(t) = Σ f(t − x). Without memo the tree is exponential; f(1) and f(2) are recomputed in every branch.</p>`, code: { lang: 'java', code: `int count(int[] nums, int t) {
     if (t == 0) return 1;
     int total = 0;
     for (int x : nums) if (x <= t) total += count(nums, t - x);
     return total;
+}`, alt: [
+          { lang: 'python', code: `def combination_sum4(nums, t):
+    if t == 0:
+        return 1
+    total = 0
+    for x in nums:
+        if x <= t:
+            total += combination_sum4(nums, t - x)
+    return total` },
+          { lang: 'js', code: `function combinationSum4(nums, t) {
+  if (t === 0) return 1;
+  let total = 0;
+  for (const x of nums) if (x <= t) total += combinationSum4(nums, t - x);
+  return total;
 }` },
+          { lang: 'cpp', code: `int combinationSum4(vector<int>& nums, int t) {
+    if (t == 0) return 1;
+    int total = 0;
+    for (int x : nums) if (x <= t) total += combinationSum4(nums, t - x);
+    return total;
+}` }
+        ] } },
     mcq: { q: 'This is just which earlier problem with arbitrary step sizes?', options: ['Climbing Stairs', '0/1 Knapsack', 'Edit Distance', 'House Robber'], answer: 0, explain: 'ways(t) = Σ ways(t − step) over allowed steps — exactly climbing stairs where steps = nums.' },
     tests: { sig: 'int[] int -> int', fn: 'combinationSum4', cases: [
       [[[1, 2, 3], 4], 7], [[[9], 3], 0], [[[1], 1], 1], [[[2], 4], 1], [[[1, 2], 10], 89],
@@ -3718,11 +4076,28 @@ public:
     statement: `<p>Given an array of positive integers, return true if it can be split into two subsets with equal sums.</p>`,
     constraints: `1 ≤ n ≤ 200, 1 ≤ nums[i] ≤ 100`,
     example: `<p>[1, 5, 11, 5] → <b>true</b> (${H.c('g', '1 + 5 + 5 = 11')} and 11). [1, 2, 3, 5] → <b>false</b> (total 11 is odd).</p>`,
-    brute: { why: `<p>Try all 2<sup>n</sup> subsets for one with sum total/2. n = 200 → 2<sup>200</sup>. But the only thing that matters after looking at some numbers is "which sums are reachable" — at most total/2 + 1 ≤ 10 001 values.</p>`, code: `boolean can(int[] a, int i, int left) {
+    brute: { why: `<p>Try all 2<sup>n</sup> subsets for one with sum total/2. n = 200 → 2<sup>200</sup>. But the only thing that matters after looking at some numbers is "which sums are reachable" — at most total/2 + 1 ≤ 10 001 values.</p>`, code: { lang: 'java', code: `boolean can(int[] a, int i, int left) {
     if (left == 0) return true;
     if (i == a.length || left < 0) return false;
     return can(a, i + 1, left - a[i]) || can(a, i + 1, left);
+}`, alt: [
+          { lang: 'python', code: `def can_partition(a, i, left):
+    if left == 0:
+        return True
+    if i == len(a) or left < 0:
+        return False
+    return can_partition(a, i + 1, left - a[i]) or can_partition(a, i + 1, left)` },
+          { lang: 'js', code: `function canPartition(a, i, left) {
+  if (left === 0) return true;
+  if (i === a.length || left < 0) return false;
+  return canPartition(a, i + 1, left - a[i]) || canPartition(a, i + 1, left);
 }` },
+          { lang: 'cpp', code: `bool canPartition(vector<int>& a, int i, int left) {
+    if (left == 0) return true;
+    if (i == (int)a.size() || left < 0) return false;
+    return canPartition(a, i + 1, left - a[i]) || canPartition(a, i + 1, left);
+}` }
+        ] } },
     mcq: { q: 'The total is 23. What do you return?', options: ['false immediately', 'Run subset sum for 11', 'Run subset sum for 12', 'true'], answer: 0, explain: 'Two equal integer halves need an even total.' },
     tests: { sig: 'int[] -> bool', fn: 'canPartition', cases: [
       [[[1, 5, 11, 5]], true], [[[1, 2, 3, 5]], false], [[[1]], false], [[[2, 2]], true], [[[1, 1, 1, 1]], true],
@@ -3792,10 +4167,24 @@ public:
     statement: `<p>Given an integer array <code>nums</code> and an integer <code>target</code>, put a '+' or '−' before each number and concatenate them into an expression. Return the number of different expressions that evaluate to target.</p>`,
     constraints: `1 ≤ n ≤ 20, 0 ≤ nums[i] ≤ 1000, sum(nums) ≤ 1000, −1000 ≤ target ≤ 1000`,
     example: `<p>[1, 1, 1, 1, 1], target 3 → <b>5</b> (choose which single 1 gets the minus sign).</p>`,
-    brute: { why: `<p>2<sup>n</sup> sign assignments: for n = 20 that is ~10<sup>6</sup> — actually feasible, which is why the follow-up asks for the DP: with sum ≤ 1000 the DP is ~2·10<sup>4</sup> steps and scales to larger n.</p>`, code: `int count(int[] a, int i, int sum, int target) {
+    brute: { why: `<p>2<sup>n</sup> sign assignments: for n = 20 that is ~10<sup>6</sup> — actually feasible, which is why the follow-up asks for the DP: with sum ≤ 1000 the DP is ~2·10<sup>4</sup> steps and scales to larger n.</p>`, code: { lang: 'java', code: `int count(int[] a, int i, int sum, int target) {
     if (i == a.length) return sum == target ? 1 : 0;
     return count(a, i + 1, sum + a[i], target) + count(a, i + 1, sum - a[i], target);
+}`, alt: [
+          { lang: 'python', code: `def find_target_sum_ways(a, i, total, target):
+    if i == len(a):
+        return 1 if total == target else 0
+    return (find_target_sum_ways(a, i + 1, total + a[i], target)
+            + find_target_sum_ways(a, i + 1, total - a[i], target))` },
+          { lang: 'js', code: `function findTargetSumWays(a, i, sum, target) {
+  if (i === a.length) return sum === target ? 1 : 0;
+  return findTargetSumWays(a, i + 1, sum + a[i], target) + findTargetSumWays(a, i + 1, sum - a[i], target);
 }` },
+          { lang: 'cpp', code: `int findTargetSumWays(vector<int>& a, int i, int sum, int target) {
+    if (i == (int)a.size()) return sum == target ? 1 : 0;
+    return findTargetSumWays(a, i + 1, sum + a[i], target) + findTargetSumWays(a, i + 1, sum - a[i], target);
+}` }
+        ] } },
     mcq: { q: 'With P = sum of "+" numbers and total = sum of all, which is true?', options: ['P = (total + target) / 2', 'P = total − target', 'P = target / 2', 'P = total'], answer: 0, explain: 'P − (total − P) = target ⇒ 2P = total + target.' },
     tests: { sig: 'int[] int -> int', fn: 'findTargetSumWays', cases: [
       [[[1, 1, 1, 1, 1], 3], 5], [[[1], 1], 1], [[[1], 2], 0], [[[0, 0, 0], 0], 8], [[[1, 0], 1], 2],
@@ -3862,12 +4251,34 @@ public:
     statement: `<p>Given an integer <code>n</code>, return the least number of perfect square numbers (1, 4, 9, 16, …) that sum to n.</p>`,
     constraints: `1 ≤ n ≤ 10<sup>4</sup>`,
     example: `<p>n = 12 → <b>3</b> (${H.c('g', '4 + 4 + 4')}); greedy 9 + 1 + 1 + 1 uses ${H.c('r', '4')}. n = 13 → <b>2</b> (4 + 9).</p>`,
-    brute: { why: `<p>Recursion over "which square is last" without memo is exponential; f(k) for small k is recomputed many times.</p>`, code: `int f(int n) {
+    brute: { why: `<p>Recursion over "which square is last" without memo is exponential; f(k) for small k is recomputed many times.</p>`, code: { lang: 'java', code: `int f(int n) {
     if (n == 0) return 0;
     int best = Integer.MAX_VALUE;
     for (int s = 1; s * s <= n; s++) best = Math.min(best, 1 + f(n - s * s));
     return best;
+}`, alt: [
+          { lang: 'python', code: `def num_squares(n):
+    if n == 0:
+        return 0
+    best = float('inf')
+    s = 1
+    while s * s <= n:
+        best = min(best, 1 + num_squares(n - s * s))
+        s += 1
+    return best` },
+          { lang: 'js', code: `function numSquares(n) {
+  if (n === 0) return 0;
+  let best = Infinity;
+  for (let s = 1; s * s <= n; s++) best = Math.min(best, 1 + numSquares(n - s * s));
+  return best;
 }` },
+          { lang: 'cpp', code: `int numSquares(int n) {
+    if (n == 0) return 0;
+    int best = INT_MAX;
+    for (int s = 1; s * s <= n; s++) best = min(best, 1 + numSquares(n - s * s));
+    return best;
+}` }
+        ] } },
     mcq: { q: 'This is coin change (min coins) with which coins?', options: ['All perfect squares ≤ n', 'Only 1 and 4', 'All primes', 'Powers of two'], answer: 0, explain: 'Each square can be reused any number of times — unbounded min-coin DP.' },
     tests: { sig: 'int -> int', fn: 'numSquares', cases: [
       [[1], 1], [[2], 2], [[3], 3], [[4], 1], [[7], 4], [[12], 3], [[13], 2], [[43], 3], [[9999], 4], [[10000], 1]
@@ -3925,12 +4336,33 @@ public:
     statement: `<p>Given a string <code>s</code>, return the length of its longest palindromic subsequence.</p>`,
     constraints: `1 ≤ s.length ≤ 1000, lowercase letters`,
     example: `<p>"bbbab" → <b>4</b> ("bbbb"). "cbbd" → <b>2</b> ("bb").</p>`,
-    brute: { why: `<p>Check all 2<sup>n</sup> subsequences for being a palindrome — impossible for n = 1000. The answer for a middle part s[i..j] is needed by many outer parts.</p>`, code: `int lps(String s, int i, int j) {
+    brute: { why: `<p>Check all 2<sup>n</sup> subsequences for being a palindrome — impossible for n = 1000. The answer for a middle part s[i..j] is needed by many outer parts.</p>`, code: { lang: 'java', code: `int lps(String s, int i, int j) {
     if (i > j) return 0;
     if (i == j) return 1;
     if (s.charAt(i) == s.charAt(j)) return 2 + lps(s, i + 1, j - 1);
     return Math.max(lps(s, i + 1, j), lps(s, i, j - 1));
+}`, alt: [
+          { lang: 'python', code: `def longest_palindrome_subseq(s, i, j):
+    if i > j:
+        return 0
+    if i == j:
+        return 1
+    if s[i] == s[j]:
+        return 2 + longest_palindrome_subseq(s, i + 1, j - 1)
+    return max(longest_palindrome_subseq(s, i + 1, j), longest_palindrome_subseq(s, i, j - 1))` },
+          { lang: 'js', code: `function longestPalindromeSubseq(s, i, j) {
+  if (i > j) return 0;
+  if (i === j) return 1;
+  if (s[i] === s[j]) return 2 + longestPalindromeSubseq(s, i + 1, j - 1);
+  return Math.max(longestPalindromeSubseq(s, i + 1, j), longestPalindromeSubseq(s, i, j - 1));
 }` },
+          { lang: 'cpp', code: `int longestPalindromeSubseq(const string& s, int i, int j) {
+    if (i > j) return 0;
+    if (i == j) return 1;
+    if (s[i] == s[j]) return 2 + longestPalindromeSubseq(s, i + 1, j - 1);
+    return max(longestPalindromeSubseq(s, i + 1, j), longestPalindromeSubseq(s, i, j - 1));
+}` }
+        ] } },
     mcq: { q: 'Which reduction gives the LPS length?', options: ['LCS(s, reverse(s))', 'Edit distance(s, reverse(s))', 'Longest common substring of s and reverse(s)', 'n − number of distinct letters'], answer: 0, explain: 'A palindromic subsequence is common to s and its reverse; the LCS of the two has the max length.' },
     tests: { sig: 'string -> int', fn: 'longestPalindromeSubseq', cases: [
       [['bbbab'], 4], [['cbbd'], 2], [['a'], 1], [['ab'], 1], [['aaaa'], 4], [['abcde'], 1], [['agbdba'], 5],
@@ -4000,10 +4432,23 @@ public:
     statement: `<p>Given a triangle array, return the minimum path sum from top to bottom. From index j in one row you may move to index j or j+1 in the next row.</p>`,
     constraints: `1 ≤ rows ≤ 200, −10<sup>4</sup> ≤ value ≤ 10<sup>4</sup>; follow-up: O(rows) extra space`,
     example: `<p>[[2], [3,4], [6,5,7], [4,1,8,3]] → <b>11</b> (${H.c('g', '2 + 3 + 5 + 1')}).</p>`,
-    brute: { why: `<p>Every path makes a left/right choice per row → 2<sup>rows−1</sup> paths ≈ 10<sup>60</sup> for 200 rows. The best path from any middle cell to the bottom is recomputed for each path reaching it.</p>`, code: `int best(List<List<Integer>> t, int i, int j) {
+    brute: { why: `<p>Every path makes a left/right choice per row → 2<sup>rows−1</sup> paths ≈ 10<sup>60</sup> for 200 rows. The best path from any middle cell to the bottom is recomputed for each path reaching it.</p>`, code: { lang: 'java', code: `int best(List<List<Integer>> t, int i, int j) {
     if (i == t.size()) return 0;
     return t.get(i).get(j) + Math.min(best(t, i + 1, j), best(t, i + 1, j + 1));
+}`, alt: [
+          { lang: 'python', code: `def minimum_total(t, i, j):
+    if i == len(t):
+        return 0
+    return t[i][j] + min(minimum_total(t, i + 1, j), minimum_total(t, i + 1, j + 1))` },
+          { lang: 'js', code: `function minimumTotal(t, i, j) {
+  if (i === t.length) return 0;
+  return t[i][j] + Math.min(minimumTotal(t, i + 1, j), minimumTotal(t, i + 1, j + 1));
 }` },
+          { lang: 'cpp', code: `int minimumTotal(vector<vector<int>>& t, int i, int j) {
+    if (i == (int)t.size()) return 0;
+    return t[i][j] + min(minimumTotal(t, i + 1, j), minimumTotal(t, i + 1, j + 1));
+}` }
+        ] } },
     mcq: { q: 'Why is bottom-up nicer than top-down here?', options: ['No edge cases: every cell has exactly two children below, and the answer ends in one cell', 'It uses less time asymptotically', 'Top-down is wrong', 'Negative numbers break top-down'], answer: 0, explain: 'Going up, dp[j] = val + min(dp[j], dp[j+1]) works for every cell, and the final answer is dp[0].' },
     tests: { sig: 'list<list<int>> -> int', fn: 'minimumTotal', cases: [
       [[[[2], [3, 4], [6, 5, 7], [4, 1, 8, 3]]], 11], [[[[-10]]], -10], [[[[1], [2, 3]]], 3],
@@ -4061,13 +4506,37 @@ public:
     statement: `<p>Given strings <code>s</code> and <code>t</code>, return the number of distinct subsequences of s that equal t (different index choices count separately).</p>`,
     constraints: `1 ≤ s.length, t.length ≤ 1000; answer fits in a 32-bit signed int`,
     example: `<p>s = "rabbbit", t = "rabbit" → <b>3</b>: choose which one of the three b's to drop.</p>`,
-    brute: { why: `<p>Enumerate all 2<sup>|s|</sup> subsequences of s and compare with t — impossible for |s| = 1000. The count for "suffix of s from i matching suffix of t from j" is needed again and again.</p>`, code: `int count(String s, String t, int i, int j) {
+    brute: { why: `<p>Enumerate all 2<sup>|s|</sup> subsequences of s and compare with t — impossible for |s| = 1000. The count for "suffix of s from i matching suffix of t from j" is needed again and again.</p>`, code: { lang: 'java', code: `int count(String s, String t, int i, int j) {
     if (j == t.length()) return 1;                  // matched all of t
     if (i == s.length()) return 0;                  // ran out of s
     int res = count(s, t, i + 1, j);                // do not use s[i]
     if (s.charAt(i) == t.charAt(j)) res += count(s, t, i + 1, j + 1);   // use s[i] for t[j]
     return res;
+}`, alt: [
+          { lang: 'python', code: `def num_distinct(s, t, i, j):
+    if j == len(t):
+        return 1                                       # matched all of t
+    if i == len(s):
+        return 0                                       # ran out of s
+    res = num_distinct(s, t, i + 1, j)                 # do not use s[i]
+    if s[i] == t[j]:
+        res += num_distinct(s, t, i + 1, j + 1)        # use s[i] for t[j]
+    return res` },
+          { lang: 'js', code: `function numDistinct(s, t, i, j) {
+  if (j === t.length) return 1;                        // matched all of t
+  if (i === s.length) return 0;                        // ran out of s
+  let res = numDistinct(s, t, i + 1, j);               // do not use s[i]
+  if (s[i] === t[j]) res += numDistinct(s, t, i + 1, j + 1);   // use s[i] for t[j]
+  return res;
 }` },
+          { lang: 'cpp', code: `int numDistinct(const string& s, const string& t, int i, int j) {
+    if (j == (int)t.size()) return 1;                  // matched all of t
+    if (i == (int)s.size()) return 0;                  // ran out of s
+    int res = numDistinct(s, t, i + 1, j);             // do not use s[i]
+    if (s[i] == t[j]) res += numDistinct(s, t, i + 1, j + 1);   // use s[i] for t[j]
+    return res;
+}` }
+        ] } },
     mcq: { q: 'dp[i][j] = ways to form t[0..j−1] from s[0..i−1]. If s[i−1] == t[j−1], dp[i][j] = ?', options: ['dp[i−1][j] + dp[i−1][j−1]', 'dp[i−1][j−1] only', 'max(dp[i−1][j], dp[i][j−1])', 'dp[i][j−1] + 1'], answer: 0, explain: 'Either ignore s[i−1] (dp[i−1][j]) or use it to match t[j−1] (dp[i−1][j−1]). Counting → add.' },
     tests: { sig: 'string string -> int', fn: 'numDistinct', cases: [
       [['rabbbit', 'rabbit'], 3], [['babgbag', 'bag'], 5], [['a', 'a'], 1], [['a', 'b'], 0], [['abc', 'abcd'], 0],
@@ -4136,12 +4605,31 @@ public:
     statement: `<p>Given strings <code>str1</code> and <code>str2</code>, return the shortest string that has both as subsequences. If several exist, return any.</p>`,
     constraints: `1 ≤ str1.length, str2.length ≤ 1000, lowercase letters`,
     example: `<p>str1 = "abac", str2 = "cab" → <b>"cabac"</b> (length 5 = 4 + 3 − LCS("ab") 2).</p>`,
-    brute: { why: `<p>Try candidate strings in increasing length and test both subsequence conditions — the number of candidates is 26<sup>L</sup>. Hopeless; the structure is entirely determined by an LCS.</p>`, code: `boolean isSubseq(String small, String big) {
+    brute: { why: `<p>Try candidate strings in increasing length and test both subsequence conditions — the number of candidates is 26<sup>L</sup>. Hopeless; the structure is entirely determined by an LCS.</p>`, code: { lang: 'java', code: `boolean isSubseq(String small, String big) {
     int i = 0;
     for (int j = 0; j < big.length() && i < small.length(); j++)
         if (small.charAt(i) == big.charAt(j)) i++;
     return i == small.length();     // brute force would call this on 26^L candidates
+}`, alt: [
+          { lang: 'python', code: `def is_subseq(small, big):
+    i = 0
+    for ch in big:
+        if i < len(small) and small[i] == ch:
+            i += 1
+    return i == len(small)     # brute force would call this on 26^L candidates` },
+          { lang: 'js', code: `function isSubseq(small, big) {
+  let i = 0;
+  for (let j = 0; j < big.length && i < small.length; j++)
+    if (small[i] === big[j]) i++;
+  return i === small.length;     // brute force would call this on 26^L candidates
 }` },
+          { lang: 'cpp', code: `bool isSubseq(const string& small, const string& big) {
+    int i = 0;
+    for (int j = 0; j < (int)big.size() && i < (int)small.size(); j++)
+        if (small[i] == big[j]) i++;
+    return i == (int)small.size();     // brute force would call this on 26^L candidates
+}` }
+        ] } },
     mcq: { q: 'Length of the shortest common supersequence?', options: ['n + m − LCS', 'n + m', 'max(n, m)', 'LCS'], answer: 0, explain: 'Shared LCS characters are written once; every other character of both strings must appear.' },
     // any shortest answer is accepted: check the length and that both strings are subsequences of the output
     tests: { sig: 'string string -> string', fn: 'shortestCommonSupersequence', check: '(args, out, exp) => { const sub = (a, b) => { let i = 0; for (const ch of b) if (i < a.length && a[i] === ch) i++; return i === a.length; }; return typeof out === "string" && out.length === exp.length && sub(args[0], out) && sub(args[1], out); }', cases: [
@@ -4238,14 +4726,41 @@ public:
     statement: `<p>A knight starts at the top-left of a dungeon grid and must reach the princess at the bottom-right, moving only right or down. Each cell adds (positive) or removes (negative) health. If health ever drops to 0 or below, the knight dies. Return the minimum initial health needed.</p>`,
     constraints: `1 ≤ m, n ≤ 200, −1000 ≤ dungeon[i][j] ≤ 1000`,
     example: `<p>[[−2, −3, 3], [−5, −10, 1], [10, 30, −5]] → <b>7</b>. Path right → right → down → down: 7 − 2 − 3 + 3 + 1 − 5 = 1, never ≤ 0 along the way.</p>`,
-    brute: { why: `<p>Try every path (C(m+n−2, m−1)) and compute the health it needs (1 − minimum prefix sum). Exponential, and a forward DP needs two numbers per cell (current health and lowest point) that conflict — so the naive forward table is wrong, not just slow.</p>`, code: `int need(int[][] d, int r, int c) {
+    brute: { why: `<p>Try every path (C(m+n−2, m−1)) and compute the health it needs (1 − minimum prefix sum). Exponential, and a forward DP needs two numbers per cell (current health and lowest point) that conflict — so the naive forward table is wrong, not just slow.</p>`, code: { lang: 'java', code: `int need(int[][] d, int r, int c) {
     int m = d.length, n = d[0].length;
     if (r == m - 1 && c == n - 1) return Math.max(1, 1 - d[r][c]);
     int best = Integer.MAX_VALUE;
     if (r + 1 < m) best = Math.min(best, need(d, r + 1, c));
     if (c + 1 < n) best = Math.min(best, need(d, r, c + 1));
     return Math.max(1, best - d[r][c]);          // exponential without memo
+}`, alt: [
+          { lang: 'python', code: `def calculate_minimum_hp(d, r, c):
+    m, n = len(d), len(d[0])
+    if r == m - 1 and c == n - 1:
+        return max(1, 1 - d[r][c])
+    best = float('inf')
+    if r + 1 < m:
+        best = min(best, calculate_minimum_hp(d, r + 1, c))
+    if c + 1 < n:
+        best = min(best, calculate_minimum_hp(d, r, c + 1))
+    return max(1, best - d[r][c])          # exponential without memo` },
+          { lang: 'js', code: `function calculateMinimumHP(d, r, c) {
+  const m = d.length, n = d[0].length;
+  if (r === m - 1 && c === n - 1) return Math.max(1, 1 - d[r][c]);
+  let best = Infinity;
+  if (r + 1 < m) best = Math.min(best, calculateMinimumHP(d, r + 1, c));
+  if (c + 1 < n) best = Math.min(best, calculateMinimumHP(d, r, c + 1));
+  return Math.max(1, best - d[r][c]);      // exponential without memo
 }` },
+          { lang: 'cpp', code: `int calculateMinimumHP(vector<vector<int>>& d, int r, int c) {
+    int m = d.size(), n = d[0].size();
+    if (r == m - 1 && c == n - 1) return max(1, 1 - d[r][c]);
+    int best = INT_MAX;
+    if (r + 1 < m) best = min(best, calculateMinimumHP(d, r + 1, c));
+    if (c + 1 < n) best = min(best, calculateMinimumHP(d, r, c + 1));
+    return max(1, best - d[r][c]);         // exponential without memo
+}` }
+        ] } },
     mcq: { q: 'Why fill this grid from the bottom-right?', options: ['Because "minimum health needed from here on" is a single number that depends only on the future', 'Because it is faster', 'Because the start cell is negative', 'It does not matter'], answer: 0, explain: 'Forward you must track both current health and the worst dip; backward one number (health needed on entering) captures everything.' },
     tests: { sig: 'int[][] -> int', fn: 'calculateMinimumHP', cases: [
       [[[[-2, -3, 3], [-5, -10, 1], [10, 30, -5]]], 7], [[[[0]]], 1], [[[[100]]], 1], [[[[-200]]], 201],
@@ -4318,11 +4833,28 @@ public:
     statement: `<p>Given a string <code>s</code>, in one step you may insert any character at any index. Return the minimum number of steps to make s a palindrome.</p>`,
     constraints: `1 ≤ s.length ≤ 500, lowercase letters`,
     example: `<p>"zzazz" → <b>0</b> (already a palindrome). "mbadm" → <b>2</b> ("mbdadbm"). "leetcode" → <b>5</b>.</p>`,
-    brute: { why: `<p>Interval recursion f(i, j): if s[i] == s[j] recurse inside, else 1 + min(f(i+1, j), f(i, j−1)). Without memo it branches twice per mismatch → exponential; only n² distinct (i, j) intervals exist.</p>`, code: `int f(String s, int i, int j) {
+    brute: { why: `<p>Interval recursion f(i, j): if s[i] == s[j] recurse inside, else 1 + min(f(i+1, j), f(i, j−1)). Without memo it branches twice per mismatch → exponential; only n² distinct (i, j) intervals exist.</p>`, code: { lang: 'java', code: `int f(String s, int i, int j) {
     if (i >= j) return 0;
     if (s.charAt(i) == s.charAt(j)) return f(s, i + 1, j - 1);
     return 1 + Math.min(f(s, i + 1, j), f(s, i, j - 1));
+}`, alt: [
+          { lang: 'python', code: `def min_insertions(s, i, j):
+    if i >= j:
+        return 0
+    if s[i] == s[j]:
+        return min_insertions(s, i + 1, j - 1)
+    return 1 + min(min_insertions(s, i + 1, j), min_insertions(s, i, j - 1))` },
+          { lang: 'js', code: `function minInsertions(s, i, j) {
+  if (i >= j) return 0;
+  if (s[i] === s[j]) return minInsertions(s, i + 1, j - 1);
+  return 1 + Math.min(minInsertions(s, i + 1, j), minInsertions(s, i, j - 1));
 }` },
+          { lang: 'cpp', code: `int minInsertions(const string& s, int i, int j) {
+    if (i >= j) return 0;
+    if (s[i] == s[j]) return minInsertions(s, i + 1, j - 1);
+    return 1 + min(minInsertions(s, i + 1, j), minInsertions(s, i, j - 1));
+}` }
+        ] } },
     mcq: { q: 'Minimum insertions equals…', options: ['n − LPS(s) = n − LCS(s, reverse(s))', 'number of distinct letters', 'edit distance(s, reverse(s))', 'n / 2'], answer: 0, explain: 'Keep the longest palindromic subsequence; every other character needs a mirrored partner inserted.' },
     tests: { sig: 'string -> int', fn: 'minInsertions', cases: [
       [['zzazz'], 0], [['mbadm'], 2], [['leetcode'], 5], [['a'], 0], [['ab'], 1], [['abc'], 2], [['race'], 3],

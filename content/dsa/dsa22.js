@@ -404,7 +404,7 @@ for c in sorted(groups):
       example: `<p>V = 5, edges = <code>1→0, 0→2, 2→1, 0→3, 3→4</code> → output <b>${H.c('g', '3')}</b>.</p><p>Why: 0 → 2 → 1 → 0 is a cycle, so <b>{0, 1, 2}</b> is one SCC. 3 and 4 are on a one-way chain: <b>{3}</b>, <b>{4}</b>.</p>`,
       brute: {
         why: `<p>For every node run a BFS to find what it reaches, then two nodes share an SCC if each reaches the other. That is V BFS runs → <b>O(V·(V + E))</b> ≈ 10<sup>5</sup> × 3·10<sup>5</sup> = 3·10<sup>10</sup> steps. The wasted work: we recompute reachability for every node of the same component again and again.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     int countSCC(int V, int[][] edges) {
         List<List<Integer>> adj = new ArrayList<>();
         for (int i = 0; i < V; i++) adj.add(new ArrayList<>());
@@ -428,7 +428,77 @@ for c in sorted(groups):
         }
         return c;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+from collections import deque
+
+def count_scc(V, edges):
+    adj = [[] for _ in range(V)]
+    for u, v in edges:
+        adj[u].append(v)
+    reach = [[False] * V for _ in range(V)]
+    for s in range(V):                            # BFS from every node
+        q = deque([s])
+        reach[s][s] = True
+        while q:
+            u = q.popleft()
+            for w in adj[u]:
+                if not reach[s][w]:
+                    reach[s][w] = True
+                    q.append(w)
+    comp = [-1] * V
+    c = 0
+    for u in range(V):
+        if comp[u] != -1:
+            continue
+        for v in range(V):
+            if reach[u][v] and reach[v][u]:
+                comp[v] = c
+        c += 1
+    return c` }, { lang: 'js', code: String.raw`
+function countSCC(V, edges) {
+  const adj = Array.from({ length: V }, () => []);
+  for (const [u, v] of edges) adj[u].push(v);
+  const reach = Array.from({ length: V }, () => new Array(V).fill(false));
+  for (let s = 0; s < V; s++) {                       // BFS from every node
+    const q = [s];
+    reach[s][s] = true;
+    for (let h = 0; h < q.length; h++) {
+      for (const w of adj[q[h]]) if (!reach[s][w]) { reach[s][w] = true; q.push(w); }
+    }
+  }
+  const comp = new Array(V).fill(-1);
+  let c = 0;
+  for (let u = 0; u < V; u++) {
+    if (comp[u] !== -1) continue;
+    for (let v = 0; v < V; v++) if (reach[u][v] && reach[v][u]) comp[v] = c;
+    c++;
+  }
+  return c;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    int countSCC(int V, vector<vector<int>>& edges) {
+        vector<vector<int>> adj(V);
+        for (auto& e : edges) adj[e[0]].push_back(e[1]);
+        vector<vector<char>> reach(V, vector<char>(V, 0));
+        for (int s = 0; s < V; s++) {                 // BFS from every node
+            queue<int> q;
+            q.push(s); reach[s][s] = 1;
+            while (!q.empty()) {
+                int u = q.front(); q.pop();
+                for (int w : adj[u]) if (!reach[s][w]) { reach[s][w] = 1; q.push(w); }
+            }
+        }
+        vector<int> comp(V, -1);
+        int c = 0;
+        for (int u = 0; u < V; u++) {
+            if (comp[u] != -1) continue;
+            for (int v = 0; v < V; v++) if (reach[u][v] && reach[v][u]) comp[v] = c;
+            c++;
+        }
+        return c;
+    }
+};` }] }
       },
       mcq: { q: 'After pass 1 of Kosaraju, which node do you start pass 2 from?', options: ['The node that finished <b>last</b> (top of the stack)', 'The node that finished first', 'Node 0 always', 'The node with the highest out-degree'], answer: 0, explain: 'The last finisher lies in a source component of the condensation; on the flipped graph that component is a sink, so the DFS cannot leak out.' },
       hints: [
@@ -1059,7 +1129,7 @@ for comp in tarjan(len(names), adj):
       example: `<p>V = 5, edges <code>0→1, 1→2, 2→0, 2→3, 4→3</code> → output <b>${H.c('g', '2')}</b>.</p><p>Why: SCCs are {0,1,2}, {3}, {4}. Condensation: {0,1,2} → {3} ← {4}. ${H.c('b', 'Sources')} (no incoming) = {0,1,2}, {4} → 2. ${H.c('p', 'Sinks')} (no outgoing) = {3} → 1. Answer max(2, 1) = 2, e.g. add 3→0 and 3→4.</p>`,
       brute: {
         why: `<p>Try adding 0 edges, then every set of 1 edge, then every set of 2 edges, … and test strong connectivity each time. With V² possible edges and k chosen, that is C(V², k) tests — hopeless beyond V ≈ 6. The waste: all nodes inside one SCC are interchangeable, so most choices are equivalent.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     int V;
     List<List<Integer>> adj;
 
@@ -1099,7 +1169,117 @@ for comp in tarjan(len(names), adj):
         }
         return cnt == V;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def min_edges_to_strongly_connect(V, edges):
+    adj = [[] for _ in range(V)]
+    for u, v in edges:
+        adj[u].append(v)
+
+    def reach_all(reverse):                           # node 0 reaches all (or all reach 0)
+        seen = [False] * V
+        seen[0] = True
+        q = [0]
+        for u in q:
+            for x in range(V):
+                edge = (u in adj[x]) if reverse else (x in adj[u])
+                if edge and not seen[x]:
+                    seen[x] = True
+                    q.append(x)
+        return len(q) == V
+
+    def try_add(left, start):                         # add 'left' more edges, pairs >= start
+        if left == 0:
+            return reach_all(False) and reach_all(True)
+        for p in range(start, V * V):
+            u, v = divmod(p, V)
+            if u == v:
+                continue
+            adj[u].append(v)
+            ok = try_add(left - 1, p + 1)
+            adj[u].pop()
+            if ok:
+                return True
+        return False
+
+    k = 0
+    while not try_add(k, 0):                          # k = V always works (a big cycle)
+        k += 1
+    return k` }, { lang: 'js', code: String.raw`
+function minEdgesToStronglyConnect(V, edges) {
+  const adj = Array.from({ length: V }, () => []);
+  for (const [u, v] of edges) adj[u].push(v);
+
+  function reachAll(reversed) {                       // node 0 reaches all (or all reach 0)
+    const seen = new Array(V).fill(false), q = [0];
+    seen[0] = true;
+    for (let h = 0; h < q.length; h++) {
+      const u = q[h];
+      for (let x = 0; x < V; x++) {
+        const edge = reversed ? adj[x].includes(u) : adj[u].includes(x);
+        if (edge && !seen[x]) { seen[x] = true; q.push(x); }
+      }
+    }
+    return q.length === V;
+  }
+
+  function tryAdd(left, from) {                       // add 'left' more edges, pairs >= from
+    if (left === 0) return reachAll(false) && reachAll(true);
+    for (let p = from; p < V * V; p++) {
+      const u = Math.floor(p / V), v = p % V;
+      if (u === v) continue;
+      adj[u].push(v);
+      const ok = tryAdd(left - 1, p + 1);
+      adj[u].pop();
+      if (ok) return true;
+    }
+    return false;
+  }
+
+  for (let k = 0; ; k++) if (tryAdd(k, 0)) return k;  // k = V always works (a big cycle)
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    int V;
+    vector<vector<int>> adj;
+
+    int minEdgesToStronglyConnect(int V, vector<vector<int>>& edges) {
+        this->V = V;
+        adj.assign(V, {});
+        for (auto& e : edges) adj[e[0]].push_back(e[1]);
+        for (int k = 0; ; k++) if (tryAdd(k, 0)) return k;   // k = V always works (a big cycle)
+    }
+
+    bool tryAdd(int left, int from) {                 // add 'left' more edges, pairs >= from
+        if (left == 0) return reachAll(false) && reachAll(true);
+        for (int p = from; p < V * V; p++) {
+            int u = p / V, v = p % V;
+            if (u == v) continue;
+            adj[u].push_back(v);
+            bool ok = tryAdd(left - 1, p + 1);
+            adj[u].pop_back();
+            if (ok) return true;
+        }
+        return false;
+    }
+
+    bool reachAll(bool reversed) {                    // node 0 reaches all (or all reach 0)
+        vector<char> seen(V, 0);
+        queue<int> q;
+        q.push(0);
+        seen[0] = 1;
+        int cnt = 1;
+        while (!q.empty()) {
+            int u = q.front(); q.pop();
+            for (int x = 0; x < V; x++) {
+                vector<int>& from = reversed ? adj[x] : adj[u];
+                int to = reversed ? u : x;
+                bool edge = find(from.begin(), from.end(), to) != from.end();
+                if (edge && !seen[x]) { seen[x] = 1; cnt++; q.push(x); }
+            }
+        }
+        return cnt == V;
+    }
+};` }] }
       },
       mcq: { q: 'The condensation has 4 sources and 2 sinks (and more than one SCC). How many edges are needed?', options: ['4', '2', '6', '3'], answer: 0, explain: 'Every source needs at least one new incoming edge and every sink at least one new outgoing edge; one new edge fixes at most one of each, so we need ≥ max(4, 2) = 4, and a careful pairing achieves it.' },
       hints: [
@@ -1709,7 +1889,7 @@ private:
       example: `<p>n = 4, connections = <code>[[0,1],[1,2],[2,0],[1,3]]</code> → output <b>${H.c('g', '[[1,3]]')}</b>.</p><p>Why: 0, 1, 2 form a triangle, so any one of those edges can break and the others still connect them. Server 3 hangs on edge 1—3 only.</p>`,
       brute: {
         why: `<p>Remove each connection, BFS from one endpoint, and check whether the other endpoint is still reachable. That is E BFS runs → <b>O(E·(V + E))</b> = 10<sup>5</sup> × 2·10<sup>5</sup> = 2·10<sup>10</sup>. Wasted work: every BFS re-explores the same graph that one DFS could summarise with low-link values.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     public List<List<Integer>> criticalConnections(int n, List<List<Integer>> connections) {
         List<List<Integer>> ans = new ArrayList<>();
         for (int skip = 0; skip < connections.size(); skip++) {
@@ -1734,7 +1914,75 @@ private:
         }
         return ans;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+from collections import deque
+
+def critical_connections(n, connections):
+    ans = []
+    for skip, (s, t) in enumerate(connections):
+        adj = [[] for _ in range(n)]
+        for i, (a, b) in enumerate(connections):
+            if i == skip:
+                continue                          # pretend this cable is cut
+            adj[a].append(b)
+            adj[b].append(a)
+        seen = [False] * n
+        seen[s] = True
+        q = deque([s])
+        while q:
+            u = q.popleft()
+            for w in adj[u]:
+                if not seen[w]:
+                    seen[w] = True
+                    q.append(w)
+        if not seen[t]:
+            ans.append(connections[skip])         # endpoints separated -> critical
+    return ans` }, { lang: 'js', code: String.raw`
+function criticalConnections(n, connections) {
+  const ans = [];
+  for (let skip = 0; skip < connections.length; skip++) {
+    const adj = Array.from({ length: n }, () => []);
+    connections.forEach(([a, b], id) => {
+      if (id === skip) return;                        // pretend this cable is cut
+      adj[a].push(b);
+      adj[b].push(a);
+    });
+    const [s, t] = connections[skip];
+    const seen = new Array(n).fill(false), q = [s];
+    seen[s] = true;
+    for (let h = 0; h < q.length; h++) {
+      for (const w of adj[q[h]]) if (!seen[w]) { seen[w] = true; q.push(w); }
+    }
+    if (!seen[t]) ans.push(connections[skip]);        // endpoints separated -> critical
+  }
+  return ans;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    vector<vector<int>> criticalConnections(int n, vector<vector<int>>& connections) {
+        vector<vector<int>> ans;
+        for (int skip = 0; skip < (int)connections.size(); skip++) {
+            vector<vector<int>> adj(n);
+            for (int id = 0; id < (int)connections.size(); id++) {
+                if (id == skip) continue;             // pretend this cable is cut
+                int a = connections[id][0], b = connections[id][1];
+                adj[a].push_back(b);
+                adj[b].push_back(a);
+            }
+            int s = connections[skip][0], t = connections[skip][1];
+            vector<char> seen(n, 0);
+            queue<int> q;
+            q.push(s);
+            seen[s] = 1;
+            while (!q.empty()) {
+                int u = q.front(); q.pop();
+                for (int w : adj[u]) if (!seen[w]) { seen[w] = 1; q.push(w); }
+            }
+            if (!seen[t]) ans.push_back(connections[skip]);   // endpoints separated -> critical
+        }
+        return ans;
+    }
+};` }] }
       },
       mcq: { q: 'For tree edge v—w, which condition means it is a bridge?', options: ['low[w] &gt; disc[v]', 'low[w] ≥ disc[v]', 'low[v] &gt; disc[w]', 'disc[w] &gt; low[v]'], answer: 0, explain: 'w\'s subtree cannot reach v or anything discovered before v without this edge. With ≥ you would also flag edges on cycles that return exactly to v.' },
       hints: [
@@ -2430,7 +2678,7 @@ vector<int> eulerUndirected(int n, const vector<vector<int>>& edges) {
       example: `<p>tickets = <code>[["JFK","KUL"],["JFK","NRT"],["NRT","JFK"]]</code> → <b>${H.c('g', '["JFK","NRT","JFK","KUL"]')}</b>.</p><p>Why: "KUL" &lt; "NRT", but flying to KUL first leaves you stuck there with two unused tickets. The smallest <b>valid</b> itinerary goes to NRT first.</p>`,
       brute: {
         why: `<p>Backtracking: sort tickets, try the smallest unused ticket from the current airport, undo when stuck. The first complete path found is the answer — but in the worst case it explores exponentially many partial paths (many dead ends with repeated airports).</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     public List<String> findItinerary(List<List<String>> tickets) {
         List<List<String>> t = new ArrayList<>(tickets);
         t.sort((a, b) -> a.get(1).compareTo(b.get(1)));        // try smaller destinations first
@@ -2453,7 +2701,74 @@ vector<int> eulerUndirected(int n, const vector<vector<int>>& edges) {
         }
         return false;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def find_itinerary(tickets):
+    t = sorted(tickets, key=lambda e: e[1])       # try smaller destinations first
+    used = [False] * len(t)
+    path = ["JFK"]
+
+    def dfs(at):
+        if len(path) == len(t) + 1:               # every ticket used
+            return True
+        for i, (src, dst) in enumerate(t):
+            if used[i] or src != at:
+                continue
+            used[i] = True
+            path.append(dst)
+            if dfs(dst):
+                return True
+            path.pop()                            # undo and try the next ticket
+            used[i] = False
+        return False
+
+    dfs("JFK")
+    return path` }, { lang: 'js', code: String.raw`
+function findItinerary(tickets) {
+  const t = tickets.slice().sort((a, b) => (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));   // smaller destinations first
+  const used = new Array(t.length).fill(false);
+  const path = ["JFK"];
+
+  function dfs(at) {
+    if (path.length === t.length + 1) return true;    // every ticket used
+    for (let i = 0; i < t.length; i++) {
+      if (used[i] || t[i][0] !== at) continue;
+      used[i] = true;
+      path.push(t[i][1]);
+      if (dfs(t[i][1])) return true;
+      path.pop();                                     // undo and try the next ticket
+      used[i] = false;
+    }
+    return false;
+  }
+
+  dfs("JFK");
+  return path;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    vector<string> findItinerary(vector<vector<string>>& tickets) {
+        vector<vector<string>> t = tickets;
+        stable_sort(t.begin(), t.end(), [](auto& a, auto& b) { return a[1] < b[1]; });   // smaller destinations first
+        vector<char> used(t.size(), 0);
+        vector<string> path = {"JFK"};
+        dfs("JFK", t, used, path);
+        return path;
+    }
+
+private:
+    bool dfs(const string& at, vector<vector<string>>& t, vector<char>& used, vector<string>& path) {
+        if (path.size() == t.size() + 1) return true;   // every ticket used
+        for (int i = 0; i < (int)t.size(); i++) {
+            if (used[i] || t[i][0] != at) continue;
+            used[i] = 1;
+            path.push_back(t[i][1]);
+            if (dfs(t[i][1], t, used, path)) return true;
+            path.pop_back();                            // undo and try the next ticket
+            used[i] = 0;
+        }
+        return false;
+    }
+};` }] }
       },
       mcq: { q: 'Why does Hierholzer prepend a vertex to the answer when it gets stuck?', options: ['A stuck vertex must be the end of the remaining route, so it belongs after everything still on the stack', 'Because the stack is reversed by mistake', 'To sort the answer lexicographically', 'It does not matter where it is inserted'], answer: 0, explain: 'All edges of that vertex are used, so nothing can follow it; everything still on the stack comes before it.' },
       hints: [
@@ -3093,7 +3408,7 @@ public:
       example: `<p>n = 6, edges <code>(0,1,3) (0,2,2) (1,3,4) (1,4,1) (2,5,7)</code>, queries <code>(3,4) (3,5) (4,1)</code> → <b>${H.c('g', '[5, 16, 1]')}</b>.</p><p>Why: dist from root = [0, 3, 2, 7, 4, 9]. (3,4): LCA = 1 → 7 + 4 − 2·3 = 5. (3,5): LCA = 0 → 7 + 9 − 0 = 16. (4,1): LCA = 1 → 4 + 3 − 6 = 1.</p>`,
       brute: {
         why: `<p>For each query, climb parent pointers from both nodes until they meet, adding edge weights. On a chain each query costs O(n) → O(n·q) = 10<sup>10</sup>. The waste: we re-climb the same long stretches for every query.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     long[] treeDistances(int n, int[][] edges, int[][] queries) {
         List<List<int[]>> adj = new ArrayList<>();
         for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
@@ -3121,7 +3436,94 @@ public:
         }
         return ans;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+from collections import deque
+
+def tree_distances(n, edges, queries):
+    adj = [[] for _ in range(n)]
+    for a, b, w in edges:
+        adj[a].append((b, w))
+        adj[b].append((a, w))
+    parent = [0] * n
+    depth = [0] * n
+    wt = [0] * n                                  # weight of the edge to the parent
+    seen = [False] * n
+    seen[0] = True
+    q = deque([0])
+    while q:
+        v = q.popleft()
+        for u, w in adj[v]:
+            if not seen[u]:
+                seen[u] = True
+                parent[u] = v
+                depth[u] = depth[v] + 1
+                wt[u] = w
+                q.append(u)
+    ans = []
+    for u, v in queries:
+        d = 0
+        while depth[u] > depth[v]:
+            d += wt[u]
+            u = parent[u]
+        while depth[v] > depth[u]:
+            d += wt[v]
+            v = parent[v]
+        while u != v:
+            d += wt[u] + wt[v]
+            u = parent[u]
+            v = parent[v]
+        ans.append(d)
+    return ans` }, { lang: 'js', code: String.raw`
+function treeDistances(n, edges, queries) {
+  const adj = Array.from({ length: n }, () => []);
+  for (const [a, b, w] of edges) { adj[a].push([b, w]); adj[b].push([a, w]); }
+  const parent = new Array(n).fill(0), depth = new Array(n).fill(0);
+  const wt = new Array(n).fill(0);                    // weight of the edge to the parent
+  const seen = new Array(n).fill(false), q = [0];
+  seen[0] = true;
+  for (let h = 0; h < q.length; h++) {
+    const v = q[h];
+    for (const [u, w] of adj[v]) if (!seen[u]) {
+      seen[u] = true; parent[u] = v; depth[u] = depth[v] + 1; wt[u] = w; q.push(u);
+    }
+  }
+  return queries.map(([u, v]) => {
+    let d = 0;
+    while (depth[u] > depth[v]) { d += wt[u]; u = parent[u]; }
+    while (depth[v] > depth[u]) { d += wt[v]; v = parent[v]; }
+    while (u !== v) { d += wt[u] + wt[v]; u = parent[u]; v = parent[v]; }
+    return d;
+  });
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    vector<long long> treeDistances(int n, vector<vector<int>>& edges, vector<vector<int>>& queries) {
+        vector<vector<pair<int, int>>> adj(n);
+        for (auto& e : edges) { adj[e[0]].push_back({e[1], e[2]}); adj[e[1]].push_back({e[0], e[2]}); }
+        vector<int> parent(n, 0), depth(n, 0);
+        vector<long long> w(n, 0);                    // weight of the edge to the parent
+        vector<char> seen(n, 0);
+        queue<int> q;
+        q.push(0);
+        seen[0] = 1;
+        while (!q.empty()) {
+            int v = q.front(); q.pop();
+            for (auto [u, wt] : adj[v]) if (!seen[u]) {
+                seen[u] = 1; parent[u] = v; depth[u] = depth[v] + 1; w[u] = wt; q.push(u);
+            }
+        }
+        vector<long long> ans(queries.size());
+        for (int i = 0; i < (int)queries.size(); i++) {
+            int u = queries[i][0], v = queries[i][1];
+            long long d = 0;
+            while (depth[u] > depth[v]) { d += w[u]; u = parent[u]; }
+            while (depth[v] > depth[u]) { d += w[v]; v = parent[v]; }
+            while (u != v) { d += w[u] + w[v]; u = parent[u]; v = parent[v]; }
+            ans[i] = d;
+        }
+        return ans;
+    }
+};` }] }
       },
       mcq: { q: 'distRoot = [0, 3, 2, 7, 4, 9] and LCA(3, 5) = 0. What is the path weight between 3 and 5?', options: ['16', '9', '7', '2'], answer: 0, explain: 'dist[3] + dist[5] − 2·dist[LCA] = 7 + 9 − 0 = 16.' },
       hints: [
@@ -3760,7 +4162,7 @@ int maxFlow(vector<vector<int>> cap, int s, int t) {   // cap is copied: residua
       example: `<p>n = 4, edges <code>0→1:3, 0→2:2, 1→2:2, 1→3:2, 2→3:3</code> → <b>${H.c('g', '5')}</b>.</p><p>Why: everything leaving node 0 is 3 + 2 = 5 and we can route all of it: 2 via 0→2→3, 2 via 0→1→3, 1 via 0→1→2→3. No flow can exceed what leaves the source.</p>`,
       brute: {
         why: `<p>Plain Ford-Fulkerson with DFS is correct but may push 1 unit per iteration: <b>O(E · F)</b> with F up to ~5·10<sup>12</sup> — it can run forever in practice. The wasted work: long, zig-zagging paths with tiny bottlenecks.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     long maxFlow(int n, int[][] edges) {
         long[][] r = new long[n][n];
         for (int[] e : edges) r[e[0]][e[1]] += e[2];          // parallel edges add up
@@ -3780,7 +4182,79 @@ int maxFlow(vector<vector<int>> cap, int s, int t) {   // cap is copied: residua
         }
         return 0;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def max_flow(n, edges):
+    r = [[0] * n for _ in range(n)]
+    for u, v, c in edges:
+        r[u][v] += c                                  # parallel edges add up
+
+    def dfs(v, t, f, seen):
+        if v == t:
+            return f
+        seen[v] = True
+        for w in range(n):
+            if not seen[w] and r[v][w] > 0:
+                d = dfs(w, t, min(f, r[v][w]), seen)
+                if d > 0:
+                    r[v][w] -= d
+                    r[w][v] += d
+                    return d
+        return 0
+
+    flow = 0
+    while True:
+        pushed = dfs(0, n - 1, float("inf"), [False] * n)
+        if pushed <= 0:
+            break
+        flow += pushed
+    return flow` }, { lang: 'js', code: String.raw`
+function maxFlow(n, edges) {
+  const r = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (const [u, v, c] of edges) r[u][v] += c;        // parallel edges add up
+
+  function dfs(v, t, f, seen) {
+    if (v === t) return f;
+    seen[v] = true;
+    for (let w = 0; w < n; w++) {
+      if (!seen[w] && r[v][w] > 0) {
+        const d = dfs(w, t, Math.min(f, r[v][w]), seen);
+        if (d > 0) { r[v][w] -= d; r[w][v] += d; return d; }
+      }
+    }
+    return 0;
+  }
+
+  let flow = 0, pushed;
+  while ((pushed = dfs(0, n - 1, Infinity, new Array(n).fill(false))) > 0) flow += pushed;
+  return flow;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    long long maxFlow(int n, vector<vector<int>>& edges) {
+        vector<vector<long long>> r(n, vector<long long>(n, 0));
+        for (auto& e : edges) r[e[0]][e[1]] += e[2];  // parallel edges add up
+        long long flow = 0, pushed;
+        while (true) {
+            vector<char> seen(n, 0);
+            pushed = dfs(r, 0, n - 1, LLONG_MAX, seen);
+            if (pushed <= 0) break;
+            flow += pushed;
+        }
+        return flow;
+    }
+
+    long long dfs(vector<vector<long long>>& r, int v, int t, long long f, vector<char>& seen) {
+        if (v == t) return f;
+        seen[v] = 1;
+        for (int w = 0; w < (int)r.size(); w++) {
+            if (!seen[w] && r[v][w] > 0) {
+                long long d = dfs(r, w, t, min(f, r[v][w]), seen);
+                if (d > 0) { r[v][w] -= d; r[w][v] += d; return d; }
+            }
+        }
+        return 0;
+    }
+};` }] }
       },
       mcq: { q: 'You pushed 4 units on edge A→B (capacity 6). What are the residual capacities of A→B and B→A?', options: ['A→B: 2, B→A: 4', 'A→B: 4, B→A: 2', 'A→B: 2, B→A: 0', 'A→B: 6, B→A: 4'], answer: 0, explain: 'Forward room = 6 − 4 = 2. Backward residual = the flow we could undo = 4.' },
       hints: [
@@ -4403,7 +4877,7 @@ print("max flow =", flow, "found in", phases, "phases")
       example: `<p>n = 6, s = 0, t = 5, roads <code>0→1, 1→4, 1→2, 2→5, 0→3, 3→4, 4→5</code> → <b>${H.c('g', '2')}</b>: paths 0→1→2→5 and 0→3→4→5.</p><p>Why it is tricky: the "shortest-looking" path 0→1→4→5 blocks both of these, and after taking it greedily only <b>1</b> path remains possible.</p>`,
       brute: {
         why: `<p>The tempting brute: find a path, delete its roads, repeat. It is <b>wrong</b>, not just slow: on the example BFS finds 0→1→4→5 first and then nothing else, answering 1 instead of 2. Fixing it needs the ability to <b>undo</b> a road choice — which is exactly what reverse edges in a flow network give you.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     // Tempting but WRONG: take a shortest path, delete its roads, repeat.
     int edgeDisjointPaths(int n, int[][] edges, int s, int t) {
         boolean[] removed = new boolean[edges.length];
@@ -4427,7 +4901,77 @@ print("max flow =", flow, "found in", phases, "phases")
             count++;
         }
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+from collections import deque
+
+def edge_disjoint_paths(n, edges, s, t):
+    # Tempting but WRONG: take a shortest path, delete its roads, repeat.
+    removed = [False] * len(edges)
+    count = 0
+    while True:
+        via = [-1] * n
+        seen = [False] * n
+        seen[s] = True
+        q = deque([s])
+        while q:
+            u = q.popleft()
+            for i, e in enumerate(edges):
+                if not removed[i] and e[0] == u and not seen[e[1]]:
+                    seen[e[1]] = True
+                    via[e[1]] = i
+                    q.append(e[1])
+        if not seen[t]:
+            return count
+        v = t
+        while v != s:
+            removed[via[v]] = True                    # delete the path
+            v = edges[via[v]][0]
+        count += 1` }, { lang: 'js', code: String.raw`
+function edgeDisjointPaths(n, edges, s, t) {
+  // Tempting but WRONG: take a shortest path, delete its roads, repeat.
+  const removed = new Array(edges.length).fill(false);
+  let count = 0;
+  while (true) {
+    const via = new Array(n).fill(-1), seen = new Array(n).fill(false);
+    const q = [s];
+    seen[s] = true;
+    for (let h = 0; h < q.length; h++) {
+      const u = q[h];
+      for (let i = 0; i < edges.length; i++)
+        if (!removed[i] && edges[i][0] === u && !seen[edges[i][1]]) {
+          seen[edges[i][1]] = true; via[edges[i][1]] = i; q.push(edges[i][1]);
+        }
+    }
+    if (!seen[t]) return count;
+    for (let v = t; v !== s; v = edges[via[v]][0]) removed[via[v]] = true;   // delete the path
+    count++;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    // Tempting but WRONG: take a shortest path, delete its roads, repeat.
+    int edgeDisjointPaths(int n, vector<vector<int>>& edges, int s, int t) {
+        vector<char> removed(edges.size(), 0);
+        int count = 0;
+        while (true) {
+            vector<int> via(n, -1);
+            vector<char> seen(n, 0);
+            queue<int> q;
+            q.push(s);
+            seen[s] = 1;
+            while (!q.empty()) {
+                int u = q.front(); q.pop();
+                for (int i = 0; i < (int)edges.size(); i++)
+                    if (!removed[i] && edges[i][0] == u && !seen[edges[i][1]]) {
+                        seen[edges[i][1]] = 1; via[edges[i][1]] = i; q.push(edges[i][1]);
+                    }
+            }
+            if (!seen[t]) return count;
+            for (int v = t; v != s; v = edges[via[v]][0]) removed[via[v]] = 1;   // delete the path
+            count++;
+        }
+    }
+};` }] }
       },
       mcq: { q: 'What capacity should each road get in the flow model?', options: ['1', 'infinity', 'its length', 'the number of nodes'], answer: 0, explain: 'Each road may be used by at most one path, so capacity 1. By integrality, a max flow of value k splits into k edge-disjoint paths (Menger\'s theorem).' },
       hints: [
@@ -5153,7 +5697,7 @@ vector<vector<int>> need = {{2}, {2, 3}, {}, {}};    // P1 needs T1; P2 needs T1
       example: `<p>n = 4, s = 0, t = 3, roads <code>[0,1,10] [0,2,10] [1,3,2] [2,3,3] [1,2,1]</code> → <b>${H.c('g', '[2, 3]')}</b> (cost 2 + 3 = 5).</p><p>Why: blocking the two cheap roads into town 3 costs 5. Blocking the roads out of 0 would cost 20. The max flow is also 5 — no cheaper cut can exist.</p>`,
       brute: {
         why: `<p>Try every subset of roads (2<sup>E</sup>), check with BFS whether t is still reachable, keep the cheapest that works. Fine for E ≤ 20, impossible for E = 5000. The waste: the exponential search ignores the structure that max flow exploits.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     List<Integer> cheapestBlock(int n, int[][] roads, int s, int t) {
         int m = roads.length;
         long best = Long.MAX_VALUE;
@@ -5177,7 +5721,71 @@ vector<vector<int>> need = {{2}, {2, 3}, {}, {}};    // P1 needs T1; P2 needs T1
         for (int i = 0; i < m; i++) if ((bestMask >> i & 1) == 1) ans.add(i);
         return ans;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def cheapest_block(n, roads, s, t):
+    m = len(roads)
+    best, best_mask = float("inf"), 0
+    for mask in range(1 << m):                        # mask bit i = road i blocked
+        cost = sum(roads[i][2] for i in range(m) if mask >> i & 1)
+        if cost >= best:
+            continue
+        seen = [False] * n
+        seen[s] = True
+        q = [s]
+        for u in q:
+            for i in range(m):
+                if not (mask >> i & 1) and roads[i][0] == u and not seen[roads[i][1]]:
+                    seen[roads[i][1]] = True
+                    q.append(roads[i][1])
+        if not seen[t]:
+            best, best_mask = cost, mask
+    return [i for i in range(m) if best_mask >> i & 1]` }, { lang: 'js', code: String.raw`
+function cheapestBlock(n, roads, s, t) {
+  const m = roads.length;
+  let best = Infinity, bestMask = 0;
+  for (let mask = 0; mask < (1 << m); mask++) {       // mask bit i = road i blocked
+    let cost = 0;
+    for (let i = 0; i < m; i++) if ((mask >> i & 1) === 1) cost += roads[i][2];
+    if (cost >= best) continue;
+    const seen = new Array(n).fill(false), q = [s];
+    seen[s] = true;
+    for (let h = 0; h < q.length; h++) {
+      const u = q[h];
+      for (let i = 0; i < m; i++)
+        if ((mask >> i & 1) === 0 && roads[i][0] === u && !seen[roads[i][1]]) { seen[roads[i][1]] = true; q.push(roads[i][1]); }
+    }
+    if (!seen[t]) { best = cost; bestMask = mask; }
+  }
+  const ans = [];
+  for (let i = 0; i < m; i++) if ((bestMask >> i & 1) === 1) ans.push(i);
+  return ans;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    vector<int> cheapestBlock(int n, vector<vector<int>>& roads, int s, int t) {
+        int m = roads.size();
+        long long best = LLONG_MAX;
+        int bestMask = 0;
+        for (int mask = 0; mask < (1 << m); mask++) {     // mask bit i = road i blocked
+            long long cost = 0;
+            for (int i = 0; i < m; i++) if (mask >> i & 1) cost += roads[i][2];
+            if (cost >= best) continue;
+            vector<char> seen(n, 0);
+            queue<int> q;
+            q.push(s);
+            seen[s] = 1;
+            while (!q.empty()) {
+                int u = q.front(); q.pop();
+                for (int i = 0; i < m; i++)
+                    if (!(mask >> i & 1) && roads[i][0] == u && !seen[roads[i][1]]) { seen[roads[i][1]] = 1; q.push(roads[i][1]); }
+            }
+            if (!seen[t]) { best = cost; bestMask = mask; }
+        }
+        vector<int> ans;
+        for (int i = 0; i < m; i++) if (bestMask >> i & 1) ans.push_back(i);
+        return ans;
+    }
+};` }] }
       },
       mcq: { q: 'After max flow, which roads form the cut?', options: ['Roads from a node reachable from s in the RESIDUAL graph to a node that is not', 'All roads with flow &gt; 0', 'All saturated roads', 'Roads on the last augmenting path'], answer: 0, explain: 'Saturated roads can be inside one side; only those crossing from the residual-reachable set to the rest form the min cut.' },
       hints: [
@@ -5837,7 +6445,7 @@ cout << nodes << " nodes, source " << source << ", sink " << sink << "\\n";
       example: `<p>G = <code>[[1,1,0],[1,0,0],[0,1,1],[0,0,1]]</code> → <b>${H.c('g', '3')}</b>.</p><p>Why: applicant 1 can only do job 0, so applicant 0 takes job 1, applicant 2 takes job 2. Applicant 3 also wants only job 2 — there are just 3 jobs, so 3 is the best possible.</p>`,
       brute: {
         why: `<p>Backtracking: for each applicant, either skip them or give them any free job they like. That explores up to (N + 1)<sup>M</sup> assignments — far too many for 100 × 100. The waste: assignments that differ only in irrelevant ways are explored again and again.</p>`,
-        code: `class Brute {
+        code: { lang: 'java', code: `class Brute {
     private int best = 0;
 
     int maximumMatch(int[][] G) {
@@ -5856,7 +6464,67 @@ cout << nodes << " nodes, source " << source << ", sink " << sink << "\\n";
                 taken[j] = false;
             }
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def maximum_match(G):
+    n = len(G[0]) if G else 0
+    taken = [False] * n
+    best = 0
+
+    def go(i, count):
+        nonlocal best
+        if i == len(G):
+            best = max(best, count)
+            return
+        go(i + 1, count)                              # applicant i gets nothing
+        for j in range(n):
+            if G[i][j] == 1 and not taken[j]:
+                taken[j] = True
+                go(i + 1, count + 1)
+                taken[j] = False
+
+    go(0, 0)
+    return best` }, { lang: 'js', code: String.raw`
+function maximumMatch(G) {
+  const n = G.length > 0 ? G[0].length : 0;
+  const taken = new Array(n).fill(false);
+  let best = 0;
+
+  function go(i, count) {
+    if (i === G.length) { best = Math.max(best, count); return; }
+    go(i + 1, count);                                 // applicant i gets nothing
+    for (let j = 0; j < n; j++)
+      if (G[i][j] === 1 && !taken[j]) {
+        taken[j] = true;
+        go(i + 1, count + 1);
+        taken[j] = false;
+      }
+  }
+
+  go(0, 0);
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+    int best = 0;
+
+    void go(vector<vector<int>>& G, int i, vector<char>& taken, int count) {
+        if (i == (int)G.size()) { best = max(best, count); return; }
+        go(G, i + 1, taken, count);                   // applicant i gets nothing
+        for (int j = 0; j < (int)taken.size(); j++)
+            if (G[i][j] == 1 && !taken[j]) {
+                taken[j] = 1;
+                go(G, i + 1, taken, count + 1);
+                taken[j] = 0;
+            }
+    }
+
+public:
+    int maximumMatch(vector<vector<int>>& G) {
+        int n = G.empty() ? 0 : G[0].size();
+        vector<char> taken(n, 0);
+        go(G, 0, taken, 0);
+        return best;
+    }
+};` }] }
       },
       mcq: { q: 'Applicant C wants job 1, which applicant A holds. What does Kuhn do?', options: ['Recursively asks A to find another job it likes; if A succeeds, C takes job 1', 'Skips job 1 forever', 'Gives job 1 to C and leaves A unmatched', 'Restarts the whole matching'], answer: 0, explain: 'That recursive "can you move?" request is the search for an augmenting path. The matching never shrinks.' },
       hints: [
@@ -6028,7 +6696,7 @@ public:
     example: `<p>V = 5, edges <code>0→2, 0→3, 1→0, 2→1, 3→4</code> → <b>${H.c('g', '0')}</b>.</p><p>Why: from 0 we reach 2, 3, then 1 (via 2) and 4 (via 3). Nodes 1 and 2 are mother vertices too (they reach 0, which reaches everyone) — 0 is the smallest.</p>`,
     brute: {
       why: `<p>Run a DFS from every vertex and check whether it reaches all V vertices: <b>O(V·(V + E))</b> ≈ 3·10<sup>10</sup>. The waste: Kosaraju's finish-time insight tells us only one vertex is worth testing.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     int findMotherVertex(int V, List<List<Integer>> adj) {
         for (int s = 0; s < V; s++) {
             boolean[] seen = new boolean[V];
@@ -6044,7 +6712,54 @@ public:
         }
         return -1;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def find_mother_vertex(V, adj):
+    for s in range(V):
+        seen = [False] * V
+        stack = [s]
+        seen[s] = True
+        count = 1
+        while stack:
+            u = stack.pop()
+            for w in adj[u]:
+                if not seen[w]:
+                    seen[w] = True
+                    count += 1
+                    stack.append(w)
+        if count == V:                                # first (smallest) success
+            return s
+    return -1` }, { lang: 'js', code: String.raw`
+function findMotherVertex(V, adj) {
+  for (let s = 0; s < V; s++) {
+    const seen = new Array(V).fill(false), stack = [s];
+    seen[s] = true;
+    let count = 1;
+    while (stack.length) {
+      const u = stack.pop();
+      for (const w of adj[u]) if (!seen[w]) { seen[w] = true; count++; stack.push(w); }
+    }
+    if (count === V) return s;                        // first (smallest) success
+  }
+  return -1;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    int findMotherVertex(int V, vector<vector<int>>& adj) {
+        for (int s = 0; s < V; s++) {
+            vector<char> seen(V, 0);
+            stack<int> st;
+            st.push(s);
+            seen[s] = 1;
+            int count = 1;
+            while (!st.empty()) {
+                int u = st.top(); st.pop();
+                for (int w : adj[u]) if (!seen[w]) { seen[w] = 1; count++; st.push(w); }
+            }
+            if (count == V) return s;                 // first (smallest) success
+        }
+        return -1;
+    }
+};` }] }
     },
     mcq: { q: 'You run DFS from 0, 1, 2, … skipping visited vertices. Which vertex is the only possible candidate?', options: ['The start of the LAST DFS tree (it finishes last)', 'Vertex 0', 'The vertex with the largest out-degree', 'Any leaf'], answer: 0, explain: 'The last-finishing vertex lies in a source SCC of the condensation. If any mother vertex exists, it must be in that SCC.' },
     hints: [
@@ -6258,7 +6973,7 @@ public:
     example: `<p>Edges <code>0–1, 1–2, 2–0, 0–3</code> → <b>${H.c('g', '1')}</b>.</p><p>Why: degrees are 3, 2, 2, 1 → exactly two odd vertices (0 and 3), and all edges are connected. A path exists (3 → 0 → 1 → 2 → 0) but it cannot return to its start.</p>`,
     brute: {
       why: `<p>Backtracking over the order of edges from every start vertex tries up to E! orders. Even 12 edges is 479 million orders. The waste: Euler's degree argument answers the question without searching at all.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     int isEulerian(int V, List<List<Integer>> adj) {
         List<int[]> edges = new ArrayList<>();
         for (int u = 0; u < V; u++) for (int w : adj.get(u)) if (u < w) edges.add(new int[]{u, w});
@@ -6287,7 +7002,101 @@ public:
         }
         return best;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def is_eulerian(V, adj):
+    edges = [(u, w) for u in range(V) for w in adj[u] if u < w]
+    if not edges:
+        return 2
+    used = [False] * len(edges)
+
+    # 2 = used all edges and came back to start, 1 = used all edges elsewhere, 0 = stuck
+    def walk(start, at, count):
+        if count == len(edges):
+            return 2 if at == start else 1
+        best = 0
+        for i, (a, b) in enumerate(edges):
+            if best == 2:
+                break
+            if used[i]:
+                continue
+            nxt = b if a == at else (a if b == at else -1)
+            if nxt < 0:
+                continue
+            used[i] = True
+            best = max(best, walk(start, nxt, count + 1))
+            used[i] = False
+        return best
+
+    path = False
+    for s in range(V):
+        r = walk(s, s, 0)
+        if r == 2:
+            return 2
+        if r == 1:
+            path = True
+    return 1 if path else 0` }, { lang: 'js', code: String.raw`
+function isEulerian(V, adj) {
+  const edges = [];
+  for (let u = 0; u < V; u++) for (const w of adj[u]) if (u < w) edges.push([u, w]);
+  if (edges.length === 0) return 2;
+  const used = new Array(edges.length).fill(false);
+
+  // 2 = used all edges and came back to start, 1 = used all edges elsewhere, 0 = stuck
+  function walk(start, at, count) {
+    if (count === edges.length) return at === start ? 2 : 1;
+    let best = 0;
+    for (let i = 0; i < edges.length && best < 2; i++) {
+      if (used[i]) continue;
+      const [a, b] = edges[i];
+      const next = a === at ? b : (b === at ? a : -1);
+      if (next < 0) continue;
+      used[i] = true;
+      best = Math.max(best, walk(start, next, count + 1));
+      used[i] = false;
+    }
+    return best;
+  }
+
+  let path = false;
+  for (let s = 0; s < V; s++) {
+    const r = walk(s, s, 0);
+    if (r === 2) return 2;
+    if (r === 1) path = true;
+  }
+  return path ? 1 : 0;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+    // 2 = used all edges and came back to start, 1 = used all edges elsewhere, 0 = stuck
+    int walk(int start, int at, vector<pair<int, int>>& edges, vector<char>& used, int count) {
+        if (count == (int)edges.size()) return at == start ? 2 : 1;
+        int best = 0;
+        for (int i = 0; i < (int)edges.size() && best < 2; i++) {
+            if (used[i]) continue;
+            auto [a, b] = edges[i];
+            int next = a == at ? b : (b == at ? a : -1);
+            if (next < 0) continue;
+            used[i] = 1;
+            best = max(best, walk(start, next, edges, used, count + 1));
+            used[i] = 0;
+        }
+        return best;
+    }
+
+public:
+    int isEulerian(int V, vector<vector<int>>& adj) {
+        vector<pair<int, int>> edges;
+        for (int u = 0; u < V; u++) for (int w : adj[u]) if (u < w) edges.push_back({u, w});
+        if (edges.empty()) return 2;
+        bool path = false;
+        for (int s = 0; s < V; s++) {
+            vector<char> used(edges.size(), 0);
+            int r = walk(s, s, edges, used, 0);
+            if (r == 2) return 2;
+            if (r == 1) path = true;
+        }
+        return path ? 1 : 0;
+    }
+};` }] }
     },
     mcq: { q: 'Degrees are 2, 4, 3, 3, 2, 1, 1 and the graph is connected. Answer?', options: ['0 — four odd vertices', '1', '2', 'Cannot tell without searching'], answer: 0, explain: 'Odd-degree vertices: 3, 3, 1, 1 → four of them. A trail can have at most two "unpaired" endpoints.' },
     hints: [
@@ -6490,7 +7299,7 @@ public:
     example: `<p>n = 4, edges <code>0–1, 1–2, 2–3, 3–0</code> → <b>${H.c('g', 'true')}</b> (a square: removing any corner leaves a path).</p><p>Add vertex 4 with edge <code>3–4</code> → <b>${H.c('r', 'false')}</b>: removing 3 cuts 4 off.</p>`,
     brute: {
       why: `<p>Remove each vertex in turn and BFS the rest: <b>O(V·(V + E))</b>. The waste: every BFS re-explores almost the same graph; one low-link DFS answers for all vertices at once.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     boolean isBiconnected(int n, int[][] edges) {
         for (int removed = -1; removed < n; removed++) {      // -1 = remove nothing (plain connectivity)
             List<List<Integer>> adj = new ArrayList<>();
@@ -6510,7 +7319,68 @@ public:
         }
         return true;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+from collections import deque
+
+def is_biconnected(n, edges):
+    for removed in range(-1, n):                      # -1 = remove nothing (plain connectivity)
+        adj = [[] for _ in range(n)]
+        for a, b in edges:
+            if a != removed and b != removed:
+                adj[a].append(b)
+                adj[b].append(a)
+        start = 1 if removed == 0 else 0
+        seen = [False] * n
+        seen[start] = True
+        q = deque([start])
+        count = 1
+        while q:
+            u = q.popleft()
+            for w in adj[u]:
+                if not seen[w]:
+                    seen[w] = True
+                    count += 1
+                    q.append(w)
+        if count != (n if removed == -1 else n - 1):
+            return False
+    return True` }, { lang: 'js', code: String.raw`
+function isBiconnected(n, edges) {
+  for (let removed = -1; removed < n; removed++) {    // -1 = remove nothing (plain connectivity)
+    const adj = Array.from({ length: n }, () => []);
+    for (const [a, b] of edges) if (a !== removed && b !== removed) { adj[a].push(b); adj[b].push(a); }
+    const start = removed === 0 ? 1 : 0;
+    const seen = new Array(n).fill(false), q = [start];
+    seen[start] = true;
+    let count = 1;
+    for (let h = 0; h < q.length; h++) {
+      for (const w of adj[q[h]]) if (!seen[w]) { seen[w] = true; count++; q.push(w); }
+    }
+    if (count !== (removed === -1 ? n : n - 1)) return false;
+  }
+  return true;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    bool isBiconnected(int n, vector<vector<int>>& edges) {
+        for (int removed = -1; removed < n; removed++) {  // -1 = remove nothing (plain connectivity)
+            vector<vector<int>> adj(n);
+            for (auto& e : edges)
+                if (e[0] != removed && e[1] != removed) { adj[e[0]].push_back(e[1]); adj[e[1]].push_back(e[0]); }
+            int start = removed == 0 ? 1 : 0;
+            vector<char> seen(n, 0);
+            queue<int> q;
+            q.push(start);
+            seen[start] = 1;
+            int count = 1;
+            while (!q.empty()) {
+                int u = q.front(); q.pop();
+                for (int w : adj[u]) if (!seen[w]) { seen[w] = 1; count++; q.push(w); }
+            }
+            if (count != (removed == -1 ? n : n - 1)) return false;
+        }
+        return true;
+    }
+};` }] }
     },
     mcq: { q: 'For articulation points, is it safe to skip the parent VERTEX (not edge id) in the DFS?', options: ['Yes — parallel edges never change whether removing a vertex disconnects the graph', 'No, it breaks on parallel edges', 'Only for trees', 'Only if the graph is directed'], answer: 0, explain: 'Removing vertex v deletes all its parallel edges at once, so they do not matter for cut vertices. For BRIDGES you must skip by edge id.' },
     hints: [
@@ -6816,7 +7686,7 @@ public:
     example: `<p>Edges <code>0–1, 1–4, 4–2, 4–3, 3–2</code> → <b>${H.c('g', '[1, 4]')}</b>.</p><p>Why: removing 1 separates 0; removing 4 separates {0, 1} from {2, 3}. 2 and 3 sit on the triangle 2–3–4, so removing either keeps the rest connected.</p>`,
     brute: {
       why: `<p>For each vertex, delete it and count connected components with BFS; compare with the original count. <b>O(V·(V + E))</b>. The waste: the same graph is re-explored V times.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     List<Integer> articulationPoints(int V, int[][] edges) {
         int base = components(V, edges, -1);
         List<Integer> ans = new ArrayList<>();
@@ -6841,7 +7711,84 @@ public:
         }
         return count;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+from collections import deque
+
+def articulation_points(V, edges):
+    def components(removed):
+        adj = [[] for _ in range(V)]
+        for a, b in edges:
+            if a != removed and b != removed:
+                adj[a].append(b)
+                adj[b].append(a)
+        seen = [False] * V
+        count = 0
+        for s in range(V):
+            if s == removed or seen[s]:
+                continue
+            count += 1
+            q = deque([s])
+            seen[s] = True
+            while q:
+                u = q.popleft()
+                for w in adj[u]:
+                    if not seen[w]:
+                        seen[w] = True
+                        q.append(w)
+        return count
+
+    base = components(-1)
+    ans = [v for v in range(V) if components(v) > base]
+    return ans if ans else [-1]` }, { lang: 'js', code: String.raw`
+function articulationPoints(V, edges) {
+  function components(removed) {
+    const adj = Array.from({ length: V }, () => []);
+    for (const [a, b] of edges) if (a !== removed && b !== removed) { adj[a].push(b); adj[b].push(a); }
+    const seen = new Array(V).fill(false);
+    let count = 0;
+    for (let s = 0; s < V; s++) {
+      if (s === removed || seen[s]) continue;
+      count++;
+      const q = [s];
+      seen[s] = true;
+      for (let h = 0; h < q.length; h++) for (const w of adj[q[h]]) if (!seen[w]) { seen[w] = true; q.push(w); }
+    }
+    return count;
+  }
+
+  const base = components(-1);
+  const ans = [];
+  for (let v = 0; v < V; v++) if (components(v) > base) ans.push(v);
+  if (ans.length === 0) ans.push(-1);
+  return ans;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+    int components(int V, vector<vector<int>>& edges, int removed) {
+        vector<vector<int>> adj(V);
+        for (auto& e : edges)
+            if (e[0] != removed && e[1] != removed) { adj[e[0]].push_back(e[1]); adj[e[1]].push_back(e[0]); }
+        vector<char> seen(V, 0);
+        int count = 0;
+        for (int s = 0; s < V; s++) {
+            if (s == removed || seen[s]) continue;
+            count++;
+            queue<int> q;
+            q.push(s);
+            seen[s] = 1;
+            while (!q.empty()) { int u = q.front(); q.pop(); for (int w : adj[u]) if (!seen[w]) { seen[w] = 1; q.push(w); } }
+        }
+        return count;
+    }
+
+public:
+    vector<int> articulationPoints(int V, vector<vector<int>>& edges) {
+        int base = components(V, edges, -1);
+        vector<int> ans;
+        for (int v = 0; v < V; v++) if (components(V, edges, v) > base) ans.push_back(v);
+        if (ans.empty()) ans.push_back(-1);
+        return ans;
+    }
+};` }] }
     },
     mcq: { q: 'A DFS root has exactly 3 DFS children. Is it an articulation point?', options: ['Yes — its subtrees are connected only through it', 'No — roots never are', 'Only if it has degree ≥ 4', 'Need low values to decide'], answer: 0, explain: 'If any path linked two subtrees without the root, DFS would have reached the second subtree from the first. Two or more children ⇒ cut vertex.' },
     hints: [
@@ -7173,7 +8120,7 @@ public:
     example: `<p>parent = <code>[-1, 0, 0, 1, 1, 2, 2]</code>: getKthAncestor(3, 1) = <b>1</b>, (5, 2) = <b>0</b>, (6, 3) = <b>${H.c('r', '-1')}</b>.</p><p>Why: 6's ancestors are 2 (1 up) and 0 (2 up); a third does not exist.</p>`,
     brute: {
       why: `<p>Walk up k parent pointers: O(k) per call. A 5·10<sup>4</sup>-long chain with 5·10<sup>4</sup> queries → 2.5·10<sup>9</sup> steps. The waste: the same long stretches are walked again for every query.</p>`,
-      code: `class TreeAncestorBrute {
+      code: { lang: 'java', code: `class TreeAncestorBrute {
     private final int[] parent;
 
     TreeAncestorBrute(int n, int[] parent) { this.parent = parent.clone(); }
@@ -7182,7 +8129,35 @@ public:
         while (k-- > 0 && node != -1) node = parent[node];
         return node;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+class TreeAncestorBrute:
+    def __init__(self, n, parent):
+        self.parent = list(parent)
+
+    def getKthAncestor(self, node, k):
+        while k > 0 and node != -1:
+            node = self.parent[node]
+            k -= 1
+        return node` }, { lang: 'js', code: String.raw`
+class TreeAncestorBrute {
+  constructor(n, parent) { this.parent = parent.slice(); }
+
+  getKthAncestor(node, k) {
+    while (k-- > 0 && node !== -1) node = this.parent[node];
+    return node;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class TreeAncestorBrute {
+    vector<int> parent;
+
+public:
+    TreeAncestorBrute(int n, vector<int>& parent) : parent(parent) {}
+
+    int getKthAncestor(int node, int k) {
+        while (k-- > 0 && node != -1) node = parent[node];
+        return node;
+    }
+};` }] }
     },
     mcq: { q: 'k = 11. Which jumps does binary lifting make?', options: ['8, 2 and 1', '11 single steps', '4, 4, 2, 1', '16 then down 5'], answer: 0, explain: '11 = 1011 in binary → jumps of 2^3, 2^1, 2^0.' },
     hints: [
@@ -7302,7 +8277,7 @@ public:
     example: `<p><code>["..#", "...", "#.."]</code> → <b>${H.c('g', '3')}</b>.</p><p>Why: there are 7 usable cells, so at most ⌊7/2⌋ = 3 dominoes; one valid placement is (0,0)-(0,1), (1,0)-(1,1), (1,2)-(2,2) — and (2,1) is left alone.</p>`,
     brute: {
       why: `<p>Backtracking cell by cell: leave the cell empty, or cover it with a domino to the right or down. Exponential (about 3<sup>cells</sup> branches). The waste: it ignores the bipartite structure that turns this into a polynomial matching.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     private int best = 0;
 
     int maxDominoes(String[] board) {
@@ -7329,7 +8304,86 @@ public:
             used[r][c] = used[r + 1][c] = false;
         }
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def max_dominoes(board):
+    R, C = len(board), len(board[0])
+    used = [[False] * C for _ in range(R)]
+    best = 0
+
+    def go(idx, placed):
+        nonlocal best
+        if idx == R * C:
+            best = max(best, placed)
+            return
+        r, c = divmod(idx, C)
+        go(idx + 1, placed)                           # leave this cell
+        if board[r][c] == '#' or used[r][c]:
+            return
+        if c + 1 < C and board[r][c + 1] == '.' and not used[r][c + 1]:      # horizontal
+            used[r][c] = used[r][c + 1] = True
+            go(idx + 1, placed + 1)
+            used[r][c] = used[r][c + 1] = False
+        if r + 1 < R and board[r + 1][c] == '.' and not used[r + 1][c]:      # vertical
+            used[r][c] = used[r + 1][c] = True
+            go(idx + 1, placed + 1)
+            used[r][c] = used[r + 1][c] = False
+
+    go(0, 0)
+    return best` }, { lang: 'js', code: String.raw`
+function maxDominoes(board) {
+  const R = board.length, C = board[0].length;
+  const used = Array.from({ length: R }, () => new Array(C).fill(false));
+  let best = 0;
+
+  function go(idx, placed) {
+    if (idx === R * C) { best = Math.max(best, placed); return; }
+    const r = Math.floor(idx / C), c = idx % C;
+    go(idx + 1, placed);                              // leave this cell
+    if (board[r][c] === '#' || used[r][c]) return;
+    if (c + 1 < C && board[r][c + 1] === '.' && !used[r][c + 1]) {      // horizontal
+      used[r][c] = used[r][c + 1] = true;
+      go(idx + 1, placed + 1);
+      used[r][c] = used[r][c + 1] = false;
+    }
+    if (r + 1 < R && board[r + 1][c] === '.' && !used[r + 1][c]) {      // vertical
+      used[r][c] = used[r + 1][c] = true;
+      go(idx + 1, placed + 1);
+      used[r][c] = used[r + 1][c] = false;
+    }
+  }
+
+  go(0, 0);
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+    int best = 0;
+
+    void go(vector<string>& b, vector<vector<char>>& used, int idx, int placed) {
+        int R = b.size(), C = b[0].size();
+        if (idx == R * C) { best = max(best, placed); return; }
+        int r = idx / C, c = idx % C;
+        go(b, used, idx + 1, placed);                 // leave this cell
+        if (b[r][c] == '#' || used[r][c]) return;
+        if (c + 1 < C && b[r][c + 1] == '.' && !used[r][c + 1]) {   // horizontal
+            used[r][c] = used[r][c + 1] = 1;
+            go(b, used, idx + 1, placed + 1);
+            used[r][c] = used[r][c + 1] = 0;
+        }
+        if (r + 1 < R && b[r + 1][c] == '.' && !used[r + 1][c]) {   // vertical
+            used[r][c] = used[r + 1][c] = 1;
+            go(b, used, idx + 1, placed + 1);
+            used[r][c] = used[r + 1][c] = 0;
+        }
+    }
+
+public:
+    int maxDominoes(vector<string>& board) {
+        int R = board.size(), C = board[0].size();
+        vector<vector<char>> used(R, vector<char>(C, 0));
+        go(board, used, 0, 0);
+        return best;
+    }
+};` }] }
     },
     mcq: { q: 'Why is the cell graph bipartite?', options: ['Colour cells like a chessboard: every domino covers one black and one white cell', 'Because grids have no cycles', 'Because dominoes are rectangles', 'It is not bipartite'], answer: 0, explain: 'Neighbouring cells always have different (r + c) parity, so all edges go black–white.' },
     hints: [
@@ -7510,7 +8564,7 @@ public:
     example: `<p>grid = <code>[[1,0,1],[0,1,0],[0,1,0]]</code> → <b>${H.c('g', '2')}</b>.</p><p>Why: row 0 covers (0,0) and (0,2); column 1 covers (1,1) and (2,1). One line cannot do it, because (0,0) and (1,1) share neither a row nor a column.</p>`,
     brute: {
       why: `<p>Try every subset of rows (2<sup>R</sup>); for each, all columns that still contain an uncovered 1 must be chosen. Take the minimum. O(2<sup>R</sup>·R·C) — fine for R ≤ 15, hopeless for 300.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     int minLines(int[][] grid) {
         int R = grid.length, C = grid[0].length, best = Integer.MAX_VALUE;
         for (int mask = 0; mask < (1 << R); mask++) {
@@ -7524,7 +8578,49 @@ public:
         }
         return best;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def min_lines(grid):
+    R, C = len(grid), len(grid[0])
+    best = float("inf")
+    for mask in range(1 << R):
+        lines = bin(mask).count("1")
+        for c in range(C):
+            need = any(grid[r][c] == 1 and not (mask >> r & 1) for r in range(R))
+            if need:
+                lines += 1                            # this column must be a line
+        best = min(best, lines)
+    return best` }, { lang: 'js', code: String.raw`
+function minLines(grid) {
+  const R = grid.length, C = grid[0].length;
+  let best = Infinity;
+  for (let mask = 0; mask < (1 << R); mask++) {
+    let lines = 0;
+    for (let x = mask; x; x &= x - 1) lines++;        // popcount
+    for (let c = 0; c < C; c++) {
+      let need = false;
+      for (let r = 0; r < R; r++) if (grid[r][c] === 1 && (mask >> r & 1) === 0) need = true;
+      if (need) lines++;                              // this column must be a line
+    }
+    best = Math.min(best, lines);
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    int minLines(vector<vector<int>>& grid) {
+        int R = grid.size(), C = grid[0].size(), best = INT_MAX;
+        for (int mask = 0; mask < (1 << R); mask++) {
+            int lines = __builtin_popcount(mask);
+            for (int c = 0; c < C; c++) {
+                bool need = false;
+                for (int r = 0; r < R; r++) if (grid[r][c] == 1 && (mask >> r & 1) == 0) need = true;
+                if (need) lines++;                    // this column must be a line
+            }
+            best = min(best, lines);
+        }
+        return best;
+    }
+};` }] }
     },
     mcq: { q: 'Rows are left vertices, columns right vertices, each marked cell an edge. "Fewest lines" is then…', options: ['A minimum vertex cover — equal to the maximum matching (König)', 'A maximum independent set', 'A shortest path', 'A spanning tree'], answer: 0, explain: 'Choosing a row/column = choosing a vertex; covering every marked cell = covering every edge.' },
     hints: [
@@ -7685,7 +8781,7 @@ public:
     example: `<p>n = 2, k = 2 → <b>${H.c('g', '"00110"')}</b> (length 2<sup>2</sup> + 1 = 5).</p><p>Why: its windows are 00, 01, 11, 10 — all four passwords, each exactly once. No shorter string can contain 4 different length-2 windows.</p>`,
     brute: {
       why: `<p>DFS that appends a digit only if the new n-digit window is unseen, and backtracks when stuck. Without the Euler-circuit argument there is no guarantee it never backtracks, so in the worst case it explores exponentially many strings. The waste: blind search where a linear-time construction exists.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     public String crackSafe(int n, int k) {
         int total = (int) Math.pow(k, n);
         StringBuilder sb = new StringBuilder();
@@ -7710,7 +8806,78 @@ public:
         }
         return false;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def crack_safe(n, k):
+    total = k ** n
+    sb = ["0"] * n
+    seen = {"0" * n}
+
+    def dfs():
+        if len(seen) == total:
+            return True
+        tail = "".join(sb[len(sb) - n + 1:])
+        for d in range(k):
+            w = tail + str(d)
+            if w in seen:
+                continue
+            seen.add(w)
+            sb.append(str(d))
+            if dfs():
+                return True
+            sb.pop()                                  # backtrack
+            seen.remove(w)
+        return False
+
+    dfs()
+    return "".join(sb)` }, { lang: 'js', code: String.raw`
+function crackSafe(n, k) {
+  const total = Math.pow(k, n);
+  let sb = "0".repeat(n);
+  const seen = new Set([sb]);
+
+  function dfs() {
+    if (seen.size === total) return true;
+    const tail = sb.slice(sb.length - n + 1);
+    for (let d = 0; d < k; d++) {
+      const w = tail + d;
+      if (seen.has(w)) continue;
+      seen.add(w);
+      sb += d;
+      if (dfs()) return true;
+      sb = sb.slice(0, -1);                           // backtrack
+      seen.delete(w);
+    }
+    return false;
+  }
+
+  dfs();
+  return sb;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+    bool dfs(string& sb, unordered_set<string>& seen, int n, int k, int total) {
+        if ((int)seen.size() == total) return true;
+        string tail = sb.substr(sb.size() - n + 1);
+        for (int d = 0; d < k; d++) {
+            string w = tail + char('0' + d);
+            if (seen.count(w)) continue;
+            seen.insert(w);
+            sb.push_back('0' + d);
+            if (dfs(sb, seen, n, k, total)) return true;
+            sb.pop_back();                            // backtrack
+            seen.erase(w);
+        }
+        return false;
+    }
+
+public:
+    string crackSafe(int n, int k) {
+        int total = (int)pow(k, n);
+        string sb(n, '0');
+        unordered_set<string> seen = {sb};
+        dfs(sb, seen, n, k, total);
+        return sb;
+    }
+};` }] }
     },
     mcq: { q: 'In the de Bruijn graph for this problem, what are the vertices and edges?', options: ['Vertices = (n−1)-digit strings, edges = n-digit passwords', 'Vertices = passwords, edges = keystrokes', 'Vertices = digits, edges = pairs of digits', 'Vertices = n-digit strings, edges = (n+1)-digit strings'], answer: 0, explain: 'Edge "abc" goes from "ab" to "bc". Each password is an edge, so an Euler circuit uses every password once.' },
     hints: [
@@ -7854,7 +9021,7 @@ public:
     example: `<p>pairs = <code>[[5,1],[4,5],[11,9],[9,4]]</code> → <b>${H.c('g', '[[11,9],[9,4],[4,5],[5,1]]')}</b>.</p><p>Why: values are vertices, pairs are directed edges; 11 has out − in = +1 so the chain must start there: 11 → 9 → 4 → 5 → 1.</p>`,
     brute: {
       why: `<p>Backtracking over which pair comes next tries up to n! orders; even with pruning it explodes on graphs with many cycles. The waste: an Euler path can be built greedily in O(n) with Hierholzer.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     public int[][] validArrangement(int[][] pairs) {
         int n = pairs.length;
         int[][] ans = new int[n][];
@@ -7879,7 +9046,84 @@ public:
         }
         return false;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def valid_arrangement(pairs):
+    n = len(pairs)
+    ans = [None] * n
+    used = [False] * n
+
+    def go(pos):
+        if pos == n:
+            return True
+        for i in range(n):
+            if used[i] or pairs[i][0] != ans[pos - 1][1]:
+                continue
+            used[i] = True
+            ans[pos] = pairs[i]
+            if go(pos + 1):
+                return True
+            used[i] = False
+        return False
+
+    for i in range(n):                                # try every pair as the first one
+        used[i] = True
+        ans[0] = pairs[i]
+        if go(1):
+            return ans
+        used[i] = False
+    return ans` }, { lang: 'js', code: String.raw`
+function validArrangement(pairs) {
+  const n = pairs.length;
+  const ans = new Array(n);
+  const used = new Array(n).fill(false);
+
+  function go(pos) {
+    if (pos === n) return true;
+    for (let i = 0; i < n; i++) {
+      if (used[i] || pairs[i][0] !== ans[pos - 1][1]) continue;
+      used[i] = true;
+      ans[pos] = pairs[i];
+      if (go(pos + 1)) return true;
+      used[i] = false;
+    }
+    return false;
+  }
+
+  for (let i = 0; i < n; i++) {                       // try every pair as the first one
+    used[i] = true;
+    ans[0] = pairs[i];
+    if (go(1)) return ans;
+    used[i] = false;
+  }
+  return ans;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+    bool go(vector<vector<int>>& pairs, vector<char>& used, vector<vector<int>>& ans, int pos) {
+        if (pos == (int)pairs.size()) return true;
+        for (int i = 0; i < (int)pairs.size(); i++) {
+            if (used[i] || pairs[i][0] != ans[pos - 1][1]) continue;
+            used[i] = 1;
+            ans[pos] = pairs[i];
+            if (go(pairs, used, ans, pos + 1)) return true;
+            used[i] = 0;
+        }
+        return false;
+    }
+
+public:
+    vector<vector<int>> validArrangement(vector<vector<int>>& pairs) {
+        int n = pairs.size();
+        vector<vector<int>> ans(n);
+        vector<char> used(n, 0);
+        for (int i = 0; i < n; i++) {                 // try every pair as the first one
+            used[i] = 1;
+            ans[0] = pairs[i];
+            if (go(pairs, used, ans, 1)) return ans;
+            used[i] = 0;
+        }
+        return ans;
+    }
+};` }] }
     },
     mcq: { q: 'All values are balanced (out = in). Where can the arrangement start?', options: ['At any start value that has an outgoing pair — it is an Euler circuit', 'Only at the smallest value', 'Nowhere — no arrangement exists', 'Only at pairs[0][1]'], answer: 0, explain: 'Balanced degrees + connectivity → Euler circuit, which can start anywhere on it.' },
     hints: [
@@ -8095,7 +9339,7 @@ public:
     example: `<p>n = 2, clauses <code>(x1 ∨ x2), (¬x1 ∨ x2), (¬x2 ∨ x1)</code> → <b>${H.c('g', 'x1 = true, x2 = true')}</b>.</p><p>Why: clause 2 says "if x1 then x2", clause 3 says "if x2 then x1", clause 1 forbids both false → both true. Adding <code>(¬x1 ∨ ¬x2)</code> would make it impossible: x1 and ¬x1 would land in one SCC.</p>`,
     brute: {
       why: `<p>Try all 2<sup>n</sup> assignments and test every clause: O(2<sup>n</sup>·m). Fine for n ≤ 20, impossible for 10<sup>5</sup>. The waste: clauses with only two literals have implication structure that SCCs decide in linear time.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     boolean[] solve2SAT(int n, int[][] clauses) {
         for (int mask = 0; mask < (1 << n); mask++) {
             boolean ok = true;
@@ -8115,7 +9359,59 @@ public:
         boolean v = (mask >> (Math.abs(l) - 1) & 1) == 1;
         return l > 0 ? v : !v;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def solve_2sat(n, clauses):
+    def lit(mask, l):
+        v = (mask >> (abs(l) - 1) & 1) == 1
+        return v if l > 0 else not v
+
+    for mask in range(1 << n):
+        if all(lit(mask, a) or lit(mask, b) for a, b in clauses):
+            value = [False] * (n + 1)
+            for i in range(1, n + 1):
+                value[i] = (mask >> (i - 1) & 1) == 1
+            return value
+    return None` }, { lang: 'js', code: String.raw`
+function solve2SAT(n, clauses) {
+  const lit = (mask, l) => {
+    const v = (mask >> (Math.abs(l) - 1) & 1) === 1;
+    return l > 0 ? v : !v;
+  };
+  for (let mask = 0; mask < (1 << n); mask++) {
+    let ok = true;
+    for (const [a, b] of clauses) {
+      if (!(lit(mask, a) || lit(mask, b))) { ok = false; break; }
+    }
+    if (ok) {
+      const value = new Array(n + 1).fill(false);
+      for (let i = 1; i <= n; i++) value[i] = (mask >> (i - 1) & 1) === 1;
+      return value;
+    }
+  }
+  return null;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+    bool lit(int mask, int l) {
+        bool v = (mask >> (abs(l) - 1) & 1) == 1;
+        return l > 0 ? v : !v;
+    }
+
+public:
+    vector<bool> solve2SAT(int n, vector<vector<int>>& clauses) {
+        for (int mask = 0; mask < (1 << n); mask++) {
+            bool ok = true;
+            for (auto& c : clauses) {
+                if (!(lit(mask, c[0]) || lit(mask, c[1]))) { ok = false; break; }
+            }
+            if (ok) {
+                vector<bool> value(n + 1, false);
+                for (int i = 1; i <= n; i++) value[i] = (mask >> (i - 1) & 1) == 1;
+                return value;
+            }
+        }
+        return {};                                    // no assignment satisfies every clause
+    }
+};` }] }
     },
     mcq: { q: 'Clause (a ∨ b) becomes which implication edges?', options: ['¬a → b and ¬b → a', 'a → b and b → a', 'a → ¬b only', '¬a → ¬b'], answer: 0, explain: 'If a is false, b must be true; if b is false, a must be true. Both directions are needed for the graph to be symmetric.' },
     hints: [
@@ -8433,7 +9729,7 @@ public:
     example: `<p>n = 4, s = 0, t = 3, links <code>0→1:10, 0→2:10, 1→3:10, 2→3:10</code>, limit = <code>[∞, 4, 7, ∞]</code> → <b>${H.c('g', '11')}</b>.</p><p>Why: links allow 20, but router 1 forwards at most 4 and router 2 at most 7: 4 + 7 = 11.</p>`,
     brute: {
       why: `<p>Plain Ford-Fulkerson (DFS) on the split network is correct but O(E·F) with F up to ~10<sup>13</sup>. Ignoring node limits (plain max flow) is fast but <b>wrong</b> (answers 20 here). The fix is the model, then a fast algorithm.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     long maxThroughput(int n, int[][] links, long[] limit, int s, int t) {
         int N = 2 * n;                                       // v_in = v, v_out = v + n
         long[][] r = new long[N][N];
@@ -8454,7 +9750,84 @@ public:
             }
         return 0;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def max_throughput(n, links, limit, s, t):
+    N = 2 * n                                         # v_in = v, v_out = v + n
+    r = [[0] * N for _ in range(N)]
+    for v in range(n):
+        r[v][v + n] = (1 << 60) if v in (s, t) else limit[v]
+    for a, b, c in links:
+        r[a + n][b] += c
+
+    def dfs(v, target, f, seen):
+        if v == target:
+            return f
+        seen[v] = True
+        for w in range(N):
+            if not seen[w] and r[v][w] > 0:
+                d = dfs(w, target, min(f, r[v][w]), seen)
+                if d > 0:
+                    r[v][w] -= d
+                    r[w][v] += d
+                    return d
+        return 0
+
+    flow = 0
+    while True:
+        pushed = dfs(s, t + n, 1 << 62, [False] * N)
+        if pushed <= 0:
+            break
+        flow += pushed
+    return flow` }, { lang: 'js', code: String.raw`
+function maxThroughput(n, links, limit, s, t) {
+  const N = 2 * n;                                    // v_in = v, v_out = v + n
+  const r = Array.from({ length: N }, () => new Array(N).fill(0));
+  for (let v = 0; v < n; v++) r[v][v + n] = (v === s || v === t) ? Number.MAX_SAFE_INTEGER : limit[v];
+  for (const [a, b, c] of links) r[a + n][b] += c;
+
+  function dfs(v, target, f, seen) {
+    if (v === target) return f;
+    seen[v] = true;
+    for (let w = 0; w < N; w++)
+      if (!seen[w] && r[v][w] > 0) {
+        const d = dfs(w, target, Math.min(f, r[v][w]), seen);
+        if (d > 0) { r[v][w] -= d; r[w][v] += d; return d; }
+      }
+    return 0;
+  }
+
+  let flow = 0, pushed;
+  while ((pushed = dfs(s, t + n, Infinity, new Array(N).fill(false))) > 0) flow += pushed;
+  return flow;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+    long long dfs(vector<vector<long long>>& r, int v, int t, long long f, vector<char>& seen) {
+        if (v == t) return f;
+        seen[v] = 1;
+        for (int w = 0; w < (int)r.size(); w++)
+            if (!seen[w] && r[v][w] > 0) {
+                long long d = dfs(r, w, t, min(f, r[v][w]), seen);
+                if (d > 0) { r[v][w] -= d; r[w][v] += d; return d; }
+            }
+        return 0;
+    }
+
+public:
+    long long maxThroughput(int n, vector<vector<int>>& links, vector<long long>& limit, int s, int t) {
+        int N = 2 * n;                                // v_in = v, v_out = v + n
+        vector<vector<long long>> r(N, vector<long long>(N, 0));
+        for (int v = 0; v < n; v++) r[v][v + n] = (v == s || v == t) ? LLONG_MAX / 4 : limit[v];
+        for (auto& l : links) r[l[0] + n][l[1]] += l[2];
+        long long flow = 0;
+        while (true) {
+            vector<char> seen(N, 0);
+            long long pushed = dfs(r, s, t + n, LLONG_MAX, seen);
+            if (pushed <= 0) break;
+            flow += pushed;
+        }
+        return flow;
+    }
+};` }] }
     },
     mcq: { q: 'How do you put a capacity on a NODE?', options: ['Split it into v_in → v_out with that capacity; in-links go to v_in, out-links leave v_out', 'Divide each incident edge by its degree', 'Add a self-loop with that capacity', 'Cap the source edges only'], answer: 0, explain: 'All flow through v must cross the single edge v_in → v_out, so its capacity limits the node.' },
     hints: [
@@ -8770,7 +10143,7 @@ public:
     example: `<p>val = <code>[10, 7, -6, -9]</code>, req = <code>[0,2], [1,2], [1,3]</code> → <b>${H.c('g', '4')}</b>.</p><p>Why: item 0 (+10) needs item 2 (−6) → +4. Item 1 (+7) needs 2 and 3 → 7 − 6 − 9 alone is −8, and together with item 0 the total is 10 + 7 − 6 − 9 = 2 &lt; 4. Best is {0, 2}.</p>`,
     brute: {
       why: `<p>Enumerate all 2<sup>n</sup> subsets, keep the closed ones, take the best. O(2<sup>n</sup>·(n + req)). The waste: closure problems have a min-cut structure that solves them in polynomial time.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     long maxProfit(long[] val, int[][] req) {
         int n = val.length;
         long best = 0;
@@ -8785,7 +10158,47 @@ public:
         }
         return best;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def max_profit(val, req):
+    n = len(val)
+    best = 0
+    for mask in range(1 << n):
+        if any((mask >> a & 1) == 1 and (mask >> b & 1) == 0 for a, b in req):
+            continue                                  # not closed: a chosen without its prerequisite b
+        total = sum(val[i] for i in range(n) if mask >> i & 1)
+        best = max(best, total)
+    return best` }, { lang: 'js', code: String.raw`
+function maxProfit(val, req) {
+  const n = val.length;
+  let best = 0;
+  for (let mask = 0; mask < (1 << n); mask++) {
+    let closed = true;
+    for (const [a, b] of req)
+      if ((mask >> a & 1) === 1 && (mask >> b & 1) === 0) { closed = false; break; }
+    if (!closed) continue;
+    let sum = 0;
+    for (let i = 0; i < n; i++) if ((mask >> i & 1) === 1) sum += val[i];
+    best = Math.max(best, sum);
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    long long maxProfit(vector<long long>& val, vector<vector<int>>& req) {
+        int n = val.size();
+        long long best = 0;
+        for (int mask = 0; mask < (1 << n); mask++) {
+            bool closed = true;
+            for (auto& r : req)
+                if ((mask >> r[0] & 1) == 1 && (mask >> r[1] & 1) == 0) { closed = false; break; }
+            if (!closed) continue;
+            long long sum = 0;
+            for (int i = 0; i < n; i++) if (mask >> i & 1) sum += val[i];
+            best = max(best, sum);
+        }
+        return best;
+    }
+};` }] }
     },
     mcq: { q: 'In the project-selection network, what does an ∞ edge a → b enforce?', options: ['If a is on the S-side (chosen), b must be too — otherwise the cut is infinite', 'a and b are never chosen together', 'b is cheaper than a', 'Nothing; ∞ edges are ignored'], answer: 0, explain: 'A finite cut can never cut an ∞ edge, so "a chosen, b not chosen" is impossible.' },
     hints: [
@@ -9076,7 +10489,7 @@ public:
     example: `<p>n = 5, edges <code>0→1, 1→2, 0→3, 3→4, 2→4</code> → <b>${H.c('g', '2')}</b>.</p><p>Why: chains 0→1→2→4 and 3 cover everything. One worker cannot: after 0 they must pick 1 or 3, and the other is left over.</p>`,
     brute: {
       why: `<p>Each task chooses its "next task" (or none) so that no task is chosen twice; try all choices by backtracking. Exponential (∏ out-degree + 1). The waste: "each node picks at most one successor, each node is picked at most once" is exactly a bipartite matching.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     private int best = 0;
 
     int minWorkers(int n, int[][] edges) {
@@ -9097,7 +10510,71 @@ public:
                 takenAsNext[v] = false;
             }
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+def min_workers(n, edges):
+    adj = [[] for _ in range(n)]
+    for a, b in edges:
+        adj[a].append(b)
+    taken_as_next = [False] * n
+    best = 0
+
+    def go(u, links):
+        nonlocal best
+        if u == n:
+            best = max(best, links)
+            return
+        go(u + 1, links)                              # u is the end of its chain
+        for v in adj[u]:
+            if not taken_as_next[v]:
+                taken_as_next[v] = True
+                go(u + 1, links + 1)
+                taken_as_next[v] = False
+
+    go(0, 0)
+    return n - best                                   # every link merges two chains` }, { lang: 'js', code: String.raw`
+function minWorkers(n, edges) {
+  const adj = Array.from({ length: n }, () => []);
+  for (const [a, b] of edges) adj[a].push(b);
+  const takenAsNext = new Array(n).fill(false);
+  let best = 0;
+
+  function go(u, links) {
+    if (u === n) { best = Math.max(best, links); return; }
+    go(u + 1, links);                                 // u is the end of its chain
+    for (const v of adj[u])
+      if (!takenAsNext[v]) {
+        takenAsNext[v] = true;
+        go(u + 1, links + 1);
+        takenAsNext[v] = false;
+      }
+  }
+
+  go(0, 0);
+  return n - best;                                    // every link merges two chains
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+    int best = 0;
+
+    void go(vector<vector<int>>& adj, int u, vector<char>& takenAsNext, int links) {
+        if (u == (int)adj.size()) { best = max(best, links); return; }
+        go(adj, u + 1, takenAsNext, links);           // u is the end of its chain
+        for (int v : adj[u])
+            if (!takenAsNext[v]) {
+                takenAsNext[v] = 1;
+                go(adj, u + 1, takenAsNext, links + 1);
+                takenAsNext[v] = 0;
+            }
+    }
+
+public:
+    int minWorkers(int n, vector<vector<int>>& edges) {
+        vector<vector<int>> adj(n);
+        for (auto& e : edges) adj[e[0]].push_back(e[1]);
+        vector<char> takenAsNext(n, 0);
+        go(adj, 0, takenAsNext, 0);
+        return n - best;                              // every link merges two chains
+    }
+};` }] }
     },
     mcq: { q: 'n = 6 tasks and the maximum matching in the split graph is 4. How many workers?', options: ['2', '4', '6', '10'], answer: 0, explain: 'Start with 6 one-task chains; each matched edge glues two chains together: 6 − 4 = 2.' },
     hints: [
@@ -9281,7 +10758,7 @@ public:
     example: `<p>n = 5, edges <code>(0,1,4) (1,2,9) (1,3,2) (0,4,7)</code>, queries <code>(2,3) (3,4) (2,2)</code> → <b>${H.c('g', '[9, 7, 0]')}</b>.</p><p>Why: 2 → 1 → 3 uses weights 9, 2 → max 9. 3 → 1 → 0 → 4 uses 2, 4, 7 → max 7. A path from a node to itself has no edges → 0.</p>`,
     brute: {
       why: `<p>Climb from both nodes to their LCA one parent at a time, tracking the max: O(n) per query, 10<sup>10</sup> total on a chain. The waste: the same segments are re-scanned for every query.</p>`,
-      code: `class Brute {
+      code: { lang: 'java', code: `class Brute {
     long[] maxEdge(int n, int[][] edges, int[][] queries) {
         List<List<int[]>> adj = new ArrayList<>();
         for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
@@ -9307,7 +10784,89 @@ public:
         }
         return ans;
     }
-}`
+}`, alt: [{ lang: 'python', code: String.raw`
+from collections import deque
+
+def max_edge(n, edges, queries):
+    adj = [[] for _ in range(n)]
+    for a, b, w in edges:
+        adj[a].append((b, w))
+        adj[b].append((a, w))
+    par = [0] * n
+    depth = [0] * n
+    wt = [0] * n
+    seen = [False] * n
+    seen[0] = True
+    q = deque([0])
+    while q:
+        v = q.popleft()
+        for u, w in adj[v]:
+            if not seen[u]:
+                seen[u] = True
+                par[u] = v
+                depth[u] = depth[v] + 1
+                wt[u] = w
+                q.append(u)
+    ans = []
+    for a, b in queries:
+        best = 0
+        while depth[a] > depth[b]:
+            best = max(best, wt[a])
+            a = par[a]
+        while depth[b] > depth[a]:
+            best = max(best, wt[b])
+            b = par[b]
+        while a != b:
+            best = max(best, wt[a], wt[b])
+            a = par[a]
+            b = par[b]
+        ans.append(best)
+    return ans` }, { lang: 'js', code: String.raw`
+function maxEdge(n, edges, queries) {
+  const adj = Array.from({ length: n }, () => []);
+  for (const [a, b, w] of edges) { adj[a].push([b, w]); adj[b].push([a, w]); }
+  const par = new Array(n).fill(0), depth = new Array(n).fill(0), wt = new Array(n).fill(0);
+  const seen = new Array(n).fill(false), q = [0];
+  seen[0] = true;
+  for (let h = 0; h < q.length; h++) {
+    const v = q[h];
+    for (const [u, w] of adj[v]) if (!seen[u]) { seen[u] = true; par[u] = v; depth[u] = depth[v] + 1; wt[u] = w; q.push(u); }
+  }
+  return queries.map(([a, b]) => {
+    let best = 0;
+    while (depth[a] > depth[b]) { best = Math.max(best, wt[a]); a = par[a]; }
+    while (depth[b] > depth[a]) { best = Math.max(best, wt[b]); b = par[b]; }
+    while (a !== b) { best = Math.max(best, wt[a], wt[b]); a = par[a]; b = par[b]; }
+    return best;
+  });
+}` }, { lang: 'cpp', code: String.raw`
+class Brute {
+public:
+    vector<long long> maxEdge(int n, vector<vector<int>>& edges, vector<vector<int>>& queries) {
+        vector<vector<pair<int, int>>> adj(n);
+        for (auto& e : edges) { adj[e[0]].push_back({e[1], e[2]}); adj[e[1]].push_back({e[0], e[2]}); }
+        vector<int> par(n, 0), depth(n, 0);
+        vector<long long> w(n, 0);
+        vector<char> seen(n, 0);
+        queue<int> q;
+        q.push(0);
+        seen[0] = 1;
+        while (!q.empty()) {
+            int v = q.front(); q.pop();
+            for (auto [u, wt] : adj[v]) if (!seen[u]) { seen[u] = 1; par[u] = v; depth[u] = depth[v] + 1; w[u] = wt; q.push(u); }
+        }
+        vector<long long> ans(queries.size());
+        for (int i = 0; i < (int)queries.size(); i++) {
+            int a = queries[i][0], b = queries[i][1];
+            long long best = 0;
+            while (depth[a] > depth[b]) { best = max(best, w[a]); a = par[a]; }
+            while (depth[b] > depth[a]) { best = max(best, w[b]); b = par[b]; }
+            while (a != b) { best = max(best, max(w[a], w[b])); a = par[a]; b = par[b]; }
+            ans[i] = best;
+        }
+        return ans;
+    }
+};` }] }
     },
     mcq: { q: 'How is mx[k][v] (max edge over the 2^k edges above v) built?', options: ['max(mx[k−1][v], mx[k−1][up[k−1][v]])', 'mx[k−1][v] + mx[k−1][v]', 'max over all children', 'mx[k−1][up[k][v]]'], answer: 0, explain: 'The 2^k segment is the first 2^(k−1) edges plus the next 2^(k−1) edges starting at the midpoint ancestor.' },
     hints: [

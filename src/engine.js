@@ -67,13 +67,14 @@ var App = (function () {
     go: { name: 'Go', kw: kw(CK + 'chan const defer else fallthrough func go goto import interface map package range select struct type var nil true false'), c: 1, bt: 1 },
     bash: { name: 'Shell', kw: kw('if then else elif fi for while do done case esac in function return export local echo cd sudo'), hash: 1 },
     yaml: { name: 'YAML', kw: kw('true false null'), hash: 1 },
+    hcl: { name: 'HCL', kw: kw('resource data variable output locals module provider terraform backend required_providers required_version moved import removed check for_each count depends_on lifecycle dynamic content provisioner connection for in if true false null each self var local'), c: 1, hash: 1 },
     json: { name: 'JSON', kw: kw('true false null') },
     css: { name: 'CSS', kw: {}, c: 1 },
     html: { name: 'HTML', kw: {}, html: 1 },
     http: { name: 'HTTP', kw: kw('GET POST PUT PATCH DELETE HEAD OPTIONS HTTP') },
     text: { name: 'Text', kw: {}, plain: 1 }
   };
-  LANGS.jsx = LANGS.js; LANGS.tsx = LANGS.ts; LANGS.javascript = LANGS.js; LANGS.typescript = LANGS.ts; LANGS.py = LANGS.python; LANGS.sh = LANGS.bash; LANGS.c = LANGS.cpp; LANGS.xml = LANGS.html;
+  LANGS.jsx = LANGS.js; LANGS.tsx = LANGS.ts; LANGS.javascript = LANGS.js; LANGS.typescript = LANGS.ts; LANGS.py = LANGS.python; LANGS.sh = LANGS.bash; LANGS.tf = LANGS.hcl; LANGS.terraform = LANGS.hcl; LANGS.c = LANGS.cpp; LANGS.xml = LANGS.html;
   function highlight(code, lang) {
     var L = LANGS[lang] || LANGS.text;
     if (L.plain) return esc(code);
@@ -376,7 +377,16 @@ var App = (function () {
       }).join('') + '</div>';
     },
     code: function (p) {
-      var lines = dedent(p.code || '').split('\n'), hl = p.hl || {};
+      // p.alt = { python: { code, map }, js: {...}, cpp: {...} } shows the learner's language; map turns the main
+      // version's line numbers (used by hl) into that version's lines, e.g. { 3: 4 } (unlisted lines keep their number).
+      var pref = langPref(), a = pref && p.alt && p.alt[pref] && langKey(p.lang) !== pref ? p.alt[pref] : null;
+      var hl = p.hl || {};
+      if (a) {
+        var m = a.map || {}, h2 = {};
+        Object.keys(hl).forEach(function (k) { var t = m[k] !== undefined ? m[k] : +k; if (t) h2[t] = hl[k]; });
+        p = { label: p.label, code: a.code, lang: a.lang || pref }; hl = h2;
+      }
+      var lines = dedent(p.code || '').split('\n');
       return lbl(p.label) + '<div class="vcode"><pre>' + lines.map(function (l, i) {
         return '<div class="vline' + hc(hl[i + 1]) + '"><span class="ln">' + (i + 1) + '</span>' + (highlight(l, p.lang || 'text') || ' ') + '</div>';
       }).join('') + '</pre></div>';

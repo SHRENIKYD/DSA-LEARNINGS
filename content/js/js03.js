@@ -243,7 +243,8 @@ console.log(Math.max(3, 9, 4));                                  // 9` } },
       level: 'Easy', tags: ['runtime', 'classification', 'hash map'], companies: ['Google', 'Microsoft', 'Atlassian'],
       statement: `<p>You are building a lint rule that warns when code is not portable. Write <code>classify(names)</code> that takes an array of API names and returns an object <code>{ engine: [], web: [], browser: [], node: [], unknown: [] }</code>:</p>
 <ul><li><b>engine</b> — ECMAScript built-ins (exist in every runtime)</li><li><b>web</b> — web-standard host APIs found in both browsers and Node (<code>fetch</code>, <code>setTimeout</code>, <code>URL</code> …)</li><li><b>browser</b> / <b>node</b> — runtime-specific</li></ul>
-<p>Rules: exact catalogue match first; otherwise use the prefix: <code>document.</code>, <code>window.</code>, <code>navigator.</code> → browser; <code>fs.</code>, <code>path.</code>, <code>process.</code>, <code>http.</code> → node; <code>Math.</code>, <code>JSON.</code>, <code>Array.</code>, <code>Object.</code> → engine.</p>`,
+<p>Rules: exact catalogue match first, then the namespace before the first dot, otherwise unknown.</p>
+<ul><li><b>Catalogue</b> — engine: <code>Promise</code>, <code>Map</code>, <code>parseInt</code>, <code>globalThis</code>; web: <code>fetch</code>, <code>setTimeout</code>, <code>URL</code>, <code>console.log</code>, <code>structuredClone</code>, <code>AbortController</code>, <code>TextEncoder</code>; browser: <code>localStorage</code>, <code>alert</code>, <code>requestAnimationFrame</code>; node: <code>require</code>, <code>Buffer</code>, <code>__dirname</code>, <code>setImmediate</code>.</li><li><b>Namespaces</b> — <code>document</code>, <code>window</code>, <code>navigator</code> → browser; <code>fs</code>, <code>path</code>, <code>process</code>, <code>http</code>, <code>os</code> → node; <code>Math</code>, <code>JSON</code>, <code>Array</code>, <code>Object</code>, <code>Reflect</code> → engine. A bare namespace such as <code>process</code> counts too.</li></ul>`,
       constraints: `1 ≤ names.length ≤ 10<sup>4</sup>; each name ≤ 60 chars. Keep input order inside each group.`,
       example: `<p>Input: <code>['Math.max', 'fetch', 'document.title', 'fs.writeFile', 'foo']</code></p>
 <p>Output: <code>{ engine: ['Math.max'], web: ['fetch'], browser: ['document.title'], node: ['fs.writeFile'], unknown: ['foo'] }</code></p>
@@ -263,6 +264,25 @@ console.log(Math.max(3, 9, 4));                                  // 9` } },
 console.log(classifyBrute(['Math.max', 'fetch', 'document.title', 'fs.writeFile', 'foo']));` },
       mcq: { q: 'Which of these is part of the ECMAScript language itself (not a host API)?', options: ['<code>setTimeout</code>', '<code>console.log</code>', '<code>Promise</code>', '<code>fetch</code>'], answer: 2, explain: '<code>Promise</code> is defined in the ECMAScript spec. Timers, console and fetch are added by the host (browser / Node).' },
       hints: [`<p><b>Hint 1:</b> the knowledge is <i>data</i>, not logic. Put the catalogue in a Map from name → layer so a lookup is O(1).</p>`, `<p><b>Hint 2:</b> after an exact miss, look at the part before the first dot (<code>name.split('.')[0]</code>) and look that up in a second Map of prefixes.</p>`, `<p><b>Hint 3:</b> recipe — create the 5 buckets; for each name: exact map → prefix map → 'unknown'; push into the bucket. Remember <code>'process.env'</code> must hit the prefix <code>process</code>.</p>`],
+      tests: { sig: 'string[] -> string', fn: 'cl', harness: { js: `function cl(names) {
+  const r = classify(names);
+  if (names.length > 100) { const c = {}; for (const k of Object.keys(r)) c[k] = r[k].length; return c; }
+  return r;
+}` }, cases: [
+        [[["Math.max","fetch","document.title","fs.writeFile","foo"]],{"engine":["Math.max"],"web":["fetch"],"browser":["document.title"],"node":["fs.writeFile"],"unknown":["foo"]}],
+        [[["process.env","structuredClone","window.innerWidth","JSON.parse"]],{"engine":["JSON.parse"],"web":["structuredClone"],"browser":["window.innerWidth"],"node":["process.env"],"unknown":[]}],
+        [[["x"]],{"engine":[],"web":[],"browser":[],"node":[],"unknown":["x"]}],
+        [[["Promise","Map","parseInt","globalThis"]],{"engine":["Promise","Map","parseInt","globalThis"],"web":[],"browser":[],"node":[],"unknown":[]}],
+        [[["console.log","setTimeout","URL","AbortController","TextEncoder"]],{"engine":[],"web":["console.log","setTimeout","URL","AbortController","TextEncoder"],"browser":[],"node":[],"unknown":[]}],
+        [[["localStorage","alert","requestAnimationFrame"]],{"engine":[],"web":[],"browser":["localStorage","alert","requestAnimationFrame"],"node":[],"unknown":[]}],
+        [[["require","Buffer","__dirname","setImmediate"]],{"engine":[],"web":[],"browser":[],"node":["require","Buffer","__dirname","setImmediate"],"unknown":[]}],
+        [[["os.cpus","path.join","http.get","Reflect.ownKeys","Object.keys","Array.from","navigator.userAgent","document.body"]],{"engine":["Reflect.ownKeys","Object.keys","Array.from"],"web":[],"browser":["navigator.userAgent","document.body"],"node":["os.cpus","path.join","http.get"],"unknown":[]}],
+        [[["toString","constructor","__proto__","hasOwnProperty"]],{"engine":[],"web":[],"browser":[],"node":[],"unknown":["toString","constructor","__proto__","hasOwnProperty"]}],
+        [[["process","document","Math"]],{"engine":["Math"],"web":[],"browser":["document"],"node":["process"],"unknown":[]}],
+        [[["b","a","b","fetch","fetch"]],{"engine":[],"web":["fetch","fetch"],"browser":[],"node":[],"unknown":["b","a","b"]}],
+        [[["fs","fetch.x","Foo.bar"]],{"engine":[],"web":[],"browser":[],"node":["fs"],"unknown":["fetch.x","Foo.bar"]}],
+        [[{"$rep":"fs.read","n":10000}],{"engine":0,"web":0,"browser":0,"node":10000,"unknown":0}]
+      ] },
       solution: {
         approach: `<p>Two hash maps: exact names and namespace prefixes. One pass over the input, O(1) average per name. Keeping knowledge in data makes the rule easy to extend (add <code>Deno.</code> or <code>Bun.</code> later).</p>`,
         code: { lang: 'js', run: true, code: R`var EXACT = new Map([
@@ -483,6 +503,30 @@ console.log(new TextDecoder().decode(bytes));        // hi` } },
 console.log(detectBrute({ importScripts: function () {} }));   // 'node' -- wrong, it is a worker` },
       mcq: { q: 'Why must the Bun check come before the Node check?', options: ['Bun is faster', 'Bun also exposes <code>process.versions.node</code> for compatibility', 'Bun has no <code>process</code>', 'Order does not matter'], answer: 1, explain: 'Bun (and Deno for npm packages) imitate Node globals. The most specific marker (<code>Bun</code>, <code>Deno</code>) must be tested first.' },
       hints: [`<p><b>Hint 1:</b> check the <b>most specific</b> marker first. Something that imitates Node must be ruled out before you accept "Node".</p>`, `<p><b>Hint 2:</b> read nested properties safely: <code>g.process &amp;&amp; g.process.versions &amp;&amp; g.process.versions.node</code> (or optional chaining <code>?.</code>).</p>`, `<p><b>Hint 3:</b> recipe — Deno → Bun → Node (versions.node) → browser (window AND document) → worker (importScripts function, no document) → unknown. Node before browser handles jsdom.</p>`],
+      tests: { sig: 'string -> string', fn: 'dr', harness: { js: `function dr(json) {
+  const fix = (v) => { if (v === '__fn__') return function () {}; if (Array.isArray(v)) return v.map(fix); if (v && typeof v === 'object') { const r = {}; for (const k of Object.keys(v)) r[k] = fix(v[k]); return r; } return v; };
+  return detectRuntime(fix(JSON.parse(json)));
+}` }, cases: [
+        [["{\"Deno\":{},\"process\":{\"versions\":{\"node\":\"20\"}}}"],"deno"],
+        [["{\"Bun\":{},\"process\":{\"versions\":{\"node\":\"22.0.0\"}}}"],"bun"],
+        [["{\"process\":{\"versions\":{\"node\":\"22.11.0\"}},\"window\":{},\"document\":{}}"],"node"],
+        [["{\"window\":{},\"document\":{}}"],"browser"],
+        [["{\"importScripts\":\"__fn__\"}"],"webworker"],
+        [["{\"process\":{}}"],"unknown"],
+        [["{}"],"unknown"],
+        [["{\"Deno\":{},\"Bun\":{}}"],"deno"],
+        [["{\"Bun\":{}}"],"bun"],
+        [["{\"window\":{}}"],"unknown"],
+        [["{\"document\":{}}"],"unknown"],
+        [["{\"importScripts\":\"__fn__\",\"document\":{}}"],"unknown"],
+        [["{\"importScripts\":5}"],"unknown"],
+        [["{\"process\":{\"versions\":{\"node\":18}}}"],"unknown"],
+        [["{\"process\":null}"],"unknown"],
+        [["{\"process\":{\"versions\":null}}"],"unknown"],
+        [["null"],"unknown"],
+        [["\"text\""],"unknown"],
+        [["{\"process\":{\"versions\":{\"node\":\"22.0.0\"}}}"],"node"]
+      ] },
       solution: {
         approach: `<p>An ordered list of rules, from most specific to least specific. Optional chaining makes every probe safe, so the function never throws on odd globals (edge runtimes, sandboxes).</p>`,
         code: { lang: 'js', run: true, code: R`function detectRuntime(g) {
@@ -679,6 +723,18 @@ console.log(copy, typeof globalThis.structuredClone);` } }
 try { getGlobalBrute(); } catch (e) { console.log('brute failed:', e.message); }` },
       mcq: { q: 'Which name is the best <i>first</i> choice in 2026 code?', options: ['<code>window</code>', '<code>global</code>', '<code>globalThis</code>', '<code>this</code>'], answer: 2, explain: '<code>globalThis</code> is standard (ES2020) and works in every runtime and every scope. Use the others only as fallbacks for very old engines.' },
       hints: [`<p><b>Hint 1:</b> this is a <b>priority list</b>: walk an ordered array of candidate names and return the first that exists.</p>`, `<p><b>Hint 2:</b> in real code you cannot read <code>env.window</code> — you must use <code>typeof window !== 'undefined'</code> because reading an undeclared name throws, but <code>typeof</code> never does.</p>`, `<p><b>Hint 3:</b> order: globalThis → self → window → global → throw. <code>self</code> before <code>window</code> because it also covers Web Workers.</p>`],
+      tests: { sig: 'string -> string', fn: 'gg', harness: { js: `function gg(json) { try { return getGlobal(JSON.parse(json)); } catch (e) { return 'throws:' + e.message; } }` }, cases: [
+        [["{\"global\":{\"tag\":\"G\"}}"],{"tag":"G"}],
+        [["{\"self\":{\"tag\":\"S\"},\"window\":{\"tag\":\"S\"}}"],{"tag":"S"}],
+        [["{}"],"throws:Unable to locate global object"],
+        [["{\"globalThis\":{\"tag\":\"T\"},\"self\":{\"tag\":\"S\"},\"window\":{\"tag\":\"W\"},\"global\":{\"tag\":\"G\"}}"],{"tag":"T"}],
+        [["{\"self\":{\"tag\":\"S\"},\"window\":{\"tag\":\"W\"},\"global\":{\"tag\":\"G\"}}"],{"tag":"S"}],
+        [["{\"window\":{\"tag\":\"W\"},\"global\":{\"tag\":\"G\"}}"],{"tag":"W"}],
+        [["{\"window\":{\"tag\":\"W\"}}"],{"tag":"W"}],
+        [["{\"global\":{\"tag\":\"G\"},\"self\":{\"tag\":\"S\"}}"],{"tag":"S"}],
+        [["{\"other\":{\"tag\":\"X\"}}"],"throws:Unable to locate global object"],
+        [["{\"globalThis\":{}}"],{}]
+      ] },
       solution: {
         approach: `<p>Ordered fallback list. The testable version reads properties of <code>env</code>; the production version uses <code>typeof</code> guards so a missing name never throws.</p>`,
         code: { lang: 'js', run: true, code: R`// Testable version: env says which names exist.
@@ -1002,6 +1058,30 @@ console.log(load('b'));     // 'evaluating config' was printed only once` } },
 console.log(evalOrderBrute({ main: ['a', 'b'], a: ['c'], b: ['c', 'a'], c: [] }, 'main'));` },
       mcq: { q: 'Module <code>main</code> imports <code>x</code> on line 5 and logs on line 1. What logs first?', options: ['main (line 1 runs first)', 'x (imports are hoisted; dependencies evaluate first)', 'It depends on network speed', 'Neither — SyntaxError'], answer: 1, explain: 'Static <code>import</code> declarations are hoisted. The whole graph is linked first, then evaluated depth-first, so <code>x</code> runs before any line of <code>main</code>.' },
       hints: [`<p><b>Hint 1:</b> "dependencies first, me last" is exactly <b>post-order depth-first search</b>.</p>`, `<p><b>Hint 2:</b> keep a state per module: unvisited / visiting / done. "done" means skip (run once). "visiting" means a cycle — skip too.</p>`, `<p><b>Hint 3:</b> recipe — visit(m): mark visiting; for each import d in order: if unvisited, visit(d); then mark done and push m. For huge chains use an explicit stack of [module, nextImportIndex] pairs.</p>`],
+      tests: { sig: 'string string -> string', fn: 'eo', harness: { js: `function eo(spec, entry) {
+  let graph = spec;
+  if (spec.startsWith('CHAIN:')) { const n = +spec.slice(6); graph = {}; for (let i = 0; i < n; i++) graph['m' + i] = i + 1 < n ? ['m' + (i + 1)] : []; }
+  else if (spec.startsWith('FAN:')) { const n = +spec.slice(4); graph = { main: [] }; for (let i = 0; i < n; i++) { graph.main.push('m' + i); graph['m' + i] = []; } }
+  else if (spec.startsWith('RING:')) { const n = +spec.slice(5); graph = {}; for (let i = 0; i < n; i++) graph['m' + i] = ['m' + ((i + 1) % n)]; }
+  else graph = JSON.parse(spec);
+  const r = evaluationOrder(graph, entry);
+  return r.length > 100 ? { len: r.length, first: r[0], last: r[r.length - 1], mid: r[Math.floor(r.length / 2)] } : r;
+}` }, cases: [
+        [["{\"main\":[\"a\",\"b\"],\"a\":[\"c\"],\"b\":[\"c\",\"a\"],\"c\":[]}","main"],["c","a","b","main"]],
+        [["{\"main\":[\"a\"],\"a\":[\"b\"],\"b\":[\"a\"]}","main"],["b","a","main"]],
+        [["{\"solo\":[]}","solo"],["solo"]],
+        [["{}","ghost"],["ghost"]],
+        [["{\"top\":[\"l\",\"r\"],\"l\":[\"bottom\"],\"r\":[\"bottom\"],\"bottom\":[]}","top"],["bottom","l","r","top"]],
+        [["{\"m\":[\"b\",\"a\"],\"a\":[],\"b\":[]}","m"],["b","a","m"]],
+        [["{\"a\":[\"a\"]}","a"],["a"]],
+        [["{\"m\":[\"b\",\"b\",\"b\"],\"b\":[]}","m"],["b","m"]],
+        [["{\"main\":[\"x\"]}","main"],["x","main"]],
+        [["{\"a\":[\"b\"],\"b\":[\"c\"],\"c\":[\"a\"]}","b"],["a","c","b"]],
+        [["{\"a\":[\"b\",\"c\"],\"b\":[\"d\"],\"c\":[\"d\",\"a\"],\"d\":[\"b\"]}","a"],["d","b","c","a"]],
+        [["CHAIN:10000","m0"],{"len":10000,"first":"m9999","last":"m0","mid":"m4999"}],
+        [["FAN:10000","main"],{"len":10001,"first":"m0","last":"main","mid":"m5000"}],
+        [["RING:10000","m0"],{"len":10000,"first":"m9999","last":"m0","mid":"m4999"}]
+      ] },
       solution: {
         approach: `<p>Iterative post-order DFS with an explicit stack of frames <code>[module, indexOfNextImport]</code>, so very deep import chains cannot overflow the call stack. A module is appended to the output when all of its imports have been processed.</p>`,
         code: { lang: 'js', run: true, code: R`function evaluationOrder(graph, entry) {
@@ -1267,6 +1347,33 @@ console.log(satisfiesBrute('1.10.0', '^1.9.0'));   // false -- WRONG ('1.10.0' <
 console.log(satisfiesBrute('0.4.0', '^0.3.1'));    // true  -- WRONG (0.x minor bump is breaking)` },
       mcq: { q: 'What upper bound does <code>^0.2.5</code> have?', options: ['&lt;1.0.0', '&lt;0.3.0', '&lt;0.2.6', 'none'], answer: 1, explain: 'Caret allows changes that do not modify the left-most non-zero part. Here that is the minor 2, so the bound is &lt;0.3.0.' },
       hints: [`<p><b>Hint 1:</b> turn every range into an interval <code>[lower, upper)</code>; then <code>satisfies</code> is just two comparisons.</p>`, `<p><b>Hint 2:</b> compare versions as arrays of numbers, part by part: the first difference decides.</p>`, `<p><b>Hint 3:</b> caret upper bound = bump the <b>left-most non-zero</b> part (major if &gt;0, else minor if &gt;0, else patch). Tilde = bump minor. Exact = lower equals upper (inclusive), or bump patch.</p>`],
+      tests: { sig: 'string string -> bool', fn: 'satisfies', cases: [
+        [["1.9.0","^1.4.2"],true],
+        [["2.0.0","^1.4.2"],false],
+        [["1.10.0","^1.9.0"],true],
+        [["0.4.0","^0.3.1"],false],
+        [["0.3.9","^0.3.1"],true],
+        [["0.3.0","^0.3.1"],false],
+        [["0.0.4","^0.0.3"],false],
+        [["0.0.3","^0.0.3"],true],
+        [["1.4.9","~1.4.2"],true],
+        [["1.5.0","~1.4.2"],false],
+        [["1.4.1","~1.4.2"],false],
+        [["1.4.2","1.4.2"],true],
+        [["1.4.3","1.4.2"],false],
+        [["1.4.1","1.4.2"],false],
+        [["0.0.0","^0.0.0"],true],
+        [["0.0.1","^0.0.0"],false],
+        [["0.2.3","^0.2.3"],true],
+        [["1.0.0","^1.0.0"],true],
+        [["0.9.9","^1.0.0"],false],
+        [["1000000.0.0","^999999.9.9"],false],
+        [["1000000.1.1","^1000000.0.0"],true],
+        [["999999.9.9","^999999.9.9"],true],
+        [["1.2.10","~1.2.3"],true],
+        [["0.1.0","~0.0.5"],false],
+        [["3.0.0","^2.9.9"],false]
+      ] },
       solution: {
         approach: `<p>Parse to number triples, convert the range to a half-open interval, compare lexicographically on numbers.</p>`,
         code: { lang: 'js', run: true, code: R`function parse(v) {
@@ -1464,6 +1571,49 @@ try { a(); } catch (e) {
 factLogged(2);` },
       mcq: { q: 'Why must the depth counter be decreased in a <code>finally</code> block?', options: ['For speed', 'So the depth is restored even when the function throws', 'Because <code>return</code> skips code', 'It does not matter'], answer: 1, explain: 'If <code>fn</code> throws and the decrement is after the call, the depth stays too high forever and every later log is mis-indented. <code>finally</code> runs on both return and throw.' },
       hints: [`<p><b>Hint 1:</b> a closure variable <code>depth</code> shared by all calls of the wrapper acts as your call-stack height.</p>`, `<p><b>Hint 2:</b> wrapper = log entry → <code>depth++</code> → <code>fn.apply(this, args)</code> → log exit → return; use try / catch / finally.</p>`, `<p><b>Hint 3:</b> for recursion, the recursive call must use the <b>wrapped</b> name: define <code>var fact = trace(function (n) { … fact(n - 1) … }, 'fact')</code>.</p>`],
+      tests: { sig: 'string -> string', fn: 'tr', harness: { js: `function tr(kind) {
+  const log = [], L = (s) => log.push(s);
+  if (kind === 'fact2') { var fact = trace(function (n) { return n === 0 ? 1 : n * fact(n - 1); }, 'fact', L); fact(2); return log; }
+  if (kind === 'throw') {
+    const risky = trace(function (x) { if (x < 0) throw new Error('negative'); return Math.sqrt(x); }, 'risky', L);
+    let caught = '';
+    try { risky(-1); } catch (e) { caught = e.message; }
+    risky(9); log.push('caught ' + caught); return log;
+  }
+  if (kind === 'this') { const obj = { k: 5, get: trace(function (a) { return this.k + a; }, 'get', L) }; log.push(String(obj.get(1))); return log; }
+  if (kind === 'args') { trace(function (a, b) { return a + b; }, 'add', L)(1, 'x'); return log; }
+  if (kind === 'nested-catch') {
+    var h = trace(function (n) { if (n === 0) throw new Error('bottom'); try { return h(n - 1); } catch (e) { return 'caught at ' + n; } }, 'h', L);
+    h(2); return log;
+  }
+  if (kind === 'undefined') { trace(function () {}, 'noop', L)(); return log; }
+  if (kind === 'rethrow') {
+    const w = trace(function () { throw new Error('bad'); }, 'w', L); let threw = false;
+    try { w(); } catch (e) { threw = e.message === 'bad'; }
+    log.push('rethrown ' + threw); return log;
+  }
+  if (kind === 'after-throw-depth') {
+    const t = trace(function (x) { if (x) throw new Error('e'); return 1; }, 't', L);
+    try { t(true); } catch (e) {} try { t(true); } catch (e) {} t(false); return log;
+  }
+  if (kind === 'object-arg') { trace(function (o) { return o.a; }, 'pick', L)({ a: [1, 2] }); return log; }
+  if (kind === 'deep') {
+    var down = trace(function (n) { return n === 0 ? 0 : 1 + down(n - 1); }, 'down', L); down(999);
+    let max = 0; for (const s of log) max = Math.max(max, s.length - s.trimStart().length);
+    return { len: log.length, first: log[0], last: log[log.length - 1], maxIndent: max };
+  }
+}` }, cases: [
+        [["fact2"],["> fact(2)","  > fact(1)","    > fact(0)","    < fact = 1","  < fact = 1","< fact = 2"]],
+        [["throw"],["> risky(-1)","! risky threw negative","> risky(9)","< risky = 3","caught negative"]],
+        [["this"],["> get(1)","< get = 6","6"]],
+        [["args"],["> add(1, \"x\")","< add = \"1x\""]],
+        [["nested-catch"],["> h(2)","  > h(1)","    > h(0)","    ! h threw bottom","  < h = \"caught at 1\"","< h = \"caught at 1\""]],
+        [["undefined"],["> noop()","< noop = undefined"]],
+        [["rethrow"],["> w()","! w threw bad","rethrown true"]],
+        [["after-throw-depth"],["> t(true)","! t threw e","> t(true)","! t threw e","> t(false)","< t = 1"]],
+        [["object-arg"],["> pick({\"a\":[1,2]})","< pick = [1,2]"]],
+        [["deep"],{"len":2000,"first":"> down(999)","last":"< down = 999","maxIndent":1998}]
+      ] },
       solution: {
         approach: `<p>Higher-order function + closure counter. <code>try/finally</code> guarantees the depth is restored on throw; the catch logs and re-throws so behaviour is unchanged (a good debugging tool must not alter the program).</p>`,
         code: { lang: 'js', run: true, code: R`function trace(fn, name, log) {
@@ -1524,6 +1674,30 @@ console.log('after error, depth is back to 0:', risky(9));` },
 console.log(whichRuntimeBrute('const offset = windowSize * 2'));   // 'mixed' -- totally wrong` },
     mcq: { q: '<code>const id = crypto.randomUUID(); setTimeout(save, 100);</code> — which runtime?', options: ['Browser only', 'Node only', 'Portable (both)', 'Neither'], answer: 2, explain: 'Both <code>crypto.randomUUID</code> (Web Crypto) and <code>setTimeout</code> are provided by browsers and modern Node.' },
     hints: [`<p><b>Hint 1:</b> keep two lists of regular expressions, one per runtime, and test each list with <code>some()</code>.</p>`, `<p><b>Hint 2:</b> use <code>\\b</code> (word boundary) so <code>\\bwindow\\.</code> does not match <code>myWindow.</code>; escape dots and parentheses.</p>`, `<p><b>Hint 3:</b> recipe — b = browserRegexes.some(test); n = nodeRegexes.some(test); return mixed / browser / node / portable in that order.</p>`],
+    tests: { sig: 'string -> string', fn: 'whichRuntime', cases: [
+      [["const x = await fetch(url)"],"portable"],
+      [["document.title = process.env.NAME"],"mixed"],
+      [["import fs from 'node:fs'"],"node"],
+      [["localStorage.setItem(\"k\", \"v\")"],"browser"],
+      [["const offset = windowSize * 2"],"portable"],
+      [["alert('x')"],"browser"],
+      [["navigator.userAgent"],"browser"],
+      [["require('fs')"],"node"],
+      [["console.log(__dirname)"],"node"],
+      [["Buffer.from('a')"],"node"],
+      [[""],"portable"],
+      [["window.alert(1); require('x')"],"mixed"],
+      [["mydocument.title"],"portable"],
+      [["process"],"portable"],
+      [["offs.x"],"portable"],
+      [["let fs = 1; fs.x"],"node"],
+      [["import x from \"node:path\""],"node"],
+      [["Document.title"],"portable"],
+      [["alert (1)"],"portable"],
+      [[{"$concat":[{"$rep":"x","n":9990}," alert(1)"]}],"browser"],
+      [[{"$rep":"a ","n":5000}],"portable"],
+      [[{"$concat":[{"$rep":" ","n":4000},"window.x",{"$rep":" ","n":4000},"require('y')"]}],"mixed"]
+    ] },
     solution: {
       approach: `<p>Two lists of anchored regexes with word boundaries, two boolean flags, a four-way decision. Real tools (ESLint's environment globals, bundler "platform" checks) do the same with an AST instead of regexes, which also skips comments and strings.</p>`,
       code: { lang: 'js', run: true, code: R`var BROWSER = [/\bdocument\./, /\bwindow\./, /\blocalStorage\b/, /\balert\(/, /\bnavigator\./];
@@ -1574,6 +1748,9 @@ console.log(typeof document === 'undefined' ? 'server' : 'browser');</pre>
 }` },
     mcq: { q: 'What does <code>typeof setTimeout(fn, 0)</code> print in Node?', options: ['number', 'object', 'function', 'undefined'], answer: 1, explain: 'Node returns a <code>Timeout</code> object (with <code>ref</code>, <code>unref</code>, <code>refresh</code>). Browsers return a numeric id.' },
     hints: [`<p><b>Hint 1:</b> <code>typeof</code> of an undeclared name is <code>'undefined'</code> and never throws — that's why it's used for runtime probing.</p>`, `<p><b>Hint 2:</b> in Node, <code>global</code> and <code>globalThis</code> are the same object; timers return objects.</p>`, `<p><b>Hint 3:</b> fetch has been a global function since Node 18. <code>document</code> does not exist, so the ternary picks 'server'.</p>`],
+    tests: { io: true, cases: [
+      {"stdin":"","stdout":"undefined\nobject\ntrue\nobject\nfunction\nserver"}
+    ] },
     solution: {
       approach: `<p>Expected Node output: <b>undefined, object, true, object, function, server</b>. In a browser: <b>object, object, false</b> (no <code>global</code>, so typeof is 'undefined' vs 'object'), <b>number</b>, <b>function</b>, <b>browser</b>.</p>`,
       code: { lang: 'js', run: true, code: R`console.log(typeof window);                              // Node: undefined   | browser: object
@@ -1607,6 +1784,28 @@ console.log(typeof document === 'undefined' ? 'server' : 'browser');   // Node: 
 console.log(scriptsToRunBrute({ scripts: { pretest: 'eslint .', test: 'vitest run' } }, 'test'));` },
     mcq: { q: 'Which command runs your <code>"start"</code> script?', options: ['<code>npm start</code> (and <code>npm run start</code>)', 'Only <code>npm run start</code>', '<code>npx start</code>', '<code>node start</code>'], answer: 0, explain: '<code>start</code>, <code>test</code>, <code>stop</code> and <code>restart</code> have shortcuts. Others need <code>npm run</code>.' },
     hints: [`<p><b>Hint 1:</b> default <code>pkg.scripts</code> to <code>{}</code> so a package.json without scripts does not crash.</p>`, `<p><b>Hint 2:</b> check the main script first and throw if missing; then build the list ['pre' + name, name, 'post' + name] and keep only defined ones.</p>`, `<p><b>Hint 3:</b> use <code>Object.prototype.hasOwnProperty.call</code> so a script called <code>constructor</code> does not hit the prototype.</p>`],
+    tests: { sig: 'string string -> string', fn: 'sr', harness: { js: `function sr(pkgJson, name) {
+  let pkg;
+  if (pkgJson === 'BIG') { const scripts = {}; for (let i = 0; i < 100000; i++) scripts['s_' + i] = 'run ' + i; scripts.pres_5000 = 'pre'; pkg = { scripts }; }
+  else pkg = JSON.parse(pkgJson);
+  try { return scriptsToRun(pkg, name); } catch (e) { return 'throws:' + e.message; }
+}` }, cases: [
+      [["{\"scripts\":{\"pretest\":\"eslint .\",\"test\":\"vitest run\",\"posttest\":\"echo done\",\"build\":\"vite build\"}}","test"],[["pretest","eslint ."],["test","vitest run"],["posttest","echo done"]]],
+      [["{\"scripts\":{\"pretest\":\"eslint .\",\"test\":\"vitest run\",\"posttest\":\"echo done\",\"build\":\"vite build\"}}","build"],[["build","vite build"]]],
+      [["{}","deploy"],"throws:Missing script: \"deploy\""],
+      [["{\"scripts\":{\"prebuild\":\"a\",\"build\":\"b\"}}","build"],[["prebuild","a"],["build","b"]]],
+      [["{\"scripts\":{\"build\":\"b\",\"postbuild\":\"c\"}}","build"],[["build","b"],["postbuild","c"]]],
+      [["{\"scripts\":{\"pretest\":\"x\"}}","test"],"throws:Missing script: \"test\""],
+      [["{\"scripts\":{\"prepretest\":\"p\",\"pretest\":\"q\",\"test\":\"t\"}}","test"],[["pretest","q"],["test","t"]]],
+      [["null","start"],"throws:Missing script: \"start\""],
+      [["{\"scripts\":{}}","start"],"throws:Missing script: \"start\""],
+      [["{\"scripts\":{\"test\":\"\"}}","test"],[["test",""]]],
+      [["{\"scripts\":{\"a\":\"1\"}}","constructor"],"throws:Missing script: \"constructor\""],
+      [["{\"scripts\":{\"a\":\"1\"}}","toString"],"throws:Missing script: \"toString\""],
+      [["{\"scripts\":{\"prea\":\"1\",\"a\":\"2\",\"posta\":\"3\",\"preb\":\"4\",\"b\":\"5\"}}","b"],[["preb","4"],["b","5"]]],
+      [["BIG","s_5000"],[["pres_5000","pre"],["s_5000","run 5000"]]],
+      [["BIG","s_99999"],[["s_99999","run 99999"]]]
+    ] },
     solution: {
       approach: `<p>Validate the target, then filter the three candidate names in order. Mirrors npm's behaviour (npm also sets <code>npm_lifecycle_event</code> to the current name for each step).</p>`,
       code: { lang: 'js', run: true, code: R`function scriptsToRun(pkg, name) {
@@ -1647,6 +1846,25 @@ try { scriptsToRun({}, 'deploy'); } catch (e) { console.log(e.message); }` },
 console.log(toTableBrute([{ item: 'tea', qty: 2 }, { item: 'cake' }]));` },
     mcq: { q: 'In which order should the columns appear?', options: ['Alphabetical', 'First-seen order across rows', 'Random', 'By value length'], answer: 1, explain: 'console.table shows columns in the order keys are first encountered, which matches how people read the data.' },
     hints: [`<p><b>Hint 1:</b> two passes: first collect the header (union of keys, in first-seen order) and measure the widest cell of each column; second pass prints.</p>`, `<p><b>Hint 2:</b> build a 2-D array of strings (header row + data rows) first, then <code>padEnd</code> each cell to its column width.</p>`, `<p><b>Hint 3:</b> treat <code>undefined</code> as <code>''</code>; trim the trailing spaces of each line for tidy output.</p>`],
+    tests: { sig: 'string -> string', fn: 'tt', harness: { js: `function tt(json) {
+  if (json === 'BIG') {
+    const rows = []; for (let i = 0; i < 1000; i++) { const r = {}; for (let j = 0; j < 20; j++) r['k' + j] = i * j; rows.push(r); }
+    const lines = toTable(rows).split('\\n'); return { lines: lines.length, widths: lines.map((l) => l.length).filter((v, i, a) => i === 0 || i === 1 || i === a.length - 1) };
+  }
+  return toTable(JSON.parse(json));
+}` }, cases: [
+      [["[{\"item\":\"tea\",\"qty\":2},{\"item\":\"cake\"}]"],"(index) | item | qty\n------- | ---- | ---\n0       | tea  | 2\n1       | cake |"],
+      [["[{\"item\":\"tea\",\"qty\":2},{\"item\":\"cake\"},{\"item\":\"coffee\",\"qty\":10,\"hot\":true}]"],"(index) | item   | qty | hot\n------- | ------ | --- | ----\n0       | tea    | 2   |\n1       | cake   |     |\n2       | coffee | 10  | true"],
+      [["[]"],"(index)\n-------"],
+      [["[{\"a\":1}]"],"(index) | a\n------- | -\n0       | 1"],
+      [["[{\"b\":1},{\"a\":2}]"],"(index) | b | a\n------- | - | -\n0       | 1 |\n1       |   | 2"],
+      [["[{\"x\":\"a long value here\"}]"],"(index) | x\n------- | -----------------\n0       | a long value here"],
+      [["[{\"a\":0,\"b\":false,\"c\":\"\"}]"],"(index) | a | b     | c\n------- | - | ----- | -\n0       | 0 | false |"],
+      [["[{\"a\":null}]"],"(index) | a\n------- | ----\n0       | null"],
+      [["[{\"n\":0},{\"n\":1},{\"n\":2},{\"n\":3},{\"n\":4},{\"n\":5},{\"n\":6},{\"n\":7},{\"n\":8},{\"n\":9},{\"n\":10},{\"n\":11}]"],"(index) | n\n------- | --\n0       | 0\n1       | 1\n2       | 2\n3       | 3\n4       | 4\n5       | 5\n6       | 6\n7       | 7\n8       | 8\n9       | 9\n10      | 10\n11      | 11"],
+      [["[{},{}]"],"(index)\n-------\n0\n1"],
+      [["BIG"],{"lines":1002,"widths":[151,153,153]}]
+    ] },
     solution: {
       approach: `<p>Collect columns, convert everything to a grid of strings, compute widths with a max per column, and join. Two linear passes.</p>`,
       code: { lang: 'js', run: true, code: R`function toTable(rows) {
@@ -1699,6 +1917,30 @@ console.log(prodBrute({ dependencies: { express: '^5' }, devDependencies: { vite
   { express: ['debug', 'qs'], vitest: ['debug', 'chai'], debug: ['ms'], qs: [], chai: [], ms: [] }));` },
     mcq: { q: '<code>debug</code> is required by both <code>express</code> (prod) and <code>vitest</code> (dev). With <code>--omit=dev</code>…', options: ['debug is removed', 'debug is installed', 'npm errors', 'it depends on the order in package.json'], answer: 1, explain: 'Reachability from production roots decides. Anything reachable from a prod dependency must be present at runtime.' },
     hints: [`<p><b>Hint 1:</b> this is <b>graph reachability</b>: start a BFS/DFS from each production dependency.</p>`, `<p><b>Hint 2:</b> a <code>Set</code> of visited packages handles cycles and shared packages.</p>`, `<p><b>Hint 3:</b> devOnly = (reachable from all roots) minus prod. Do a second BFS from dev roots, then subtract.</p>`],
+    tests: { sig: 'string string -> string', fn: 'pi', harness: { js: `function pi(pkgJson, lockJson) {
+  let pkg, lock;
+  if (pkgJson === 'FAN') {
+    pkg = { dependencies: { root: '1' }, devDependencies: { devroot: '1' } };
+    lock = { root: [], devroot: [] };
+    for (let i = 0; i < 100000; i++) lock.root.push('p' + i);
+    for (let i = 0; i < 50000; i++) lock.devroot.push('p' + (i * 2 + 1)), lock.devroot.push('d' + i);
+  } else { pkg = JSON.parse(pkgJson); lock = JSON.parse(lockJson); }
+  const r = productionInstall(pkg, lock);
+  if (r.prod.length > 1000) return { prod: [r.prod.length, r.prod[0], r.prod[r.prod.length - 1]], devOnly: [r.devOnly.length, r.devOnly[0], r.devOnly[r.devOnly.length - 1]] };
+  return r;
+}` }, cases: [
+      [["{\"dependencies\":{\"express\":\"^5.0.0\"},\"devDependencies\":{\"vitest\":\"^3.0.0\"}}","{\"express\":[\"debug\",\"qs\"],\"vitest\":[\"debug\",\"chai\"],\"debug\":[\"ms\"],\"qs\":[],\"chai\":[],\"ms\":[\"debug\"]}"],{"prod":["debug","express","ms","qs"],"devOnly":["chai","vitest"]}],
+      [["{}","{}"],{"prod":[],"devOnly":[]}],
+      [["{\"dependencies\":{\"a\":\"1\"}}","{\"a\":[]}"],{"prod":["a"],"devOnly":[]}],
+      [["{\"devDependencies\":{\"a\":\"1\"}}","{\"a\":[\"b\"]}"],{"prod":[],"devOnly":["a","b"]}],
+      [["{\"dependencies\":{\"a\":\"1\"},\"devDependencies\":{\"a\":\"1\"}}","{\"a\":[\"b\"]}"],{"prod":["a","b"],"devOnly":[]}],
+      [["{\"dependencies\":{\"a\":\"1\"}}","{\"a\":[\"b\"],\"b\":[\"c\"],\"c\":[\"a\"]}"],{"prod":["a","b","c"],"devOnly":[]}],
+      [["{\"dependencies\":{\"a\":\"1\"}}","{}"],{"prod":["a"],"devOnly":[]}],
+      [["{\"dependencies\":{\"b\":\"1\",\"A\":\"1\"}}","{\"b\":[],\"A\":[]}"],{"prod":["A","b"],"devOnly":[]}],
+      [["{\"dependencies\":{\"p\":\"1\"},\"devDependencies\":{\"d\":\"1\"}}","{\"p\":[\"shared\"],\"d\":[\"shared\",\"x\"],\"x\":[\"y\"]}"],{"prod":["p","shared"],"devOnly":["d","x","y"]}],
+      [["{\"dependencies\":{\"a\":\"1\"},\"devDependencies\":{\"b\":\"1\"}}","{\"a\":[\"a\"],\"b\":[\"b\"]}"],{"prod":["a"],"devOnly":["b"]}],
+      [["FAN",""],{"prod":[100001,"p0","root"],"devOnly":[50001,"d0","devroot"]}]
+    ] },
     solution: {
       approach: `<p>Multi-source BFS from production roots → prod set. Second BFS from dev roots → dev set; devOnly = dev − prod. Both sorted for stable output.</p>`,
       code: { lang: 'js', run: true, code: R`function reach(roots, lock) {
@@ -1749,6 +1991,17 @@ console.log(productionInstall(
 console.log(lookupBrute('/app/src/index.js'));` },
     mcq: { q: 'Why can a file deep inside <code>/app/src/a/b/</code> import a package installed at <code>/app/node_modules</code>?', options: ['npm copies it into every folder', 'Node walks up parent folders looking for node_modules', 'Because of PATH', 'Symlinks'], answer: 1, explain: 'The resolution algorithm tries node_modules in the current folder and each ancestor until it finds the package.' },
     hints: [`<p><b>Hint 1:</b> split the directory into segments; for i from the deepest down to 0, the prefix <code>segments[0..i)</code> is a candidate folder.</p>`, `<p><b>Hint 2:</b> if the last segment of the candidate folder is <code>node_modules</code>, skip it.</p>`, `<p><b>Hint 3:</b> the root is special: join produces <code>''</code>, so emit <code>/node_modules</code>.</p>`],
+    tests: { sig: 'string -> string[]', fn: 'lookupPaths', cases: [
+      [["/app/node_modules/express/lib/router.js"],["/app/node_modules/express/lib/node_modules","/app/node_modules/express/node_modules","/app/node_modules","/node_modules"]],
+      [["/home/me/app/src/index.js"],["/home/me/app/src/node_modules","/home/me/app/node_modules","/home/me/node_modules","/home/node_modules","/node_modules"]],
+      [["/index.js"],["/node_modules"]],
+      [["/a/index.js"],["/a/node_modules","/node_modules"]],
+      [["/node_modules/x/index.js"],["/node_modules/x/node_modules","/node_modules"]],
+      [["/a/node_modules/node_modules/b.js"],["/a/node_modules","/node_modules"]],
+      [["/a/node_modules/b/node_modules/c/d.js"],["/a/node_modules/b/node_modules/c/node_modules","/a/node_modules/b/node_modules","/a/node_modules","/node_modules"]],
+      [["/x/y/z.js"],["/x/y/node_modules","/x/node_modules","/node_modules"]],
+      [["/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/d87/d88/d89/d90/d91/d92/d93/d94/d95/d96/d97/d98/d99/f.js"],["/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/d87/d88/d89/d90/d91/d92/d93/d94/d95/d96/d97/d98/d99/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/d87/d88/d89/d90/d91/d92/d93/d94/d95/d96/d97/d98/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/d87/d88/d89/d90/d91/d92/d93/d94/d95/d96/d97/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/d87/d88/d89/d90/d91/d92/d93/d94/d95/d96/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/d87/d88/d89/d90/d91/d92/d93/d94/d95/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/d87/d88/d89/d90/d91/d92/d93/d94/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/d87/d88/d89/d90/d91/d92/d93/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/d87/d88/d89/d90/d91/d92/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/d87/d88/d89/d90/d91/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/d87/d88/d89/d90/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/d87/d88/d89/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/d87/d88/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/d87/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/d86/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/d85/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/d84/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/d83/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/d82/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/d81/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/d80/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/d79/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/d78/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/d77/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/d76/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/d75/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/d74/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/d73/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/d72/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/d71/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/d70/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/d69/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/d68/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/d67/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/d66/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/d65/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/d64/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/d63/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/d62/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/d61/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/d60/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/d59/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/d58/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/d57/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/d56/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/d55/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/d54/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/d53/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/d52/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/d51/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/d50/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/d49/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/d48/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/d47/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/d46/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/d45/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/d44/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/d43/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/d42/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/d41/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/d29/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/d28/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/d27/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/d26/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/d25/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/d24/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/d23/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/d22/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/d21/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/d8/node_modules","/d0/d1/d2/d3/d4/d5/d6/d7/node_modules","/d0/d1/d2/d3/d4/d5/d6/node_modules","/d0/d1/d2/d3/d4/d5/node_modules","/d0/d1/d2/d3/d4/node_modules","/d0/d1/d2/d3/node_modules","/d0/d1/d2/node_modules","/d0/d1/node_modules","/d0/node_modules","/node_modules"]]
+    ] },
     solution: {
       approach: `<p>Walk the directory prefixes from longest to shortest, skipping those ending in <code>node_modules</code>, appending <code>/node_modules</code>.</p>`,
       code: { lang: 'js', run: true, code: R`function lookupPaths(fromFile) {
@@ -1795,6 +2048,31 @@ console.log(lookupPaths('/index.js'));` },
 console.log(expandBrute('^0.2.3'));` },
     mcq: { q: 'What does <code>~1.2</code> mean in npm?', options: ['&gt;=1.2.0 &lt;1.3.0', '&gt;=1.2.0 &lt;2.0.0', 'exactly 1.2.0', 'invalid'], answer: 0, explain: 'Tilde allows patch-level changes if a minor version is specified.' },
     hints: [`<p><b>Hint 1:</b> detect the form with regexes: caret, tilde, x-range, star, exact. Handle each in its own branch.</p>`, `<p><b>Hint 2:</b> caret: find the first non-zero among major/minor/patch and bump that one, zeroing everything to the right.</p>`, `<p><b>Hint 3:</b> x-ranges: the first wildcard position is where you bump the part to its left. Throw on anything else with a helpful message.</p>`],
+    tests: { sig: 'string -> string', fn: 'ex', harness: { js: `function ex(r) { try { return expand(r); } catch (e) { return 'throws:' + e.message; } }` }, cases: [
+      [["^1.2.3"],">=1.2.3 <2.0.0"],
+      [["^0.2.3"],">=0.2.3 <0.3.0"],
+      [["^0.0.3"],">=0.0.3 <0.0.4"],
+      [["~1.2.3"],">=1.2.3 <1.3.0"],
+      [["1.2.x"],">=1.2.0 <1.3.0"],
+      [["1.x"],">=1.0.0 <2.0.0"],
+      [["*"],">=0.0.0"],
+      [["x"],">=0.0.0"],
+      [["1.2.3"],"=1.2.3"],
+      [["1.2.*"],">=1.2.0 <1.3.0"],
+      [[" ^1.2.3 "],">=1.2.3 <2.0.0"],
+      [["^9.9.9"],">=9.9.9 <10.0.0"],
+      [["^0.0.0"],">=0.0.0 <0.0.1"],
+      [["^0.9.0"],">=0.9.0 <0.10.0"],
+      [["~0.2.3"],">=0.2.3 <0.3.0"],
+      [["10.x"],">=10.0.0 <11.0.0"],
+      [["1.99.x"],">=1.99.0 <1.100.0"],
+      [["^999999.0.0"],">=999999.0.0 <1000000.0.0"],
+      [["abc"],"throws:Unsupported range: abc"],
+      [[""],"throws:Unsupported range: "],
+      [["^a.b.c"],"throws:Unsupported range: ^a.b.c"],
+      [["1.2.3.4"],"throws:Unsupported range: 1.2.3.4"],
+      [["^1.2.3 || ^2.0.0"],"throws:Unsupported range: ^1.2.3 || ^2.0.0"]
+    ] },
     solution: {
       approach: `<p>Regex dispatch + small helpers. Every branch produces a lower bound and (optionally) an exclusive upper bound.</p>`,
       code: { lang: 'js', run: true, code: R`function expand(range) {
@@ -1838,6 +2116,25 @@ console.log(expandBrute('^0.2.3'));` },
 try { console.log(toBase64Brute('₹5')); } catch (e) { console.log(e.name); }` },
     mcq: { q: 'How many Base64 characters encode 3 bytes?', options: ['3', '4', '6', '8'], answer: 1, explain: '3 bytes = 24 bits = four 6-bit groups, each one Base64 character.' },
     hints: [`<p><b>Hint 1:</b> <code>new TextEncoder().encode(str)</code> gives a <code>Uint8Array</code> of UTF-8 bytes in every modern runtime.</p>`, `<p><b>Hint 2:</b> process 3 bytes at a time: combine into a 24-bit number <code>(b0 &lt;&lt; 16) | (b1 &lt;&lt; 8) | b2</code> and pull out four 6-bit indexes.</p>`, `<p><b>Hint 3:</b> for the final 1 or 2 bytes, treat missing bytes as 0 and replace the extra output characters with <code>=</code>. Collect characters in an array and join once.</p>`],
+    tests: { sig: 'string -> string', fn: 'toBase64', cases: [
+      [["hi"],"aGk="],
+      [["₹5"],"4oK5NQ=="],
+      [["Man"],"TWFu"],
+      [[""],""],
+      [["a"],"YQ=="],
+      [["ab"],"YWI="],
+      [["abc"],"YWJj"],
+      [["Hello, World!"],"SGVsbG8sIFdvcmxkIQ=="],
+      [["😀"],"8J+YgA=="],
+      [["é"],"w6k="],
+      [["日本語"],"5pel5pys6Kqe"],
+      [["\u0000"],"AA=="],
+      [["a\u0000b"],"YQBi"],
+      [["~~~???>>>"],"fn5+Pz8/Pj4+"],
+      [["Zürich ₹ 😀 x"],"WsO8cmljaCDigrkg8J+YgCB4"],
+      [[{"$rep":"a","n":1000000}],{"$concat":[{"$rep":"YWFh","n":333333},"YQ=="]}],
+      [[{"$rep":"₹","n":333333}],{"$rep":"4oK5","n":333333}]
+    ] },
     solution: {
       approach: `<p>UTF-8 encode with the portable <code>TextEncoder</code>, then classic 3-bytes → 4-chars Base64 with padding. Optionally use a native fast path when present (<code>Uint8Array.prototype.toBase64</code> is a new standard method in recent engines).</p>`,
       code: { lang: 'js', run: true, code: R`var ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -1883,6 +2180,34 @@ console.log(toBase64(''));          // (empty)` },
 console.log(simulateBrute(['var a = 1', 'let b = 2', 'function f() {}', 'c = 3']));` },
     mcq: { q: 'In a classic script, which line creates a property on <code>window</code>?', options: ['<code>let x = 1</code>', '<code>const x = 1</code>', '<code>var x = 1</code>', '<code>class X {}</code>'], answer: 2, explain: 'Only <code>var</code> and function declarations (plus implicit globals) go on the global object; let/const/class live in the global lexical scope.' },
     hints: [`<p><b>Hint 1:</b> parse each line with one regex: optional keyword, then the name. No keyword means "assignment".</p>`, `<p><b>Hint 2:</b> keep a <code>declared</code> set. An assignment to a declared name is harmless; to an undeclared name it is an implicit global — or a ReferenceError in strict code.</p>`, `<p><b>Hint 3:</b> table — script: var/function → global, sloppy; module: nothing global, strict; cjs: nothing global from declarations, sloppy (implicit globals leak).</p>`],
+    tests: { sig: 'string string -> string', fn: 'sim', harness: { js: `function sim(json, mode) {
+  let lines;
+  if (json === 'BIG') { lines = []; for (let i = 0; i < 1000; i++) lines.push(i % 4 === 0 ? 'var v' + i + ' = 1' : i % 4 === 1 ? 'let l' + i + ' = 2' : i % 4 === 2 ? 'function f' + i + '() {}' : 'u' + i + ' = 3'); }
+  else lines = JSON.parse(json);
+  try {
+    const r = simulate(lines, mode);
+    if (json === 'BIG') return { n: r.globalProps.length, first: r.globalProps[0] ?? null, last: r.globalProps[r.globalProps.length - 1] ?? null, error: r.error };
+    return r;
+  } catch (e) { return 'throws:' + e.message; }
+}` }, cases: [
+      [["[\"var a = 1\",\"let b = 2\",\"function f() {}\",\"c = 3\"]","script"],{"globalProps":["a","f","c"],"error":null}],
+      [["[\"var a = 1\",\"let b = 2\",\"function f() {}\",\"c = 3\"]","module"],{"globalProps":[],"error":"ReferenceError: c is not defined"}],
+      [["[\"var a = 1\",\"let b = 2\",\"function f() {}\",\"c = 3\"]","cjs"],{"globalProps":["c"],"error":null}],
+      [["[\"var a = 1\",\"a = 4\"]","script"],{"globalProps":["a"],"error":null}],
+      [["[\"let b = 1\",\"b = 2\",\"class X {}\",\"const k = 3\"]","script"],{"globalProps":[],"error":null}],
+      [["[\"c = 1\",\"c = 2\",\"d = 3\"]","cjs"],{"globalProps":["c","d"],"error":null}],
+      [["[\"var a\",\"c = 1\",\"d = 2\"]","module"],{"globalProps":[],"error":"ReferenceError: c is not defined"}],
+      [["[\"var a\",\"function g() {}\",\"u = 1\"]","module"],{"globalProps":[],"error":"ReferenceError: u is not defined"}],
+      [["[\"letter = 1\",\"constant = 2\",\"classes = 3\",\"functional = 4\",\"variable = 5\"]","cjs"],{"globalProps":["letter","constant","classes","functional","variable"],"error":null}],
+      [["[\"letter = 1\"]","module"],{"globalProps":[],"error":"ReferenceError: letter is not defined"}],
+      [["[\"variable = 5\"]","script"],{"globalProps":["variable"],"error":null}],
+      [["[\"  var   spaced = 1\",\"\",\"// note\"]","script"],{"globalProps":["spaced"],"error":null}],
+      [["[]","script"],{"globalProps":[],"error":null}],
+      [["[]","nope"],"throws:mode must be script | module | cjs"],
+      [["BIG","script"],{"n":750,"first":"v0","last":"u999","error":null}],
+      [["BIG","module"],{"n":0,"first":null,"last":null,"error":"ReferenceError: u3 is not defined"}],
+      [["BIG","cjs"],{"n":250,"first":"u3","last":"u999","error":null}]
+    ] },
     solution: {
       approach: `<p>Rule table per mode + a declared-names set. Strictness decides the fate of undeclared assignments; the "where do declarations live" rule decides var/function.</p>`,
       code: { lang: 'js', run: true, code: R`var RULES = {
@@ -1896,7 +2221,7 @@ function simulate(lines, mode) {
   if (!rule) throw new Error('mode must be script | module | cjs');
   var declared = new Set(), globalProps = [];
   for (var i = 0; i < lines.length; i++) {
-    var m = /^\s*(var|let|const|class|function)?\s*([A-Za-z_$][\w$]*)/.exec(lines[i]);
+    var m = /^\s*(?:(var|let|const|class|function)\s+)?([A-Za-z_$][\w$]*)/.exec(lines[i]);
     if (!m) continue;
     var kw = m[1], name = m[2];
     if (kw) {
@@ -1943,6 +2268,54 @@ b.on('x', function () { console.log('B (skipped by the bug)'); });
 b.emit('x');` },
     mcq: { q: 'How do you avoid skipping listeners when one removes itself during emit?', options: ['Iterate backwards only', 'Iterate over a copy (snapshot) of the array', 'Use setTimeout', 'Forbid removal'], answer: 1, explain: 'Snapshot the listener list before calling them, which is what Node\'s EventEmitter does.' },
     hints: [`<p><b>Hint 1:</b> store <code>Map&lt;event, fn[]&gt;</code>. <code>on</code> pushes and returns <code>() =&gt; this.off(event, fn)</code>.</p>`, `<p><b>Hint 2:</b> <code>once</code> wraps fn in a wrapper that calls <code>off(wrapper)</code> then fn; remember the original on the wrapper so <code>off(event, fn)</code> can still remove it.</p>`, `<p><b>Hint 3:</b> in <code>emit</code>, copy the array with <code>slice()</code> and loop over the copy; return whether the copy was non-empty.</p>`],
+    tests: { sig: 'string -> string[]', fn: 'emitterRun', harness: { js: `function emitterRun(kind) {
+  const log = [], e = new Emitter();
+  if (kind === 'basic') {
+    e.once('ready', () => log.push('A'));
+    const stop = e.on('ready', (v) => log.push('B' + v));
+    log.push(e.emit('ready', 1)); stop(); log.push(e.emit('ready', 2)); return log;
+  }
+  if (kind === 'order') { e.on('x', () => log.push(1)); e.on('x', () => log.push(2)); e.on('x', () => log.push(3)); e.emit('x'); return log; }
+  if (kind === 'once-in-middle') {
+    e.on('x', () => log.push('a')); e.once('x', () => log.push('b')); e.on('x', () => log.push('c'));
+    e.emit('x'); log.push('|'); e.emit('x'); return log;
+  }
+  if (kind === 'off-once-original') { const f = () => log.push('f'); e.once('x', f); e.off('x', f); log.push(e.emit('x')); return log; }
+  if (kind === 'unsubscribe-twice') { const stop = e.on('x', () => log.push('x')); stop(); stop(); log.push(e.emit('x')); return log; }
+  if (kind === 'args-this') { e.on('x', function (a, b) { log.push([a, b, this === e]); }); e.emit('x', 1, 'two'); return log; }
+  if (kind === 'no-listeners') { log.push(e.emit('nothing')); return log; }
+  if (kind === 'same-fn-twice') { const f = () => log.push('f'); e.on('x', f); e.on('x', f); e.off('x', f); e.emit('x'); return log; }
+  if (kind === 'off-unknown') { e.off('x', () => {}); e.on('x', () => {}); e.off('x', () => {}); log.push(e.emit('x')); return log; }
+  if (kind === 'isolation') { e.on('a', () => log.push('A')); e.on('b', () => log.push('B')); e.emit('a'); e.emit('b'); e.emit('a'); return log; }
+  if (kind === 'remove-other-during-emit') {
+    let stopB; e.on('x', () => { log.push('a'); stopB(); }); stopB = e.on('x', () => log.push('b')); e.on('x', () => log.push('c'));
+    e.emit('x'); log.push('|'); e.emit('x'); return log;
+  }
+  if (kind === 'add-during-emit') { e.on('x', () => { log.push('a'); e.on('x', () => log.push('late')); }); e.emit('x'); log.push('|'); log.push(e.emit('x')); return log; }
+  if (kind === 'once-args') { e.once('x', (a) => log.push(a)); log.push(e.emit('x', 'hello')); log.push(e.emit('x', 'again')); return log; }
+  if (kind === 'many') {
+    let n = 0; const stops = [];
+    for (let i = 0; i < 10000; i++) stops.push(e.on('x', () => { n++; }));
+    log.push(e.emit('x'), n); for (const s of stops) s(); log.push(e.emit('x')); return log;
+  }
+  if (kind === 'self-emit-return') { e.on('x', () => 42); log.push(e.emit('x')); return log; }
+}` }, cases: [
+      [["basic"],["A","B1",true,false]],
+      [["order"],[1,2,3]],
+      [["once-in-middle"],["a","b","c","|","a","c"]],
+      [["off-once-original"],[false]],
+      [["unsubscribe-twice"],[false]],
+      [["args-this"],[[1,"two",true]]],
+      [["no-listeners"],[false]],
+      [["same-fn-twice"],["f"]],
+      [["off-unknown"],[true]],
+      [["isolation"],["A","B","A"]],
+      [["remove-other-during-emit"],["a","b","c","|","a","c"]],
+      [["add-during-emit"],["a","|","a","late",true]],
+      [["once-args"],["hello",true,false]],
+      [["many"],[true,10000,false]],
+      [["self-emit-return"],[true]]
+    ] },
     solution: {
       approach: `<p>Map of arrays; snapshot on emit; <code>once</code> via a self-removing wrapper that keeps a reference to the original listener.</p>`,
       code: { lang: 'js', run: true, code: R`class Emitter {
@@ -2015,6 +2388,59 @@ try {
 } catch (e) { console.log(e.name + ': ' + e.message); }` },
     mcq: { q: 'Why must a module be put in the cache <i>before</i> its code runs?', options: ['For speed only', 'So a circular require gets the in-progress exports instead of recursing forever', 'Because Node is single-threaded', 'It must be cached after'], answer: 1, explain: 'Node inserts the module into <code>require.cache</code> first. A cycle then finds it and returns the partial <code>module.exports</code>.' },
     hints: [`<p><b>Hint 1:</b> a module record is <code>{ id, exports: {}, loaded: false }</code>. Store it in <code>cache[id]</code> <b>before</b> running the wrapper.</p>`, `<p><b>Hint 2:</b> path resolution: split the base folder and the specifier on <code>/</code>; for each part, <code>..</code> pops, <code>.</code> is skipped, anything else pushes. Append <code>.js</code> if absent.</p>`, `<p><b>Hint 3:</b> each module gets its <b>own</b> <code>require</code> bound to its folder (a closure). Return <code>module.exports</code> at the end — not the original <code>exports</code> object — so <code>module.exports = fn</code> works.</p>`],
+    tests: { sig: 'string -> string', fn: 'ld', harness: { js: `function ld(kind) {
+  globalThis.__log = [];
+  const run = (files, path) => createLoader(files)(path);
+  if (kind === 'cycle') {
+    const ex = run({ '/app/a.js': "exports.loaded = false; exports.b = require('./b'); exports.loaded = true;", '/app/b.js': "const a = require('./a.js'); exports.sawA = a.loaded;" }, '/app/a.js');
+    return { loaded: ex.loaded, bSawA: ex.b.sawA };
+  }
+  if (kind === 'cache') {
+    const files = { '/app/main.js': "const u = require('./lib/util'); const u2 = require('./lib/util.js'); exports.same = u === u2; exports.n = globalThis.__count;", '/app/lib/util.js': 'globalThis.__count = (globalThis.__count || 0) + 1; module.exports = { ok: true };' };
+    globalThis.__count = 0; const ex = run(files, '/app/main.js'); return ex;
+  }
+  if (kind === 'cache-top') {
+    globalThis.__count = 0; const req = createLoader({ '/m.js': 'globalThis.__count++; exports.v = 1;' });
+    const a = req('/m.js'), b = req('/m'); return { same: a === b, count: globalThis.__count };
+  }
+  if (kind === 'this') { run({ '/t.js': '__log.push(this === exports, this === module.exports, typeof require, typeof module);' }, '/t.js'); return globalThis.__log; }
+  if (kind === 'filename') { run({ '/app/lib/util.js': '__log.push(__filename, __dirname);' }, '/app/lib/util.js'); return globalThis.__log; }
+  if (kind === 'filename-root') { run({ '/top.js': '__log.push(__filename, __dirname);' }, '/top.js'); return globalThis.__log; }
+  if (kind === 'module-exports') { const f = run({ '/app/lib/util.js': 'module.exports = function add(x, y) { return x + y; };' }, '/app/lib/util.js'); return f(2, 3); }
+  if (kind === 'relative-up') {
+    const ex = run({ '/app/sub/main.js': "exports.v = require('../lib/x').v;", '/app/lib/x.js': 'exports.v = 7;' }, '/app/sub/main.js'); return ex.v;
+  }
+  if (kind === 'dot-slash') { const ex = run({ '/app/main.js': "exports.v = require('./sub/../a').v;", '/app/a.js': 'exports.v = 3;' }, '/app/main.js'); return ex.v; }
+  if (kind === 'missing-top') { try { run({ '/app/a.js': '' }, '/app/missing'); } catch (e) { return e.message; } }
+  if (kind === 'missing-nested') { try { run({ '/app/a.js': "require('./nope');" }, '/app/a.js'); } catch (e) { return e.message; } }
+  if (kind === 'runs-once-order') {
+    run({ '/m.js': "__log.push('m'); require('./a'); require('./b'); require('./a');", '/a.js': "__log.push('a'); require('./b');", '/b.js': "__log.push('b');" }, '/m.js'); return globalThis.__log;
+  }
+  if (kind === 'partial-exports') {
+    const ex = run({ '/a.js': "exports.x = 1; const b = require('./b'); exports.y = 2; exports.bSaw = b.saw;", '/b.js': "const a = require('./a'); exports.saw = Object.keys(a).join(',');" }, '/a.js'); return ex.bSaw;
+  }
+  if (kind === 'chain') {
+    const files = {}; for (let i = 0; i < 1000; i++) files['/f' + i + '.js'] = i < 999 ? "exports.v = require('./f" + (i + 1) + "').v + 1;" : 'exports.v = 0;';
+    return run(files, '/f0.js').v;
+  }
+  if (kind === 'wrapper-params') { run({ '/p.js': "__log.push(typeof exports, typeof require, typeof module, typeof __filename, typeof __dirname);" }, '/p.js'); return globalThis.__log; }
+}` }, cases: [
+      [["cycle"],{"loaded":true,"bSawA":false}],
+      [["cache"],{"same":true,"n":1}],
+      [["cache-top"],{"same":true,"count":1}],
+      [["this"],[true,true,"function","object"]],
+      [["filename"],["/app/lib/util.js","/app/lib"]],
+      [["filename-root"],["/top.js","/"]],
+      [["module-exports"],5],
+      [["relative-up"],7],
+      [["dot-slash"],3],
+      [["missing-top"],"Cannot find module '/app/missing'"],
+      [["missing-nested"],"Cannot find module './nope'"],
+      [["runs-once-order"],["m","a","b"]],
+      [["partial-exports"],"x"],
+      [["chain"],999],
+      [["wrapper-params"],["object","function","object","string","string"]]
+    ] },
     solution: {
       approach: `<p>Cache-first module records + a per-module <code>require</code> closure + POSIX path normalisation. This is essentially Node's <code>Module._load</code> in miniature: resolve → check cache → create record → cache it → compile wrapper → run with <code>this = exports</code> → mark loaded → return <code>module.exports</code>.</p>`,
       code: { lang: 'js', run: true, code: R`function createLoader(files) {
@@ -2094,13 +2520,38 @@ console.log(tdzBrute({
 }));` },
     mcq: { q: 'In a cycle, which imported binding can safely be <b>called</b> at the top level before its module finished evaluating?', options: ['an exported <code>const</code> arrow function', 'an exported <code>function</code> declaration', 'an exported <code>class</code>', 'none of them'], answer: 1, explain: 'Function declarations are instantiated during linking (hoisted). const/let/class bindings stay in the TDZ until their declaration line runs.' },
     hints: [`<p><b>Hint 1:</b> first compute the evaluation order exactly as in the guided problem (post-order DFS with visiting/done states).</p>`, `<p><b>Hint 2:</b> when module M is evaluated (appended to the order), check each of its top-level reads <code>X.b</code>: it is safe iff X is already <b>done</b>, or the binding kind is <code>function</code>.</p>`, `<p><b>Hint 3:</b> because evaluation happens at the moment of post-order append, you can do the check inline in the DFS: at append time, state[X] tells you whether X has finished.</p>`],
+    tests: { sig: 'string string -> string', fn: 'an', harness: { js: `function an(spec, entry) {
+  let mods;
+  if (spec === 'CHAIN') { mods = {}; for (let i = 0; i < 10000; i++) mods['m' + i] = { imports: i < 9999 ? ['m' + (i + 1)] : [], exports: { v: 'const' }, topLevelReads: i < 9999 ? ['m' + (i + 1) + '.v'] : [] }; }
+  else mods = JSON.parse(spec);
+  const r = analyze(mods, entry);
+  return r.order.length > 100 ? { len: r.order.length, first: r.order[0], last: r.order[r.order.length - 1], errors: r.errors } : r;
+}` }, cases: [
+      [["{\"main\":{\"imports\":[\"a\"],\"exports\":{},\"topLevelReads\":[]},\"a\":{\"imports\":[\"b\"],\"exports\":{\"config\":\"const\",\"helper\":\"function\"},\"topLevelReads\":[]},\"b\":{\"imports\":[\"a\"],\"exports\":{},\"topLevelReads\":[\"a.config\",\"a.helper\"]}}","main"],{"order":["b","a","main"],"errors":["b: a.config"]}],
+      [["{\"main\":{\"imports\":[\"a\"],\"exports\":{},\"topLevelReads\":[\"a.config\"]},\"a\":{\"imports\":[\"b\"],\"exports\":{\"config\":\"const\"},\"topLevelReads\":[\"b.VERSION\"]},\"b\":{\"imports\":[],\"exports\":{\"VERSION\":\"const\"},\"topLevelReads\":[]}}","main"],{"order":["b","a","main"],"errors":[]}],
+      [["{\"x\":{\"imports\":[],\"exports\":{},\"topLevelReads\":[]}}","x"],{"order":["x"],"errors":[]}],
+      [["{\"main\":{\"imports\":[\"a\"],\"exports\":{},\"topLevelReads\":[]},\"a\":{\"imports\":[\"b\",\"c\"],\"exports\":{\"x\":\"let\",\"y\":\"class\",\"f\":\"function\"},\"topLevelReads\":[]},\"b\":{\"imports\":[\"a\"],\"exports\":{},\"topLevelReads\":[\"a.x\"]},\"c\":{\"imports\":[\"a\"],\"exports\":{},\"topLevelReads\":[\"a.y\",\"a.f\"]}}","main"],{"order":["b","c","a","main"],"errors":["b: a.x","c: a.y"]}],
+      [["{\"a\":{\"imports\":[\"b\"],\"exports\":{\"F\":\"function\"},\"topLevelReads\":[]},\"b\":{\"imports\":[\"a\"],\"exports\":{},\"topLevelReads\":[\"a.F\"]}}","a"],{"order":["b","a"],"errors":[]}],
+      [["{\"a\":{\"imports\":[\"b\"],\"exports\":{\"K\":\"class\"},\"topLevelReads\":[]},\"b\":{\"imports\":[\"a\"],\"exports\":{},\"topLevelReads\":[\"a.K\"]}}","a"],{"order":["b","a"],"errors":["b: a.K"]}],
+      [["{\"a\":{\"imports\":[\"b\"],\"exports\":{\"v\":\"const\"},\"topLevelReads\":[]},\"b\":{\"imports\":[\"a\"],\"exports\":{},\"topLevelReads\":[\"a.v\"]}}","b"],{"order":["a","b"],"errors":[]}],
+      [["{\"a\":{\"imports\":[\"b\",\"b\"],\"exports\":{},\"topLevelReads\":[\"b.q\",\"b.q\"]},\"b\":{\"imports\":[],\"exports\":{\"q\":\"let\"},\"topLevelReads\":[]}}","a"],{"order":["b","a"],"errors":[]}],
+      [["{\"a\":{\"imports\":[\"b\"],\"exports\":{\"p\":\"let\",\"q\":\"let\"},\"topLevelReads\":[]},\"b\":{\"imports\":[\"a\"],\"exports\":{},\"topLevelReads\":[\"a.p\",\"a.q\"]}}","a"],{"order":["b","a"],"errors":["b: a.p","b: a.q"]}],
+      [["CHAIN","m0"],{"len":10000,"first":"m9999","last":"m0","errors":[]}]
+    ] },
     solution: {
       approach: `<p>Post-order DFS; at the moment a module is "evaluated" (appended), inspect its reads against the <code>done</code> set and the binding kind. This mirrors the real spec: TDZ errors come from bindings not yet initialised by their module's evaluation.</p>`,
       code: { lang: 'js', run: true, code: R`function analyze(mods, entry) {
   var state = {}, order = [], errors = [];
-  function visit(m) {
-    state[m] = 'visiting';
-    mods[m].imports.forEach(function (d) { if (!state[d]) visit(d); });   // skip visiting/done
+  var stack = [[entry, 0]];                     // explicit stack of [module, next import index]
+  state[entry] = 'visiting';
+  while (stack.length) {
+    var top = stack[stack.length - 1], m = top[0], imports = mods[m].imports;
+    if (top[1] < imports.length) {
+      var d = imports[top[1]++];
+      if (!state[d]) { state[d] = 'visiting'; stack.push([d, 0]); }   // skip visiting/done
+      continue;
+    }
+    stack.pop();
     // m evaluates NOW: check every imported binding it reads at top level
     mods[m].topLevelReads.forEach(function (r) {
       var parts = r.split('.'), src = parts[0], name = parts[1];
@@ -2110,7 +2561,6 @@ console.log(tdzBrute({
     state[m] = 'done';
     order.push(m);
   }
-  visit(entry);
   return { order: order, errors: errors };
 }
 
@@ -2151,6 +2601,41 @@ console.log(analyze(mods, 'main'));
 console.log(maxBrute(['1.9.3', '1.10.0', '2.4.1'], '^1.5.0 || >=2.1.0 <3'));   // '1.9.3' -- wrong twice` },
     mcq: { q: '<code>&gt;=1.2.0 &lt;2</code> — what is the exclusive upper bound?', options: ['2.9.9', '2.0.0', '1.9.9', '3.0.0'], answer: 1, explain: 'A partial version in <code>&lt;2</code> fills missing parts with zeros: &lt;2.0.0.' },
     hints: [`<p><b>Hint 1:</b> compile the range once into a list of sets; each set is a list of simple comparators <code>{ op, ver }</code> with op in <code>&gt;= &gt; &lt;= &lt; =</code>. Shorthands (^, ~, x) expand into a <code>&gt;=</code> and a <code>&lt;</code>.</p>`, `<p><b>Hint 2:</b> then for each version: parse once, test <code>sets.some(set =&gt; set.every(test))</code>, and keep a running maximum with numeric comparison — no need to sort.</p>`, `<p><b>Hint 3:</b> partial versions like <code>&lt;3</code> or <code>&gt;=2.1</code>: pad missing parts with 0. Wildcards: <code>1.x</code> → [&gt;=1.0.0, &lt;2.0.0]; <code>*</code> → [&gt;=0.0.0].</p>`],
+    tests: { sig: 'string[] string -> string', fn: 'mx', harness: { js: `function mx(versions, range) {
+  if (versions[0] === 'BIG') {
+    versions = [];
+    for (let z = 9; z >= 0; z--) for (let y = 0; y < 100; y++) for (let x = 99; x >= 0; x--) versions.push(x + '.' + y + '.' + z);
+  }
+  return maxSatisfying(versions, range);
+}` }, cases: [
+      [[["1.2.0","1.9.3","2.0.0","2.4.1","3.0.0"],"^1.5.0 || >=2.1.0 <3"],"2.4.1"],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],"^1.5.0"],"1.10.0"],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],"~1.2.0"],"1.2.0"],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],">= 2.0.0 <= 2.0.0"],"2.0.0"],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],">3.0.0"],null],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],"*"],"3.0.0"],
+      [[[],"*"],null],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],"1.x"],"1.10.0"],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],"1.2.x"],"1.2.0"],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],"=2.0.0"],"2.0.0"],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],"2.0.0"],"2.0.0"],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],"<2.0.0"],"1.10.0"],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],"<=1.2.0"],"1.2.0"],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],">1.2.0 <1.10.0"],"1.9.3"],
+      [[["0.2.3","0.2.9","0.3.0"],"^0.2.3"],"0.2.9"],
+      [[["0.0.3","0.0.4"],"^0.0.3"],"0.0.3"],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],"1.2.0 || 3.0.0"],"3.0.0"],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],"<1.0.0 || >=3"],"3.0.0"],
+      [[["2.0.0","1.0.0","10.0.0"],"*"],"10.0.0"],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],"  ^1.0.0   ||  ^2.0.0  "],"2.4.1"],
+      [[["1.2.0","1.9.3","1.10.0","2.0.0","2.4.1","3.0.0"],"^4.0.0"],null],
+      [[["1.0.0","1.0.0"],"^1.0.0"],"1.0.0"],
+      [[["BIG"],"^50.0.0 || >=98.50.0 <98.60.0"],"98.59.9"],
+      [[["BIG"],"~3.4.0"],"3.4.9"],
+      [[["BIG"],">=99.99.9"],"99.99.9"],
+      [[["BIG"],">99.99.9"],null],
+      [[["BIG"],"^50.0.0"],"50.99.9"]
+    ] },
     solution: {
       approach: `<p>Compile-then-scan. Compilation turns the human syntax into primitive comparators; the scan is O(N) with a running max, so no O(N log N) sort is needed.</p>`,
       code: { lang: 'js', run: true, code: R`function parseV(s) {
@@ -2229,6 +2714,50 @@ a.self = a;
 try { JSON.stringify(a); } catch (e) { console.log(e.name); }   // TypeError` },
     mcq: { q: 'Which data structure lets the clone handle cycles?', options: ['A stack of keys', 'A Map/WeakMap from original object → its clone', 'A Set of visited keys', 'JSON'], answer: 1, explain: 'Before recursing into an object, record original → clone. If you meet the original again, return the recorded clone instead of copying again.' },
     hints: [`<p><b>Hint 1:</b> primitives (and <code>null</code>) are returned as-is; functions and symbols throw. Everything else is an object to copy.</p>`, `<p><b>Hint 2:</b> keep a <code>WeakMap</code> original → clone. <b>Register the empty clone before filling it</b>, so a child pointing back at the parent finds it.</p>`, `<p><b>Hint 3:</b> branch on type: Date → new Date(time); RegExp → new RegExp(source, flags); Map → set clone(k), clone(v); Set → add clone(v); Array → index loop; plain object → own enumerable string keys.</p>`],
+    tests: { sig: 'string -> string', fn: 'dcl', harness: { js: `function dcl(kind) {
+  class Point { constructor(x) { this.x = x; } }
+  const thrown = (f) => { try { f(); return 'no error'; } catch (e) { return e.name; } };
+  switch (kind) {
+    case 'example': { const a = { d: new Date(0), list: [1, 2] }; a.self = a; const c = deepClone(a); return { self: c.self === c, date: c.d instanceof Date, time: c.d.getTime(), distinct: c !== a && c.d !== a.d && c.list !== a.list, list: c.list }; }
+    case 'full': {
+      const shared = { tag: 'shared' };
+      const a = { d: new Date(0), re: /ab+c/gi, m: new Map([['k', shared]]), s: new Set([1, shared]), list: [1, 2, shared], u: undefined, n: NaN }; a.self = a;
+      const c = deepClone(a);
+      return { selfCycle: c.self === c, sharedKept: c.m.get('k') === c.list[2], sharedInSet: [...c.s][1] === c.list[2], copied: c.list[2] !== shared, flags: c.re.flags, source: c.re.source, hasU: 'u' in c, nan: Number.isNaN(c.n), set1: [...c.s][0] };
+    }
+    case 'fn': return thrown(() => deepClone({ f: function () {} }));
+    case 'fn-top': return thrown(() => deepClone(() => 1));
+    case 'symbol': return thrown(() => deepClone({ s: Symbol('x') }));
+    case 'class': { const c = deepClone(new Point(3)); return { x: c.x, plain: Object.getPrototypeOf(c) === Object.prototype, notPoint: !(c instanceof Point) }; }
+    case 'primitives': return [deepClone(5), deepClone(null), deepClone('x'), deepClone(true), deepClone(undefined) === undefined, deepClone(10n) === 10n];
+    case 'shared-array': { const s = { q: 1 }, c = deepClone([s, s]); return { same: c[0] === c[1], distinct: c[0] !== s }; }
+    case 'mapkeys': { const k = { id: 1 }, c = deepClone(new Map([[k, 'v']])); const [[ck, cv]] = [...c]; return { keyDistinct: ck !== k, id: ck.id, v: cv }; }
+    case 'map-cycle': { const m = new Map(); m.set('self', m); const c = deepClone(m); return { cyc: c.get('self') === c, distinct: c !== m }; }
+    case 'set-cycle': { const s = new Set(); s.add(s); const c = deepClone(s); return { cyc: c.has(c), size: c.size }; }
+    case 'holes': { const c = deepClone([1, , 3]); return { len: c.length, hole: 1 in c }; }
+    case 'date-regex': { const d = new Date(86400000), c = deepClone({ d, re: /x/g }); return { time: c.d.getTime(), distinct: c.d !== d, flags: c.re.flags }; }
+    case 'deep': { let o = { leaf: 1 }; for (let i = 0; i < 1000; i++) o = { n: o }; const c = deepClone(o); let d = 0, p = c; while (p.n) { p = p.n; d++; } return { depth: d, leaf: p.leaf }; }
+    case 'wide': { const a = Array.from({ length: 100000 }, (_, i) => ({ i })), c = deepClone(a); return { len: c.length, last: c[99999].i, distinct: c[0] !== a[0] }; }
+    case 'nested-containers': { const c = deepClone({ m: new Map([['s', new Set([new Date(1)])]]) }); const inner = [...c.m.get('s')][0]; return { isDate: inner instanceof Date, time: inner.getTime() }; }
+  }
+}` }, cases: [
+      [["example"],{"self":true,"date":true,"time":0,"distinct":true,"list":[1,2]}],
+      [["full"],{"selfCycle":true,"sharedKept":true,"sharedInSet":true,"copied":true,"flags":"gi","source":"ab+c","hasU":true,"nan":true,"set1":1}],
+      [["fn"],"DataCloneError"],
+      [["fn-top"],"DataCloneError"],
+      [["symbol"],"DataCloneError"],
+      [["class"],{"x":3,"plain":true,"notPoint":true}],
+      [["primitives"],[5,null,"x",true,true,true]],
+      [["shared-array"],{"same":true,"distinct":true}],
+      [["mapkeys"],{"keyDistinct":true,"id":1,"v":"v"}],
+      [["map-cycle"],{"cyc":true,"distinct":true}],
+      [["set-cycle"],{"cyc":true,"size":1}],
+      [["holes"],{"len":3,"hole":false}],
+      [["date-regex"],{"time":86400000,"distinct":true,"flags":"g"}],
+      [["deep"],{"depth":1000,"leaf":1}],
+      [["wide"],{"len":100000,"last":99999,"distinct":true}],
+      [["nested-containers"],{"isDate":true,"time":1}]
+    ] },
     solution: {
       approach: `<p>Recursive copy with a memo table. The memo makes cycles terminate and preserves shared references (two properties pointing at the same object still point at one shared clone). Compare with the real <code>structuredClone</code> when available.</p>`,
       code: { lang: 'js', run: true, code: R`function deepClone(value, memo) {

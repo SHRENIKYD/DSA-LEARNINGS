@@ -321,6 +321,20 @@ SELECT currency, SUM(amount) AS total FROM payments_bad GROUP BY currency;  -- '
         '<p>Hint 2: Store <code>amount_cents INTEGER</code> and a separate <code>currency TEXT</code>. Dates as ISO-8601 UTC text. Refunded as 0/1. Make the table <code>STRICT</code>.</p>',
         '<p>Hint 3: Add CHECKs: amount_cents &gt; 0, currency = upper(currency) AND length 3, is_refunded IN (0,1). Display with <code>printf(\'%.2f\', SUM(amount_cents) / 100.0)</code> — divide only at the very end, for display.</p>'
       ],
+      tests: { cmp: 'exact', engine: 'sqlite', cases: [
+          { cols: ['currency', 'total_cents', 'total_display', 'biggest_cents'], rows: [['INR', 130950, '1309.50', 129950], ['USD', 999, '9.99', 999]] },
+          { after: 'INSERT INTO payments (amount_cents, currency, paid_at) VALUES (0, \'USD\', \'2026-10-14T04:00:00Z\')', error: 'CHECK' },
+          { after: 'INSERT INTO payments (amount_cents, currency, paid_at) VALUES (-5, \'USD\', \'2026-10-14T04:00:00Z\')', error: 'CHECK' },
+          { after: 'INSERT INTO payments (amount_cents, currency, paid_at) VALUES (100, \'usd\', \'2026-10-14T04:00:00Z\')', error: 'CHECK' },
+          { after: 'INSERT INTO payments (amount_cents, currency, paid_at) VALUES (100, \'US\', \'2026-10-14T04:00:00Z\')', error: 'CHECK' },
+          { after: 'INSERT INTO payments (amount_cents, currency, paid_at) VALUES (100, \'USDX\', \'2026-10-14T04:00:00Z\')', error: 'CHECK' },
+          { after: 'INSERT INTO payments (amount_cents, currency, paid_at) VALUES (100, \'USD\', \'14/10/2026 04:00\')', error: 'CHECK' },
+          { after: 'INSERT INTO payments (amount_cents, currency, paid_at, is_refunded) VALUES (100, \'USD\', \'2026-10-14T04:00:00Z\', 2)', error: 'CHECK' },
+          { after: 'INSERT INTO payments (amount_cents, currency, paid_at) VALUES (NULL, \'USD\', \'2026-10-14T04:00:00Z\')', error: 'NOT NULL|CHECK' },
+          { after: 'INSERT INTO payments (amount_cents, currency, paid_at) VALUES (10,\'USD\',\'2026-10-15T00:00:00Z\'),(10,\'USD\',\'2026-10-15T00:00:01Z\'),(10,\'USD\',\'2026-10-15T00:00:02Z\'),(9000,\'USD\',\'2026-10-16T00:00:00Z\'); SELECT currency, SUM(amount_cents), MAX(amount_cents), COUNT(*) FROM payments GROUP BY currency ORDER BY currency', rows: [['INR', 130950, 129950, 2], ['USD', 10029, 9000, 5]] },
+          { after: 'SELECT COUNT(*), SUM(is_refunded) FROM payments', rows: [[3, 0]] },
+          { after: 'INSERT INTO payments (amount_cents, currency, paid_at) VALUES (1,\'JPY\',\'2026-01-01T00:00:00Z\'); SELECT COUNT(*) FROM payments WHERE is_refunded = 0', rows: [[4]] }
+        ] },
       solution: {
         approach: `<p>Use INTEGER minor units for money, TEXT ISO-8601 UTC for time, 0/1 INTEGER for the flag, and lock it all down with <code>STRICT</code> + CHECK constraints. Only convert to a decimal string in the final SELECT, for humans.</p>`,
         code: lab(`CREATE TABLE payments (
@@ -576,6 +590,18 @@ SELECT id, name, quote(phone) AS phone FROM customers;   -- '' everywhere: NOT N
         '<p>Hint 2: Expand (add nullable) → backfill with a correlated <code>UPDATE ... SET phone = (SELECT ... FROM crm_phones WHERE ...)</code> → verify with <code>COUNT(*) WHERE phone IS NULL</code>.</p>',
         '<p>Hint 3: SQLite cannot add NOT NULL/CHECK to an existing column, so the contract step is a table rebuild: FKs off → BEGIN → CREATE new → INSERT SELECT → DROP old → RENAME → foreign_key_check → COMMIT. (Postgres: <code>ALTER COLUMN phone SET NOT NULL</code>.)</p>'
       ],
+      tests: { cmp: 'exact', engine: 'sqlite', cases: [
+          { after: 'SELECT id, name, phone FROM customers ORDER BY id', rows: [[1, 'Asha', '+91-98450-00001'], [2, 'Ben', '+44-7700-900002']] },
+          { after: 'SELECT id, name, email FROM customers ORDER BY id', rows: [[1, 'Asha', 'asha@mail.com'], [2, 'Ben', 'ben@mail.com']] },
+          { after: 'INSERT INTO customers (name, email) VALUES (\'Cy\', \'cy@mail.com\')', error: 'NOT NULL' },
+          { after: 'INSERT INTO customers (name, email, phone) VALUES (\'Cy\', \'cy@mail.com\', NULL)', error: 'NOT NULL' },
+          { after: 'INSERT INTO customers (name, email, phone) VALUES (\'Cy\', \'cy@mail.com\', \'9845000000\')', error: 'CHECK' },
+          { after: 'INSERT INTO customers (name, email, phone) VALUES (\'Cy\', \'cy@mail.com\', \'\')', error: 'CHECK' },
+          { after: 'INSERT INTO customers (name, email, phone) VALUES (\'Cy\', \'asha@mail.com\', \'+1-555-0100\')', error: 'UNIQUE' },
+          { after: 'INSERT INTO customers (name, email, phone) VALUES (\'Cy\', \'cy@mail.com\', \'+1-555-0100\'); SELECT id, phone FROM customers ORDER BY id', rows: [[1, '+91-98450-00001'], [2, '+44-7700-900002'], [3, '+1-555-0100']] },
+          { after: 'SELECT name FROM sqlite_master WHERE type = \'table\' AND name NOT LIKE \'sqlite_%\' ORDER BY name', rows: [['crm_phones'], ['customers']] },
+          { after: 'SELECT COUNT(*) FROM customers WHERE phone IS NULL OR phone NOT LIKE \'+%\'', rows: [[0]] }
+        ] },
       solution: {
         approach: `<p>Expand → backfill → verify → contract. Each step leaves the database valid and old code working. The final rebuild bakes in <code>NOT NULL</code> and the CHECK, so from now on the database itself guarantees every customer has a real international phone.</p>`,
         code: lab(`CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE);
@@ -807,6 +833,19 @@ FROM products_nocheck;`)
         '<p>Hint 2: Watch for the two NULL traps: NULL passes CHECK; an explicit NULL does not trigger DEFAULT.</p>',
         '<p>Hint 3: To run all attempts without the script stopping, use <code>INSERT OR IGNORE</code> per row and <code>SELECT changes()</code> after each to see 1 (stored) or 0 (rejected).</p>'
       ],
+      tests: { cmp: 'exact', engine: 'sqlite', cases: [
+          { cols: ['id', 'sku', 'price_cents', 'stock'], rows: [[1, 'A1', 500, 10], [4, 'C3', null, 2], [6, 'E5', 250, 0]] },
+          { after: 'SELECT n, stored FROM attempts ORDER BY n', rows: [[1, 1], [2, 0], [3, 0], [4, 1], [5, 0], [6, 0], [7, 1], [8, 0]] },
+          { after: 'INSERT INTO products VALUES (10, \'A1\', 1, 1)', error: 'UNIQUE' },
+          { after: 'INSERT INTO products VALUES (1, \'Z9\', 1, 1)', error: 'UNIQUE' },
+          { after: 'INSERT INTO products VALUES (11, \'Z9\', -5, 1)', error: 'CHECK' },
+          { after: 'INSERT INTO products VALUES (11, \'Z9\', 0, 1)', error: 'CHECK' },
+          { after: 'INSERT INTO products VALUES (12, NULL, 1, 1)', error: 'NOT NULL' },
+          { after: 'INSERT INTO products VALUES (13, \'Z9\', 1, -1)', error: 'CHECK' },
+          { after: 'INSERT INTO products VALUES (14, \'Z9\', 1, NULL)', error: 'NOT NULL' },
+          { after: 'INSERT INTO products (id, sku) VALUES (20, \'NEW\'); SELECT price_cents IS NULL, stock FROM products WHERE id = 20', rows: [[1, 0]] },
+          { after: 'SELECT COUNT(*) FROM products', rows: [[3]] }
+        ] },
       solution: {
         approach: `<p>Create the real table, then run each attempt with <code>INSERT OR IGNORE</code> so a rejection just skips the row. <code>changes()</code> reports 1 or 0 after each attempt — a mechanical proof of your prediction. Final SELECT shows the 3 survivors.</p>`,
         code: lab(`CREATE TABLE products (
@@ -1090,6 +1129,16 @@ SELECT 'orphan wishlist rows', COUNT(*) FROM wishlist w LEFT JOIN customers c ON
         '<p>Hint 2: SET NULL keeps rows — only the FK value changes. RESTRICT anywhere below the deleted parent blocks the whole statement.</p>',
         '<p>Hint 3: Prove (a) with one <code>UNION ALL</code> count query after the delete. Predict (b) with a "pre-flight" join: invoices → orders WHERE customer_id = 1; any row means the delete will fail.</p>'
       ],
+      tests: { cmp: 'exact', engine: 'sqlite', cases: [
+          { cols: ['blocking_invoice', 'via_order'], rows: [[500, 10]] },
+          { after: 'SELECT (SELECT COUNT(*) FROM customers), (SELECT COUNT(*) FROM orders), (SELECT COUNT(*) FROM order_items), (SELECT COUNT(*) FROM wishlist), (SELECT COUNT(*) FROM reviews), (SELECT COUNT(*) FROM invoices)', rows: [[2, 3, 4, 1, 4, 2]] },
+          { after: 'SELECT COUNT(*) FROM reviews WHERE customer_id IS NULL', rows: [[2]] },
+          { after: 'DELETE FROM customers WHERE id = 1', error: 'FOREIGN KEY' },
+          { after: 'DELETE FROM customers WHERE id = 3', error: 'FOREIGN KEY' },
+          { after: 'DELETE FROM invoices WHERE id = 500; DELETE FROM customers WHERE id = 1; SELECT (SELECT COUNT(*) FROM customers), (SELECT COUNT(*) FROM orders), (SELECT COUNT(*) FROM order_items), (SELECT COUNT(*) FROM wishlist), (SELECT COUNT(*) FROM reviews), (SELECT COUNT(*) FROM invoices)', rows: [[1, 1, 1, 0, 4, 1]] },
+          { after: 'DELETE FROM customers WHERE id = 99; SELECT (SELECT COUNT(*) FROM customers), (SELECT COUNT(*) FROM orders), (SELECT COUNT(*) FROM order_items), (SELECT COUNT(*) FROM wishlist)', rows: [[2, 3, 4, 1]] },
+          { after: 'SELECT id FROM orders ORDER BY id', rows: [[10], [11], [14]] }
+        ] },
       solution: {
         approach: `<p>Declare every relationship with the right action, switch FKs on, delete customer 2 and count. For customer 1 run a pre-flight query that walks the same path the cascade would take and looks for RESTRICT blockers — the safe way to check a destructive operation before doing it.</p>`,
         code: lab(`PRAGMA foreign_keys = ON;
@@ -1382,6 +1431,19 @@ SELECT name FROM students_bad WHERE courses LIKE '%CS10%';
         '<p>Hint 2: N-M needs a junction table <code>enrollments(student_id, course_id, ...)</code> with a composite PRIMARY KEY — that also blocks double enrolment.</p>',
         '<p>Hint 3: student FK → ON DELETE CASCADE, course FK → ON DELETE RESTRICT, grade CHECK IN (...). Count with <code>COUNT(*)</code> and <code>SUM(grade = \'A\')</code> after a LEFT JOIN from courses.</p>'
       ],
+      tests: { cmp: 'exact', engine: 'sqlite', cases: [
+          { cols: ['code', 'students', 'a_grades'], rows: [['CS101', 2, 1], ['CS102', 1, 1], ['MA201', 1, 0]] },
+          { after: 'INSERT INTO enrollments (student_id, course_id) VALUES (1, 1)', error: 'UNIQUE' },
+          { after: 'INSERT INTO enrollments (student_id, course_id, grade) VALUES (2, 2, \'E\')', error: 'CHECK' },
+          { after: 'INSERT INTO enrollments (student_id, course_id, grade) VALUES (2, 2, \'a\')', error: 'CHECK' },
+          { after: 'DELETE FROM courses WHERE id = 1', error: 'FOREIGN KEY' },
+          { after: 'INSERT INTO enrollments (student_id, course_id) VALUES (99, 1)', error: 'FOREIGN KEY' },
+          { after: 'INSERT INTO enrollments (student_id, course_id) VALUES (1, 99)', error: 'FOREIGN KEY' },
+          { after: 'DELETE FROM students WHERE id = 1; SELECT COUNT(*) FROM enrollments', rows: [[2]] },
+          { after: 'INSERT INTO courses VALUES (4, \'PH100\', \'Physics\'); SELECT c.code, COUNT(e.student_id), SUM(CASE WHEN e.grade = \'A\' THEN 1 ELSE 0 END) FROM courses c LEFT JOIN enrollments e ON e.course_id = c.id GROUP BY c.code ORDER BY c.code', rows: [['CS101', 2, 1], ['CS102', 1, 1], ['MA201', 1, 0], ['PH100', 0, 0]] },
+          { after: 'INSERT INTO enrollments (student_id, course_id) VALUES (2, 2); SELECT COUNT(*) FROM enrollments WHERE grade IS NULL AND enrolled_on IS NOT NULL', rows: [[2]] },
+          { after: 'INSERT INTO enrollments (student_id, course_id, grade) VALUES (2, 2, \'A\'),(3,1,\'A\'); SELECT c.code, COUNT(e.student_id), SUM(CASE WHEN e.grade = \'A\' THEN 1 ELSE 0 END) FROM courses c LEFT JOIN enrollments e ON e.course_id = c.id GROUP BY c.code ORDER BY c.code', rows: [['CS101', 3, 2], ['CS102', 1, 1], ['MA201', 2, 1]] }
+        ] },
       solution: {
         approach: `<p>Three tables: two entities plus a junction table that holds the relationship's own attributes (date, grade). The composite PK enforces "no double enrolment", the two FKs carry different delete policies, and the CHECK restricts grades.</p>`,
         code: lab(`PRAGMA foreign_keys = ON;
@@ -1606,6 +1668,24 @@ SELECT order_id, SUM(product_price * qty) AS total FROM order_lines_flat GROUP B
         '<p>Hint 2: Map each requirement to a constraint: email <code>COLLATE NOCASE UNIQUE</code>; <code>CHECK (stock &gt;= 0)</code>; <code>is_active</code> flag + order_items.product_id RESTRICT; status CHECK; orders.customer_id RESTRICT; order_items.order_id CASCADE.</p>',
         '<p>Hint 3: Money as integer cents. Total = <code>SUM(qty * unit_price_cents)</code> grouped by order. Test the "price changes later" requirement with an UPDATE and re-run the total.</p>'
       ],
+      tests: { cmp: 'exact', engine: 'sqlite', cases: [
+          { cols: ['order_id', 'customer', 'status', 'total'], rows: [[1, 'Asha', 'paid', '518.98'], [2, 'Ben', 'pending', '29.99']] },
+          { after: 'SELECT SUM(qty * unit_price_cents) FROM order_items WHERE order_id = 1', rows: [[51898]] },
+          { after: 'SELECT price_cents FROM products WHERE id = 2', rows: [[1200]] },
+          { after: 'INSERT INTO customers (email, name) VALUES (\'ASHA@MAIL.COM\', \'Dup\')', error: 'UNIQUE' },
+          { after: 'INSERT INTO products (sku, name, price_cents) VALUES (\'PH-001\', \'Dup\', 10)', error: 'UNIQUE' },
+          { after: 'UPDATE products SET stock = -1 WHERE id = 1', error: 'CHECK' },
+          { after: 'INSERT INTO products (sku, name, price_cents) VALUES (\'X-1\', \'Free\', 0)', error: 'CHECK' },
+          { after: 'INSERT INTO orders (customer_id, status) VALUES (1, \'refunded\')', error: 'CHECK' },
+          { after: 'INSERT INTO orders (customer_id) VALUES (99)', error: 'FOREIGN KEY' },
+          { after: 'DELETE FROM customers WHERE id = 1', error: 'FOREIGN KEY' },
+          { after: 'DELETE FROM products WHERE id = 1', error: 'FOREIGN KEY' },
+          { after: 'INSERT INTO order_items (order_id, product_id, qty, unit_price_cents) VALUES (1, 3, 0, 100)', error: 'CHECK' },
+          { after: 'INSERT INTO order_items (order_id, product_id, qty, unit_price_cents) VALUES (1, 1, 1, 100)', error: 'UNIQUE' },
+          { after: 'DELETE FROM orders WHERE id = 1; SELECT COUNT(*) FROM order_items', rows: [[1]] },
+          { after: 'UPDATE products SET is_active = 0 WHERE id = 1; SELECT is_active FROM products WHERE id = 1', rows: [[0]] },
+          { after: 'INSERT INTO orders (customer_id) VALUES (2); SELECT status FROM orders ORDER BY id DESC LIMIT 1', rows: [['pending']] }
+        ] },
       solution: {
         approach: `<p>Four core tables. Every numbered requirement maps to a declarative rule: (1) NOCASE UNIQUE email; (2) UNIQUE sku, CHECK stock, soft-delete flag + RESTRICT; (3) NOT NULL FK + junction with qty CHECK and price snapshot; (4) status CHECK; (5) RESTRICT on customer, CASCADE on lines. Indexes on FK columns keep joins and cascades fast. The final query proves the snapshot by changing a price and showing totals unchanged.</p>`,
         code: lab(`PRAGMA foreign_keys = ON;
@@ -1677,6 +1757,20 @@ INSERT INTO books_loose VALUES (1, NULL, '123', -5, 20245, 7), (1, 'Dup', '123',
 SELECT * FROM books_loose;   -- garbage accepted`) },
     mcq: { q: 'Which constraint makes the year rule work?', options: ['NOT NULL', 'UNIQUE', 'CHECK (year BETWEEN 1450 AND 2100)', 'DEFAULT 2024'], answer: 2, explain: 'A range rule about one row is exactly what CHECK is for.' },
     hints: ['<p>Hint 1: List each sentence of the requirement and write the constraint keyword next to it.</p>', '<p>Hint 2: id → INTEGER PRIMARY KEY; title → NOT NULL; isbn → NOT NULL UNIQUE + CHECK(length = 13); price → CHECK (&gt; 0).</p>', '<p>Hint 3: in_stock → INTEGER NOT NULL DEFAULT 1 CHECK (in_stock IN (0,1)). Omit in_stock in one INSERT to see the default work.</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['id', 'title', 'isbn', 'price_cents', 'year', 'in_stock'], rows: [[1, 'SQL Basics', '9780000000001', 2999, 2024, 1], [2, 'Data Models', '9780000000002', 4599, 2019, 0]] },
+        { after: 'INSERT INTO books (title, isbn, price_cents, year) VALUES (\'Dup\', \'9780000000001\', 1, 2000)', error: 'UNIQUE' },
+        { after: 'INSERT INTO books (title, isbn, price_cents, year) VALUES (\'Short\', \'978000000003\', 1, 2000)', error: 'CHECK' },
+        { after: 'INSERT INTO books (title, isbn, price_cents, year) VALUES (\'Long\', \'97800000000033\', 1, 2000)', error: 'CHECK' },
+        { after: 'INSERT INTO books (title, isbn, price_cents, year) VALUES (\'Free\', \'9780000000003\', 0, 2000)', error: 'CHECK' },
+        { after: 'INSERT INTO books (title, isbn, price_cents, year) VALUES (\'Neg\', \'9780000000003\', -1, 2000)', error: 'CHECK' },
+        { after: 'INSERT INTO books (title, isbn, price_cents, year) VALUES (\'Old\', \'9780000000003\', 1, 1449)', error: 'CHECK' },
+        { after: 'INSERT INTO books (title, isbn, price_cents, year) VALUES (\'Future\', \'9780000000003\', 1, 2101)', error: 'CHECK' },
+        { after: 'INSERT INTO books (title, isbn, price_cents, year, in_stock) VALUES (\'Flag\', \'9780000000003\', 1, 2000, 2)', error: 'CHECK' },
+        { after: 'INSERT INTO books (isbn, price_cents, year) VALUES (\'9780000000003\', 1, 2000)', error: 'NOT NULL' },
+        { after: 'INSERT INTO books (title, isbn, price_cents, year) VALUES (\'Min\',\'9780000000003\',1,1450),(\'Max\',\'9780000000004\',1,2100); SELECT COUNT(*) FROM books', rows: [[4]] },
+        { after: 'INSERT INTO books (title, isbn, price_cents) VALUES (\'NoYear\',\'9780000000005\',5); SELECT year IS NULL, in_stock FROM books WHERE id = 3', rows: [[1, 1]] }
+      ] },
     solution: {
       approach: `<p>One column per fact, one constraint per rule. Name the CHECKs so error messages are readable.</p>`,
       code: lab(`CREATE TABLE books (
@@ -1707,11 +1801,21 @@ WHERE email IS NOT NULL
 GROUP BY email HAVING COUNT(*) > 1;     -- misses BEN/ben`) },
     mcq: { q: 'Why exclude NULL emails?', options: ['NULLs crash GROUP BY', 'UNIQUE allows many NULLs, so they would not block the index', 'NULL equals NULL', 'COUNT ignores them anyway'], answer: 1, explain: 'UNIQUE treats NULLs as distinct (unknown ≠ unknown), so they never violate it.' },
     hints: ['<p>Hint 1: Group by the same expression the constraint will compare: <code>lower(email)</code>.</p>', '<p>Hint 2: <code>HAVING COUNT(*) &gt; 1</code> keeps only duplicates; <code>group_concat(id)</code> shows which rows to fix.</p>', '<p>Hint 3: Filter <code>email IS NOT NULL</code> — NULLs can\'t violate UNIQUE (but they will violate a NOT NULL you add later!).</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['email_key', 'copies', 'ids'], rows: [['asha@mail.com', 2, '1,6'], ['ben@mail.com', 2, '2,3']] },
+        { setup: 'DELETE FROM users_raw; ', rows: [] },
+        { setup: 'DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'a@x.com\', \'n\', 30, \'IN\'), (2, \'b@x.com\', \'n\', 30, \'IN\'), (3, \'c@x.com\', \'n\', 30, \'IN\');', rows: [] },
+        { setup: 'DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, NULL, \'n\', 30, \'IN\'), (2, NULL, \'n\', 30, \'IN\'), (3, \'a@x.com\', \'n\', 30, \'IN\');', rows: [] },
+        { setup: 'DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'A@x.com\', \'n\', 30, \'IN\'), (2, \'a@X.com\', \'n\', 30, \'IN\'), (3, \'a@x.COM\', \'n\', 30, \'IN\'), (4, \'b@x.com\', \'n\', 30, \'IN\'), (5, \'B@x.com\', \'n\', 30, \'IN\');', cols: ['email_key', 'copies', 'ids'], rows: [['a@x.com', 3, '1,2,3'], ['b@x.com', 2, '4,5']] },
+        { setup: 'DELETE FROM users_raw; INSERT INTO users_raw VALUES (10, \'z@x.com\', \'n\', 30, \'IN\'), (3, \'Z@x.com\', \'n\', 30, \'IN\'), (7, \'z@x.com\', \'n\', 30, \'IN\'), (1, \'m@x.com\', \'n\', 30, \'IN\'), (2, \'M@x.com\', \'n\', 30, \'IN\');', cols: ['email_key', 'copies', 'ids'], rows: [['m@x.com', 2, '1,2'], ['z@x.com', 3, '3,7,10']] },
+        { setup: 'DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'same@x.com\', \'n\', 30, \'IN\'), (1, \'same@x.com\', \'n\', 30, \'IN\');', cols: ['email_key', 'copies', 'ids'], rows: [['same@x.com', 2, '1,1']] },
+        { setup: 'DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'a@x.com\', \'n\', 30, \'IN\'), (2, \'a@x.com \', \'n\', 30, \'IN\'), (3, \'a@x.com\', \'n\', 30, \'IN\');', cols: ['email_key', 'copies', 'ids'], rows: [['a@x.com', 2, '1,3']] }
+      ] },
     solution: {
       approach: `<p>Normalise the key exactly as the future constraint will (lower-case), group, and keep groups with more than one row. Run this before every "add UNIQUE" migration.</p>`,
       code: messy(`SELECT lower(email)          AS email_key,
        COUNT(*)              AS copies,
-       group_concat(id, ',') AS ids
+       group_concat(id, ',' ORDER BY id) AS ids
 FROM users_raw
 WHERE email IS NOT NULL
 GROUP BY lower(email)
@@ -1735,6 +1839,18 @@ INSERT INTO customers (email, name) VALUES ('eve@mail.com', 'Eve');        -- ol
 SELECT name, quote(loyalty_points) AS points FROM customers;               -- Eve: NULL`) },
     mcq: { q: 'What do existing rows contain right after ADD COLUMN ... NOT NULL DEFAULT 0?', options: ['NULL until updated', '0', 'An error is raised', 'Random values'], answer: 1, explain: 'Existing rows read the DEFAULT; in SQLite (and Postgres 11+) this is metadata-only, no rewrite.' },
     hints: ['<p>Hint 1: NOT NULL columns can be added in SQLite only if you give a non-NULL DEFAULT.</p>', '<p>Hint 2: Combine everything in the column definition: <code>INTEGER NOT NULL DEFAULT 0 CHECK (loyalty_points &gt;= 0)</code>.</p>', '<p>Hint 3: Verify with SELECT before and after inserting a customer that omits the column.</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['id', 'name', 'loyalty_points'], rows: [[1, 'Asha', 0], [2, 'Ben', 0], [3, 'Chen', 0], [4, 'Dara', 0], [5, 'Eve', 0]] },
+        { setup: 'INSERT INTO customers (id, email, name) VALUES (10, \'zed@mail.com\', \'Zed\')', rows: [[1, 'Asha', 0], [2, 'Ben', 0], [3, 'Chen', 0], [4, 'Dara', 0], [10, 'Zed', 0], [11, 'Eve', 0]] },
+        { setup: 'DELETE FROM reviews; DELETE FROM order_items; DELETE FROM orders; DELETE FROM addresses; DELETE FROM customers;', rows: [[1, 'Eve', 0]] },
+        { after: 'UPDATE customers SET loyalty_points = -1 WHERE id = 1', error: 'CHECK' },
+        { after: 'UPDATE customers SET loyalty_points = NULL WHERE id = 1', error: 'NOT NULL' },
+        { after: 'INSERT INTO customers (email, name, loyalty_points) VALUES (\'x@mail.com\', \'X\', -5)', error: 'CHECK' },
+        { after: 'UPDATE customers SET loyalty_points = loyalty_points + 50 WHERE id = 2; SELECT SUM(loyalty_points) FROM customers', rows: [[50]] },
+        { after: 'SELECT name, "notnull", dflt_value FROM pragma_table_info(\'customers\') WHERE name = \'loyalty_points\'', rows: [['loyalty_points', 1, '0']] },
+        { after: 'SELECT COUNT(*) FROM customers WHERE loyalty_points = 0', rows: [[5]] },
+        { after: 'SELECT COUNT(*) FROM orders', rows: [[4]] }
+      ] },
     solution: {
       approach: `<p>One ALTER with NOT NULL + DEFAULT + CHECK. Old rows read the default instantly; new rows get it automatically; negative or NULL values are impossible.</p>`,
       code: shop(`ALTER TABLE customers ADD COLUMN loyalty_points INTEGER NOT NULL DEFAULT 0 CHECK (loyalty_points >= 0);
@@ -1758,6 +1874,18 @@ CREATE TABLE players (id INTEGER PRIMARY KEY, team_id INTEGER REFERENCES teams(i
 SELECT sql FROM sqlite_master WHERE name = 'players';   -- "it says REFERENCES, so we're safe" (we're not)`) },
     mcq: { q: 'Which command lists existing FK violations in SQLite?', options: ['PRAGMA integrity_check', 'PRAGMA foreign_key_check', 'PRAGMA foreign_keys', 'EXPLAIN'], answer: 1, explain: 'foreign_key_check reports every child row whose parent is missing, even when enforcement is off.' },
     hints: ['<p>Hint 1: <code>PRAGMA foreign_keys;</code> with no value returns 0 or 1.</p>', '<p>Hint 2: Insert a child pointing at a missing parent while it is 0, then run <code>PRAGMA foreign_key_check;</code>.</p>', '<p>Hint 3: Enable with <code>PRAGMA foreign_keys = ON;</code> — outside any transaction — and query the setting again.</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['step', 'value'], rows: [['setting after', 1]] },
+        { after: 'INSERT INTO players VALUES (5, \'Zed\', 99)', error: 'FOREIGN KEY' },
+        { after: 'SELECT COUNT(*) FROM players', rows: [[1]] },
+        { after: 'PRAGMA foreign_key_check', rows: [] },
+        { after: 'SELECT foreign_keys FROM pragma_foreign_keys', rows: [[1]] },
+        { after: 'INSERT INTO players VALUES (5, \'Zed\', 1); SELECT COUNT(*) FROM players', rows: [[2]] },
+        { after: 'INSERT INTO players VALUES (6, \'Nil\', NULL); SELECT COUNT(*) FROM players WHERE team_id IS NULL', rows: [[1]] },
+        { after: 'DELETE FROM teams WHERE id = 1', error: 'FOREIGN KEY' },
+        { after: 'UPDATE players SET team_id = 42 WHERE id = 1', error: 'FOREIGN KEY' },
+        { after: 'SELECT name FROM players ORDER BY id', rows: [['Asha']] }
+      ] },
     solution: {
       approach: `<p>Trust behaviour, not declarations: read the setting, provoke an orphan, detect it, then fix the setting. In real apps, enable the pragma in the connection factory and add a startup assertion that it returns 1.</p>`,
       code: lab(`PRAGMA foreign_keys = OFF;
@@ -1787,6 +1915,16 @@ PRAGMA foreign_key_check;                                         -- now empty`)
 WHERE user_id NOT IN (SELECT id FROM users_raw UNION ALL SELECT NULL);   -- 0 rows: a lie`) },
     mcq: { q: 'Which pattern is NULL-safe for "child rows with no parent"?', options: ['NOT IN (subquery)', 'NOT EXISTS (correlated subquery) or LEFT JOIN ... IS NULL', 'WHERE user_id <> ALL (...)', 'EXCEPT on all columns'], answer: 1, explain: 'NOT EXISTS / LEFT JOIN anti-joins are not poisoned by NULLs in the parent column.' },
     hints: ['<p>Hint 1: This is an anti-join: "orders for which no matching user exists".</p>', '<p>Hint 2: Use <code>NOT EXISTS (SELECT 1 FROM users_raw u WHERE u.id = o.user_id)</code> and require <code>o.user_id IS NOT NULL</code>.</p>', '<p>Hint 3: Report NULL user_ids separately — an FK allows them, a NOT NULL does not.</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['id', 'user_id', 'problem'], rows: [[103, 9, 'orphan: user missing'], [105, null, 'no owner: NULL user_id'], [106, 8, 'orphan: user missing']] },
+        { setup: 'DELETE FROM orders_raw; INSERT INTO orders_raw VALUES (1, 1, 10, \'paid\'), (2, 9, 10, \'paid\'), (3, 5, 10, \'paid\'); DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'asha@mail.com\', \'Asha\', 29, \'IN\'), (2, \'BEN@mail.com\', \'Ben\', 17, \'UK\'), (3, \'ben@mail.com\', \'Benjamin\', 34, \'UK\'), (4, NULL, \'Ghost\', 40, \'US\'), (5, \'chen@mail.com\', \'Chen\', -3, \'CN\'), (5, \'dup@mail.com\', \'Dup Id\', 22, \'IN\'), (6, \'asha@mail.com\', \'Asha B\', 31, \'IN\'), (7, \'eve@mail.com\', \'Eve\', 230, \'india\'), (NULL, \'nullid@x\', \'Null Id\', 20, \'IN\');', cols: ['id', 'user_id', 'problem'], rows: [[2, 9, 'orphan: user missing']] },
+        { setup: 'DELETE FROM orders_raw;  DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'e1@x\', \'n\', 30, \'IN\');', rows: [] },
+        { setup: 'DELETE FROM orders_raw; INSERT INTO orders_raw VALUES (1, 1, 5, \'p\'), (2, 2, 5, \'p\'); DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'e1@x\', \'n\', 30, \'IN\'), (2, \'e2@x\', \'n\', 30, \'IN\');', rows: [] },
+        { setup: 'DELETE FROM orders_raw; INSERT INTO orders_raw VALUES (4, NULL, 5, \'p\'), (2, NULL, 5, \'p\'); DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'e1@x\', \'n\', 30, \'IN\');', cols: ['id', 'user_id', 'problem'], rows: [[2, null, 'no owner: NULL user_id'], [4, null, 'no owner: NULL user_id']] },
+        { setup: 'DELETE FROM orders_raw; INSERT INTO orders_raw VALUES (1, 5, 5, \'p\'), (2, 5, 5, \'p\'), (3, 6, 5, \'p\'); DELETE FROM users_raw; INSERT INTO users_raw VALUES (5, \'e5@x\', \'n\', 30, \'IN\'), (5, \'e5@x\', \'n\', 30, \'IN\');', cols: ['id', 'user_id', 'problem'], rows: [[3, 6, 'orphan: user missing']] },
+        { setup: 'DELETE FROM orders_raw; INSERT INTO orders_raw VALUES (1, 1, 5, \'p\'), (2, 2, 5, \'p\'); DELETE FROM users_raw; ', cols: ['id', 'user_id', 'problem'], rows: [[1, 1, 'orphan: user missing'], [2, 2, 'orphan: user missing']] },
+        { setup: 'DELETE FROM orders_raw; INSERT INTO orders_raw VALUES (7, 0, 5, \'p\'), (6, -1, 5, \'p\'), (5, 1, 5, \'p\'); DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'e1@x\', \'n\', 30, \'IN\');', cols: ['id', 'user_id', 'problem'], rows: [[6, -1, 'orphan: user missing'], [7, 0, 'orphan: user missing']] }
+      ] },
     solution: {
       approach: `<p>NULL-safe anti-join for true orphans, plus a separate count of NULL owners. Fix both (delete, reassign to a placeholder parent, or backfill) before adding the FK and NOT NULL.</p>`,
       code: messy(`SELECT o.id, o.user_id, 'orphan: user missing' AS problem
@@ -1816,6 +1954,17 @@ INSERT OR IGNORE INTO users SELECT * FROM users_raw;
 SELECT (SELECT COUNT(*) FROM users_raw) AS rows_before, (SELECT COUNT(*) FROM users) AS rows_after;   -- where did they go?`) },
     mcq: { q: 'Ben is 17. Does he break "age between 13 and 120"?', options: ['Yes', 'No', 'Only if NULL'], answer: 1, explain: '17 is inside 13..120. Chen (-3) and Eve (230) break it — and Ben\'s second row is fine too.' },
     hints: ['<p>Hint 1: Write one SELECT per rule that returns a count, then glue them with <code>UNION ALL</code>.</p>', '<p>Hint 2: Duplicates: count rows whose key appears in a <code>GROUP BY ... HAVING COUNT(*) &gt; 1</code> subquery; compare emails with <code>lower()</code>.</p>', '<p>Hint 3: Write each CHECK as its <b>negation</b>: <code>NOT (age BETWEEN 13 AND 120)</code>. Remember NULLs pass a CHECK, so don\'t count them as violations.</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['rule', 'violations'], rows: [['duplicate id', 2], ['email NOT NULL', 1], ['email unique (ci)', 4], ['age 13..120', 2], ['country 2 upper letters', 1]] },
+        { setup: 'DELETE FROM users_raw; ', cols: ['rule', 'violations'], rows: [['duplicate id', 0], ['email NOT NULL', 0], ['email unique (ci)', 0], ['age 13..120', 0], ['country 2 upper letters', 0]] },
+        { setup: 'DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'a@x\', \'A\', 20, \'IN\'), (2, \'b@x\', \'B\', 40, \'US\');', cols: ['rule', 'violations'], rows: [['duplicate id', 0], ['email NOT NULL', 0], ['email unique (ci)', 0], ['age 13..120', 0], ['country 2 upper letters', 0]] },
+        { setup: 'DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'a@x\', \'A\', 13, \'IN\'), (2, \'b@x\', \'B\', 120, \'IN\'), (3, \'c@x\', \'C\', 12, \'IN\'), (4, \'d@x\', \'D\', 121, \'IN\'), (5, \'e@x\', \'E\', 0, \'IN\');', cols: ['rule', 'violations'], rows: [['duplicate id', 0], ['email NOT NULL', 0], ['email unique (ci)', 0], ['age 13..120', 3], ['country 2 upper letters', 0]] },
+        { setup: 'DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'a@x\', \'A\', 20, \'in\'), (2, \'b@x\', \'B\', 20, \'In\'), (3, \'c@x\', \'C\', 20, \'IND\'), (4, \'d@x\', \'D\', 20, \'I\'), (5, \'e@x\', \'E\', 20, \'\'), (6, \'f@x\', \'F\', 20, \'IN\');', cols: ['rule', 'violations'], rows: [['duplicate id', 0], ['email NOT NULL', 0], ['email unique (ci)', 0], ['age 13..120', 0], ['country 2 upper letters', 5]] },
+        { setup: 'DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'a@x\', \'A\', 20, \'IN\'), (1, \'b@x\', \'B\', 20, \'IN\'), (1, \'c@x\', \'C\', 20, \'IN\'), (2, \'d@x\', \'D\', 20, \'IN\');', cols: ['rule', 'violations'], rows: [['duplicate id', 3], ['email NOT NULL', 0], ['email unique (ci)', 0], ['age 13..120', 0], ['country 2 upper letters', 0]] },
+        { setup: 'DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, NULL, \'A\', 20, \'IN\'), (2, NULL, \'B\', 20, \'IN\'), (3, \'c@x\', \'C\', 20, \'IN\');', cols: ['rule', 'violations'], rows: [['duplicate id', 0], ['email NOT NULL', 2], ['email unique (ci)', 0], ['age 13..120', 0], ['country 2 upper letters', 0]] },
+        { setup: 'DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'A@x\', \'A\', 20, \'IN\'), (2, \'a@X\', \'B\', 20, \'IN\'), (3, \'b@x\', \'C\', 20, \'IN\');', cols: ['rule', 'violations'], rows: [['duplicate id', 0], ['email NOT NULL', 0], ['email unique (ci)', 2], ['age 13..120', 0], ['country 2 upper letters', 0]] },
+        { setup: 'DELETE FROM users_raw; INSERT INTO users_raw VALUES (1, \'a@x\', \'A\', -50, \'IN\'), (2, \'a@x\', \'B\', 500, \'IN\'), (2, NULL, \'C\', 20, \'xx\');', cols: ['rule', 'violations'], rows: [['duplicate id', 2], ['email NOT NULL', 1], ['email unique (ci)', 2], ['age 13..120', 2], ['country 2 upper letters', 1]] }
+      ] },
     solution: {
       approach: `<p>Turn every planned constraint into a "find violators" query and union the counts. Fix data rule by rule, re-run until all zeros, then migrate with plain INSERT (not OR IGNORE) so any surprise fails loudly.</p>`,
       code: messy(`SELECT 'duplicate id' AS rule, COUNT(*) AS violations
@@ -1847,6 +1996,19 @@ INSERT INTO products_bad VALUES (1, 'Phone', 'sale,new'), (2, 'Cable', 'sale,eco
 SELECT name FROM products_bad WHERE tags LIKE '%sale%';   -- Pallet appears: false positive`) },
     mcq: { q: 'Deleting the tag "eco" should…', options: ['delete every product tagged eco', 'delete only the product_tags links for eco', 'be blocked while links exist', 'set product names to NULL'], answer: 1, explain: 'The links are parts of the relationship; CASCADE from tags to product_tags removes them, products survive.' },
     hints: ['<p>Hint 1: N-M → three tables: products, tags, product_tags.</p>', '<p>Hint 2: product_tags(product_id, tag_id) with a composite PRIMARY KEY, both FKs ON DELETE CASCADE.</p>', '<p>Hint 3: Tag names <code>COLLATE NOCASE UNIQUE</code>. Query with two joins filtered on the tag name; index tag_id for "products by tag".</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['links_left', 'products_left'], rows: [[3, 3]] },
+        { after: 'SELECT p.name FROM products p JOIN product_tags pt ON pt.product_id = p.id JOIN tags t ON t.id = pt.tag_id WHERE t.name = \'sale\' ORDER BY p.name', rows: [['Cable'], ['Phone']] },
+        { after: 'INSERT INTO product_tags VALUES (1, 1)', error: 'UNIQUE' },
+        { after: 'INSERT INTO tags (name) VALUES (\'SALE\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO product_tags VALUES (99, 1)', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO product_tags VALUES (1, 99)', error: 'FOREIGN KEY' },
+        { after: 'SELECT COUNT(*) FROM tags WHERE name = \'eco\'', rows: [[0]] },
+        { after: 'DELETE FROM products WHERE id = 1; SELECT (SELECT COUNT(*) FROM product_tags), (SELECT COUNT(*) FROM tags)', rows: [[1, 2]] },
+        { after: 'DELETE FROM tags WHERE name = \'sale\'; SELECT (SELECT COUNT(*) FROM product_tags), (SELECT COUNT(*) FROM products)', rows: [[1, 3]] },
+        { after: 'INSERT INTO product_tags VALUES (3, 3); SELECT p.name, t.name FROM products p JOIN product_tags pt ON pt.product_id = p.id JOIN tags t ON t.id = pt.tag_id WHERE p.id = 3', rows: [['Book', 'new']] },
+        { after: 'SELECT name FROM products ORDER BY id', rows: [['Phone'], ['Cable'], ['Book']] }
+      ] },
     solution: {
       approach: `<p>Classic junction table. Composite PK blocks duplicate links and serves "tags of a product"; a second index on (tag_id) serves "products with a tag". Cascades on both FKs mean either side can be deleted cleanly.</p>`,
       code: lab(`PRAGMA foreign_keys = ON;
@@ -1891,6 +2053,18 @@ DELETE FROM employees WHERE id = 2;
 SELECT name FROM employees;   -- Tom and Uma are gone too!`) },
     mcq: { q: 'Which ON DELETE action is the best safety net for manager_id here?', options: ['CASCADE', 'SET NULL (or RESTRICT)', 'SET DEFAULT with default 0', 'No FK at all'], answer: 1, explain: 'SET NULL keeps people if someone forgets to re-assign (they become "no manager" and show up in a report); RESTRICT forces the re-assignment first. Never CASCADE people.' },
     hints: ['<p>Hint 1: The FK action is only a safety net; the business logic is "re-assign then delete".</p>', '<p>Hint 2: <code>UPDATE employees SET manager_id = (SELECT manager_id FROM employees WHERE id = 2) WHERE manager_id = 2;</code></p>', '<p>Hint 3: Wrap UPDATE + DELETE in BEGIN/COMMIT; use ON DELETE RESTRICT (forces the update first) or SET NULL; add CHECK (manager_id &lt;&gt; id).</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['employee', 'manager'], rows: [['Maya', '-'], ['Sara', 'Maya'], ['Tom', 'Maya'], ['Uma', 'Maya']] },
+        { after: 'SELECT name FROM employees WHERE manager_id = 1 ORDER BY name', rows: [['Sara'], ['Tom'], ['Uma']] },
+        { after: 'SELECT COUNT(*) FROM employees WHERE manager_id = 2 OR id = 2', rows: [[0]] },
+        { after: 'INSERT INTO employees VALUES (9, \'Loop\', 9)', error: 'CHECK' },
+        { after: 'UPDATE employees SET manager_id = 3 WHERE id = 3', error: 'CHECK' },
+        { after: 'DELETE FROM employees WHERE id = 1', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO employees VALUES (9, \'Orphan\', 99)', error: 'FOREIGN KEY' },
+        { after: 'UPDATE employees SET manager_id = (SELECT manager_id FROM employees WHERE id = 3) WHERE manager_id = 3; DELETE FROM employees WHERE id = 3; SELECT COUNT(*) FROM employees', rows: [[3]] },
+        { after: 'UPDATE employees SET manager_id = (SELECT manager_id FROM employees WHERE id = 1) WHERE manager_id = 1; DELETE FROM employees WHERE id = 1; SELECT name, manager_id FROM employees ORDER BY id', rows: [['Sara', null], ['Tom', null], ['Uma', null]] },
+        { after: 'INSERT INTO employees VALUES (6, \'Vik\', 4); SELECT name FROM employees WHERE manager_id = 4', rows: [['Vik']] }
+      ] },
     solution: {
       approach: `<p>Self-referencing FK with RESTRICT so the database refuses to delete a manager who still has reports. The transaction first moves reports to the skip-level manager, then deletes. A self-join shows the new org chart.</p>`,
       code: lab(`PRAGMA foreign_keys = ON;
@@ -1930,6 +2104,18 @@ UPDATE items SET price = '₹1,199.00' WHERE id = 1;  -- ...and only one gets up
 SELECT * FROM items;`) },
     mcq: { q: 'Why rename the NEW table to the old name (instead of renaming the old one away first)?', options: ['It is faster', 'Foreign keys and code that reference the old name keep pointing at the right table', 'SQLite forbids the other order', 'It keeps rowids'], answer: 1, explain: 'Other tables\' REFERENCES clauses name "items"; after DROP old + RENAME new → items, they refer to the new table.' },
     hints: ['<p>Hint 1: Recipe: FKs off → BEGIN → CREATE items_new → INSERT ... SELECT with conversion → DROP items → RENAME → recreate indexes → foreign_key_check → COMMIT → FKs on.</p>', '<p>Hint 2: Conversion: strip ₹ and commas with <code>replace()</code>, then <code>CAST(ROUND(x * 100) AS INTEGER)</code>.</p>', '<p>Hint 3: The new table\'s CHECK and NOT NULL make the INSERT fail (and the transaction roll back) if a value is unconvertible — exactly the "abort" behaviour you want.</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['id', 'name', 'price_cents', 't'], rows: [[1, 'Phone', 129900, 'integer'], [2, 'Cable', 4950, 'integer'], [3, 'Sticker', 1000, 'integer']] },
+        { after: 'SELECT ii.name FROM pragma_index_list(\'items\') il, pragma_index_info(il.name) ii', rows: [['name']] },
+        { after: 'SELECT name FROM pragma_table_info(\'items\') ORDER BY cid', rows: [['id'], ['name'], ['price_cents']] },
+        { after: 'SELECT name FROM sqlite_master WHERE type = \'table\' AND name NOT LIKE \'sqlite_%\'', rows: [['items']] },
+        { after: 'INSERT INTO items VALUES (4, \'Free\', 0)', error: 'CHECK' },
+        { after: 'INSERT INTO items VALUES (4, \'Neg\', -100)', error: 'CHECK' },
+        { after: 'INSERT INTO items VALUES (4, \'Null\', NULL)', error: 'NOT NULL' },
+        { after: 'INSERT INTO items VALUES (1, \'DupId\', 5)', error: 'UNIQUE' },
+        { after: 'SELECT SUM(price_cents) FROM items', rows: [[135850]] },
+        { after: 'INSERT INTO items VALUES (4, \'Pen\', 1); SELECT COUNT(*) FROM items', rows: [[4]] }
+      ] },
     solution: {
       approach: `<p>The SQLite rebuild recipe with the conversion inside INSERT ... SELECT. The target table's constraints validate every converted value, so bad data aborts the transaction instead of slipping through.</p>`,
       code: lab(`CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL, price TEXT NOT NULL);
@@ -1974,6 +2160,18 @@ INSERT OR IGNORE INTO accounts_bad (email) VALUES ('asha@mail.com');   -- blocke
 SELECT COUNT(*) AS accounts FROM accounts_bad;`) },
     mcq: { q: 'Which index expresses "unique among active accounts"?', options: ['UNIQUE (email, deleted_at)', 'CREATE UNIQUE INDEX ... ON accounts(lower(email)) WHERE deleted_at IS NULL', 'UNIQUE (email) DEFERRABLE', 'CHECK (deleted_at IS NULL)'], answer: 1, explain: 'A partial unique index only covers rows matching its WHERE. (email, deleted_at) fails because NULLs are distinct — two active rows would both pass!' },
     hints: ['<p>Hint 1: The rule only applies to some rows — that is what partial indexes are for.</p>', '<p>Hint 2: <code>CREATE UNIQUE INDEX ... ON accounts(lower(email)) WHERE deleted_at IS NULL</code>.</p>', '<p>Hint 3: Beware the tempting <code>UNIQUE(email, deleted_at)</code>: since NULL ≠ NULL, two active duplicates would be allowed.</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['id', 'email', 'deleted_at'], rows: [[1, 'asha@mail.com', '\'2026-09-01\''], [2, 'Asha@Mail.com', 'NULL']] },
+        { after: 'INSERT INTO accounts (email) VALUES (\'ASHA@MAIL.COM\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO accounts (email) VALUES (\'asha@mail.com\')', error: 'UNIQUE' },
+        { after: 'UPDATE accounts SET deleted_at = NULL WHERE id = 1', error: 'UNIQUE' },
+        { after: 'INSERT INTO accounts (email) VALUES (NULL)', error: 'NOT NULL' },
+        { after: 'INSERT INTO accounts (email) VALUES (\'Bob@x.com\'); INSERT INTO accounts (email) VALUES (\'bob@X.com\')', error: 'UNIQUE' },
+        { after: 'UPDATE accounts SET deleted_at = \'2026-10-01\' WHERE id = 2; INSERT INTO accounts (email) VALUES (\'asha@mail.com\'); SELECT id, deleted_at IS NULL FROM accounts ORDER BY id', rows: [[1, 0], [2, 0], [3, 1]] },
+        { after: 'INSERT INTO accounts (email) VALUES (\'bob@mail.com\'); SELECT COUNT(*) FROM accounts', rows: [[3]] },
+        { after: 'SELECT COUNT(*) FROM accounts', rows: [[2]] },
+        { after: 'UPDATE accounts SET deleted_at = \'2026-10-02\' WHERE id = 2; UPDATE accounts SET deleted_at = \'2026-10-03\' WHERE id = 1; SELECT COUNT(*) FROM accounts WHERE deleted_at IS NULL', rows: [[0]] }
+      ] },
     solution: {
       approach: `<p>Partial unique expression index: uniqueness of lower(email) only among rows where deleted_at IS NULL. Deleted rows keep their real email for history; active rows stay unique.</p>`,
       code: lab(`CREATE TABLE accounts (
@@ -2008,6 +2206,16 @@ SELECT COUNT(*) AS orders_for_customer_4 FROM orders WHERE customer_id = 4;   --
 SELECT COUNT(*) AS addresses_that_would_vanish FROM addresses WHERE customer_id = 4;`) },
     mcq: { q: 'Customer 1 has orders with ON DELETE RESTRICT. How many addresses are deleted if you run the DELETE anyway?', options: ['2', '0 — the statement fails atomically', '1', 'Depends on the order of execution'], answer: 1, explain: 'Any RESTRICT violation aborts the whole statement, including its cascades.' },
     hints: ['<p>Hint 1: Read the schema with <code>pragma_foreign_key_list</code> to list every FK pointing at customers and its on_delete action.</p>', '<p>Hint 2: Put the id in a CTE <code>WITH target(id) AS (SELECT 1)</code> and count per child table, labelling each with its action.</p>', '<p>Hint 3: Second-level effects matter: deleting addresses SET NULLs orders.ship_address_id. Verdict = BLOCKED if any RESTRICT count &gt; 0.</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['customer_id', 'addresses_deleted', 'orders_address_nulled', 'reviews_nulled', 'orders_blocking', 'verdict'], rows: [[1, 2, 2, 2, 2, 'BLOCKED (RESTRICT)'], [4, 1, 0, 1, 0, 'SAFE to delete']] },
+        { setup: 'DELETE FROM order_items WHERE order_id IN (1, 2); DELETE FROM orders WHERE id IN (1, 2);', cols: ['customer_id', 'addresses_deleted', 'orders_address_nulled', 'reviews_nulled', 'orders_blocking', 'verdict'], rows: [[1, 2, 0, 2, 0, 'SAFE to delete'], [4, 1, 0, 1, 0, 'SAFE to delete']] },
+        { setup: 'INSERT INTO orders (id, customer_id, status, ship_address_id) VALUES (5, 4, \'pending\', 4)', cols: ['customer_id', 'addresses_deleted', 'orders_address_nulled', 'reviews_nulled', 'orders_blocking', 'verdict'], rows: [[1, 2, 2, 2, 2, 'BLOCKED (RESTRICT)'], [4, 1, 1, 1, 1, 'BLOCKED (RESTRICT)']] },
+        { setup: 'DELETE FROM reviews WHERE customer_id = 4; DELETE FROM addresses WHERE customer_id = 4;', cols: ['customer_id', 'addresses_deleted', 'orders_address_nulled', 'reviews_nulled', 'orders_blocking', 'verdict'], rows: [[1, 2, 2, 2, 2, 'BLOCKED (RESTRICT)'], [4, 0, 0, 0, 0, 'SAFE to delete']] },
+        { setup: 'INSERT INTO reviews (id, product_id, customer_id, rating) VALUES (10,2,1,1),(11,4,1,1)', cols: ['customer_id', 'addresses_deleted', 'orders_address_nulled', 'reviews_nulled', 'orders_blocking', 'verdict'], rows: [[1, 2, 2, 4, 2, 'BLOCKED (RESTRICT)'], [4, 1, 0, 1, 0, 'SAFE to delete']] },
+        { setup: 'UPDATE orders SET ship_address_id = 1 WHERE id = 3', cols: ['customer_id', 'addresses_deleted', 'orders_address_nulled', 'reviews_nulled', 'orders_blocking', 'verdict'], rows: [[1, 2, 3, 2, 2, 'BLOCKED (RESTRICT)'], [4, 1, 0, 1, 0, 'SAFE to delete']] },
+        { setup: 'INSERT INTO addresses (id, customer_id, line1, city) VALUES (9, 4, \'x\', \'y\'); INSERT INTO orders (id, customer_id, status, ship_address_id) VALUES (6, 1, \'paid\', 9)', cols: ['customer_id', 'addresses_deleted', 'orders_address_nulled', 'reviews_nulled', 'orders_blocking', 'verdict'], rows: [[1, 2, 2, 2, 3, 'BLOCKED (RESTRICT)'], [4, 2, 1, 1, 0, 'SAFE to delete']] },
+        { after: 'SELECT (SELECT COUNT(*) FROM customers), (SELECT COUNT(*) FROM addresses), (SELECT COUNT(*) FROM orders), (SELECT COUNT(*) FROM reviews), (SELECT COUNT(*) FROM order_items)', rows: [[4, 4, 4, 4, 6]] }
+      ] },
     solution: {
       approach: `<p>First list the FK graph from the catalog, then one parameterised CTE that counts affected rows per relationship (including the second-level SET NULL on orders.ship_address_id) and derives a verdict. The query is read-only, so it is safe to run in production and can be shown in an admin UI before confirming.</p>`,
       code: shop(`-- 1) Which FKs point at customers, and with what action?
@@ -2047,6 +2255,22 @@ UPDATE copies_bad SET borrowed_by = 'Ben', due_at = '2026-10-20' WHERE barcode =
 SELECT * FROM copies_bad;   -- no trace that Asha ever borrowed it`) },
     mcq: { q: 'How do you allow many loans per copy but only one OPEN loan?', options: ['UNIQUE (copy_id)', 'UNIQUE (copy_id, returned_at)', 'Partial UNIQUE index on loans(copy_id) WHERE returned_at IS NULL', 'CHECK (COUNT(*) <= 1)'], answer: 2, explain: 'The partial index covers only open loans. UNIQUE(copy_id, returned_at) fails because NULLs are distinct; CHECK cannot count rows.' },
     hints: ['<p>Hint 1: Entities: books 1-N copies, members, loans (copy N-1, member N-1). Loans are history — append, don\'t overwrite.</p>', '<p>Hint 2: "At most one open loan per copy" → <code>CREATE UNIQUE INDEX ... ON loans(copy_id) WHERE returned_at IS NULL</code>.</p>', '<p>Hint 3: Date rules as table CHECKs comparing ISO text; FKs from loans RESTRICT so history can\'t be orphaned.</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['id', 'barcode', 'name', 'borrowed_at', 'returned_at'], rows: [[1, 'C-1', 'Asha', '2026-10-01', '\'2026-10-05\''], [2, 'C-1', 'Ben', '2026-10-06', 'NULL']] },
+        { after: 'INSERT INTO loans (copy_id, member_id, borrowed_at, due_at) VALUES (1, 1, \'2026-10-07\', \'2026-10-20\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO loans (copy_id, member_id, borrowed_at, due_at) VALUES (2, 1, \'2026-10-07\', \'2026-10-20\'); SELECT COUNT(*) FROM loans WHERE returned_at IS NULL', rows: [[2]] },
+        { after: 'SELECT c.barcode FROM copies c JOIN loans l ON l.copy_id = c.id WHERE l.returned_at IS NULL ORDER BY c.barcode', rows: [['C-1']] },
+        { after: 'INSERT INTO loans (copy_id, member_id, borrowed_at, due_at) VALUES (2, 1, \'2026-10-07\', \'2026-10-07\')', error: 'CHECK' },
+        { after: 'INSERT INTO loans (copy_id, member_id, borrowed_at, due_at) VALUES (2, 1, \'2026-10-07\', \'2026-10-01\')', error: 'CHECK' },
+        { after: 'INSERT INTO loans (copy_id, member_id, borrowed_at, due_at, returned_at) VALUES (2, 1, \'2026-10-07\', \'2026-10-20\', \'2026-10-06\')', error: 'CHECK' },
+        { after: 'DELETE FROM copies WHERE id = 1', error: 'FOREIGN KEY' },
+        { after: 'DELETE FROM members WHERE id = 2', error: 'FOREIGN KEY' },
+        { after: 'DELETE FROM books WHERE id = 1', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO copies (book_id, barcode) VALUES (1, \'C-1\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO members (name, email) VALUES (\'Dup\', \'ASHA@MAIL.COM\')', error: 'UNIQUE' },
+        { after: 'UPDATE loans SET returned_at = \'2026-10-10\' WHERE id = 2; INSERT INTO loans (copy_id, member_id, borrowed_at, due_at) VALUES (1, 1, \'2026-10-11\', \'2026-10-20\'); SELECT COUNT(*), SUM(returned_at IS NULL) FROM loans WHERE copy_id = 1', rows: [[3, 1]] },
+        { after: 'SELECT COUNT(*) FROM copies WHERE book_id = 1', rows: [[2]] }
+      ] },
     solution: {
       approach: `<p>Separate the title (books) from the physical item (copies) and the event (loans). The partial unique index turns "one open loan per copy" into a database guarantee, while closed loans accumulate as history.</p>`,
       code: lab(`PRAGMA foreign_keys = ON;
@@ -2103,6 +2327,19 @@ INSERT INTO tasks VALUES (1, 100, 2, 'tenant A task inside tenant B project');  
 SELECT t.title, t.tenant_id AS task_tenant, p.tenant_id AS project_tenant FROM tasks t JOIN projects p ON p.id = t.project_id;`) },
     mcq: { q: 'What must the parent table have for FOREIGN KEY (tenant_id, project_id) REFERENCES projects(tenant_id, id) to be valid?', options: ['Nothing extra', 'A UNIQUE (or PK) constraint on (tenant_id, id)', 'An index on name', 'tenant_id as the only PK'], answer: 1, explain: 'A foreign key must reference a set of columns declared unique; (tenant_id, id) is unique because id alone is.' },
     hints: ['<p>Hint 1: The rule involves two columns of the child matching two columns of the parent → composite foreign key.</p>', '<p>Hint 2: Add <code>UNIQUE (tenant_id, id)</code> to projects (redundant for uniqueness, required as an FK target), then <code>FOREIGN KEY (tenant_id, project_id) REFERENCES projects (tenant_id, id)</code>.</p>', '<p>Hint 3: Safe insert: <code>INSERT ... SELECT ... FROM projects WHERE tenant_id = ? AND id = ?</code> — inserts nothing for a foreign project. Postgres adds row-level security on top.</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['id', 'title', 'tenant_id', 'project'], rows: [[1, 'Fix login', 100, 'Website']] },
+        { after: 'INSERT INTO tasks (tenant_id, project_id, title) VALUES (100, 2, \'Leak\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO tasks (tenant_id, project_id, title) VALUES (200, 1, \'Leak\')', error: 'FOREIGN KEY' },
+        { after: 'UPDATE tasks SET project_id = 2 WHERE id = 1', error: 'FOREIGN KEY' },
+        { after: 'UPDATE tasks SET tenant_id = 200 WHERE id = 1', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO tasks (tenant_id, project_id, title) VALUES (100, 999, \'Ghost\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO tasks (project_id, title) VALUES (1, \'No tenant\')', error: 'NOT NULL' },
+        { after: 'INSERT INTO tasks (tenant_id, project_id, title) VALUES (200, 2, \'Plan\'); SELECT COUNT(*) FROM tasks', rows: [[2]] },
+        { after: 'DELETE FROM projects WHERE id = 1; SELECT COUNT(*) FROM tasks', rows: [[0]] },
+        { after: 'DELETE FROM tenants WHERE id = 100; SELECT (SELECT COUNT(*) FROM projects), (SELECT COUNT(*) FROM tasks)', rows: [[1, 0]] },
+        { after: 'SELECT tenant_id FROM projects ORDER BY id', rows: [[100], [200]] }
+      ] },
     solution: {
       approach: `<p>Composite FK including tenant_id: a task can only reference a project with the <b>same</b> tenant. The parent gets UNIQUE (tenant_id, id) so it is a legal FK target. Inserts go through an INSERT ... SELECT that resolves the project inside the caller's tenant. (Leading every index with tenant_id also prepares the schema for sharding by tenant.)</p>`,
       code: lab(`PRAGMA foreign_keys = ON;
@@ -2156,6 +2393,18 @@ SELECT COUNT(*) AS orphan_comments FROM comments_poly c
 WHERE NOT EXISTS (SELECT 1 FROM posts p WHERE c.commentable_type = 'Post' AND p.id = c.commentable_id);`) },
     mcq: { q: 'Which CHECK enforces "exactly one of post_id, photo_id"?', options: ['CHECK (post_id IS NOT NULL OR photo_id IS NOT NULL)', 'CHECK ((post_id IS NOT NULL) + (photo_id IS NOT NULL) = 1)', 'CHECK (post_id <> photo_id)', 'UNIQUE (post_id, photo_id)'], answer: 1, explain: 'In SQLite a boolean expression is 0/1, so summing the IS NOT NULL tests counts the targets. OR allows two targets.' },
     hints: ['<p>Hint 1: Give each target its own nullable FK column so the database can check it.</p>', '<p>Hint 2: Add a CHECK that counts non-NULL targets: <code>(post_id IS NOT NULL) + (photo_id IS NOT NULL) = 1</code> (Postgres: <code>num_nonnulls(post_id, photo_id) = 1</code>).</p>', '<p>Hint 3: Both FKs ON DELETE CASCADE, index both columns. Alternative: a supertype table <code>commentables</code> that posts and photos share their id with.</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['id', 'post_id', 'photo_id', 'body'], rows: [[2, 'NULL', '7', 'great shot']] },
+        { after: 'INSERT INTO posts VALUES (2, \'p2\'); INSERT INTO comments (post_id, photo_id, body) VALUES (2, 7, \'two\')', error: 'CHECK' },
+        { after: 'INSERT INTO comments (body) VALUES (\'none\')', error: 'CHECK' },
+        { after: 'INSERT INTO comments (photo_id, body) VALUES (999, \'ghost\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO comments (post_id, body) VALUES (999, \'ghost\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO posts VALUES (2, \'p2\'); UPDATE comments SET post_id = 2 WHERE id = 2', error: 'CHECK' },
+        { after: 'INSERT INTO comments (photo_id) VALUES (7)', error: 'NOT NULL' },
+        { after: 'INSERT INTO posts VALUES (2, \'p2\'); INSERT INTO comments (post_id, body) VALUES (2, \'hi\'); SELECT COUNT(*) FROM comments', rows: [[2]] },
+        { after: 'DELETE FROM photos WHERE id = 7; SELECT COUNT(*) FROM comments', rows: [[0]] },
+        { after: 'INSERT INTO posts VALUES (2, \'p2\'); INSERT INTO comments (post_id, body) VALUES (2, \'hi\'); DELETE FROM posts WHERE id = 2; SELECT id FROM comments', rows: [[2]] }
+      ] },
     solution: {
       approach: `<p>Exclusive-arc design: one nullable FK per target type + a CHECK that exactly one is set. Every comment is guaranteed to have a real, existing target, and deleting a post or photo cascades to its comments.</p>`,
       code: lab(`PRAGMA foreign_keys = ON;
@@ -2200,6 +2449,22 @@ SELECT a.id, b.id AS clashes_with FROM bookings_app a JOIN bookings_app b
   ON a.room = b.room AND a.id < b.id AND a.check_in < b.check_out AND b.check_in < a.check_out;`) },
     mcq: { q: 'Which overlap test is correct for half-open intervals [in, out)?', options: ['a.in <= b.out AND b.in <= a.out', 'a.in < b.out AND b.in < a.out', 'a.in = b.in', 'a.out > b.out'], answer: 1, explain: 'Strict < lets a stay ending on the 5th touch one starting on the 5th without counting as overlap.' },
     hints: ['<p>Hint 1: The rule compares the new row with OTHER rows → beyond CHECK/UNIQUE. In Postgres this is an EXCLUDE constraint; in SQLite, a BEFORE INSERT/UPDATE trigger.</p>', '<p>Hint 2: Trigger body: <code>SELECT RAISE(ABORT, \'...\') WHERE EXISTS (overlap query using NEW.*)</code>; add a CHECK (check_out &gt; check_in) for single-row sanity.</p>', '<p>Hint 3: Index (room_id, check_in) so the overlap probe is cheap; cover UPDATE too (exclude the row itself: <code>b.id &lt;&gt; NEW.id</code>).</p>'],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['room_id', 'guest', 'check_in', 'check_out'], rows: [[101, 'Asha', '2026-10-01', '2026-10-05'], [101, 'Ben', '2026-10-05', '2026-10-08'], [102, 'Chen', '2026-10-04', '2026-10-06']] },
+        { after: 'INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (101, \'X\', \'2026-10-04\', \'2026-10-06\')', error: 'already booked' },
+        { after: 'INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (101, \'X\', \'2026-10-01\', \'2026-10-05\')', error: 'already booked' },
+        { after: 'INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (101, \'X\', \'2026-10-02\', \'2026-10-03\')', error: 'already booked' },
+        { after: 'INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (101, \'X\', \'2026-09-30\', \'2026-10-09\')', error: 'already booked' },
+        { after: 'INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (101, \'X\', \'2026-10-07\', \'2026-10-12\')', error: 'already booked' },
+        { after: 'INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (101, \'X\', \'2026-10-09\', \'2026-10-09\')', error: 'CHECK' },
+        { after: 'INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (101, \'X\', \'2026-10-12\', \'2026-10-09\')', error: 'CHECK' },
+        { after: 'INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (101, \'X\', \'2026-09-28\', \'2026-10-01\'); INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (101, \'X\', \'2026-10-08\', \'2026-10-10\'); SELECT COUNT(*) FROM bookings WHERE room_id = 101', rows: [[4]] },
+        { after: 'INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (103, \'X\', \'2026-10-01\', \'2026-10-05\'); INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (102, \'X\', \'2026-10-06\', \'2026-10-07\'); SELECT COUNT(*) FROM bookings', rows: [[5]] },
+        { after: 'UPDATE bookings SET check_out = \'2026-10-06\' WHERE id = 1', error: 'already booked' },
+        { after: 'UPDATE bookings SET room_id = 101 WHERE id = 3', error: 'already booked' },
+        { after: 'UPDATE bookings SET check_out = \'2026-10-03\' WHERE id = 1; SELECT check_out FROM bookings WHERE id = 1', rows: [['2026-10-03']] },
+        { after: 'SELECT a.id, b.id FROM bookings a JOIN bookings b ON a.room_id = b.room_id AND a.id < b.id AND a.check_in < b.check_out AND b.check_in < a.check_out', rows: [] }
+      ] },
     solution: {
       approach: `<p>CHECK for the single-row rule; BEFORE INSERT and BEFORE UPDATE triggers for the cross-row rule. Because SQLite serialises writers, the trigger's check and the insert happen atomically — no race. In Postgres: <code>EXCLUDE USING gist (room_id WITH =, daterange(check_in, check_out) WITH &amp;&amp;)</code>.</p>`,
       code: lab(`CREATE TABLE bookings (

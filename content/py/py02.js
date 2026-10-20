@@ -237,6 +237,29 @@ print([1, 2] == [1, 2], [1, 2] is [1, 2])   # True False` } }
         return False` },
       mcq: { q: 'Which order of checks lets you write a clean if/elif ladder?', options: ['Check ÷400 first, then ÷100, then ÷4', 'Check ÷4 first, then ÷100, then ÷400', 'Order does not matter'], answer: 0, explain: 'Most specific rule first: ÷400 → True, else ÷100 → False, else ÷4 → True, else False. First match wins.' },
       hints: [`<p>Hint 1: The rules are exceptions-of-exceptions. In a ladder, the <b>most specific</b> rule (÷400) must be tested first.</p>`, `<p>Hint 2: Or express it as one boolean: "÷4 and not ÷100, or ÷400". <code>and</code> binds tighter than <code>or</code>.</p>`, `<p>Hint 3: Test 1900, 2000, 2024, 2023 and 4. Recipe: if y%400==0 → True; elif y%100==0 → False; else → y%4==0.</p>`],
+      tests: {
+        sig: 'int -> bool',
+        fn: 'isLeap',
+        cases: [
+          [[2024], true],
+          [[1900], false],
+          [[2000], true],
+          [[2023], false],
+          [[1], false],
+          [[4], true],
+          [[100], false],
+          [[400], true],
+          [[2100], false],
+          [[2400], true],
+          [[1000000000], true],
+          [[999999999], false],
+          [[1600], true],
+          [[1700], false],
+          [[3], false],
+          [[8], true],
+          [[2096], true]
+        ]
+      },
       solution: {
         approach: `<p>Flatten the nesting with an ordered ladder (most specific first), or a single boolean expression. Both are O(1).</p>`,
         code: { lang: 'python', run: true, code: `def is_leap(year):
@@ -462,6 +485,32 @@ print('digits:', count, 'sum:', digit_sum)   # digits: 5 sum: 21` } }
     return True` },
       mcq: { q: 'Why is it enough to test divisors up to √n?', options: ['Any factor pair (a, b) with a·b = n has a ≤ √n', 'Primes are always below √n', 'Python cannot loop further'], answer: 0, explain: 'If both factors were > √n, their product would exceed n.' },
       hints: [`<p>Hint 1: Handle n &lt; 2 first — 0 and 1 are not prime. 2 is the only even prime.</p>`, `<p>Hint 2: Loop d over <code>range(2, isqrt(n) + 1)</code> (+1 because range excludes stop). <code>math.isqrt</code> avoids float rounding issues for huge n.</p>`, `<p>Hint 3: Use <code>break</code> when a divisor is found and the loop <code>else</code> for "no divisor found". Bonus: test 2 separately and step by 2 over odd numbers only.</p>`],
+      tests: {
+        sig: 'long -> bool',
+        fn: 'isPrime',
+        cases: [
+          [[0], false],
+          [[1], false],
+          [[2], true],
+          [[3], true],
+          [[4], false],
+          [[5], true],
+          [[9], false],
+          [[25], false],
+          [[29], true],
+          [[21], false],
+          [[97], true],
+          [[100], false],
+          [[1000000007], true],
+          [[1000000000000], false],
+          [[999999999989], true],
+          [[999966000289], false],
+          [[999962000357], false],
+          [[561], false],
+          [[7919], true],
+          [[1000000000039], true]
+        ]
+      },
       solution: {
         approach: `<p>Reject n &lt; 2. Try divisors 2..⌊√n⌋. If one divides n → composite (break). If the loop completes without break → prime (loop-else). Use <code>math.isqrt</code> for an exact integer square root.</p>`,
         code: { lang: 'python', run: true, code: `from math import isqrt
@@ -642,6 +691,30 @@ print([list(r) for r in zip(*grid[::-1])])   # [[4, 1], [5, 2], [6, 3]]` } }
     return count, positions` },
       mcq: { q: 'What does list(zip("abc", "xy")) give?', options: ['[("a","x"), ("b","y")]', '[("a","x"), ("b","y"), ("c", None)]', 'ValueError'], answer: 0, explain: 'zip stops at the shortest input; only strict=True raises, only zip_longest pads.' },
       hints: [`<p>Hint 1: You need both the index and the pair of characters → combine <code>enumerate</code> and <code>zip</code>.</p>`, `<p>Hint 2: <code>for i, (x, y) in enumerate(zip(a, b))</code> — the inner parentheses unpack the pair.</p>`, `<p>Hint 3: Check <code>len(a) != len(b)</code> first (or use <code>zip(a, b, strict=True)</code>). Then a comprehension collects mismatching i; the distance is its length.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_val',
+        cases: [
+          [['hamming(\'karolin\', \'kathrin\')'], [3, [2, 3, 4]]],
+          [['hamming(\'\', \'\')'], [0, []]],
+          [['hamming(\'a\', \'a\')'], [0, []]],
+          [['hamming(\'a\', \'b\')'], [1, [0]]],
+          [['hamming(\'abc\', \'abc\')'], [0, []]],
+          [['hamming(\'0000\', \'1111\')'], [4, [0, 1, 2, 3]]],
+          [['hamming(\'abcdef\', \'abXdeX\')'], [2, [2, 5]]],
+          [['hamming(\'ab\', \'abc\')'], '!ValueError'],
+          [['hamming(\'\', \'a\')'], '!ValueError'],
+          [['hamming(\'a\' * 10**6, \'a\' * 500000 + \'b\' + \'a\' * 499999)'], [1, [500000]]],
+          [['hamming(\'a\' * 10**6, \'b\' * 10**6)[0]'], 1000000]
+        ],
+        harness: {
+          python: 'def t_val(src):\n' +
+            '    try:\n' +
+            '        return eval(src)\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Validate the lengths, then one pass with <code>enumerate(zip(a, b))</code> collecting indexes where the characters differ. The distance is simply <code>len(positions)</code>.</p>`,
         code: { lang: 'python', run: true, code: `def hamming(a, b):
@@ -887,6 +960,48 @@ print(broken())` } }
     return tags` },
       mcq: { q: 'When is the default value of a parameter evaluated?', options: ['Once, when the def statement runs', 'On every call that omits the argument', 'Only when the module is imported twice'], answer: 0, explain: 'Defaults are evaluated once and stored in f.__defaults__.' },
       hints: [`<p>Hint 1: Use an immutable "nothing given" marker as the default — <code>None</code>.</p>`, `<p>Hint 2: Inside, <code>if tags is None: tags = []</code> creates a fresh list per call. Use <code>is None</code>, not truthiness, so that a caller's empty list is still used.</p>`, `<p>Hint 3: Skip duplicates with <code>if tag not in tags</code> (O(n), fine for ≤ 100). For big lists keep a set alongside.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_run',
+        cases: [
+          [['add_tag(\'py\'); result = add_tag(\'js\')'], ['js']],
+          [['t = [\'a\']; result = add_tag(\'a\', t)'], ['a']],
+          [['t = []; add_tag(\'x\', t); result = t'], ['x']],
+          [['result = add_tag(\'a\')'], ['a']],
+          [['t = [\'a\', \'b\']; result = add_tag(\'c\', t)'], ['a', 'b', 'c']],
+          [['a = add_tag(\'x\'); b = add_tag(\'y\'); result = [a, b, a is b]'], [['x'], ['y'], false]],
+          [['t = [\'a\']; add_tag(\'b\', t); result = add_tag(\'z\')'], ['z']],
+          [
+            [
+              'for i in range(10000):\n' +
+                '    add_tag(str(i))\n' +
+                'result = add_tag(\'q\')'
+            ],
+            ['q']
+          ],
+          [
+            [
+              't = []\n' +
+                'for i in range(100):\n' +
+                '    add_tag(str(i), t)\n' +
+                'for i in range(100):\n' +
+                '    add_tag(str(i), t)\n' +
+                'result = len(t)'
+            ],
+            100
+          ],
+          [['t = [\'b\']; result = add_tag(\'a\', t) is t'], true]
+        ],
+        harness: {
+          python: 'def t_run(src):\n' +
+            '    ns = dict(globals())\n' +
+            '    try:\n' +
+            '        exec(src, ns)\n' +
+            '        return ns[\'result\']\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Default to <code>None</code>; create the list inside the body so each call gets its own. Check <code>is None</code> (not <code>if not tags</code>, which would replace a caller's empty list with a new one and break aliasing). Append only if absent.</p>`,
         code: { lang: 'python', run: true, code: `def add_tag(tag, tags=None):
@@ -1112,6 +1227,22 @@ print(balanced('([]{})'), balanced('(]'), balanced('(('))` } }
     return sorted(a + b)` },
       mcq: { q: 'With pointers i (in a) and j (in b), when should you take a[i]?', options: ['When a[i] <= b[j]', 'When i < j', 'Always alternate a, b, a, b'], answer: 0, explain: 'Take the smaller front element; using <= keeps the merge stable (a\'s equal items first).' },
       hints: [`<p>Hint 1: The smallest remaining item is always at the front of a or the front of b.</p>`, `<p>Hint 2: Keep two indexes i, j. Compare a[i] and b[j], append the smaller, move that pointer.</p>`, `<p>Hint 3: When one list runs out, the rest of the other is already sorted — <code>result.extend(a[i:])</code> and <code>result.extend(b[j:])</code>.</p>`],
+      tests: {
+        sig: 'int[] int[] -> int[]',
+        fn: 'merge',
+        cases: [
+          [[[1, 4, 7], [2, 3, 9, 10]], [1, 2, 3, 4, 7, 9, 10]],
+          [[[], [5]], [5]],
+          [[[2, 2], [2]], [2, 2, 2]],
+          [[[], []], []],
+          [[[1], []], [1]],
+          [[[-5, -1, 0], [-3, 0, 4]], [-5, -3, -1, 0, 0, 4]],
+          [[[1, 2, 3], [4, 5, 6]], [1, 2, 3, 4, 5, 6]],
+          [[[4, 5, 6], [1, 2, 3]], [1, 2, 3, 4, 5, 6]],
+          [[[0, 0], [0, 0]], [0, 0, 0, 0]],
+          [[{ $range: [0, 200000, 2] }, { $range: [1, 200000, 2] }], { $range: [0, 200000, 1] }]
+        ]
+      },
       solution: {
         approach: `<p>Two-pointer merge: compare fronts, append the smaller, advance its pointer; when one side is exhausted, extend with the remainder. Each item is touched once.</p>`,
         code: { lang: 'python', run: true, code: `def merge(a, b):
@@ -1321,6 +1452,22 @@ print(ok_slow == ok_fast, f'list {t_list:.3f}s vs set {t_set:.5f}s')` } }
     return []` },
       mcq: { q: 'At index j with value x, what should you look up in the dict?', options: ['target - x', 'x', 'target + x', 'j - target'], answer: 0, explain: 'You need a partner p with p + x = target, i.e. p = target − x, seen earlier.' },
       hints: [`<p>Hint 1: For each number x you need its <b>complement</b> target − x. Have you seen it before?</p>`, `<p>Hint 2: A dict <code>value → index</code> of numbers seen so far answers that in O(1).</p>`, `<p>Hint 3: Check <b>before</b> inserting the current number (so you never pair an element with itself). Recipe: for j, x in enumerate(nums): if target-x in seen → return [seen[target-x], j]; else seen[x] = j.</p>`],
+      tests: {
+        sig: 'int[] int -> int[]',
+        fn: 'twoSum',
+        cases: [
+          [[[2, 7, 11, 15], 9], [0, 1]],
+          [[[3, 2, 4], 6], [1, 2]],
+          [[[3, 3], 6], [0, 1]],
+          [[[-3, 4, 3, 90], 0], [0, 2]],
+          [[[0, 4, 3, 0], 0], [0, 3]],
+          [[[1, 2], 3], [0, 1]],
+          [[[-1000000000, 1000000000, 5], 0], [0, 1]],
+          [[[5, 75, 25], 100], [1, 2]],
+          [[[-1, -2, -3, -4, -5], -8], [2, 4]],
+          [[{ $range: [0, 100000, 1] }, 199997], [99998, 99999]]
+        ]
+      },
       solution: {
         approach: `<p>One pass with <code>enumerate</code>. Keep <code>seen = {value: index}</code>. For each x, if <code>target − x</code> is in seen, we found the pair; otherwise record x. Checking before inserting handles duplicates like [3, 3] with target 6.</p>`,
         code: { lang: 'python', run: true, code: `def two_sum(nums, target):
@@ -1496,6 +1643,22 @@ print(b)            # []` } }
     return nums` },
       mcq: { q: 'Why compute k %= len(nums) first?', options: ['Rotating by n gives the original list, so only k mod n matters', 'Slices fail for big k', 'To make k negative'], answer: 0, explain: 'Rotation repeats every n steps, so only k mod n matters. It also keeps the cut point n - k inside the list for huge k.' },
       hints: [`<p>Hint 1: The answer is just "the last k items" followed by "everything else".</p>`, `<p>Hint 2: <code>nums[-k:] + nums[:-k]</code> — but watch out when k = 0: <code>nums[-0:]</code> is the whole list and <code>nums[:-0]</code> is empty… which happens to give the right answer, yet a version with <code>len(nums) - k</code> is clearer.</p>`, `<p>Hint 3: Handle the empty list (avoid modulo by zero), reduce k with <code>k %= n</code>, then split at <code>n - k</code>: <code>nums[n-k:] + nums[:n-k]</code>.</p>`],
+      tests: {
+        sig: 'int[] int -> int[]',
+        fn: 'rotate',
+        cases: [
+          [[[1, 2, 3, 4, 5, 6, 7], 3], [5, 6, 7, 1, 2, 3, 4]],
+          [[[1, 2, 3, 4, 5, 6, 7], 10], [5, 6, 7, 1, 2, 3, 4]],
+          [[[1, 2, 3], 0], [1, 2, 3]],
+          [[[], 5], []],
+          [[[1], 100], [1]],
+          [[[1, 2], 1000000000], [1, 2]],
+          [[[1, 2, 3, 4], 4], [1, 2, 3, 4]],
+          [[[1, 2, 3, 4], 5], [4, 1, 2, 3]],
+          [[[5, 6, 7], 1], [7, 5, 6]],
+          [[{ $range: [0, 100000, 1] }, 999999999], { $concat: [{ $range: [1, 100000, 1] }, [0]] }]
+        ]
+      },
       solution: {
         approach: `<p>Reduce k modulo n, then glue two slices: the tail of length k and the head of length n − k. Splitting at index <code>n − k</code> avoids negative-zero confusion.</p>`,
         code: { lang: 'python', run: true, code: `def rotate(nums, k):
@@ -1705,6 +1868,30 @@ print(i, nums)         # 1 [1, 9]` } }
     return fib(n - 1) + fib(n - 2)` },
       mcq: { q: 'Why does a, b = b, a + b work while a = b; b = a + b does not?', options: ['The right side is fully evaluated using old values before any assignment', 'Tuples are faster', 'Python assigns right to left'], answer: 0, explain: 'Phase 1 builds (b, a + b) from the old a and b; phase 2 assigns. The two-line version uses the new a in the second line.' },
       hints: [`<p>Hint 1: You only ever need the last two values — keep them in two variables.</p>`, `<p>Hint 2: Each step, the pair (a, b) becomes (b, a + b). Tuple assignment updates both at once using the old values.</p>`, `<p>Hint 3: Start with a, b = 0, 1, loop n times, return a. Check n = 0 → 0 and n = 1 → 1 without special cases.</p>`],
+      tests: {
+        sig: 'string -> string',
+        fn: 't_val',
+        cases: [
+          [['[fib(i) for i in range(11)]'], [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]],
+          [['fib(100)'], '354224848179261915075'],
+          [['fib(90)'], '2880067194370816120'],
+          [['fib(1)'], 1],
+          [['fib(2)'], 1],
+          [['fib(0)'], 0],
+          [['fib(78)'], 8944394323791464],
+          [['fib(79)'], '14472334024676221'],
+          [['fib(100000).bit_length()'], 69424],
+          [['fib(100000) % 10**18'], '895374653428746875'],
+          [['fib(100000) == fib(99999) + fib(99998)'], true]
+        ],
+        harness: {
+          python: 'def t_val(src):\n' +
+            '    try:\n' +
+            '        return eval(src)\n' +
+            '    except Exception as e:\n' +
+            '        return \'!\' + type(e).__name__'
+        }
+      },
       solution: {
         approach: `<p>Iterate n times, sliding the pair (a, b) forward with one tuple assignment. After k steps, a = F(k). Constant memory, no recursion.</p>`,
         code: { lang: 'python', run: true, code: `def fib(n):
@@ -1743,6 +1930,28 @@ print(fib(100_000).bit_length(), 'bits')` },
     return v, c, o` },
     mcq: { q: 'Which check correctly identifies an ASCII letter?', options: ['ch.isalpha() and ch.isascii()', 'ch in "aeiou"', 'ch != " "'], answer: 0, explain: 'isalpha alone also accepts letters like é; combined with isascii it matches exactly A–Z/a–z.' },
     hints: [`<p>Hint 1: Lower-case each character once, then a vowel test is just <code>ch in 'aeiou'</code>.</p>`, `<p>Hint 2: Order the if/elif ladder: vowel first, then "is a letter" (consonant), else other.</p>`, `<p>Hint 3: Use <code>ch.isalpha()</code> (plus <code>isascii()</code> to ignore accented letters). Return the three counters as a tuple.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['classify(\'Hello, World 42!\')'], [3, 7, 6]],
+        [['classify(\'\')'], [0, 0, 0]],
+        [['classify(\'AEIOUaeiou\')'], [10, 0, 0]],
+        [['classify(\'bcdfg\')'], [0, 5, 0]],
+        [['classify(\'1234 !?\')'], [0, 0, 7]],
+        [['classify(\'xyz\')'], [0, 3, 0]],
+        [['classify(\'Y y\')'], [0, 2, 1]],
+        [['classify(\'The quick brown fox\')'], [5, 11, 3]],
+        [['classify(\'ab \' * 333333)'], [333333, 333333, 333333]]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>One pass. For each character: vowel? → v; else ASCII letter? → c; else → o. A set of vowels gives O(1) membership.</p>`,
       code: { lang: 'python', run: true, code: `VOWELS = set('aeiou')
@@ -1777,6 +1986,28 @@ print(classify(''))                   # (0, 0, 0)` },
     return distinct[-2] if len(distinct) >= 2 else None` },
     mcq: { q: 'Current (first, second) = (9, 7). Next value is 9. What happens?', options: ['Nothing — it equals first, not a new distinct value', 'second becomes 9', 'first becomes 9 and second 9'], answer: 0, explain: 'Duplicates of the maximum must be skipped, or second would wrongly become 9.' },
     hints: [`<p>Hint 1: Track two variables, <code>first</code> and <code>second</code>, starting at <code>None</code>.</p>`, `<p>Hint 2: If x &gt; first: shift first into second, then first = x. Elif x is strictly between second and first: second = x.</p>`, `<p>Hint 3: Skip x == first (duplicate max). Handle None comparisons carefully (or start with float('-inf') and convert back).</p>`],
+    tests: {
+      sig: 'int[] -> int',
+      fn: 'secondLargest',
+      cases: [
+        [[[4, 9, 9, 2, 7]], 7],
+        [[[5, 5]], null],
+        [[[]], null],
+        [[[-1, -3]], -3],
+        [[[1]], null],
+        [[[2, 1]], 1],
+        [[[9, 9, 8, 8]], 8],
+        [[[1, 2, 3, 4, 5]], 4],
+        [[[5, 4, 3]], 4],
+        [[[0, 0, -1]], -1],
+        [[[-5, -5, -5]], null],
+        [[[3, 1, 1]], 1],
+        [[[1, 3, 3, 3, 2]], 2],
+        [[{ $range: [0, 1000000, 1] }], 999998],
+        [[{ $rep: 7, n: 1000000 }], null],
+        [[{ $concat: [{ $rep: 5, n: 500000 }, { $rep: 4, n: 499999 }, [-1000000000]] }], 4]
+      ]
+    },
     solution: {
       approach: `<p>Single pass keeping the top two <b>distinct</b> values; tuple assignment shifts them in one line.</p>`,
       code: { lang: 'python', run: true, code: `def second_largest(nums):
@@ -1810,6 +2041,21 @@ print(second_largest([-1, -3]))          # -3` },
     return result.strip()` },
     mcq: { q: "What does '  a  b '.split() return?", options: ["['a', 'b']", "['', '', 'a', '', 'b', '']", "['a  b']"], answer: 0, explain: 'split() with no argument splits on any whitespace run and drops empty strings. split(" ") would keep empties.' },
     hints: [`<p>Hint 1: <code>s.split()</code> (no argument) already gives clean words.</p>`, `<p>Hint 2: Reverse the list with slicing <code>[::-1]</code> or <code>reversed()</code>.</p>`, `<p>Hint 3: <code>' '.join(...)</code> builds the final string in one O(n) pass — never concatenate in a loop.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 'reverseWords',
+      cases: [
+        [['  the sky   is blue '], 'blue is sky the'],
+        [[''], ''],
+        [['one'], 'one'],
+        [['   '], ''],
+        [['a b'], 'b a'],
+        [['a  b   c '], 'c b a'],
+        [['hello world'], 'world hello'],
+        [[' x'], 'x'],
+        [[{ $rep: 'ab ', n: 33333 }], { $concat: [{ $rep: 'ab ', n: 33332 }, 'ab'] }]
+      ]
+    },
     solution: {
       approach: `<p>Split into words, reverse with a slice, join with single spaces. Each step is linear.</p>`,
       code: { lang: 'python', run: true, code: `def reverse_words(s):
@@ -1835,6 +2081,22 @@ print(repr(reverse_words('one')))` },
             return k` },
     mcq: { q: 'Sum of 0..n equals…', options: ['n·(n+1)/2', 'n²', '(n−1)·n/2 + 1'], answer: 0, explain: 'Gauss: pair the ends (0+n, 1+(n−1), …).' },
     hints: [`<p>Hint 1: You know what the full range should add up to.</p>`, `<p>Hint 2: <code>n * (n + 1) // 2 - sum(nums)</code> — use <code>//</code> to stay an int.</p>`, `<p>Hint 3: Alternatives: a set difference <code>set(range(n+1)) - set(nums)</code> (O(n) memory) or XOR of all indexes and values.</p>`],
+    tests: {
+      sig: 'int[] -> int',
+      fn: 'missing',
+      cases: [
+        [[[3, 0, 1]], 2],
+        [[[9, 6, 4, 2, 3, 5, 7, 0, 1]], 8],
+        [[[0]], 1],
+        [[[1]], 0],
+        [[[0, 1]], 2],
+        [[[1, 2]], 0],
+        [[[2, 0]], 1],
+        [[[0, 2, 3]], 1],
+        [[{ $concat: [{ $range: [0, 500000, 1] }, { $range: [500001, 1000001, 1] }] }], 500000],
+        [[{ $range: [1000000, 0, -1] }], 0]
+      ]
+    },
     solution: {
       approach: `<p>Expected total minus actual total. Python ints never overflow, so no worry for big n.</p>`,
       code: { lang: 'python', run: true, code: `def missing(nums):
@@ -1867,6 +2129,23 @@ print(missing([0]))                                           # 1` },
     return -1` },
     mcq: { q: 'Why do we need a second pass over s (not over the dict)?', options: ['To respect the original order of characters in s', 'Dicts cannot be iterated', 'To recount characters'], answer: 0, explain: 'The answer is defined by position in s. (Iterating the dict in insertion order also works, but you need the index — scanning s with enumerate gives it.)' },
     hints: [`<p>Hint 1: Two passes: first count every character, then find the first with count 1.</p>`, `<p>Hint 2: Counting: <code>counts[ch] = counts.get(ch, 0) + 1</code>.</p>`, `<p>Hint 3: Second pass with <code>enumerate(s)</code>; return i at the first ch with counts[ch] == 1, else -1.</p>`],
+    tests: {
+      sig: 'string -> int',
+      fn: 'firstUnique',
+      cases: [
+        [['leetcode'], 0],
+        [['loveleetcode'], 2],
+        [['aabb'], -1],
+        [['a'], 0],
+        [['aa'], -1],
+        [['abcabcd'], 6],
+        [['aadadaad'], -1],
+        [['abab'], -1],
+        [['zxyzx'], 2],
+        [[{ $concat: [{ $rep: 'a', n: 50000 }, 'b', { $rep: 'a', n: 49999 }] }], 50000],
+        [[{ $rep: 'zz', n: 50000 }], -1]
+      ]
+    },
     solution: {
       approach: `<p>Count with a dict in pass 1 (O(n)); scan again with enumerate in pass 2 and return the first index whose count is 1.</p>`,
       code: { lang: 'python', run: true, code: `def first_unique(s):
@@ -1904,6 +2183,24 @@ print(first_unique('aabb'))           # -1` },
     return groups` },
     mcq: { q: 'Which key works for a dict of anagram groups?', options: ['tuple(sorted(word)) or "".join(sorted(word))', 'sorted(word) (a list)', 'set(word)'], answer: 0, explain: 'Lists are unhashable; set(word) loses counts ("aab" vs "ab" collide).' },
     hints: [`<p>Hint 1: Anagrams share the same sorted letters — that is a perfect dictionary key.</p>`, `<p>Hint 2: The key must be hashable: <code>''.join(sorted(w))</code> or <code>tuple(sorted(w))</code>.</p>`, `<p>Hint 3: <code>groups.setdefault(key, []).append(w)</code>; dicts keep insertion order, so <code>list(groups.values())</code> is already in first-seen order.</p>`],
+    tests: {
+      sig: 'string[] -> string[][]',
+      fn: 'groupAnagrams',
+      cases: [
+        [[['eat', 'tea', 'tan', 'ate', 'nat', 'bat']], [['eat', 'tea', 'ate'], ['tan', 'nat'], ['bat']]],
+        [[['', '']], [['', '']]],
+        [[['a']], [['a']]],
+        [[['ab', 'ba', 'ab']], [['ab', 'ba', 'ab']]],
+        [[['abc', 'def']], [['abc'], ['def']]],
+        [
+          [['listen', 'silent', 'enlist', 'google', 'gogole']],
+          [['listen', 'silent', 'enlist'], ['google', 'gogole']]
+        ],
+        [[['b', 'a', 'b']], [['b', 'b'], ['a']]],
+        [[['ab', 'a', 'ba', '']], [['ab', 'ba'], ['a'], ['']]],
+        [[{ $rep: 'ab', n: 10000 }], [{ $rep: 'ab', n: 10000 }]]
+      ]
+    },
     solution: {
       approach: `<p>Map each word to a canonical signature (sorted letters) and bucket words by signature in a dict of lists.</p>`,
       code: { lang: 'python', run: true, code: `def group_anagrams(words):
@@ -1946,6 +2243,29 @@ print(group_anagrams(['', '']))` },
     return best` },
     mcq: { q: 'When the current value differs from the previous one, the current run length becomes…', options: ['1', '0', 'unchanged'], answer: 0, explain: 'The new value starts a fresh block containing itself.' },
     hints: [`<p>Hint 1: Walk once; keep the current run length and the best seen so far.</p>`, `<p>Hint 2: <code>zip(a, a[1:])</code> gives (previous, current) pairs; equal → run += 1, else run = 1.</p>`, `<p>Hint 3: Update best only on strictly greater (keeps the first tie). Handle the empty list up front.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['longest_run([1, 1, 2, 2, 2, 3, 2, 2])'], [2, 3]],
+        [['longest_run([])'], [null, 0]],
+        [['longest_run([7])'], [7, 1]],
+        [['longest_run(list(\'aabbb\'))'], ['b', 3]],
+        [['longest_run([1, 1, 2, 2])'], [1, 2]],
+        [['longest_run([5, 5, 5])'], [5, 3]],
+        [['longest_run([1, 2, 3])'], [1, 1]],
+        [['longest_run([3] * 10**6)'], [3, 1000000]],
+        [['longest_run([0, 1] * 500000)'], [0, 1]],
+        [['longest_run([1, 1, 2, 2, 2, 3, 3, 3])'], [2, 3]]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>One pass over adjacent pairs, tracking the current run and the best run. Strict &gt; keeps the earliest tie.</p>`,
       code: { lang: 'python', run: true, code: `def longest_run(a):
@@ -1990,6 +2310,68 @@ def longest_run(a):
     return new` },
     mcq: { q: 'Clockwise rotation equals…', options: ['reverse the rows, then transpose', 'transpose, then reverse every column', 'reverse every row only'], answer: 0, explain: 'zip(*m[::-1]) — reversing row order then transposing turns columns (read bottom-up) into rows.' },
     hints: [`<p>Hint 1: Look at where the first output row comes from: the first column, read from bottom to top.</p>`, `<p>Hint 2: <code>m[::-1]</code> reverses row order; <code>zip(*rows)</code> transposes.</p>`, `<p>Hint 3: zip yields tuples — convert each to a list. In place: transpose with swaps <code>m[i][j], m[j][i] = m[j][i], m[i][j]</code> for j &gt; i, then reverse each row.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [['m = [[1]]\nresult = rotate(m)'], [[1]]],
+        [['m = [[1]]\nrotate_in_place(m)\nresult = m'], [[1]]],
+        [['m = [[1, 2], [3, 4]]\nresult = rotate(m)'], [[3, 1], [4, 2]]],
+        [['m = [[1, 2], [3, 4]]\nrotate_in_place(m)\nresult = m'], [[3, 1], [4, 2]]],
+        [['m = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]\nresult = rotate(m)'], [[7, 4, 1], [8, 5, 2], [9, 6, 3]]],
+        [
+          [
+            'm = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]\n' +
+              'rotate_in_place(m)\n' +
+              'result = m'
+          ],
+          [[7, 4, 1], [8, 5, 2], [9, 6, 3]]
+        ],
+        [
+          [
+            'm = [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]\n' +
+              'result = rotate(m)'
+          ],
+          [[13, 9, 5, 1], [14, 10, 6, 2], [15, 11, 7, 3], [16, 12, 8, 4]]
+        ],
+        [
+          [
+            'm = [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]\n' +
+              'rotate_in_place(m)\n' +
+              'result = m'
+          ],
+          [[13, 9, 5, 1], [14, 10, 6, 2], [15, 11, 7, 3], [16, 12, 8, 4]]
+        ],
+        [['m = [[0, -1], [-2, 0]]\nresult = rotate(m)'], [[-2, 0], [0, -1]]],
+        [['m = [[0, -1], [-2, 0]]\nrotate_in_place(m)\nresult = m'], [[-2, 0], [0, -1]]],
+        [['m = [[1, 2], [3, 4]]\nr = rotate(m)\nresult = [m, r]'], [[[1, 2], [3, 4]], [[3, 1], [4, 2]]]],
+        [
+          [
+            'm = [[i * 500 + j for j in range(500)] for i in range(500)]\n' +
+              'r = rotate(m)\n' +
+              'result = [r[i][j] for i, j in [(0, 0), (0, 499), (499, 0), (499, 499), (7, 11)]]'
+          ],
+          [249500, 0, 249999, 499, 244007]
+        ],
+        [
+          [
+            'm = [[i * 500 + j for j in range(500)] for i in range(500)]\n' +
+              'rotate_in_place(m)\n' +
+              'result = [m[i][j] for i, j in [(0, 0), (0, 499), (499, 0), (499, 499), (7, 11)]]'
+          ],
+          [249500, 0, 249999, 499, 244007]
+        ]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Reverse the rows, then transpose with <code>zip(*…)</code>. For in-place: transpose via tuple swaps above the diagonal, then reverse each row with <code>row.reverse()</code>.</p>`,
       code: { lang: 'python', run: true, code: `def rotate(m):
@@ -2036,6 +2418,24 @@ print(grid)` },
     return sorted(res)` },
     mcq: { q: 'After sorting by start, when does the next interval [s, e] overlap the last merged one [ls, le]?', options: ['s <= le', 'e <= le', 's >= ls'], answer: 0, explain: 'Sorted by start, so s ≥ ls is guaranteed; overlap only depends on s ≤ le.' },
     hints: [`<p>Hint 1: Sort by start: <code>sorted(intervals, key=lambda iv: iv[0])</code>. Now overlaps can only happen with the most recent merged interval.</p>`, `<p>Hint 2: Keep <code>merged</code>; for each [s, e] compare s with <code>merged[-1][1]</code>.</p>`, `<p>Hint 3: If overlapping, extend the end with <code>max</code> (the new one might be inside). Else append a copy. Unpack with <code>for s, e in …</code>.</p>`],
+    tests: {
+      sig: 'int[][] -> int[][]',
+      fn: 'merge',
+      cases: [
+        [[[[8, 10], [1, 3], [2, 6], [15, 18]]], [[1, 6], [8, 10], [15, 18]]],
+        [[[[1, 4], [4, 5]]], [[1, 5]]],
+        [[[[1, 10], [2, 3]]], [[1, 10]]],
+        [[[[5, 5]]], [[5, 5]]],
+        [[[[1, 2], [3, 4]]], [[1, 2], [3, 4]]],
+        [[[[2, 3], [1, 10]]], [[1, 10]]],
+        [[[[0, 0], [0, 0]]], [[0, 0]]],
+        [[[[1, 4], [0, 4]]], [[0, 4]]],
+        [[[[1, 4], [2, 3], [5, 6], [0, 0]]], [[0, 0], [1, 4], [5, 6]]],
+        [[[[0, 1000000000], [1000000000, 1000000000]]], [[0, 1000000000]]],
+        [[[[1, 3], [2, 4], [3, 5], [10, 11]]], [[1, 5], [10, 11]]],
+        [[{ $rep: [0, 1], n: 100000 }], [[0, 1]]]
+      ]
+    },
     solution: {
       approach: `<p>Sort by start, then sweep once, either extending the last merged interval or starting a new one.</p>`,
       code: { lang: 'python', run: true, code: `def merge(intervals):
@@ -2072,6 +2472,188 @@ print(merge([[1, 10], [2, 3]]))                      # [[1, 10]]` },
     return rows and cols and boxes` },
     mcq: { q: 'Which expression gives the box id (0–8) of cell (r, c)?', options: ['(r // 3) * 3 + c // 3', 'r * 3 + c', '(r + c) // 3'], answer: 0, explain: 'r // 3 and c // 3 give the box row and box column (0–2 each).' },
     hints: [`<p>Hint 1: One set of "seen" facts is enough if each fact records <i>where</i>: ('row', r, d), ('col', c, d), ('box', r//3, c//3, d).</p>`, `<p>Hint 2: Tuples are hashable, so they can live in a set. If a fact is already present → duplicate → False.</p>`, `<p>Hint 3: Loop with <code>for r, row in enumerate(board): for c, d in enumerate(row):</code>, skip '.', check and add three facts.</p>`],
+    tests: {
+      sig: 'string[] -> bool',
+      fn: 'isValid',
+      cases: [
+        [
+          [
+            [
+              '53..7....',
+              '6..195...',
+              '.98....6.',
+              '8...6...3',
+              '4..8.3..1',
+              '7...2...6',
+              '.6....28.',
+              '...419..5',
+              '....8..79'
+            ]
+          ],
+          true
+        ],
+        [
+          [
+            [
+              '53..7....',
+              '5..195...',
+              '.98....6.',
+              '8...6...3',
+              '4..8.3..1',
+              '7...2...6',
+              '.6....28.',
+              '...419..5',
+              '....8..79'
+            ]
+          ],
+          false
+        ],
+        [
+          [
+            [
+              '.........',
+              '.........',
+              '.........',
+              '.........',
+              '.........',
+              '.........',
+              '.........',
+              '.........',
+              '.........'
+            ]
+          ],
+          true
+        ],
+        [
+          [
+            [
+              '11.......',
+              '.........',
+              '.........',
+              '.........',
+              '.........',
+              '.........',
+              '.........',
+              '.........',
+              '.........'
+            ]
+          ],
+          false
+        ],
+        [
+          [
+            [
+              '1........',
+              '.........',
+              '.........',
+              '.........',
+              '.........',
+              '1........',
+              '.........',
+              '.........',
+              '.........'
+            ]
+          ],
+          false
+        ],
+        [
+          [
+            [
+              '1........',
+              '.1.......',
+              '.........',
+              '.........',
+              '.........',
+              '.........',
+              '.........',
+              '.........',
+              '.........'
+            ]
+          ],
+          false
+        ],
+        [
+          [
+            [
+              '534678912',
+              '672195348',
+              '198342567',
+              '859761423',
+              '426853791',
+              '713924856',
+              '961537284',
+              '287419635',
+              '345286179'
+            ]
+          ],
+          true
+        ],
+        [
+          [
+            [
+              '534678912',
+              '672195348',
+              '198342567',
+              '859761423',
+              '426853791',
+              '713924856',
+              '961537284',
+              '287419635',
+              '345286173'
+            ]
+          ],
+          false
+        ],
+        [
+          [
+            [
+              '934678912',
+              '672195348',
+              '198342567',
+              '859761423',
+              '426853791',
+              '713924856',
+              '961537284',
+              '287419635',
+              '345286179'
+            ]
+          ],
+          false
+        ],
+        [
+          [
+            [
+              '1........',
+              '.........',
+              '.........',
+              '.........',
+              '....1....',
+              '.........',
+              '.........',
+              '.........',
+              '.........'
+            ]
+          ],
+          true
+        ],
+        [
+          [
+            [
+              '1........',
+              '.........',
+              '.........',
+              '....1....',
+              '.........',
+              '.........',
+              '.........',
+              '.........',
+              '.........'
+            ]
+          ],
+          true
+        ]
+      ]
+    },
     solution: {
       approach: `<p>Single pass over the 81 cells; encode each constraint as a tuple and keep them in one set. A repeated tuple means a repeated digit in that row/column/box.</p>`,
       code: { lang: 'python', run: true, code: `def is_valid(board):
@@ -2113,6 +2695,34 @@ print(is_valid(bad))                   # False` },
     return best` },
     mcq: { q: 'The window is s[left..i]. You see ch at i, and ch was last seen at index p ≥ left. New left = ?', options: ['p + 1', 'i', 'left + 1'], answer: 0, explain: 'Jump just past the previous occurrence; everything between p+1 and i is still distinct.' },
     hints: [`<p>Hint 1: Keep a window [left, i] that never contains a duplicate; grow i one step at a time.</p>`, `<p>Hint 2: A dict <code>last[ch] = index</code> tells you where ch was last seen.</p>`, `<p>Hint 3: If <code>last.get(ch, -1) &gt;= left</code>, move left to <code>last[ch] + 1</code> (never move left backwards). Then update last[ch] = i and best = max(best, i - left + 1).</p>`],
+    tests: {
+      sig: 'string -> int',
+      fn: 'longest',
+      cases: [
+        [['abcabcbb'], 3],
+        [['pwwkew'], 3],
+        [['bbbb'], 1],
+        [[''], 0],
+        [['abba'], 2],
+        [['a'], 1],
+        [['dvdf'], 3],
+        [[' '], 1],
+        [['tmmzuxt'], 5],
+        [['abcdefg'], 7],
+        [['aab'], 2],
+        [[{ $rep: 'ab', n: 50000 }], 2],
+        [
+          [
+            {
+              $rep: '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~',
+              n: 1000
+            }
+          ],
+          94
+        ],
+        [[{ $concat: [{ $rep: 'a', n: 50000 }, { $rep: 'b', n: 50000 }] }], 2]
+      ]
+    },
     solution: {
       approach: `<p>Sliding window with a dict of last positions. Each index enters the window once and <code>left</code> only moves forward, so the whole thing is linear.</p>`,
       code: { lang: 'python', run: true, code: `def longest(s):
@@ -2155,6 +2765,37 @@ for t in ['abcabcbb', 'pwwkew', 'bbbb', '', 'abba']:
     return out` },
     mcq: { q: 'After walking the top row and the right column, why check top <= bottom before walking the bottom row?', options: ['A single remaining row would otherwise be printed twice', 'To avoid IndexError only', 'It is not needed'], answer: 0, explain: 'When top passes bottom, the "bottom row" is the same row already printed left-to-right.' },
     hints: [`<p>Hint 1: Keep four boundaries: top, bottom, left, right. Peel one layer at a time.</p>`, `<p>Hint 2: Each lap: top row (left→right), top += 1; right column (top→bottom), right −= 1; bottom row reversed, bottom −= 1; left column upward, left += 1.</p>`, `<p>Hint 3: Guard the bottom row with <code>if top &lt;= bottom</code> and the left column with <code>if left &lt;= right</code>; use <code>range(right, left - 1, -1)</code> for backwards walks.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['spiral([[1, 2, 3], [4, 5, 6], [7, 8, 9]])'], [1, 2, 3, 6, 9, 8, 7, 4, 5]],
+        [['spiral([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]])'], [1, 2, 3, 4, 8, 12, 11, 10, 9, 5, 6, 7]],
+        [['spiral([[1], [2], [3]])'], [1, 2, 3]],
+        [['spiral([[1, 2, 3]])'], [1, 2, 3]],
+        [['spiral([[1]])'], [1]],
+        [
+          ['spiral([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])'],
+          [1, 2, 3, 6, 9, 12, 11, 10, 7, 4, 5, 8]
+        ],
+        [['spiral([[1, 2], [3, 4]])'], [1, 2, 4, 3]],
+        [['spiral([[-1, 0], [0, -1]])'], [-1, 0, -1, 0]],
+        [
+          [
+            '(lambda r: [len(r), r[:5], r[-3:], sum(i * v for i, v in enumerate(r))])(spiral([[i * 100 + j for j in range(100)] for i in range(100)]))'
+          ],
+          [10000, [0, 1, 2, 3, 4], [4950, 5050, 5049], 251204086650]
+        ],
+        [['spiral([[i] for i in range(100)]) == list(range(100))'], true]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Shrink four boundaries after each side of the current layer. The two guards prevent re-visiting a lone row or column in the middle.</p>`,
       code: { lang: 'python', run: true, code: `def spiral(m):
@@ -2198,6 +2839,55 @@ print(spiral([[1], [2], [3]]))` },
     return [w for w, _ in pairs[:k]]` },
     mcq: { q: 'Which sort key gives "count descending, then word ascending"?', options: ['key=lambda w: (-counts[w], w)', 'key=lambda w: (counts[w], w), reverse=True', 'key=counts.get'], answer: 0, explain: 'Negating the count flips its order while keeping the word ascending. reverse=True would also reverse the words.' },
     hints: [`<p>Hint 1: Count all words in one pass with a dict.</p>`, `<p>Hint 2: Sort the distinct words with a <b>tuple key</b>; tuples compare element by element.</p>`, `<p>Hint 3: <code>sorted(counts, key=lambda w: (-counts[w], w))[:k]</code>. For huge d with small k, use <code>heapq.nsmallest(k, counts, key=…)</code>.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_val',
+      cases: [
+        [['top_k([\'i\', \'love\', \'code\', \'i\', \'love\', \'coding\'], 2)'], ['i', 'love']],
+        [['top_k([\'i\', \'love\', \'code\', \'i\', \'love\', \'coding\'], 3)'], ['i', 'love', 'code']],
+        [
+          ['top_k([\'i\', \'love\', \'code\', \'i\', \'love\', \'coding\'], 4)'],
+          ['i', 'love', 'code', 'coding']
+        ],
+        [['top_k([\'a\'], 1)'], ['a']],
+        [['top_k([\'c\', \'b\', \'a\'], 3)'], ['a', 'b', 'c']],
+        [['top_k([\'b\', \'a\', \'b\', \'a\'], 2)'], ['a', 'b']],
+        [
+          [
+            'top_k([\'the\', \'day\', \'is\', \'sunny\', \'the\', \'the\', \'the\', \'sunny\', \'is\', \'is\'], 4)'
+          ],
+          ['the', 'is', 'sunny', 'day']
+        ],
+        [['top_k([\'x\', \'y\'], 1)'], ['x']],
+        [['top_k([\'x\'] * 50000 + [\'y\'] * 30000 + [\'z\'] * 20000, 2)'], ['x', 'y']],
+        [['top_k([\'b\', \'a\'] * 50000, 1)'], ['a']],
+        [['top_k_heap([\'i\', \'love\', \'code\', \'i\', \'love\', \'coding\'], 2)'], ['i', 'love']],
+        [['top_k_heap([\'i\', \'love\', \'code\', \'i\', \'love\', \'coding\'], 3)'], ['i', 'love', 'code']],
+        [
+          ['top_k_heap([\'i\', \'love\', \'code\', \'i\', \'love\', \'coding\'], 4)'],
+          ['i', 'love', 'code', 'coding']
+        ],
+        [['top_k_heap([\'a\'], 1)'], ['a']],
+        [['top_k_heap([\'c\', \'b\', \'a\'], 3)'], ['a', 'b', 'c']],
+        [['top_k_heap([\'b\', \'a\', \'b\', \'a\'], 2)'], ['a', 'b']],
+        [
+          [
+            'top_k_heap([\'the\', \'day\', \'is\', \'sunny\', \'the\', \'the\', \'the\', \'sunny\', \'is\', \'is\'], 4)'
+          ],
+          ['the', 'is', 'sunny', 'day']
+        ],
+        [['top_k_heap([\'x\', \'y\'], 1)'], ['x']],
+        [['top_k_heap([\'x\'] * 50000 + [\'y\'] * 30000 + [\'z\'] * 20000, 2)'], ['x', 'y']],
+        [['top_k_heap([\'b\', \'a\'] * 50000, 1)'], ['a']]
+      ],
+      harness: {
+        python: 'def t_val(src):\n' +
+          '    try:\n' +
+          '        return eval(src)\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Dict counting (O(n)), then sort the d distinct words with the tuple key (−count, word) and take the first k.</p>`,
       code: { lang: 'python', run: true, code: `import heapq
@@ -2238,6 +2928,50 @@ print(top_k_heap(ws, 3))` },
     return out` },
     mcq: { q: 'Using an explicit stack, how do you keep left-to-right order when pushing a sub-list?', options: ['Push its items in reverse so the first item is popped first', 'Push them in normal order', 'Sort them first'], answer: 0, explain: 'A stack is LIFO; reversing on push restores the original order on pop.' },
     hints: [`<p>Hint 1: Recursion mirrors the structure: flatten each sub-list and extend.</p>`, `<p>Hint 2: To survive deep nesting, replace the call stack with your own list used as a stack.</p>`, `<p>Hint 3: Start with <code>stack = list(reversed(items))</code>; pop; if it is a list/tuple, push its items reversed; else append to output.</p>`],
+    tests: {
+      sig: 'string -> string',
+      fn: 't_run',
+      cases: [
+        [['result = flatten([1, [2, [3, 4], 5], [], (6, [7])])'], [1, 2, 3, 4, 5, 6, 7]],
+        [['result = flatten([])'], []],
+        [['result = flatten([[]])'], []],
+        [['result = flatten([[[[]]]])'], []],
+        [['result = flatten([1])'], [1]],
+        [['result = flatten([(1, (2,)), [3]])'], [1, 2, 3]],
+        [['result = flatten([[1, 2], [3, [4, [5, [6]]]], 7])'], [1, 2, 3, 4, 5, 6, 7]],
+        [['result = flatten([0, [-1, [-2]], 0])'], [0, -1, -2, 0]],
+        [
+          [
+            'deep = [0]\n' +
+              'for i in range(1, 5000):\n' +
+              '    deep = [deep, i]\n' +
+              'r = flatten(deep)\n' +
+              'result = [len(r), r[:5], r[-1]]'
+          ],
+          [5000, [0, 1, 2, 3, 4], 4999]
+        ],
+        [
+          [
+            'deep = [0]\n' +
+              'for i in range(1, 30000):\n' +
+              '    deep = [deep, i]\n' +
+              'r = flatten(deep)\n' +
+              'result = r == list(range(30000))'
+          ],
+          true
+        ],
+        [['result = flatten([[i] for i in range(100000)]) == list(range(100000))'], true]
+      ],
+      harness: {
+        python: 'def t_run(src):\n' +
+          '    ns = dict(globals())\n' +
+          '    try:\n' +
+          '        exec(src, ns)\n' +
+          '        return ns[\'result\']\n' +
+          '    except Exception as e:\n' +
+          '        return \'!\' + type(e).__name__'
+      }
+    },
     solution: {
       approach: `<p>Iterative DFS with an explicit stack: pop an item; if it is a list or tuple, push its children in reverse order; otherwise append it. No recursion limit, O(n) total work.</p>`,
       code: { lang: 'python', run: true, code: `def flatten(items):

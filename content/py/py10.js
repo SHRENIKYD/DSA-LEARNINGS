@@ -1,5 +1,26 @@
 (function () {
   var topics = [], practice = [], quiz = [], interview = [];
+  // Shared test harness: runs each case as python lines in a fresh namespace; returns repr of every non-None expression, or !ExceptionName.
+  var PYT = String.raw`
+def run_lines(lines):
+    g = dict(globals())
+    out = []
+    for ln in lines:
+        try:
+            try:
+                code = compile(ln, '<t>', 'eval')
+            except SyntaxError:
+                code = None
+            if code is None:
+                exec(compile(ln, '<t>', 'exec'), g)
+            else:
+                v = eval(code, g)
+                if v is not None:
+                    out.append(repr(v))
+        except Exception as e:
+            out.append('!' + type(e).__name__)
+    return out
+`;
 
   /* ---------- shared visualizer helpers (py10) ---------- */
   function fr(narr, parts) { return { narr: narr, parts: parts }; }
@@ -188,6 +209,65 @@ def count_primes_threaded(limit, workers):
 print(count_primes_threaded(100, 4))` },
       mcq: { q: 'The job is pure-Python arithmetic. Which change gives a real multi-core speed-up on standard CPython?', options: ['More threads', 'ProcessPoolExecutor with a top-level worker function', 'asyncio.gather over the chunks', 'Lowering sys.setswitchinterval'], answer: 1, explain: 'Each process has its own interpreter and GIL, so chunks truly run in parallel. Threads and asyncio stay on one GIL; the switch interval only changes how often threads trade the GIL.' },
       hints: [`<p>Hint 1: Ask "what is this code waiting on?" — nothing but the CPU. Threads only help when the GIL is released during waits.</p>`, `<p>Hint 2: Use <code>ProcessPoolExecutor</code>. The worker function must be defined at module top level (it gets <b>pickled by name</b>), and arguments/results must be picklable — a lambda is not.</p>`, `<p>Hint 3: Recipe: build chunk bounds → <code>ex.map(count_in_range, los, his)</code> → <code>sum</code>. Guard the entry point with <code>if __name__ == "__main__":</code>. Balance work: higher numbers are costlier, so use more chunks than workers (e.g. workers × 4).</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['count_primes_parallel(100, 4)',
+           'count_primes_parallel(10, 2)',
+           'count_primes_parallel(1000, 3)',
+           'count_primes_parallel(10000, 4)']],
+         ['25',
+          '4',
+          '168',
+          '1229']],
+        [[['count_primes_parallel(2, 4)',
+           'count_primes_parallel(3, 4)',
+           'count_primes_parallel(4, 4)',
+           'count_primes_parallel(5, 1)']],
+         ['0',
+          '1',
+          '2',
+          '2']],
+        [[['[count_primes_parallel(1000, w) for w in (1, 2, 3, 8)]',
+           'count_primes_parallel(101, 4)',
+           'count_primes_parallel(102, 4)']],
+         ['[168, 168, 168, 168]',
+          '25',
+          '26']],
+        [[['count_primes_parallel(100, 32)',
+           'count_primes_parallel(7, 32)']],
+         ['25',
+          '3']],
+        [[['count_in_range(0, 2)',
+           'count_in_range(2, 3)',
+           'count_in_range(90, 100)',
+           'count_in_range(100, 200)',
+           'count_in_range(-5, 10)',
+           'count_in_range(0, 100) + count_in_range(100, 200)']],
+         ['0',
+          '1',
+          '1',
+          '21',
+          '4',
+          '46']],
+        [[[String.raw`def sieve(n):
+    flags = [True] * n
+    for i in range(min(n, 2)):
+        flags[i] = False
+    for i in range(2, int(n ** 0.5) + 1):
+        if flags[i]:
+            for j in range(i * i, n, i):
+                flags[j] = False
+    return sum(flags)`,
+           'sieve(50000)',
+           'count_primes_parallel(50000, 4) == sieve(50000)',
+           'all(count_primes_parallel(n, 3) == sieve(n) for n in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 97, 98, 99, 100, 101, 1023, 1024, 1025))']],
+         ['5133',
+          'True',
+          'True']],
+        [[['count_primes_parallel(200000, 4)',
+           'count_primes_parallel(500000, 8)']],
+         ['17984',
+          '41538']],
+      ] },
       solution: {
         approach: `<p>Same chunking idea, but run chunks in <b>separate processes</b>. Each process has its own GIL, so 8 processes can keep 8 cores busy. Use more chunks than workers so that a slow chunk (large numbers) does not leave other cores idle at the end. Only small integers cross the process boundary, so pickling cost is tiny compared to the work.</p>`,
         code: `from concurrent.futures import ProcessPoolExecutor
@@ -503,6 +583,86 @@ t.join()` },
 print(download_all_slow(["a", "b"], str.upper))` },
       mcq: { q: 'How should idle workers learn that there is no more work?', options: ['Loop while not q.empty() and then call q.get()', 'Put one sentinel (None) per worker after the real items', 'Mark them daemon and let the program exit', 'Call q.get(timeout=1) and exit on Empty'], answer: 1, explain: 'One sentinel per worker gives a deterministic shutdown. empty() + get() is a race; daemon threads may lose work; timeouts are a guess and slow down shutdown (3.13+ can also use q.shutdown()).' },
       hints: [`<p>Hint 1: This is a <b>producer–consumer</b> problem. The main thread produces URLs; workers consume them.</p>`, `<p>Hint 2: Put all URLs, then one <code>None</code> per worker. Each worker loops: <code>item = q.get()</code>; break on None. Writing <code>results[url] = …</code> from many threads is safe in CPython (single dict store), but a Lock makes the intent explicit and stays correct everywhere.</p>`, `<p>Hint 3: Wrap <code>fetch</code> in try/except inside the loop so one failure doesn't kill the worker. Join all threads at the end. Edge cases: empty URL list, more workers than URLs, duplicate URLs (last write wins).</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[[String.raw`def f(u):
+    if u == "boom":
+        raise ValueError("bad url")
+    return u.upper()`,
+           'download_all(["a", "b", "boom", "c"], f, 2) == {"a": "A", "b": "B", "boom": "ERROR: bad url", "c": "C"}',
+           'sorted(download_all(["a", "b", "boom", "c"], f, 1).items())']],
+         ['True',
+          '[(\'a\', \'A\'), (\'b\', \'B\'), (\'boom\', \'ERROR: bad url\'), (\'c\', \'C\')]']],
+        [[['import threading',
+           'bar = threading.Barrier(4, timeout=5)',
+           String.raw`def f(u):
+    bar.wait()
+    return u * 2`,
+           'download_all(["a", "b", "c", "d"], f, 4) == {"a": "aa", "b": "bb", "c": "cc", "d": "dd"}',
+           'download_all(["a", "b", "c", "d", "e", "f", "g", "h"], f, 4) == {u: u * 2 for u in "abcdefgh"}']],
+         ['True',
+          'True']],
+        [[['import threading, time',
+           'before = threading.active_count()',
+           'lock = threading.Lock()',
+           'seen, state = set(), {"now": 0, "max": 0}',
+           String.raw`def f(u):
+    with lock:
+        seen.add(threading.current_thread().name)
+        state["now"] += 1
+        state["max"] = max(state["max"], state["now"])
+    time.sleep(0.01)
+    with lock:
+        state["now"] -= 1
+    return u`,
+           'r = download_all(list(range(30)), f, 3)',
+           'len(r)',
+           'state["max"] <= 3',
+           'seen <= {"w0", "w1", "w2"}',
+           'threading.active_count() == before']],
+         ['30',
+          'True',
+          'True',
+          'True']],
+        [[['download_all([], lambda u: u, 3)',
+           'download_all(["a", "a", "b"], lambda u: u.upper(), 2) == {"a": "A", "b": "B"}',
+           'download_all(["x"], lambda u: u, 64)']],
+         ['{}',
+          'True',
+          '{\'x\': \'x\'}']],
+        [[[String.raw`def f(u):
+    if u == 1:
+        raise KeyError("k")
+    if u == 2:
+        raise RuntimeError()
+    if u == 3:
+        raise OSError("disk full")
+    return u`,
+           'download_all([0, 1, 2, 3, 4], f, 2) == {0: 0, 1: "ERROR: \'k\'", 2: "ERROR: ", 3: "ERROR: disk full", 4: 4}']],
+         ['True']],
+        [[['r = download_all(list(range(10000)), lambda u: u * 2, 64)',
+           'len(r)',
+           'all(r[u] == u * 2 for u in range(10000))',
+           'download_all(list(range(10000)), lambda u: 1 // (u % 100), 8)[0]',
+           'sum(1 for v in download_all(list(range(10000)), lambda u: 1 // (u % 100), 8).values() if isinstance(v, str))']],
+         ['10000',
+          'True',
+          '\'ERROR: integer division or modulo by zero\'',
+          '100']],
+        [[['import time',
+           String.raw`def f(u):
+    time.sleep(0.1)
+    return u`,
+           't0 = time.monotonic()',
+           'download_all(list(range(8)), f, 4) == {i: i for i in range(8)}',
+           'time.monotonic() - t0 < 0.6',
+           't0 = time.monotonic()',
+           'download_all(list(range(3)), f, 1) == {i: i for i in range(3)}',
+           'time.monotonic() - t0 >= 0.29']],
+         ['True',
+          'True',
+          'True',
+          'True']],
+      ] },
       solution: {
         approach: `<p>Classic worker pool: a shared queue of URLs, N worker threads, one sentinel per worker for shutdown, a lock-protected results dict, and per-item exception handling. Because <code>fetch</code> blocks on the network (GIL released), N threads give close to N× speed-up until you hit bandwidth or server limits.</p>`,
         code: `import queue
@@ -761,6 +921,43 @@ def top_k_serial(lines, k):
 print(top_k_serial(["the cat", "The dog", "a cat"], 2))` },
       mcq: { q: 'What is the best unit of work to send to each worker?', options: ['One line', 'One word', 'A chunk of thousands of lines', 'The whole list to every worker'], answer: 2, explain: 'Chunks amortise pickling/IPC overhead while still giving several chunks per worker for load balancing. Sending everything to everyone duplicates work and memory.' },
       hints: [`<p>Hint 1: Counting is <b>associative</b>: count each chunk separately, then add the Counters. That is map-reduce.</p>`, `<p>Hint 2: <code>ProcessPoolExecutor.map(count_chunk, chunks)</code> where <code>count_chunk</code> is top-level and returns a <code>Counter</code>. Merge with <code>total.update(partial)</code> (or <code>+=</code>).</p>`, `<p>Hint 3: Chunk size ≈ len(lines) / (workers × 4). Final ordering: <code>sorted(items, key=lambda kv: (-kv[1], kv[0]))[:k]</code> or <code>heapq.nsmallest(k, items, key=…)</code>. Edge cases: empty input, k larger than distinct words.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['top_k_words(["the cat", "The dog", "a cat"], 2, workers=2)']],
+         ['[(\'cat\', 2), (\'the\', 2)]']],
+        [[['top_k_words([], 3, workers=2)',
+           'top_k_words([""], 3, workers=2)',
+           'top_k_words(["   "], 3, workers=2)']],
+         ['[]',
+          '[]',
+          '[]']],
+        [[['top_k_words(["b a", "a"], 5, workers=2)',
+           'top_k_words(["x"], 1, workers=4)',
+           'top_k_words(["x y x"], 2, workers=4)']],
+         ['[(\'a\', 2), (\'b\', 1)]',
+          '[(\'x\', 1)]',
+          '[(\'x\', 2), (\'y\', 1)]']],
+        [[['top_k_words(["Hello  hello\\tHELLO", " world "], 2, workers=2)',
+           'top_k_words(["Éa éA"], 3, workers=2)']],
+         ['[(\'hello\', 3), (\'world\', 1)]',
+          '[(\'éa\', 2)]']],
+        [[['top_k_words(["b a c", "c b a"], 3, workers=2)',
+           'top_k_words(["b a c", "c b a"], 1, workers=2)',
+           'top_k_words(["b a c", "c b a"], 2, workers=3)']],
+         ['[(\'a\', 2), (\'b\', 2), (\'c\', 2)]',
+          '[(\'a\', 2)]',
+          '[(\'a\', 2), (\'b\', 2)]']],
+        [[['top_k_words(["z"] * 7 + ["y"] * 3, 2, workers=3)',
+           'top_k_words(["a b", "a b", "a"], 2, workers=2)']],
+         ['[(\'z\', 7), (\'y\', 3)]',
+          '[(\'a\', 3), (\'b\', 2)]']],
+        [[['lines = ["w%d common" % (i % 100) for i in range(200000)]',
+           'top_k_words(lines, 3, workers=4)',
+           'len(top_k_words(lines, 100, workers=4))',
+           'sum(c for w, c in top_k_words(lines, 100, workers=4))']],
+         ['[(\'common\', 200000), (\'w0\', 2000), (\'w1\', 2000)]',
+          '100',
+          '398000']],
+      ] },
       solution: {
         approach: `<p><b>Map:</b> split lines into chunks; each worker builds a Counter for its chunk (pure CPU work, its own GIL). <b>Reduce:</b> parent adds the Counters. <b>Select:</b> sort by (−count, word) and take k. Only chunks of strings go out and compact Counters come back, so IPC is small relative to work.</p>`,
         code: `import os
@@ -954,6 +1151,67 @@ with ThreadPoolExecutor(4) as ex:
 print(fetch_fastest_slow(["a", "b"], str.upper))` },
       mcq: { q: 'Which call lets you react to whichever request finishes first, while keeping the others running?', options: ['ex.map(fetch, mirrors)', 'wait(futs, return_when=FIRST_COMPLETED) in a loop', 'futs[0].result()', 'ex.shutdown(wait=True)'], answer: 1, explain: 'wait(FIRST_COMPLETED) returns as soon as any future is done, giving (done, not_done). You inspect done; if it failed, loop again on not_done.' },
       hints: [`<p>Hint 1: This is a <b>race</b>: submit everything, then react to completions in finish order.</p>`, `<p>Hint 2: Loop: <code>done, pending = wait(pending, timeout=remaining, return_when=FIRST_COMPLETED)</code>. For each done future, if it has no exception → winner. Track remaining time with <code>time.monotonic()</code>.</p>`, `<p>Hint 3: On a winner, <code>cancel()</code> the pending ones and shut the executor down with <code>wait=False, cancel_futures=True</code> so you don't block on slow mirrors (they finish in the background). Empty <code>done</code> after wait → timeout.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['fetch_fastest(["eu", "us", "asia"], fake_fetch, timeout=1.0)']],
+         ['(\'asia\', \'data from asia\')']],
+        [[['import time',
+           String.raw`def fx(m):
+    time.sleep({"fast": 0.05, "slow": 1.0}[m])
+    return m`,
+           't0 = time.monotonic()',
+           'fetch_fastest(["slow", "fast"], fx, 5)',
+           'time.monotonic() - t0 < 0.6']],
+         ['(\'fast\', \'fast\')',
+          'True']],
+        [[['import time',
+           String.raw`def fx(m):
+    time.sleep(0.05 if m == "a" else 0.25)
+    raise ConnectionError(m + " down")`,
+           String.raw`try:
+    fetch_fastest(["a", "b"], fx, 5)
+except RuntimeError as e:
+    msg = str(e)`,
+           'msg']],
+         ['\'all mirrors failed: a: a down; b: b down\'']],
+        [[['import time',
+           String.raw`def fx(m):
+    time.sleep(0.6)
+    return m`,
+           't0 = time.monotonic()',
+           String.raw`try:
+    fetch_fastest(["a", "b", "c"], fx, 0.1)
+except TimeoutError as e:
+    kind = (type(e).__name__, str(e))`,
+           'kind',
+           'time.monotonic() - t0 < 0.5']],
+         ['(\'TimeoutError\', \'no mirror answered within 0.1s\')',
+          'True']],
+        [[['fetch_fastest(["only"], lambda m: "data", 1)',
+           'fetch_fastest(["only"], lambda m: "", 1)',
+           'fetch_fastest(["only"], lambda m: 1 / 0, 1)']],
+         ['(\'only\', \'data\')',
+          '(\'only\', \'\')',
+          '!RuntimeError']],
+        [[['import time',
+           String.raw`def fx(m):
+    if m == "bad":
+        raise ConnectionError("reset")
+    time.sleep(0.15)
+    return m + "!"`,
+           'fetch_fastest(["bad", "good"], fx, 2)',
+           'fetch_fastest(["good", "bad"], fx, 2)']],
+         ['(\'good\', \'good!\')',
+          '(\'good\', \'good!\')']],
+        [[['import time',
+           String.raw`def fx(m):
+    time.sleep(0.05 + 0.1 * int(m[1:]))
+    return m`,
+           'ms = ["m%d" % i for i in range(20)]',
+           'fetch_fastest(ms, fx, 10)',
+           'fetch_fastest(ms[::-1], fx, 10)']],
+         ['(\'m0\', \'m0\')',
+          '(\'m0\', \'m0\')']],
+      ] },
       solution: {
         approach: `<p>Submit all requests, then repeatedly wait for the <b>first completed</b> future among those still pending. A success wins immediately; a failure is recorded and we keep waiting. A deadline computed with <code>time.monotonic()</code> bounds the total wait. The executor is shut down without waiting so stragglers do not delay the caller.</p>`,
         code: `import time
@@ -1190,6 +1448,87 @@ async for chunk in response.aiter_bytes():        # each chunk may wait on the n
 print(run_sequential([]))` },
       mcq: { q: 'The ready queue is empty and two tasks are sleeping until t=5 and t=3. What should the loop do?', options: ['Busy-loop, incrementing the clock by 1', 'Jump the clock to 3 and wake that task', 'Wake both tasks now', 'Stop: nothing is ready'], answer: 1, explain: 'A real loop asks the OS to sleep until the nearest timer (or I/O). In simulation we jump the clock straight to the earliest wake time — a min-heap gives it in O(log n).' },
       hints: [`<p>Hint 1: You need two structures: a FIFO <b>ready deque</b> and a <b>min-heap</b> of sleepers keyed by (wake_time, sequence_number).</p>`, `<p>Hint 2: To run a task one step: <code>req = next(gen)</code> inside try/except StopIteration. If req is ("sleep", s) push (clock + s, seq, gen) on the heap; if None, append back to the ready deque.</p>`, `<p>Hint 3: Main loop: while ready or heap: if ready → step one task; else pop the earliest sleeper, set clock to its time, and also move every other sleeper with the same time (keeping seq order). The sequence counter breaks ties and avoids comparing generators.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['run([("A", task_a), ("B", task_b)])']],
+         ['[(0, \'A1\'), (0, \'B1\'), (1, \'B2\'), (1, \'B3 at t=1\'), (2, \'A2\')]']],
+        [[[String.raw`def ta(log, now):
+    log("A1")
+    yield ("sleep", 2)
+    log("A2")`,
+           String.raw`def tb(log, now):
+    log("B1")
+    yield ("sleep", 1)
+    log("B2")`,
+           'run([("A", ta), ("B", tb)])']],
+         ['[(0, \'A1\'), (0, \'B1\'), (1, \'B2\'), (2, \'A2\')]']],
+        [[['run([])',
+           String.raw`def one(log, now):
+    log("only")
+    return
+    yield`,
+           'run([("x", one)])']],
+         ['[]',
+          '[(0, \'only\')]']],
+        [[[String.raw`def mk(n):
+    def g(log, now):
+        log(n + "1")
+        yield ("sleep", 1)
+        log(n + "2")
+    return g`,
+           'run([("X", mk("X")), ("Y", mk("Y")), ("Z", mk("Z"))])']],
+         ['[(0, \'X1\'), (0, \'Y1\'), (0, \'Z1\'), (1, \'X2\'), (1, \'Y2\'), (1, \'Z2\')]']],
+        [[[String.raw`def p(log, now):
+    log("P1")
+    yield None
+    log("P2")
+    yield None
+    log("P3")`,
+           String.raw`def q(log, now):
+    log("Q1")
+    yield None
+    log("Q2")`,
+           'run([("P", p), ("Q", q)])']],
+         ['[(0, \'P1\'), (0, \'Q1\'), (0, \'P2\'), (0, \'Q2\'), (0, \'P3\')]']],
+        [[[String.raw`def a(log, now):
+    log("A1")
+    yield ("sleep", 0)
+    log("A2")`,
+           String.raw`def b(log, now):
+    log("B1")
+    yield None`,
+           'run([("A", a), ("B", b)])']],
+         ['[(0, \'A1\'), (0, \'B1\'), (0, \'A2\')]']],
+        [[[String.raw`def a(log, now):
+    yield ("sleep", 1.5)
+    log("A")`,
+           String.raw`def b(log, now):
+    for i in range(3):
+        yield ("sleep", 0.5)
+        log("B%d" % i)`,
+           'run([("A", a), ("B", b)])']],
+         ['[(0.5, \'B0\'), (1.0, \'B1\'), (1.5, \'A\'), (1.5, \'B2\')]']],
+        [[[String.raw`def tk(log, now):
+    for _ in range(10):
+        yield None
+    log("done")`,
+           'r = run([(str(i), tk) for i in range(10000)])',
+           'len(r)',
+           'all(t == 0 for t, m in r)',
+           String.raw`def sl(i):
+    def g(log, now):
+        yield ("sleep", i % 5 + 1)
+        log(i)
+    return g`,
+           'r = run([(str(i), sl(i)) for i in range(10000)])',
+           'sorted({t for t, m in r})',
+           'all(r[i][0] <= r[i + 1][0] for i in range(len(r) - 1))',
+           'sum(1 for t, m in r if t == 3)']],
+         ['10000',
+          'True',
+          '[1, 2, 3, 4, 5]',
+          'True',
+          '2000']],
+      ] },
       solution: {
         approach: `<p>This is asyncio's core in 30 lines: a ready deque (like <code>loop._ready</code>), a timer heap (like <code>loop._scheduled</code>), and a "step" that resumes a coroutine until its next yield. The simulated clock replaces <code>selector.select(timeout)</code>.</p>`,
         code: { lang: 'python', run: true, code: `import heapq
@@ -1490,6 +1829,93 @@ async def demo(u):
 print(asyncio.run(fetch_all_naive(["a", "b"], demo)))` },
       mcq: { q: 'Where should the timeout go so that time spent waiting for a semaphore slot does NOT count against a call?', options: ['Around the whole gather', 'Inside "async with sem", around await fetch(url)', 'Outside "async with sem"', 'Timeouts cannot be combined with semaphores'], answer: 1, explain: 'The per-call budget should start when the call actually starts, i.e. after acquiring the slot. Wrapping outside would let queueing time eat the budget.' },
       hints: [`<p>Hint 1: Write a small wrapper <code>one(url)</code> that does everything for one URL and <b>never raises</b> — it returns a result or an error string.</p>`, `<p>Hint 2: Inside it: <code>async with sem:</code> then <code>async with asyncio.timeout(t): return await fetch(url)</code>; catch <code>TimeoutError</code> and <code>Exception</code> separately. Don't catch <code>CancelledError</code>.</p>`, `<p>Hint 3: <code>await asyncio.gather(*(one(u) for u in urls))</code> keeps input order. For 10<sup>5</sup> URLs this creates 10<sup>5</sup> tasks (fine, ~100–200 MB worst case); for millions, switch to a Queue + workers.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['import asyncio',
+           'd = {"u0": 0.05, "u1": 3, "u2": 0.02}',
+           String.raw`async def f(u):
+    await asyncio.sleep(d[u])
+    if u == "u2":
+        raise ValueError("boom")
+    return "R" + u[1:]`,
+           'asyncio.run(fetch_all(["u0", "u1", "u2"], f, 2, 0.3))']],
+         ['[\'R0\', \'timeout\', \'error: boom\']']],
+        [[['import asyncio',
+           'd = {"a": 0.15, "b": 0.01, "c": 0.08}',
+           String.raw`async def f(u):
+    await asyncio.sleep(d[u])
+    return u.upper()`,
+           'asyncio.run(fetch_all(["a", "b", "c"], f, 3, 1.0))',
+           'asyncio.run(fetch_all(["c", "b", "a", "b"], f, 2, 1.0))']],
+         ['[\'A\', \'B\', \'C\']',
+          '[\'C\', \'B\', \'A\', \'B\']']],
+        [[['import asyncio',
+           'st = {"now": 0, "max": 0}',
+           String.raw`async def f(u):
+    st["now"] += 1
+    st["max"] = max(st["max"], st["now"])
+    await asyncio.sleep(0.02)
+    st["now"] -= 1
+    return u`,
+           'asyncio.run(fetch_all(list(range(10)), f, 3, 1.0)) == list(range(10))',
+           'st["max"]',
+           'st["max"] = 0',
+           'asyncio.run(fetch_all(list(range(10)), f, 1, 1.0)) == list(range(10))',
+           'st["max"]',
+           'st["max"] = 0',
+           'asyncio.run(fetch_all(list(range(4)), f, 200, 1.0)) == list(range(4))',
+           'st["max"]']],
+         ['True',
+          '3',
+          'True',
+          '1',
+          'True',
+          '4']],
+        [[['import asyncio, time',
+           String.raw`async def f(u):
+    await asyncio.sleep(0.5)
+    return u`,
+           't0 = time.monotonic()',
+           'asyncio.run(fetch_all([1, 2, 3, 4], f, 4, 0.1))',
+           'time.monotonic() - t0 < 0.4']],
+         ['[\'timeout\', \'timeout\', \'timeout\', \'timeout\']',
+          'True']],
+        [[['import asyncio',
+           String.raw`async def f(u):
+    await asyncio.sleep(0.04)
+    return u`,
+           'asyncio.run(fetch_all([1, 2, 3, 4], f, 1, 0.1))']],
+         ['[1, 2, 3, 4]']],
+        [[['import asyncio',
+           String.raw`async def f(u):
+    if u == 1:
+        raise ValueError("boom")
+    if u == 2:
+        raise KeyError("k")
+    if u == 3:
+        raise RuntimeError()
+    return u`,
+           'asyncio.run(fetch_all([0, 1, 2, 3, 4], f, 2, 1.0))']],
+         ['[0, \'error: boom\', "error: \'k\'", \'error: \', 4]']],
+        [[['import asyncio',
+           String.raw`async def f(u):
+    return u`,
+           'asyncio.run(fetch_all([], f, 5, 1.0))',
+           'asyncio.run(fetch_all([7], f, 1, 1.0))',
+           'asyncio.run(fetch_all(["a", "a"], f, 5, 1.0))']],
+         ['[]',
+          '[7]',
+          '[\'a\', \'a\']']],
+        [[['import asyncio',
+           String.raw`async def f(u):
+    return u * 2`,
+           'r = asyncio.run(fetch_all(list(range(100000)), f, 200, 1.0))',
+           'len(r)',
+           'r[-1]',
+           'sum(r)']],
+         ['100000',
+          '199998',
+          '9999900000']],
+      ] },
       solution: {
         approach: `<p>Wrap each URL in a coroutine that (1) waits for a semaphore slot, (2) applies the per-call timeout, (3) converts errors into values. Because each wrapper never raises, <code>gather</code> cannot fail fast, and it returns results in argument order.</p>`,
         code: `import asyncio
@@ -1725,6 +2151,101 @@ async def login_blocking(name, pw):
     return user` },
       mcq: { q: 'Which pairing is right?', options: ['Both via asyncio.to_thread', 'Lookup via to_thread; hash via run_in_executor with a ProcessPoolExecutor', 'Both via a ProcessPoolExecutor', 'Wrap both in asyncio.wait_for'], answer: 1, explain: 'The lookup waits (releases the GIL) → a thread is enough. The hash is pure-Python CPU work → in a thread it would still compete for the GIL with the loop thread, so a process pool is better. (hashlib on large buffers releases the GIL, but many tiny calls mostly do not.) wait_for does not unblock anything.' },
       hints: [`<p>Hint 1: Classify each call: waiting (I/O-like) or computing (CPU)?</p>`, `<p>Hint 2: I/O → <code>await asyncio.to_thread(legacy_user_lookup, name)</code>. CPU → <code>await loop.run_in_executor(POOL, slow_hash, pw)</code> with a module-level <code>ProcessPoolExecutor</code> created once (not per request).</p>`, `<p>Hint 3: The two calls are independent, so run them concurrently with <code>asyncio.gather</code>. Measure with a heartbeat that records <code>loop.time()</code> lateness. Guard process-pool creation with <code>if __name__ == "__main__":</code>.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['import asyncio',
+           'from concurrent.futures import ProcessPoolExecutor',
+           'pool = ProcessPoolExecutor(max_workers=2)',
+           'r = asyncio.run(login("ann", "pw", pool))',
+           'r == {"user": "ann", "hash": slow_hash("pw")}',
+           'sorted(r)',
+           'len(r["hash"])',
+           'pool.shutdown()']],
+         ['True',
+          '[\'hash\', \'user\']',
+          '16']],
+        [[['import asyncio',
+           'from concurrent.futures import ProcessPoolExecutor',
+           'pool = ProcessPoolExecutor(max_workers=2)',
+           'a = asyncio.run(login("ann", "pw", pool))',
+           'b = asyncio.run(login("bob", "other", pool))',
+           'c = asyncio.run(login("ann", "other", pool))',
+           'a["user"], b["user"], a["hash"] != b["hash"], b["hash"] == c["hash"]',
+           'pool.shutdown()']],
+         ['(\'ann\', \'bob\', True, True)']],
+        [[['import asyncio, time',
+           'from concurrent.futures import ProcessPoolExecutor',
+           'pool = ProcessPoolExecutor(max_workers=2)',
+           String.raw`async def probe():
+    ticks = []
+    stop = asyncio.Event()
+    async def ticker():
+        while not stop.is_set():
+            await asyncio.sleep(0.01)
+            ticks.append(1)
+    t = asyncio.create_task(ticker())
+    r = await login("ann", "pw", pool)
+    stop.set()
+    await t
+    return len(ticks), r["user"]`,
+           'n, user = asyncio.run(probe())',
+           'n >= 5',
+           'user',
+           'pool.shutdown()']],
+         ['True',
+          '\'ann\'']],
+        [[['import asyncio, time',
+           'from concurrent.futures import ProcessPoolExecutor',
+           'pool = ProcessPoolExecutor(max_workers=2)',
+           String.raw`async def probe():
+    lags, stop = [], asyncio.Event()
+    hb = asyncio.create_task(heartbeat(lags, stop))
+    await login("ann", "pw", pool)
+    stop.set()
+    await hb
+    return len(lags), max(lags)`,
+           'n, worst = asyncio.run(probe())',
+           'n >= 3',
+           'worst < 0.15',
+           'pool.shutdown()']],
+         ['True',
+          'True']],
+        [[['import asyncio, time',
+           'from concurrent.futures import ProcessPoolExecutor',
+           'pool = ProcessPoolExecutor(max_workers=2)',
+           String.raw`async def many():
+    return await asyncio.gather(*(login("u%d" % i, "pw", pool) for i in range(5)))`,
+           't0 = time.monotonic()',
+           'rs = asyncio.run(many())',
+           'time.monotonic() - t0 < 0.9',
+           '[r["user"] for r in rs]',
+           'len({r["hash"] for r in rs})',
+           'pool.shutdown()']],
+         ['True',
+          '[\'u0\', \'u1\', \'u2\', \'u3\', \'u4\']',
+          '1']],
+        [[['import asyncio, time',
+           'from concurrent.futures import ProcessPoolExecutor',
+           'pool = ProcessPoolExecutor(max_workers=2)',
+           String.raw`async def many():
+    return await asyncio.gather(*(login("u%d" % i, "pw", pool) for i in range(100)))`,
+           't0 = time.monotonic()',
+           'rs = asyncio.run(many())',
+           'time.monotonic() - t0 < 12',
+           'len(rs)',
+           'len({r["user"] for r in rs})',
+           'pool.shutdown()']],
+         ['True',
+          '100',
+          '100']],
+        [[['legacy_user_lookup("zed")',
+           'len(slow_hash("pw"))',
+           'slow_hash("pw") == slow_hash("pw")',
+           'slow_hash("pw") == slow_hash("pw2")']],
+         ['{\'user\': \'zed\'}',
+          '16',
+          'True',
+          'False']],
+      ] },
       solution: {
         approach: `<p>Move blocking I/O to a thread and CPU work to a process, and await both concurrently. The loop thread only schedules and resumes, so it stays responsive. Create the process pool once at startup — spawning processes per request would be far slower than the hash itself.</p>`,
         code: `import asyncio
@@ -1951,6 +2472,95 @@ async def crawl_naive(url, get_links, seen=None):
     return seen` },
       mcq: { q: 'When should a URL be added to the seen set?', options: ['After it is fetched successfully', 'When it is put on the queue', 'When a worker takes it off the queue', 'Never — dedupe the results at the end'], answer: 1, explain: 'Marking at enqueue time guarantees each URL is queued at most once, even if many pages link to it before it is fetched. Marking later lets duplicates pile up in the queue.' },
       hints: [`<p>Hint 1: It's BFS with a queue, but the queue is an <code>asyncio.Queue</code> and several worker tasks consume it concurrently.</p>`, `<p>Hint 2: Shared state: <code>seen</code> (marked at enqueue), <code>visited</code> (successful fetches), counter. No lock needed for simple set operations — there is no await between check and add.</p>`, `<p>Hint 3: Termination: <code>await q.join()</code> returns when every queued URL got <code>task_done()</code>. Then cancel workers. To respect <code>max_pages</code>, skip fetching when the budget is used up but still call <code>task_done()</code>.</p>`],
+      tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+        [[['import asyncio',
+           'G = {"a": ["b", "c"], "b": ["a", "d"], "c": ["d"], "d": []}',
+           String.raw`async def gl(u):
+    await asyncio.sleep(0.001)
+    return G[u]`,
+           'sorted(asyncio.run(crawl("a", gl, 10, 2)))']],
+         ['[\'a\', \'b\', \'c\', \'d\']']],
+        [[['import asyncio',
+           'G = {"a": ["b", "c"], "b": ["a", "d"], "c": ["d", "x"], "d": []}',
+           String.raw`async def gl(u):
+    await asyncio.sleep(0.001)
+    if u not in G:
+        raise ConnectionError("404")
+    return G[u]`,
+           'sorted(asyncio.run(crawl("a", gl, 10, 2)))',
+           'asyncio.run(crawl("x", gl, 10, 2))']],
+         ['[\'a\', \'b\', \'c\', \'d\']',
+          'set()']],
+        [[['import asyncio',
+           'calls = []',
+           String.raw`async def gl(u):
+    calls.append(u)
+    return ["n%d" % (int(u[1:]) + 1)] if u != "n19" else []`,
+           'sorted(asyncio.run(crawl("n0", gl, 5, 3)))',
+           'len(calls)',
+           'calls.clear()',
+           'len(asyncio.run(crawl("n0", gl, 100, 3)))',
+           'len(calls)',
+           'asyncio.run(crawl("n0", gl, 1, 3))']],
+         ['[\'n0\', \'n1\', \'n2\', \'n3\', \'n4\']',
+          '5',
+          '20',
+          '20',
+          '{\'n0\'}']],
+        [[['import asyncio',
+           'calls = []',
+           String.raw`async def gl(u):
+    calls.append(u)
+    await asyncio.sleep(0.001)
+    return ["r%d" % i for i in range(1, 11)] if u == "root" else []`,
+           'sorted(asyncio.run(crawl("root", gl, 4, 3)))',
+           'len(calls)',
+           'sorted(calls)']],
+         ['[\'r1\', \'r2\', \'r3\', \'root\']',
+          '4',
+          '[\'r1\', \'r2\', \'r3\', \'root\']']],
+        [[['import asyncio',
+           'st = {"now": 0, "max": 0, "calls": 0}',
+           String.raw`async def gl(u):
+    st["calls"] += 1
+    st["now"] += 1
+    st["max"] = max(st["max"], st["now"])
+    await asyncio.sleep(0.01)
+    st["now"] -= 1
+    return ["c%d" % i for i in range(100)] if u == "root" else []`,
+           'len(asyncio.run(crawl("root", gl, 1000, 5)))',
+           'st["max"]',
+           'st["calls"]']],
+         ['101',
+          '5',
+          '101']],
+        [[['import asyncio',
+           'names = list("abcdef")',
+           String.raw`async def gl(u):
+    return [n for n in names]`,
+           'sorted(asyncio.run(crawl("a", gl, 100, 4)))',
+           String.raw`async def self_loop(u):
+    return [u, u]`,
+           'asyncio.run(crawl("z", self_loop, 100, 4))',
+           String.raw`async def pair(u):
+    return {"p": ["q"], "q": ["p"]}[u]`,
+           'sorted(asyncio.run(crawl("p", pair, 100, 1)))']],
+         ['[\'a\', \'b\', \'c\', \'d\', \'e\', \'f\']',
+          '{\'z\'}',
+          '[\'p\', \'q\']']],
+        [[['import asyncio',
+           'N = 20000',
+           String.raw`async def gl(u):
+    await asyncio.sleep(0)
+    return [c for c in (2 * u + 1, 2 * u + 2) if c < N]`,
+           'v = asyncio.run(crawl(0, gl, 10**5, 100))',
+           'len(v)',
+           'v == set(range(N))',
+           'len(asyncio.run(crawl(0, gl, 15000, 100)))']],
+         ['20000',
+          'True',
+          '15000']],
+      ] },
       solution: {
         approach: `<p>Worker-pool BFS: an <code>asyncio.Queue</code> of URLs, <code>workers</code> tasks pulling from it, a <code>seen</code> set updated at enqueue time (no await between check and add, so no race), and a page budget that is reserved <b>before</b> the fetch's await (so concurrent workers can't overshoot it). <code>q.join()</code> detects completion even with cycles because each URL is enqueued once. Workers are cancelled at the end; <code>try/finally</code> guarantees <code>task_done()</code> even on fetch errors.</p>`,
         code: `import asyncio
@@ -2028,6 +2638,172 @@ if __name__ == "__main__":
         printThird()` },
     mcq: { q: 'Which primitive lets a thread sleep until another thread says "done"?', options: ['threading.Lock', 'threading.Event', 'queue.Queue.empty()', 'time.sleep(0.01) polling'], answer: 1, explain: 'Event.wait() blocks without using CPU until another thread calls set(). It is the simplest one-shot signal.' },
     hints: [`<p>Hint 1: You need two "gates": one opened when first finishes, one when second finishes.</p>`, `<p>Hint 2: Use two <code>threading.Event</code> objects. <code>second</code> waits on gate 1; <code>third</code> waits on gate 2.</p>`, `<p>Hint 3: Set the event <b>after</b> printing. Events stay set, so calling wait() after set() returns immediately — order of thread start doesn't matter.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_foo(order, gap=0):
+    foo, out = Foo(), []
+    calls = {1: lambda: foo.first(lambda: out.append("first")),
+             2: lambda: foo.second(lambda: out.append("second")),
+             3: lambda: foo.third(lambda: out.append("third"))}
+    ts = [threading.Thread(target=calls[i], daemon=True) for i in order]
+    for t in ts:
+        t.start()
+        if gap:
+            time.sleep(gap)
+    for t in ts:
+        t.join(10)
+    return "".join(out), sum(t.is_alive() for t in ts)`,
+         'run_foo((3, 1, 2))']],
+       ['(\'firstsecondthird\', 0)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_foo(order, gap=0):
+    foo, out = Foo(), []
+    calls = {1: lambda: foo.first(lambda: out.append("first")),
+             2: lambda: foo.second(lambda: out.append("second")),
+             3: lambda: foo.third(lambda: out.append("third"))}
+    ts = [threading.Thread(target=calls[i], daemon=True) for i in order]
+    for t in ts:
+        t.start()
+        if gap:
+            time.sleep(gap)
+    for t in ts:
+        t.join(10)
+    return "".join(out), sum(t.is_alive() for t in ts)`,
+         'run_foo((1, 2, 3))']],
+       ['(\'firstsecondthird\', 0)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_foo(order, gap=0):
+    foo, out = Foo(), []
+    calls = {1: lambda: foo.first(lambda: out.append("first")),
+             2: lambda: foo.second(lambda: out.append("second")),
+             3: lambda: foo.third(lambda: out.append("third"))}
+    ts = [threading.Thread(target=calls[i], daemon=True) for i in order]
+    for t in ts:
+        t.start()
+        if gap:
+            time.sleep(gap)
+    for t in ts:
+        t.join(10)
+    return "".join(out), sum(t.is_alive() for t in ts)`,
+         'run_foo((2, 3, 1))']],
+       ['(\'firstsecondthird\', 0)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_foo(order, gap=0):
+    foo, out = Foo(), []
+    calls = {1: lambda: foo.first(lambda: out.append("first")),
+             2: lambda: foo.second(lambda: out.append("second")),
+             3: lambda: foo.third(lambda: out.append("third"))}
+    ts = [threading.Thread(target=calls[i], daemon=True) for i in order]
+    for t in ts:
+        t.start()
+        if gap:
+            time.sleep(gap)
+    for t in ts:
+        t.join(10)
+    return "".join(out), sum(t.is_alive() for t in ts)`,
+         'run_foo((3, 2, 1))']],
+       ['(\'firstsecondthird\', 0)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_foo(order, gap=0):
+    foo, out = Foo(), []
+    calls = {1: lambda: foo.first(lambda: out.append("first")),
+             2: lambda: foo.second(lambda: out.append("second")),
+             3: lambda: foo.third(lambda: out.append("third"))}
+    ts = [threading.Thread(target=calls[i], daemon=True) for i in order]
+    for t in ts:
+        t.start()
+        if gap:
+            time.sleep(gap)
+    for t in ts:
+        t.join(10)
+    return "".join(out), sum(t.is_alive() for t in ts)`,
+         'run_foo((2, 1, 3))']],
+       ['(\'firstsecondthird\', 0)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_foo(order, gap=0):
+    foo, out = Foo(), []
+    calls = {1: lambda: foo.first(lambda: out.append("first")),
+             2: lambda: foo.second(lambda: out.append("second")),
+             3: lambda: foo.third(lambda: out.append("third"))}
+    ts = [threading.Thread(target=calls[i], daemon=True) for i in order]
+    for t in ts:
+        t.start()
+        if gap:
+            time.sleep(gap)
+    for t in ts:
+        t.join(10)
+    return "".join(out), sum(t.is_alive() for t in ts)`,
+         'run_foo((3, 2, 1), gap=0.05)',
+         'run_foo((1, 3, 2), gap=0.03)']],
+       ['(\'firstsecondthird\', 0)',
+        '(\'firstsecondthird\', 0)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_foo(order, gap=0):
+    foo, out = Foo(), []
+    calls = {1: lambda: foo.first(lambda: out.append("first")),
+             2: lambda: foo.second(lambda: out.append("second")),
+             3: lambda: foo.third(lambda: out.append("third"))}
+    ts = [threading.Thread(target=calls[i], daemon=True) for i in order]
+    for t in ts:
+        t.start()
+        if gap:
+            time.sleep(gap)
+    for t in ts:
+        t.join(10)
+    return "".join(out), sum(t.is_alive() for t in ts)`,
+         'import random',
+         'all(run_foo(random.sample([1, 2, 3], 3)) == ("firstsecondthird", 0) for _ in range(300))']],
+       ['True']],
+    ] },
     solution: {
       approach: `<p>Two Events act as one-way gates. first prints then opens gate 1; second waits for gate 1, prints, opens gate 2; third waits for gate 2. Waiting threads sleep in the OS without holding the GIL.</p>`,
       code: `import threading
@@ -2079,6 +2855,120 @@ if __name__ == "__main__":
         return self._v` },
     mcq: { q: 'Does reading self._v for the value property need the lock?', options: ['No, never', 'Yes, to get a consistent value and memory visibility on all builds', 'Only on Windows', 'Only if n > 1'], answer: 1, explain: 'A single int read is atomic in CPython, but taking the lock makes the class correct by construction (and keeps it correct if value later combines several fields).' },
     hints: [`<p>Hint 1: The critical section is the read-modify-write of <code>_v</code>.</p>`, `<p>Hint 2: Create one <code>threading.Lock()</code> in <code>__init__</code> and wrap every access in <code>with self._lock:</code>.</p>`, `<p>Hint 3: Keep the locked block tiny — no I/O or logging inside. Test with 8 threads and an assertion on the final value.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         'import sys',
+         'sys.setswitchinterval(1e-6)',
+         'c = Counter()',
+         String.raw`def work():
+    for _ in range(10000):
+        c.increment()`,
+         'run_threads([work] * 8)',
+         'c.value']],
+       ['0',
+        '80000']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         'import sys',
+         'sys.setswitchinterval(1e-6)',
+         'c = Counter()',
+         String.raw`def inc():
+    for _ in range(5000):
+        c.increment(2)`,
+         String.raw`def dec():
+    for _ in range(5000):
+        c.decrement()`,
+         'run_threads([inc] * 4 + [dec] * 4)',
+         'c.value']],
+       ['0',
+        '20000']],
+      [[['c = Counter()',
+         'c.value',
+         'c.increment()',
+         'c.value',
+         'c.decrement()',
+         'c.value',
+         'c.decrement(5)',
+         'c.value',
+         'c.increment(10**12)',
+         'c.value']],
+       ['0',
+        '1',
+        '0',
+        '-5',
+        '999999999995']],
+      [[['c = Counter()',
+         'c.value = 5',
+         'c.value',
+         'Counter().value']],
+       ['!AttributeError',
+        '0',
+        '0']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         'import sys',
+         'sys.setswitchinterval(1e-6)',
+         'c = Counter()',
+         String.raw`def work():
+    for _ in range(1000):
+        c.increment()`,
+         'run_threads([work] * 64)',
+         'c.value']],
+       ['0',
+        '64000']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         'import sys',
+         'sys.setswitchinterval(1e-6)',
+         'c = Counter()',
+         String.raw`def up():
+    for _ in range(3000):
+        c.increment(3)
+        c.value`,
+         String.raw`def down():
+    for _ in range(3000):
+        c.decrement(3)
+        c.value`,
+         'run_threads([up, down] * 8)',
+         'c.value']],
+       ['0',
+        '0']],
+      [[['c1, c2 = Counter(), Counter()',
+         'c1.increment(5)',
+         '(c1.value, c2.value)',
+         'c1.increment(0)',
+         'c1.value',
+         'c1.increment(-2)',
+         'c1.value']],
+       ['(5, 0)',
+        '5',
+        '3']],
+    ] },
     solution: {
       approach: `<p>One lock guards the integer. Every mutation and read happens inside <code>with self._lock</code>, so read-modify-write sequences can't interleave.</p>`,
       code: `import threading
@@ -2131,6 +3021,56 @@ async def run_all_sequential(delays):
     return out, time.perf_counter() - start` },
     mcq: { q: 'Why does asyncio.gather return results in input order even though tasks finish in a different order?', options: ['It sorts them', 'It stores each result at its argument index', 'It runs tasks sequentially', 'It is random'], answer: 1, explain: 'gather wraps each awaitable in a Task and places each result in the slot matching its position in the argument list.' },
     hints: [`<p>Hint 1: Create all coroutines first, then wait for them together.</p>`, `<p>Hint 2: <code>await asyncio.gather(*(job(d) for d in delays))</code>.</p>`, `<p>Hint 3: Measure with <code>time.perf_counter()</code> before and after the gather; round when printing. Edge: empty list → gather returns [].</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['import asyncio',
+         'r = asyncio.run(run_all([0.3, 0.1, 0.2]))',
+         'r[0]',
+         '0.28 <= r[1] < 0.55']],
+       ['[3.0, 1.0, 2.0]',
+        'True']],
+      [[['import asyncio',
+         'r = asyncio.run(run_all([0.2, 0.0, 0.1]))',
+         'r[0]',
+         'r[1] < 0.35']],
+       ['[2.0, 0.0, 1.0]',
+        'True']],
+      [[['import asyncio',
+         'asyncio.run(run_all([]))[0]',
+         'asyncio.run(run_all([0]))[0]',
+         'asyncio.run(run_all([0, 0, 0]))[0]',
+         'asyncio.run(run_all([0.5, 0.5]))[0]',
+         'asyncio.run(run_all([0.25]))[0]']],
+       ['[]',
+        '[0]',
+        '[0, 0, 0]',
+        '[5.0, 5.0]',
+        '[2.5]']],
+      [[['import asyncio, time',
+         'r = asyncio.run(run_all([0.05] * 1000))',
+         'len(r[0])',
+         'set(r[0])',
+         'r[1] < 0.6']],
+       ['1000',
+        '{0.5}',
+        'True']],
+      [[['import asyncio',
+         'r = asyncio.run(run_all([0.15, 0.15, 0.15, 0.15]))',
+         '0.14 <= r[1] < 0.3',
+         'type(r).__name__',
+         'len(r)']],
+       ['True',
+        '\'tuple\'',
+        '2']],
+      [[['import asyncio',
+         'asyncio.run(run_all([0.1, 0.1, 0.3, 0.1]))[0]',
+         'ds = [i / 100 for i in range(10, 0, -1)]',
+         'asyncio.run(run_all(ds))[0] == [d * 10 for d in ds]',
+         'ds = [0.01 * (i % 7) for i in range(200)]',
+         'asyncio.run(run_all(ds))[0] == [d * 10 for d in ds]']],
+       ['[1.0, 1.0, 3.0, 1.0]',
+        'True',
+        'True']],
+    ] },
     solution: {
       approach: `<p>Schedule every coroutine at once with <code>gather</code>; the event loop overlaps all the sleeps, so elapsed time is the longest single delay.</p>`,
       code: `import asyncio
@@ -2165,6 +3105,72 @@ def parallel_map_fragile(fn, items, workers):
         return list(ex.map(fn, items))     # first exception aborts the list` },
     mcq: { q: 'How do you keep input order while still catching errors per item?', options: ['as_completed and sort by finish time', 'submit each item, keep the futures in a list, then read them in list order', 'Use ex.map and catch around list()', 'Use a global results dict without keys'], answer: 1, explain: 'A list of futures in submission order preserves input order; calling result() inside try/except per future isolates failures.' },
     hints: [`<p>Hint 1: <code>submit</code> returns a Future per item — keep them in a list.</p>`, `<p>Hint 2: Loop over the list; wrap <code>f.result()</code> in try/except and build the tuple.</p>`, `<p>Hint 3: Format errors as <code>f"{type(e).__name__}: {e}"</code>. Empty input → empty list.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['parallel_map(lambda x: 10 // x, [5, 0, 2], workers=3)']],
+       ['[(\'ok\', 2), (\'err\', \'ZeroDivisionError: integer division or modulo by zero\'), (\'ok\', 5)]']],
+      [[['parallel_map(str, [], 4)',
+         'parallel_map(lambda x: x, [1], 8)',
+         'parallel_map(lambda x: None, [1, 2], 2)']],
+       ['[]',
+        '[(\'ok\', 1)]',
+        '[(\'ok\', None), (\'ok\', None)]']],
+      [[['import time',
+         String.raw`def f(x):
+    time.sleep(0.05 / (x + 1))
+    return x * x`,
+         'parallel_map(f, list(range(10)), 4)']],
+       ['[(\'ok\', 0), (\'ok\', 1), (\'ok\', 4), (\'ok\', 9), (\'ok\', 16), (\'ok\', 25), (\'ok\', 36), (\'ok\', 49), (\'ok\', 64), (\'ok\', 81)]']],
+      [[[String.raw`def f(x):
+    if x == "a":
+        raise KeyError("a")
+    if x == "b":
+        raise ValueError()
+    if x == "c":
+        raise OSError("disk")
+    return x`,
+         'parallel_map(f, ["a", "b", "c", "d"], 2)']],
+       ['[(\'err\', "KeyError: \'a\'"), (\'err\', \'ValueError: \'), (\'err\', \'OSError: disk\'), (\'ok\', \'d\')]']],
+      [[['import threading',
+         'bar = threading.Barrier(4, timeout=5)',
+         String.raw`def f(x):
+    bar.wait()
+    return x`,
+         'parallel_map(f, [1, 2, 3, 4], workers=4)',
+         'parallel_map(f, [1, 2, 3, 4, 5, 6, 7, 8], workers=4) == [("ok", i) for i in range(1, 9)]']],
+       ['[(\'ok\', 1), (\'ok\', 2), (\'ok\', 3), (\'ok\', 4)]',
+        'True']],
+      [[['import threading, time',
+         'lock = threading.Lock()',
+         'st = {"now": 0, "max": 0}',
+         String.raw`def f(x):
+    with lock:
+        st["now"] += 1
+        st["max"] = max(st["max"], st["now"])
+    time.sleep(0.01)
+    with lock:
+        st["now"] -= 1
+    return x`,
+         'r = parallel_map(f, list(range(30)), 3)',
+         'st["max"] <= 3',
+         'len(r)',
+         'r == [("ok", i) for i in range(30)]',
+         'parallel_map(f, [1, 2], 64) == [("ok", 1), ("ok", 2)]']],
+       ['True',
+        '30',
+        'True',
+        'True']],
+      [[['r = parallel_map(lambda x: 1 // (x % 7), list(range(10000)), 64)',
+         'len(r)',
+         'sum(1 for k, v in r if k == "err")',
+         'r[7]',
+         'r[8]',
+         'all(r[i] == ("err", "ZeroDivisionError: integer division or modulo by zero") for i in range(0, 10000, 7))']],
+       ['10000',
+        '1429',
+        '(\'err\', \'ZeroDivisionError: integer division or modulo by zero\')',
+        '(\'ok\', 1)',
+        'True']],
+    ] },
     solution: {
       approach: `<p>Submit everything, keep futures in input order, then resolve them one by one with per-future exception handling. Execution is parallel; collection order is deterministic.</p>`,
       code: `from concurrent.futures import ThreadPoolExecutor
@@ -2208,6 +3214,174 @@ if __name__ == "__main__":
             printBar(); self.turn = "foo"` },
     mcq: { q: 'Initial values for the two semaphores (foo_sem, bar_sem)?', options: ['(0, 0)', '(1, 0)', '(1, 1)', '(0, 1)'], answer: 1, explain: 'foo goes first, so it starts with one permit; bar starts blocked. Each side releases the other after printing — a token passed back and forth.' },
     hints: [`<p>Hint 1: Think of a single "turn token" passed between two threads.</p>`, `<p>Hint 2: Two semaphores: foo acquires foo_sem, prints, releases bar_sem; bar acquires bar_sem, prints, releases foo_sem.</p>`, `<p>Hint 3: Start foo_sem at 1, bar_sem at 0. Each method loops n times.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_fb(n, bar_first=False):
+    fb, out = FooBar(n), []
+    ta = threading.Thread(target=fb.foo, args=(lambda: out.append("foo"),), daemon=True)
+    tb = threading.Thread(target=fb.bar, args=(lambda: out.append("bar"),), daemon=True)
+    order = [tb, ta] if bar_first else [ta, tb]
+    for t in order:
+        t.start()
+        time.sleep(0.01) if bar_first else None
+    for t in order:
+        t.join(10)
+    return "".join(out), ta.is_alive() or tb.is_alive()`,
+         'run_fb(2)',
+         'run_fb(2, bar_first=True)']],
+       ['(\'foobarfoobar\', False)',
+        '(\'foobarfoobar\', False)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_fb(n, bar_first=False):
+    fb, out = FooBar(n), []
+    ta = threading.Thread(target=fb.foo, args=(lambda: out.append("foo"),), daemon=True)
+    tb = threading.Thread(target=fb.bar, args=(lambda: out.append("bar"),), daemon=True)
+    order = [tb, ta] if bar_first else [ta, tb]
+    for t in order:
+        t.start()
+        time.sleep(0.01) if bar_first else None
+    for t in order:
+        t.join(10)
+    return "".join(out), ta.is_alive() or tb.is_alive()`,
+         'run_fb(1)',
+         'run_fb(1, True)']],
+       ['(\'foobar\', False)',
+        '(\'foobar\', False)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_fb(n, bar_first=False):
+    fb, out = FooBar(n), []
+    ta = threading.Thread(target=fb.foo, args=(lambda: out.append("foo"),), daemon=True)
+    tb = threading.Thread(target=fb.bar, args=(lambda: out.append("bar"),), daemon=True)
+    order = [tb, ta] if bar_first else [ta, tb]
+    for t in order:
+        t.start()
+        time.sleep(0.01) if bar_first else None
+    for t in order:
+        t.join(10)
+    return "".join(out), ta.is_alive() or tb.is_alive()`,
+         'run_fb(3)']],
+       ['(\'foobarfoobarfoobar\', False)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_fb(n, bar_first=False):
+    fb, out = FooBar(n), []
+    ta = threading.Thread(target=fb.foo, args=(lambda: out.append("foo"),), daemon=True)
+    tb = threading.Thread(target=fb.bar, args=(lambda: out.append("bar"),), daemon=True)
+    order = [tb, ta] if bar_first else [ta, tb]
+    for t in order:
+        t.start()
+        time.sleep(0.01) if bar_first else None
+    for t in order:
+        t.join(10)
+    return "".join(out), ta.is_alive() or tb.is_alive()`,
+         'run_fb(1000) == ("foobar" * 1000, False)',
+         'run_fb(1000, True) == ("foobar" * 1000, False)']],
+       ['True',
+        'True']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_fb(n, bar_first=False):
+    fb, out = FooBar(n), []
+    ta = threading.Thread(target=fb.foo, args=(lambda: out.append("foo"),), daemon=True)
+    tb = threading.Thread(target=fb.bar, args=(lambda: out.append("bar"),), daemon=True)
+    order = [tb, ta] if bar_first else [ta, tb]
+    for t in order:
+        t.start()
+        time.sleep(0.01) if bar_first else None
+    for t in order:
+        t.join(10)
+    return "".join(out), ta.is_alive() or tb.is_alive()`,
+         'import sys',
+         'sys.setswitchinterval(1e-6)',
+         'all(run_fb(50) == ("foobar" * 50, False) for _ in range(40))']],
+       ['True']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_fb(n, bar_first=False):
+    fb, out = FooBar(n), []
+    ta = threading.Thread(target=fb.foo, args=(lambda: out.append("foo"),), daemon=True)
+    tb = threading.Thread(target=fb.bar, args=(lambda: out.append("bar"),), daemon=True)
+    order = [tb, ta] if bar_first else [ta, tb]
+    for t in order:
+        t.start()
+        time.sleep(0.01) if bar_first else None
+    for t in order:
+        t.join(10)
+    return "".join(out), ta.is_alive() or tb.is_alive()`,
+         'all(run_fb(n) == ("foobar" * n, False) for n in range(1, 30))']],
+       ['True']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_fb(n, bar_first=False):
+    fb, out = FooBar(n), []
+    ta = threading.Thread(target=fb.foo, args=(lambda: out.append("foo"),), daemon=True)
+    tb = threading.Thread(target=fb.bar, args=(lambda: out.append("bar"),), daemon=True)
+    order = [tb, ta] if bar_first else [ta, tb]
+    for t in order:
+        t.start()
+        time.sleep(0.01) if bar_first else None
+    for t in order:
+        t.join(10)
+    return "".join(out), ta.is_alive() or tb.is_alive()`,
+         'fb = FooBar(3)',
+         'out = []',
+         't = threading.Thread(target=fb.bar, args=(lambda: out.append("bar"),), daemon=True)',
+         't.start()',
+         'time.sleep(0.1)',
+         'out',
+         't.is_alive()',
+         'fb.foo(lambda: out.append("foo"))',
+         't.join(5)',
+         'out[:2]']],
+       ['[]',
+        'True',
+        '[\'foo\', \'bar\']']],
+    ] },
     solution: {
       approach: `<p>Two semaphores model whose turn it is. Exactly one permit exists across both at any time, so the threads strictly alternate.</p>`,
       code: `import threading
@@ -2258,6 +3432,163 @@ if __name__ == "__main__":
             self.state = "odd" if self.k % 2 else "even"` },
     mcq: { q: 'Who decides whether odd() or even() runs next?', options: ['odd and even race for it', 'zero(), based on the next number\'s parity', 'A random choice', 'The OS scheduler'], answer: 1, explain: 'zero knows the next number i; it releases the odd semaphore if i is odd, otherwise the even one. That makes the hand-off deterministic.' },
     hints: [`<p>Hint 1: Three semaphores: zero_sem=1, odd_sem=0, even_sem=0.</p>`, `<p>Hint 2: zero loops i = 1..n: acquire zero_sem, print 0, release odd_sem if i odd else even_sem.</p>`, `<p>Hint 3: odd loops over 1,3,5…: acquire odd_sem, print, release zero_sem. even loops over 2,4,6… similarly. Loop counts must match exactly or a thread waits forever.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_zeo(n, order=(0, 1, 2)):
+    z, out = ZeroEvenOdd(n), []
+    p = lambda x: out.append(str(x))
+    fns = [z.zero, z.even, z.odd]
+    ts = [threading.Thread(target=fns[i], args=(p,), daemon=True) for i in order]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    return "".join(out), sum(t.is_alive() for t in ts)`,
+         'run_zeo(5)',
+         'run_zeo(5, (1, 2, 0))']],
+       ['(\'0102030405\', 0)',
+        '(\'0102030405\', 0)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_zeo(n, order=(0, 1, 2)):
+    z, out = ZeroEvenOdd(n), []
+    p = lambda x: out.append(str(x))
+    fns = [z.zero, z.even, z.odd]
+    ts = [threading.Thread(target=fns[i], args=(p,), daemon=True) for i in order]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    return "".join(out), sum(t.is_alive() for t in ts)`,
+         'run_zeo(1)',
+         'run_zeo(2)',
+         'run_zeo(3)']],
+       ['(\'01\', 0)',
+        '(\'0102\', 0)',
+        '(\'010203\', 0)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_zeo(n, order=(0, 1, 2)):
+    z, out = ZeroEvenOdd(n), []
+    p = lambda x: out.append(str(x))
+    fns = [z.zero, z.even, z.odd]
+    ts = [threading.Thread(target=fns[i], args=(p,), daemon=True) for i in order]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    return "".join(out), sum(t.is_alive() for t in ts)`,
+         'all(run_zeo(7, o) == ("01020304050607", 0) for o in [(0, 1, 2), (0, 2, 1), (1, 0, 2), (1, 2, 0), (2, 0, 1), (2, 1, 0)])']],
+       ['True']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_zeo(n, order=(0, 1, 2)):
+    z, out = ZeroEvenOdd(n), []
+    p = lambda x: out.append(str(x))
+    fns = [z.zero, z.even, z.odd]
+    ts = [threading.Thread(target=fns[i], args=(p,), daemon=True) for i in order]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    return "".join(out), sum(t.is_alive() for t in ts)`,
+         'run_zeo(10)',
+         'run_zeo(9)']],
+       ['(\'010203040506070809010\', 0)',
+        '(\'010203040506070809\', 0)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_zeo(n, order=(0, 1, 2)):
+    z, out = ZeroEvenOdd(n), []
+    p = lambda x: out.append(str(x))
+    fns = [z.zero, z.even, z.odd]
+    ts = [threading.Thread(target=fns[i], args=(p,), daemon=True) for i in order]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    return "".join(out), sum(t.is_alive() for t in ts)`,
+         'r = run_zeo(1000)',
+         'r[1]',
+         'r[0] == "".join("0" + str(i) for i in range(1, 1001))',
+         'len(r[0])']],
+       ['0',
+        'True',
+        '3893']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_zeo(n, order=(0, 1, 2)):
+    z, out = ZeroEvenOdd(n), []
+    p = lambda x: out.append(str(x))
+    fns = [z.zero, z.even, z.odd]
+    ts = [threading.Thread(target=fns[i], args=(p,), daemon=True) for i in order]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    return "".join(out), sum(t.is_alive() for t in ts)`,
+         'import sys',
+         'sys.setswitchinterval(1e-6)',
+         'all(run_zeo(31, (2, 1, 0)) == ("".join("0" + str(i) for i in range(1, 32)), 0) for _ in range(30))']],
+       ['True']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_zeo(n, order=(0, 1, 2)):
+    z, out = ZeroEvenOdd(n), []
+    p = lambda x: out.append(str(x))
+    fns = [z.zero, z.even, z.odd]
+    ts = [threading.Thread(target=fns[i], args=(p,), daemon=True) for i in order]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    return "".join(out), sum(t.is_alive() for t in ts)`,
+         'all(run_zeo(n)[0] == "".join("0" + str(i) for i in range(1, n + 1)) for n in range(1, 40))']],
+       ['True']],
+    ] },
     solution: {
       approach: `<p>zero is the conductor: after each 0 it signals the thread that owns the next number. That thread prints and hands control back to zero.</p>`,
       code: `import threading
@@ -2316,6 +3647,168 @@ class PollingQueue:
         self.q.append(x)` },
     mcq: { q: 'Why must Condition.wait() be called inside a while loop, not an if?', options: ['wait() is slow', 'Another thread may grab the item between notify and wake-up (and spurious wake-ups exist)', 'Python requires it syntactically', 'To release the lock'], answer: 1, explain: 'After waking you must re-check the predicate: another consumer may have taken the item first. while not predicate: wait() is the standard pattern (or wait_for).' },
     hints: [`<p>Hint 1: One lock, two Conditions sharing it: <code>not_full</code> and <code>not_empty</code>.</p>`, `<p>Hint 2: enqueue: <code>with not_full: while full: not_full.wait()</code>; append; <code>not_empty.notify()</code>. dequeue is the mirror image.</p>`, `<p>Hint 3: Use a <code>deque</code> for O(1) popleft. <code>notify()</code> (not notify_all) is enough because each operation frees exactly one slot / adds one item.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['q = BoundedBlockingQueue(2)',
+         'q.enqueue(1)',
+         'q.enqueue(2)',
+         'q.size()',
+         'q.dequeue()',
+         'q.dequeue()',
+         'q.size()']],
+       ['2',
+        '1',
+        '2',
+        '0']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         'q = BoundedBlockingQueue(2)',
+         'q.enqueue(1)',
+         'q.enqueue(2)',
+         'p = threading.Thread(target=lambda: q.enqueue(3), daemon=True)',
+         'p.start()',
+         'time.sleep(0.1)',
+         'p.is_alive()',
+         'q.size()',
+         'q.dequeue()',
+         'p.join(5)',
+         'p.is_alive()',
+         'q.size()',
+         '[q.dequeue(), q.dequeue()]']],
+       ['True',
+        '2',
+        '1',
+        'False',
+        '2',
+        '[2, 3]']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         'q = BoundedBlockingQueue(3)',
+         'got = []',
+         'c = threading.Thread(target=lambda: got.append(q.dequeue()), daemon=True)',
+         'c.start()',
+         'time.sleep(0.1)',
+         'c.is_alive()',
+         'got',
+         'q.enqueue(42)',
+         'c.join(5)',
+         'c.is_alive()',
+         'got',
+         'q.size()']],
+       ['True',
+        '[]',
+        'False',
+        '[42]',
+        '0']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         'import sys',
+         'sys.setswitchinterval(1e-5)',
+         'q = BoundedBlockingQueue(3)',
+         'got, peak = [], []',
+         'stop = threading.Event()',
+         String.raw`def mon():
+    while not stop.is_set():
+        peak.append(q.size())`,
+         String.raw`def prod(k):
+    for j in range(4):
+        q.enqueue(k * 10 + j)`,
+         String.raw`def cons():
+    for _ in range(4):
+        got.append(q.dequeue())`,
+         'm = threading.Thread(target=mon, daemon=True)',
+         'm.start()',
+         'run_threads([lambda k=k: prod(k) for k in range(25)] + [cons] * 25)',
+         'stop.set()',
+         'm.join(5)',
+         'sorted(got) == sorted(k * 10 + j for k in range(25) for j in range(4))',
+         'max(peak) <= 3',
+         'q.size()']],
+       ['0',
+        'True',
+        'True',
+        '0']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         'q = BoundedBlockingQueue(1)',
+         'got = []',
+         String.raw`def prod():
+    for i in range(5000):
+        q.enqueue(i)`,
+         String.raw`def cons():
+    for _ in range(5000):
+        got.append(q.dequeue())`,
+         'run_threads([prod, cons])',
+         'got == list(range(5000))',
+         'q.size()']],
+       ['0',
+        'True',
+        '0']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         'q = BoundedBlockingQueue(30)',
+         'got = []',
+         'lock = threading.Lock()',
+         String.raw`def prod(k):
+    for j in range(500):
+        q.enqueue((k, j))`,
+         String.raw`def cons():
+    for _ in range(1000):
+        x = q.dequeue()
+        with lock:
+            got.append(x)`,
+         'run_threads([lambda k=k: prod(k) for k in range(20)] + [cons] * 10)',
+         'len(got)',
+         'len(set(got))',
+         'q.size()']],
+       ['0',
+        '10000',
+        '10000',
+        '0']],
+      [[['q = BoundedBlockingQueue(1)',
+         'q.enqueue("a")',
+         'q.size()',
+         'q.dequeue()',
+         'q.enqueue(None)',
+         'q.dequeue() is None',
+         'q.size()',
+         'q.enqueue(0)',
+         'q.dequeue()']],
+       ['1',
+        '\'a\'',
+        'True',
+        '0',
+        '0']],
+    ] },
     solution: {
       approach: `<p>Exactly how <code>queue.Queue</code> is built: a mutex plus two condition variables on it. Producers wait on "not full", consumers on "not empty"; each successful operation notifies the other side.</p>`,
       code: `import threading
@@ -2378,6 +3871,204 @@ class H2OCounting:
         releaseHydrogen()` },
     mcq: { q: 'What does threading.Barrier(3) contribute here?', options: ['Limits H to 2', 'Makes the three members of one molecule wait for each other before bonding', 'Prints the output', 'Prevents deadlock automatically'], answer: 1, explain: 'Semaphores (2 for H, 1 for O) choose WHO is in the molecule; the barrier makes them proceed TOGETHER.' },
     hints: [`<p>Hint 1: Separate two concerns: admission (who joins the current molecule) and rendezvous (wait for all three).</p>`, `<p>Hint 2: <code>Semaphore(2)</code> for H, <code>Semaphore(1)</code> for O, <code>Barrier(3)</code> for the meet-up.</p>`, `<p>Hint 3: Acquire your semaphore, wait at the barrier, release your atom, then release the semaphore — releasing only after printing keeps the next molecule from overtaking.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_h2o(s):
+    w, out, lock = H2O(), [], threading.Lock()
+    def emit(c):
+        with lock:
+            out.append(c)
+    ts = [threading.Thread(target=(w.hydrogen if c == "H" else w.oxygen), args=(lambda c=c: emit(c),), daemon=True) for c in s]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    r = "".join(out)
+    ok = len(r) == len(s) and sorted(r) == sorted(s) and all(sorted(r[i:i + 3]) == ["H", "H", "O"] for i in range(0, len(r), 3))
+    return ok, sum(t.is_alive() for t in ts)`,
+         'run_h2o("HOH")',
+         'run_h2o("OHH")',
+         'run_h2o("HHO")']],
+       ['(True, 0)',
+        '(True, 0)',
+        '(True, 0)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_h2o(s):
+    w, out, lock = H2O(), [], threading.Lock()
+    def emit(c):
+        with lock:
+            out.append(c)
+    ts = [threading.Thread(target=(w.hydrogen if c == "H" else w.oxygen), args=(lambda c=c: emit(c),), daemon=True) for c in s]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    r = "".join(out)
+    ok = len(r) == len(s) and sorted(r) == sorted(s) and all(sorted(r[i:i + 3]) == ["H", "H", "O"] for i in range(0, len(r), 3))
+    return ok, sum(t.is_alive() for t in ts)`,
+         'run_h2o("OOHHHH")',
+         'run_h2o("HHHHOO")',
+         'run_h2o("HOHOHH")']],
+       ['(True, 0)',
+        '(True, 0)',
+        '(True, 0)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_h2o(s):
+    w, out, lock = H2O(), [], threading.Lock()
+    def emit(c):
+        with lock:
+            out.append(c)
+    ts = [threading.Thread(target=(w.hydrogen if c == "H" else w.oxygen), args=(lambda c=c: emit(c),), daemon=True) for c in s]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    r = "".join(out)
+    ok = len(r) == len(s) and sorted(r) == sorted(s) and all(sorted(r[i:i + 3]) == ["H", "H", "O"] for i in range(0, len(r), 3))
+    return ok, sum(t.is_alive() for t in ts)`,
+         'run_h2o("HHH" + "OOO" + "HHH")',
+         'run_h2o("O" * 5 + "H" * 10)',
+         'run_h2o("H" * 10 + "O" * 5)']],
+       ['(True, 0)',
+        '(True, 0)',
+        '(True, 0)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_h2o(s):
+    w, out, lock = H2O(), [], threading.Lock()
+    def emit(c):
+        with lock:
+            out.append(c)
+    ts = [threading.Thread(target=(w.hydrogen if c == "H" else w.oxygen), args=(lambda c=c: emit(c),), daemon=True) for c in s]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    r = "".join(out)
+    ok = len(r) == len(s) and sorted(r) == sorted(s) and all(sorted(r[i:i + 3]) == ["H", "H", "O"] for i in range(0, len(r), 3))
+    return ok, sum(t.is_alive() for t in ts)`,
+         'run_h2o("HHO" * 20)',
+         'run_h2o("O" * 20 + "H" * 40)',
+         'run_h2o("H" * 40 + "O" * 20)']],
+       ['(True, 0)',
+        '(True, 0)',
+        '(True, 0)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_h2o(s):
+    w, out, lock = H2O(), [], threading.Lock()
+    def emit(c):
+        with lock:
+            out.append(c)
+    ts = [threading.Thread(target=(w.hydrogen if c == "H" else w.oxygen), args=(lambda c=c: emit(c),), daemon=True) for c in s]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    r = "".join(out)
+    ok = len(r) == len(s) and sorted(r) == sorted(s) and all(sorted(r[i:i + 3]) == ["H", "H", "O"] for i in range(0, len(r), 3))
+    return ok, sum(t.is_alive() for t in ts)`,
+         'import random',
+         'random.seed(7)',
+         String.raw`def shuffled(n):
+    cs = list("HHO" * n)
+    random.shuffle(cs)
+    return "".join(cs)`,
+         'all(run_h2o(shuffled(random.randint(1, 20))) == (True, 0) for _ in range(40))']],
+       ['True']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_h2o(s):
+    w, out, lock = H2O(), [], threading.Lock()
+    def emit(c):
+        with lock:
+            out.append(c)
+    ts = [threading.Thread(target=(w.hydrogen if c == "H" else w.oxygen), args=(lambda c=c: emit(c),), daemon=True) for c in s]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    r = "".join(out)
+    ok = len(r) == len(s) and sorted(r) == sorted(s) and all(sorted(r[i:i + 3]) == ["H", "H", "O"] for i in range(0, len(r), 3))
+    return ok, sum(t.is_alive() for t in ts)`,
+         'import sys',
+         'sys.setswitchinterval(1e-6)',
+         'all(run_h2o("OOHHHH") == (True, 0) for _ in range(100))']],
+       ['True']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_h2o(s):
+    w, out, lock = H2O(), [], threading.Lock()
+    def emit(c):
+        with lock:
+            out.append(c)
+    ts = [threading.Thread(target=(w.hydrogen if c == "H" else w.oxygen), args=(lambda c=c: emit(c),), daemon=True) for c in s]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(10)
+    r = "".join(out)
+    ok = len(r) == len(s) and sorted(r) == sorted(s) and all(sorted(r[i:i + 3]) == ["H", "H", "O"] for i in range(0, len(r), 3))
+    return ok, sum(t.is_alive() for t in ts)`,
+         'w = H2O()',
+         'out = []',
+         'ts = [threading.Thread(target=w.hydrogen, args=(lambda: out.append("H"),), daemon=True) for _ in range(2)]',
+         'for t in ts: t.start()',
+         'time.sleep(0.1)',
+         'out',
+         'all(t.is_alive() for t in ts)',
+         'w.oxygen(lambda: out.append("O"))',
+         'for t in ts: t.join(5)',
+         'sorted(out)']],
+       ['[]',
+        'True',
+        '[\'H\', \'H\', \'O\']']],
+    ] },
     solution: {
       approach: `<p>The semaphores admit at most 2 H and 1 O into the "bonding room"; the barrier makes the three admitted threads release together. Because permits are returned only after printing, the next molecule cannot complete its barrier until the current one has printed.</p>`,
       code: `import threading
@@ -2430,6 +4121,191 @@ class NaiveTable:
                 pickL(); pickR(); eat(); putL(); putR()` },
     mcq: { q: 'Acquiring forks in global numeric order breaks which deadlock condition?', options: ['Mutual exclusion', 'Hold and wait', 'No preemption', 'Circular wait'], answer: 3, explain: 'With a total order on locks, a cycle of waiting threads is impossible: someone always holds the highest-numbered lock they need and can proceed.' },
     hints: [`<p>Hint 1: Deadlock needs a cycle of "holds A, waits for B". Remove the cycle.</p>`, `<p>Hint 2: Number forks 0–4. Each philosopher locks <code>min(left, right)</code> first, then <code>max(left, right)</code>.</p>`, `<p>Hint 3: Alternatives: a <code>Semaphore(4)</code> so at most 4 philosophers try at once (breaks circular wait too), or a single table lock (correct but no parallel eating).</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_dp(n, spin=False):
+    table = DiningPhilosophers()
+    meals = [0] * 5
+    eating, bad, events = set(), [], {p: [] for p in range(5)}
+    guard = threading.Lock()
+    def diner(p):
+        def ev(name):
+            events[p].append(name)
+        def eat():
+            ev("E")
+            with guard:
+                if (p + 1) % 5 in eating or (p - 1) % 5 in eating or p in eating:
+                    bad.append(p)
+                eating.add(p)
+            time.sleep(0)
+            meals[p] += 1
+            with guard:
+                eating.discard(p)
+        for _ in range(n):
+            table.wantsToEat(p, lambda: ev("L"), lambda: ev("R"), eat, lambda: ev("l"), lambda: ev("r"))
+    alive = run_threads([lambda p=p: diner(p) for p in range(5)], timeout=20)
+    pattern = all(events[p] == ["L", "R", "E", "l", "r"] * n for p in range(5))
+    return meals, alive, bad, pattern`,
+         'run_dp(1)']],
+       ['([1, 1, 1, 1, 1], 0, [], True)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_dp(n, spin=False):
+    table = DiningPhilosophers()
+    meals = [0] * 5
+    eating, bad, events = set(), [], {p: [] for p in range(5)}
+    guard = threading.Lock()
+    def diner(p):
+        def ev(name):
+            events[p].append(name)
+        def eat():
+            ev("E")
+            with guard:
+                if (p + 1) % 5 in eating or (p - 1) % 5 in eating or p in eating:
+                    bad.append(p)
+                eating.add(p)
+            time.sleep(0)
+            meals[p] += 1
+            with guard:
+                eating.discard(p)
+        for _ in range(n):
+            table.wantsToEat(p, lambda: ev("L"), lambda: ev("R"), eat, lambda: ev("l"), lambda: ev("r"))
+    alive = run_threads([lambda p=p: diner(p) for p in range(5)], timeout=20)
+    pattern = all(events[p] == ["L", "R", "E", "l", "r"] * n for p in range(5))
+    return meals, alive, bad, pattern`,
+         'run_dp(50)']],
+       ['([50, 50, 50, 50, 50], 0, [], True)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_dp(n, spin=False):
+    table = DiningPhilosophers()
+    meals = [0] * 5
+    eating, bad, events = set(), [], {p: [] for p in range(5)}
+    guard = threading.Lock()
+    def diner(p):
+        def ev(name):
+            events[p].append(name)
+        def eat():
+            ev("E")
+            with guard:
+                if (p + 1) % 5 in eating or (p - 1) % 5 in eating or p in eating:
+                    bad.append(p)
+                eating.add(p)
+            time.sleep(0)
+            meals[p] += 1
+            with guard:
+                eating.discard(p)
+        for _ in range(n):
+            table.wantsToEat(p, lambda: ev("L"), lambda: ev("R"), eat, lambda: ev("l"), lambda: ev("r"))
+    alive = run_threads([lambda p=p: diner(p) for p in range(5)], timeout=20)
+    pattern = all(events[p] == ["L", "R", "E", "l", "r"] * n for p in range(5))
+    return meals, alive, bad, pattern`,
+         'import sys',
+         'sys.setswitchinterval(1e-6)',
+         'run_dp(60)']],
+       ['([60, 60, 60, 60, 60], 0, [], True)']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def run_dp(n, spin=False):
+    table = DiningPhilosophers()
+    meals = [0] * 5
+    eating, bad, events = set(), [], {p: [] for p in range(5)}
+    guard = threading.Lock()
+    def diner(p):
+        def ev(name):
+            events[p].append(name)
+        def eat():
+            ev("E")
+            with guard:
+                if (p + 1) % 5 in eating or (p - 1) % 5 in eating or p in eating:
+                    bad.append(p)
+                eating.add(p)
+            time.sleep(0)
+            meals[p] += 1
+            with guard:
+                eating.discard(p)
+        for _ in range(n):
+            table.wantsToEat(p, lambda: ev("L"), lambda: ev("R"), eat, lambda: ev("l"), lambda: ev("r"))
+    alive = run_threads([lambda p=p: diner(p) for p in range(5)], timeout=20)
+    pattern = all(events[p] == ["L", "R", "E", "l", "r"] * n for p in range(5))
+    return meals, alive, bad, pattern`,
+         'all(run_dp(5) == ([5] * 5, 0, [], True) for _ in range(30))']],
+       ['True']],
+      [[['t = DiningPhilosophers()',
+         'ev = []',
+         't.wantsToEat(4, lambda: ev.append("L"), lambda: ev.append("R"), lambda: ev.append("E"), lambda: ev.append("l"), lambda: ev.append("r"))',
+         'ev',
+         't.wantsToEat(0, lambda: ev.append("L"), lambda: ev.append("R"), lambda: ev.append("E"), lambda: ev.append("l"), lambda: ev.append("r"))',
+         'len(ev)']],
+       ['[\'L\', \'R\', \'E\', \'l\', \'r\']',
+        '10']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         'import sys',
+         'sys.setswitchinterval(1e-6)',
+         't = DiningPhilosophers()',
+         'n = [0]',
+         String.raw`def eat():
+    n[0] += 1`,
+         'nop = lambda: None',
+         String.raw`def d(p):
+    for _ in range(60):
+        t.wantsToEat(p, nop, nop, eat, nop, nop)`,
+         'run_threads([lambda p=p: d(p) for p in range(5)], timeout=20)',
+         'n[0]']],
+       ['0',
+        '300']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         't = DiningPhilosophers()',
+         String.raw`def boom():
+    raise ValueError("eat failed")`,
+         'nop = lambda: None',
+         't.wantsToEat(2, nop, nop, boom, nop, nop)',
+         'ok = []',
+         't.wantsToEat(2, nop, nop, lambda: ok.append(1), nop, nop)',
+         't.wantsToEat(1, nop, nop, lambda: ok.append(2), nop, nop)',
+         'ok']],
+       ['!ValueError',
+        '[1, 2]']],
+    ] },
     solution: {
       approach: `<p><b>Resource ordering.</b> Every philosopher acquires the lower-numbered fork first. Philosopher 4 (forks 4 and 0) therefore reaches for fork 0 first, which breaks the circular wait. Two non-adjacent philosophers can still eat in parallel.</p>`,
       code: `import threading
@@ -2481,6 +4357,126 @@ async def retry_naive(op, attempts=5):
     return None` },
     mcq: { q: 'Why add random jitter to the backoff?', options: ['To make tests slower', 'To spread retries out so many clients don\'t hit the server at the same moment', 'Because asyncio requires it', 'To avoid CancelledError'], answer: 1, explain: 'Without jitter, all clients that failed together retry together, recreating the overload. Full jitter (uniform 0..delay) spreads them out.' },
     hints: [`<p>Hint 1: Loop over attempt index i; try <code>return await op()</code>.</p>`, `<p>Hint 2: <code>except retry_on as e:</code> remember it; if it was the last attempt, raise; else <code>await asyncio.sleep(random.uniform(0, min(cap, base * 2 ** i)))</code>.</p>`, `<p>Hint 3: Don't catch broad <code>Exception</code> (bugs should surface) and never catch <code>CancelledError</code>. Accept a <code>sleep</code> parameter to make it testable.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['import asyncio',
+         'calls = []',
+         'sleeps = []',
+         String.raw`async def fake_sleep(d):
+    sleeps.append(d)`,
+         String.raw`async def flaky():
+    calls.append(1)
+    if len(calls) < 3:
+        raise ConnectionError("reset")
+    return "ok"`,
+         'asyncio.run(retry(flaky, sleep=fake_sleep))',
+         'len(calls)',
+         'len(sleeps)',
+         '0 <= sleeps[0] <= 0.1 and 0 <= sleeps[1] <= 0.2']],
+       ['\'ok\'',
+        '3',
+        '2',
+        'True']],
+      [[['import asyncio',
+         'calls = []',
+         'sleeps = []',
+         String.raw`async def fake_sleep(d):
+    sleeps.append(d)`,
+         String.raw`async def bad():
+    calls.append(1)
+    raise ValueError("bug")`,
+         'asyncio.run(retry(bad, sleep=fake_sleep))',
+         'len(calls)',
+         'sleeps']],
+       ['!ValueError',
+        '1',
+        '[]']],
+      [[['import asyncio',
+         'calls = []',
+         'sleeps = []',
+         String.raw`async def fake_sleep(d):
+    sleeps.append(d)`,
+         String.raw`async def down():
+    calls.append(1)
+    raise ConnectionError("n%d" % len(calls))`,
+         String.raw`try:
+    asyncio.run(retry(down, attempts=4, sleep=fake_sleep))
+except ConnectionError as e:
+    last = str(e)`,
+         'last',
+         'len(calls)',
+         'len(sleeps)']],
+       ['\'n4\'',
+        '4',
+        '3']],
+      [[['import asyncio',
+         'sleeps = []',
+         String.raw`async def fake_sleep(d):
+    sleeps.append(d)`,
+         String.raw`async def down():
+    raise TimeoutError()`,
+         String.raw`for _ in range(30):
+    try:
+        asyncio.run(retry(down, attempts=10, base=1, cap=2, sleep=fake_sleep))
+    except TimeoutError:
+        pass`,
+         'len(sleeps)',
+         'max(sleeps) <= 2',
+         'min(sleeps) >= 0',
+         'all(sleeps[i * 9 + k] <= min(2, 2 ** k) for i in range(30) for k in range(9))',
+         'max(sleeps[8::9]) > 1']],
+       ['270',
+        'True',
+        'True',
+        'True',
+        'True']],
+      [[['import asyncio',
+         'calls = []',
+         String.raw`async def fake_sleep(d):
+    pass`,
+         String.raw`async def op():
+    calls.append(1)
+    raise ConnectionError()`,
+         'asyncio.run(retry(op, attempts=1, sleep=fake_sleep))',
+         'len(calls)',
+         String.raw`async def good():
+    return 7`,
+         'asyncio.run(retry(good))']],
+       ['!ConnectionError',
+        '1',
+        '7']],
+      [[['import asyncio',
+         'calls = []',
+         String.raw`async def fake_sleep(d):
+    pass`,
+         String.raw`async def op():
+    calls.append(1)
+    raise ConnectionError()`,
+         'asyncio.run(retry(op, retry_on=(KeyError,), sleep=fake_sleep))',
+         'len(calls)',
+         String.raw`async def op2():
+    calls.append(1)
+    raise KeyError("k")`,
+         'asyncio.run(retry(op2, attempts=3, retry_on=(KeyError,), sleep=fake_sleep))',
+         'len(calls)']],
+       ['!ConnectionError',
+        '1',
+        '!KeyError',
+        '4']],
+      [[['import asyncio',
+         String.raw`async def op():
+    raise ConnectionError()`,
+         String.raw`async def main():
+    t = asyncio.create_task(retry(op, attempts=5, base=5, cap=5))
+    await asyncio.sleep(0.05)
+    t.cancel()
+    try:
+        await t
+    except asyncio.CancelledError:
+        return "cancelled"
+    return "finished"`,
+         'asyncio.run(main())']],
+       ['\'cancelled\'']],
+    ] },
     solution: {
       approach: `<p>Bounded attempts, selective exceptions, exponential growth capped at <code>cap</code>, full jitter, and non-blocking <code>asyncio.sleep</code>. Cancellation passes straight through because <code>CancelledError</code> isn't in <code>retry_on</code>.</p>`,
       code: `import asyncio
@@ -2525,6 +4521,83 @@ class NaiveLimiter:
         await asyncio.sleep(1 / self.rate)    # every caller sleeps in parallel → no real limit` },
     mcq: { q: 'Why hold an asyncio.Lock while a caller sleeps for its token?', options: ['To block the event loop', 'So waiting callers are served one at a time in FIFO order and token math isn\'t raced', 'Locks make sleeping faster', 'It is not needed in asyncio'], answer: 1, explain: 'asyncio.Lock is FIFO-fair. Holding it serialises the refill-check-sleep-consume sequence, which spans an await and would otherwise race.' },
     hints: [`<p>Hint 1: Store <code>tokens</code> (float) and <code>last</code> refill time (<code>loop.time()</code>, monotonic).</p>`, `<p>Hint 2: Refill: <code>tokens = min(capacity, tokens + (now - last) * rate)</code>. If tokens ≥ 1 → take one. Else sleep <code>(1 - tokens) / rate</code> and refill again.</p>`, `<p>Hint 3: Wrap the whole thing in <code>async with self._lock</code> so callers queue fairly. Start full (capacity tokens) to allow an initial burst.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['import asyncio, time',
+         String.raw`async def main():
+    b = TokenBucket(rate=20, capacity=5)
+    t0 = time.perf_counter()
+    stamps = []
+    async def call(i):
+        await b.acquire()
+        stamps.append(time.perf_counter() - t0)
+    await asyncio.gather(*(call(i) for i in range(10)))
+    return stamps`,
+         'st = asyncio.run(main())',
+         'len(st)',
+         'max(st[:5]) < 0.03',
+         '0.2 <= st[-1] < 0.5']],
+       ['10',
+        'True',
+        'True']],
+      [[['import asyncio, time',
+         String.raw`async def main():
+    b = TokenBucket(rate=100, capacity=5)
+    t0 = time.perf_counter()
+    for _ in range(5):
+        await b.acquire()
+    return time.perf_counter() - t0`,
+         'asyncio.run(main()) < 0.05']],
+       ['True']],
+      [[['import asyncio, time',
+         String.raw`async def main():
+    b = TokenBucket(rate=20, capacity=1)
+    t0 = time.perf_counter()
+    for _ in range(5):
+        await b.acquire()
+    return time.perf_counter() - t0`,
+         '0.15 <= asyncio.run(main()) < 0.45']],
+       ['True']],
+      [[['import asyncio',
+         String.raw`async def main():
+    b = TokenBucket(rate=1000, capacity=3)
+    order = []
+    async def call(i):
+        await b.acquire()
+        order.append(i)
+    await asyncio.gather(*(call(i) for i in range(10)))
+    return order`,
+         'asyncio.run(main())']],
+       ['[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]']],
+      [[['import asyncio, time',
+         String.raw`async def main():
+    b = TokenBucket(rate=10, capacity=2)
+    await asyncio.sleep(0.5)
+    t0 = time.perf_counter()
+    for _ in range(4):
+        await b.acquire()
+    return time.perf_counter() - t0`,
+         '0.15 <= asyncio.run(main()) < 0.45']],
+       ['True']],
+      [[['import asyncio, time',
+         String.raw`async def main():
+    b = TokenBucket(rate=10**4, capacity=10**4)
+    t0 = time.perf_counter()
+    await asyncio.gather(*(b.acquire() for _ in range(10000)))
+    return time.perf_counter() - t0`,
+         'asyncio.run(main()) < 3']],
+       ['True']],
+      [[['import asyncio, time',
+         String.raw`async def main():
+    b = TokenBucket(rate=200, capacity=5)
+    t0 = time.perf_counter()
+    await asyncio.gather(*(b.acquire() for _ in range(20)))
+    return time.perf_counter() - t0`,
+         '0.06 <= asyncio.run(main()) < 0.4',
+         'b = TokenBucket(rate=5, capacity=2)',
+         '(b.tokens, b.rate, b.capacity)']],
+       ['True',
+        '(2.0, 5, 2)']],
+    ] },
     solution: {
       approach: `<p>Lazy refill on each call (no background task), monotonic time, and an asyncio.Lock to make the check-sleep-consume sequence atomic and FIFO. The loop stays free while callers sleep.</p>`,
       code: `import asyncio
@@ -2595,6 +4668,239 @@ class ReaderPreferring:
                 self.cond.notify_all()` },
     mcq: { q: 'Which extra piece of state makes the lock writer-preferring?', options: ['A count of active readers', 'A count of WAITING writers that readers check before entering', 'A second Lock for readers', 'A timeout on read()'], answer: 1, explain: 'Readers wait while writer_active OR waiting_writers > 0. Writers announce themselves by incrementing waiting_writers before waiting.' },
     hints: [`<p>Hint 1: State under one Condition: <code>readers</code> (active), <code>writer</code> (bool active), <code>waiting_writers</code>.</p>`, `<p>Hint 2: read-enter waits while <code>writer or waiting_writers</code>; write-enter increments waiting_writers, waits while <code>writer or readers</code>, then decrements and sets writer=True.</p>`, `<p>Hint 3: On every exit, <code>notify_all()</code> (both readers and writers may be waiting on different predicates). Use <code>try/finally</code> in the context managers so exceptions don't leak the lock.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def thr(fn, *a):
+    t = threading.Thread(target=fn, args=a, daemon=True)
+    t.start()
+    return t`,
+         'lock = RWLock()',
+         'bar = threading.Barrier(5, timeout=5)',
+         'got = []',
+         String.raw`def reader():
+    with lock.read():
+        bar.wait()
+        got.append(1)`,
+         'run_threads([reader] * 5)',
+         'len(got)']],
+       ['0',
+        '5']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def thr(fn, *a):
+    t = threading.Thread(target=fn, args=a, daemon=True)
+    t.start()
+    return t`,
+         'lock = RWLock()',
+         'in_w, rel, log = threading.Event(), threading.Event(), []',
+         String.raw`def writer():
+    with lock.write():
+        in_w.set()
+        rel.wait(5)
+        log.append("W done")`,
+         String.raw`def reader():
+    with lock.read():
+        log.append("R")`,
+         'tw = thr(writer)',
+         'in_w.wait(5)',
+         'tr = thr(reader)',
+         'time.sleep(0.1)',
+         'log',
+         'rel.set()',
+         'tw.join(5)',
+         'tr.join(5)',
+         'log']],
+       ['True',
+        '[]',
+        '[\'W done\', \'R\']']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def thr(fn, *a):
+    t = threading.Thread(target=fn, args=a, daemon=True)
+    t.start()
+    return t`,
+         'lock = RWLock()',
+         'in_r, rel, log = threading.Event(), threading.Event(), []',
+         String.raw`def reader():
+    with lock.read():
+        in_r.set()
+        rel.wait(5)
+        log.append("R done")`,
+         String.raw`def writer():
+    with lock.write():
+        log.append("W")`,
+         'tr = thr(reader)',
+         'in_r.wait(5)',
+         'tw = thr(writer)',
+         'time.sleep(0.1)',
+         'log',
+         'rel.set()',
+         'tr.join(5)',
+         'tw.join(5)',
+         'log']],
+       ['True',
+        '[]',
+        '[\'R done\', \'W\']']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def thr(fn, *a):
+    t = threading.Thread(target=fn, args=a, daemon=True)
+    t.start()
+    return t`,
+         'lock = RWLock()',
+         'log, r1_in, rel = [], threading.Event(), threading.Event()',
+         String.raw`def r1():
+    with lock.read():
+        r1_in.set()
+        rel.wait(5)
+        log.append("R1 done")`,
+         String.raw`def w():
+    with lock.write():
+        log.append("W")`,
+         String.raw`def r2():
+    with lock.read():
+        log.append("R2")`,
+         't1 = thr(r1)',
+         'r1_in.wait(5)',
+         'tw = thr(w)',
+         'time.sleep(0.1)',
+         't2 = thr(r2)',
+         'time.sleep(0.1)',
+         'log',
+         'rel.set()',
+         't1.join(5)',
+         'tw.join(5)',
+         't2.join(5)',
+         'log']],
+       ['True',
+        '[]',
+        '[\'R1 done\', \'W\', \'R2\']']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def thr(fn, *a):
+    t = threading.Thread(target=fn, args=a, daemon=True)
+    t.start()
+    return t`,
+         'import sys',
+         'sys.setswitchinterval(1e-5)',
+         'lock = RWLock()',
+         'data = {"a": 0, "b": 0}',
+         'bad = []',
+         String.raw`def writer():
+    for _ in range(30):
+        with lock.write():
+            data["a"] += 1
+            time.sleep(0)
+            data["b"] += 1`,
+         String.raw`def reader():
+    for _ in range(100):
+        with lock.read():
+            if data["a"] != data["b"]:
+                bad.append(1)`,
+         'run_threads([writer] * 5 + [reader] * 20, timeout=20)',
+         'bad',
+         'data']],
+       ['0',
+        '[]',
+        '{\'a\': 150, \'b\': 150}']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def thr(fn, *a):
+    t = threading.Thread(target=fn, args=a, daemon=True)
+    t.start()
+    return t`,
+         'lock = RWLock()',
+         'stop = threading.Event()',
+         String.raw`def reader():
+    while not stop.is_set():
+        with lock.read():
+            time.sleep(0.005)`,
+         'rs = [thr(reader) for _ in range(20)]',
+         'time.sleep(0.05)',
+         'done = threading.Event()',
+         String.raw`def writer():
+    with lock.write():
+        done.set()`,
+         't0 = time.monotonic()',
+         'tw = thr(writer)',
+         'done.wait(3)',
+         'time.monotonic() - t0 < 1.0',
+         'stop.set()',
+         'tw.join(5)']],
+       ['True',
+        'True']],
+      [[[String.raw`import threading, time
+def run_threads(targets, timeout=10):
+    ts = [threading.Thread(target=t, daemon=True) for t in targets]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout)
+    return sum(t.is_alive() for t in ts)`,
+         String.raw`def thr(fn, *a):
+    t = threading.Thread(target=fn, args=a, daemon=True)
+    t.start()
+    return t`,
+         'lock = RWLock()',
+         String.raw`try:
+    with lock.read():
+        raise ValueError("in read")
+except ValueError:
+    pass`,
+         String.raw`try:
+    with lock.write():
+        raise ValueError("in write")
+except ValueError:
+    pass`,
+         'ok = []',
+         String.raw`def w():
+    with lock.write():
+        ok.append("w")`,
+         String.raw`def r():
+    with lock.read():
+        ok.append("r")`,
+         'run_threads([w, r], timeout=5)',
+         'sorted(ok)']],
+       ['0',
+        '[\'r\', \'w\']']],
+    ] },
     solution: {
       approach: `<p>A single Condition guards three counters. Readers defer to both active and waiting writers; writers wait only for active users. <code>notify_all</code> on release wakes everyone to re-check their predicate. Readers can still be delayed by a steady stream of writers (the opposite trade-off), which is usually acceptable because writes are rare.</p>`,
       code: `import threading
@@ -2678,6 +4984,186 @@ class NaiveScheduler:
         return asyncio.create_task(run())` },
     mcq: { q: 'How should a worker tell "the job was cancelled" from "I (the worker) am being shut down" when it catches CancelledError?', options: ['Check fut.done()', 'asyncio.current_task().cancelling() > 0 means the worker itself is being cancelled', 'Catch Exception instead', 'It cannot tell'], answer: 1, explain: 'Since 3.11 a task tracks pending cancel requests. If the worker\'s own cancelling() count is non-zero, the cancel was aimed at the worker → re-raise. Otherwise only the inner job was cancelled → mark its future and keep looping.' },
     hints: [`<p>Hint 1: <code>asyncio.PriorityQueue</code> of <code>(priority, seq, job_id, fn)</code>; the increasing <code>seq</code> gives FIFO ties and avoids comparing functions.</p>`, `<p>Hint 2: Start exactly <code>limit</code> worker tasks. Each loops: get job → if its future is cancelled, skip → run <code>fn()</code> as its own Task (so it can be cancelled separately) → set the future's result/exception.</p>`, `<p>Hint 3: <code>cancel()</code>: if running, cancel the job's Task; if waiting, cancel the Future (worker skips it). <code>close()</code>: cancel workers and gather them with <code>return_exceptions=True</code>.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[[String.raw`import asyncio
+def job(name, secs, order):
+    async def run():
+        order.append(name)
+        await asyncio.sleep(secs)
+        return name
+    return run
+def left_over():
+    return [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]`,
+         String.raw`async def main():
+    order = []
+    s = Scheduler(limit=1)
+    _, fa = s.submit(job("A", 0.01, order), priority=5)
+    _, fb = s.submit(job("B", 0.01, order), priority=1)
+    c_id, fc = s.submit(job("C", 0.01, order), priority=1)
+    _, fd = s.submit(job("D", 0.02, order), priority=9)
+    s.cancel(c_id)
+    res = (await fb, await fa, await fd)
+    await s.close()
+    return res, order, fc.cancelled()`,
+         'asyncio.run(main())']],
+       ['((\'B\', \'A\', \'D\'), [\'B\', \'A\', \'D\'], True)']],
+      [[[String.raw`import asyncio
+def job(name, secs, order):
+    async def run():
+        order.append(name)
+        await asyncio.sleep(secs)
+        return name
+    return run
+def left_over():
+    return [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]`,
+         String.raw`async def main():
+    order, st = [], {"now": 0, "max": 0}
+    def tracked(i):
+        async def run():
+            st["now"] += 1
+            st["max"] = max(st["max"], st["now"])
+            await asyncio.sleep(0.02)
+            st["now"] -= 1
+            return i
+        return run
+    s = Scheduler(limit=2)
+    futs = [s.submit(tracked(i), priority=1)[1] for i in range(6)]
+    res = [await f for f in futs]
+    await s.close()
+    return res, st["max"]`,
+         'asyncio.run(main())']],
+       ['([0, 1, 2, 3, 4, 5], 2)']],
+      [[[String.raw`import asyncio
+def job(name, secs, order):
+    async def run():
+        order.append(name)
+        await asyncio.sleep(secs)
+        return name
+    return run
+def left_over():
+    return [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]`,
+         String.raw`async def main():
+    order = []
+    s = Scheduler(limit=1)
+    futs = [s.submit(job("j%d" % i, 0, order), priority=p)[1] for i, p in enumerate([3, 1, 2, 1, 0])]
+    for f in futs:
+        await f
+    await s.close()
+    return order`,
+         'asyncio.run(main())']],
+       ['[\'j4\', \'j1\', \'j3\', \'j2\', \'j0\']']],
+      [[[String.raw`import asyncio
+def job(name, secs, order):
+    async def run():
+        order.append(name)
+        await asyncio.sleep(secs)
+        return name
+    return run
+def left_over():
+    return [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]`,
+         String.raw`async def main():
+    order = []
+    s = Scheduler(limit=1)
+    long_id, flong = s.submit(job("long", 5, order), priority=1)
+    _, fnext = s.submit(job("next", 0.01, order), priority=2)
+    await asyncio.sleep(0.05)
+    first = s.cancel(long_id)
+    nxt = await fnext
+    again = s.cancel(long_id)
+    await s.close()
+    return first, flong.cancelled(), nxt, again, order`,
+         'asyncio.run(main())']],
+       ['(True, True, \'next\', False, [\'long\', \'next\'])']],
+      [[[String.raw`import asyncio
+def job(name, secs, order):
+    async def run():
+        order.append(name)
+        await asyncio.sleep(secs)
+        return name
+    return run
+def left_over():
+    return [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]`,
+         String.raw`async def main():
+    s = Scheduler(limit=2)
+    async def bad():
+        raise ValueError("job failed")
+    async def good():
+        return 5
+    _, fb = s.submit(bad, priority=1)
+    _, fg = s.submit(good, priority=1)
+    try:
+        await fb
+        err = None
+    except ValueError as e:
+        err = str(e)
+    ok = await fg
+    _, fg2 = s.submit(good)
+    ok2 = await fg2
+    await s.close()
+    return err, ok, ok2`,
+         'asyncio.run(main())']],
+       ['(\'job failed\', 5, 5)']],
+      [[[String.raw`import asyncio
+def job(name, secs, order):
+    async def run():
+        order.append(name)
+        await asyncio.sleep(secs)
+        return name
+    return run
+def left_over():
+    return [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]`,
+         String.raw`async def main():
+    s = Scheduler(limit=1)
+    id1, f1 = s.submit(job("x", 0, []))
+    await f1
+    r = (s.cancel(id1), s.cancel(999))
+    await s.close()
+    return r`,
+         'asyncio.run(main())']],
+       ['(False, False)']],
+      [[[String.raw`import asyncio
+def job(name, secs, order):
+    async def run():
+        order.append(name)
+        await asyncio.sleep(secs)
+        return name
+    return run
+def left_over():
+    return [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]`,
+         String.raw`async def main():
+    order = []
+    s = Scheduler(limit=2)
+    running_id, f1 = s.submit(job("r1", 5, order))
+    _, f2 = s.submit(job("r2", 5, order))
+    _, f3 = s.submit(job("w1", 0.01, order))
+    await asyncio.sleep(0.05)
+    await s.close()
+    for _ in range(3):
+        await asyncio.sleep(0)
+    return order, len(left_over())`,
+         'asyncio.run(main())']],
+       ['([\'r1\', \'r2\'], 0)']],
+      [[[String.raw`import asyncio
+def job(name, secs, order):
+    async def run():
+        order.append(name)
+        await asyncio.sleep(secs)
+        return name
+    return run
+def left_over():
+    return [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]`,
+         String.raw`async def main():
+    order = []
+    s = Scheduler(limit=50)
+    async def quick(i):
+        return i
+    futs = [s.submit((lambda i=i: quick(i)), priority=i % 7)[1] for i in range(2000)]
+    res = await asyncio.gather(*futs)
+    await s.close()
+    return res == list(range(2000)), sum(res)`,
+         'asyncio.run(main())']],
+       ['(True, 1999000)']],
+    ] },
     solution: {
       approach: `<p>A priority queue feeds a fixed pool of worker tasks (the concurrency limit). Each job runs in its own Task so it can be cancelled independently; the worker distinguishes job cancellation from its own shutdown via <code>cancelling()</code>. Futures give callers a handle for results, exceptions and cancellation.</p>`,
       code: `import asyncio
@@ -2789,6 +5275,63 @@ async def run_service_abrupt(jobs, workers):
         t.cancel()                 # in-flight jobs lost, no report` },
     mcq: { q: 'What should happen FIRST when the stop signal arrives?', options: ['Cancel all workers', 'Stop accepting new work (close intake)', 'Clear the queue', 'Call sys.exit()'], answer: 1, explain: 'Close the intake so the backlog stops growing, then drain with a deadline, then cancel leftovers, then close resources.' },
     hints: [`<p>Hint 1: Use an <code>asyncio.Event</code> as the stop flag; in production, <code>loop.add_signal_handler(signal.SIGTERM, stop.set)</code>.</p>`, `<p>Hint 2: After <code>await stop.wait()</code>: cancel the intake task, then <code>async with asyncio.timeout(drain_timeout): await q.join()</code>; catch <code>TimeoutError</code> → drained = False.</p>`, `<p>Hint 3: Workers must call <code>task_done()</code> in <code>finally</code>. Finally cancel workers and <code>gather(..., return_exceptions=True)</code> so nothing is left pending. Dropped = total − done.</p>`],
+    tests: { sig: 'string[] -> string[]', fn: 'run_lines', harness: { python: PYT }, cases: [
+      [[['import asyncio',
+         'r = asyncio.run(run_service([0.05] * 20))',
+         'sorted(r)',
+         'r["done"] + r["dropped"]',
+         '5 <= r["done"] <= 14',
+         'r["drained"]']],
+       ['[\'done\', \'drained\', \'dropped\']',
+        '20',
+        'True',
+        'True']],
+      [[['import asyncio',
+         'r = asyncio.run(run_service([0.5] * 20, drain_timeout=0.2))',
+         'r["drained"]',
+         'r["done"] < 20',
+         'r["done"] + r["dropped"]',
+         'r["dropped"] >= 10']],
+       ['False',
+        'True',
+        '20',
+        'True']],
+      [[['import asyncio',
+         'asyncio.run(run_service([]))',
+         'asyncio.run(run_service([], workers=1, drain_timeout=0.1, stop_after=0.01))']],
+       ['{\'done\': 0, \'dropped\': 0, \'drained\': True}',
+        '{\'done\': 0, \'dropped\': 0, \'drained\': True}']],
+      [[['import asyncio',
+         String.raw`async def with_leak_check(*a, **k):
+    r = await run_service(*a, **k)
+    await asyncio.sleep(0)
+    return r, len([t for t in asyncio.all_tasks() if t is not asyncio.current_task()])`,
+         'asyncio.run(with_leak_check([0.05] * 20))[1]',
+         'asyncio.run(with_leak_check([0.5] * 20, drain_timeout=0.2))[1]',
+         'asyncio.run(with_leak_check([0.01] * 3, workers=1, stop_after=0.5))']],
+       ['0',
+        '0',
+        '({\'done\': 3, \'dropped\': 0, \'drained\': True}, 0)']],
+      [[['import asyncio',
+         'asyncio.run(run_service([0.01] * 5, workers=3, stop_after=0.5))',
+         'asyncio.run(run_service([0.05] * 3, workers=1, stop_after=0.5))']],
+       ['{\'done\': 5, \'dropped\': 0, \'drained\': True}',
+        '{\'done\': 3, \'dropped\': 0, \'drained\': True}']],
+      [[['import asyncio',
+         'asyncio.run(run_service([0.2] * 4, workers=2, drain_timeout=5, stop_after=0.2))']],
+       ['{\'done\': 4, \'dropped\': 0, \'drained\': True}']],
+      [[['import asyncio, time',
+         't0 = time.monotonic()',
+         'r = asyncio.run(run_service([0.3] * 6, workers=2, drain_timeout=0.1, stop_after=0.1))',
+         'time.monotonic() - t0 < 0.6',
+         'r["drained"]',
+         'r["done"] + r["dropped"]',
+         'r["done"] <= 6']],
+       ['True',
+        'False',
+        '6',
+        'True']],
+    ] },
     solution: {
       approach: `<p>Three phases: <b>stop intake</b> (cancel the producer), <b>drain with a deadline</b> (<code>q.join()</code> under <code>asyncio.timeout</code>), <b>force stop</b> (cancel workers, await them). Everything is awaited, so the loop closes with no pending tasks and a truthful report.</p>`,
       code: `import asyncio

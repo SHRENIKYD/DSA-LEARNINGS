@@ -431,6 +431,24 @@ FROM registrations GROUP BY venue;   -- Hall A | 100,80  (contradiction)`
       },
       mcq: { q: 'Which business rule causes the venue capacity to be repeated?', options: ['venue → venue_capacity, while the key is (attendee_email, event_code)', 'attendee_email → attendee_name', 'The table has no primary key', 'SQLite stores integers inefficiently'], answer: 0, explain: 'Capacity depends on the venue, which depends on the event — neither is the table key, so the fact is copied per registration.' },
       hints: [`<p>Hint 1: For each non-key column ask "what does this really describe?" — a person, an event, a venue, or the registration itself?</p>`, `<p>Hint 2: You get one table per "thing": attendees, venues, events, and a junction table registrations that keeps only the two keys.</p>`, `<p>Hint 3: events.venue is a foreign key to venues; registrations has a composite primary key and two foreign keys. Then rejoin to prove nothing was lost.</p>`],
+      tests: { cmp: 'exact', engine: 'sqlite', cases: [
+          { cols: ['event_code', 'title', 'capacity', 'signups'], rows: [['E1', 'SQL Meetup', 100, 0], ['E2', 'Graph DB Night', 100, 0]] },
+          { after: 'INSERT INTO registrations VALUES (\'asha@x\',\'E1\'),(\'ben@x\',\'E2\'); UPDATE venues SET capacity = 120 WHERE venue = \'Hall A\'; SELECT attendee_name, event_code, capacity FROM registrations_wide ORDER BY attendee_email', rows: [['Asha', 'E1', 120], ['Ben', 'E2', 120]] },
+          { after: 'INSERT INTO events VALUES (\'E3\',\'Rust Day\',\'2026-07-01\',\'Hall A\'); SELECT COUNT(*) FROM events', rows: [[3]] },
+          { after: 'INSERT INTO registrations VALUES (\'asha@x\',\'E1\'),(\'ben@x\',\'E1\'); DELETE FROM registrations; SELECT COUNT(*) FROM events', rows: [[2]] },
+          { after: 'INSERT INTO registrations VALUES (\'asha@x\',\'E1\'),(\'ben@x\',\'E1\'); DELETE FROM events WHERE event_code = \'E1\'; SELECT COUNT(*) FROM registrations', rows: [[0]] },
+          { after: 'INSERT INTO attendees VALUES (\'asha@x\', \'Asha Again\')', error: 'UNIQUE' },
+          { after: 'INSERT INTO events VALUES (\'E1\',\'Dup\',\'2026-01-01\',\'Hall A\')', error: 'UNIQUE' },
+          { after: 'INSERT INTO events VALUES (\'E9\',\'Ghost venue\',\'2026-01-01\',\'Hall Z\')', error: 'FOREIGN KEY' },
+          { after: 'INSERT INTO registrations VALUES (\'ghost@x\',\'E1\')', error: 'FOREIGN KEY' },
+          { after: 'INSERT INTO registrations VALUES (\'asha@x\',\'E9\')', error: 'FOREIGN KEY' },
+          { after: 'INSERT INTO registrations VALUES (\'asha@x\',\'E1\'),(\'asha@x\',\'E1\')', error: 'UNIQUE' },
+          { after: 'INSERT INTO venues VALUES (\'Hall B\', 0)', error: 'CHECK' },
+          { after: 'INSERT INTO venues VALUES (\'Hall A\', 50)', error: 'UNIQUE' },
+          { after: 'INSERT INTO venues (venue) VALUES (\'Hall C\')', error: 'NOT NULL' },
+          { after: 'DELETE FROM venues WHERE venue = \'Hall A\'', error: 'FOREIGN KEY' },
+          { after: 'SELECT name FROM attendees ORDER BY email', rows: [['Asha'], ['Ben']] }
+        ] },
       solution: {
         approach: `<p>Group columns by what they describe. <b>Attendee</b> facts: name (key email). <b>Venue</b> facts: capacity (key venue). <b>Event</b> facts: title, date, venue (key event_code). The <b>registration</b> itself has no extra facts — it is just the pair (attendee, event). Each group becomes a table; each rule becomes a primary key, so the database enforces it. A view gives the old "one big table" back for reports.</p>`,
         code: `PRAGMA foreign_keys = ON;
@@ -680,6 +698,14 @@ FROM clo GROUP BY start ORDER BY start;`
       },
       mcq: { q: 'Which attribute must be in every candidate key?', options: ['B — it never appears on a right side', 'A — it appears in the first FD', 'D — it determines A', 'None; keys can be anything'], answer: 0, explain: 'No FD produces B, so the only way to "know" B is to start with it.' },
       hints: [`<p>Hint 1: Look for attributes that never appear on any right-hand side. Nothing can derive them, so every key must include them.</p>`, `<p>Hint 2: B alone: B⁺ = {B}, not a key. Now try B plus one other attribute: AB, BC, BD — compute each closure.</p>`, `<p>Hint 3: Any 3-attribute set containing B contains one of the 2-attribute keys, so it is not minimal. Recipe: must-set → closure → add one maybe-attribute at a time → skip supersets.</p>`],
+      tests: { cmp: 'set', engine: 'sqlite', cases: [
+          { cols: ['kind', 'attrs'], rows: [['candidate key', 'AB'], ['candidate key', 'BC'], ['candidate key', 'BD'], ['prime attribute', 'A'], ['prime attribute', 'B'], ['prime attribute', 'C'], ['prime attribute', 'D']] },
+          { after: 'SELECT name, bit FROM attr ORDER BY bit', rows: [['A', 1], ['B', 2], ['C', 4], ['D', 8]] },
+          { after: 'SELECT lhs, rhs FROM fd ORDER BY lhs, rhs', rows: [[3, 4], [4, 8], [8, 1]] },
+          { after: 'SELECT COUNT(*) FROM fd', rows: [[3]] },
+          { after: 'SELECT COUNT(*) FROM attr WHERE bit & (bit - 1) = 0', rows: [[4]] },
+          { after: 'SELECT MAX(bit) * 2 - 1 FROM attr', rows: [[15]] }
+        ] },
       solution: {
         approach: `<p><b>Must-set:</b> B (never on a right side). B⁺ = {B} → not enough. <b>Add one:</b> AB⁺ = ABCD ✔; BC⁺ = BC → D → A = ABCD ✔; BD⁺ = BD → A → AB → C = ABCD ✔. All three are minimal because A⁺, C⁺ = CDA, D⁺ = DA and B⁺ lack B or something else. Every larger set containing B contains one of them. <b>Keys: AB, BC, BD. Prime attributes: A, B, C, D</b> (all of them). Consequence: every FD has a prime right side, so R is in 3NF, but C → D and D → A have non-superkey left sides, so R is <b>not</b> in BCNF.</p>`,
         code: `CREATE TABLE attr (name TEXT PRIMARY KEY, bit INTEGER NOT NULL UNIQUE);
@@ -868,6 +894,19 @@ FROM orders WHERE toppings LIKE '%pepper%';      -- 3: order 2 is a false positi
       },
       mcq: { q: 'Why is <code>toppings = \'cheese, pepper\'</code> a 1NF violation?', options: ['One cell holds several values (a list)', 'The table has no primary key', 'Text columns are not allowed in 1NF', 'Because pepper is a substring of pepperoni'], answer: 0, explain: '1NF requires one atomic value per cell; the substring problem is a symptom, not the definition.' },
       hints: [`<p>Hint 1: Each topping in an order is its own fact: "order 3 has onion". Facts belong in rows, not inside a string.</p>`, `<p>Hint 2: Create order_toppings(order_id, topping) with a composite primary key; optionally a toppings lookup table for valid names.</p>`, `<p>Hint 3: Migrate with a recursive CTE that peels text up to the first comma, TRIM it, skip empty items. Then count with <code>WHERE topping = 'pepper'</code>.</p>`],
+      tests: { cmp: 'exact', engine: 'sqlite', cases: [
+          { cols: ['order_id', 'customer', 'toppings'], rows: [[1, 'Asha', 'cheese, pepper'], [2, 'Ben', 'pepperoni'], [3, 'Chen', 'onion, pepper, pepperoni'], [4, 'Dara', '(plain)']] },
+          { after: 'SELECT COUNT(*) FROM order_toppings WHERE topping = \'pepper\'', rows: [[2]] },
+          { after: 'SELECT COUNT(*) FROM order_toppings WHERE topping = \'pepperoni\'', rows: [[2]] },
+          { after: 'SELECT order_id, topping FROM order_toppings ORDER BY order_id, topping', rows: [[1, 'cheese'], [1, 'pepper'], [2, 'pepperoni'], [3, 'onion'], [3, 'pepper'], [3, 'pepperoni']] },
+          { after: 'SELECT name FROM toppings ORDER BY name', rows: [['cheese'], ['onion'], ['pepper'], ['pepperoni']] },
+          { after: 'SELECT COUNT(*) FROM orders', rows: [[4]] },
+          { after: 'INSERT INTO order_toppings VALUES (1, \'cheese\')', error: 'UNIQUE' },
+          { after: 'INSERT INTO order_toppings VALUES (1, \'anchovy\')', error: 'FOREIGN KEY' },
+          { after: 'INSERT INTO order_toppings VALUES (99, \'cheese\')', error: 'FOREIGN KEY' },
+          { after: 'DELETE FROM orders WHERE order_id = 3; SELECT COUNT(*) FROM order_toppings', rows: [[3]] },
+          { after: 'INSERT INTO toppings VALUES (\'anchovy\'); INSERT INTO order_toppings VALUES (4, \'anchovy\'); SELECT COUNT(*) FROM order_toppings WHERE order_id = 4', rows: [[1]] }
+        ] },
       solution: {
         approach: `<p>Create a <b>toppings</b> lookup (so only valid names exist), keep <b>orders</b> without the list, and add a junction table <b>order_toppings</b> with PK (order_id, topping) — that PK also prevents duplicate toppings per order. Migrate the old text with a recursive splitting CTE (TRIM handles spaces; the WHERE skips empty strings so zero-topping orders produce no rows but the order itself survives in <code>orders</code>). The question becomes an exact-match count on an indexed column.</p>`,
         code: `PRAGMA foreign_keys = ON;
@@ -1053,6 +1092,22 @@ SELECT course_id, GROUP_CONCAT(DISTINCT credits) AS credits_on_file FROM enrollm
       },
       mcq: { q: 'Which dependency is NOT partial?', options: ['(student_id, course_id) → grade', 'student_id → student_name', 'course_id → credits', 'course_id → course_title'], answer: 0, explain: 'A grade needs both the student and the course — it depends on the whole key.' },
       hints: [`<p>Hint 1: The key has two parts. Ask of each non-key column: "do I need both student_id and course_id to know this?"</p>`, `<p>Hint 2: student_id → name, email (partial). course_id → title, credits (partial). Only grade needs both.</p>`, `<p>Hint 3: Tables: students(student_id PK, …), courses(course_id PK, …), enrollments(student_id FK, course_id FK, grade, PK both). Migrate with SELECT DISTINCT, check with EXCEPT both ways.</p>`],
+      tests: { cmp: 'exact', engine: 'sqlite', cases: [
+          { cols: ['rows_lost', 'rows_invented'], rows: [[0, 0]] },
+          { after: 'SELECT COUNT(*) FROM (SELECT * FROM enrollments_old EXCEPT SELECT e.student_id, e.course_id, e.grade, s.student_name, s.student_email, c.course_title, c.credits FROM enrollments e JOIN students s USING (student_id) JOIN courses c USING (course_id))', rows: [[0]] },
+          { after: 'SELECT COUNT(*) FROM (SELECT e.student_id, e.course_id, e.grade, s.student_name, s.student_email, c.course_title, c.credits FROM enrollments e JOIN students s USING (student_id) JOIN courses c USING (course_id) EXCEPT SELECT * FROM enrollments_old)', rows: [[0]] },
+          { after: 'SELECT (SELECT COUNT(*) FROM students), (SELECT COUNT(*) FROM courses), (SELECT COUNT(*) FROM enrollments)', rows: [[2, 2, 3]] },
+          { after: 'UPDATE students SET student_name = \'Asha K\' WHERE student_id = 1; SELECT COUNT(*) FROM enrollments e JOIN students s USING (student_id) WHERE s.student_name = \'Asha K\'', rows: [[2]] },
+          { after: 'UPDATE courses SET credits = 5 WHERE course_id = \'DB1\'; SELECT COUNT(*) FROM enrollments e JOIN courses c USING (course_id) WHERE c.credits = 5', rows: [[2]] },
+          { after: 'INSERT INTO courses VALUES (\'NET1\',\'Networks\',3); SELECT COUNT(*) FROM courses', rows: [[3]] },
+          { after: 'INSERT INTO enrollments VALUES (2, \'OS1\', NULL); SELECT COUNT(*) FROM enrollments', rows: [[4]] },
+          { after: 'INSERT INTO students VALUES (3, \'Clone\', \'a@x\')', error: 'UNIQUE' },
+          { after: 'INSERT INTO courses VALUES (\'X1\',\'Zero\',0)', error: 'CHECK' },
+          { after: 'INSERT INTO courses VALUES (\'X1\',\'Eleven\',11)', error: 'CHECK' },
+          { after: 'INSERT INTO enrollments VALUES (9, \'DB1\', \'A\')', error: 'FOREIGN KEY' },
+          { after: 'INSERT INTO enrollments VALUES (1, \'XX9\', \'A\')', error: 'FOREIGN KEY' },
+          { after: 'INSERT INTO enrollments VALUES (1, \'DB1\', \'B\')', error: 'UNIQUE' }
+        ] },
       solution: {
         approach: `<p>Candidate key: (student_id, course_id). Proper subsets: {student_id}⁺ = {student_id, student_name, student_email}; {course_id}⁺ = {course_id, course_title, credits}. Both contain non-prime attributes → two partial dependencies. Move each subset with what it determines into its own table, keep the full key + grade in enrollments. Because each split shares a column that is a key of the new table, the decomposition is lossless; the EXCEPT queries prove it on the data.</p>`,
         code: `PRAGMA foreign_keys = ON;
@@ -1272,6 +1327,21 @@ SELECT zip, GROUP_CONCAT(DISTINCT city) AS cities FROM shipments GROUP BY zip;  
       },
       mcq: { q: 'Highest normal form of the original shipments table?', options: ['2NF — single-column key, but transitive dependencies exist', '1NF only', '3NF', 'BCNF'], answer: 0, explain: 'No composite key → no partial dependency → 2NF. customer_id → name and zip → city/state are non-key determinants of non-prime attributes → not 3NF.' },
       hints: [`<p>Hint 1: List the FDs whose left side is not shipment_id. Those are your transitive dependencies.</p>`, `<p>Hint 2: Each one becomes a table keyed by its left side: customers(customer_id, name), zips(zip, city, state).</p>`, `<p>Hint 3: shipments keeps shipment_id, customer_id (FK), zip (FK), weight_kg. Migrate with SELECT DISTINCT, then rejoin to verify.</p>`],
+      tests: { cmp: 'exact', engine: 'sqlite', cases: [
+          { cols: ['shipment_id', 'customer_name', 'zip', 'city', 'state', 'weight_kg'], rows: [[1, 'Asha', '411001', 'Pune City', 'MH', 2.5], [2, 'Ben', '411001', 'Pune City', 'MH', 1], [3, 'Asha', '110001', 'New Delhi', 'DL', 4]] },
+          { after: 'SELECT (SELECT COUNT(*) FROM customers), (SELECT COUNT(*) FROM zips), (SELECT COUNT(*) FROM shipments)', rows: [[2, 2, 3]] },
+          { after: 'SELECT name FROM pragma_table_info(\'shipments\') ORDER BY cid', rows: [['shipment_id'], ['customer_id'], ['zip'], ['weight_kg']] },
+          { after: 'SELECT zip FROM zips GROUP BY zip HAVING COUNT(DISTINCT city) > 1', rows: [] },
+          { after: 'UPDATE zips SET city = \'Pune\' WHERE zip = \'411001\'; SELECT COUNT(*) FROM shipments s JOIN zips z USING (zip) WHERE z.city = \'Pune\'', rows: [[2]] },
+          { after: 'INSERT INTO shipments VALUES (4, 11, \'110001\', 7.5); SELECT s.shipment_id, z.city FROM shipments s JOIN zips z USING (zip) WHERE s.zip = \'110001\' ORDER BY 1', rows: [[3, 'New Delhi'], [4, 'New Delhi']] },
+          { after: 'INSERT INTO shipments VALUES (4, 10, \'999999\', 1)', error: 'FOREIGN KEY' },
+          { after: 'INSERT INTO shipments VALUES (4, 99, \'411001\', 1)', error: 'FOREIGN KEY' },
+          { after: 'INSERT INTO shipments VALUES (4, 10, \'411001\', 0)', error: 'CHECK' },
+          { after: 'INSERT INTO shipments VALUES (1, 10, \'411001\', 1)', error: 'UNIQUE' },
+          { after: 'INSERT INTO zips VALUES (\'411001\',\'Other\',\'XX\')', error: 'UNIQUE' },
+          { after: 'DELETE FROM customers WHERE customer_id = 10', error: 'FOREIGN KEY' },
+          { after: 'SELECT customer_name FROM customers WHERE customer_id = 10', rows: [['Asha']] }
+        ] },
       solution: {
         approach: `<p>Key: shipment_id. Non-key determinants: customer_id → customer_name and zip → city, state. Both right sides are non-prime → two 3NF violations. Create <code>customers</code> and <code>zips</code> keyed by those determinants; shipments keeps the determinants as foreign keys. Each split shares a column that is the key of the new table → lossless; each FD sits whole inside one table → dependency-preserving. City rename = one row in <code>zips</code>.</p>`,
         code: `PRAGMA foreign_keys = ON;
@@ -1496,6 +1566,20 @@ FROM bookings GROUP BY rate_type HAVING COUNT(DISTINCT court) > 1;  -- SAVER -> 
       },
       mcq: { q: 'Why is the original table in 3NF even though rate_type is not a key?', options: ['court, the right side of rate_type → court, is a prime attribute', 'rate_type is unique per row', 'Tables with time columns are exempt', 'Because there is no transitive dependency on start_time'], answer: 0, explain: 'court belongs to the candidate key (court, start_time), so the 3NF escape clause applies; BCNF has no such clause.' },
       hints: [`<p>Hint 1: Candidate keys: (court, start_time), (court, end_time), (rate_type, start_time), (rate_type, end_time). Every attribute is prime.</p>`, `<p>Hint 2: rate_type → court violates BCNF. A plain split loses (court, start_time) → … . Is there an attribute that, together with court, determines the rate type?</p>`, `<p>Hint 3: Introduce is_member: (court, is_member) ↔ rate_type. Tables: rate_types(rate_type PK, court, is_member, UNIQUE(court, is_member)) and bookings(court, start_time, end_time, is_member) with PK (court, start_time), UNIQUE (court, end_time), FK (court, is_member).</p>`],
+      tests: { cmp: 'exact', engine: 'sqlite', cases: [
+          { cols: ['court', 'start_time', 'end_time', 'rate_type'], rows: [[1, '09:30', '10:30', 'SAVER'], [1, '11:00', '12:00', 'SAVER'], [1, '14:00', '15:30', 'STANDARD'], [2, '10:00', '11:30', 'PREMIUM-B']] },
+          { after: 'INSERT INTO bookings VALUES (1, \'09:30\', \'09:45\', 0)', error: 'UNIQUE' },
+          { after: 'INSERT INTO bookings VALUES (1, \'08:00\', \'10:30\', 0)', error: 'UNIQUE' },
+          { after: 'INSERT INTO bookings VALUES (1, \'16:00\', \'16:00\', 0)', error: 'CHECK' },
+          { after: 'INSERT INTO bookings VALUES (1, \'17:00\', \'16:00\', 0)', error: 'CHECK' },
+          { after: 'INSERT INTO bookings VALUES (3, \'09:00\', \'10:00\', 1)', error: 'FOREIGN KEY' },
+          { after: 'INSERT INTO rate_types VALUES (\'SAVER-2\', 1, 1)', error: 'UNIQUE' },
+          { after: 'INSERT INTO rate_types VALUES (\'SAVER\', 3, 1)', error: 'UNIQUE' },
+          { after: 'SELECT r.rate_type FROM rate_types r LEFT JOIN bookings b ON b.court = r.court AND b.is_member = r.is_member WHERE b.court IS NULL', rows: [['PREMIUM-A']] },
+          { after: 'INSERT INTO bookings VALUES (2, \'12:00\', \'13:00\', 1); SELECT rate_type FROM bookings_original WHERE court = 2 AND start_time = \'12:00\'', rows: [['PREMIUM-A']] },
+          { after: 'INSERT INTO bookings VALUES (1, \'12:30\', \'13:00\', 1); SELECT COUNT(*) FROM bookings_original', rows: [[5]] },
+          { after: 'SELECT rate_type, court FROM rate_types ORDER BY rate_type', rows: [['PREMIUM-A', 2], ['PREMIUM-B', 2], ['SAVER', 1], ['STANDARD', 1]] }
+        ] },
       solution: {
         approach: `<p><b>Keys:</b> (court, start), (court, end), (rate_type, start), (rate_type, end) — every column is prime ⇒ <b>3NF</b>. <b>BCNF violation:</b> rate_type → court, rate_type not a superkey. The textbook split (rate_type, court) + (rate_type, start, end) is lossless but makes "court can't be double-booked" unenforceable by keys. <b>Redesign:</b> a rate type is really "court + member/non-member". Store <code>rate_types(rate_type PK, court, is_member)</code> with UNIQUE(court, is_member), and <code>bookings(court, start, end, is_member)</code> with PK (court, start) and UNIQUE (court, end). Both tables are BCNF (every determinant — rate_type, (court,is_member), (court,start), (court,end) — is a key), and the double-booking rule stays a key. The composite FK makes invalid court/rate combos impossible.</p>`,
         code: `PRAGMA foreign_keys = ON;
@@ -1693,6 +1777,16 @@ SELECT student, course, room FROM a1 NATURAL JOIN a2 ORDER BY student, course;  
       },
       mcq: { q: 'Why is split B lossless?', options: ['The common column course is a key of (course, room)', 'Both tables have two columns', 'student is a key of the original table', 'Because room appears only once'], answer: 0, explain: 'course → room, so course determines all of R2; each row of R1 finds exactly one partner.' },
       hints: [`<p>Hint 1: For each split, write the common columns and compute their closure under F.</p>`, `<p>Hint 2: A: common = {room}, room⁺ = {room} → covers neither side. B: common = {course}, course⁺ = {course, room} → covers R2.</p>`, `<p>Hint 3: Preservation: course → room must fit inside one table. In both A and B, (course, room) is a table. Then confirm with NATURAL JOIN + EXCEPT counts.</p>`],
+      tests: { cmp: 'exact', engine: 'sqlite', cases: [
+          { cols: ['split', 'rows_after_join', 'spurious'], rows: [['A: (student,room)+(course,room)', 5, 2], ['B: (student,course)+(course,room)', 3, 0]] },
+          { after: 'SELECT student, course, room FROM a1 NATURAL JOIN a2 EXCEPT SELECT student, course, room FROM r ORDER BY 1, 2', rows: [['Asha', 'AI', 'R1'], ['Ben', 'DB', 'R1']] },
+          { after: 'SELECT COUNT(*) FROM (SELECT student, course, room FROM b1 NATURAL JOIN b2 EXCEPT SELECT student, course, room FROM r)', rows: [[0]] },
+          { after: 'SELECT COUNT(*) FROM (SELECT student, course, room FROM r EXCEPT SELECT student, course, room FROM b1 NATURAL JOIN b2)', rows: [[0]] },
+          { after: 'SELECT (SELECT COUNT(*) FROM a1), (SELECT COUNT(*) FROM a2), (SELECT COUNT(*) FROM b1), (SELECT COUNT(*) FROM b2)', rows: [[3, 3, 3, 3]] },
+          { after: 'SELECT course FROM b2 GROUP BY course HAVING COUNT(DISTINCT room) > 1', rows: [] },
+          { after: 'SELECT student, room FROM a1 ORDER BY 1, 2', rows: [['Asha', 'R1'], ['Asha', 'R2'], ['Ben', 'R1']] },
+          { after: 'SELECT COUNT(*) FROM r', rows: [[3]] }
+        ] },
       solution: {
         approach: `<p><b>A:</b> common {room}; room⁺ = {room} ⇒ neither side ⇒ <b>lossy</b>. course → room is inside (course, room) ⇒ preserved, but useless because the data can't be rebuilt. <b>B:</b> common {course}; course⁺ = {course, room} ⊇ R2 ⇒ <b>lossless</b>; course → room lives in R2 ⇒ <b>preserved</b>. B is also BCNF: R2's key is course, R1's key is (student, course). The SQL counts rows after each join and the spurious rows via EXCEPT.</p>`,
         code: `CREATE TABLE r (student TEXT NOT NULL, course TEXT NOT NULL, room TEXT NOT NULL, PRIMARY KEY (student, course));
@@ -1909,6 +2003,21 @@ FROM reviews WHERE product_id = 1 GROUP BY product_id;`
       },
       mcq: { q: 'Which columns should the summary store to stay exact under inserts, edits and deletes?', options: ['review_count and rating_sum (average computed on read)', 'avg_rating only', 'avg_rating and last_rating', 'Nothing — use a cache with a 1-hour TTL'], answer: 0, explain: 'Count and sum can be adjusted incrementally by +/- deltas; an average alone cannot.' },
       hints: [`<p>Hint 1: Store additive quantities. Count and sum can be adjusted by deltas; the average is sum / count at read time.</p>`, `<p>Hint 2: Three triggers: AFTER INSERT (+1, +rating), AFTER DELETE (−1, −rating), AFTER UPDATE OF rating (sum += new − old).</p>`, `<p>Hint 3: Use an UPSERT in the insert trigger so a product's first review creates its summary row. Finish with a reconcile query comparing to the source.</p>`],
+      tests: { cmp: 'exact', engine: 'sqlite', cases: [
+          { cols: ['product_id', 'review_count', 'avg_rating'], rows: [[1, 2, 3], [2, 1, 3]] },
+          { after: 'INSERT INTO reviews VALUES (1, 13, 5); SELECT review_count, rating_sum FROM product_rating_summary WHERE product_id = 1', rows: [[3, 11]] },
+          { after: 'INSERT INTO reviews VALUES (3, 1, 4); SELECT review_count, rating_sum FROM product_rating_summary WHERE product_id = 3', rows: [[1, 4]] },
+          { after: 'DELETE FROM reviews WHERE product_id = 2; SELECT review_count, rating_sum, ROUND(rating_sum * 1.0 / NULLIF(review_count, 0), 2) FROM product_rating_summary WHERE product_id = 2', rows: [[0, 0, null]] },
+          { after: 'UPDATE reviews SET rating = 5 WHERE product_id = 1 AND user_id = 12; SELECT rating_sum FROM product_rating_summary WHERE product_id = 1', rows: [[7]] },
+          { after: 'DELETE FROM reviews WHERE product_id = 1; SELECT review_count, rating_sum FROM product_rating_summary WHERE product_id = 1', rows: [[0, 0]] },
+          { after: 'INSERT INTO reviews VALUES (4, 1, 5), (4, 2, 4), (4, 3, 4); UPDATE reviews SET rating = 2 WHERE product_id = 4 AND user_id = 1; SELECT review_count, rating_sum FROM product_rating_summary WHERE product_id = 4', rows: [[3, 10]] },
+          { after: 'INSERT INTO reviews VALUES (1, 20, 1), (1, 21, 3), (5, 1, 5); UPDATE reviews SET rating = 4 WHERE product_id = 1 AND user_id = 20; DELETE FROM reviews WHERE product_id = 1 AND user_id = 12; DELETE FROM reviews WHERE product_id = 2 AND user_id = 10; SELECT s.product_id FROM product_rating_summary s LEFT JOIN reviews r ON r.product_id = s.product_id GROUP BY s.product_id HAVING s.review_count <> COUNT(r.rating) OR s.rating_sum <> COALESCE(SUM(r.rating), 0)', rows: [] },
+          { after: 'UPDATE reviews SET rating = rating WHERE product_id = 1; SELECT review_count, rating_sum FROM product_rating_summary WHERE product_id = 1', rows: [[2, 6]] },
+          { after: 'INSERT INTO reviews VALUES (1, 30, 6)', error: 'CHECK' },
+          { after: 'INSERT INTO reviews VALUES (1, 30, 0)', error: 'CHECK' },
+          { after: 'INSERT INTO reviews VALUES (1, 10, 3)', error: 'UNIQUE' },
+          { after: 'SELECT product_id, review_count, rating_sum FROM product_rating_summary ORDER BY product_id', rows: [[1, 2, 6], [2, 1, 3]] }
+        ] },
       solution: {
         approach: `<p>Keep <code>reviews</code> as the source of truth and add <code>product_rating_summary(product_id PK, review_count, rating_sum)</code>. Triggers apply deltas inside the same transaction as the review change, so the summary is never visibly wrong. The page reads one row and computes <code>rating_sum * 1.0 / review_count</code>. A reconcile query (and a scheduled job running it) detects drift from any path that bypasses triggers (bulk loads with triggers disabled, restores).</p>`,
         code: `PRAGMA foreign_keys = ON;
@@ -1979,6 +2088,20 @@ SELECT member_id, GROUP_CONCAT(DISTINCT member_phone) AS phones FROM loans GROUP
     },
     mcq: { q: 'Deleting loan 1 also erases the fact that "Dune" is in the catalogue. Which anomaly?', options: ['Delete anomaly', 'Insert anomaly', 'Update anomaly', 'Lost update'], answer: 0, explain: 'Removing one fact (a loan) unintentionally removed another (the book).' },
     hints: [`<p>Hint 1: Columns describe three things: a book (by ISBN), a member (by member_id), and the loan event itself.</p>`, `<p>Hint 2: isbn → title, author and member_id → name, phone are transitive through the loan key — 3NF violations.</p>`, `<p>Hint 3: books(isbn PK), members(member_id PK), loans(loan_id PK, isbn FK, member_id FK, loan_date). Rejoin with a view for reports.</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['title', 'times_borrowed'], rows: [['Dune', 0], ['Neuromancer', 0], ['The Hobbit', 2]] },
+        { after: 'SELECT phone FROM members WHERE member_id = 7', rows: [['90000']] },
+        { after: 'INSERT INTO loans VALUES (4, \'978-0062\', 7, \'2026-03-01\'); SELECT COUNT(*) FROM loans WHERE member_id = 7', rows: [[2]] },
+        { after: 'INSERT INTO books VALUES (\'978-9999\', \'New Book\', \'Anon\'); SELECT COUNT(*) FROM books', rows: [[4]] },
+        { after: 'INSERT INTO loans VALUES (9, \'000-0000\', 7, \'2026-03-01\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO loans VALUES (9, \'978-0441\', 99, \'2026-03-01\')', error: 'FOREIGN KEY' },
+        { after: 'DELETE FROM books WHERE isbn = \'978-0547\'', error: 'FOREIGN KEY' },
+        { after: 'DELETE FROM members WHERE member_id = 8', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO books VALUES (\'978-0441\', \'Dup\', \'X\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO members (member_id, name) VALUES (9, \'NoPhone\')', error: 'NOT NULL' },
+        { after: 'INSERT INTO loans (loan_id, isbn, member_id) VALUES (9, \'978-0441\', 7)', error: 'NOT NULL' },
+        { after: 'SELECT loan_id FROM loans ORDER BY loan_id', rows: [[2], [3]] }
+      ] },
     solution: {
       approach: `<p>Key loan_id is single-column, so the table is 2NF; isbn and member_id are non-key determinants of non-prime columns → not 3NF. Move each into its own table keyed by the determinant. Update: one row in members. Insert: books can exist with zero loans. Delete: removing a loan touches only loans.</p>`,
       code: `PRAGMA foreign_keys = ON;
@@ -2016,6 +2139,19 @@ SELECT SUM(answer1 = 'yes') AS q1_yes, SUM(answer2 = 'yes') AS q2_yes, SUM(answe
     },
     mcq: { q: 'What is the 1NF fix for answer1..answer3?', options: ['A child table answers(respondent_id, question_no, answer)', 'Add answer4 and answer5 columns', 'Store all answers as one comma-separated string', 'Make answer1 the primary key'], answer: 0, explain: 'Each answer becomes its own row keyed by (respondent, question).' },
     hints: [`<p>Hint 1: Each answer is a separate fact: "respondent 1 answered question 2 with no". Facts become rows.</p>`, `<p>Hint 2: Unpivot with UNION ALL: SELECT id, 1, answer1 … UNION ALL SELECT id, 2, answer2 …, skipping NULLs.</p>`, `<p>Hint 3: Key the new table by (respondent_id, question_no). The report becomes GROUP BY question_no.</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['question_no', 'yes_count', 'answered'], rows: [[1, 2, 2], [2, 1, 2], [3, 1, 1], [4, 1, 1]] },
+        { after: 'SELECT COUNT(*) FROM answers', rows: [[6]] },
+        { after: 'SELECT COUNT(*) FROM answers WHERE answer IS NULL', rows: [[0]] },
+        { after: 'SELECT question_no, COUNT(*) FROM answers WHERE answer = \'yes\' GROUP BY question_no ORDER BY question_no', rows: [[1, 2], [2, 1], [3, 1], [4, 1]] },
+        { after: 'SELECT question_no, answer FROM answers WHERE respondent_id = 1 ORDER BY question_no', rows: [[1, 'yes'], [2, 'no'], [4, 'yes']] },
+        { after: 'INSERT INTO respondents VALUES (3, \'Cy\'); SELECT COUNT(*) FROM answers WHERE respondent_id = 3', rows: [[0]] },
+        { after: 'INSERT INTO answers VALUES (1, 1, \'maybe\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO answers VALUES (1, 0, \'yes\')', error: 'CHECK' },
+        { after: 'INSERT INTO answers VALUES (9, 1, \'yes\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO answers VALUES (2, 5, NULL)', error: 'NOT NULL' },
+        { after: 'INSERT INTO answers VALUES (2, 4, \'no\'), (2, 5, \'yes\'); SELECT COUNT(*) FROM answers WHERE question_no >= 4', rows: [[3]] }
+      ] },
     solution: {
       approach: `<p>Keep respondents(respondent_id, name); create answers(respondent_id, question_no, answer) with PK (respondent_id, question_no). Unpivot the three columns with UNION ALL and a NOT NULL filter. New questions are new rows — no schema change — and the report is one GROUP BY.</p>`,
       code: `PRAGMA foreign_keys = ON;
@@ -2058,6 +2194,19 @@ SELECT dept, COUNT(DISTINCT dept_head) AS heads FROM r GROUP BY dept;`
     },
     mcq: { q: 'R(A,B,C), F = {A → B, B → C}. Highest normal form?', options: ['2NF', '1NF', '3NF', 'BCNF'], answer: 0, explain: 'Key is A (single attribute) so 2NF holds; B → C is transitive so 3NF fails.' },
     hints: [`<p>Hint 1: Compute A⁺. If it is everything, A is the key; B and C are not in any key (non-prime).</p>`, `<p>Hint 2: A single-attribute key can't have partial dependencies. Check every FD for 3NF: is the left side a superkey or the right side prime?</p>`, `<p>Hint 3: Split on B → C: (B, C) with key B, and (A, B) with key A. Shared column B is a key of (B, C) → lossless.</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['emp', 'dept', 'dept_head'], rows: [['Asha', 'Sales', 'Kiran'], ['Ben', 'Sales', 'Kiran'], ['Chen', 'Eng', 'Ravi']] },
+        { after: 'SELECT dept, dept_head FROM departments ORDER BY dept', rows: [['Eng', 'Ravi'], ['Legal', 'Iqbal'], ['Sales', 'Kiran']] },
+        { after: 'UPDATE departments SET dept_head = \'Zed\' WHERE dept = \'Eng\'; SELECT e.emp, d.dept_head FROM employees e JOIN departments d USING (dept) WHERE e.dept = \'Eng\'', rows: [['Chen', 'Zed']] },
+        { after: 'INSERT INTO departments VALUES (\'Sales\', \'Other\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO employees VALUES (\'Dev\', \'Ops\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO employees VALUES (\'Asha\', \'Eng\')', error: 'UNIQUE' },
+        { after: 'DELETE FROM departments WHERE dept = \'Sales\'', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO departments (dept) VALUES (\'Ops\')', error: 'NOT NULL' },
+        { after: 'INSERT INTO employees (emp) VALUES (\'Dev\')', error: 'NOT NULL' },
+        { after: 'SELECT d.dept FROM departments d LEFT JOIN employees e USING (dept) WHERE e.emp IS NULL', rows: [['Legal']] },
+        { after: 'INSERT INTO employees VALUES (\'Dev\', \'Legal\'); SELECT COUNT(*) FROM employees WHERE dept = \'Legal\'', rows: [[1]] }
+      ] },
     solution: {
       approach: `<p>Key: A. 2NF ✔ (single-column key). B → C violates 3NF (B not a superkey, C non-prime) → highest NF is 2NF. Decompose: R1(B, C), R2(A, B). Each table's only determinant is its key → BCNF; both FDs live in one table each → dependency-preserving; B is R1's key → lossless.</p>`,
       code: `PRAGMA foreign_keys = ON;
@@ -2087,6 +2236,18 @@ SELECT LOWER(email) AS email, COUNT(*) AS accounts FROM users GROUP BY LOWER(ema
     },
     mcq: { q: 'Which statement is true about this table?', options: ['email and phone are prime attributes', 'Only user_id is a candidate key because it is the PK', 'name is prime because it is NOT NULL', 'A table can have only one candidate key'], answer: 0, explain: 'Each of email and phone is a minimal superkey on its own, so both are candidate keys and therefore prime.' },
     hints: [`<p>Hint 1: Each of user_id, email, phone determines the whole row on its own → three single-column candidate keys.</p>`, `<p>Hint 2: Pick one as PRIMARY KEY (short, stable, never changes: user_id) and declare the others UNIQUE NOT NULL.</p>`, `<p>Hint 3: For case-insensitive email uniqueness use COLLATE NOCASE on the column (or a unique index on LOWER(email)).</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['user_id', 'email', 'phone'], rows: [[1, 'asha@x.com', '98450'], [2, 'ben@x.com', '99000']] },
+        { after: 'INSERT INTO users VALUES (3, \'ASHA@X.COM\', \'91111\', \'Clone\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO users VALUES (3, \'new@x.com\', \'99000\', \'Clone\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO users VALUES (1, \'new@x.com\', \'91111\', \'Clone\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO users VALUES (3, NULL, \'91111\', \'NoMail\')', error: 'NOT NULL' },
+        { after: 'INSERT INTO users VALUES (3, \'new@x.com\', NULL, \'NoPhone\')', error: 'NOT NULL' },
+        { after: 'INSERT INTO users VALUES (3, \'new@x.com\', \'91111\', NULL)', error: 'NOT NULL' },
+        { after: 'SELECT user_id FROM users WHERE email = \'BEN@X.COM\'', rows: [[2]] },
+        { after: 'INSERT INTO users VALUES (3, \'cy@x.com\', \'91111\', \'Cy\'); SELECT COUNT(*) FROM users', rows: [[3]] },
+        { after: 'SELECT COUNT(*) FROM users WHERE name = \'Asha again\' OR name = \'Phone clash\'', rows: [[0]] }
+      ] },
     solution: {
       approach: `<p>Keys: {user_id}, {email}, {phone}; prime: those three; name is non-prime. All FDs have a key on the left → BCNF. Enforce every candidate key: PK on user_id, UNIQUE NOT NULL on email (COLLATE NOCASE) and phone. The demo shows the duplicate being rejected.</p>`,
       code: `CREATE TABLE users (
@@ -2124,6 +2285,20 @@ SELECT COUNT(*) AS header_copies FROM invoice_lines WHERE invoice_no = 9001;   -
     },
     mcq: { q: 'Why does price_charged stay in invoice_lines while list_price moves to products?', options: ['price_charged depends on the specific line (a snapshot); list_price depends only on the product', 'price_charged is numeric', 'list_price is optional', 'Both should move to products'], answer: 0, explain: 'Different facts with different determinants — one per line, one per product.' },
     hints: [`<p>Hint 1: Group columns by determinant: invoice_no; customer_id; product_code; (invoice_no, line_no).</p>`, `<p>Hint 2: Tables: customers, products, invoices(invoice_no, invoice_date, customer_id), invoice_lines(invoice_no, line_no, product_code, qty, price_charged).</p>`, `<p>Hint 3: Migrate with SELECT DISTINCT per table; rebuild with joins and compare to the original using EXCEPT both ways.</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['rows_lost', 'rows_invented'], rows: [[0, 0]] },
+        { after: 'SELECT COUNT(*) FROM (SELECT * FROM old_lines EXCEPT SELECT l.invoice_no, l.line_no, i.invoice_date, i.customer_id, c.customer_name, l.product_code, p.description, p.list_price, l.qty, l.price_charged FROM invoice_lines l JOIN invoices i USING (invoice_no) JOIN customers c USING (customer_id) JOIN products p USING (product_code))', rows: [[0]] },
+        { after: 'SELECT COUNT(*) FROM (SELECT l.invoice_no, l.line_no, i.invoice_date, i.customer_id, c.customer_name, l.product_code, p.description, p.list_price, l.qty, l.price_charged FROM invoice_lines l JOIN invoices i USING (invoice_no) JOIN customers c USING (customer_id) JOIN products p USING (product_code) EXCEPT SELECT * FROM old_lines)', rows: [[0]] },
+        { after: 'SELECT (SELECT COUNT(*) FROM customers), (SELECT COUNT(*) FROM products), (SELECT COUNT(*) FROM invoices), (SELECT COUNT(*) FROM invoice_lines)', rows: [[2, 2, 2, 3]] },
+        { after: 'UPDATE products SET list_price = 350 WHERE product_code = \'P1\'; SELECT invoice_no, line_no, price_charged FROM invoice_lines WHERE product_code = \'P1\' ORDER BY 1, 2', rows: [[9001, 1, 280], [9002, 1, 300]] },
+        { after: 'UPDATE customers SET customer_name = \'Asha K\' WHERE customer_id = \'C1\'; SELECT COUNT(*) FROM invoices i JOIN customers c USING (customer_id) WHERE c.customer_name = \'Asha K\'', rows: [[1]] },
+        { after: 'INSERT INTO invoice_lines VALUES (9001, 1, \'P2\', 1, 900)', error: 'UNIQUE' },
+        { after: 'INSERT INTO invoice_lines VALUES (9001, 3, \'P9\', 1, 900)', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO invoice_lines VALUES (9999, 1, \'P1\', 1, 300)', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO invoices VALUES (9003, \'2026-04-03\', \'C9\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO invoice_lines VALUES (9001, 3, \'P1\', 0, 300)', error: 'CHECK' },
+        { after: 'INSERT INTO invoices VALUES (9001, \'2026-04-09\', \'C2\')', error: 'UNIQUE' }
+      ] },
     solution: {
       approach: `<p>Partial dependency: invoice_no → date, customer_id (2NF fix: invoices table). Transitive: customer_id → name (3NF fix: customers) and product_code → description, list_price (products). The line keeps the full key, product_code (FK), qty and price_charged. Every split shares a column that is a key of the new table → lossless; every FD sits in one table → preserving.</p>`,
       code: `PRAGMA foreign_keys = ON;
@@ -2179,6 +2354,21 @@ SELECT project_id, GROUP_CONCAT(DISTINCT budget) AS budgets FROM emp_projects GR
     },
     mcq: { q: 'dept_id → dept_name in this table is…', options: ['transitive (via emp_id → dept_id)', 'partial', 'full', 'trivial'], answer: 0, explain: 'dept_name depends on dept_id, which depends on emp_id (part of the key): a transitive chain.' },
     hints: [`<p>Hint 1: hours needs both keys (full). emp_* needs only emp_id, project_* only project_id (partial).</p>`, `<p>Hint 2: After the 2NF split, employees(emp_id, emp_name, dept_id, dept_name) still has dept_id → dept_name (transitive).</p>`, `<p>Hint 3: Final: departments, employees, projects, assignments(emp_id, project_id, hours).</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['dept_name', 'total_hours'], rows: [['Sales', 15], ['Eng', 8]] },
+        { after: 'SELECT name FROM sqlite_master WHERE type = \'table\' ORDER BY name', rows: [['assignments'], ['departments'], ['employees'], ['projects']] },
+        { after: 'SELECT p.budget FROM assignments a JOIN projects p USING (project_id) WHERE a.emp_id = \'E2\'', rows: [[60000]] },
+        { after: 'SELECT emp_id, project_id, hours FROM assignments ORDER BY 1, 2', rows: [['E1', 'P1', 10], ['E1', 'P2', 5], ['E2', 'P1', 8]] },
+        { after: 'INSERT INTO projects VALUES (\'P3\', \'Hera\', 0); SELECT COUNT(*) FROM projects', rows: [[3]] },
+        { after: 'UPDATE departments SET dept_name = \'Revenue\' WHERE dept_id = \'D1\'; SELECT d.dept_name, SUM(a.hours) FROM assignments a JOIN employees e USING (emp_id) JOIN departments d USING (dept_id) GROUP BY d.dept_name ORDER BY 2 DESC', rows: [['Revenue', 15], ['Eng', 8]] },
+        { after: 'INSERT INTO projects VALUES (\'P4\', \'Neg\', -1)', error: 'CHECK' },
+        { after: 'INSERT INTO assignments VALUES (\'E2\', \'P2\', -1)', error: 'CHECK' },
+        { after: 'INSERT INTO assignments VALUES (\'E1\', \'P1\', 1)', error: 'UNIQUE' },
+        { after: 'INSERT INTO assignments VALUES (\'E9\', \'P1\', 1)', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO assignments VALUES (\'E1\', \'P9\', 1)', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO employees VALUES (\'E3\', \'Cy\', \'D9\')', error: 'FOREIGN KEY' },
+        { after: 'DELETE FROM departments WHERE dept_id = \'D1\'', error: 'FOREIGN KEY' }
+      ] },
     solution: {
       approach: `<p>Full: (emp_id, project_id) → hours. Partial: emp_id → emp_name, dept_id; project_id → project_name, budget. Transitive: dept_id → dept_name. 2NF split gives employees, projects, assignments; 3NF split pulls departments out of employees. All four tables are BCNF; all FDs preserved; all splits along keys → lossless.</p>`,
       code: `PRAGMA foreign_keys = ON;
@@ -2221,6 +2411,20 @@ SELECT patient_id FROM sheet WHERE visit1_doctor = 'Dr. Rao' OR visit2_doctor = 
     },
     mcq: { q: 'After unpivoting visits into rows, which dependency still blocks 3NF if specialty stays in the visits table?', options: ['doctor → specialty', 'patient_id → patient_name', '(patient_id, visit_date) → doctor', 'visit_date → patient_id'], answer: 0, explain: 'doctor is not a key of visits, and specialty is non-prime — a transitive dependency.' },
     hints: [`<p>Hint 1: 0NF → 1NF: unpivot the visit slots into rows with UNION ALL, skipping NULL slots.</p>`, `<p>Hint 2: The 1NF visit table has key (patient_id, visit_date); patient columns depend on patient_id only (2NF issue); specialty depends on doctor (3NF issue).</p>`, `<p>Hint 3: Final tables: patients, doctors(doctor PK, specialty), visits(patient_id, visit_date, doctor) with PK (patient_id, visit_date).</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['patient_name', 'visit_date', 'doctor', 'specialty'], rows: [['Asha', '2026-01-03', 'Dr. Mehta', 'Cardio'], ['Asha', '2026-02-10', 'Dr. Rao', 'Ortho'], ['Ben', '2026-01-05', 'Dr. Rao', 'Ortho'], ['Ben', '2026-03-01', 'Dr. Mehta', 'Cardio']] },
+        { after: 'SELECT doctor, specialty FROM doctors ORDER BY doctor', rows: [['Dr. Mehta', 'Cardio'], ['Dr. Rao', 'Ortho']] },
+        { after: 'SELECT COUNT(*) FROM visits', rows: [[4]] },
+        { after: 'SELECT COUNT(*) FROM visits WHERE visit_date IS NULL OR doctor IS NULL', rows: [[0]] },
+        { after: 'SELECT patient_id, patient_name, phone FROM patients ORDER BY patient_id', rows: [['P1', 'Asha', '98450'], ['P2', 'Ben', '99000']] },
+        { after: 'UPDATE doctors SET specialty = \'Sports\' WHERE doctor = \'Dr. Rao\'; SELECT COUNT(*) FROM visits v JOIN doctors d USING (doctor) WHERE d.specialty = \'Sports\'', rows: [[2]] },
+        { after: 'INSERT INTO visits VALUES (\'P1\', \'2026-04-01\', \'Dr. Rao\'), (\'P1\', \'2026-05-01\', \'Dr. Rao\'); SELECT COUNT(*) FROM visits WHERE patient_id = \'P1\'', rows: [[4]] },
+        { after: 'INSERT INTO visits VALUES (\'P1\', \'2026-01-03\', \'Dr. Rao\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO visits VALUES (\'P1\', \'2026-06-01\', \'Dr. Ghost\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO visits VALUES (\'P9\', \'2026-06-01\', \'Dr. Rao\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO doctors VALUES (\'Dr. Rao\', \'Other\')', error: 'UNIQUE' },
+        { after: 'DELETE FROM doctors WHERE doctor = \'Dr. Rao\'', error: 'FOREIGN KEY' }
+      ] },
     solution: {
       approach: `<p>Step 1 (1NF): unpivot two visit slots into rows. Step 2 (2NF): patient_name, phone depend only on patient_id → patients table. Step 3 (3NF): specialty depends on doctor → doctors table. visits keeps (patient_id, visit_date) as key and doctor as FK. Use SELECT DISTINCT for doctors from both column families.</p>`,
       code: `PRAGMA foreign_keys = ON;
@@ -2277,6 +2481,15 @@ SELECT COUNT(*) AS superkeys_found FROM (SELECT start FROM clo GROUP BY start HA
     },
     mcq: { q: 'Why is R in 3NF?', options: ['Every attribute is prime, so every FD has a prime right side', 'All left sides are superkeys', 'There are no composite keys', 'R has only three FDs'], answer: 0, explain: 'Keys ACD, BCD, CDE cover all five attributes, so all are prime and the 3NF escape clause always applies.' },
     hints: [`<p>Hint 1: Must-set = {C, D}. Try adding one of A, B, E and compute each closure.</p>`, `<p>Hint 2: Keys: ACD, BCD, CDE → all attributes prime → 3NF. BCNF fails for A → B (A is not a superkey).</p>`, `<p>Hint 3: BCNF: split on A → B → (A, B) + (A, C, D, E); then AC → E holds inside ACDE → (A, C, E) + (A, C, D). Check which original FDs fit in one table.</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['candidate_key'], rows: [['ACD'], ['BCD'], ['CDE']] },
+        { after: 'SELECT lhs, rhs FROM fd ORDER BY lhs, rhs', rows: [[1, 2], [6, 16], [24, 1]] },
+        { after: 'SELECT name, bit FROM attr ORDER BY bit', rows: [['A', 1], ['B', 2], ['C', 4], ['D', 8], ['E', 16]] },
+        { after: 'SELECT COUNT(*) FROM fd', rows: [[3]] },
+        { after: 'SELECT MAX(bit) * 2 - 1 FROM attr', rows: [[31]] },
+        { after: 'SELECT SUM(bit) FROM attr', rows: [[31]] },
+        { after: 'SELECT name FROM attr WHERE bit & (SELECT SUM(rhs) FROM fd) = 0 ORDER BY bit', rows: [['C'], ['D']] }
+      ] },
     solution: {
       approach: `<p><b>Keys:</b> ACD, BCD, CDE. <b>3NF:</b> yes (all prime). <b>BCNF:</b> no — A → B, BC → E, ED → A all have non-superkey left sides. <b>Decomposition:</b> R1(A, B) on A → B; remaining (A, C, D, E) has implied AC → E (A → B, BC → E) → R2(A, C, E), R3(A, C, D). All BCNF and lossless. <b>Lost:</b> BC → E and ED → A — that is the textbook reason to stay in 3NF here. The SQL lists the candidate keys.</p>`,
       code: `CREATE TABLE attr (name TEXT PRIMARY KEY, bit INT NOT NULL UNIQUE);
@@ -2315,6 +2528,15 @@ SELECT supplier, city, part FROM s1 NATURAL JOIN s2 ORDER BY supplier, part;   -
     },
     mcq: { q: 'Which split of R(supplier, city, part) is lossless?', options: ['(supplier, city) + (supplier, part)', '(supplier, city) + (city, part)', '(city, part) + (supplier, part) is always lossy', '(supplier) + (city, part)'], answer: 0, explain: 'Common column supplier is a key of (supplier, city).' },
     hints: [`<p>Hint 1: Binary test: compute the closure of the common columns. {city}⁺ = {city}.</p>`, `<p>Hint 2: Choose a split whose common column is supplier: supplier⁺ = {supplier, city} covers (supplier, city).</p>`, `<p>Hint 3: Verify both splits with NATURAL JOIN row counts and EXCEPT against the original.</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['split', 'rows_after', 'spurious'], rows: [['junior: join on city', 5, 1], ['fixed: join on supplier', 4, 0]] },
+        { after: 'SELECT supplier, city, part FROM bad1 NATURAL JOIN bad2 EXCEPT SELECT supplier, city, part FROM r', rows: [['Zenith', 'Pune', 'bolt']] },
+        { after: 'SELECT COUNT(*) FROM (SELECT supplier, city, part FROM good1 NATURAL JOIN good2 EXCEPT SELECT supplier, city, part FROM r)', rows: [[0]] },
+        { after: 'SELECT COUNT(*) FROM (SELECT supplier, city, part FROM r EXCEPT SELECT supplier, city, part FROM good1 NATURAL JOIN good2)', rows: [[0]] },
+        { after: 'SELECT (SELECT COUNT(*) FROM bad1), (SELECT COUNT(*) FROM bad2), (SELECT COUNT(*) FROM good1), (SELECT COUNT(*) FROM good2)', rows: [[3, 3, 3, 4]] },
+        { after: 'SELECT supplier FROM good1 GROUP BY supplier HAVING COUNT(DISTINCT city) > 1', rows: [] },
+        { after: 'SELECT city, COUNT(DISTINCT supplier) FROM r GROUP BY city HAVING COUNT(DISTINCT supplier) >= 2', rows: [['Pune', 2]] }
+      ] },
     solution: {
       approach: `<p>Junior split: common {city}, city⁺ = {city} → neither side → lossy. Correct split: (supplier, city) + (supplier, part). Common {supplier}, supplier⁺ ⊇ (supplier, city) → lossless; supplier → city sits inside the first table → preserving. It is also BCNF (keys: supplier; (supplier, part)).</p>`,
       code: `CREATE TABLE r (supplier TEXT NOT NULL, city TEXT NOT NULL, part TEXT NOT NULL, PRIMARY KEY (supplier, part));
@@ -2350,14 +2572,33 @@ FROM orders o JOIN order_items i ON i.order_id = o.id GROUP BY o.id;      -- rec
     },
     mcq: { q: 'Why is option B (freeze at checkout) a safe denormalization here?', options: ['The source lines are immutable after payment, so the copy can never go stale', 'Totals are small numbers', 'Triggers are always slow', 'SQLite cannot SUM'], answer: 0, explain: 'A copy of immutable data needs no ongoing sync — only a one-time computation and a verification.' },
     hints: [`<p>Hint 1: Ask "can the source change after the copy is made?" If no, a copy is just a precomputed snapshot.</p>`, `<p>Hint 2: Compute the total in the same transaction that marks the order paid: UPDATE orders SET total = (SELECT SUM …).</p>`, `<p>Hint 3: Guard with a trigger that blocks edits to items of paid orders, and keep a reconcile query.</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['id', 'total_cents'], rows: [[1, 3300], [2, 500]] },
+        { after: 'SELECT unit_price FROM order_items WHERE order_id = 1 AND sku = \'LAMP\'', rows: [[1200]] },
+        { after: 'SELECT o.id FROM orders o WHERE o.total_cents <> (SELECT SUM(qty * unit_price) FROM order_items WHERE order_id = o.id)', rows: [] },
+        { after: 'INSERT INTO order_items VALUES (1, \'NEW\', 1, 100); SELECT o.id FROM orders o WHERE o.total_cents <> (SELECT SUM(qty * unit_price) FROM order_items WHERE order_id = o.id)', rows: [] },
+        { after: 'DELETE FROM order_items WHERE order_id = 2; SELECT o.id FROM orders o WHERE o.total_cents <> (SELECT COALESCE(SUM(qty * unit_price), 0) FROM order_items WHERE order_id = o.id)', rows: [] },
+        { after: 'UPDATE order_items SET qty = 99 WHERE order_id = 2; SELECT qty FROM order_items WHERE order_id = 2', rows: [[10]] },
+        { after: 'INSERT INTO orders (id, status) VALUES (3, \'cart\'); INSERT INTO order_items VALUES (3, \'X\', 2, 100); UPDATE order_items SET unit_price = 150 WHERE order_id = 3; SELECT unit_price, (SELECT total_cents IS NULL FROM orders WHERE id = 3) FROM order_items WHERE order_id = 3', rows: [[150, 1]] },
+        { after: 'INSERT INTO orders (id, status) VALUES (4, \'shipped\')', error: 'CHECK' },
+        { after: 'INSERT INTO orders (id, status) VALUES (3, \'cart\'); INSERT INTO order_items VALUES (3, \'Z\', 0, 10)', error: 'CHECK' },
+        { after: 'INSERT INTO orders (id, status) VALUES (3, \'cart\'); INSERT INTO order_items VALUES (3, \'Z\', 1, 10); INSERT INTO order_items VALUES (3, \'Z\', 2, 10)', error: 'UNIQUE' },
+        { after: 'SELECT SUM(qty * unit_price) FROM order_items', rows: [[3800]] }
+      ] },
     solution: {
       approach: `<p>Choose <b>B</b>. Lines are immutable after payment, so the stored total is a <b>snapshot</b> that never needs syncing. Set it in the checkout transaction; protect immutability with a trigger that rejects item changes on paid orders (RAISE(IGNORE) in this demo, ABORT in production); keep a reconcile query. C would add write cost and complexity for data that never changes; A wastes reads.</p>`,
       code: `CREATE TABLE orders (id INTEGER PRIMARY KEY, status TEXT NOT NULL CHECK (status IN ('cart', 'paid')),
                      total_cents INTEGER);                       -- NULL while in cart
 CREATE TABLE order_items (order_id INT NOT NULL REFERENCES orders(id), sku TEXT NOT NULL,
                           qty INT NOT NULL CHECK (qty > 0), unit_price INT NOT NULL, PRIMARY KEY (order_id, sku));
--- Freeze lines of paid orders (production: RAISE(ABORT, 'order is paid'))
+-- Freeze lines of paid orders: no UPDATE, INSERT or DELETE (production: RAISE(ABORT, 'order is paid'))
 CREATE TRIGGER items_frozen BEFORE UPDATE ON order_items
+WHEN (SELECT status FROM orders WHERE id = OLD.order_id) = 'paid'
+BEGIN SELECT RAISE(IGNORE); END;
+CREATE TRIGGER items_frozen_ins BEFORE INSERT ON order_items
+WHEN (SELECT status FROM orders WHERE id = NEW.order_id) = 'paid'
+BEGIN SELECT RAISE(IGNORE); END;
+CREATE TRIGGER items_frozen_del BEFORE DELETE ON order_items
 WHEN (SELECT status FROM orders WHERE id = OLD.order_id) = 'paid'
 BEGIN SELECT RAISE(IGNORE); END;
 
@@ -2399,6 +2640,21 @@ SELECT zip, GROUP_CONCAT(DISTINCT city) AS cities FROM addresses GROUP BY zip HA
     },
     mcq: { q: 'In the BCNF design zips(zip, city) + street_zips(street, zip), which FD is lost?', options: ['(street, city) → zip', 'zip → city', 'street → zip', 'None'], answer: 0, explain: 'street and city never appear in the same table any more, so no key can enforce it.' },
     hints: [`<p>Hint 1: street never appears on a right side → in every key. {street}⁺ = {street}; add city or zip.</p>`, `<p>Hint 2: Split on zip → city: (zip, city) with key zip, and (street, zip) with key (street, zip). Lossless because zip is a key of the first.</p>`, `<p>Hint 3: The lost rule says: for one street, at most one zip per city. A BEFORE INSERT trigger joins street_zips to zips to find another zip of the same city on that street.</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['street', 'city', 'zip'], rows: [['FC Road', 'Pune', '411004'], ['Link Road', 'Mumbai', '400050'], ['MG Road', 'Mumbai', '400050'], ['MG Road', 'Pune', '411001']] },
+        { after: 'INSERT INTO street_zips VALUES (\'FC Road\', \'411001\'); SELECT COUNT(*) FROM street_zips', rows: [[4]] },
+        { after: 'INSERT INTO street_zips VALUES (\'FC Road\', \'400050\'); SELECT COUNT(*) FROM street_zips', rows: [[5]] },
+        { after: 'INSERT INTO street_zips VALUES (\'MG Road\', \'411004\'); SELECT COUNT(*) FROM (SELECT s.street, z.city FROM street_zips s JOIN zips z USING (zip) GROUP BY s.street, z.city HAVING COUNT(*) > 1)', rows: [[0]] },
+        { after: 'UPDATE street_zips SET zip = \'411004\' WHERE street = \'MG Road\' AND zip = \'400050\'; SELECT COUNT(*) FROM (SELECT s.street, z.city FROM street_zips s JOIN zips z USING (zip) GROUP BY s.street, z.city HAVING COUNT(*) > 1)', rows: [[0]] },
+        { after: 'UPDATE zips SET city = \'Pune\' WHERE zip = \'400050\'; SELECT city FROM zips WHERE zip = \'400050\'', rows: [['Mumbai']] },
+        { after: 'UPDATE zips SET city = \'Pune City\' WHERE zip = \'411004\'; SELECT city FROM zips WHERE zip = \'411004\'', rows: [['Pune City']] },
+        { after: 'UPDATE street_zips SET street = \'MG Road\' WHERE street = \'FC Road\'; SELECT COUNT(*) FROM (SELECT s.street, z.city FROM street_zips s JOIN zips z USING (zip) GROUP BY s.street, z.city HAVING COUNT(*) > 1)', rows: [[0]] },
+        { after: 'INSERT INTO street_zips VALUES (\'MG Road\', \'411001\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO street_zips VALUES (\'X Road\', \'999999\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO zips VALUES (\'411001\', \'Elsewhere\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO zips (zip) VALUES (\'500001\')', error: 'NOT NULL' },
+        { after: 'SELECT zip FROM zips GROUP BY zip HAVING COUNT(DISTINCT city) > 1', rows: [] }
+      ] },
     solution: {
       approach: `<p>Keys: {street, city}, {street, zip}; all attributes prime → 3NF. zip → city violates BCNF. BCNF split: <code>zips(zip PK, city)</code> + <code>street_zips(street, zip, PK both)</code>; (street, city) → zip is lost and enforced by a trigger (RAISE(IGNORE) here, ABORT in production). <b>Which to ship?</b> Both designs leave one rule to a trigger (3NF can't key-enforce zip → city either), so BCNF wins: less redundancy, and zips doubles as a reference table for address validation.</p>`,
       code: `PRAGMA foreign_keys = ON;
@@ -2412,6 +2668,17 @@ CREATE TRIGGER one_zip_per_street_city BEFORE INSERT ON street_zips
 WHEN EXISTS (SELECT 1 FROM street_zips s JOIN zips z ON z.zip = s.zip
              WHERE s.street = NEW.street AND s.zip <> NEW.zip
                AND z.city = (SELECT city FROM zips WHERE zip = NEW.zip))
+BEGIN SELECT RAISE(IGNORE); END;
+-- the same rule must also hold when a row moves to another street/zip, or a zip changes city
+CREATE TRIGGER one_zip_per_street_city_upd BEFORE UPDATE ON street_zips
+WHEN EXISTS (SELECT 1 FROM street_zips s JOIN zips z ON z.zip = s.zip
+             WHERE s.street = NEW.street AND s.rowid <> OLD.rowid AND s.zip <> NEW.zip
+               AND z.city = (SELECT city FROM zips WHERE zip = NEW.zip))
+BEGIN SELECT RAISE(IGNORE); END;
+CREATE TRIGGER one_zip_per_street_city_zips BEFORE UPDATE OF city ON zips
+WHEN EXISTS (SELECT 1 FROM street_zips a JOIN street_zips b ON b.street = a.street AND b.zip <> a.zip
+             JOIN zips z ON z.zip = b.zip
+             WHERE a.zip = NEW.zip AND z.city = NEW.city)
 BEGIN SELECT RAISE(IGNORE); END;
 
 INSERT INTO zips VALUES ('411001', 'Pune'), ('411004', 'Pune'), ('400050', 'Mumbai');
@@ -2441,6 +2708,19 @@ SELECT COUNT(*) AS students_in_db1 FROM export WHERE enrolments LIKE '%DB1:%';  
     },
     mcq: { q: 'After parsing, which table holds the grade?', options: ['enrollments(student_id, course_id, grade)', 'courses(course_id, title, grade)', 'students(student_id, grade)', 'advisors(advisor_id, grade)'], answer: 0, explain: 'Grade depends on the full (student, course) key.' },
     hints: [`<p>Hint 1: First split enrolments on ';' with a recursive CTE (1NF), then split each item on ':' using INSTR twice.</p>`, `<p>Hint 2: Determinants → tables: advisors(advisor_id), students(student_id), courses(course_id), enrollments(student_id, course_id).</p>`, `<p>Hint 3: Load parsed items into a TEMP table first, then INSERT … SELECT DISTINCT into each target. Verify by counting enrolments per student against the original.</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['student_id', 'student_name', 'advisor_name', 'courses', 'grades'], rows: [['S1', 'Asha', 'Dr. Rao', 2, 'Databases=A, Operating Systems=B'], ['S2', 'Ben', 'Dr. Rao', 1, 'Databases=B'], ['S3', 'Chen', 'Dr. Sen', 0, null]] },
+        { after: 'SELECT advisor_id, advisor_name, office FROM advisors ORDER BY advisor_id', rows: [['A7', 'Dr. Rao', 'R-101'], ['A9', 'Dr. Sen', 'R-205']] },
+        { after: 'SELECT course_id, title FROM courses ORDER BY course_id', rows: [['DB1', 'Databases'], ['OS1', 'Operating Systems']] },
+        { after: 'SELECT student_id, course_id, grade FROM enrollments ORDER BY 1, 2', rows: [['S1', 'DB1', 'A'], ['S1', 'OS1', 'B'], ['S2', 'DB1', 'B']] },
+        { after: 'UPDATE advisors SET office = \'R-999\' WHERE advisor_id = \'A7\'; SELECT DISTINCT a.office FROM students s JOIN advisors a USING (advisor_id) WHERE s.advisor_id = \'A7\'', rows: [['R-999']] },
+        { after: 'SELECT COUNT(*) FROM students WHERE student_id NOT IN (SELECT student_id FROM enrollments)', rows: [[1]] },
+        { after: 'INSERT INTO enrollments VALUES (\'S1\', \'DB1\', \'C\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO students VALUES (\'S9\', \'Zed\', \'A0\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO enrollments VALUES (\'S3\', \'NOPE\', \'A\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO enrollments VALUES (\'S3\', \'DB1\', NULL)', error: 'NOT NULL' },
+        { after: 'INSERT INTO enrollments VALUES (\'S3\', \'OS1\', \'C\'); SELECT COUNT(*) FROM enrollments', rows: [[4]] }
+      ] },
     solution: {
       approach: `<p>0NF → 1NF: recursive CTE peels items off the list; each item is split into course_id, title, grade with INSTR/SUBSTR and TRIM. 2NF/3NF/BCNF: student facts (name, advisor_id) → students; advisor facts → advisors (removes the transitive student → advisor → office); course title → courses (removes the partial dependency on course_id); grade stays with the full key in enrollments. Every determinant is a key → BCNF. Verification compares item counts.</p>`,
       code: `PRAGMA foreign_keys = ON;
@@ -2520,9 +2800,24 @@ GROUP BY 1, 2, 3 ORDER BY 3, 1, 2;      -- 6-table join on every dashboard refre
     },
     mcq: { q: 'Why does dim_customer store region directly instead of referencing a cities table?', options: ['Star dimensions are denormalized so each dimension needs one join', 'Region never changes', 'Foreign keys are not allowed in warehouses', 'It saves storage'], answer: 0, explain: 'Flattening city → region into the dimension trades a little redundancy for simpler, faster queries (a snowflake would keep it separate).' },
     hints: [`<p>Hint 1: Declare the grain first: one fact row per order line. Measures: qty, revenue.</p>`, `<p>Hint 2: Dimensions: dim_date (from distinct order dates), dim_product (product + category inline), dim_customer (customer + city + region inline).</p>`, `<p>Hint 3: Load dimensions first (INSERT … SELECT with joins), then facts by looking up surrogate keys via natural keys.</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['star_total', 'source_total'], rows: [[5950, 5950]] },
+        { after: 'SELECT c.region, p.category, d.yyyymm, SUM(f.revenue) FROM fact_order_lines f JOIN dim_date d ON d.date_key = f.date_key JOIN dim_product p ON p.product_key = f.product_key JOIN dim_customer c ON c.customer_key = f.customer_key GROUP BY c.region, p.category, d.yyyymm ORDER BY d.yyyymm, c.region, p.category', rows: [['West', 'Home', '2026-01', 2400], ['West', 'Kitchen', '2026-01', 900], ['North', 'Kitchen', '2026-02', 1500], ['West', 'Home', '2026-02', 1150]] },
+        { after: 'SELECT COUNT(*) FROM fact_order_lines', rows: [[4]] },
+        { after: 'SELECT order_id, SUM(revenue) FROM fact_order_lines GROUP BY order_id ORDER BY order_id', rows: [[1, 3300], [2, 1500], [3, 1150]] },
+        { after: 'SELECT date_key FROM dim_date ORDER BY date_key', rows: [[20260105], [20260214], [20260220]] },
+        { after: 'SELECT name, category FROM dim_product ORDER BY product_id', rows: [['Desk Lamp', 'Home'], ['Coffee Mug', 'Kitchen']] },
+        { after: 'SELECT name, city, region FROM dim_customer ORDER BY customer_id', rows: [['Asha', 'Pune', 'West'], ['Ben', 'Delhi', 'North']] },
+        { after: 'UPDATE order_items SET unit_price = 9999; SELECT SUM(revenue) FROM fact_order_lines', rows: [[5950]] },
+        { after: 'UPDATE cities SET region = \'Central\' WHERE id = 1; SELECT COUNT(*) FROM dim_customer WHERE region = \'West\'', rows: [[1]] },
+        { after: 'INSERT INTO fact_order_lines VALUES (19990101, 1, 1, 9, 1, 1)', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO fact_order_lines VALUES (20260105, 99, 1, 9, 1, 1)', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO dim_product (product_id, name, category) VALUES (1, \'Clone\', \'X\')', error: 'UNIQUE' }
+      ] },
     solution: {
       approach: `<p>Grain: order line. <b>dim_date</b>(date_key yyyymmdd, month, year), <b>dim_product</b>(product_key, product_id natural key, name, category), <b>dim_customer</b>(customer_key, customer_id, name, city, region) — city → region kept inline on purpose. <b>fact_order_lines</b>(date_key, product_key, customer_key, qty, revenue). ETL flattens joins once at load time; analysts then join each dimension once. Reconcile: SUM(revenue) in the fact equals SUM(qty × unit_price) in the source.</p>`,
-      code: `-- Source OLTP (3NF)
+      code: `PRAGMA foreign_keys = ON;
+-- Source OLTP (3NF)
 CREATE TABLE cities (id INTEGER PRIMARY KEY, name TEXT NOT NULL, region TEXT NOT NULL);
 CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, city_id INT NOT NULL REFERENCES cities(id));
 CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
@@ -2603,6 +2898,18 @@ SELECT COUNT(*) AS contradictions FROM t_abc x JOIN t_bc y ON y.b = x.b WHERE y.
     },
     mcq: { q: 'In the minimal cover, why does AB → D become A → D?', options: ['A alone already determines D (A⁺ contains D), so B is extraneous', 'B never appears on a right side', 'D is a key', 'Left sides must be single attributes'], answer: 0, explain: 'An attribute in a left side is extraneous if the closure of the remaining left side still contains the right side.' },
     hints: [`<p>Hint 1: Split right sides: A→B, A→C, B→C, AB→D, D→E, CE→G, A→G.</p>`, `<p>Hint 2: Remove extraneous B from AB→D. Then drop A→G (A→B→C, A→D→E, CE→G) and A→C (A→B→C).</p>`, `<p>Hint 3: Minimal cover {A→B, B→C, A→D, D→E, CE→G} → tables (A,B,D), (B,C), (D,E), (C,E,G). Key A is inside (A,B,D) → no key table needed.</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['a', 'b', 'c', 'd', 'e', 'g'], rows: [['a1', 'b1', 'c1', 'd1', 'e1', 'g1'], ['a2', 'b2', 'c2', 'd2', 'e1', 'g2'], ['a3', 'b1', 'c1', 'd2', 'e1', 'g1']] },
+        { after: 'SELECT m.name, p.name FROM sqlite_master m, pragma_table_info(m.name) p WHERE m.type = \'table\' AND p.pk > 0 ORDER BY m.name, p.pk', rows: [['r1_abd', 'a'], ['r2_bc', 'b'], ['r3_de', 'd'], ['r4_ceg', 'c'], ['r4_ceg', 'e']] },
+        { after: 'INSERT INTO r1_abd VALUES (\'a1\', \'b2\', \'d1\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO r2_bc VALUES (\'b1\', \'cX\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO r3_de VALUES (\'d1\', \'eX\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO r4_ceg VALUES (\'c1\', \'e1\', \'g9\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO r1_abd VALUES (\'a9\', \'b9\', \'d1\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO r1_abd VALUES (\'a9\', \'b1\', \'d9\')', error: 'FOREIGN KEY' },
+        { after: 'INSERT INTO r4_ceg VALUES (\'c1\', \'e2\', \'g3\'); SELECT COUNT(*) FROM r4_ceg', rows: [[3]] },
+        { after: 'INSERT INTO r1_abd VALUES (\'a4\', \'b2\', \'d1\'); SELECT r1.a, r2.c, r3.e FROM r1_abd r1 JOIN r2_bc r2 ON r2.b = r1.b JOIN r3_de r3 ON r3.d = r1.d WHERE r1.a = \'a4\'', rows: [['a4', 'c2', 'e1']] }
+      ] },
     solution: {
       approach: `<p><b>Minimal cover:</b> {A → B, B → C, A → D, D → E, CE → G}. <b>Synthesis:</b> group by left side → R1(A, B, D) key A; R2(B, C) key B; R3(D, E) key D; R4(C, E, G) key (C, E). Candidate key of R is A (A⁺ = everything); R1 contains it → lossless. No table is a subset of another. Every FD of the cover lives in one table → dependency-preserving; each table's only FDs have key left sides → 3NF (here also BCNF). Try it in the 3NF synthesis visualizer.</p>`,
       code: `PRAGMA foreign_keys = ON;
@@ -2645,6 +2952,18 @@ SELECT teacher, COUNT(*) AS books FROM course_offer GROUP BY teacher;   -- Rao 3
     },
     mcq: { q: 'Which dependency does the table violate 4NF on?', options: ['course ↠ teacher (independent of textbook)', 'teacher → course', 'textbook → teacher', 'It has no 4NF violation'], answer: 0, explain: 'For each course, the set of teachers is independent of the set of textbooks: a non-trivial MVD whose left side is not a superkey.' },
     hints: [`<p>Hint 1: No column determines another, so BCNF can't help. Look for two independent lists hanging off one column.</p>`, `<p>Hint 2: course ↠ teacher | textbook. Split into (course, teacher) and (course, textbook).</p>`, `<p>Hint 3: Lossless for MVDs: R1 ∩ R2 = course, and course ↠ R1 − R2 holds. Verify: the join of the two tables equals the original cross product.</p>`],
+    tests: { cmp: 'exact', engine: 'sqlite', cases: [
+        { cols: ['teacher', 'books'], rows: [['Iyer', 1], ['Rao', 3], ['Sen', 3]] },
+        { after: 'SELECT COUNT(*) FROM course_offer_all', rows: [[7]] },
+        { after: 'SELECT COUNT(*) FROM (SELECT * FROM course_offer EXCEPT SELECT * FROM course_offer_all)', rows: [[0]] },
+        { after: 'SELECT COUNT(*) FROM (SELECT * FROM course_offer_all EXCEPT SELECT * FROM course_offer)', rows: [[2]] },
+        { after: 'INSERT INTO course_teachers VALUES (\'DB\', \'Kim\'); SELECT COUNT(*) FROM course_offer_all WHERE teacher = \'Kim\'', rows: [[3]] },
+        { after: 'SELECT course, teacher FROM course_teachers ORDER BY 1, 2', rows: [['DB', 'Rao'], ['DB', 'Sen'], ['OS', 'Iyer']] },
+        { after: 'SELECT course, textbook FROM course_books ORDER BY 1, 2', rows: [['DB', 'Kleppmann'], ['DB', 'Ramakrishnan'], ['DB', 'Silberschatz'], ['OS', 'Tanenbaum']] },
+        { after: 'INSERT INTO course_books VALUES (\'OS\', \'Stallings\'); SELECT teacher, COUNT(*) FROM course_offer_all WHERE course = \'OS\' GROUP BY teacher', rows: [['Iyer', 2]] },
+        { after: 'INSERT INTO course_teachers VALUES (\'DB\', \'Rao\')', error: 'UNIQUE' },
+        { after: 'INSERT INTO course_books VALUES (\'DB\', \'Silberschatz\')', error: 'UNIQUE' }
+      ] },
     solution: {
       approach: `<p>MVD course ↠ teacher (equivalently course ↠ textbook): the teacher set and the book set for a course are independent. course is not a superkey of the 3-column table → 4NF violation. Decompose into course_teachers(course, teacher) and course_books(course, textbook). The decomposition is lossless because R1 ∩ R2 = {course} and course ↠ teacher holds (Fagin's theorem). A new book is one row; the "all combinations" view is rebuilt by a join.</p>`,
       code: `CREATE TABLE course_offer (course TEXT, teacher TEXT, textbook TEXT, PRIMARY KEY (course, teacher, textbook));

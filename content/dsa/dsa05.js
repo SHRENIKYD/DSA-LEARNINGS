@@ -295,7 +295,7 @@ cout << a[0] << " " << copy[0] << "\\n";   // 99 1
       example: `${H.arr([1, 2, 3, 4, 5, 6, 7], { label: 'A', hl: { 4: 'y', 5: 'y', 6: 'y' } })}<p>k = 3 → ${H.arr([5, 6, 7, 1, 2, 3, 4], { label: 'result', hl: { 0: 'y', 1: 'y', 2: 'y' } })} The last 3 elements (amber) wrap around to the front, the rest slide right by 3. With k = 10 the answer is the same as k = 3 because rotating by 7 (= N) does nothing.</p>`,
       brute: {
         why: `<p>Rotate by one step, k times: each step shifts all N elements, so the cost is O(N × k) — up to 10<sup>5</sup> × 10<sup>9</sup>. Even with k reduced to k % N it is O(N<sup>2</sup>) in the worst case. The waste: every element moves one slot at a time instead of jumping straight to its final spot.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           void bruteRotate(int[] A, int k) {
               int n = A.length;
               k %= n;
@@ -304,7 +304,33 @@ cout << a[0] << " " << copy[0] << "\\n";   // 99 1
                   for (int i = n - 1; i > 0; i--) A[i] = A[i - 1];  // shift everyone right by one
                   A[0] = last;                               // last goes to the front
               }
-          }`
+          }`, alt: [{ lang: 'python', code: String.raw`
+def rotate(a, k):
+    n = len(a)
+    k %= n
+    for _ in range(k):
+        last = a[n - 1]                          # remember the last element
+        for i in range(n - 1, 0, -1):
+            a[i] = a[i - 1]                      # shift everyone right by one
+        a[0] = last                              # last goes to the front` }, { lang: 'js', code: String.raw`
+function rotate(A, k) {
+  const n = A.length;
+  k %= n;
+  for (let step = 0; step < k; step++) {
+    const last = A[n - 1];                       // remember the last element
+    for (let i = n - 1; i > 0; i--) A[i] = A[i - 1];   // shift everyone right by one
+    A[0] = last;                                 // last goes to the front
+  }
+}` }, { lang: 'cpp', code: String.raw`
+void rotate(vector<int>& A, int k) {
+    int n = A.size();
+    k %= n;
+    for (int step = 0; step < k; step++) {
+        int last = A[n - 1];                     // remember the last element
+        for (int i = n - 1; i > 0; i--) A[i] = A[i - 1];   // shift everyone right by one
+        A[0] = last;                             // last goes to the front
+    }
+}` }] }
       },
       mcq: {
         q: `<p>A = [1, 2, 3, 4, 5], k = 2. After <b>reversing the whole array</b> you have [5, 4, 3, 2, 1]. What two reversals finish the job?</p>`,
@@ -612,7 +638,7 @@ cout << "\\n";` }
         ${H.table(['query', 'cells', 'sum'], [['[1,4]', H.c('b', '1 + 4 + 1 + 5'), H.c('p', '11')], ['[0,2]', '3 + 1 + 4', H.c('p', '8')], ['[3,5]', '1 + 5 + 9', H.c('p', '15')]])}`,
       brute: {
         why: `<p>For each query, loop from L to R and add. One query can touch all N cells, so Q queries cost up to <b>N × Q = 10<sup>10</sup></b> steps → Time Limit Exceeded. The wasted work: the same cells (say index 2) get re-added in query after query.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           long[] bruteRangeSum(int[] A, int[][] queries) {
               long[] ans = new long[queries.length];
               for (int q = 0; q < queries.length; q++) {
@@ -621,7 +647,33 @@ cout << "\\n";` }
                   ans[q] = s;
               }
               return ans;
-          }`
+          }`, alt: [{ lang: 'python', code: String.raw`
+def range_sum(a, queries):
+    ans = []
+    for lo, hi in queries:
+        s = 0
+        for i in range(lo, hi + 1):
+            s += a[i]                    # re-adding every time
+        ans.append(s)
+    return ans` }, { lang: 'js', code: String.raw`
+function rangeSum(A, queries) {
+  const ans = [];
+  for (const [L, R] of queries) {
+    let s = 0;
+    for (let i = L; i <= R; i++) s += A[i];   // re-adding every time
+    ans.push(s);
+  }
+  return ans;
+}` }, { lang: 'cpp', code: String.raw`
+vector<long long> rangeSum(vector<int>& A, vector<vector<int>>& queries) {
+    vector<long long> ans;
+    for (auto& q : queries) {
+        long long s = 0;
+        for (int i = q[0]; i <= q[1]; i++) s += A[i];   // re-adding every time
+        ans.push_back(s);
+    }
+    return ans;
+}` }] }
       },
       mcq: {
         q: `<p>For A = [3, 1, 4, 1, 5, 9] the prefix sums are pf = [3, 4, 8, 9, 14, 23]. What is the sum of indices 2..4?</p>`,
@@ -934,7 +986,7 @@ cout << (L % 2 == 0 ? raw : -raw) << "\\n";   // -1` }
         <p>Output: ${H.c('p', '<b>1</b>')} — only removing index 1 balances the two teams.</p>`,
       brute: {
         why: `<p>For every i, build the array without A[i] and sum evens and odds: N choices × N work = <b>O(N<sup>2</sup>) = 10<sup>10</sup></b> for N = 10<sup>5</sup>. The waste: the left part and the right part barely change from one i to the next, yet we re-add them every time.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int bruteSpecial(int[] A) {
               int n = A.length, count = 0;
               for (int i = 0; i < n; i++) {
@@ -948,7 +1000,52 @@ cout << (L % 2 == 0 ? raw : -raw) << "\\n";   // -1` }
                   if (even == odd) count++;
               }
               return count;
-          }`
+          }`, alt: [{ lang: 'python', code: String.raw`
+def count_special(a):
+    n, count = len(a), 0
+    for i in range(n):
+        even = odd = 0
+        pos = 0                              # index in the NEW array
+        for j in range(n):
+            if j == i:
+                continue                     # skip the removed element
+            if pos % 2 == 0:
+                even += a[j]
+            else:
+                odd += a[j]
+            pos += 1
+        if even == odd:
+            count += 1
+    return count` }, { lang: 'js', code: String.raw`
+function countSpecial(A) {
+  const n = A.length;
+  let count = 0;
+  for (let i = 0; i < n; i++) {
+    let even = 0, odd = 0;
+    let pos = 0;                             // index in the NEW array
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;                 // skip the removed element
+      if (pos % 2 === 0) even += A[j]; else odd += A[j];
+      pos++;
+    }
+    if (even === odd) count++;
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+int countSpecial(vector<int>& A) {
+    int n = A.size(), count = 0;
+    for (int i = 0; i < n; i++) {
+        long long even = 0, odd = 0;
+        int pos = 0;                         // index in the NEW array
+        for (int j = 0; j < n; j++) {
+            if (j == i) continue;            // skip the removed element
+            if (pos % 2 == 0) even += A[j]; else odd += A[j];
+            pos++;
+        }
+        if (even == odd) count++;
+    }
+    return count;
+}` }] }
       },
       mcq: {
         q: `<p>You delete index i. What happens to elements that were to the <b>right</b> of i?</p>`,
@@ -1069,7 +1166,7 @@ public:
         <p>Output: ${H.c('p', '<b>3</b>')} because left = ${H.c('b', '1 + 7 + 3 = 11')} and right = ${H.c('g', '5 + 6 = 11')}. The element at the pivot itself (6) belongs to neither side.</p>`,
       brute: {
         why: `<p>For every i, loop left to add the left side and loop right to add the right side: N indices × N work = <b>O(N<sup>2</sup>)</b>. The waste: moving i one step only moves <b>one</b> number from the right side to the left side, but brute force re-adds everything.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int brutePivot(int[] A) {
               for (int i = 0; i < A.length; i++) {
                   long left = 0, right = 0;
@@ -1078,7 +1175,35 @@ public:
                   if (left == right) return i;
               }
               return -1;
-          }`
+          }`, alt: [{ lang: 'python', code: String.raw`
+def pivot_index(a):
+    for i in range(len(a)):
+        left = right = 0
+        for j in range(i):
+            left += a[j]
+        for j in range(i + 1, len(a)):
+            right += a[j]
+        if left == right:
+            return i
+    return -1` }, { lang: 'js', code: String.raw`
+function pivotIndex(A) {
+  for (let i = 0; i < A.length; i++) {
+    let left = 0, right = 0;
+    for (let j = 0; j < i; j++) left += A[j];
+    for (let j = i + 1; j < A.length; j++) right += A[j];
+    if (left === right) return i;
+  }
+  return -1;
+}` }, { lang: 'cpp', code: String.raw`
+int pivotIndex(vector<int>& A) {
+    for (int i = 0; i < (int) A.size(); i++) {
+        long long left = 0, right = 0;
+        for (int j = 0; j < i; j++) left += A[j];
+        for (int j = i + 1; j < (int) A.size(); j++) right += A[j];
+        if (left == right) return i;
+    }
+    return -1;
+}` }] }
       },
       mcq: {
         q: `<p>Total = 28 and the sum of everything left of i is 11, with A[i] = 6. What is the right-side sum?</p>`,
@@ -1383,7 +1508,7 @@ cout << ans << "\\n";   // 1` }
         <p>Output: <b>3</b>. The pairs are ${H.c('y', '(0, 3)')}, ${H.c('y', '(0, 5)')} and ${H.c('y', '(4, 5)')}: every 'a' is matched with every 'g' that appears <b>after</b> it. The 'a' at index 4 cannot use the 'g' at index 3 because it is before it.</p>`,
       brute: {
         why: `<p>For each 'a', scan every later character and count the g's. A string like "aaaa...gggg" makes this about N<sup>2</sup>/4 = 2.5 × 10<sup>9</sup> steps → too slow. The waste: every 'a' re-counts the same g's that the previous 'a' already counted.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           long bruteAG(String s) {
               long pairs = 0;
               for (int i = 0; i < s.length(); i++) {
@@ -1393,7 +1518,36 @@ cout << ans << "\\n";   // 1` }
                   }
               }
               return pairs;
-          }`
+          }`, alt: [{ lang: 'python', code: String.raw`
+def count_ag(s):
+    pairs = 0
+    for i in range(len(s)):
+        if s[i] != 'a':
+            continue
+        for j in range(i + 1, len(s)):
+            if s[j] == 'g':
+                pairs += 1
+    return pairs` }, { lang: 'js', code: String.raw`
+function countAG(s) {
+  let pairs = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] !== 'a') continue;
+    for (let j = i + 1; j < s.length; j++) {
+      if (s[j] === 'g') pairs++;
+    }
+  }
+  return pairs;
+}` }, { lang: 'cpp', code: String.raw`
+long long countAG(const string& s) {
+    long long pairs = 0;
+    for (int i = 0; i < (int) s.size(); i++) {
+        if (s[i] != 'a') continue;
+        for (int j = i + 1; j < (int) s.size(); j++) {
+            if (s[j] == 'g') pairs++;
+        }
+    }
+    return pairs;
+}` }] }
       },
       mcq: {
         q: `<p>You scan from the <b>right</b> keeping <code>gCount</code>. You now stand on an 'a'. What do you add to the answer?</p>`,
@@ -1490,7 +1644,7 @@ public:
         <p>Output: ${H.c('p', '[17, 5, 2]')}. 17 beats 4, 3, 5, 2; 5 beats 2; 2 has nothing on its right. 16 is not a leader because 17 is to its right; 4 is not because 5 is to its right.</p>`,
       brute: {
         why: `<p>For every i, scan all elements to the right and check none is ≥ A[i]: O(N<sup>2</sup>) = 10<sup>10</sup> for N = 10<sup>5</sup>. The waste: "the max of everything to my right" is recomputed from scratch for every i, though it only changes by one element each step.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           List<Integer> bruteLeaders(int[] A) {
               List<Integer> res = new ArrayList<>();
               for (int i = 0; i < A.length; i++) {
@@ -1501,7 +1655,40 @@ public:
                   if (leader) res.add(A[i]);
               }
               return res;
-          }`
+          }`, alt: [{ lang: 'python', code: String.raw`
+def leaders(a):
+    res = []
+    for i in range(len(a)):
+        leader = True
+        for j in range(i + 1, len(a)):
+            if a[j] >= a[i]:
+                leader = False
+                break
+        if leader:
+            res.append(a[i])
+    return res` }, { lang: 'js', code: String.raw`
+function leaders(A) {
+  const res = [];
+  for (let i = 0; i < A.length; i++) {
+    let leader = true;
+    for (let j = i + 1; j < A.length; j++) {
+      if (A[j] >= A[i]) { leader = false; break; }
+    }
+    if (leader) res.push(A[i]);
+  }
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> leaders(vector<int>& A) {
+    vector<int> res;
+    for (int i = 0; i < (int) A.size(); i++) {
+        bool leader = true;
+        for (int j = i + 1; j < (int) A.size(); j++) {
+            if (A[j] >= A[i]) { leader = false; break; }
+        }
+        if (leader) res.push_back(A[i]);
+    }
+    return res;
+}` }] }
       },
       mcq: {
         q: `<p>Which element of a non-empty array is <b>always</b> a leader?</p>`,
@@ -1769,7 +1956,7 @@ cout << worst << "\\n";   // -6` }
         <p>Output: ${H.c('p', '<b>6</b>')} from ${H.c('p', '[4, −1, 2, 1]')}. Adding the −5 after it would drop us to 1, and including the earlier part (−2, 1, −3 sums to −4) would only lower the total.</p>`,
       brute: {
         why: `<p>Try every start i and extend the end j one step at a time keeping a running sum: N(N+1)/2 ≈ 5 × 10<sup>9</sup> subarrays for N = 10<sup>5</sup> → TLE. The waste: we keep extending runs that are already negative, even though a negative prefix can never help.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           long bruteMaxSub(int[] A) {
               long best = Long.MIN_VALUE;
               for (int i = 0; i < A.length; i++) {
@@ -1780,7 +1967,37 @@ cout << worst << "\\n";   // -6` }
                   }
               }
               return best;
-          }`
+          }`, alt: [{ lang: 'python', code: String.raw`
+def max_sub_array(a):
+    best = float('-inf')
+    for i in range(len(a)):
+        s = 0
+        for j in range(i, len(a)):
+            s += a[j]                    # sum of a[i..j]
+            best = max(best, s)
+    return best` }, { lang: 'js', code: String.raw`
+function maxSubArray(A) {
+  let best = -Infinity;
+  for (let i = 0; i < A.length; i++) {
+    let s = 0;
+    for (let j = i; j < A.length; j++) {
+      s += A[j];                    // sum of A[i..j]
+      best = Math.max(best, s);
+    }
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+long long maxSubArray(vector<int>& A) {
+    long long best = LLONG_MIN;
+    for (int i = 0; i < (int) A.size(); i++) {
+        long long s = 0;
+        for (int j = i; j < (int) A.size(); j++) {
+            s += A[j];                    // sum of A[i..j]
+            best = max(best, s);
+        }
+    }
+    return best;
+}` }] }
       },
       mcq: {
         q: `<p>Your running sum <code>cur</code> (best subarray ending at the previous index) is −5. The next element is 3. What should <code>cur</code> become?</p>`,
@@ -1984,7 +2201,7 @@ cout << total << "\\n";   // 58` }
         <p>Seen per element: 1 appears in 3 subarrays, 2 in 4, 3 in 3 → 1·3 + 2·4 + 3·3 = ${H.c('p', '20')}.</p>`,
       brute: {
         why: `<p>Loop over every start, extend the end and add the running sum each time: ~N<sup>2</sup>/2 = 5 × 10<sup>9</sup> steps for N = 10<sup>5</sup> → TLE. The waste: we add the same A[i] again and again (once per subarray) when a single multiplication by its count would do.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           long bruteAllSubarraySums(int[] A) {
               long total = 0;
               for (int i = 0; i < A.length; i++) {
@@ -1995,7 +2212,37 @@ cout << total << "\\n";   // 58` }
                   }
               }
               return total;
-          }`
+          }`, alt: [{ lang: 'python', code: String.raw`
+def subarray_sum_total(a):
+    total = 0
+    for i in range(len(a)):
+        s = 0
+        for j in range(i, len(a)):
+            s += a[j]       # sum of a[i..j]
+            total += s      # add this subarray's sum
+    return total` }, { lang: 'js', code: String.raw`
+function subarraySumTotal(A) {
+  let total = 0;
+  for (let i = 0; i < A.length; i++) {
+    let s = 0;
+    for (let j = i; j < A.length; j++) {
+      s += A[j];       // sum of A[i..j]
+      total += s;      // add this subarray's sum
+    }
+  }
+  return total;
+}` }, { lang: 'cpp', code: String.raw`
+long long subarraySumTotal(vector<int>& A) {
+    long long total = 0;
+    for (int i = 0; i < (int) A.size(); i++) {
+        long long s = 0;
+        for (int j = i; j < (int) A.size(); j++) {
+            s += A[j];       // sum of A[i..j]
+            total += s;      // add this subarray's sum
+        }
+    }
+    return total;
+}` }] }
       },
       mcq: {
         q: `<p>For an array of size N = 5, in how many subarrays does index 2 (0-indexed) appear?</p>`,
@@ -2274,7 +2521,7 @@ cout << "\\n";` }
         <p>Output: ${H.c('p', '<b>6</b>')}. Blue bars hold water: index 2 holds 1 (walls 1 and 3 → min 1), index 4 holds 1, index 5 holds 2 (walls 2 and 3 → min 2, height 0), index 6 holds 1, index 9 holds 1 (walls 3 and 2 → min 2, height 1).</p>`,
       brute: {
         why: `<p>For every bar, scan the whole left side for the max and the whole right side for the max: N × N = <b>10<sup>10</sup></b> steps. The waste: the "max to my left" for bar i+1 is just max(max to the left of i, h[i]), but brute force recomputes it from zero.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           long bruteTrap(int[] h) {
               long water = 0;
               for (int i = 0; i < h.length; i++) {
@@ -2284,7 +2531,34 @@ cout << "\\n";` }
                   water += Math.min(lm, rm) - h[i];
               }
               return water;
-          }`
+          }`, alt: [{ lang: 'python', code: String.raw`
+def trap(h):
+    water = 0
+    for i in range(len(h)):
+        lm = max(h[:i + 1])        # tallest on the left
+        rm = max(h[i:])            # tallest on the right
+        water += min(lm, rm) - h[i]
+    return water` }, { lang: 'js', code: String.raw`
+function trap(h) {
+  let water = 0;
+  for (let i = 0; i < h.length; i++) {
+    let lm = 0, rm = 0;
+    for (let j = 0; j <= i; j++) lm = Math.max(lm, h[j]);          // tallest on the left
+    for (let j = i; j < h.length; j++) rm = Math.max(rm, h[j]);    // tallest on the right
+    water += Math.min(lm, rm) - h[i];
+  }
+  return water;
+}` }, { lang: 'cpp', code: String.raw`
+long long trap(vector<int>& h) {
+    long long water = 0;
+    for (int i = 0; i < (int) h.size(); i++) {
+        int lm = 0, rm = 0;
+        for (int j = 0; j <= i; j++) lm = max(lm, h[j]);                  // tallest on the left
+        for (int j = i; j < (int) h.size(); j++) rm = max(rm, h[j]);      // tallest on the right
+        water += min(lm, rm) - h[i];
+    }
+    return water;
+}` }] }
       },
       mcq: {
         q: `<p>A bar of height 1 has its tallest left wall = 3 and tallest right wall = 2. How much water sits on top of it?</p>`,
@@ -2643,8 +2917,8 @@ for (auto& row : g) { for (int x : row) cout << x << " "; cout << "\\n"; }` }
       example: `${H.table(['', 'c0', 'c1', 'c2', 'c3'], [['r0', H.c('y', '1'), H.c('y', '2'), H.c('y', '3'), H.c('y', '4')], ['r1', H.c('p', '5'), H.c('r', '6'), H.c('r', '7'), H.c('g', '8')], ['r2', H.c('b', '9'), H.c('b', '10'), H.c('b', '11'), H.c('g', '12')]])}
         <p>Output: <b>[1, 2, 3, 4, 8, 12, 11, 10, 9, 5, 6, 7]</b>. Outer ring: ${H.c('y', '→ 1 2 3 4')}, ${H.c('g', '↓ 8 12')}, ${H.c('b', '← 11 10 9')}, ${H.c('p', '↑ 5')}. Inner part is the single row ${H.c('r', '6 7')}, read → only once.</p>`,
       brute: {
-        why: `<p>Simulate a walker with a direction and a <code>boolean[][] visited</code>: step forward; if the next cell is outside or visited, turn right. It is O(R·C) time but needs an extra R·C boolean grid, and the turning logic is easy to get wrong. The waste is memory: the visited set is just a description of four walls, which four integers can store.</p>`,
-        code: `
+        why: `<p>Simulate a walker with a direction and a visited grid (<code>boolean[][]</code> / list of lists / <code>vector&lt;vector&lt;bool&gt;&gt;</code>): step forward; if the next cell is outside or visited, turn right. It is O(R·C) time but needs an extra R·C boolean grid, and the turning logic is easy to get wrong. The waste is memory: the visited set is just a description of four walls, which four integers can store.</p>`,
+        code: { lang: 'java', code: `
           List<Integer> spiralSimulation(int[][] g) {
               int R = g.length, C = g[0].length;
               boolean[][] seen = new boolean[R][C];          // O(R*C) extra memory
@@ -2664,7 +2938,62 @@ for (auto& row : g) { for (int x : row) cout << x << " "; cout << "\\n"; }` }
                   c = nc;
               }
               return out;
-          }`
+          }`, alt: [{ lang: 'python', code: String.raw`
+def spiral_order(g):
+    R, C = len(g), len(g[0])
+    seen = [[False] * C for _ in range(R)]          # O(R*C) extra memory
+    dr, dc = [0, 1, 0, -1], [1, 0, -1, 0]           # right, down, left, up
+    out = []
+    r = c = d = 0
+    for _ in range(R * C):
+        out.append(g[r][c])
+        seen[r][c] = True
+        nr, nc = r + dr[d], c + dc[d]
+        if nr < 0 or nr >= R or nc < 0 or nc >= C or seen[nr][nc]:
+            d = (d + 1) % 4                         # blocked: turn right
+            nr, nc = r + dr[d], c + dc[d]
+        r, c = nr, nc
+    return out` }, { lang: 'js', code: String.raw`
+function spiralOrder(g) {
+  const R = g.length, C = g[0].length;
+  const seen = Array.from({ length: R }, () => new Array(C).fill(false));   // O(R*C) extra memory
+  const dr = [0, 1, 0, -1], dc = [1, 0, -1, 0];     // right, down, left, up
+  const out = [];
+  let r = 0, c = 0, d = 0;
+  for (let k = 0; k < R * C; k++) {
+    out.push(g[r][c]);
+    seen[r][c] = true;
+    let nr = r + dr[d], nc = c + dc[d];
+    if (nr < 0 || nr >= R || nc < 0 || nc >= C || seen[nr][nc]) {
+      d = (d + 1) % 4;                              // blocked: turn right
+      nr = r + dr[d];
+      nc = c + dc[d];
+    }
+    r = nr;
+    c = nc;
+  }
+  return out;
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> spiralOrder(vector<vector<int>>& g) {
+    int R = g.size(), C = g[0].size();
+    vector<vector<bool>> seen(R, vector<bool>(C, false));   // O(R*C) extra memory
+    int dr[4] = {0, 1, 0, -1}, dc[4] = {1, 0, -1, 0};       // right, down, left, up
+    vector<int> out;
+    int r = 0, c = 0, d = 0;
+    for (int k = 0; k < R * C; k++) {
+        out.push_back(g[r][c]);
+        seen[r][c] = true;
+        int nr = r + dr[d], nc = c + dc[d];
+        if (nr < 0 || nr >= R || nc < 0 || nc >= C || seen[nr][nc]) {
+            d = (d + 1) % 4;                                // blocked: turn right
+            nr = r + dr[d];
+            nc = c + dc[d];
+        }
+        r = nr;
+        c = nc;
+    }
+    return out;
+}` }] }
       },
       mcq: {
         q: `<p>After reading the top row of a <b>1 × 4</b> matrix, top becomes 1 and bottom is 0. What must happen next?</p>`,
@@ -3029,7 +3358,7 @@ for (auto& row : g) { for (int x : row) cout << x << " "; cout << "\\n"; }` }
       example: `${H.table(['input', 'output'], [['1 2 3<br>4 5 6<br>7 8 9', H.c('g', '7 4 1<br>8 5 2<br>9 6 3')]])}<p>The first row ${H.c('y', '1 2 3')} became the last column (top to bottom), and the first column 1 4 7 became the first row read right to left: ${H.c('y', '7 4 1')}.</p>`,
       brute: {
         why: `<p>Build a new N × N matrix with <code>res[c][N−1−r] = g[r][c]</code> and copy it back. Time O(N<sup>2</sup>) is fine, but it uses O(N<sup>2</sup>) extra memory, which the problem forbids. The waste: we store a full second copy when each cell could be moved by swaps.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           void rotateWithCopy(int[][] g) {
               int n = g.length;
               int[][] res = new int[n][n];                 // extra N*N memory: not allowed
@@ -3037,7 +3366,31 @@ for (auto& row : g) { for (int x : row) cout << x << " "; cout << "\\n"; }` }
                   for (int c = 0; c < n; c++)
                       res[c][n - 1 - r] = g[r][c];         // clockwise rule
               for (int r = 0; r < n; r++) g[r] = res[r].clone();
-          }`
+          }`, alt: [{ lang: 'python', code: String.raw`
+def rotate(g):
+    n = len(g)
+    res = [[0] * n for _ in range(n)]       # extra N*N memory: not allowed
+    for r in range(n):
+        for c in range(n):
+            res[c][n - 1 - r] = g[r][c]     # clockwise rule
+    for r in range(n):
+        g[r] = res[r][:]` }, { lang: 'js', code: String.raw`
+function rotate(g) {
+  const n = g.length;
+  const res = Array.from({ length: n }, () => new Array(n).fill(0));   // extra N*N memory: not allowed
+  for (let r = 0; r < n; r++)
+    for (let c = 0; c < n; c++)
+      res[c][n - 1 - r] = g[r][c];          // clockwise rule
+  for (let r = 0; r < n; r++) g[r] = res[r].slice();
+}` }, { lang: 'cpp', code: String.raw`
+void rotate(vector<vector<int>>& g) {
+    int n = g.size();
+    vector<vector<int>> res(n, vector<int>(n));    // extra N*N memory: not allowed
+    for (int r = 0; r < n; r++)
+        for (int c = 0; c < n; c++)
+            res[c][n - 1 - r] = g[r][c];           // clockwise rule
+    for (int r = 0; r < n; r++) g[r] = res[r];
+}` }] }
       },
       mcq: {
         q: `<p>You transposed [[1, 2], [3, 4]] and got [[1, 3], [2, 4]]. Which step finishes a <b>clockwise</b> rotation?</p>`,
@@ -3376,13 +3729,31 @@ cout << count << "\\n";   // 8` }
         <p>target = 5 → <b>true</b>; target = 20 → <b>false</b>. Path for 5: 15 (too big, ←), 11 (←), 7 (←), 4 (too small, ↓), ${H.c('g', '5 found')}.</p>`,
       brute: {
         why: `<p>Check all R × C cells: up to 9 × 10<sup>4</sup> comparisons per query — fine once, but it completely ignores the sorting, and with many queries or larger matrices (10<sup>4</sup> × 10<sup>4</sup> = 10<sup>8</sup>) it becomes too slow. The waste: one comparison against a sorted neighbourhood could rule out a whole row or column, yet we look at every cell.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           boolean bruteSearch(int[][] g, int target) {
               for (int[] row : g)
                   for (int v : row)
                       if (v == target) return true;   // looks at every single cell
               return false;
-          }`
+          }`, alt: [{ lang: 'python', code: String.raw`
+def search_matrix(g, target):
+    for row in g:
+        for v in row:
+            if v == target:
+                return True      # looks at every single cell
+    return False` }, { lang: 'js', code: String.raw`
+function searchMatrix(g, target) {
+  for (const row of g)
+    for (const v of row)
+      if (v === target) return true;   // looks at every single cell
+  return false;
+}` }, { lang: 'cpp', code: String.raw`
+bool searchMatrix(vector<vector<int>>& g, int target) {
+    for (auto& row : g)
+        for (int v : row)
+            if (v == target) return true;   // looks at every single cell
+    return false;
+}` }] }
       },
       mcq: {
         q: `<p>You stand at the top-right cell, value 15, target 5. What does "15 &gt; 5" let you conclude?</p>`,
@@ -3691,7 +4062,7 @@ cout << P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1] << "\\n"; 
         <p><code>sumRegion(1, 1, 2, 2)</code> → ${H.c('p', '<b>11</b>')} (6 + 3 + 2 + 0). <code>sumRegion(0, 0, 0, 2)</code> → <b>4</b> (3 + 0 + 1). <code>sumRegion(0, 0, 2, 2)</code> → <b>21</b>.</p>`,
       brute: {
         why: `<p>Loop over the rectangle for every query: up to 200 × 200 = 4 × 10<sup>4</sup> cells × 10<sup>4</sup> queries = 4 × 10<sup>8</sup> operations — too slow. The waste: overlapping queries re-add the same cells again and again.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           class BruteMatrix {
               private final int[][] A;
               BruteMatrix(int[][] A) { this.A = A; }
@@ -3702,7 +4073,39 @@ cout << P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1] << "\\n"; 
                           s += A[i][j];                 // O(area) per query
                   return s;
               }
-          }`
+          }`, alt: [{ lang: 'python', code: String.raw`
+class NumMatrix:
+    def __init__(self, A):
+        self.A = A
+
+    def sumRegion(self, r1, c1, r2, c2):
+        s = 0
+        for i in range(r1, r2 + 1):
+            for j in range(c1, c2 + 1):
+                s += self.A[i][j]        # O(area) per query
+        return s` }, { lang: 'js', code: String.raw`
+class NumMatrix {
+  constructor(A) { this.A = A; }
+  sumRegion(r1, c1, r2, c2) {
+    let s = 0;
+    for (let i = r1; i <= r2; i++)
+      for (let j = c1; j <= c2; j++)
+        s += this.A[i][j];               // O(area) per query
+    return s;
+  }
+}` }, { lang: 'cpp', code: String.raw`
+class NumMatrix {
+    vector<vector<int>> A;
+public:
+    NumMatrix(vector<vector<int>>& A) : A(A) {}
+    long long sumRegion(int r1, int c1, int r2, int c2) {
+        long long s = 0;
+        for (int i = r1; i <= r2; i++)
+            for (int j = c1; j <= c2; j++)
+                s += A[i][j];            // O(area) per query
+        return s;
+    }
+};` }] }
       },
       mcq: {
         q: `<p>In <code>P[r2+1][c2+1] − P[r1][c2+1] − P[r2+1][c1] + P[r1][c1]</code>, why is the last term <b>added</b>?</p>`,
@@ -3825,7 +4228,7 @@ public:
     example: `${H.arr([1, 2, 3, 4], { label: 'nums' })}${H.arr([1, 3, 6, 10], { label: 'output', hl: { 3: 'g' } })}<p>Each output value is the previous output plus one new number: 1, 1+2 = 3, 3+3 = 6, 6+4 = ${H.c('g', '10')}.</p>`,
     brute: {
       why: `<p>For each i, add nums[0..i] from scratch: 1 + 2 + … + N = O(N<sup>2</sup>) additions. The waste: runningSum[i] already contains everything except nums[i], yet we re-add it.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[] bruteRunningSum(int[] nums) {
             int[] out = new int[nums.length];
             for (int i = 0; i < nums.length; i++) {
@@ -3834,7 +4237,33 @@ public:
                 out[i] = s;
             }
             return out;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def running_sum(nums):
+    out = []
+    for i in range(len(nums)):
+        s = 0
+        for j in range(i + 1):
+            s += nums[j]            # re-adds the whole prefix
+        out.append(s)
+    return out` }, { lang: 'js', code: String.raw`
+function runningSum(nums) {
+  const out = [];
+  for (let i = 0; i < nums.length; i++) {
+    let s = 0;
+    for (let j = 0; j <= i; j++) s += nums[j];   // re-adds the whole prefix
+    out.push(s);
+  }
+  return out;
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> runningSum(vector<int>& nums) {
+    vector<int> out(nums.size());
+    for (int i = 0; i < (int) nums.size(); i++) {
+        int s = 0;
+        for (int j = 0; j <= i; j++) s += nums[j];   // re-adds the whole prefix
+        out[i] = s;
+    }
+    return out;
+}` }] }
     },
     mcq: { q: `<p>runningSum[5] = 40 and nums[6] = −3. What is runningSum[6]?</p>`, options: ['37', '43', '−3', '40'], answer: 0, explain: `<p>runningSum[6] = runningSum[5] + nums[6] = 40 + (−3) = 37. One addition per index.</p>` },
     hints: [
@@ -3899,14 +4328,34 @@ public:
     example: `${H.arr([7, 1, 5, 3, 6, 4], { label: 'prices', hl: { 1: 'g', 4: 'p' } })}<p>Output ${H.c('p', '<b>5</b>')}: buy at ${H.c('g', '1')} (day 1), sell at ${H.c('p', '6')} (day 4). Selling at 7 is not allowed because day 0 comes before the buy. For [7, 6, 4, 3, 1] prices only fall → <b>0</b>.</p>`,
     brute: {
       why: `<p>Try every (buy, sell) pair: N(N−1)/2 ≈ 5 × 10<sup>9</sup> pairs → TLE. The waste: for each sell day only the <b>cheapest earlier price</b> matters, yet we compare against all of them.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteProfit(int[] prices) {
             int best = 0;
             for (int i = 0; i < prices.length; i++)
                 for (int j = i + 1; j < prices.length; j++)
                     best = Math.max(best, prices[j] - prices[i]);   // buy i, sell j
             return best;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def max_profit(prices):
+    best = 0
+    for i in range(len(prices)):
+        for j in range(i + 1, len(prices)):
+            best = max(best, prices[j] - prices[i])    # buy i, sell j
+    return best` }, { lang: 'js', code: String.raw`
+function maxProfit(prices) {
+  let best = 0;
+  for (let i = 0; i < prices.length; i++)
+    for (let j = i + 1; j < prices.length; j++)
+      best = Math.max(best, prices[j] - prices[i]);    // buy i, sell j
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int maxProfit(vector<int>& prices) {
+    int best = 0;
+    for (int i = 0; i < (int) prices.size(); i++)
+        for (int j = i + 1; j < (int) prices.size(); j++)
+            best = max(best, prices[j] - prices[i]);   // buy i, sell j
+    return best;
+}` }] }
     },
     mcq: { q: `<p>Walking left to right, what single number should you carry?</p>`, options: ['The minimum price seen so far', 'The maximum price seen so far', 'The sum of prices so far', 'The index of today'], answer: 0, explain: `<p>Selling today, the best buy is the cheapest earlier day. Carry minSoFar; profit today = price − minSoFar.</p>` },
     hints: [
@@ -3984,14 +4433,36 @@ public:
     example: `${H.table(['', 'c0', 'c1', 'c2'], [['r0', H.c('y', '1'), '2', H.c('b', '3')], ['r1', '4', H.c('p', '5'), '6'], ['r2', H.c('b', '7'), '8', H.c('y', '9')]])}<p>Output <b>25</b> = ${H.c('y', '1 + 9')} + ${H.c('b', '3 + 7')} + ${H.c('p', '5')} (the centre counted once).</p>`,
     brute: {
       why: `<p>Visit all N<sup>2</sup> cells and add those with r == c or r + c == N − 1: O(N<sup>2</sup>). Correct, but it scans N<sup>2</sup> − 2N cells that can never be on a diagonal.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteDiagonal(int[][] mat) {
             int n = mat.length, s = 0;
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
                     if (r == c || r + c == n - 1) s += mat[r][c];   // the || counts the centre once
             return s;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def diagonal_sum(mat):
+    n, s = len(mat), 0
+    for r in range(n):
+        for c in range(n):
+            if r == c or r + c == n - 1:    # the "or" counts the centre once
+                s += mat[r][c]
+    return s` }, { lang: 'js', code: String.raw`
+function diagonalSum(mat) {
+  const n = mat.length;
+  let s = 0;
+  for (let r = 0; r < n; r++)
+    for (let c = 0; c < n; c++)
+      if (r === c || r + c === n - 1) s += mat[r][c];   // the || counts the centre once
+  return s;
+}` }, { lang: 'cpp', code: String.raw`
+int diagonalSum(vector<vector<int>>& mat) {
+    int n = mat.size(), s = 0;
+    for (int r = 0; r < n; r++)
+        for (int c = 0; c < n; c++)
+            if (r == c || r + c == n - 1) s += mat[r][c];   // the || counts the centre once
+    return s;
+}` }] }
     },
     mcq: { q: `<p>Which cells are on the secondary diagonal of an N × N matrix?</p>`, options: ['Cells with r + c = N − 1', 'Cells with r = c', 'Cells with r − c = 1', 'Cells with r + c = N'], answer: 0, explain: `<p>The secondary diagonal goes from (0, N−1) to (N−1, 0); along it the row goes up by 1 while the column goes down by 1, so r + c stays N − 1.</p>` },
     hints: [
@@ -4062,7 +4533,7 @@ public:
     example: `${H.arr([1, 4, 2, 5, 3], { label: 'arr' })}<p>Length 1: 1+4+2+5+3 = 15. Length 3: [1,4,2]=7, [4,2,5]=11, [2,5,3]=10 → 28. Length 5: 15. Total ${H.c('p', '<b>58</b>')}.</p>`,
     brute: {
       why: `<p>Enumerate all odd-length subarrays and add their sums with a running sum: O(N<sup>2</sup>). Fine for N = 100, but for N = 10<sup>5</sup> it is 5 × 10<sup>9</sup>. The waste: each arr[i] is added once per subarray instead of being multiplied by its count.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteOddSum(int[] arr) {
             int total = 0;
             for (int i = 0; i < arr.length; i++) {
@@ -4073,7 +4544,38 @@ public:
                 }
             }
             return total;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def sum_odd_length_subarrays(arr):
+    total = 0
+    for i in range(len(arr)):
+        s = 0
+        for j in range(i, len(arr)):
+            s += arr[j]                          # sum of arr[i..j]
+            if (j - i + 1) % 2 == 1:
+                total += s                       # only odd lengths count
+    return total` }, { lang: 'js', code: String.raw`
+function sumOddLengthSubarrays(arr) {
+  let total = 0;
+  for (let i = 0; i < arr.length; i++) {
+    let s = 0;
+    for (let j = i; j < arr.length; j++) {
+      s += arr[j];                               // sum of arr[i..j]
+      if ((j - i + 1) % 2 === 1) total += s;     // only odd lengths count
+    }
+  }
+  return total;
+}` }, { lang: 'cpp', code: String.raw`
+int sumOddLengthSubarrays(vector<int>& arr) {
+    int total = 0;
+    for (int i = 0; i < (int) arr.size(); i++) {
+        int s = 0;
+        for (int j = i; j < (int) arr.size(); j++) {
+            s += arr[j];                              // sum of arr[i..j]
+            if ((j - i + 1) % 2 == 1) total += s;     // only odd lengths count
+        }
+    }
+    return total;
+}` }] }
     },
     mcq: { q: `<p>Index i has L = i + 1 possible starts and R = N − i possible ends. Roughly what fraction of the L·R subarrays containing i have odd length?</p>`, options: ['About half: ⌈L/2⌉⌈R/2⌉ + ⌊L/2⌋⌊R/2⌋', 'All of them', 'Exactly L', 'None when i is even'], answer: 0, explain: `<p>Length = (left extension) + (right extension) + 1 is odd when both extensions are even or both are odd. Counting those combinations gives ⌈L/2⌉⌈R/2⌉ + ⌊L/2⌋⌊R/2⌋.</p>` },
     hints: [
@@ -4152,7 +4654,7 @@ public:
     example: `${H.arr([1, 2, 3, 4], { label: 'nums' })}${H.arr([24, 12, 8, 6], { label: 'answer', hl: { 2: 'p' } })}<p>answer[2] = ${H.c('b', '1 × 2')} (left of 2) × ${H.c('g', '4')} (right of 2) = ${H.c('p', '8')}. With a zero, e.g. [−1, 1, 0, −3, 3], only index 2 gets a non-zero answer: [0, 0, 9, 0, 0].</p>`,
     brute: {
       why: `<p>For each i multiply all other elements: O(N<sup>2</sup>) = 10<sup>10</sup>. Division (total / nums[i]) is forbidden and breaks on zeros. The waste: the product of everything left of i+1 is just (left of i) × nums[i] — recomputed from scratch.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[] bruteExceptSelf(int[] nums) {
             int n = nums.length;
             int[] out = new int[n];
@@ -4162,7 +4664,37 @@ public:
                 out[i] = p;
             }
             return out;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def product_except_self(nums):
+    n = len(nums)
+    out = [0] * n
+    for i in range(n):
+        p = 1
+        for j in range(n):
+            if j != i:
+                p *= nums[j]
+        out[i] = p
+    return out` }, { lang: 'js', code: String.raw`
+function productExceptSelf(nums) {
+  const n = nums.length;
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let p = 1;
+    for (let j = 0; j < n; j++) if (j !== i) p *= nums[j];
+    out[i] = p;
+  }
+  return out;
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> productExceptSelf(vector<int>& nums) {
+    int n = nums.size();
+    vector<int> out(n);
+    for (int i = 0; i < n; i++) {
+        int p = 1;
+        for (int j = 0; j < n; j++) if (j != i) p *= nums[j];
+        out[i] = p;
+    }
+    return out;
+}` }] }
     },
     mcq: { q: `<p>answer[i] equals…</p>`, options: ['(product of nums[0..i−1]) × (product of nums[i+1..N−1])', 'total product / nums[i]', 'prefix product up to i', 'nums[i−1] × nums[i+1]'], answer: 0, explain: `<p>Everything except i = everything on the left times everything on the right. Prefix and suffix products give both without division, so zeros cause no trouble.</p>` },
     hints: [
@@ -4252,7 +4784,7 @@ public:
     example: `${H.arr([5, -3, 5], { label: 'nums', hl: { 0: 'p', 2: 'p' } })}<p>Output ${H.c('p', '<b>10</b>')}: the wrap-around subarray [5 (last), 5 (first)]. For [1, −2, 3, −2] the answer is 3 (no wrap needed). For [−3, −2, −3] it is −2.</p>`,
     brute: {
       why: `<p>Try every start and every length up to N, walking around the circle: O(N<sup>2</sup>) ≈ 9 × 10<sup>8</sup> → too slow. The waste: a wrapping subarray is just "the whole array minus a normal middle subarray", which one extra Kadane pass finds.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteCircular(int[] nums) {
             int n = nums.length, best = Integer.MIN_VALUE;
             for (int i = 0; i < n; i++) {
@@ -4263,7 +4795,38 @@ public:
                 }
             }
             return best;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def max_subarray_sum_circular(nums):
+    n, best = len(nums), float('-inf')
+    for i in range(n):
+        s = 0
+        for length in range(1, n + 1):
+            s += nums[(i + length - 1) % n]     # walk around the circle
+            best = max(best, s)
+    return best` }, { lang: 'js', code: String.raw`
+function maxSubarraySumCircular(nums) {
+  const n = nums.length;
+  let best = -Infinity;
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    for (let len = 1; len <= n; len++) {
+      s += nums[(i + len - 1) % n];             // walk around the circle
+      best = Math.max(best, s);
+    }
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int maxSubarraySumCircular(vector<int>& nums) {
+    int n = nums.size(), best = INT_MIN;
+    for (int i = 0; i < n; i++) {
+        int s = 0;
+        for (int len = 1; len <= n; len++) {
+            s += nums[(i + len - 1) % n];       // walk around the circle
+            best = max(best, s);
+        }
+    }
+    return best;
+}` }] }
     },
     mcq: { q: `<p>A wrapping subarray (uses both ends) leaves out a contiguous middle part. To maximise the wrap, the left-out middle should be…</p>`, options: ['The minimum-sum subarray', 'The maximum-sum subarray', 'Empty', 'The first element'], answer: 0, explain: `<p>wrap sum = total − (middle sum). Maximising the wrap means minimising the middle — Kadane with min instead of max.</p>` },
     hints: [
@@ -4362,7 +4925,7 @@ public:
     example: `${H.arr([2, 3, -2, 4], { label: 'nums', hl: { 0: 'p', 1: 'p' } })}<p>Output ${H.c('p', '<b>6</b>')} from [2, 3]. For [−2, 3, −4] the answer is <b>24</b> — two negatives multiply into a big positive, so the smallest (most negative) product so far can suddenly become the largest.</p>`,
     brute: {
       why: `<p>All subarrays with a running product: O(N<sup>2</sup>) = 4 × 10<sup>8</sup> — borderline/slow. The waste: the best product ending at i depends only on the best and worst products ending at i − 1.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteMaxProduct(int[] nums) {
             int best = Integer.MIN_VALUE;
             for (int i = 0; i < nums.length; i++) {
@@ -4373,7 +4936,37 @@ public:
                 }
             }
             return best;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def max_product(nums):
+    best = float('-inf')
+    for i in range(len(nums)):
+        p = 1
+        for j in range(i, len(nums)):
+            p *= nums[j]
+            best = max(best, p)
+    return best` }, { lang: 'js', code: String.raw`
+function maxProduct(nums) {
+  let best = -Infinity;
+  for (let i = 0; i < nums.length; i++) {
+    let p = 1;
+    for (let j = i; j < nums.length; j++) {
+      p *= nums[j];
+      best = Math.max(best, p);
+    }
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int maxProduct(vector<int>& nums) {
+    int best = INT_MIN;
+    for (int i = 0; i < (int) nums.size(); i++) {
+        int p = 1;
+        for (int j = i; j < (int) nums.size(); j++) {
+            p *= nums[j];
+            best = max(best, p);
+        }
+    }
+    return best;
+}` }] }
     },
     mcq: { q: `<p>Why must you carry the <b>minimum</b> product ending here, not just the maximum?</p>`, options: ['A negative number turns the minimum into the maximum', 'To handle zeros only', 'To save memory', 'It is not needed'], answer: 0, explain: `<p>min × (negative) can be the new max. E.g. ending at −4 in [−2, 3, −4]: previous min −6 × −4 = 24.</p>` },
     hints: [
@@ -4461,7 +5054,7 @@ public:
     example: `${H.table(['', 'c0', 'c1', 'c2'], [['r0', H.c('y', '1'), H.c('y', '2'), H.c('y', '3')], ['r1', H.c('p', '8'), H.c('r', '9'), H.c('g', '4')], ['r2', H.c('b', '7'), H.c('b', '6'), H.c('g', '5')]])}<p>n = 3: the counter walks ${H.c('y', '→ 1 2 3')}, ${H.c('g', '↓ 4 5')}, ${H.c('b', '← 6 7')}, ${H.c('p', '↑ 8')}, then the centre ${H.c('r', '9')}.</p>`,
     brute: {
       why: `<p>Simulate with direction vectors and check "is the next cell outside or already filled (non-zero)?" before each step. Correct and O(n<sup>2</sup>), but the turning logic is error-prone. The four-wall version states the boundaries explicitly and needs no checks per step.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[][] simulate(int n) {
             int[][] g = new int[n][n];
             int[] dr = {0, 1, 0, -1}, dc = {1, 0, -1, 0};
@@ -4478,7 +5071,53 @@ public:
                 c = nc;
             }
             return g;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def generate_matrix(n):
+    g = [[0] * n for _ in range(n)]
+    dr, dc = [0, 1, 0, -1], [1, 0, -1, 0]
+    r = c = d = 0
+    for v in range(1, n * n + 1):
+        g[r][c] = v
+        nr, nc = r + dr[d], c + dc[d]
+        if nr < 0 or nr >= n or nc < 0 or nc >= n or g[nr][nc] != 0:
+            d = (d + 1) % 4                    # blocked: turn clockwise
+            nr, nc = r + dr[d], c + dc[d]
+        r, c = nr, nc
+    return g` }, { lang: 'js', code: String.raw`
+function generateMatrix(n) {
+  const g = Array.from({ length: n }, () => new Array(n).fill(0));
+  const dr = [0, 1, 0, -1], dc = [1, 0, -1, 0];
+  let r = 0, c = 0, d = 0;
+  for (let v = 1; v <= n * n; v++) {
+    g[r][c] = v;
+    let nr = r + dr[d], nc = c + dc[d];
+    if (nr < 0 || nr >= n || nc < 0 || nc >= n || g[nr][nc] !== 0) {
+      d = (d + 1) % 4;                         // blocked: turn clockwise
+      nr = r + dr[d];
+      nc = c + dc[d];
+    }
+    r = nr;
+    c = nc;
+  }
+  return g;
+}` }, { lang: 'cpp', code: String.raw`
+vector<vector<int>> generateMatrix(int n) {
+    vector<vector<int>> g(n, vector<int>(n, 0));
+    int dr[4] = {0, 1, 0, -1}, dc[4] = {1, 0, -1, 0};
+    int r = 0, c = 0, d = 0;
+    for (int v = 1; v <= n * n; v++) {
+        g[r][c] = v;
+        int nr = r + dr[d], nc = c + dc[d];
+        if (nr < 0 || nr >= n || nc < 0 || nc >= n || g[nr][nc] != 0) {
+            d = (d + 1) % 4;                   // blocked: turn clockwise
+            nr = r + dr[d];
+            nc = c + dc[d];
+        }
+        r = nr;
+        c = nc;
+    }
+    return g;
+}` }] }
     },
     mcq: { q: `<p>For n = 4, which number lands at position (1, 1)?</p>`, options: ['13', '12', '16', '6'], answer: 0, explain: `<p>Outer ring uses 1..12 (12 cells). The inner 2 × 2 ring starts at (1, 1) with 13, then 14 at (1, 2), 15 at (2, 2), 16 at (2, 1).</p>` },
     hints: [
@@ -4581,7 +5220,7 @@ public:
     example: `${H.table(['input', 'output'], [['1 1 1<br>1 ' + H.c('r', '0') + ' 1<br>1 1 1', '1 ' + H.c('r', '0') + ' 1<br>' + H.c('r', '0 0 0') + '<br>1 ' + H.c('r', '0') + ' 1']])}<p>The single 0 at (1, 1) wipes row 1 and column 1. Careful: zeros you <b>write</b> must not trigger more wiping — only the original zeros count.</p>`,
     brute: {
       why: `<p>Copy the matrix and, for each original zero, wipe its row and column in the copy: O(R·C·(R + C)) time and O(R·C) space. The better version remembers only "which rows" and "which columns" — O(R + C) — and the best stores those flags inside the first row and column.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         void bruteZeroes(int[][] m) {
             int R = m.length, C = m[0].length;
             int[][] copy = new int[R][];
@@ -4592,7 +5231,37 @@ public:
                         for (int k = 0; k < C; k++) m[r][k] = 0;
                         for (int k = 0; k < R; k++) m[k][c] = 0;
                     }
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def set_zeroes(m):
+    R, C = len(m), len(m[0])
+    copy = [row[:] for row in m]
+    for r in range(R):
+        for c in range(C):
+            if copy[r][c] == 0:                  # look at ORIGINAL values only
+                for k in range(C):
+                    m[r][k] = 0
+                for k in range(R):
+                    m[k][c] = 0` }, { lang: 'js', code: String.raw`
+function setZeroes(m) {
+  const R = m.length, C = m[0].length;
+  const copy = m.map((row) => row.slice());
+  for (let r = 0; r < R; r++)
+    for (let c = 0; c < C; c++)
+      if (copy[r][c] === 0) {                    // look at ORIGINAL values only
+        for (let k = 0; k < C; k++) m[r][k] = 0;
+        for (let k = 0; k < R; k++) m[k][c] = 0;
+      }
+}` }, { lang: 'cpp', code: String.raw`
+void setZeroes(vector<vector<int>>& m) {
+    int R = m.size(), C = m[0].size();
+    vector<vector<int>> copy = m;
+    for (int r = 0; r < R; r++)
+        for (int c = 0; c < C; c++)
+            if (copy[r][c] == 0) {                       // look at ORIGINAL values only
+                for (int k = 0; k < C; k++) m[r][k] = 0;
+                for (int k = 0; k < R; k++) m[k][c] = 0;
+            }
+}` }] }
     },
     mcq: { q: `<p>Why do we need a separate flag for the first column (or first row) in the O(1)-space solution?</p>`, options: ['Cell (0, 0) cannot mark both row 0 and column 0 at once', 'Arrays start at index 1', 'To handle negative numbers', 'It is only for speed'], answer: 0, explain: `<p>We use row 0 as column markers and column 0 as row markers. The cell (0, 0) is shared by both, so one extra boolean (e.g. col0Zero) keeps the two meanings apart.</p>` },
     hints: [
@@ -4708,7 +5377,7 @@ public:
     example: `${H.table(['', 'c0', 'c1', 'c2', 'c3'], [['r0', '1', H.c('g', '3'), '5', '7'], ['r1', '10', '11', '16', '20'], ['r2', '23', '30', '34', '60']])}<p>target 3 → <b>true</b>; target 13 → <b>false</b>. Read row by row it is one sorted list: 1, 3, 5, 7, 10, 11, …</p>`,
     brute: {
       why: `<p>Staircase search works here too (O(R + C) = 200 steps), and scanning is O(R·C). Both ignore the stronger guarantee: the whole matrix is one sorted list, so binary search over R·C positions needs only ~14 steps.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         boolean staircase(int[][] g, int target) {
             int r = 0, c = g[0].length - 1;
             while (r < g.length && c >= 0) {
@@ -4716,7 +5385,33 @@ public:
                 if (g[r][c] > target) c--; else r++;
             }
             return false;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def search_matrix(g, target):
+    r, c = 0, len(g[0]) - 1
+    while r < len(g) and c >= 0:
+        if g[r][c] == target:
+            return True
+        if g[r][c] > target:
+            c -= 1
+        else:
+            r += 1
+    return False` }, { lang: 'js', code: String.raw`
+function searchMatrix(g, target) {
+  let r = 0, c = g[0].length - 1;
+  while (r < g.length && c >= 0) {
+    if (g[r][c] === target) return true;
+    if (g[r][c] > target) c--; else r++;
+  }
+  return false;
+}` }, { lang: 'cpp', code: String.raw`
+bool searchMatrix(vector<vector<int>>& g, int target) {
+    int r = 0, c = g[0].size() - 1;
+    while (r < (int) g.size() && c >= 0) {
+        if (g[r][c] == target) return true;
+        if (g[r][c] > target) c--; else r++;
+    }
+    return false;
+}` }] }
     },
     mcq: { q: `<p>With C = 4 columns, which cell is flat index 9?</p>`, options: ['(2, 1)', '(1, 2)', '(2, 2)', '(9, 0)'], answer: 0, explain: `<p>row = 9 / 4 = 2, col = 9 % 4 = 1 → (2, 1).</p>` },
     hints: [
@@ -4817,7 +5512,7 @@ public:
     example: `${H.table(['mat', 'c0', 'c1', 'c2'], [['r0', '1', '2', '3'], ['r1', '4', '5', '6'], ['r2', '7', '8', '9']])}<p>k = 1 → answer = [[12, 21, 16], [27, 45, 33], [24, 39, 28]]. answer[0][0] = 1 + 2 + 4 + 5 = 12 (the block is clipped at the border); the centre sees all 9 cells = 45.</p>`,
     brute: {
       why: `<p>For each cell, add up its (2k+1)<sup>2</sup> block: O(R·C·k<sup>2</sup>) = 10<sup>4</sup> × 4 × 10<sup>4</sup> = 4 × 10<sup>8</sup>. The waste: neighbouring blocks overlap almost completely.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[][] bruteBlock(int[][] mat, int k) {
             int R = mat.length, C = mat[0].length;
             int[][] ans = new int[R][C];
@@ -4827,7 +5522,36 @@ public:
                         for (int c = Math.max(0, j - k); c <= Math.min(C - 1, j + k); c++)
                             ans[i][j] += mat[r][c];
             return ans;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def matrix_block_sum(mat, k):
+    R, C = len(mat), len(mat[0])
+    ans = [[0] * C for _ in range(R)]
+    for i in range(R):
+        for j in range(C):
+            for r in range(max(0, i - k), min(R - 1, i + k) + 1):
+                for c in range(max(0, j - k), min(C - 1, j + k) + 1):
+                    ans[i][j] += mat[r][c]
+    return ans` }, { lang: 'js', code: String.raw`
+function matrixBlockSum(mat, k) {
+  const R = mat.length, C = mat[0].length;
+  const ans = Array.from({ length: R }, () => new Array(C).fill(0));
+  for (let i = 0; i < R; i++)
+    for (let j = 0; j < C; j++)
+      for (let r = Math.max(0, i - k); r <= Math.min(R - 1, i + k); r++)
+        for (let c = Math.max(0, j - k); c <= Math.min(C - 1, j + k); c++)
+          ans[i][j] += mat[r][c];
+  return ans;
+}` }, { lang: 'cpp', code: String.raw`
+vector<vector<int>> matrixBlockSum(vector<vector<int>>& mat, int k) {
+    int R = mat.size(), C = mat[0].size();
+    vector<vector<int>> ans(R, vector<int>(C, 0));
+    for (int i = 0; i < R; i++)
+        for (int j = 0; j < C; j++)
+            for (int r = max(0, i - k); r <= min(R - 1, i + k); r++)
+                for (int c = max(0, j - k); c <= min(C - 1, j + k); c++)
+                    ans[i][j] += mat[r][c];
+    return ans;
+}` }] }
     },
     mcq: { q: `<p>For cell (0, 0) with k = 1 in a 3 × 3 matrix, which rectangle do you query?</p>`, options: ['(0, 0)..(1, 1) after clamping', '(−1, −1)..(1, 1)', '(0, 0)..(2, 2)', '(1, 1)..(1, 1)'], answer: 0, explain: `<p>Clamp: r1 = max(0, i − k) = 0, c1 = 0, r2 = min(R − 1, i + k) = 1, c2 = 1. Then one 2D prefix query.</p>` },
     hints: [
@@ -4933,7 +5657,7 @@ public:
     example: `${H.arr([1, 0, 2], { label: 'ratings' })}${H.arr([2, 1, 2], { label: 'candies', hl: { 0: 'g', 2: 'g' } })}<p>Total <b>5</b>. For [1, 2, 2] the answer is <b>4</b> (candies [1, 2, 1]) — equal ratings have no rule between them, so the last child can get just 1.</p>`,
     brute: {
       why: `<p>Start everyone at 1 and keep sweeping, fixing any violated neighbour pair, until a full sweep changes nothing. A strictly decreasing line needs about N sweeps of N steps: O(N<sup>2</sup>) = 4 × 10<sup>8</sup>. The waste: information flows one step per sweep instead of along the whole line in one pass.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int bruteCandy(int[] ratings) {
             int n = ratings.length;
             int[] c = new int[n];
@@ -4949,7 +5673,49 @@ public:
             int sum = 0;
             for (int x : c) sum += x;
             return sum;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def candy(ratings):
+    n = len(ratings)
+    c = [1] * n
+    changed = True
+    while changed:                                   # repeat until stable
+        changed = False
+        for i in range(n):
+            if i > 0 and ratings[i] > ratings[i - 1] and c[i] <= c[i - 1]:
+                c[i] = c[i - 1] + 1
+                changed = True
+            if i < n - 1 and ratings[i] > ratings[i + 1] and c[i] <= c[i + 1]:
+                c[i] = c[i + 1] + 1
+                changed = True
+    return sum(c)` }, { lang: 'js', code: String.raw`
+function candy(ratings) {
+  const n = ratings.length;
+  const c = new Array(n).fill(1);
+  let changed = true;
+  while (changed) {                                  // repeat until stable
+    changed = false;
+    for (let i = 0; i < n; i++) {
+      if (i > 0 && ratings[i] > ratings[i - 1] && c[i] <= c[i - 1]) { c[i] = c[i - 1] + 1; changed = true; }
+      if (i < n - 1 && ratings[i] > ratings[i + 1] && c[i] <= c[i + 1]) { c[i] = c[i + 1] + 1; changed = true; }
+    }
+  }
+  return c.reduce((s, x) => s + x, 0);
+}` }, { lang: 'cpp', code: String.raw`
+int candy(vector<int>& ratings) {
+    int n = ratings.size();
+    vector<int> c(n, 1);
+    bool changed = true;
+    while (changed) {                                // repeat until stable
+        changed = false;
+        for (int i = 0; i < n; i++) {
+            if (i > 0 && ratings[i] > ratings[i - 1] && c[i] <= c[i - 1]) { c[i] = c[i - 1] + 1; changed = true; }
+            if (i < n - 1 && ratings[i] > ratings[i + 1] && c[i] <= c[i + 1]) { c[i] = c[i + 1] + 1; changed = true; }
+        }
+    }
+    int sum = 0;
+    for (int x : c) sum += x;
+    return sum;
+}` }] }
     },
     mcq: { q: `<p>After the left→right pass (only the "left neighbour" rule), how do you enforce the "right neighbour" rule without breaking the first?</p>`, options: ['Right→left pass: c[i] = max(c[i], c[i+1] + 1) when ratings[i] &gt; ratings[i+1]', 'Overwrite c[i] = c[i+1] + 1', 'Sort the ratings', 'Add 1 to every child'], answer: 0, explain: `<p>Taking the max keeps the left rule satisfied (values only grow) while fixing the right rule — exactly like combining prefix max and suffix max.</p>` },
     hints: [
@@ -5037,15 +5803,40 @@ public:
     constraints: `1 ≤ N ≤ 10<sup>5</sup>, −2<sup>31</sup> ≤ nums[i] ≤ 2<sup>31</sup> − 1`,
     example: `${H.arr([3, 4, -1, 1], { label: 'nums' })}<p>Output <b>2</b>: 1 is present, 2 is not. [1, 2, 0] → <b>3</b>. [7, 8, 9, 11, 12] → <b>1</b>. Key fact: the answer is always in 1..N+1, because N numbers can cover at most 1..N.</p>`,
     brute: {
-      why: `<p>Try 1, 2, 3, … and scan the array for each: O(N<sup>2</sup>). A HashSet makes it O(N) time but O(N) space; sorting is O(N log N). The waste: we ignore that the array itself has exactly N slots — one for each candidate answer 1..N.</p>`,
-      code: `
+      why: `<p>Try 1, 2, 3, … and scan the array for each: O(N<sup>2</sup>). A hash set makes it O(N) time but O(N) space; sorting is O(N log N). The waste: we ignore that the array itself has exactly N slots — one for each candidate answer 1..N.</p>`,
+      code: { lang: 'java', code: `
         int bruteMissing(int[] nums) {
             for (int want = 1; ; want++) {
                 boolean found = false;
                 for (int x : nums) if (x == want) { found = true; break; }
                 if (!found) return want;            // at most N + 1 tries, each O(N)
             }
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def first_missing_positive(nums):
+    want = 1
+    while True:
+        found = False
+        for x in nums:
+            if x == want:
+                found = True
+                break
+        if not found:
+            return want            # at most N + 1 tries, each O(N)
+        want += 1` }, { lang: 'js', code: String.raw`
+function firstMissingPositive(nums) {
+  for (let want = 1; ; want++) {
+    let found = false;
+    for (const x of nums) if (x === want) { found = true; break; }
+    if (!found) return want;            // at most N + 1 tries, each O(N)
+  }
+}` }, { lang: 'cpp', code: String.raw`
+int firstMissingPositive(vector<int>& nums) {
+    for (int want = 1; ; want++) {
+        bool found = false;
+        for (int x : nums) if (x == want) { found = true; break; }
+        if (!found) return want;        // at most N + 1 tries, each O(N)
+    }
+}` }] }
     },
     mcq: { q: `<p>Where should the value 3 live after "cyclic placement" in an array of size 5?</p>`, options: ['Index 2', 'Index 3', 'Index 0', 'Nowhere — ignore it'], answer: 0, explain: `<p>Value v belongs at index v − 1. Values outside 1..N (and duplicates) are ignored. Afterwards, the first index i with nums[i] ≠ i + 1 gives the answer i + 1.</p>` },
     hints: [
@@ -5145,7 +5936,7 @@ public:
     example: `${H.table(['', 'c0', 'c1', 'c2', 'c3', 'c4'], [['r0', '1', '2', '−1', '−4', '−20'], ['r1', '−8', H.c('p', '−3'), H.c('p', '4'), H.c('p', '2'), '1'], ['r2', '3', H.c('p', '8'), H.c('p', '10'), H.c('p', '1'), '3'], ['r3', '−4', H.c('p', '−1'), H.c('p', '1'), H.c('p', '7'), '−6']])}<p>Output ${H.c('p', '<b>29</b>')} from rows 1..3, columns 1..3: (−3 + 4 + 2) + (8 + 10 + 1) + (−1 + 1 + 7) = 3 + 19 + 7 = 29.</p>`,
     brute: {
       why: `<p>Try every rectangle (O(R<sup>2</sup>C<sup>2</sup>) ≈ 2.5 × 10<sup>7</sup> for 100 × 100 using a 2D prefix table for O(1) sums) — acceptable here but O(N<sup>4</sup>) in general. Without the prefix table it is O(N<sup>6</sup>). The waste: for a fixed pair of rows, choosing the best column range is just 1D max subarray, which Kadane does in O(C) instead of O(C<sup>2</sup>).</p>`,
-      code: `
+      code: { lang: 'java', code: `
         long bruteRect(int[][] A) {
             int R = A.length, C = A[0].length;
             long[][] P = new long[R + 1][C + 1];
@@ -5159,7 +5950,48 @@ public:
                         for (int c2 = c1; c2 < C; c2++)
                             best = Math.max(best, P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]);
             return best;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def max_sum_rectangle(A):
+    R, C = len(A), len(A[0])
+    P = [[0] * (C + 1) for _ in range(R + 1)]
+    for i in range(R):
+        for j in range(C):
+            P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j]
+    best = float('-inf')
+    for r1 in range(R):
+        for r2 in range(r1, R):
+            for c1 in range(C):
+                for c2 in range(c1, C):
+                    best = max(best, P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1])
+    return best` }, { lang: 'js', code: String.raw`
+function maxSumRectangle(A) {
+  const R = A.length, C = A[0].length;
+  const P = Array.from({ length: R + 1 }, () => new Array(C + 1).fill(0));
+  for (let i = 0; i < R; i++)
+    for (let j = 0; j < C; j++)
+      P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+  let best = -Infinity;
+  for (let r1 = 0; r1 < R; r1++)
+    for (let r2 = r1; r2 < R; r2++)
+      for (let c1 = 0; c1 < C; c1++)
+        for (let c2 = c1; c2 < C; c2++)
+          best = Math.max(best, P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]);
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+long long maxSumRectangle(vector<vector<int>>& A) {
+    int R = A.size(), C = A[0].size();
+    vector<vector<long long>> P(R + 1, vector<long long>(C + 1, 0));
+    for (int i = 0; i < R; i++)
+        for (int j = 0; j < C; j++)
+            P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+    long long best = LLONG_MIN;
+    for (int r1 = 0; r1 < R; r1++)
+        for (int r2 = r1; r2 < R; r2++)
+            for (int c1 = 0; c1 < C; c1++)
+                for (int c2 = c1; c2 < C; c2++)
+                    best = max(best, P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]);
+    return best;
+}` }] }
     },
     mcq: { q: `<p>You fix top row = 1 and bottom row = 3 and add each column's values between them, getting [−9, 4, 15, 10, −2]. What is the best rectangle sum for this row pair?</p>`, options: ['29 (Kadane on the compressed row: 4 + 15 + 10)', '18', '15', '27'], answer: 0, explain: `<p>Each compressed value is a whole column strip. Kadane over [−9, 4, 15, 10, −2] gives 4 + 15 + 10 = 29, i.e. columns 1..3 — the answer above.</p>` },
     hints: [
@@ -5273,7 +6105,7 @@ public:
     example: `${H.arr([1, 2, 1, 2, 6, 7, 5, 1], { label: 'nums', hl: { 0: 'b', 1: 'b', 3: 'g', 4: 'g', 5: 'p', 6: 'p' } })}<p>k = 2 → <b>[0, 3, 5]</b>: windows [1, 2] = 3, [2, 6] = 8, [7, 5] = 12, total 23. [2, 1] at index 1 also sums to 3, but [0, 3, 5] is lexicographically smaller.</p>`,
     brute: {
       why: `<p>Try every triple of start positions a &lt; b &lt; c with gaps ≥ k: O(N<sup>3</sup>) ≈ 8 × 10<sup>12</sup>. The waste: once the middle window b is fixed, the best left window is just "the best window ending before b" — a prefix max — and the best right window is a suffix max.</p>`,
-      code: `
+      code: { lang: 'java', code: `
         int[] bruteThree(int[] nums, int k) {
             int n = nums.length, m = n - k + 1;
             long[] W = new long[m];
@@ -5285,7 +6117,44 @@ public:
                     for (int c = b + k; c < m; c++)
                         if (W[a] + W[b] + W[c] > best) { best = W[a] + W[b] + W[c]; ans = new int[]{a, b, c}; }
             return ans;
-        }`
+        }`, alt: [{ lang: 'python', code: String.raw`
+def max_sum_of_three_subarrays(nums, k):
+    n = len(nums)
+    m = n - k + 1
+    W = [sum(nums[i:i + k]) for i in range(m)]       # window sums, recomputed from scratch
+    best = -1
+    ans = [0, 0, 0]
+    for a in range(m):
+        for b in range(a + k, m):
+            for c in range(b + k, m):
+                if W[a] + W[b] + W[c] > best:
+                    best = W[a] + W[b] + W[c]
+                    ans = [a, b, c]
+    return ans` }, { lang: 'js', code: String.raw`
+function maxSumOfThreeSubarrays(nums, k) {
+  const n = nums.length, m = n - k + 1;
+  const W = new Array(m).fill(0);
+  for (let i = 0; i < m; i++) for (let j = i; j < i + k; j++) W[i] += nums[j];   // window sums, recomputed from scratch
+  let best = -1;
+  let ans = [0, 0, 0];
+  for (let a = 0; a < m; a++)
+    for (let b = a + k; b < m; b++)
+      for (let c = b + k; c < m; c++)
+        if (W[a] + W[b] + W[c] > best) { best = W[a] + W[b] + W[c]; ans = [a, b, c]; }
+  return ans;
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> maxSumOfThreeSubarrays(vector<int>& nums, int k) {
+    int n = nums.size(), m = n - k + 1;
+    vector<long long> W(m, 0);
+    for (int i = 0; i < m; i++) for (int j = i; j < i + k; j++) W[i] += nums[j];   // window sums, recomputed from scratch
+    long long best = -1;
+    vector<int> ans(3, 0);
+    for (int a = 0; a < m; a++)
+        for (int b = a + k; b < m; b++)
+            for (int c = b + k; c < m; c++)
+                if (W[a] + W[b] + W[c] > best) { best = W[a] + W[b] + W[c]; ans = {a, b, c}; }
+    return ans;
+}` }] }
     },
     mcq: { q: `<p>With the middle window starting at j, which windows are allowed on the left?</p>`, options: ['Starts 0..j − k', 'Starts 0..j − 1', 'Starts 0..j', 'Any start'], answer: 0, explain: `<p>The left window must end before j: its start a satisfies a + k − 1 &lt; j, i.e. a ≤ j − k. Similarly the right window starts at ≥ j + k.</p>` },
     hints: [
@@ -5443,14 +6312,14 @@ public:
     { q: `<p>Staircase search in a row- and column-sorted matrix starts at the top-right. The value is smaller than the target. You…</p>`, options: ['Move down (drop this row)', 'Move left (drop this column)', 'Move up', 'Stop: not found'], answer: 0, explain: `<p>Everything to the left in this row is even smaller, so the whole row is useless — move down.</p>` },
     { q: `<p>2D prefix query with padded P for rectangle (r1, c1)..(r2, c2):</p>`, options: ['P[r2+1][c2+1] − P[r1][c2+1] − P[r2+1][c1] + P[r1][c1]', 'P[r2][c2] − P[r1][c1]', 'P[r2+1][c2+1] − P[r1][c1]', 'P[r2+1][c2+1] − P[r1][c2+1] − P[r2+1][c1]'], answer: 0, explain: `<p>Big block minus the top strip minus the left strip plus the corner that was subtracted twice (inclusion–exclusion).</p>` },
     { q: `<p>N = Q = 10<sup>5</sup> range-sum queries on a static array. Which complexity should you aim for?</p>`, options: ['O(N + Q) with prefix sums', 'O(N · Q) with loops', 'O(N<sup>2</sup>)', 'O(Q log Q) by sorting queries'], answer: 0, explain: `<p>N·Q = 10<sup>10</sup> is far above the ~10<sup>8</sup> operations/second budget. One O(N) build plus O(1) per query is about 2 × 10<sup>5</sup> steps.</p>` },
-    { q: `<p>Why store prefix sums of 10<sup>5</sup> values up to 10<sup>9</sup> as 64-bit integers (<code>long[]</code> / <code>long long</code>)?</p>`, options: ['Totals reach 10<sup>14</sup>, beyond int\'s ~2.1 × 10<sup>9</sup>', 'long is faster than int', 'Java requires it for arrays', 'To allow negative numbers'], answer: 0, explain: `<p>int overflows silently (wraps around) at 2<sup>31</sup> − 1 ≈ 2.1 × 10<sup>9</sup>. long holds up to about 9.2 × 10<sup>18</sup>.</p>` }
+    { q: `<p>Why store prefix sums of 10<sup>5</sup> values up to 10<sup>9</sup> as 64-bit integers (<code>long[]</code> / <code>long long</code>)?</p>`, options: ['Totals reach 10<sup>14</sup>, beyond int\'s ~2.1 × 10<sup>9</sup>', 'long is faster than int', 'The language requires it for arrays', 'To allow negative numbers'], answer: 0, explain: `<p>int overflows silently (wraps around) at 2<sup>31</sup> − 1 ≈ 2.1 × 10<sup>9</sup>. long holds up to about 9.2 × 10<sup>18</sup>.</p>` }
   );
 
   // =====================================================================
   // INTERVIEW Q&A
   // =====================================================================
   interview.push(
-    { q: `<p>Why is accessing <code>a[i]</code> O(1), and why is inserting at the front of an array O(N)?</p>`, level: 'B', a: `<p>An array is one contiguous block of equal-sized slots, so the address of slot i is <code>base + i × size</code> — one multiply and one add, regardless of i. That is O(1) random access. Inserting at the front means every existing element must shift one slot right to make room, which touches all N elements: O(N). Appending at the end of a dynamic array (ArrayList / list / Array / vector) is O(1) amortized because capacity doubles when full, so the total copying over N appends is at most about 2N.</p>`, followUps: ['What is amortized analysis?', 'How does a 2D array of row arrays (Java, Python, JS) differ from a C/C++ built-in 2D array in memory?', 'When would you choose a LinkedList over an ArrayList?'] },
+    { q: `<p>Why is accessing <code>a[i]</code> O(1), and why is inserting at the front of an array O(N)?</p>`, level: 'B', a: `<p>An array is one contiguous block of equal-sized slots, so the address of slot i is <code>base + i × size</code> — one multiply and one add, regardless of i. That is O(1) random access. Inserting at the front means every existing element must shift one slot right to make room, which touches all N elements: O(N). Appending at the end of a dynamic array (ArrayList / list / Array / vector) is O(1) amortized because capacity doubles when full, so the total copying over N appends is at most about 2N.</p>`, followUps: ['What is amortized analysis?', 'How does a 2D array of row arrays (Java, Python, JS) differ from a C/C++ built-in 2D array in memory?', 'When would you choose a linked list over a dynamic array (LinkedList vs ArrayList, list vs deque)?'] },
     { q: `<p>Explain prefix sums to a non-programmer and state the formula for a range sum.</p>`, level: 'B', a: `<p>It is a running scoreboard: after each item, write down the total so far. To get the total of items L through R, take the scoreboard reading at R and subtract the reading just before L — no re-adding. With a padded array P (P[0] = 0, P[i+1] = P[i] + A[i]), <code>sum(L..R) = P[R+1] − P[L]</code>. Building takes O(N) once; every query is O(1). I always mention <code>long</code> for overflow, and that it only works when the array does not change — otherwise I would use a Fenwick tree.</p>`, followUps: ['How would you support point updates?', 'What is a difference array?', 'Does it work with negative numbers?'] },
     { q: `<p>Walk me through Kadane's algorithm and prove it is correct.</p>`, level: 'I', a: `<p>Let cur be the best sum of a subarray ending exactly at i. Any such subarray is either just A[i] or extends a subarray ending at i − 1, and among those the best one to extend is the one with sum cur(i−1). So <code>cur(i) = max(A[i], cur(i−1) + A[i])</code>, and the answer is the max of cur over all i, because the optimal subarray ends somewhere. It is DP with a one-variable state: O(N) time, O(1) space. Initialise best with A[0], not 0, to handle all-negative arrays. To return indices, remember where the current run started whenever I restart, and record (start, i) whenever best improves.</p>`, followUps: ['How do you handle a circular array?', 'What changes for maximum product?', 'How would you find the max-sum rectangle in a matrix?'] },
     { q: `<p>How does the contribution technique compute the sum of all subarray sums in O(N)?</p>`, level: 'I', a: `<p>Instead of iterating over the ~N<sup>2</sup>/2 subarrays, I swap the order of summation: each A[i] is added once for every subarray that contains it. A subarray containing i starts at any of the i + 1 positions 0..i and ends at any of the N − i positions i..N−1, so it appears in (i+1)(N−i) subarrays. The answer is Σ A[i]·(i+1)(N−i), one pass. I cast to long before multiplying, since (N/2)<sup>2</sup>·10<sup>9</sup> can approach 10<sup>18</sup>, and apply mod per factor if the problem asks for it.</p>`, followUps: ['Sum over only odd-length subarrays?', 'Sum of subarray minimums?', 'What is the 2D version for submatrices?'] },
@@ -5460,7 +6329,7 @@ public:
     { q: `<p>Explain the spiral traversal and the most common bug.</p>`, level: 'B', a: `<p>I keep four walls — top, bottom, left, right — describing the unvisited rectangle. Each lap walks right along top (then top++), down along right (right−−), left along bottom (bottom−−), and up along left (left++), looping while top ≤ bottom and left ≤ right. The classic bug is when the middle shrinks to a single row or column: the ← walk would re-read the row and the ↑ walk would re-read the column. The fix is to guard the ← walk with <code>if (top ≤ bottom)</code> and the ↑ walk with <code>if (left ≤ right)</code>. I always test 1 × N, N × 1 and 3 × 4.</p>`, followUps: ['Generate the spiral matrix for n.', 'Spiral outward from a given cell.', 'What is the extra space?'] },
     { q: `<p>A matrix has sorted rows and sorted columns. How do you search it, and how does it differ from LeetCode 74?</p>`, level: 'I', a: `<p>Start at the top-right corner where left is smaller and down is bigger. If the value equals the target, done; if it is bigger, the whole column below is bigger too, so move left; if smaller, the whole row to the left is smaller, so move down. Each step eliminates a row or column, so at most R + C − 1 steps: O(R + C). In LeetCode 74 each row starts after the previous row ends, so the matrix is one sorted list in row-major order; then I binary-search the flat index range 0..R·C−1 mapping mid to (mid / C, mid % C), O(log RC). Flat binary search is wrong for the row-column-sorted version because the flattened order is not sorted.</p>`, followUps: ['Find the k-th smallest element in such a matrix.', 'Count negatives in a sorted matrix.', 'Why not start at the top-left?'] },
     { q: `<p>Derive the 2D prefix sum build and query formulas.</p>`, level: 'I', a: `<p>Let P be (R+1) × (C+1) with a zero first row and column, P[i][j] = sum of A[0..i−1][0..j−1]. To build P[i+1][j+1], add A[i][j] to the block above (P[i][j+1]) and the block to the left (P[i+1][j]); the top-left block P[i][j] is in both, so subtract it once. For a query (r1, c1)..(r2, c2): take the big block P[r2+1][c2+1], subtract the strip above (P[r1][c2+1]) and the strip to the left (P[r2+1][c1]), and add back the corner P[r1][c1], which was subtracted twice. Build O(R·C), query O(1). It is inclusion–exclusion; in 3D it uses 8 terms.</p>`, followUps: ['How would you support updates? (2D Fenwick tree)', 'Find the max-sum K × K square.', 'What is an integral image?'] },
-    { q: `<p>Find the maximum-sum submatrix of an R × C matrix efficiently.</p>`, level: 'A', a: `<p>Brute force over all rectangles with a 2D prefix table is O(R<sup>2</sup>C<sup>2</sup>). Better: fix a top row, then extend a bottom row one at a time while maintaining an array col[c] = sum of column c between top and bottom (just add the new row). For each (top, bottom) pair, the best rectangle is the max subarray of col, which Kadane finds in O(C). Total O(R<sup>2</sup>·C), space O(C). If R &gt; C, I transpose first so the squared factor is the smaller dimension. With a "sum ≤ K" constraint I would replace Kadane with prefix sums plus a TreeSet ceiling lookup, O(R<sup>2</sup>·C log C).</p>`, followUps: ['Count submatrices with sum equal to target.', 'Return the rectangle coordinates.', 'What if the matrix is 10 × 10<sup>5</sup>?'] },
+    { q: `<p>Find the maximum-sum submatrix of an R × C matrix efficiently.</p>`, level: 'A', a: `<p>Brute force over all rectangles with a 2D prefix table is O(R<sup>2</sup>C<sup>2</sup>). Better: fix a top row, then extend a bottom row one at a time while maintaining an array col[c] = sum of column c between top and bottom (just add the new row). For each (top, bottom) pair, the best rectangle is the max subarray of col, which Kadane finds in O(C). Total O(R<sup>2</sup>·C), space O(C). If R &gt; C, I transpose first so the squared factor is the smaller dimension. With a "sum ≤ K" constraint I would replace Kadane with prefix sums plus an ordered-set ceiling lookup (Java TreeSet, C++ std::set lower_bound, Python sortedcontainers), O(R<sup>2</sup>·C log C).</p>`, followUps: ['Count submatrices with sum equal to target.', 'Return the rectangle coordinates.', 'What if the matrix is 10 × 10<sup>5</sup>?'] },
     { q: `<p>How would you handle many range updates followed by queries, without a segment tree?</p>`, level: 'A', a: `<p>If all updates come before the reads, I use a difference array. To add v to A[L..R], do D[L] += v and D[R+1] −= v; each update is O(1). After all updates, one prefix-sum pass over D rebuilds the final array in O(N), and then a second prefix pass gives O(1) range-sum queries. In 2D, each rectangle update touches four corners of D and a 2D prefix sum rebuilds the grid. If updates and queries are interleaved, the difference array no longer works and I would move to a Fenwick tree with range-update/range-query (two BITs) or a lazy segment tree.</p>`, followUps: ['Car pooling / corporate flight bookings.', 'Range update + point query with a BIT.', 'What if values must be taken modulo M?'] },
     { q: `<p>Find the first missing positive integer in O(N) time and O(1) space.</p>`, level: 'A', a: `<p>The answer must lie in 1..N+1 because N numbers can cover at most 1..N. So the array's own N slots can act as a presence table: value v belongs at index v − 1. For each i, while nums[i] is in 1..N and nums[nums[i] − 1] ≠ nums[i], swap it to its home. The duplicate check avoids infinite loops, and since each swap places a value permanently, total swaps ≤ N, giving O(N). Then the first index i with nums[i] ≠ i + 1 gives the answer i + 1; if all match, the answer is N + 1. An alternative marks presence by negating nums[v − 1] after replacing non-positives with N + 1.</p>`, followUps: ['Find all disappeared numbers.', 'Find the duplicate and missing number.', 'Why is the loop O(N) despite the inner while?'] },
     { q: `<p>An AI assistant gave you a prefix-sum solution that passes the samples. How do you review it before trusting it?</p>`, level: 'E', a: `<p>First I check the constraints-to-complexity fit: build once in O(N), O(1) per query. Then the index convention: padded P[R+1] − P[L] versus unpadded pf[R] − pf[L−1] — generated code often mixes them and silently drops A[L] or crashes at L = 0. I check types (long for totals, + MOD before % MOD), that the array is truly static, and edge cases N = 1, L = R, L = 0, all negatives. Finally I write a tiny brute-force oracle and a randomized stress test comparing both on thousands of small inputs — the fastest way to catch off-by-one bugs that samples miss. I treat AI output as a draft from a fast junior engineer: useful, but I own correctness.</p>`, followUps: ['How would you write the stress test?', 'What would make you switch to a Fenwick tree?', 'Which bugs do LLMs most often introduce in matrix code?'] }

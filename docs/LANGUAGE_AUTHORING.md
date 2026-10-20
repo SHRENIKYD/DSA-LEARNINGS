@@ -33,6 +33,14 @@ Goal: a learner who picks **Java, Python, JavaScript/TypeScript or C++** can fin
      - `{ $concat: [[5, 6], { $rep: -1, n: 70000 }, { $range: [10, 0, -2] }] }` joins parts; strings join the same way.
      Each language builds the value at run time. A `check` function receives the expanded arguments.
      Generated values also work for `ListNode` arguments (the list is built from the generated numbers).
+     They **nest**:
+     - a 300 × 100 grid is `{ $rep: { $range: [0, 100] }, n: 300 }`;
+     - a generated row can sit inside a literal grid: `[[1, 2], { $range: [0, 3] }]`;
+     - `$concat` parts may themselves be generated.
+   - **Big design tests:**
+     - In a design case, `ops`, `args` and `out` may be generated values, for example `ops: { $concat: [['MinStack'], { $rep: 'push', n: 5000 }, ['getMin']] }`, with `args` and `out` built the same way.
+     - Write string operations as `$rep` or as arrays, not as bare strings inside `$concat`.
+     - Java runs each case, and each block of 200 operations, in its own method, so a case can have thousands of operations.
    - **Inputs the format cannot describe** (a cycle, nodes shared between two lists, random pointers, a graph of objects): put a small builder in `tests.harness`, one per language, and point `fn` at it. The builder makes the input the way the judge would, calls the real solution and returns something comparable. It is test-only code and never appears in the learner's solution.
      ```js
      tests: { sig: 'int[] int -> bool', fn: 'cyc', harness: {
@@ -132,9 +140,95 @@ tests: { io: true, cases: [{ stdin: '', stdout: 'circle 12.57\nsquare 9.00\n...'
   - Write the expected stdout by hand from the design's logic, then compare it with the Java run.
   - Extend short demos so they also print failure paths, such as a rejected payment or an unknown item.
   - The Java set-up already imports `java.util.*`, `java.util.function.*`, `java.util.stream.*`, `java.util.concurrent.*` (with `atomic` and `locks`), `java.time.*`, `java.math.*` and `java.io.*`.
-  - The main class is the last class declared before `main`. Comments and strings are ignored when finding it.
+  - The main class is the innermost class that contains `main`. Comments and strings are ignored when finding it.
   - Program mode does not type-check TypeScript. Type-check it yourself with `npx tsc --strict --noEmit --target es2022 --lib es2022`, and avoid class names that clash with DOM types (for example `Location`) or with C++ keywords (`delete`, `new`, `default`).
   - Python abstract methods may use `...` as their body.
+
+## Language-track modules (Java, Python, JS/TS, C++)
+
+These tracks teach one language, so a problem is tested **only in that language**. Do not add other-language alternatives.
+
+- **Required language:**
+  - `java*`: `--require java`.
+  - `py*`: `--require python`.
+  - `js*`: `--require js`, except for the TypeScript modules, which use `--require ts`.
+  - `cpp*`: `--require cpp`.
+- **Existing alternatives:** an existing alternative in another language (for example the Python versions in some Java modules) must pass the same tests. Fix it if it fails.
+- **Choose the mode that tests what the problem teaches:**
+  - **Function mode** for a function or method.
+  - **Design mode** for a class with methods.
+  - **Program mode** (`io`) when the solution is a whole program with `main`, or the point is what it prints.
+  - A `check` function when many outputs are valid.
+- **Language-feature problems** (generics, iterators, decorators, closures, move semantics, async):
+  - Test the observable behaviour: return values, printed output, or exceptions caught and reported as values.
+  - Tests may call the feature through a small `tests.harness` builder, as in the DSA modules. For example, the builder calls a decorated function three times and returns the call count.
+- **TypeScript type-level answers** (utility types, conditional and mapped types, `.d.ts` declarations) are tested with `tests: { types: [...] }`. Each entry is compiled with the solution under `--strict`, and every entry must type-check.
+  - Positive checks use `Expect<Equal<...>>`, for example `'type _1 = Expect<Equal<First<[3, 2]>, 3>>'`. `Equal` and `Expect` are provided.
+  - Negative checks use `'// @ts-expect-error\nconst bad: PartialBy<User, "id"> = {}'`. An unused `@ts-expect-error` is an error, so a too-loose type also fails.
+  - Give at least 6 entries, mixing positive and negative checks.
+- **Which implementation runs:** the main solution is always tested, even with `check: false`; for a main solution, that flag only tells the validator it cannot compile it, as with PostgreSQL-only SQL. An alternative marked `check: false` is illustrative and is not run, for example a MongoDB pipeline. To test an alternative instead of the main solution, set `tests.alt: k` to the alternative's index. An example is the pure-Python version when the main one needs NumPy.
+- **C++ programs with their own `main`:** function and design tests rename the lesson's `int main(` to `lesson_main__`. A whole demo program can therefore still be tested function by function with many cases. Use program mode only when the point is what `main` prints.
+- **Concurrency, time and randomness:** make the result deterministic.
+  - Join every thread before checking.
+  - Check invariants such as totals, counts and ordering guarantees, not interleavings.
+  - Seed random generators, or check properties of the result.
+  - Never sleep to "wait long enough".
+- **When to use `skip`:** only when the answer cannot run in a plain process. Examples:
+  - a browser DOM or a real network;
+  - a GUI;
+  - a build tool or an external service;
+  - output that is an explanation.
+
+  Give the specific reason, for example `{ skip: 'needs a browser DOM (document.querySelector)' }`.
+- **Cases and expected values:**
+  - Use at least 6 cases, including the boundary cases listed above.
+  - Expected values are worked out independently, never copied from the solution under test.
+- **Fixes:** a wrong solution, statement or example is fixed and recorded, exactly as for DSA.
+- **Done means:**
+
+  ```
+  node tools/validate.js content/<track>/<id>.js --code                 # PASSED
+  node tools/solution-check.js content/<track>/<id>.js --require <lang>   # 0 failing
+  ```
+
+## SQL modules
+
+SQL solutions run on the **same sql.js (SQLite) build the site uses**, against the module's lab database: `solution.code.db`, whose schema is in `databases[db]`. They can also run on PostgreSQL 16 in a throwaway cluster.
+
+```js
+tests: { cmp: 'exact', engine: 'sqlite', cases: [
+  { cols: ['name', 'price'], rows: [['Running_Shoes', 4999], ['Mechanical Keyboard', 3499]] },
+  { setup: "UPDATE products SET price = NULL WHERE id = 3", rows: [...] },        // change the data first
+  { after: "SELECT COUNT(*) FROM orders WHERE status = 'paid'", rows: [[42]] },   // check state after DML/DDL
+  { after: "INSERT INTO passport VALUES (1, 'P-2')", error: 'UNIQUE|duplicate' }    // a constraint must reject this
+] }
+```
+
+- **What runs, in order:**
+  1. the schema;
+  2. the case's `setup`;
+  3. the solution;
+  4. the case's `after`, if there is one.
+- **What is compared:** the last result set, from `after` when it is given, otherwise from the solution.
+  - `result: k` picks an earlier result set instead (0 is the first, -1 the last). Only statements that return at least one row count, as in the site's SQL runner.
+  - `rows` are compared in order with `cmp: 'exact'` (the default). Use exact whenever the statement asks for an order.
+  - Use `cmp: 'set'` when it does not.
+  - `cols` is optional and case-insensitive.
+  - Numbers allow a 1e-6 relative difference.
+  - Booleans match 1/0 (SQLite) and t/f (PostgreSQL).
+- **Expected errors:** `error` is a case-insensitive regex that the error message must match. It works for both engines, for example `'UNIQUE|duplicate key'`.
+- **Engines:**
+  - `engine: 'both'` runs SQLite and PostgreSQL. Use it when the statement promises the same answer on both.
+  - `engine: 'postgres'` is for PostgreSQL-only features, such as `FOR UPDATE SKIP LOCKED`, `DISTINCT ON`, `LATERAL` or `jsonb`.
+  - PostgreSQL loads the same schema with SQLite `PRAGMA` lines removed. Use `tests.pg` if the schema still does not load there.
+- **No database:** problems with no `db` (schema design, normalisation) start from an empty database. Test them with `after` queries:
+  - valid rows are accepted;
+  - invalid rows fail with `error`;
+  - the expected tables and columns exist (for example `SELECT name FROM pragma_table_info('t')`).
+- **Expected rows** come from the data and the statement, worked out independently. You may check them with a different query of your own, never with the solution.
+- **`check`:** `'(rows, cols, c) => boolean'` is available for answers with many valid forms, such as a query plan that must mention `USING INDEX`.
+- **Required language:** `--require sql`. A problem whose solution is not SQL (Python, JSON or text) is tested in its own language if it is code. Otherwise it is skipped with the reason.
+- **Concurrency:** a problem that needs two concurrent sessions (deadlocks, isolation anomalies) cannot be checked by one script. Skip it with that reason, unless a single-session check proves the point.
 
 ## Commands
 

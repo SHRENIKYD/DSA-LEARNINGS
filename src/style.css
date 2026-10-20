@@ -786,6 +786,13 @@ svg.cp-ic{width:34px;height:34px;color:var(--gold)}
 .rp-proj b{display:block;font-family:var(--f-head);font-size:17px;margin:2px 0}
 .rp-proj p{margin:4px 0;font-size:14.5px}
 .rp-proj ul{margin:6px 0 0;padding-left:18px;font-size:14px}
+.rp-stat{margin:6px 0 0;font-size:13.5px;color:var(--muted)}.rp-stat.ok{color:var(--gold);font-weight:700}
+.rp-proj.done{border-color:var(--green)}
+.rp-chk{border:0;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.rp-chk legend{padding:0;font-size:13px;font-weight:700;color:var(--muted);margin-bottom:4px}
+.rp-chk label{display:flex;gap:10px;align-items:flex-start;padding:8px 4px;min-height:44px;font-size:14.5px;cursor:pointer;border-radius:10px}
+.rp-chk input{width:22px;height:22px;flex:none;margin:1px 0 0;accent-color:var(--gold);cursor:pointer}
+.rp-chk input:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 .rp-ext{display:flex;flex-wrap:wrap;gap:8px}
 .rp-x{display:flex;flex-direction:column;padding:8px 12px;border-radius:12px;border:1px solid var(--border2);background:var(--bg);color:var(--text);text-decoration:none;font-size:14px}
 .rp-x small{font-family:var(--f-mono);color:var(--muted)}

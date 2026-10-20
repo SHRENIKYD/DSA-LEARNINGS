@@ -284,6 +284,60 @@ console.log(findOwnerBrute(dog, 'toString'));     // null  WRONG: toString is no
         `<p>Hint 2: at each node ask an <b>own-only</b> question that sees non-enumerable and symbol keys: <code>Object.hasOwn(o, key)</code> (or <code>Object.getOwnPropertyDescriptor(o, key) !== undefined</code>).</p>`,
         `<p>Hint 3: recipe — <code>o = obj, depth = 0</code>; while <code>o !== null</code>: if own → return; else <code>o = getPrototypeOf(o)</code>, <code>depth++</code>. After the loop return null. Primitives: wrap with <code>Object(obj)</code> first.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'fo', harness: { js: `function fo(kind) {
+  class Animal { eat() {} }
+  Animal.prototype.legs = 2;
+  class Dog extends Animal { bark() {} }
+  Dog.prototype.legs = 4;
+  const rex = new Dog(); rex.name = 'Rex';
+  const sym = Symbol('tag'); Animal.prototype[sym] = 'animal';
+  const labels = new Map([[rex, 'rex'], [Dog.prototype, 'Dog.prototype'], [Animal.prototype, 'Animal.prototype'], [Object.prototype, 'Object.prototype'], [String.prototype, 'String.prototype'],
+    [Number.prototype, 'Number.prototype'], [Array.prototype, 'Array.prototype'], [Function.prototype, 'Function.prototype']]);
+  const show = (r) => (r === null ? null : { owner: labels.get(r.owner) || 'other', depth: r.depth });
+  switch (kind) {
+    case 'legs': return show(findOwner(rex, 'legs'));
+    case 'eat': return show(findOwner(rex, 'eat'));
+    case 'toString': return show(findOwner(rex, 'toString'));
+    case 'fly': return show(findOwner(rex, 'fly'));
+    case 'own': return show(findOwner(rex, 'name'));
+    case 'symbol': return show(findOwner(rex, sym));
+    case 'null-proto-missing': return show(findOwner(Object.create(null), 'x'));
+    case 'null-proto-own': { const o = Object.create(null); o.x = 1; const r = findOwner(o, 'x'); return { sameObj: r.owner === o, depth: r.depth }; }
+    case 'string': return show(findOwner('abc', 'toUpperCase'));
+    case 'number': return show(findOwner(5, 'toFixed'));
+    case 'array-push': return show(findOwner([], 'push'));
+    case 'array-length': { const a = []; const r = findOwner(a, 'length'); return { own: r.owner === a, depth: r.depth }; }
+    case 'function-call': return show(findOwner(function () {}, 'call'));
+    case 'non-enumerable': { const o = {}; Object.defineProperty(o, 'hidden', { value: 1, enumerable: false }); const r = findOwner(o, 'hidden'); return { own: r.owner === o, depth: r.depth }; }
+    case 'null-undefined': return [findOwner(null, 'x'), findOwner(undefined, 'x')];
+    case 'chain-100': { let o = { deep: 1 }; const root = o; for (let i = 0; i < 99; i++) o = Object.create(o); const r = findOwner(o, 'deep'); return { atRoot: r.owner === root, depth: r.depth }; }
+    case 'getter-not-run': { let ran = 0; const base = { get g() { ran++; return 1; } }; const o = Object.create(base); const r = findOwner(o, 'g'); return { depth: r.depth, ran }; }
+    case 'shadow-first-wins': { const a = { v: 'a' }, b = Object.create(a); b.v = 'b'; const c = Object.create(b); const r = findOwner(c, 'v'); return { isB: r.owner === b, depth: r.depth }; }
+    case 'undefined-valued': { const o = { u: undefined }; const r = findOwner(o, 'u'); return { own: r.owner === o, depth: r.depth }; }
+    case 'numeric-key': { const o = Object.create({ 7: 'x' }); const r = findOwner(o, 7); return r.depth; }
+  }
+}` }, cases: [
+        [["legs"],{"owner":"Dog.prototype","depth":1}],
+        [["eat"],{"owner":"Animal.prototype","depth":2}],
+        [["toString"],{"owner":"Object.prototype","depth":3}],
+        [["fly"],null],
+        [["own"],{"owner":"rex","depth":0}],
+        [["symbol"],{"owner":"Animal.prototype","depth":2}],
+        [["null-proto-missing"],null],
+        [["null-proto-own"],{"sameObj":true,"depth":0}],
+        [["string"],{"owner":"String.prototype","depth":1}],
+        [["number"],{"owner":"Number.prototype","depth":1}],
+        [["array-push"],{"owner":"Array.prototype","depth":1}],
+        [["array-length"],{"own":true,"depth":0}],
+        [["function-call"],{"owner":"Function.prototype","depth":1}],
+        [["non-enumerable"],{"own":true,"depth":0}],
+        [["null-undefined"],[null,null]],
+        [["chain-100"],{"atRoot":true,"depth":99}],
+        [["getter-not-run"],{"depth":1,"ran":0}],
+        [["shadow-first-wins"],{"isB":true,"depth":1}],
+        [["undefined-valued"],{"own":true,"depth":0}],
+        [["numeric-key"],1]
+      ] },
       solution: {
         approach: `<p>Walk the linked list of prototypes with <code>Object.getPrototypeOf</code>, asking <code>Object.hasOwn</code> at each node. The first hit is the owner (that is precisely the object a normal property read would use). <code>Object(obj)</code> lets primitives like <code>'abc'</code> work too.</p>`,
         code: { lang: 'js', run: true, code: `function findOwner(obj, key) {
@@ -571,6 +625,58 @@ console.log(describeChainBrute(Object.create({ a: 1 })));
         `<p>Hint 2: read the constructor <b>only if it is own</b>: <code>Object.getOwnPropertyDescriptor(p, 'constructor')</code>. Then trust it only if <code>typeof C === 'function' &amp;&amp; C.prototype === p</code>.</p>`,
         `<p>Hint 3: edge cases — <code>null/undefined</code> input → <code>"null"</code>; anonymous classes have <code>name === ''</code> → print <code>[object]</code>; null-prototype objects end immediately. Join with <code>' -&gt; '</code> and append <code>'null'</code>.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'dch', harness: { js: `function dch(kind) {
+  class Animal {} class Dog extends Animal {}
+  switch (kind) {
+    case 'dog': return describeChain(new Dog());
+    case 'literal-child': return describeChain(Object.create({ a: 1 }));
+    case 'array': return describeChain([1, 2]);
+    case 'class-object': return describeChain(Dog);
+    case 'string': return describeChain('hi');
+    case 'null-proto': return describeChain(Object.create(null));
+    case 'null': return describeChain(null);
+    case 'undefined': return describeChain(undefined);
+    case 'number': return describeChain(5);
+    case 'liar': return describeChain(Object.create({ constructor: Dog }));
+    case 'missing-ctor': return describeChain(Object.create(Object.create(null)));
+    case 'instance-as-proto': return describeChain(Object.create(new Dog()));
+    case 'function': return describeChain(function () {});
+    case 'anon-class': return describeChain(new (class {})());
+    case 'chain-50': { let o = {}; for (let i = 0; i < 49; i++) o = Object.create(o); return describeChain(o); }
+    case 'symbol': return describeChain(Symbol('s'));
+    case 'date': return describeChain(new Date(0));
+    case 'type-error': return describeChain(new TypeError('x'));
+    case 'map': return describeChain(new Map());
+    case 'bigint': return describeChain(5n);
+    case 'boolean': return describeChain(true);
+    case 'plain': return describeChain({});
+    case 'proto-itself': return describeChain(Dog.prototype);
+  }
+}` }, cases: [
+        [["dog"],"Dog.prototype -> Animal.prototype -> Object.prototype -> null"],
+        [["literal-child"],"[object] -> Object.prototype -> null"],
+        [["array"],"Array.prototype -> Object.prototype -> null"],
+        [["class-object"],"[object] -> Function.prototype -> Object.prototype -> null"],
+        [["string"],"String.prototype -> Object.prototype -> null"],
+        [["null-proto"],"null"],
+        [["null"],"null"],
+        [["undefined"],"null"],
+        [["number"],"Number.prototype -> Object.prototype -> null"],
+        [["liar"],"[object] -> Object.prototype -> null"],
+        [["missing-ctor"],"[object] -> null"],
+        [["instance-as-proto"],"[object] -> Dog.prototype -> Animal.prototype -> Object.prototype -> null"],
+        [["function"],"Function.prototype -> Object.prototype -> null"],
+        [["anon-class"],"[object] -> Object.prototype -> null"],
+        [["chain-50"],"[object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> [object] -> Object.prototype -> null"],
+        [["symbol"],"Symbol.prototype -> Object.prototype -> null"],
+        [["date"],"Date.prototype -> Object.prototype -> null"],
+        [["type-error"],"TypeError.prototype -> Error.prototype -> Object.prototype -> null"],
+        [["map"],"Map.prototype -> Object.prototype -> null"],
+        [["bigint"],"BigInt.prototype -> Object.prototype -> null"],
+        [["boolean"],"Boolean.prototype -> Object.prototype -> null"],
+        [["plain"],"Object.prototype -> null"],
+        [["proto-itself"],"Animal.prototype -> Object.prototype -> null"]
+      ] },
       solution: {
         approach: `<p>Walk the chain. For each prototype, look at its <b>own</b> <code>constructor</code> descriptor (a data property, not a getter, so we do not run user code), and accept the name only if the function's <code>prototype</code> points back to this exact object — the triangle must close. This turns the unreliable <code>constructor</code> convention into a verified fact.</p>`,
         code: { lang: 'js', run: true, code: `function nameOf(p) {
@@ -834,6 +940,46 @@ console.log(base.isPrototypeOf(o));      // false` }
         `<p>Hint 2: for an object proto, use the temp-constructor trick (<code>F.prototype = proto; new F()</code>). For <code>null</code>, start from <code>{}</code> and call <code>Object.setPrototypeOf(obj, null)</code> (or use the literal <code>{ __proto__: null }</code>).</p>`,
         `<p>Hint 3: finally, if <code>propertiesObject !== undefined</code>, call <code>Object.defineProperties(obj, propertiesObject)</code> — it applies false-by-default flags exactly like the real thing. Return <code>obj</code>.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'oc', harness: { js: `function oc(kind) {
+  const base = { hi() { return 'hi'; } };
+  const err = (f) => { try { f(); return 'no error'; } catch (e) { return e.name; } };
+  switch (kind) {
+    case 'basic': { const o = objectCreate(base, { x: { value: 1, enumerable: true } }); return [o.hi(), Object.keys(o), Object.getPrototypeOf(o) === base, Object.getOwnPropertyNames(o)]; }
+    case 'null': { const n = objectCreate(null); return [Object.getPrototypeOf(n), 'toString' in n, Object.getOwnPropertyNames(n).length]; }
+    case 'bad-protos': return [5, 'str', undefined, true, Symbol('s'), 1n].map((v) => err(() => objectCreate(v)));
+    case 'function-proto': { function f() {} const o = objectCreate(f); return [Object.getPrototypeOf(o) === f, typeof o.call, Object.getOwnPropertyNames(o).length]; }
+    case 'descriptor-defaults': { const o = objectCreate({}, { x: { value: 1 } }); return Object.getOwnPropertyDescriptor(o, 'x'); }
+    case 'accessor': { let store = 3; const o = objectCreate({}, { v: { get() { return store; }, set(n) { store = n; }, enumerable: true } }); o.v = 9; return [o.v, store, Object.keys(o)]; }
+    case 'null-props': return err(() => objectCreate({}, null));
+    case 'undefined-props': { const o = objectCreate(base, undefined); return [Object.getOwnPropertyNames(o).length, o.hi()]; }
+    case 'linked': { const b = {}; const o = objectCreate(b); b.later = 42; return o.later; }
+    case 'null-with-props': { const o = objectCreate(null, { a: { value: 1, enumerable: true }, b: { value: 2 } }); return [Object.keys(o), o.b, Object.getPrototypeOf(o)]; }
+    case 'no-ctor-run': { let ran = 0; function C() { ran++; } C.prototype.p = 1; const o = objectCreate(C.prototype); return [ran, o.p, o instanceof C, Object.getOwnPropertyNames(o).length]; }
+    case 'matches-native': {
+      const mk = (create) => { const o = create({ inherited: 1 }, { a: { value: 1, enumerable: true, writable: true }, g: { get() { return 2; } } }); return JSON.stringify([Object.getOwnPropertyNames(o), Object.getOwnPropertyDescriptors(o), Object.getPrototypeOf(o).inherited]); };
+      return mk(objectCreate) === mk(Object.create);
+    }
+    case 'many-props': { const props = {}; for (let i = 0; i < 1000; i++) props['p' + i] = { value: i, enumerable: true }; const o = objectCreate(null, props); return [Object.keys(o).length, o.p999]; }
+    case 'proto-is-array': { const o = objectCreate([]); return [Array.isArray(o), o instanceof Array, typeof o.push]; }
+    case 'object-proto': { const o = objectCreate(Object.prototype); return [Object.getPrototypeOf(o) === Object.prototype, o.toString()]; }
+  }
+}` }, cases: [
+        [["basic"],["hi",["x"],true,["x"]]],
+        [["null"],[null,false,0]],
+        [["bad-protos"],["TypeError","TypeError","TypeError","TypeError","TypeError","TypeError"]],
+        [["function-proto"],[true,"function",0]],
+        [["descriptor-defaults"],{"value":1,"writable":false,"enumerable":false,"configurable":false}],
+        [["accessor"],[9,9,["v"]]],
+        [["null-props"],"TypeError"],
+        [["undefined-props"],[0,"hi"]],
+        [["linked"],42],
+        [["null-with-props"],[["a"],2,null]],
+        [["no-ctor-run"],[0,1,true,0]],
+        [["matches-native"],true],
+        [["many-props"],[1000,999]],
+        [["proto-is-array"],[false,true,"function"]],
+        [["object-proto"],[true,"[object Object]"]]
+      ] },
       solution: {
         approach: `<p>Three steps mirror the spec: validate, create with the right link, define properties. Use the dummy-constructor trick for object prototypes (works in any engine) and a special path for <code>null</code>, since <code>new</code> cannot produce a null-prototype object.</p>`,
         code: { lang: 'js', run: true, code: `function objectCreate(proto, propertiesObject) {
@@ -1119,6 +1265,50 @@ console.log(x.hi(), x instanceof P);   // hi x false  <- broken link` }
         `<p>Hint 2: step 3 is <code>Ctor.apply(obj, args)</code> — it runs the body with <code>this = obj</code>. Keep its return value.</p>`,
         `<p>Hint 3: step 4: return <code>result</code> only if <code>result !== null &amp;&amp; (typeof result === 'object' || typeof result === 'function')</code>; else return <code>obj</code>. Validate <code>typeof Ctor === 'function'</code> first; if <code>Ctor.prototype</code> is not an object, link to <code>Object.prototype</code> like the real <code>new</code>.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'mn', harness: { js: `function mn(kind) {
+  switch (kind) {
+    case 'hi': { function P(n) { this.n = n; } P.prototype.hi = function () { return 'hi ' + this.n; }; const x = myNew(P, 'x'); return [x.hi(), x instanceof P]; }
+    case 'null-return': { function R() { this.a = 1; return null; } return myNew(R).a; }
+    case 'array-return': { function R() { this.a = 1; return [1]; } return myNew(R); }
+    case 'primitive-return': { function R() { this.a = 2; return 7; } return JSON.stringify(myNew(R)); }
+    case 'object-return': { const other = { z: 1 }; function R() { return other; } return myNew(R) === other; }
+    case 'function-return': { function R() { return function inner() {}; } return typeof myNew(R); }
+    case 'undefined-return': { function R() { this.k = 1; return undefined; } return JSON.stringify(myNew(R)); }
+    case 'arrow': { try { myNew(() => {}); return 'no error'; } catch (e) { return e.name; } }
+    case 'bound': { function F() {} try { myNew(F.bind(null)); return 'no error'; } catch (e) { return e.name; } }
+    case 'method-shorthand': { const o = { m() {} }; try { myNew(o.m); return 'no error'; } catch (e) { return e.name; } }
+    case 'async': { try { myNew(async function () {}); return 'no error'; } catch (e) { return e.name; } }
+    case 'non-function': { const r = []; for (const v of [5, {}, undefined, null, 'x']) { try { myNew(v); r.push('no error'); } catch (e) { r.push(e.name); } } return r; }
+    case 'weird-proto': { function W() { this.ok = true; } W.prototype = 5; const o = myNew(W); return [Object.getPrototypeOf(o) === Object.prototype, o.ok]; }
+    case 'this': { function T1() { this.self = this; } const o = myNew(T1); return o.self === o; }
+    case 'args': { function A() { this.s = Array.prototype.join.call(arguments, '|'); } return myNew(A, 1, 'b', null).s; }
+    case 'inherit': { function Par() { this.p = 1; } Par.prototype.get = function () { return this.p; }; function Kid() { Par.call(this); } Kid.prototype = Object.create(Par.prototype); const k = myNew(Kid); return [k.get(), k instanceof Par, k instanceof Kid]; }
+    case 'object-ctor': { const o = myNew(Object); return [typeof o, Object.getPrototypeOf(o) === Object.prototype]; }
+    case 'proto-fn': { function Q() {} const pf = function () {}; Q.prototype = pf; return Object.getPrototypeOf(myNew(Q)) === pf; }
+    case 'many': { function C() { this.v = arguments.length; } return myNew(C, ...rng(0, 10000)).v; }
+  }
+}
+function rng(a, b) { const o = []; for (let i = a; i < b; i++) o.push(i); return o; }` }, cases: [
+        [["hi"],["hi x",true]],
+        [["null-return"],1],
+        [["array-return"],[1]],
+        [["primitive-return"],"{\"a\":2}"],
+        [["object-return"],true],
+        [["function-return"],"function"],
+        [["undefined-return"],"{\"k\":1}"],
+        [["arrow"],"TypeError"],
+        [["bound"],"TypeError"],
+        [["method-shorthand"],"TypeError"],
+        [["async"],"TypeError"],
+        [["non-function"],["TypeError","TypeError","TypeError","TypeError","TypeError"]],
+        [["weird-proto"],[true,true]],
+        [["this"],true],
+        [["args"],"1|b|"],
+        [["inherit"],[1,true,true]],
+        [["object-ctor"],["object",true]],
+        [["proto-fn"],true],
+        [["many"],10000]
+      ] },
       solution: {
         approach: `<p>Literally transcribe the four steps. The details that separate a good answer: the <code>null</code> check, treating functions as objects, falling back to <code>Object.prototype</code> when <code>Ctor.prototype</code> is not an object, and refusing non-functions. (Real <code>new</code> also refuses arrow functions/methods — we can detect a missing <code>prototype</code> as a heuristic.)</p>`,
         code: { lang: 'js', run: true, code: `function myNew(Ctor, ...args) {
@@ -1390,6 +1580,53 @@ delete globalThis.count; delete globalThis.step;` }
         `<p>Hint 2: fields first (<code>this.count = 0</code> — or <code>defineProperty</code> for exact define semantics), then the body (<code>this.step = step</code> with the default). Order matters for <code>Object.keys</code>.</p>`,
         `<p>Hint 3: install <code>inc</code> (value), <code>double</code> (get) on the prototype and <code>of</code> on the function with <code>Object.defineProperty</code>, <code>enumerable: false</code>, <code>configurable: true</code> (plus <code>writable: true</code> for methods). Optionally lock <code>prototype</code> with <code>writable: false</code>.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'c2', harness: { js: `function c2(kind) {
+  class Counter { count = 0; constructor(step = 1) { this.step = step; } inc() { this.count += this.step; return this; } get double() { return this.count * 2; } static of(s) { return new Counter(s); } }
+  const desc = (o, k) => { const d = Object.getOwnPropertyDescriptor(o, k); return d ? { enumerable: d.enumerable, configurable: d.configurable, writable: d.writable === undefined ? 'n/a' : d.writable, accessor: 'get' in d } : null; };
+  switch (kind) {
+    case 'of-chain': return Counter2.of(5).inc().inc().double;
+    case 'keys': return Object.keys(new Counter2());
+    case 'proto-keys': return Object.keys(Counter2.prototype);
+    case 'static-keys': return Object.keys(Counter2);
+    case 'no-new': { try { Counter2(); return 'no error'; } catch (e) { return e.name; } }
+    case 'default-step': return [new Counter2().step, new Counter2(0).step, new Counter2(-3).step, new Counter2(2.5).step];
+    case 'instanceof': return [Counter2.of(2) instanceof Counter2, new Counter2() instanceof Counter2];
+    case 'chain-this': { const c = new Counter2(); return c.inc() === c; }
+    case 'initial': { const c = new Counter2(7); return [c.count, c.step, c.double]; }
+    case 'field-desc': return desc(new Counter2(), 'count');
+    case 'inc-desc': return [desc(Counter2.prototype, 'inc'), desc(Counter2.prototype, 'double'), desc(Counter2, 'of')];
+    case 'prototype-readonly': return Object.getOwnPropertyDescriptor(Counter2, 'prototype').writable;
+    case 'same-as-class': {
+      const r = [], a = new Counter2(3), b = new Counter(3);
+      for (let i = 0; i < 5; i++) { a.inc(); b.inc(); }
+      r.push(a.count === b.count, a.double === b.double, Object.keys(a).join() === Object.keys(b).join(), Counter2.of(4).inc().double === Counter.of(4).inc().double);
+      r.push(Reflect.ownKeys(Counter2.prototype).sort().join() === Reflect.ownKeys(Counter.prototype).sort().join(), Object.keys(new Counter2()).join() === Object.keys(new Counter()).join());
+      return r;
+    }
+    case 'independent': { const a = new Counter2(1), b = new Counter2(10); a.inc(); b.inc(); b.inc(); return [a.count, b.count]; }
+    case 'many': { const c = new Counter2(1); for (let i = 0; i < 100000; i++) c.inc(); return c.count; }
+    case 'getter-live': { const c = new Counter2(2); c.inc(); const d1 = c.double; c.inc(); return [d1, c.double]; }
+    case 'of-subclass-free': { return Counter2.of() instanceof Counter2; }
+  }
+}` }, cases: [
+        [["of-chain"],20],
+        [["keys"],["count","step"]],
+        [["proto-keys"],[]],
+        [["static-keys"],[]],
+        [["no-new"],"TypeError"],
+        [["default-step"],[1,0,-3,2.5]],
+        [["instanceof"],[true,true]],
+        [["chain-this"],true],
+        [["initial"],[0,7,0]],
+        [["field-desc"],{"enumerable":true,"configurable":true,"writable":true,"accessor":false}],
+        [["inc-desc"],[{"enumerable":false,"configurable":true,"writable":true,"accessor":false},{"enumerable":false,"configurable":true,"writable":"n/a","accessor":true},{"enumerable":false,"configurable":true,"writable":true,"accessor":false}]],
+        [["prototype-readonly"],false],
+        [["same-as-class"],[true,true,true,true,true,true]],
+        [["independent"],[1,20]],
+        [["many"],100000],
+        [["getter-live"],[4,8]],
+        [["of-subclass-free"],true]
+      ] },
       solution: {
         approach: `<p>Follow ClassDefinitionEvaluation: a strict function body with a new-only guard, fields initialised first with define semantics, then the constructor code; methods and accessors defined as non-enumerable on the prototype; statics defined on the function; prototype made read-only. Verify with property introspection, not just by calling methods.</p>`,
         code: { lang: 'js', run: true, code: `'use strict';
@@ -1682,6 +1919,48 @@ console.log(typeof d.bark, d.constructor === Dog, typeof Dog.create); // undefin
         `<p>Hint 2: to keep methods already on <code>Child.prototype</code>, don't replace the object — re-link it: <code>Object.setPrototypeOf(Child.prototype, Parent.prototype)</code>. That also keeps the original non-enumerable <code>constructor</code>.</p>`,
         `<p>Hint 3: "super" in ES5: in the constructor <code>Parent.call(this, ...args)</code>; in methods <code>Parent.prototype.method.call(this, ...)</code>. Return <code>Child</code> for chaining; guard that both are functions.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'inh', harness: { js: `function inh(kind) {
+  function Animal(name) { this.name = name; Animal.count++; }
+  Animal.count = 0;
+  Animal.prototype.eat = function () { return this.name + ' eats'; };
+  Animal.prototype.describe = function () { return 'animal ' + this.name; };
+  Animal.create = function (n) { return new this(n); };
+  function Dog(name) { Animal.call(this, name); }
+  Dog.prototype.bark = function () { return 'woof'; };
+  inherits(Dog, Animal);
+  Dog.prototype.describe = function () { return Animal.prototype.describe.call(this) + ' (a dog)'; };
+  switch (kind) {
+    case 'methods': { const d = new Dog('Rex'); return [d.eat(), d.bark(), d.describe()]; }
+    case 'instanceof': { const d = new Dog('Rex'); return [d instanceof Dog, d instanceof Animal]; }
+    case 'constructor': { const d = new Dog('Rex'); return [d.constructor === Dog, Object.keys(Dog.prototype), Object.getOwnPropertyDescriptor(Dog.prototype, 'constructor').enumerable]; }
+    case 'static': { const f = Dog.create('Fido'); return [f instanceof Dog, f.eat(), Object.getPrototypeOf(Dog) === Animal]; }
+    case 'no-parent-run': { Animal.count = 0; function K() {} inherits(K, Animal); return Animal.count; }
+    case 'not-shared': { return [Dog.prototype !== Animal.prototype, Object.getPrototypeOf(Dog.prototype) === Animal.prototype, 'bark' in Animal.prototype]; }
+    case 'returns-child': { function K() {} return inherits(K, Animal) === K; }
+    case 'type-errors': { const r = []; for (const [a, b] of [[5, Animal], [Dog, null], [{}, {}], [undefined, undefined]]) { try { inherits(a, b); r.push('no error'); } catch (e) { r.push(e.name); } } return r; }
+    case 'multi-level': { function Puppy(n) { Dog.call(this, n); } inherits(Puppy, Dog); const p = new Puppy('Bit'); return [p.eat(), p.bark(), p instanceof Animal, Puppy.create('Z') instanceof Puppy, p.describe()]; }
+    case 'override-before': { function K(n) { Animal.call(this, n); } K.prototype.eat = function () { return 'k eats'; }; inherits(K, Animal); return [new K('a').eat(), new K('a').describe()]; }
+    case 'child-methods-kept': { function K() {} K.prototype.one = function () { return 1; }; K.prototype.two = function () { return 2; }; inherits(K, Animal); return [Object.keys(K.prototype), new K().one() + new K().two()]; }
+    case 'parent-untouched': { function K() {} inherits(K, Animal); K.prototype.extra = function () {}; return ['extra' in Animal.prototype, Object.keys(Animal.prototype).join()]; }
+    case 'super-call': { const d = new Dog('Rex'); return d.describe(); }
+    case 'many-instances': { let ok = 0; for (let i = 0; i < 10000; i++) if (new Dog('d' + i).eat() === 'd' + i + ' eats') ok++; return ok; }
+  }
+}` }, cases: [
+        [["methods"],["Rex eats","woof","animal Rex (a dog)"]],
+        [["instanceof"],[true,true]],
+        [["constructor"],[true,["bark","describe"],false]],
+        [["static"],[true,"Fido eats",true]],
+        [["no-parent-run"],0],
+        [["not-shared"],[true,true,false]],
+        [["returns-child"],true],
+        [["type-errors"],["TypeError","TypeError","TypeError","TypeError"]],
+        [["multi-level"],["Bit eats","woof",true,true,"animal Bit (a dog)"]],
+        [["override-before"],["k eats","animal a"]],
+        [["child-methods-kept"],[["one","two"],3]],
+        [["parent-untouched"],[false,"eat,describe"]],
+        [["super-call"],"animal Rex (a dog)"],
+        [["many-instances"],10000]
+      ] },
       solution: {
         approach: `<p>Re-link instead of replace: <code>setPrototypeOf(Child.prototype, Parent.prototype)</code> keeps existing methods and the original non-enumerable <code>constructor</code>; <code>setPrototypeOf(Child, Parent)</code> wires statics exactly like <code>class extends</code>. (Setting prototypes during one-time setup is fine; avoid it on hot objects.) "super" calls are explicit <code>.call(this)</code>s.</p>`,
         code: { lang: 'js', run: true, code: `function inherits(Child, Parent) {
@@ -1960,6 +2239,50 @@ console.log(acc.balance, acc.history());   // 1000000000 [ 10, 'forged' ]` }
         `<p>Hint 2: put validation in a private method <code>#amount(x)</code>; <code>withdraw</code> checks funds <b>before</b> mutating. <code>history()</code> returns <code>[...this.#log]</code>.</p>`,
         `<p>Hint 3: <code>transfer</code>: brand-check both with <code>#balance in obj</code> (throw <code>TypeError</code>), then <code>from.withdraw(amt)</code> first — if it throws, nothing was deposited — then <code>to.deposit(amt)</code>. Because <code>transfer</code> is inside the class it may also read <code>from.#balance</code> directly.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'acc', harness: { js: `function acc(kind) {
+  const err = (f) => { try { f(); return 'no error'; } catch (e) { return e.name + ':' + e.message; } };
+  switch (kind) {
+    case 'basic': { const a = new Account().deposit(100).withdraw(30); return [a.balance, a.history()]; }
+    case 'chain': { const a = new Account(); return [a.deposit(1) === a, a.withdraw(1) === a]; }
+    case 'invalid-deposit': { const a = new Account(); return [0, -5, NaN, Infinity, '5', null, undefined].map((v) => err(() => a.deposit(v)).split(':')[0]); }
+    case 'invalid-withdraw': { const a = new Account().deposit(10); return [0, -1, NaN, '1'].map((v) => err(() => a.withdraw(v)).split(':')[0]); }
+    case 'overdraft': { const a = new Account().deposit(100); return [err(() => a.withdraw(101)), a.balance, a.history().length]; }
+    case 'exact': { const a = new Account().deposit(100).withdraw(100); return [a.balance, a.history().length]; }
+    case 'transfer': { const a = new Account().deposit(100), b = new Account(); Account.transfer(a, b, 30); return [a.balance, b.balance]; }
+    case 'transfer-fail': { const a = new Account().deposit(100), b = new Account(); const e = err(() => Account.transfer(a, b, 500)); return [e, a.balance, b.balance, a.history().length, b.history().length]; }
+    case 'transfer-fake': { const b = new Account(); return [err(() => Account.transfer({ balance: 1e9 }, b, 5)).split(':')[0], err(() => Account.transfer(b, { balance: 0 }, 5)).split(':')[0], err(() => Account.transfer(null, b, 1)).split(':')[0]]; }
+    case 'transfer-bad-amount': { const a = new Account().deposit(10), b = new Account(); return [err(() => Account.transfer(a, b, -1)).split(':')[0], err(() => Account.transfer(a, b, 0)).split(':')[0], a.balance, b.balance]; }
+    case 'keys': { const a = new Account().deposit(5); return [Object.keys(a), Object.keys(JSON.parse(JSON.stringify(a)))]; }
+    case 'history-copy': { const a = new Account().deposit(5); const h = a.history(); h.push('forged'); h[0].amount = 999; h.length = 0; return [a.history().length, a.history()[0].amount]; }
+    case 'balance-readonly': { const a = new Account().deposit(5); a.balance = 1000; return a.balance; }
+    case 'ids': { const a = new Account(), b = new Account(); const na = +a.id.split('-')[1], nb = +b.id.split('-')[1]; return [/^acc-\\d+$/.test(a.id), nb === na + 1]; }
+    case 'subclass': { class Savings extends Account { } const s = new Savings().deposit(50), a = new Account(); Account.transfer(s, a, 20); return [s.balance, a.balance, s.id.startsWith('acc-'), s instanceof Account]; }
+    case 'floats': { const a = new Account().deposit(0.5).deposit(0.25).withdraw(0.25); return a.balance; }
+    case 'history-order': { const a = new Account().deposit(3).withdraw(1).deposit(2); return a.history().map((e) => e.type + e.amount).join(); }
+    case 'many': { const a = new Account(); for (let i = 0; i < 100000; i++) a.deposit(1); return [a.balance, a.history().length]; }
+    case 'self-transfer': { const a = new Account().deposit(10); Account.transfer(a, a, 4); return a.balance; }
+  }
+}` }, cases: [
+        [["basic"],[70,[{"type":"deposit","amount":100},{"type":"withdraw","amount":30}]]],
+        [["chain"],[true,true]],
+        [["invalid-deposit"],["RangeError","RangeError","RangeError","RangeError","RangeError","RangeError","RangeError"]],
+        [["invalid-withdraw"],["RangeError","RangeError","RangeError","RangeError"]],
+        [["overdraft"],["Error:insufficient funds",100,1]],
+        [["exact"],[0,2]],
+        [["transfer"],[70,30]],
+        [["transfer-fail"],["Error:insufficient funds",100,0,1,0]],
+        [["transfer-fake"],["TypeError","TypeError","TypeError"]],
+        [["transfer-bad-amount"],["RangeError","RangeError",10,0]],
+        [["keys"],[["id"],["id"]]],
+        [["history-copy"],[1,5]],
+        [["balance-readonly"],5],
+        [["ids"],[true,true]],
+        [["subclass"],[30,20,true,true]],
+        [["floats"],0.5],
+        [["history-order"],"deposit3,withdraw1,deposit2"],
+        [["many"],[100000,100000]],
+        [["self-transfer"],10]
+      ] },
       solution: {
         approach: `<p>All state is in private slots; the public surface is <code>id</code>, <code>balance</code> (getter only), <code>deposit</code>, <code>withdraw</code>, <code>history</code> and the static <code>transfer</code>. Withdrawal validates before mutating, so <code>transfer</code> can rely on "withdraw first, deposit second" for atomicity. The brand check rejects forged objects.</p>`,
         code: { lang: 'js', run: true, code: `class Account {
@@ -2206,6 +2529,54 @@ console.log(myInstanceofBrute({ constructor: Dog }, Dog));// true   (wrong: fake
         `<p>Hint 2: primitives: <code>value === null || (typeof value !== 'object' &amp;&amp; typeof value !== 'function')</code> → false.</p>`,
         `<p>Hint 3: <code>target = Ctor.prototype</code> (throw if it is not an object); <code>p = Object.getPrototypeOf(value)</code>; while <code>p !== null</code>: if <code>p === target</code> return true; <code>p = Object.getPrototypeOf(p)</code>. Return false.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'mi', harness: { js: `function mi(kind) {
+  class Animal {} class Dog extends Animal {}
+  class Even { static [Symbol.hasInstance](n) { return n % 2 === 0; } }
+  const err = (f) => { try { return f(); } catch (e) { return e.name; } };
+  switch (kind) {
+    case 'dog-animal': return myInstanceof(new Dog(), Animal);
+    case 'dog-array': return myInstanceof(new Dog(), Array);
+    case 'string-prim': return myInstanceof('hi', String);
+    case 'string-obj': return myInstanceof(new String('hi'), String);
+    case 'null-proto': return myInstanceof(Object.create(null), Object);
+    case 'array-object': return myInstanceof([], Object);
+    case 'function-object': return myInstanceof(Function, Object);
+    case 'custom-even': return [myInstanceof(4, Even), myInstanceof(3, Even)];
+    case 'non-callable': return [err(() => myInstanceof({}, {})), err(() => myInstanceof({}, 5)), err(() => myInstanceof({}, null)), err(() => myInstanceof({}, undefined)), err(() => myInstanceof({}, 'str'))];
+    case 'arrow-ctor': return [myInstanceof(5, () => {}), err(() => myInstanceof({}, () => {}))];
+    case 'primitives': return [myInstanceof(5, Number), myInstanceof(true, Boolean), myInstanceof(Symbol('s'), Symbol), myInstanceof(null, Object), myInstanceof(undefined, Object), myInstanceof(5n, Object)];
+    case 'object-hasInstance': { const odd = { [Symbol.hasInstance](v) { return v === 1; } }; return [myInstanceof(1, odd), myInstanceof(2, odd)]; }
+    case 'truthy-hasInstance': { const t = { [Symbol.hasInstance]() { return 'yes'; } }; const f = { [Symbol.hasInstance]() { return 0; } }; return [myInstanceof({}, t), myInstanceof({}, f)]; }
+    case 'self': return [myInstanceof(Animal.prototype, Animal), myInstanceof(Object.prototype, Object), myInstanceof(Animal, Function), myInstanceof(Dog, Function)];
+    case 'object-create': return [myInstanceof(Object.create(Dog.prototype), Animal), myInstanceof(Object.create(Animal.prototype), Dog)];
+    case 'long-chain': { const root = function Root() {}; let o = Object.create(root.prototype); for (let i = 0; i < 10000; i++) o = Object.create(o); return [myInstanceof(o, root), myInstanceof(o, Array)]; }
+    case 'bad-prototype': { function B() {} B.prototype = 5; return [err(() => myInstanceof({}, B)), myInstanceof(5, B)]; }
+    case 'matches-native': {
+      const vals = [new Dog(), new Animal(), [], {}, 'x', 5, null, undefined, Object.create(null), () => {}, new Date(), /x/, new Map(), Dog, Animal];
+      const ctors = [Animal, Dog, Object, Array, Function, Date, RegExp, Map, String];
+      let same = 0, total = 0; for (const v of vals) for (const c of ctors) { total++; if (myInstanceof(v, c) === (v instanceof c)) same++; } return [same, total];
+    }
+  }
+}` }, cases: [
+        [["dog-animal"],true],
+        [["dog-array"],false],
+        [["string-prim"],false],
+        [["string-obj"],true],
+        [["null-proto"],false],
+        [["array-object"],true],
+        [["function-object"],true],
+        [["custom-even"],[true,false]],
+        [["non-callable"],["TypeError","TypeError","TypeError","TypeError","TypeError"]],
+        [["arrow-ctor"],[false,"TypeError"]],
+        [["primitives"],[false,false,false,false,false,false]],
+        [["object-hasInstance"],[true,false]],
+        [["truthy-hasInstance"],[true,false]],
+        [["self"],[false,false,true,true]],
+        [["object-create"],[true,false]],
+        [["long-chain"],[true,false]],
+        [["bad-prototype"],["TypeError",false]],
+        [["matches-native"],[135,135]]
+      ] },
       solution: {
         approach: `<p>Mirror the spec: validate the right side, honour a custom <code>Symbol.hasInstance</code>, short-circuit primitives, then walk the linked list of prototypes comparing by identity with <code>Ctor.prototype</code>. Use <code>Object.getPrototypeOf</code> (not <code>__proto__</code>) so null-prototype objects and Proxies behave correctly.</p>`,
         code: { lang: 'js', run: true, code: `function myInstanceof(value, Ctor) {
@@ -2274,6 +2645,47 @@ console.log(splitKeysBrute({ hasOwnProperty: () => false, x: 1 })); // lies: x i
       `<p>Hint 2: use the static <code>Object.hasOwn(obj, key)</code> — it does not depend on anything inherited, so null-prototype objects and fake <code>hasOwnProperty</code> keys cannot fool it.</p>`,
       `<p>Hint 3: recipe — two arrays; <code>for (const key in obj)</code>: push into <code>own</code> if <code>Object.hasOwn</code>, else into <code>inherited</code>. Return both. Remember class methods are non-enumerable, so they never show up — that is correct behaviour.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'sk', harness: { js: `function sk(kind) {
+  switch (kind) {
+    case 'dog': { const base = { kind: 'animal', describe() {} }; const dog = Object.create(base); dog.name = 'Rex'; dog.kind = 'dog'; return splitKeys(dog); }
+    case 'dict': { const d = Object.create(null); d.apple = 2; return splitKeys(d); }
+    case 'class': { class Cat { constructor() { this.lives = 9; } meow() {} } return splitKeys(new Cat()); }
+    case 'not-fooled': return splitKeys({ hasOwnProperty: () => false, x: 1 });
+    case 'order': return splitKeys({ b: 1, 2: 'x', a: 2, 1: 'y' });
+    case 'symbols': return splitKeys({ [Symbol('s')]: 1, v: 2 });
+    case 'non-enumerable-own': { const o = { a: 1 }; Object.defineProperty(o, 'h', { value: 1, enumerable: false }); return splitKeys(o); }
+    case 'shadow-non-enumerable': { const base = { k: 1, other: 2 }; const o = Object.create(base); Object.defineProperty(o, 'k', { value: 2, enumerable: false }); return splitKeys(o); }
+    case 'chain-50': { let o = { k0: 0 }; for (let i = 1; i < 50; i++) { o = Object.create(o); o['k' + i] = i; } const r = splitKeys(o); return { own: r.own, firstInherited: r.inherited[0], lastInherited: r.inherited[r.inherited.length - 1], n: r.inherited.length }; }
+    case 'array': return splitKeys([10, 20]);
+    case 'empty': return splitKeys({});
+    case 'null': return splitKeys(null);
+    case 'inherited-only': return splitKeys(Object.create({ a: 1, b: 2 }));
+    case 'string': return splitKeys('ab');
+    case 'enumerable-proto-data': { function F() { this.own = 1; } F.prototype.shared = 2; return splitKeys(new F()); }
+    case 'two-levels': { const g = { gk: 1 }, p = Object.create(g); p.pk = 2; const c = Object.create(p); c.ck = 3; return splitKeys(c); }
+    case 'overridden-in-middle': { const g = { k: 'g' }, p = Object.create(g); p.k = 'p'; const c = Object.create(p); return splitKeys(c); }
+    case 'many': { const o = {}; for (let i = 0; i < 100000; i++) o['k' + i] = i; const r = splitKeys(o); return [r.own.length, r.inherited.length, r.own[0], r.own[99999]]; }
+  }
+}` }, cases: [
+      [["dog"],{"own":["name","kind"],"inherited":["describe"]}],
+      [["dict"],{"own":["apple"],"inherited":[]}],
+      [["class"],{"own":["lives"],"inherited":[]}],
+      [["not-fooled"],{"own":["hasOwnProperty","x"],"inherited":[]}],
+      [["order"],{"own":["1","2","b","a"],"inherited":[]}],
+      [["symbols"],{"own":["v"],"inherited":[]}],
+      [["non-enumerable-own"],{"own":["a"],"inherited":[]}],
+      [["shadow-non-enumerable"],{"own":[],"inherited":["other"]}],
+      [["chain-50"],{"own":["k49"],"firstInherited":"k48","lastInherited":"k0","n":49}],
+      [["array"],{"own":["0","1"],"inherited":[]}],
+      [["empty"],{"own":[],"inherited":[]}],
+      [["null"],{"own":[],"inherited":[]}],
+      [["inherited-only"],{"own":[],"inherited":["a","b"]}],
+      [["string"],{"own":["0","1"],"inherited":[]}],
+      [["enumerable-proto-data"],{"own":["own"],"inherited":["shared"]}],
+      [["two-levels"],{"own":["ck"],"inherited":["pk","gk"]}],
+      [["overridden-in-middle"],{"own":[],"inherited":["k"]}],
+      [["many"],[100000,0,"k0","k99999"]]
+    ] },
     solution: {
       approach: `<p>Let <code>for...in</code> do the chain walking (it visits enumerable string keys of the object, then its prototype, and so on, skipping duplicates) and classify each key with <code>Object.hasOwn</code>, the only own-check that is safe on every object. Symbols and non-enumerable properties are intentionally excluded, matching <code>for...in</code>.</p>`,
       code: { lang: 'js', run: true, code: `function splitKeys(obj) {
@@ -2326,6 +2738,44 @@ console.log(Object.keys(a));                // ['name', 'score', 'addPoints']` }
       `<p>Hint 2: <code>Player.prototype.addPoints = function (n) {...}</code>. Inside it, <code>this</code> is still the player because it is called as <code>p.addPoints()</code>.</p>`,
       `<p>Hint 3: in a <code>class</code>, every method written in the body is automatically put on <code>Player.prototype</code> (and made non-enumerable). Do not use arrow functions for these methods — an arrow class field would be a per-instance copy again.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'pl', harness: { js: `function pl(kind) {
+  const players = Array.from({ length: 10000 }, (_, i) => new Player('P' + i));
+  switch (kind) {
+    case 'shared': return [players[0].addPoints === players[9999].addPoints, new Set(players.map((p) => p.addPoints)).size];
+    case 'chain': return String(players[1].addPoints(5).addPoints(2));
+    case 'keys': return Object.keys(players[0]);
+    case 'returns-this': return players[2].addPoints(1) === players[2];
+    case 'independent': { players[1].addPoints(7); return [players[1].score, players[2].score, players[0].score]; }
+    case 'tostring-fresh': return String(players[5]);
+    case 'class-shared': { const x = new PlayerC('X'), y = new PlayerC('Y'); return [x.addPoints === y.addPoints, x.toString === y.toString, String(x.addPoints(3).addPoints(4))]; }
+    case 'class-names': return Object.getOwnPropertyNames(PlayerC.prototype);
+    case 'class-keys': return Object.keys(new PlayerC('Z'));
+    case 'arrow-trap': return [new PlayerArrow().addPoints === new PlayerArrow().addPoints, new PlayerArrow().score];
+    case 'arrow-chain': { const a = new PlayerArrow(); return [a.addPoints(2).addPoints(3) === a, a.score]; }
+    case 'instanceof': return [players[0] instanceof Player, new PlayerC('q') instanceof PlayerC];
+    case 'proto-has': return [Object.keys(Player.prototype).join(), Object.hasOwn(players[0], 'addPoints')];
+    case 'negative': { players[3].addPoints(-4); return String(players[3]); }
+    case 'detached-class': { const x = new PlayerC('D'); const f = x.addPoints; try { f(1); return 'no error'; } catch (e) { return e.name; } }
+    case 'many-adds': { for (let i = 0; i < 100000; i++) players[7].addPoints(1); return players[7].score; }
+  }
+}` }, cases: [
+      [["shared"],[true,1]],
+      [["chain"],"P1: 7"],
+      [["keys"],["name","score"]],
+      [["returns-this"],true],
+      [["independent"],[7,0,0]],
+      [["tostring-fresh"],"P5: 0"],
+      [["class-shared"],[true,true,"X: 7"]],
+      [["class-names"],["constructor","addPoints","toString"]],
+      [["class-keys"],["name","score"]],
+      [["arrow-trap"],[false,0]],
+      [["arrow-chain"],[true,5]],
+      [["instanceof"],[true,true]],
+      [["proto-has"],["addPoints,toString",false]],
+      [["negative"],"P3: -4"],
+      [["detached-class"],"TypeError"],
+      [["many-adds"],100000]
+    ] },
     solution: {
       approach: `<p>Keep per-instance state in the constructor and put shared behaviour on <code>Constructor.prototype</code>. All instances delegate to the same function via the prototype chain. The <code>class</code> syntax does exactly this for you — methods in the class body land on the prototype as non-enumerable properties.</p>`,
       code: { lang: 'js', run: true, code: `// ES5 style: methods on the prototype
@@ -2388,6 +2838,37 @@ console.log(Object.hasOwn(a, 'items'), Object.hasOwn(a, 'count')); // false true
       `<p>Hint 2: mutable state (arrays, objects, Maps) must be created per instance — in the constructor or as a class field (<code>items = [];</code>), because field initialisers run once per <code>new</code>.</p>`,
       `<p>Hint 3: keep only shared, read-only things on the prototype: methods and true constants.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'bk', harness: { js: `function bk(kind) {
+  switch (kind) {
+    case 'independent': { const a = new Basket(), b = new Basket(); a.add('apple').add('pear'); return [a.items, b.items, a.total(), b.total()]; }
+    case 'own-items': { const a = new Basket(); return [Object.hasOwn(a, 'items'), a.items !== new Basket().items]; }
+    case 'methods-shared': return new Basket().add === new Basket().add;
+    case 'returns-this': { const a = new Basket(); return a.add(1) === a; }
+    case 'es5': { const c = new Basket5(), d = new Basket5(); c.add(1); return [c.items, d.items, c.add === d.add]; }
+    case 'es5-chain': { const c = new Basket5(); return [c.add(1).add(2) === c, c.items]; }
+    case 'empty-total': return new Basket().total();
+    case 'duplicates': { const a = new Basket().add('x').add('x'); return [a.total(), a.items]; }
+    case 'many-baskets': { const bs = Array.from({ length: 1000 }, () => new Basket()); bs.forEach((b, i) => { for (let k = 0; k <= i % 5; k++) b.add(k); }); return [bs[0].total(), bs[4].total(), bs[999].total(), new Set(bs.map((b) => b.items)).size]; }
+    case 'proto-clean': return [Object.keys(Basket.prototype), 'items' in Basket.prototype];
+    case 'falsy-items': { const a = new Basket().add(0).add(null).add(undefined); return [a.total(), a.items.length]; }
+    case 'big': { const a = new Basket(); for (let i = 0; i < 100000; i++) a.add(i); return [a.total(), a.items[99999]]; }
+    case 'later-baskets-clean': { new Basket().add('x'); return new Basket().items; }
+  }
+}` }, cases: [
+      [["independent"],[["apple","pear"],[],2,0]],
+      [["own-items"],[true,true]],
+      [["methods-shared"],true],
+      [["returns-this"],true],
+      [["es5"],[[1],[],true]],
+      [["es5-chain"],[true,[1,2]]],
+      [["empty-total"],0],
+      [["duplicates"],[2,["x","x"]]],
+      [["many-baskets"],[1,5,5,1000]],
+      [["proto-clean"],[[],false]],
+      [["falsy-items"],[3,3]],
+      [["big"],[100000,99999]],
+      [["later-baskets-clean"],[]]
+    ] },
     solution: {
       approach: `<p>Create the array per instance. With a class, a field initialiser <code>items = []</code> is evaluated on every construction, so each basket gets its own array as an own property. Methods stay on the prototype.</p>`,
       code: { lang: 'js', run: true, code: `class Basket {
@@ -2436,6 +2917,43 @@ console.log(t2.c = 'oops', t2.c);                 // public data, no validation`
       `<p>Hint 2: <code>static #created = 0</code> + <code>static get created()</code> gives read-only access from outside.</p>`,
       `<p>Hint 3: access the private static as <code>Temperature.#created</code>, not <code>this.#created</code>: when a subclass calls the static method, <code>this</code> is the subclass, which does <b>not</b> have the private static slot → TypeError.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'tp', harness: { js: `function tp(kind) {
+  const err = (f) => { try { f(); return 'no error'; } catch (e) { return e.name; } };
+  class Lab extends Temperature { toString() { return '[lab] ' + super.toString(); } }
+  switch (kind) {
+    case 'fahrenheit': return [Temperature.fromFahrenheit(212).celsius, Temperature.fromFahrenheit(32).celsius, Temperature.fromFahrenheit(-40).celsius];
+    case 'kelvin': return [Temperature.fromKelvin(0).toString(), Temperature.fromKelvin(0).celsius, Temperature.fromKelvin(273.15).celsius];
+    case 'fahrenheit-getter': return [new Temperature(25).fahrenheit, new Temperature(0).fahrenheit, new Temperature(100).fahrenheit, new Temperature(-40).fahrenheit];
+    case 'subclass': { const l = Lab.fromFahrenheit(32); return [l instanceof Lab, String(l)]; }
+    case 'subclass-kelvin': { const l = Lab.fromKelvin(273.15); return [l instanceof Lab, l.celsius]; }
+    case 'created': { const before = Temperature.created; new Temperature(1); new Temperature(2); Temperature.fromFahrenheit(3); return Temperature.created - before; }
+    case 'created-readonly': { const before = Temperature.created; Temperature.created = 99; return Temperature.created === before; }
+    case 'bad-input': return ['hot', NaN, undefined, null, {}, '5', true].map((v) => err(() => new Temperature(v)));
+    case 'failed-no-count': { const before = Temperature.created; err(() => new Temperature('x')); return Temperature.created - before; }
+    case 'accepts': return [0, -10.5, 1e6, Infinity].map((v) => err(() => new Temperature(v)));
+    case 'tostring': return [new Temperature(0).toString(), new Temperature(36.65).toString(), new Temperature(-0.04).toString(), new Temperature(100).toString()];
+    case 'private': { const t = new Temperature(5); return [Object.keys(t), Object.getOwnPropertyNames(t), JSON.stringify(t)]; }
+    case 'getters-only': { const t = new Temperature(5); t.celsius = 99; return t.celsius; }
+    case 'subclass-counts': { const before = Temperature.created; new Lab(1); return Temperature.created - before; }
+    case 'many': { const before = Temperature.created; for (let i = 0; i < 100000; i++) new Temperature(i); return Temperature.created - before; }
+  }
+}` }, cases: [
+      [["fahrenheit"],[100,0,-40]],
+      [["kelvin"],["-273.1°C",-273.15,0]],
+      [["fahrenheit-getter"],[77,32,212,-40]],
+      [["subclass"],[true,"[lab] 0.0°C"]],
+      [["subclass-kelvin"],[true,0]],
+      [["created"],3],
+      [["created-readonly"],true],
+      [["bad-input"],["TypeError","TypeError","TypeError","TypeError","TypeError","TypeError","TypeError"]],
+      [["failed-no-count"],0],
+      [["accepts"],["no error","no error","no error","no error"]],
+      [["tostring"],["0.0°C","36.6°C","-0.0°C","100.0°C"]],
+      [["private"],[[],[],"{}"]],
+      [["getters-only"],5],
+      [["subclass-counts"],1],
+      [["many"],100000]
+    ] },
     solution: {
       approach: `<p>Instance state (<code>#celsius</code>) is a private instance field; class-wide state (<code>#created</code>) is a private static field exposed through a static getter. Factories are static methods that convert units and call <code>new this(...)</code> so subclasses inherit working factories through the constructor chain (<code>Object.getPrototypeOf(Sub) === Temperature</code>).</p>`,
       code: { lang: 'js', run: true, code: `class Temperature {
@@ -2500,6 +3018,46 @@ console.log(seen);                                 // []  for...in sees nothing 
       `<p>Hint 2: at each level, <code>Reflect.ownKeys(p)</code> + <code>Object.getOwnPropertyDescriptor(p, key)</code> tells you the kind: <code>typeof d.value === 'function'</code> → method; <code>d.get || d.set</code> → accessor; else data.</p>`,
       `<p>Hint 3: use a <code>Map</code> keyed by property key. The first time you see a key, that level is the winner (<code>definedIn</code>); every later sighting is an ancestor it overrides. Name the level by <code>p.constructor.name</code> when <code>p</code> owns a <code>constructor</code>.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'mt', harness: { js: `function mt(kind) {
+  class Animal { speak() { return '...'; } get legs() { return 4; } toString() { return 'Animal'; } }
+  class Dog extends Animal { speak() { return 'Woof'; } fetch() { return 'ball'; } *[Symbol.iterator]() { yield 'tail'; } }
+  class Puppy extends Dog { speak() { return 'Yip'; } }
+  switch (kind) {
+    case 'puppy': return methodTable(Puppy);
+    case 'dog': return methodTable(Dog).map((r) => r.name + ':' + r.definedIn + ':' + r.overrides.join('/'));
+    case 'animal': return methodTable(Animal);
+    case 'empty': { class E {} return methodTable(E); }
+    case 'data': { class D { m() {} } D.prototype.d = 5; return methodTable(D); }
+    case 'setter': { class S { set x(v) {} } return methodTable(S); }
+    case 'anonymous': { const C = class {}; C.prototype.f = function () {}; const X = Object.assign(function () {}, {}); X.prototype = Object.create(C.prototype); X.prototype.g = function () {}; return methodTable(X); }
+    case 'deep-20': {
+      let prev = class C0 { m() {} };
+      for (let i = 1; i < 20; i++) { const parent = prev; prev = { ['C' + i]: class extends parent { m() {} } }['C' + i]; }
+      const r = methodTable(prev); return [r.length, r[0].definedIn, r[0].overrides.length, r[0].overrides[0], r[0].overrides[18]];
+    }
+    case 'stops-before-object': { class T1 { toString() { return 'x'; } } return methodTable(T1); }
+    case 'static-ignored': { class St { static make() {} inst() {} } return methodTable(St).map((r) => r.name); }
+    case 'constructor-skipped': return methodTable(Dog).some((r) => r.name === 'constructor');
+    case 'order': return methodTable(Puppy).map((r) => r.name);
+    case 'async-generator': { class AG { async a() {} *g() {} } return methodTable(AG).map((r) => r.name + ':' + r.kind); }
+    case 'getter-not-run': { let ran = 0; class G { get boom() { ran++; return 1; } } methodTable(G); return ran; }
+  }
+}` }, cases: [
+      [["puppy"],[{"name":"speak","kind":"method","definedIn":"Puppy","overrides":["Dog","Animal"]},{"name":"fetch","kind":"method","definedIn":"Dog","overrides":[]},{"name":"Symbol(Symbol.iterator)","kind":"method","definedIn":"Dog","overrides":[]},{"name":"legs","kind":"getter/setter","definedIn":"Animal","overrides":[]},{"name":"toString","kind":"method","definedIn":"Animal","overrides":[]}]],
+      [["dog"],["speak:Dog:Animal","fetch:Dog:","Symbol(Symbol.iterator):Dog:","legs:Animal:","toString:Animal:"]],
+      [["animal"],[{"name":"speak","kind":"method","definedIn":"Animal","overrides":[]},{"name":"legs","kind":"getter/setter","definedIn":"Animal","overrides":[]},{"name":"toString","kind":"method","definedIn":"Animal","overrides":[]}]],
+      [["empty"],[]],
+      [["data"],[{"name":"m","kind":"method","definedIn":"D","overrides":[]},{"name":"d","kind":"data","definedIn":"D","overrides":[]}]],
+      [["setter"],[{"name":"x","kind":"getter/setter","definedIn":"S","overrides":[]}]],
+      [["anonymous"],[{"name":"g","kind":"method","definedIn":"(anonymous)","overrides":[]},{"name":"f","kind":"method","definedIn":"C","overrides":[]}]],
+      [["deep-20"],[1,"C19",19,"C18","C0"]],
+      [["stops-before-object"],[{"name":"toString","kind":"method","definedIn":"T1","overrides":[]}]],
+      [["static-ignored"],["inst"]],
+      [["constructor-skipped"],false],
+      [["order"],["speak","fetch","Symbol(Symbol.iterator)","legs","toString"]],
+      [["async-generator"],["a:method","g:method"]],
+      [["getter-not-run"],0]
+    ] },
     solution: {
       approach: `<p>Walk the prototype chain from most-derived to least-derived, enumerating <b>all</b> own keys at each level with <code>Reflect.ownKeys</code>. The first level that owns a key is the one a lookup would use, so record it as <code>definedIn</code>; later levels with the same key are pushed into <code>overrides</code>. Descriptors reveal the member kind without calling getters.</p>`,
       code: { lang: 'js', run: true, code: `function methodTable(Cls) {
@@ -2567,6 +3125,47 @@ try { b.describe(); } catch (e) { console.log('late failure:', e.message); }` }
       `<p>Hint 2: to check "did someone override <code>area</code>?", compare <b>references</b>: <code>this.area === Shape.prototype.area</code>. The lookup on <code>this</code> climbs from the most-derived prototype, so an inherited override from a middle class also counts.</p>`,
       `<p>Hint 3: comparing references never runs subclass code, so it is safe even though subclass fields (like <code>#r</code>) do not exist yet.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'sh', harness: { js: `function sh(kind) {
+  class Circle extends Shape { #r; constructor(r) { super('circle'); this.#r = r; } area() { return Math.PI * this.#r ** 2; } }
+  class Square extends Shape { constructor(side) { super('square'); this.side = side; } area() { return this.side ** 2; } }
+  class Cube extends Square { constructor(side) { super(side); this.name = 'cube face'; } }
+  const err = (f) => { try { f(); return 'no error'; } catch (e) { return e.name + ': ' + e.message; } };
+  switch (kind) {
+    case 'abstract': return err(() => new Shape('x'));
+    case 'blob': return err(() => { class Blob extends Shape {} return new Blob('blob'); });
+    case 'circle': return new Circle(1).describe();
+    case 'square': return new Square(3).describe();
+    case 'cube': return new Cube(2).describe();
+    case 'sorted': { const shapes = [new Square(3), new Circle(1), new Cube(2), new Circle(2)]; shapes.sort((a, b) => a.area() - b.area()); return shapes.map((s) => s.describe()); }
+    case 'area-not-called': { let calls = 0; class Counted extends Shape { constructor() { super('c'); } area() { calls++; return 1; } } new Counted(); return calls; }
+    case 'middle-implements': { class Mid extends Shape { constructor() { super('mid'); } area() { return 1; } } class Leaf extends Mid {} return new Leaf().describe(); }
+    case 'abstract-middle': { class AbsMid extends Shape {} class Leaf2 extends AbsMid { constructor() { super('l2'); } area() { return 2; } } return [err(() => new AbsMid('a')), new Leaf2().describe()]; }
+    case 'instanceof': { const c = new Circle(2); return [c instanceof Shape, c instanceof Circle, c instanceof Square]; }
+    case 'name-prop': return [new Circle(1).name, new Cube(1).name];
+    case 'zero-area': return new Square(0).describe();
+    case 'err-types': return [err(() => new Shape('x')).split(':')[0], err(() => { class B2 extends Shape {} return new B2('b'); }).split(':')[0]];
+    case 'private-radius': { const c = new Circle(5); return [c.r, Object.keys(c)]; }
+    case 'many': { let s = 0; for (let i = 0; i < 10000; i++) s += new Square(2).area(); return s; }
+    case 'describe-uses-subclass': { class Tri extends Shape { constructor(b, h) { super('tri'); this.b = b; this.h = h; } area() { return this.b * this.h / 2; } } return new Tri(3, 5).describe(); }
+  }
+}` }, cases: [
+      [["abstract"],"TypeError: Shape is abstract: instantiate a subclass"],
+      [["blob"],"TypeError: Blob must implement area()"],
+      [["circle"],"circle with area 3.14"],
+      [["square"],"square with area 9.00"],
+      [["cube"],"cube face with area 4.00"],
+      [["sorted"],["circle with area 3.14","cube face with area 4.00","square with area 9.00","circle with area 12.57"]],
+      [["area-not-called"],0],
+      [["middle-implements"],"mid with area 1.00"],
+      [["abstract-middle"],["TypeError: AbsMid must implement area()","l2 with area 2.00"]],
+      [["instanceof"],[true,true,false]],
+      [["name-prop"],["circle","cube face"]],
+      [["zero-area"],"square with area 0.00"],
+      [["err-types"],["TypeError","TypeError"]],
+      [["private-radius"],[null,["name"]]],
+      [["many"],40000],
+      [["describe-uses-subclass"],"tri with area 7.50"]
+    ] },
     solution: {
       approach: `<p>Use <code>new.target</code> to reject the base class itself, and a reference comparison on the prototype chain to reject subclasses that did not override <code>area</code>. Because <code>this</code> already has the subclass prototype at the start of the base constructor, <code>this.area</code> resolves to the most-derived implementation without executing it. <code>describe()</code> is a template method: the base defines the algorithm, subclasses fill in the step.</p>`,
       code: { lang: 'js', run: true, code: `class Shape {
@@ -2631,6 +3230,46 @@ console.log(new User().describe());                        // logger describe: u
       `<p>Hint 2: give the inner class a name (<code>class Serializable extends Base</code>) so stack traces and <code>constructor.name</code> are readable.</p>`,
       `<p>Hint 3: private fields declared in the mixin (<code>#handlers = new Map()</code>) are installed when <code>super()</code> chains through that class — and <code>JSON.stringify</code>/spread never see them.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'mx', harness: { js: `function mx(kind) {
+  const mkUser = () => new User({ name: 'Al', age: 30 });
+  switch (kind) {
+    case 'user': { const u = mkUser(), log = []; u.on('rename', (f, t) => log.push(f + '->' + t)); u.rename('Bo'); return [log, u.serialize(), u.describe(), u instanceof Model]; }
+    case 'chain': { const u = mkUser(), names = []; for (let p = Object.getPrototypeOf(u); p; p = Object.getPrototypeOf(p)) names.push(p.constructor.name); return names.join(' -> '); }
+    case 'private-not-json': { const u = mkUser(); u.on('x', () => {}); return [JSON.stringify(u), Object.keys(u)]; }
+    case 'order': { const u = mkUser(), log = []; u.on('x', () => log.push(1)).on('x', () => log.push(2)).on('x', () => log.push(3)); u.emit('x'); return log; }
+    case 'emit-none': { const u = mkUser(); return u.emit('nothing') === u; }
+    case 'chainable': { const u = mkUser(); return [u.on('x', () => {}) === u, u.rename('Zed') === u]; }
+    case 'isolated': { const a = mkUser(), b = mkUser(), log = []; a.on('x', () => log.push('a')); b.emit('x'); a.emit('x'); return log; }
+    case 'admin': { class Admin extends User {} const a = new Admin({ name: 'Root', age: 1 }); return a.serialize(); }
+    case 'this': { const u = mkUser(); let same = false; u.on('x', function () { same = this === u; }); u.emit('x'); return same; }
+    case 'emit-args': { const u = mkUser(), log = []; u.on('x', (...a) => log.push(a.join('|'))); u.emit('x', 1, 'two', 3); return log; }
+    case 'distinct-classes': return [Eventful(Model) !== Eventful(Model), new (Eventful(Model))().emit('e') !== undefined];
+    case 'other-base': { class P { constructor() { this.a = 1; } } const X = Serializable(P); return new X().serialize(); }
+    case 'events-separate': { const u = mkUser(), log = []; u.on('a', () => log.push('A')); u.on('b', () => log.push('B')); u.emit('b'); u.emit('a'); u.emit('b'); return log; }
+    case 'rename-twice': { const u = mkUser(), log = []; u.on('rename', (f, t) => log.push(f + '>' + t)); u.rename('B').rename('C'); return [log, u.name]; }
+    case 'keys': return Object.keys(mkUser());
+    case 'many': { const u = mkUser(); let n = 0; for (let i = 0; i < 10000; i++) u.on('x', () => { n++; }); u.emit('x'); return n; }
+    case 'serialize-after': { const u = mkUser(); u.age = 31; u.extra = [1, { a: 2 }]; return u.serialize(); }
+  }
+}` }, cases: [
+      [["user"],[["Al->Bo"],"{\"type\":\"User\",\"name\":\"Bo\",\"age\":30}","serializable model",true]],
+      [["chain"],"User -> Serializable -> Eventful -> Model -> Object"],
+      [["private-not-json"],["{\"type\":\"User\",\"name\":\"Al\",\"age\":30}",["name","age"]]],
+      [["order"],[1,2,3]],
+      [["emit-none"],true],
+      [["chainable"],[true,true]],
+      [["isolated"],["a"]],
+      [["admin"],"{\"type\":\"Admin\",\"name\":\"Root\",\"age\":1}"],
+      [["this"],true],
+      [["emit-args"],["1|two|3"]],
+      [["distinct-classes"],[true,true]],
+      [["other-base"],"{\"type\":\"Serializable\",\"a\":1}"],
+      [["events-separate"],["B","A","B"]],
+      [["rename-twice"],[["Al>B","B>C"],"C"]],
+      [["keys"],["name","age"]],
+      [["many"],10000],
+      [["serialize-after"],"{\"type\":\"User\",\"name\":\"Al\",\"age\":31,\"extra\":[1,{\"a\":2}]}"]
+    ] },
     solution: {
       approach: `<p>Each mixin is a function that takes a base class and returns a subclass of it. Composing calls nests real classes, so you get a genuine prototype chain: methods are shared (not copied), <code>super</code> works across mixins, getters stay live, and each mixin can own private fields. The order of composition is the method resolution order.</p>`,
       code: { lang: 'js', run: true, code: `const Eventful = (Base) => class Eventful extends Base {
@@ -2706,6 +3345,52 @@ console.log(sc instanceof Point, Object.keys(sc));          // false ['x','y']` 
       `<p>Hint 2: a <code>WeakMap</code> from original → clone, filled <b>before</b> recursing, makes cycles (and shared references) work.</p>`,
       `<p>Hint 3: built-ins with internal slots (<code>Date</code>, <code>Map</code>, <code>Set</code>) cannot be rebuilt from properties — handle them explicitly before the generic object branch. Arrays: start from <code>[]</code> so the clone is a real array.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'cdr', harness: { js: `function cdr(kind) {
+  class Point { constructor(x, y) { this.x = x; this.y = y; Object.defineProperty(this, 'id', { value: 7, enumerable: false }); } get len() { return Math.hypot(this.x, this.y); } }
+  switch (kind) {
+    case 'point': { const p = new Point(3, 4), c = cloneDeep(p); const r = [c instanceof Point, c.len, c.id, c !== p]; c.x = 6; c.y = 8; r.push(c.len, p.len); return r; }
+    case 'graph': { const g = { name: 'root', when: new Date(0), tags: new Set(['a']), kids: [] }; g.kids.push({ parent: g }); const g2 = cloneDeep(g); return [g2.kids[0].parent === g2, g2.when.getTime(), g2.tags.has('a'), g2.tags !== g.tags, g2.when !== g.when]; }
+    case 'private': { class Secret { #v = 1; get v() { return this.#v; } } try { cloneDeep(new Secret()).v; return 'no error'; } catch (e) { return e.name; } }
+    case 'own-accessor': { let n = 1; const o = { get v() { return n; }, set v(x) { n = x; } }; const c = cloneDeep(o); const d = Object.getOwnPropertyDescriptor(c, 'v'); return [typeof d.get, typeof d.set, c.v]; }
+    case 'non-enumerable': { const o = {}; Object.defineProperty(o, 'hidden', { value: { a: 1 }, enumerable: false, writable: true, configurable: true }); const c = cloneDeep(o); const d = Object.getOwnPropertyDescriptor(c, 'hidden'); return [d.enumerable, d.value.a, d.value !== o.hidden, Object.keys(c)]; }
+    case 'readonly': { const o = {}; Object.defineProperty(o, 'k', { value: 1, writable: false, enumerable: true, configurable: false }); const d = Object.getOwnPropertyDescriptor(cloneDeep(o), 'k'); return [d.writable, d.configurable, d.value]; }
+    case 'frozen-sealed': { const f = cloneDeep(Object.freeze({ a: { b: 1 } })); const s = cloneDeep(Object.seal({ a: 1 })); return [Object.isFrozen(f), Object.isFrozen(f.a), Object.isSealed(s), Object.isFrozen(s)]; }
+    case 'holes': { const c = cloneDeep([1, , 3]); return [c.length, 1 in c, c[2]]; }
+    case 'arrays': { const a = [1, [2, [3, { x: [4] }]]]; const c = cloneDeep(a); return [JSON.stringify(c), c !== a, c[1] !== a[1], Array.isArray(c[1][1])]; }
+    case 'symbol-keys': { const s = Symbol('s'); const o = { [s]: { v: 1 } }; const c = cloneDeep(o); return [c[s].v, c[s] !== o[s]]; }
+    case 'functions-shared': { const f = () => 1; const c = cloneDeep({ f }); return c.f === f; }
+    case 'null-proto': { const o = Object.create(null); o.a = { b: 1 }; const c = cloneDeep(o); return [Object.getPrototypeOf(c) === null, c.a.b, c.a !== o.a]; }
+    case 'primitives': return [cloneDeep(5), cloneDeep('x'), cloneDeep(null), cloneDeep(undefined) === undefined, cloneDeep(true)];
+    case 'shared-refs': { const s = { q: 1 }; const c = cloneDeep({ a: s, b: s }); return [c.a === c.b, c.a !== s]; }
+    case 'map': { const k = { id: 1 }; const m = new Map([[k, { v: 2 }], ['s', 1]]); const c = cloneDeep(m); const [[ck, cv]] = [...c]; return [ck !== k, ck.id, cv.v, c.get('s'), c.size]; }
+    case 'set-cycle': { const s = new Set(); s.add(s); const c = cloneDeep(s); return [c.has(c), c !== s, c.size]; }
+    case 'date-class': { class Ev { constructor() { this.at = new Date(5); } } const c = cloneDeep(new Ev()); return [c instanceof Ev, c.at.getTime(), c.at instanceof Date]; }
+    case 'deep': { let o = { leaf: 1 }; for (let i = 0; i < 1000; i++) o = { n: o }; const c = cloneDeep(o); let d = 0, p = c; while (p.n) { p = p.n; d++; } return [d, p.leaf]; }
+    case 'wide': { const a = Array.from({ length: 100000 }, (_, i) => ({ i })); const c = cloneDeep(a); return [c.length, c[99999].i, c[0] !== a[0]]; }
+    case 'prototype-methods': { class A { hi() { return 'hi'; } } const c = cloneDeep(Object.assign(new A(), { n: 1 })); return [c.hi(), c.n, Object.getPrototypeOf(c) === A.prototype]; }
+  }
+}` }, cases: [
+      [["point"],[true,5,7,true,10,5]],
+      [["graph"],[true,0,true,true,true]],
+      [["private"],"TypeError"],
+      [["own-accessor"],["function","function",1]],
+      [["non-enumerable"],[false,1,true,[]]],
+      [["readonly"],[false,false,1]],
+      [["frozen-sealed"],[true,false,true,false]],
+      [["holes"],[3,false,3]],
+      [["arrays"],["[1,[2,[3,{\"x\":[4]}]]]",true,true,true]],
+      [["symbol-keys"],[1,true]],
+      [["functions-shared"],true],
+      [["null-proto"],[true,1,true]],
+      [["primitives"],[5,"x",null,true,true]],
+      [["shared-refs"],[true,true]],
+      [["map"],[true,1,2,1,2]],
+      [["set-cycle"],[true,true,1]],
+      [["date-class"],[true,5,true]],
+      [["deep"],[1000,1]],
+      [["wide"],[100000,99999,true]],
+      [["prototype-methods"],["hi",1,true]]
+    ] },
     solution: {
       approach: `<p>Recursive clone with a <code>WeakMap</code> memo. Primitives and functions return as-is. Special-case <code>Date</code>, <code>Map</code>, <code>Set</code> and arrays. For everything else create an empty object with the <b>same prototype</b>, register it in the memo, then copy each own descriptor (strings and symbols): data descriptors get their <code>value</code> cloned deeply, accessor descriptors are copied as-is so getters stay live. Finally mirror frozen/sealed state.</p>`,
       code: { lang: 'js', run: true, code: `function cloneDeep(value, seen = new WeakMap()) {
@@ -2783,6 +3468,48 @@ console.log(s.pop(), s.min());             // undefined 1  <- invariant broken` 
       `<p>Hint 2: <code>static from(it) { const s = new this(); ... }</code> — <code>this</code> is the class the method was called on, so subclasses work. The subclass keeps its own <code>#mins</code>; it cannot see the parent's <code>#items</code> and does not need to.</p>`,
       `<p>Hint 3: <code>MinStack.push(x)</code>: <code>super.push(x)</code>, then push <code>min(x, current min)</code>. <code>pop()</code>: call <code>super.pop()</code> first (it throws on empty), then pop <code>#mins</code>.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'st', harness: { js: `function st(kind) {
+  const err = (f) => { try { f(); return 'no error'; } catch (e) { return e.name + ':' + e.message; } };
+  switch (kind) {
+    case 'min': { const ms = MinStack.from([5, 2, 8]); const r = [ms instanceof MinStack, ms.min(), String(ms)]; ms.pop(); ms.pop(); r.push(ms.min(), ms.size); return r; }
+    case 'iteration': return [...Stack.from([1, 2, 3])];
+    case 'isStack': { const ms = MinStack.from([1]); return [Stack.isStack(ms), Stack.isStack({}), Stack.isStack(Object.create(Stack.prototype)), Stack.isStack(null), Stack.isStack(5), Stack.isStack(new Stack()), MinStack.isStack(ms)]; }
+    case 'pop-empty': return err(() => new Stack().pop());
+    case 'min-empty': return err(() => new MinStack().min());
+    case 'peek': { const s = new Stack(); const r = [String(s.peek())]; s.push(4).push(9); r.push(s.peek(), s.size); return r; }
+    case 'chain': { const s = new Stack(); return [s.push(1) === s, new MinStack().push(1) instanceof MinStack]; }
+    case 'private': { const ms = MinStack.from([5, 2]); return [String(ms._items), Object.keys(ms), String(ms.items), String(ms.mins)]; }
+    case 'min-invariant': { const ms = MinStack.from([3, 1, 2, 1, 5]); const r = [ms.min()]; for (let i = 0; i < 4; i++) { ms.pop(); r.push(ms.min()); } return r; }
+    case 'negatives': { const ms = MinStack.from([0, -3, 4, -3, -10]); const r = []; while (ms.size) { r.push(ms.min()); ms.pop(); } return r; }
+    case 'from-empty': return [Stack.from([]).size, MinStack.from([]).size];
+    case 'from-iterables': return [Stack.from(new Set([1, 2, 3])).peek(), MinStack.from((function* () { yield 9; yield 4; yield 6; })()).min(), Stack.from('abc').peek()];
+    case 'stack-from-type': return [Stack.from([1]) instanceof MinStack, MinStack.from([1]) instanceof Stack];
+    case 'pop-values': { const s = Stack.from([1, 2, 3]); return [s.pop(), s.pop(), s.pop(), err(() => s.pop())]; }
+    case 'tostring': return [String(new Stack()), String(Stack.from([1, 2]))];
+    case 'sync-after-error': { const ms = new MinStack(); err(() => ms.pop()); ms.push(5); return [ms.min(), ms.size]; }
+    case 'duplicates': { const ms = MinStack.from([2, 2, 2]); ms.pop(); return [ms.min(), ms.size]; }
+    case 'big': { const ms = new MinStack(); for (let i = 100000; i > 0; i--) ms.push(i); const r = [ms.min(), ms.size]; for (let i = 0; i < 99999; i++) ms.pop(); r.push(ms.min()); return r; }
+  }
+}` }, cases: [
+      [["min"],[true,2,"Stack(8, 2, 5)",5,1]],
+      [["iteration"],[3,2,1]],
+      [["isStack"],[true,false,false,false,false,true,true]],
+      [["pop-empty"],"RangeError:pop from empty stack"],
+      [["min-empty"],"RangeError:min of empty stack"],
+      [["peek"],["undefined",9,2]],
+      [["chain"],[true,true]],
+      [["private"],["undefined",[],"undefined","undefined"]],
+      [["min-invariant"],[1,1,1,1,3]],
+      [["negatives"],[-10,-3,-3,-3,0]],
+      [["from-empty"],[0,0]],
+      [["from-iterables"],[3,4,"c"]],
+      [["stack-from-type"],[false,true]],
+      [["pop-values"],[3,2,1,"RangeError:pop from empty stack"]],
+      [["tostring"],["Stack()","Stack(2, 1)"]],
+      [["sync-after-error"],[5,1]],
+      [["duplicates"],[2,2]],
+      [["big"],[1,100000,100000]]
+    ] },
     solution: {
       approach: `<p>Hard-private fields enforce encapsulation at the language level: only code lexically inside the class body can read <code>#items</code>, and the subclass maintains its own private <code>#mins</code>, coordinating only through the public/protected-by-convention API (<code>super.push</code>/<code>super.pop</code>). <code>static from</code> uses <code>new this()</code> so it is inherited correctly, and <code>#items in x</code> is an unforgeable brand check.</p>`,
       code: { lang: 'js', run: true, code: `class Stack {
@@ -2862,6 +3589,42 @@ console.log(l.text);                         // Hello (too late)` }
       `<p>Hint 2: split creation into two phases: construct (fields ready) → initialise/mount. A static factory can run both: <code>static create(...a) { const w = new this(...a); w.mount(); return w; }</code>.</p>`,
       `<p>Hint 3: alternative: pass the data up through <code>super(props)</code> and let the base store it before rendering — but then subclass <i>fields</i> still are not ready, so the factory is the cleaner fix.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'wd', harness: { js: `function wd(kind) {
+  const out = [], saved = console.log; console.log = (...a) => out.push(a.join(' '));
+  try {
+    switch (kind) {
+      case 'label': Label.create(); return out;
+      case 'label-props': Label.create({ text: 'Hi' }); return out;
+      case 'bold': BoldLabel.create({ text: 'Big' }); return out;
+      case 'bold-default': BoldLabel.create(); return out;
+      case 'new-silent': { const raw = new Label(); return [out.length, raw.text]; }
+      case 'mount-once': { const w = Label.create(); w.mount(); w.mount(); return out; }
+      case 'base': Widget.create(); return out;
+      case 'empty-text': Label.create({ text: '' }); return out;
+      case 'props-kept': { const w = Label.create({ text: 'T', extra: 1 }); return [w.props.extra, w.text]; }
+      case 'create-returns': { const w = Label.create({ text: 'A' }); return [w instanceof Label, w.mount() === w]; }
+      case 'two-creates': Label.create({ text: 'a' }); Label.create({ text: 'b' }); return out;
+      case 'bold-weight-field': { const b = new BoldLabel(); return [b.weight, b.text]; }
+      case 'zero-text': Label.create({ text: 0 }); return out;
+      case 'many': { for (let i = 0; i < 1000; i++) Label.create({ text: 't' + i }); return [out.length, out[999]]; }
+    }
+  } finally { console.log = saved; }
+}` }, cases: [
+      [["label"],["Label: Hello"]],
+      [["label-props"],["Label: Hi"]],
+      [["bold"],["<b weight=700> Big"]],
+      [["bold-default"],["<b weight=700> Hello"]],
+      [["new-silent"],[0,"Hello"]],
+      [["mount-once"],["Label: Hello"]],
+      [["base"],["Widget"]],
+      [["empty-text"],["Label: "]],
+      [["props-kept"],[1,"T"]],
+      [["create-returns"],[true,true]],
+      [["two-creates"],["Label: a","Label: b"]],
+      [["bold-weight-field"],[700,"Hello"]],
+      [["zero-text"],["Label: 0"]],
+      [["many"],[1000,"Label: t999"]]
+    ] },
     solution: {
       approach: `<p>Make the constructor do only cheap, non-virtual setup, and move the first render into a separate <code>mount()</code> phase. A static factory <code>create()</code> (inherited by every subclass, using <code>new this</code>) guarantees callers still get a rendered widget, and by the time <code>mount()</code> runs, every class in the hierarchy has finished initialising its fields.</p>`,
       code: { lang: 'js', run: true, code: `class Widget {
@@ -2885,7 +3648,7 @@ class Label extends Widget {
   text = 'Hello';
   constructor(props) {
     super(props);
-    if (props && props.text) this.text = props.text;   // fields exist now
+    if (props && props.text !== undefined) this.text = props.text;   // fields exist now (keeps '' and 0)
   }
   render() { console.log('Label: ' + this.text); }
 }
@@ -2931,6 +3694,76 @@ console.log(Reflect.set(b, 't', 5), Object.hasOwn(b, 't'), b._t); // true false 
       `<p>Hint 2: get: data descriptor → its <code>value</code>; accessor → <code>get.call(receiver)</code> or <code>undefined</code>. Set: accessor → <code>set.call(receiver, value)</code> (no setter → false); data with <code>writable: false</code> → false; writable data or not found → define/update on the <b>receiver</b>.</p>`,
       `<p>Hint 3: "define/update on the receiver" has its own rules: if the receiver already owns <code>key</code> as a data property, it must be writable and you only change <code>value</code>; if it owns an accessor → false; if it does not own it, it must be extensible, then define <code>{ value, writable, enumerable, configurable: true }</code>.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'gpRun', harness: { js: `function gpScenario(name, G, S) {
+  const sym = Symbol('s'); let key = 'x', val = 5, receiver;
+  const makers = {
+    ownData: () => ({ x: 1 }), inheritedData: () => Object.create({ x: 1 }), inheritedReadOnly: () => Object.create(Object.freeze({ x: 1 })),
+    inheritedSetter: () => Object.create({ get x() { return this._x; }, set x(v) { this._x = v * 2; } }), getterOnly: () => Object.create({ get x() { return 42; } }),
+    nonExtensible: () => Object.preventExtensions(Object.create({ y: 1 })), nullProto: () => Object.create(null), symbolKey: () => Object.create({ [sym]: 'inherited' }),
+    ownReadOnly: () => Object.defineProperty({}, 'x', { value: 1, writable: false, enumerable: true, configurable: true }),
+    ownAccessorNoSetter: () => Object.defineProperty({}, 'x', { get() { return 7; }, enumerable: true, configurable: true }),
+    ownGetterSetter: () => { const t = { _v: 1 }; Object.defineProperty(t, 'x', { get() { return this._v; }, set(v) { this._v = v + 100; }, enumerable: true, configurable: true }); return t; },
+    frozen: () => Object.freeze({ x: 1 }), sealed: () => Object.seal({ x: 1 }),
+    nonEnumerableOwn: () => Object.defineProperty({}, 'x', { value: 1, writable: true, enumerable: false, configurable: true }),
+    deepChain: () => { let c = { x: 'deep' }; for (let i = 0; i < 50; i++) c = Object.create(c); return c; },
+    inheritedSetterOnly: () => Object.create({ set x(v) { this._set = v; } }), missing: () => ({}),
+    shadowed: () => { const p = Object.create({ x: 'far' }); p.x = 'near'; return Object.create(p); },
+    inheritedWritableData: () => Object.create(Object.defineProperty({}, 'x', { value: 1, writable: true, enumerable: false, configurable: false })),
+    functionTarget: () => Object.assign(function () {}, { x: 3 }),
+    receiverGetter: () => ({ get x() { return this.tag; } }), receiverSetter: () => Object.create({ set x(v) { this.got = v; } }),
+    receiverData: () => ({ x: 1 }), receiverFrozen: () => ({ x: 1 }), receiverPrimitive: () => ({ x: 1 }), receiverAccessor: () => ({ x: 1 }),
+    receiverReadOnly: () => ({ x: 1 }), receiverNonExtensible: () => ({ x: 1 }), receiverOwnData: () => ({ x: 1 })
+  };
+  const target = makers[name]();
+  if (name === 'symbolKey') key = sym;
+  if (name === 'receiverGetter') receiver = { tag: 'R' };
+  if (name === 'receiverSetter') receiver = {};
+  if (name === 'receiverData') receiver = {};
+  if (name === 'receiverFrozen') receiver = Object.freeze({});
+  if (name === 'receiverPrimitive') receiver = 5;
+  if (name === 'receiverAccessor') receiver = Object.defineProperty({}, 'x', { get() { return 1; }, enumerable: true, configurable: true });
+  if (name === 'receiverReadOnly') receiver = Object.defineProperty({}, 'x', { value: 0, writable: false, enumerable: true, configurable: true });
+  if (name === 'receiverNonExtensible') receiver = Object.preventExtensions({});
+  if (name === 'receiverOwnData') receiver = { x: 'mine', other: 1 };
+  const snap = (o) => (o !== null && (typeof o === 'object' || typeof o === 'function')
+    ? JSON.stringify(Reflect.ownKeys(o).map((k) => { const d = Object.getOwnPropertyDescriptor(o, k); return [String(k), 'value' in d ? String(d.value) : '[accessor]', d.writable, d.enumerable, d.configurable]; })) : String(o));
+  const hasR = receiver !== undefined;
+  const before = hasR ? G(target, key, receiver) : G(target, key);
+  const set = hasR ? S(target, key, val, receiver) : S(target, key, val);
+  const after = hasR ? G(target, key, receiver) : G(target, key);
+  return JSON.stringify([String(before), set, String(after), snap(target), hasR ? snap(receiver) : '']);
+}
+function gpRun(name) { return gpScenario(name, getProp, setProp); }` }, cases: [
+      [["ownData"],"[\"1\",true,\"5\",\"[[\\\"x\\\",\\\"5\\\",true,true,true]]\",\"\"]"],
+      [["inheritedData"],"[\"1\",true,\"5\",\"[[\\\"x\\\",\\\"5\\\",true,true,true]]\",\"\"]"],
+      [["inheritedReadOnly"],"[\"1\",false,\"1\",\"[]\",\"\"]"],
+      [["inheritedSetter"],"[\"undefined\",true,\"10\",\"[[\\\"_x\\\",\\\"10\\\",true,true,true]]\",\"\"]"],
+      [["getterOnly"],"[\"42\",false,\"42\",\"[]\",\"\"]"],
+      [["nonExtensible"],"[\"undefined\",false,\"undefined\",\"[]\",\"\"]"],
+      [["nullProto"],"[\"undefined\",true,\"5\",\"[[\\\"x\\\",\\\"5\\\",true,true,true]]\",\"\"]"],
+      [["symbolKey"],"[\"inherited\",true,\"5\",\"[[\\\"Symbol(s)\\\",\\\"5\\\",true,true,true]]\",\"\"]"],
+      [["ownReadOnly"],"[\"1\",false,\"1\",\"[[\\\"x\\\",\\\"1\\\",false,true,true]]\",\"\"]"],
+      [["ownAccessorNoSetter"],"[\"7\",false,\"7\",\"[[\\\"x\\\",\\\"[accessor]\\\",null,true,true]]\",\"\"]"],
+      [["ownGetterSetter"],"[\"1\",true,\"105\",\"[[\\\"_v\\\",\\\"105\\\",true,true,true],[\\\"x\\\",\\\"[accessor]\\\",null,true,true]]\",\"\"]"],
+      [["frozen"],"[\"1\",false,\"1\",\"[[\\\"x\\\",\\\"1\\\",false,true,false]]\",\"\"]"],
+      [["sealed"],"[\"1\",true,\"5\",\"[[\\\"x\\\",\\\"5\\\",true,true,false]]\",\"\"]"],
+      [["nonEnumerableOwn"],"[\"1\",true,\"5\",\"[[\\\"x\\\",\\\"5\\\",true,false,true]]\",\"\"]"],
+      [["deepChain"],"[\"deep\",true,\"5\",\"[[\\\"x\\\",\\\"5\\\",true,true,true]]\",\"\"]"],
+      [["inheritedSetterOnly"],"[\"undefined\",true,\"undefined\",\"[[\\\"_set\\\",\\\"5\\\",true,true,true]]\",\"\"]"],
+      [["missing"],"[\"undefined\",true,\"5\",\"[[\\\"x\\\",\\\"5\\\",true,true,true]]\",\"\"]"],
+      [["shadowed"],"[\"near\",true,\"5\",\"[[\\\"x\\\",\\\"5\\\",true,true,true]]\",\"\"]"],
+      [["inheritedWritableData"],"[\"1\",true,\"5\",\"[[\\\"x\\\",\\\"5\\\",true,true,true]]\",\"\"]"],
+      [["functionTarget"],"[\"3\",true,\"5\",\"[[\\\"length\\\",\\\"0\\\",false,false,true],[\\\"name\\\",\\\"\\\",false,false,true],[\\\"arguments\\\",\\\"null\\\",false,false,false],[\\\"caller\\\",\\\"null\\\",false,false,false],[\\\"prototype\\\",\\\"[object Object]\\\",true,false,false],[\\\"x\\\",\\\"5\\\",true,true,true]]\",\"\"]"],
+      [["receiverGetter"],"[\"R\",false,\"R\",\"[[\\\"x\\\",\\\"[accessor]\\\",null,true,true]]\",\"[[\\\"tag\\\",\\\"R\\\",true,true,true]]\"]"],
+      [["receiverSetter"],"[\"undefined\",true,\"undefined\",\"[]\",\"[[\\\"got\\\",\\\"5\\\",true,true,true]]\"]"],
+      [["receiverData"],"[\"1\",true,\"1\",\"[[\\\"x\\\",\\\"1\\\",true,true,true]]\",\"[[\\\"x\\\",\\\"5\\\",true,true,true]]\"]"],
+      [["receiverFrozen"],"[\"1\",false,\"1\",\"[[\\\"x\\\",\\\"1\\\",true,true,true]]\",\"[]\"]"],
+      [["receiverPrimitive"],"[\"1\",false,\"1\",\"[[\\\"x\\\",\\\"1\\\",true,true,true]]\",\"5\"]"],
+      [["receiverAccessor"],"[\"1\",false,\"1\",\"[[\\\"x\\\",\\\"1\\\",true,true,true]]\",\"[[\\\"x\\\",\\\"[accessor]\\\",null,true,true]]\"]"],
+      [["receiverReadOnly"],"[\"1\",false,\"1\",\"[[\\\"x\\\",\\\"1\\\",true,true,true]]\",\"[[\\\"x\\\",\\\"0\\\",false,true,true]]\"]"],
+      [["receiverNonExtensible"],"[\"1\",false,\"1\",\"[[\\\"x\\\",\\\"1\\\",true,true,true]]\",\"[]\"]"],
+      [["receiverOwnData"],"[\"1\",true,\"1\",\"[[\\\"x\\\",\\\"1\\\",true,true,true]]\",\"[[\\\"x\\\",\\\"5\\\",true,true,true],[\\\"other\\\",\\\"1\\\",true,true,true]]\"]"]
+    ] },
     solution: {
       approach: `<p>Translate <code>OrdinaryGet</code> and <code>OrdinarySet</code> from the spec. Both find the first own descriptor along the chain. Get returns the value or calls the getter with the <b>receiver</b> (the original object, not the prototype that owns the getter). Set delegates to an accessor's setter with the receiver, refuses on a read-only data property, and otherwise performs the write on the receiver — which is the only way a write ever creates a property.</p>`,
       code: { lang: 'js', run: true, code: `function findDesc(obj, key) {
@@ -3022,6 +3855,58 @@ console.log(typeof d.dive);             // undefined: the copy is a stale snapsh
       `<p>Hint 2: <code>get(target, key, receiver)</code>: for each parent, <code>if (key in parent) return Reflect.get(parent, key, receiver)</code>. <code>has</code>: <code>parents.some(p =&gt; key in p)</code>.</p>`,
       `<p>Hint 3: <code>set(target, key, value, receiver)</code>: if a parent has the key, <code>Reflect.set(parent, key, value, receiver)</code> — OrdinarySet then runs a setter with the receiver or defines an own property on the receiver. Otherwise <code>Reflect.set(target, key, value, receiver)</code> does the same against an empty target.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'mpr', harness: { js: `function mpr(kind) {
+  const Swimmer = { swim() { return this.name + ' swims'; }, move() { return 'paddle'; } };
+  const Flyer = { fly() { return this.name + ' flies'; }, move() { return 'flap'; }, get altitude() { return this._alt || 0; }, set altitude(v) { this._alt = Math.max(0, v); }, get who() { return this.name; } };
+  class Duck { constructor(name) { this.name = name; } quack() { return this.name + ' quacks'; } }
+  Object.setPrototypeOf(Duck.prototype, multiProto(Swimmer, Flyer));
+  const d = new Duck('Donald');
+  switch (kind) {
+    case 'methods': return [d.quack(), d.swim(), d.fly()];
+    case 'in': return ['fly' in d, 'swim' in d, 'dive' in d, 'quack' in d, 'name' in d];
+    case 'order': return d.move();
+    case 'swapped': { class Duck2 { constructor(n) { this.name = n; } } Object.setPrototypeOf(Duck2.prototype, multiProto(Flyer, Swimmer)); return new Duck2('X').move(); }
+    case 'setter': { d.altitude = -50; const r = [d.altitude, Object.hasOwn(d, 'altitude'), d._alt]; d.altitude = 7; r.push(d.altitude); return r; }
+    case 'own-write': { d.color = 'white'; return [Object.keys(d), Object.hasOwn(d, 'color')]; }
+    case 'write-shadows-parent': { d.move = 'mine'; return [d.move, Swimmer.move(), Object.hasOwn(d, 'move')]; }
+    case 'live': { Flyer.dive = function () { return this.name + ' dives'; }; return [d.dive(), 'dive' in d]; }
+    case 'live-late-parent': { Swimmer.sink = function () { return this.name + ' sinks'; }; return d.sink(); }
+    case 'getter-this': return d.who;
+    case 'missing': return [String(d.nope), 'nope' in d];
+    case 'conflicts': return conflicts(Swimmer, Flyer);
+    case 'conflicts-none': return conflicts({ a: 1 }, { b: 2 });
+    case 'conflicts-three': return conflicts({ a: 1, b: 1 }, { b: 2, c: 2 }, { c: 3, d: 3 });
+    case 'conflicts-symbol': { const s = Symbol('sym'); return conflicts({ [s]: 1 }, { [s]: 2 }); }
+    case 'conflicts-one': return conflicts({ a: 1 });
+    case 'no-parents': { class E { } Object.setPrototypeOf(E.prototype, multiProto()); const e = new E(); return [String(e.x), 'x' in e]; }
+    case 'ten-parents': { const ps = Array.from({ length: 10 }, (_, i) => ({ ['p' + i]() { return i; }, common() { return 'from' + i; } })); class Ten { } Object.setPrototypeOf(Ten.prototype, multiProto(...ps)); const t = new Ten(); return [t.p9(), t.p0(), t.common()]; }
+    case 'own-before-parent': { class O { constructor() { this.move = 'own'; } } Object.setPrototypeOf(O.prototype, multiProto(Swimmer)); return new O().move; }
+    case 'inheritance-chain': { class A extends Duck { } return [new A('Daisy').swim(), new A('Daisy') instanceof Duck]; }
+    case 'parent-mutated': { const p = { v: 1 }; class M { } Object.setPrototypeOf(M.prototype, multiProto(p)); const m = new M(); const r = [m.v]; p.v = 2; r.push(m.v); delete p.v; r.push(String(m.v)); return r; }
+  }
+}` }, cases: [
+      [["methods"],["Donald quacks","Donald swims","Donald flies"]],
+      [["in"],[true,true,false,true,true]],
+      [["order"],"paddle"],
+      [["swapped"],"flap"],
+      [["setter"],[0,false,0,7]],
+      [["own-write"],[["name","color"],true]],
+      [["write-shadows-parent"],["mine","paddle",true]],
+      [["live"],["Donald dives",true]],
+      [["live-late-parent"],"Donald sinks"],
+      [["getter-this"],"Donald"],
+      [["missing"],["undefined",false]],
+      [["conflicts"],["move"]],
+      [["conflicts-none"],[]],
+      [["conflicts-three"],["b","c"]],
+      [["conflicts-symbol"],["Symbol(sym)"]],
+      [["conflicts-one"],[]],
+      [["no-parents"],["undefined",false]],
+      [["ten-parents"],[9,0,"from0"]],
+      [["own-before-parent"],"own"],
+      [["inheritance-chain"],["Daisy swims",true]],
+      [["parent-mutated"],[1,2,"undefined"]]
+    ] },
     solution: {
       approach: `<p>Put a Proxy over an empty null-prototype target into the chain. Its traps fan out to the parents in priority order, always forwarding the original <b>receiver</b> through <code>Reflect</code>, which preserves normal semantics: inherited getters/methods see the right <code>this</code>, writes land on the object or hit an inherited setter, and delegation is live because nothing is copied. A separate helper reports name clashes so the order is a conscious decision.</p>`,
       code: { lang: 'js', run: true, code: `function multiProto(...parents) {
@@ -3102,6 +3987,54 @@ console.log(ColorLoose.RED);                     // null` }
       `<p>Hint 2: <code>new.target !== Color</code> → throw, to forbid subclasses. <code>Object.freeze(this)</code> in the constructor and <code>Object.freeze(Color)</code> in the static block make members and statics read-only.</p>`,
       `<p>Hint 3: keep a private static <code>Map</code> name → instance for <code>from()</code>/<code>values()</code>; brand-check with <code>#name in x</code>.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'ce', harness: { js: `function ce(kind) {
+  const err = (f) => { try { f(); return 'no error'; } catch (e) { return e.name; } };
+  switch (kind) {
+    case 'values': return Color.values().map(String);
+    case 'from': return [Color.from('GREEN') === Color.GREEN, Color.BLUE.hex, Color.from('RED').name];
+    case 'json': return [JSON.stringify({ c: Color.RED }), JSON.stringify([Color.GREEN, Color.BLUE])];
+    case 'new': return err(() => new Color('PINK', '#f0f'));
+    case 'subclass': return err(() => { class Neon extends Color { } return new Neon('NEON', '#0ff'); });
+    case 'strict-assign': return err(() => { 'use strict'; Color.RED = null; });
+    case 'sloppy-assign': { Color.RED = null; return Color.RED === Color.from('RED'); }
+    case 'unknown': return [err(() => Color.from('PURPLE')), err(() => Color.from('red')), err(() => Color.from('toString')), err(() => Color.from(undefined))];
+    case 'brand': return err(() => Object.create(Color.prototype).name);
+    case 'is-color': return [Color.isColor(Color.RED), Color.isColor(Object.create(Color.prototype)), Color.isColor('RED'), Color.isColor(null), Color.isColor({ name: 'RED' })];
+    case 'frozen': return [Object.isFrozen(Color.RED), Object.isFrozen(Color)];
+    case 'no-new-static': { Color.PINK = 1; return String(Color.PINK); }
+    case 'no-new-prop': { Color.RED.extra = 1; return String(Color.RED.extra); }
+    case 'to-string': return [String(Color.RED), \`\${Color.BLUE}\`];
+    case 'order-identity': { const v = Color.values(); return [v[0] === Color.RED, v[1] === Color.GREEN, v[2] === Color.BLUE, v.length]; }
+    case 'values-copy': { Color.values().pop(); return Color.values().length; }
+    case 'instanceof': return [Color.RED instanceof Color, Object.keys(Color), Object.keys(Color.RED)];
+    case 'switch': { const d = (c) => { switch (c) { case Color.RED: return 'stop'; case Color.GREEN: return 'go'; default: return 'wait'; } }; return [d(Color.RED), d(Color.GREEN), d(Color.BLUE)]; }
+    case 'hex': return Color.values().map((c) => c.hex);
+    case 'name-readonly': { Color.RED.name = 'X'; return Color.RED.name; }
+    case 'identity-from': { let ok = true; for (let i = 0; i < 100000; i++) if (Color.from('BLUE') !== Color.BLUE) ok = false; return ok; }
+  }
+}` }, cases: [
+      [["values"],["Color.RED","Color.GREEN","Color.BLUE"]],
+      [["from"],[true,"#0000ff","RED"]],
+      [["json"],["{\"c\":\"RED\"}","[\"GREEN\",\"BLUE\"]"]],
+      [["new"],"TypeError"],
+      [["subclass"],"TypeError"],
+      [["strict-assign"],"TypeError"],
+      [["sloppy-assign"],true],
+      [["unknown"],["RangeError","RangeError","RangeError","RangeError"]],
+      [["brand"],"TypeError"],
+      [["is-color"],[true,false,false,false,false]],
+      [["frozen"],[true,true]],
+      [["no-new-static"],"undefined"],
+      [["no-new-prop"],"undefined"],
+      [["to-string"],["Color.RED","Color.BLUE"]],
+      [["order-identity"],[true,true,true,3]],
+      [["values-copy"],3],
+      [["instanceof"],[true,["RED","GREEN","BLUE"],[]]],
+      [["switch"],["stop","go","wait"]],
+      [["hex"],["#ff0000","#00ff00","#0000ff"]],
+      [["name-readonly"],"RED"],
+      [["identity-from"],true]
+    ] },
     solution: {
       approach: `<p>Use static initialisation order as a one-time construction window: static fields create the members, a static block then locks construction and freezes the class object, so <code>Color.RED</code> becomes a non-writable, non-configurable property. Instance data is private and instances are frozen, so they are immutable singletons compared by identity. <code>#name in x</code> gives an unforgeable type check that prototype tricks cannot fake.</p>`,
       code: { lang: 'js', run: true, code: `class Color {
@@ -3201,6 +4134,60 @@ console.log(a.age);` }
       `<p>Hint 2: install accessors for class C's own fields on <code>C.prototype</code> once; remember which classes are prepared in a private static <code>WeakSet</code>.</p>`,
       `<p>Hint 3: the getter/setter functions are written lexically inside <code>Model</code>'s body, so they may use <code>this.#data</code> even though they are installed on subclass prototypes — private names are lexically scoped, and every instance got <code>#data</code> from <code>Model</code>'s constructor.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'md', harness: { js: `function md(kind) {
+  const err = (f) => { try { f(); return 'no error'; } catch (e) { return e.name + ': ' + e.message; } };
+  class Person extends Model { static fields = { name: 'string', age: 'number' }; }
+  class Employee extends Person { static fields = { salary: 'number' }; raise(pct) { this.salary = Math.round(this.salary * (1 + pct / 100)); return this; } }
+  switch (kind) {
+    case 'employee': { const e = new Employee({ name: 'Asha', age: 31, salary: 100 }); const r = [Employee.schema(), e.name, e.age, e.salary, e.dirty]; e.raise(10); r.push(e.salary, e.dirty, JSON.stringify(e)); return r; }
+    case 'proto': { new Employee({ name: 'A', age: 1, salary: 2 }); const e = new Employee({ name: 'A', age: 1, salary: 2 }); return [Object.hasOwn(Person.prototype, 'name'), Object.hasOwn(Employee.prototype, 'salary'), Object.keys(e), Object.hasOwn(e, 'name'), Object.hasOwn(Employee.prototype, 'name')]; }
+    case 'shared-accessor': { const e = new Employee({ name: 'A', age: 1, salary: 2 }), p = new Person({ name: 'Ben', age: 40 }); const g = Object.getOwnPropertyDescriptor(Person.prototype, 'name').get; return [g.call(e), g.call(p)]; }
+    case 'bad-type': { const e = new Employee({ name: 'A', age: 1, salary: 2 }); return err(() => { e.age = 'old'; }); }
+    case 'abstract': return err(() => new Model({}));
+    case 'missing': return err(() => new Person({ name: 'X' }));
+    case 'unknown': return err(() => new Person({ name: 'X', age: 1, role: 'dev' }));
+    case 'idempotent': { new Person({ name: 'a', age: 1 }); const g1 = Object.getOwnPropertyDescriptor(Person.prototype, 'name').get; new Person({ name: 'b', age: 2 }); new Employee({ name: 'c', age: 3, salary: 4 }); const g2 = Object.getOwnPropertyDescriptor(Person.prototype, 'name').get; return g1 === g2; }
+    case 'dirty': { const p = new Person({ name: 'a', age: 1 }); const r = [p.dirty]; p.age = 2; p.name = 'a'; p.age = 3; r.push(p.dirty); return r; }
+    case 'dirty-clear': return new Person({ name: 'a', age: 1 }).dirty;
+    case 'null-undefined': { const p = new Person({ name: 'a', age: 1 }); return [err(() => { p.name = null; }), err(() => { p.name = undefined; }), err(() => { p.age = '5'; }), p.name]; }
+    case 'nan-ok': { const p = new Person({ name: 'a', age: 1 }); p.age = NaN; return String(p.age); }
+    case 'independent': { const a = new Person({ name: 'A', age: 1 }), b = new Person({ name: 'B', age: 2 }); a.age = 10; return [a.name, a.age, b.name, b.age]; }
+    case 'inherits-fields': { class Intern extends Person { } const i = new Intern({ name: 'I', age: 20 }); return [Intern.schema(), i.name, JSON.stringify(i)]; }
+    case 'levels-10': {
+      let C = Model; const classes = [];
+      for (let i = 0; i < 10; i++) { const parent = C; C = class extends parent { }; C.fields = { ['f' + i]: 'number' }; classes.push(C); }
+      const props = {}; for (let i = 0; i < 10; i++) props['f' + i] = i;
+      const o = new C(props); o.f9 = 99;
+      return [Object.keys(C.schema()).length, o.f0, o.f9, o.dirty, Object.keys(o).length];
+    }
+    case 'order-independent': { const e = new Employee({ name: 'E', age: 5, salary: 6 }); const p = new Person({ name: 'P', age: 7 }); return [e.salary, p.name]; }
+    case 'tojson': return JSON.stringify(new Person({ name: 'Zed', age: 9 }));
+    case 'error-names': { return [err(() => new Employee({ name: 'x', age: 1 })), err(() => new Employee({ name: 'x', age: 1, salary: 'lots' }))]; }
+    case 'many': { let sum = 0; for (let i = 0; i < 10000; i++) { const p = new Person({ name: 'n' + i, age: i }); sum += p.age; } return sum; }
+    case 'schema-not-shared': { const s = Employee.schema(); s.hacked = 'x'; return Object.keys(Employee.schema()); }
+  }
+}` }, cases: [
+      [["employee"],[{"name":"string","age":"number","salary":"number"},"Asha",31,100,[],110,["salary"],"{\"type\":\"Employee\",\"name\":\"Asha\",\"age\":31,\"salary\":110}"]],
+      [["proto"],[true,true,[],false,false]],
+      [["shared-accessor"],["A","Ben"]],
+      [["bad-type"],"TypeError: Employee.age must be a number, got string"],
+      [["abstract"],"TypeError: Model is abstract"],
+      [["missing"],"TypeError: Person: missing field age"],
+      [["unknown"],"TypeError: Person: unknown field role"],
+      [["idempotent"],true],
+      [["dirty"],[[],["age","name"]]],
+      [["dirty-clear"],[]],
+      [["null-undefined"],["TypeError: Person.name must be a string, got object","TypeError: Person.name must be a string, got undefined","TypeError: Person.age must be a number, got string","a"]],
+      [["nan-ok"],"NaN"],
+      [["independent"],["A",10,"B",2]],
+      [["inherits-fields"],[{"name":"string","age":"number"},"I","{\"type\":\"Intern\",\"name\":\"I\",\"age\":20}"]],
+      [["levels-10"],[10,0,99,["f9"],0]],
+      [["order-independent"],[6,"P"]],
+      [["tojson"],"{\"type\":\"Person\",\"name\":\"Zed\",\"age\":9}"],
+      [["error-names"],["TypeError: Employee: missing field salary","TypeError: Employee.salary must be a number, got string"]],
+      [["many"],49995000],
+      [["schema-not-shared"],["name","age","salary"]]
+    ] },
     solution: {
       approach: `<p>The schema is assembled by walking the <b>constructor chain</b> (statics are inherited through <code>[[Prototype]]</code> of the class functions). On first construction of each class, accessors for that class's own fields are defined on its prototype, so every instance shares them and lookups find them by climbing the instance chain. Values live in a private <code>#data</code> object installed by <code>Model</code>'s constructor; setters validate and record dirtiness; <code>new.target</code> makes <code>Model</code> abstract.</p>`,
       code: { lang: 'js', run: true, code: `class Model {

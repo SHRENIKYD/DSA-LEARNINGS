@@ -528,7 +528,9 @@ console.log(middle, st[st.length - 1]);     // 1 2` }, { lang: 'cpp', code: `int
       ])}<p>The <b>last</b> item pushed comes out first, even though a queue alone would give the <b>first</b> one.</p>`,
       brute: {
         why: `<p>Keep items in queue <code>q1</code> in arrival order. To pop, move the first <code>size - 1</code> items into helper queue <code>q2</code>, remove the last remaining one, then swap the queues. Every <code>pop</code> <b>and</b> every <code>top</code> costs O(N), and the code juggles two queues — easy to get wrong. It works, but we can make the expensive part happen only once per element and keep reads O(1).</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 import java.util.*;
 
 class MyStackTwoQueues {
@@ -551,7 +553,78 @@ class MyStackTwoQueues {
     }
 
     public boolean empty() { return q1.isEmpty(); }
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `from collections import deque
+
+class MyStackTwoQueues:
+    def __init__(self):
+        self.q1 = deque()
+        self.q2 = deque()
+
+    def push(self, x):
+        self.q1.append(x)                       # O(1)
+
+    def pop(self):
+        while len(self.q1) > 1:
+            self.q2.append(self.q1.popleft())   # move all but the newest: O(N)
+        last = self.q1.popleft()
+        self.q1, self.q2 = self.q2, self.q1     # swap roles
+        return last
+
+    def top(self):
+        x = self.pop()                          # O(N) again just to peek
+        self.push(x)
+        return x
+
+    def empty(self):
+        return len(self.q1) == 0` },
+            { lang: 'js', code: `class MyStackTwoQueues {
+  constructor() {
+    this.q1 = [];     // queue: push at the back, shift from the front
+    this.q2 = [];
+  }
+
+  push(x) { this.q1.push(x); }                    // O(1)
+
+  pop() {
+    while (this.q1.length > 1) this.q2.push(this.q1.shift());   // move all but the newest: O(N)
+    const last = this.q1.shift();
+    [this.q1, this.q2] = [this.q2, this.q1];                    // swap roles
+    return last;
+  }
+
+  top() {
+    const x = this.pop();                         // O(N) again just to peek
+    this.push(x);
+    return x;
+  }
+
+  empty() { return this.q1.length === 0; }
+}` },
+            { lang: 'cpp', code: `class MyStackTwoQueues {
+    queue<int> q1, q2;
+
+public:
+    void push(int x) { q1.push(x); }                // O(1)
+
+    int pop() {
+        while (q1.size() > 1) { q2.push(q1.front()); q1.pop(); }   // move all but the newest: O(N)
+        int last = q1.front(); q1.pop();
+        swap(q1, q2);                                              // swap roles
+        return last;
+    }
+
+    int top() {
+        int x = pop();                              // O(N) again just to peek
+        push(x);
+        return x;
+    }
+
+    bool empty() { return q1.empty(); }
+};` }
+          ]
+        }
       },
       mcq: {
         q: 'The queue (front→back) is <code>3, 2, 1</code>, meaning 3 is the stack top. We push 4 with the "rotate after push" trick. What does the queue look like after the rotation?',
@@ -1001,7 +1074,9 @@ for t in ["()[]{}", "([)]", "{[()()]}", "((", "))"]:
         <p>Output: ${H.c('r', 'false')} — <code>]</code> arrives but the open bracket is <code>(</code>.</p>`,
       brute: {
         why: `<p>Keep deleting every adjacent pair <code>()</code>, <code>[]</code>, <code>{}</code> until nothing changes; valid if the string becomes empty. Each pass is O(N) and may delete only one pair, so up to N/2 passes → <b>O(N<sup>2</sup>)</b>. The waste: after each deletion we rescan the whole string from the start instead of remembering what was open.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 boolean isValidBrute(String s) {
     String prev = "";
     while (!s.equals(prev)) {              // repeat while the last pass changed something
@@ -1009,7 +1084,38 @@ boolean isValidBrute(String s) {
         s = s.replace("()", "").replace("[]", "").replace("{}", "");
     }
     return s.isEmpty();                    // everything cancelled -> valid
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def is_valid(s):
+    prev = ""
+    while s != prev:                       # repeat while the last pass changed something
+        prev = s
+        s = s.replace("()", "").replace("[]", "").replace("{}", "")
+    return s == ""                         # everything cancelled -> valid` },
+            { lang: 'js', code: `function isValid(s) {
+  let prev = "";
+  while (s !== prev) {                     // repeat while the last pass changed something
+    prev = s;
+    s = s.replaceAll("()", "").replaceAll("[]", "").replaceAll("{}", "");
+  }
+  return s.length === 0;                   // everything cancelled -> valid
+}` },
+            { lang: 'cpp', code: `string eraseAll(string s, const string& pair) {
+    size_t pos;
+    while ((pos = s.find(pair)) != string::npos) s.erase(pos, pair.size());
+    return s;
+}
+
+bool isValid(string s) {
+    string prev = "";
+    while (s != prev) {                    // repeat while the last pass changed something
+        prev = s;
+        s = eraseAll(eraseAll(eraseAll(s, "()"), "[]"), "{}");
+    }
+    return s.empty();                      // everything cancelled -> valid
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'You are scanning <code>{[(</code> and the next character is <code>]</code>. What happens?',
@@ -1487,7 +1593,9 @@ int main() {
       ])}`,
       brute: {
         why: `<p>Use a normal stack and, on <code>getMin()</code>, loop over all elements to find the smallest. That is <b>O(N) per getMin</b>; with 3·10<sup>4</sup> calls on a big stack it is ~10<sup>9</sup> steps. The waste: we recompute a minimum that hardly changes between calls.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 import java.util.*;
 
 class MinStackBrute {
@@ -1500,7 +1608,52 @@ class MinStackBrute {
         for (int x : st) min = Math.min(min, x);   // scans the whole stack every time: O(N)
         return min;
     }
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `class MinStackBrute:
+    def __init__(self):
+        self.st = []
+
+    def push(self, val):
+        self.st.append(val)
+
+    def pop(self):
+        self.st.pop()
+
+    def top(self):
+        return self.st[-1]
+
+    def getMin(self):
+        mn = float("inf")
+        for x in self.st:
+            mn = min(mn, x)                # scans the whole stack every time: O(N)
+        return mn` },
+            { lang: 'js', code: `class MinStackBrute {
+  constructor() { this.st = []; }
+  push(val) { this.st.push(val); }
+  pop() { this.st.pop(); }
+  top() { return this.st[this.st.length - 1]; }
+  getMin() {
+    let min = Infinity;
+    for (const x of this.st) min = Math.min(min, x);   // scans the whole stack every time: O(N)
+    return min;
+  }
+}` },
+            { lang: 'cpp', code: `class MinStackBrute {
+    vector<int> st;
+
+public:
+    void push(int val) { st.push_back(val); }
+    void pop() { st.pop_back(); }
+    int top() { return st.back(); }
+    int getMin() {
+        int mn = INT_MAX;
+        for (int x : st) mn = min(mn, x);   // scans the whole stack every time: O(N)
+        return mn;
+    }
+};` }
+          ]
+        }
       },
       mcq: {
         q: 'Stack (bottom→top) is 4, 1, 6 with min-so-far notes 4, 1, 1. We pop twice. What should getMin() return, and why is it O(1)?',
@@ -2066,7 +2219,9 @@ int main() {
         <p>Output: <b>6</b>, i.e. <code>4 + (13 / 5)</code>.</p>`,
       brute: {
         why: `<p>Repeatedly scan the list for the first operator, replace "a b op" by its result, and rebuild the list. Each reduction is O(N) (find + rebuild), and there are up to N/2 operators → <b>O(N<sup>2</sup>)</b>. The waste: after each reduction we start scanning from the beginning again, although everything to the left of the operator was already "waiting" in the right order — exactly what a stack remembers.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 int evalRPNBrute(String[] tokens) {
     List<String> list = new ArrayList<>(Arrays.asList(tokens));
     while (list.size() > 1) {
@@ -2082,7 +2237,55 @@ int evalRPNBrute(String[] tokens) {
         }
     }
     return Integer.parseInt(list.get(0));
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def eval_rpn(tokens):
+    lst = list(tokens)
+    while len(lst) > 1:
+        for i in range(2, len(lst)):
+            op = lst[i]
+            if op in ("+", "-", "*", "/"):
+                a, b = int(lst[i - 2]), int(lst[i - 1])
+                if op == "+": r = a + b
+                elif op == "-": r = a - b
+                elif op == "*": r = a * b
+                else: r = int(a / b)                  # truncate toward zero
+                lst[i - 2:i + 1] = [str(r)]           # replace "a b op" by its result (O(N) shift)
+                break                                 # rescan from the start
+    return int(lst[0])` },
+            { lang: 'js', code: `function evalRPN(tokens) {
+  const list = [...tokens];
+  while (list.length > 1) {
+    for (let i = 2; i < list.length; i++) {
+      const op = list[i];
+      if (op === "+" || op === "-" || op === "*" || op === "/") {
+        const a = parseInt(list[i - 2], 10), b = parseInt(list[i - 1], 10);
+        const r = op === "+" ? a + b : op === "-" ? a - b : op === "*" ? a * b : Math.trunc(a / b);
+        list.splice(i - 2, 3, String(r));             // replace "a b op" by its result (O(N) shift)
+        break;                                        // rescan from the start
+      }
+    }
+  }
+  return parseInt(list[0], 10);
+}` },
+            { lang: 'cpp', code: `int evalRPN(const vector<string>& tokens) {
+    vector<string> list(tokens);
+    while (list.size() > 1) {
+        for (size_t i = 2; i < list.size(); i++) {
+            const string& op = list[i];
+            if (op == "+" || op == "-" || op == "*" || op == "/") {
+                int a = stoi(list[i - 2]), b = stoi(list[i - 1]);
+                int r = op == "+" ? a + b : op == "-" ? a - b : op == "*" ? a * b : a / b;
+                list.erase(list.begin() + (i - 2), list.begin() + (i + 1));   // remove "a b op" (O(N) shift)
+                list.insert(list.begin() + (i - 2), to_string(r));            // put the result back
+                break;                                                        // rescan from the start
+            }
+        }
+    }
+    return stoi(list[0]);
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'The stack (bottom→top) is <code>10 3</code> and the next token is <code>"-"</code>. What is pushed?',
@@ -2487,7 +2690,9 @@ print(daily_temperatures([73, 74, 75, 71, 69, 72, 76, 73]))  # [1, 1, 4, 2, 1, 1
         <p>4 → ${H.c('g', '5')} (right next to it). 5 → skip 2, ${H.c('g', '10')}. 2 → ${H.c('g', '10')}. 10 and 8 → nothing bigger on their right → ${H.c('r', '-1')}.</p>`,
       brute: {
         why: `<p>For each <code>i</code>, walk right until a bigger number appears. For a decreasing array like <code>9 8 7 ... 1</code> every walk goes to the end → N<sup>2</sup>/2 ≈ 5·10<sup>9</sup> steps for N = 10<sup>5</sup>. The waste: the same small numbers are re-scanned by every element to their left.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 int[] nextGreaterBrute(int[] a) {
     int n = a.length;
     int[] ans = new int[n];
@@ -2498,7 +2703,39 @@ int[] nextGreaterBrute(int[] a) {
         }
     }
     return ans;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def next_greater(a):
+    n = len(a)
+    ans = [-1] * n
+    for i in range(n):
+        for j in range(i + 1, n):
+            if a[j] > a[i]:
+                ans[i] = a[j]            # first bigger one to the right
+                break
+    return ans` },
+            { lang: 'js', code: `function nextGreater(a) {
+  const n = a.length;
+  const ans = new Array(n).fill(-1);
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (a[j] > a[i]) { ans[i] = a[j]; break; }   // first bigger one to the right
+    }
+  }
+  return ans;
+}` },
+            { lang: 'cpp', code: `vector<int> nextGreater(const vector<int>& a) {
+    int n = a.size();
+    vector<int> ans(n, -1);
+    for (int i = 0; i < n; i++) {
+        for (int j = i + 1; j < n; j++) {
+            if (a[j] > a[i]) { ans[i] = a[j]; break; }   // first bigger one to the right
+        }
+    }
+    return ans;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'The waiting stack (values, bottom→top) is <code>9, 6, 4</code>. Next number is <code>7</code>. What happens?',
@@ -2778,7 +3015,9 @@ int main() {
         <p>Day 6 price ${H.c('y', '85')}: days 1..6 (80, 60, 70, 60, 75, 85) are all ≤ 85, and day 0 (100) is taller → span ${H.c('g', '6')}.</p>`,
       brute: {
         why: `<p>For each day walk left while the price is ≤ today. For an increasing price list (1, 2, 3, ...) day <code>i</code> walks all the way back → 1 + 2 + ... + N ≈ N<sup>2</sup>/2 steps. The waste: once a big day has "covered" a stretch, later days re-walk that same stretch one day at a time.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 int[] spanBrute(int[] price) {
     int n = price.length;
     int[] span = new int[n];
@@ -2788,7 +3027,39 @@ int[] spanBrute(int[] price) {
         span[i] = i - j;
     }
     return span;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def calculate_span(price):
+    n = len(price)
+    span = [0] * n
+    for i in range(n):
+        j = i
+        while j >= 0 and price[j] <= price[i]:    # walk left until a taller price
+            j -= 1
+        span[i] = i - j
+    return span` },
+            { lang: 'js', code: `function calculateSpan(price) {
+  const n = price.length;
+  const span = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    let j = i;
+    while (j >= 0 && price[j] <= price[i]) j--;   // walk left until a taller price
+    span[i] = i - j;
+  }
+  return span;
+}` },
+            { lang: 'cpp', code: `vector<int> calculateSpan(const vector<int>& price) {
+    int n = price.size();
+    vector<int> span(n);
+    for (int i = 0; i < n; i++) {
+        int j = i;
+        while (j >= 0 && price[j] <= price[i]) j--;   // walk left until a taller price
+        span[i] = i - j;
+    }
+    return span;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Stack of (index: price) bottom→top is <code>0:100, 1:80, 3:70</code>. Day 4 has price 75. What is span[4]?',
@@ -3106,7 +3377,9 @@ int main() {
         <p>Output: ${H.c('p', '10')}. The rectangle covers ${H.c('b', 'bars 2 and 3')} (heights 5 and 6) at height 5: 5 × 2 = 10. Other candidates: height 2 across bars 2..5 → 2 × 4 = 8, height 1 across everything → 6.</p>`,
       brute: {
         why: `<p>For each bar, expand left and right while neighbours are ≥ it, then compute height × width. Each expansion can cover the whole array → <b>O(N<sup>2</sup>)</b> = 10<sup>10</sup> for N = 10<sup>5</sup>. The waste: neighbouring bars re-discover the same walls over and over.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 int largestRectangleBrute(int[] h) {
     int n = h.length, best = 0;
     for (int i = 0; i < n; i++) {
@@ -3116,7 +3389,41 @@ int largestRectangleBrute(int[] h) {
         best = Math.max(best, h[i] * (r - l + 1));
     }
     return best;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def largest_rectangle_area(h):
+    n, best = len(h), 0
+    for i in range(n):
+        l = r = i
+        while l - 1 >= 0 and h[l - 1] >= h[i]:    # stretch left
+            l -= 1
+        while r + 1 < n and h[r + 1] >= h[i]:     # stretch right
+            r += 1
+        best = max(best, h[i] * (r - l + 1))
+    return best` },
+            { lang: 'js', code: `function largestRectangleArea(h) {
+  const n = h.length;
+  let best = 0;
+  for (let i = 0; i < n; i++) {
+    let l = i, r = i;
+    while (l - 1 >= 0 && h[l - 1] >= h[i]) l--;   // stretch left
+    while (r + 1 < n && h[r + 1] >= h[i]) r++;    // stretch right
+    best = Math.max(best, h[i] * (r - l + 1));
+  }
+  return best;
+}` },
+            { lang: 'cpp', code: `int largestRectangleArea(const vector<int>& h) {
+    int n = h.size(), best = 0;
+    for (int i = 0; i < n; i++) {
+        int l = i, r = i;
+        while (l - 1 >= 0 && h[l - 1] >= h[i]) l--;   // stretch left
+        while (r + 1 < n && h[r + 1] >= h[i]) r++;    // stretch right
+        best = max(best, h[i] * (r - l + 1));
+    }
+    return best;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'While popping bar <code>top</code> at position <code>i</code>, the stack below it has index <code>L</code> on top. What is the width of the rectangle with height <code>h[top]</code>?',
@@ -3479,7 +3786,9 @@ int main() {
       ])}<p>The first item pushed is always the first one returned — FIFO.</p>`,
       brute: {
         why: `<p>Keep everything in one stack. To pop the front (at the bottom), move all items to a helper stack, pop the one on top, then move everything <b>back</b>. Each pop/peek costs O(N) <b>every time</b> → O(N<sup>2</sup>) for N operations. The waste: moving the items back undoes the useful reversal we just paid for.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 import java.util.*;
 
 class MyQueueSlow {
@@ -3503,7 +3812,82 @@ class MyQueueSlow {
     }
 
     public boolean empty() { return main.isEmpty(); }
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `class MyQueueSlow:
+    def __init__(self):
+        self.main = []
+        self.help = []
+
+    def push(self, x):
+        self.main.append(x)
+
+    def pop(self):
+        while self.main:
+            self.help.append(self.main.pop())    # reverse: front is now on top
+        front = self.help.pop()
+        while self.help:
+            self.main.append(self.help.pop())    # move everything back: wasted work
+        return front
+
+    def peek(self):
+        while self.main:
+            self.help.append(self.main.pop())
+        front = self.help[-1]
+        while self.help:
+            self.main.append(self.help.pop())
+        return front
+
+    def empty(self):
+        return len(self.main) == 0` },
+            { lang: 'js', code: `class MyQueueSlow {
+  constructor() {
+    this.main = [];
+    this.help = [];
+  }
+
+  push(x) { this.main.push(x); }
+
+  pop() {
+    while (this.main.length) this.help.push(this.main.pop());   // reverse: front is now on top
+    const front = this.help.pop();
+    while (this.help.length) this.main.push(this.help.pop());   // move everything back: wasted work
+    return front;
+  }
+
+  peek() {
+    while (this.main.length) this.help.push(this.main.pop());
+    const front = this.help[this.help.length - 1];
+    while (this.help.length) this.main.push(this.help.pop());
+    return front;
+  }
+
+  empty() { return this.main.length === 0; }
+}` },
+            { lang: 'cpp', code: `class MyQueueSlow {
+    stack<int> main, help;
+
+public:
+    void push(int x) { main.push(x); }
+
+    int pop() {
+        while (!main.empty()) { help.push(main.top()); main.pop(); }   // reverse: front is now on top
+        int front = help.top(); help.pop();
+        while (!help.empty()) { main.push(help.top()); help.pop(); }   // move everything back: wasted work
+        return front;
+    }
+
+    int peek() {
+        while (!main.empty()) { help.push(main.top()); main.pop(); }
+        int front = help.top();
+        while (!help.empty()) { main.push(help.top()); help.pop(); }
+        return front;
+    }
+
+    bool empty() { return main.empty(); }
+};` }
+          ]
+        }
       },
       mcq: {
         q: 'in = [4, 5] (5 on top), out = [3] (3 on top). We call <code>pop()</code>. What happens?',
@@ -3930,7 +4314,9 @@ print(max_sliding_window([1, 3, -1, -3, 5, 3, 6, 7], 3))  # [3, 3, 5, 5, 6, 7]` 
         <p>For example the window ${H.c('b', '[-1, -3,')} ${H.c('y', '5]')} (indices 2..4) has maximum ${H.c('g', '5')}. There are N - k + 1 = 6 windows.</p>`,
       brute: {
         why: `<p>For each of the N - k + 1 windows, loop over its k items to find the max → <b>O(N·K)</b>; with N = 10<sup>5</sup> and k = 5·10<sup>4</sup> that is ~2.5·10<sup>9</sup>. The waste: neighbouring windows share k - 1 items, but we re-scan them all every time.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
 int[] maxSlidingWindowBrute(int[] nums, int k) {
     int n = nums.length;
     int[] res = new int[n - k + 1];
@@ -3940,7 +4326,39 @@ int[] maxSlidingWindowBrute(int[] nums, int k) {
         res[start] = best;
     }
     return res;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def max_sliding_window(nums, k):
+    n = len(nums)
+    res = [0] * (n - k + 1)
+    for start in range(n - k + 1):
+        best = float("-inf")
+        for j in range(start, start + k):
+            best = max(best, nums[j])         # rescan whole window
+        res[start] = best
+    return res` },
+            { lang: 'js', code: `function maxSlidingWindow(nums, k) {
+  const n = nums.length;
+  const res = new Array(n - k + 1);
+  for (let start = 0; start + k <= n; start++) {
+    let best = -Infinity;
+    for (let j = start; j < start + k; j++) best = Math.max(best, nums[j]);   // rescan whole window
+    res[start] = best;
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<int> maxSlidingWindow(const vector<int>& nums, int k) {
+    int n = nums.size();
+    vector<int> res(n - k + 1);
+    for (int start = 0; start + k <= n; start++) {
+        int best = INT_MIN;
+        for (int j = start; j < start + k; j++) best = max(best, nums[j]);   // rescan whole window
+        res[start] = best;
+    }
+    return res;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'k = 3, deque (front→back) holds <code>2:9, 4:6</code> (index:value). Now i = 5 arrives with value 7. What is the deque after processing i = 5?',
@@ -4070,7 +4488,9 @@ public:
       <p>s = <code>"a#c"</code> → "c", t = <code>"b"</code> → "b". Output ${H.c('r', 'false')}.</p>`,
     brute: {
       why: `<p>Find the first <code>#</code>, cut it and the character before it out of the string, repeat. Every cut builds a new string (O(N)), and there can be N cuts → <b>O(N<sup>2</sup>)</b>. The waste: we rebuild the whole string to undo one character, while the "last typed character" is exactly the top of a stack.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 boolean backspaceCompareBrute(String s, String t) {
     return apply(s).equals(apply(t));
 }
@@ -4082,7 +4502,44 @@ String apply(String s) {
         s = (i > 0 ? s.substring(0, i - 1) : "") + s.substring(i + 1);
     }
     return s;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def backspace_compare(s, t):
+    return apply(s) == apply(t)
+
+
+def apply(s):
+    while "#" in s:
+        i = s.index("#")
+        # remove the '#' and the character before it (if any)
+        s = (s[:i - 1] if i > 0 else "") + s[i + 1:]
+    return s` },
+            { lang: 'js', code: `function backspaceCompare(s, t) {
+  return apply(s) === apply(t);
+}
+
+function apply(s) {
+  while (s.includes("#")) {
+    const i = s.indexOf("#");
+    // remove the '#' and the character before it (if any)
+    s = (i > 0 ? s.slice(0, i - 1) : "") + s.slice(i + 1);
+  }
+  return s;
+}` },
+            { lang: 'cpp', code: `string apply(string s) {
+    size_t i;
+    while ((i = s.find('#')) != string::npos) {
+        // remove the '#' and the character before it (if any)
+        s = (i > 0 ? s.substr(0, i - 1) : "") + s.substr(i + 1);
+    }
+    return s;
+}
+
+bool backspaceCompare(const string& s, const string& t) {
+    return apply(s) == apply(t);
+}` }
+          ]
+        }
     },
     mcq: { q: 'Which structure naturally models "backspace deletes the most recently typed character"?', options: ['Queue', 'Stack', 'HashSet', 'Sorted array'], answer: 1, explain: 'Backspace removes the newest character first: last in, first out.' },
     hints: [
@@ -4171,7 +4628,9 @@ public:
     example: `<p><code>"abbaca"</code>: remove ${H.c('r', '"bb"')} → <code>"aaca"</code>, remove ${H.c('r', '"aa"')} → <code>"ca"</code>. Output ${H.c('g', '"ca"')}. Removing a pair can create a <b>new</b> pair from the letters around it — that "chain reaction" is what a stack handles for free.</p>`,
     brute: {
       why: `<p>Scan for an adjacent equal pair, cut it out, start again from the beginning. Up to N/2 removals, each O(N) → <b>O(N<sup>2</sup>)</b> = 5·10<sup>9</sup> for N = 10<sup>5</sup>. The waste: after a cut, only the two letters <i>next to the cut</i> can form a new pair, yet we rescan everything.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 String removeDuplicatesBrute(String s) {
     boolean changed = true;
     while (changed) {
@@ -4185,7 +4644,48 @@ String removeDuplicatesBrute(String s) {
         }
     }
     return s;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def remove_duplicates(s):
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(s) - 1):
+            if s[i] == s[i + 1]:
+                s = s[:i] + s[i + 2:]         # cut the pair, rebuild: O(N)
+                changed = True
+                break                         # rescan from the start
+    return s` },
+            { lang: 'js', code: `function removeDuplicates(s) {
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 0; i + 1 < s.length; i++) {
+      if (s[i] === s[i + 1]) {
+        s = s.slice(0, i) + s.slice(i + 2);   // cut the pair, rebuild: O(N)
+        changed = true;
+        break;                                // rescan from the start
+      }
+    }
+  }
+  return s;
+}` },
+            { lang: 'cpp', code: `string removeDuplicates(string s) {
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (size_t i = 0; i + 1 < s.size(); i++) {
+            if (s[i] == s[i + 1]) {
+                s = s.substr(0, i) + s.substr(i + 2);   // cut the pair, rebuild: O(N)
+                changed = true;
+                break;                                  // rescan from the start
+            }
+        }
+    }
+    return s;
+}` }
+          ]
+        }
     },
     mcq: { q: 'The stack holds <code>c a</code> (a on top). The next letter is <code>a</code>. What happens?', options: ['Push a → c a a', 'Pop a → c', 'Pop both → empty', 'Ignore the new a'], answer: 1, explain: 'The new letter equals the top, so the pair cancels: pop the top and do not push the new letter.' },
     hints: [
@@ -4266,7 +4766,9 @@ public:
       <p>4 has nothing bigger to its right → ${H.c('r', '-1')}; 1 → ${H.c('g', '3')}; 2 is last → ${H.c('r', '-1')}.</p>`,
     brute: {
       why: `<p>For each query, find it in <code>nums2</code> and scan right: O(N·M) up to 10<sup>6</sup> — fine for these limits but it does not scale. The waste: every query re-walks the same parts of <code>nums2</code>.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 int[] nextGreaterElementBrute(int[] nums1, int[] nums2) {
     int[] res = new int[nums1.length];
     for (int q = 0; q < nums1.length; q++) {
@@ -4278,7 +4780,47 @@ int[] nextGreaterElementBrute(int[] nums1, int[] nums2) {
         }
     }
     return res;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def next_greater_element(nums1, nums2):
+    res = []
+    for q in nums1:
+        ans = -1
+        pos = 0
+        while nums2[pos] != q:                 # find it
+            pos += 1
+        for j in range(pos + 1, len(nums2)):
+            if nums2[j] > q:
+                ans = nums2[j]
+                break
+        res.append(ans)
+    return res` },
+            { lang: 'js', code: `function nextGreaterElement(nums1, nums2) {
+  const res = new Array(nums1.length);
+  for (let q = 0; q < nums1.length; q++) {
+    res[q] = -1;
+    let pos = 0;
+    while (nums2[pos] !== nums1[q]) pos++;                 // find it
+    for (let j = pos + 1; j < nums2.length; j++) {
+      if (nums2[j] > nums1[q]) { res[q] = nums2[j]; break; }
+    }
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<int> nextGreaterElement(const vector<int>& nums1, const vector<int>& nums2) {
+    vector<int> res(nums1.size());
+    for (size_t q = 0; q < nums1.size(); q++) {
+        res[q] = -1;
+        size_t pos = 0;
+        while (nums2[pos] != nums1[q]) pos++;                 // find it
+        for (size_t j = pos + 1; j < nums2.size(); j++) {
+            if (nums2[j] > nums1[q]) { res[q] = nums2[j]; break; }
+        }
+    }
+    return res;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Why can we store answers in a <code>HashMap</code> keyed by value?', options: ['Because the values are distinct', 'Because nums2 is sorted', 'Because HashMap is faster than arrays', 'We cannot'], answer: 0, explain: 'Distinct values mean each value has exactly one position in nums2, so value → next greater is well defined.' },
     hints: [
@@ -4368,7 +4910,9 @@ public:
     example: `${H.arr([73, 74, 75, 71, 69, 72, 76, 73], { label: 'temps' })}${H.arr([1, 1, 4, 2, 1, 1, 0, 0], { label: 'answer', hl: { 2: 'g' } })}<p>Day 2 (75) waits 4 days until day 6 (76).</p>`,
     brute: {
       why: `<p>For each day scan forward to the first warmer day: O(N<sup>2</sup>) in the worst case (temperatures decreasing then one hot day at the end) = 5·10<sup>9</sup>. Waste: cold days are rescanned by every earlier day.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 int[] dailyTemperaturesBrute(int[] t) {
     int n = t.length;
     int[] ans = new int[n];
@@ -4378,7 +4922,39 @@ int[] dailyTemperaturesBrute(int[] t) {
         }
     }
     return ans;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def daily_temperatures(t):
+    n = len(t)
+    ans = [0] * n
+    for i in range(n):
+        for j in range(i + 1, n):
+            if t[j] > t[i]:
+                ans[i] = j - i
+                break
+    return ans` },
+            { lang: 'js', code: `function dailyTemperatures(t) {
+  const n = t.length;
+  const ans = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (t[j] > t[i]) { ans[i] = j - i; break; }
+    }
+  }
+  return ans;
+}` },
+            { lang: 'cpp', code: `vector<int> dailyTemperatures(const vector<int>& t) {
+    int n = t.size();
+    vector<int> ans(n, 0);
+    for (int i = 0; i < n; i++) {
+        for (int j = i + 1; j < n; j++) {
+            if (t[j] > t[i]) { ans[i] = j - i; break; }
+        }
+    }
+    return ans;
+}` }
+          ]
+        }
     },
     mcq: { q: 'What should the stack store for this problem?', options: ['Temperatures', 'Indices', 'Answers', 'Differences'], answer: 1, explain: 'The answer is a distance (j - i), so you need positions; the temperature can be read from the index.' },
     hints: [
@@ -4473,7 +5049,9 @@ public:
     example: `<p><code>[1, 2, 3, 4, 3]</code> → <code>[2, 3, 4, -1, 4]</code>. The last 3 wraps around and finds ${H.c('g', '4')}; the maximum 4 gets ${H.c('r', '-1')}.</p>`,
     brute: {
       why: `<p>For each i, look at the next N − 1 positions <code>(i + d) % n</code>: O(N<sup>2</sup>) = 10<sup>8</sup>. It passes small limits but repeats the same comparisons for neighbouring elements.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 int[] nextGreaterCircularBrute(int[] a) {
     int n = a.length;
     int[] res = new int[n];
@@ -4484,7 +5062,39 @@ int[] nextGreaterCircularBrute(int[] a) {
         }
     }
     return res;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def next_greater_elements(a):
+    n = len(a)
+    res = [-1] * n
+    for i in range(n):
+        for d in range(1, n):
+            if a[(i + d) % n] > a[i]:
+                res[i] = a[(i + d) % n]
+                break
+    return res` },
+            { lang: 'js', code: `function nextGreaterElements(a) {
+  const n = a.length;
+  const res = new Array(n).fill(-1);
+  for (let i = 0; i < n; i++) {
+    for (let d = 1; d < n; d++) {
+      if (a[(i + d) % n] > a[i]) { res[i] = a[(i + d) % n]; break; }
+    }
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<int> nextGreaterElements(const vector<int>& a) {
+    int n = a.size();
+    vector<int> res(n, -1);
+    for (int i = 0; i < n; i++) {
+        for (int d = 1; d < n; d++) {
+            if (a[(i + d) % n] > a[i]) { res[i] = a[(i + d) % n]; break; }
+        }
+    }
+    return res;
+}` }
+          ]
+        }
     },
     mcq: { q: 'In the two-lap trick, why do we only push indices during the first lap?', options: ['To save memory only', 'Second-lap positions are the same elements; they only need to ANSWER waiting ones, not wait again', 'Because the second lap is sorted', 'It is a bug; we should push both laps'], answer: 1, explain: 'Every element already waits once (from lap 1). In lap 2 the elements act only as potential answers for the ones still waiting.' },
     hints: [
@@ -4574,7 +5184,9 @@ public:
       <p><code>"))(("</code> → <code>""</code>: every bracket is unmatched.</p>`,
     brute: {
       why: `<p>BFS over strings: remove one bracket in every possible way, then two, ... and stop at the first valid string. That is exponential in the number of brackets. The waste: we try removing brackets that are perfectly matched, while a stack can tell us <i>exactly</i> which ones are unmatched.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 String minRemoveBrute(String s) {
     Queue<String> q = new ArrayDeque<>();
     Set<String> seen = new HashSet<>();
@@ -4600,7 +5212,89 @@ boolean isValid(String s) {
         else if (c == ')' && --balance < 0) return false;
     }
     return balance == 0;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `from collections import deque
+
+def min_remove_to_make_valid(s):
+    q = deque([s])
+    seen = {s}
+    while q:
+        cur = q.popleft()
+        if is_valid(cur):
+            return cur                        # first valid = fewest removals
+        for i in range(len(cur)):
+            if cur[i] != '(' and cur[i] != ')':
+                continue
+            nxt = cur[:i] + cur[i + 1:]
+            if nxt not in seen:
+                seen.add(nxt)
+                q.append(nxt)
+    return ""
+
+
+def is_valid(s):
+    balance = 0
+    for c in s:
+        if c == '(':
+            balance += 1
+        elif c == ')':
+            balance -= 1
+            if balance < 0:
+                return False
+    return balance == 0` },
+            { lang: 'js', code: `function minRemoveToMakeValid(s) {
+  const q = [s];
+  const seen = new Set([s]);
+  for (let head = 0; head < q.length; head++) {
+    const cur = q[head];
+    if (isValid(cur)) return cur;                    // first valid = fewest removals
+    for (let i = 0; i < cur.length; i++) {
+      const c = cur[i];
+      if (c !== '(' && c !== ')') continue;
+      const next = cur.slice(0, i) + cur.slice(i + 1);
+      if (!seen.has(next)) { seen.add(next); q.push(next); }
+    }
+  }
+  return "";
+}
+
+function isValid(s) {
+  let balance = 0;
+  for (const c of s) {
+    if (c === '(') balance++;
+    else if (c === ')' && --balance < 0) return false;
+  }
+  return balance === 0;
+}` },
+            { lang: 'cpp', code: `bool isValid(const string& s) {
+    int balance = 0;
+    for (char c : s) {
+        if (c == '(') balance++;
+        else if (c == ')' && --balance < 0) return false;
+    }
+    return balance == 0;
+}
+
+string minRemoveToMakeValid(const string& s) {
+    queue<string> q;
+    unordered_set<string> seen;
+    q.push(s);
+    seen.insert(s);
+    while (!q.empty()) {
+        string cur = q.front(); q.pop();
+        if (isValid(cur)) return cur;                    // first valid = fewest removals
+        for (size_t i = 0; i < cur.size(); i++) {
+            char c = cur[i];
+            if (c != '(' && c != ')') continue;
+            string next = cur.substr(0, i) + cur.substr(i + 1);
+            if (seen.insert(next).second) q.push(next);
+        }
+    }
+    return "";
+}` }
+          ]
+        }
     },
     mcq: { q: 'After scanning, the stack still holds indices 0 and 7. What are they?', options: ['Matched opens', 'Unmatched ( that must be removed', 'Unmatched ) that must be removed', 'Letters'], answer: 1, explain: 'Only ( indices are pushed. Anything left at the end never found a ), so it must be deleted.' },
     hints: [
@@ -4706,7 +5400,9 @@ public:
     example: `${H.table(['input', 'output', 'why'], [['[5, 10, -5]', '[5, 10]', '-5 hits 10 and explodes'], ['[8, -8]', '[]', 'equal → both explode'], ['[10, 2, -5]', '[10]', '-5 destroys 2, then dies against 10'], ['[-2, -1, 1, 2]', '[-2, -1, 1, 2]', 'left-movers on the left never meet right-movers']])}`,
     brute: {
       why: `<p>Repeatedly look for an adjacent pair "positive then negative", resolve it, and restart: up to N collisions × O(N) rescans and list shifts → <b>O(N<sup>2</sup>)</b>. The waste: a left-moving asteroid only ever collides with the <b>most recent</b> surviving right-mover — a stack top.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 int[] asteroidBrute(int[] asteroids) {
     List<Integer> list = new ArrayList<>();
     for (int a : asteroids) list.add(a);
@@ -4727,7 +5423,63 @@ int[] asteroidBrute(int[] asteroids) {
     int[] res = new int[list.size()];
     for (int i = 0; i < res.length; i++) res[i] = list.get(i);
     return res;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def asteroid_collision(asteroids):
+    lst = list(asteroids)
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(lst) - 1):
+            l, r = lst[i], lst[i + 1]
+            if l > 0 and r < 0:                       # they meet
+                if l > -r:
+                    del lst[i + 1]
+                elif l < -r:
+                    del lst[i]
+                else:
+                    del lst[i:i + 2]
+                changed = True
+                break
+    return lst` },
+            { lang: 'js', code: `function asteroidCollision(asteroids) {
+  const list = [...asteroids];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 0; i + 1 < list.length; i++) {
+      const l = list[i], r = list[i + 1];
+      if (l > 0 && r < 0) {                           // they meet
+        if (l > -r) list.splice(i + 1, 1);
+        else if (l < -r) list.splice(i, 1);
+        else list.splice(i, 2);
+        changed = true;
+        break;
+      }
+    }
+  }
+  return list;
+}` },
+            { lang: 'cpp', code: `vector<int> asteroidCollision(const vector<int>& asteroids) {
+    vector<int> list(asteroids);
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (size_t i = 0; i + 1 < list.size(); i++) {
+            int l = list[i], r = list[i + 1];
+            if (l > 0 && r < 0) {                     // they meet
+                if (l > -r) list.erase(list.begin() + i + 1);
+                else if (l < -r) list.erase(list.begin() + i);
+                else list.erase(list.begin() + i, list.begin() + i + 2);
+                changed = true;
+                break;
+            }
+        }
+    }
+    return list;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Stack (bottom→top) is <code>[-3, 4, 2]</code>. Asteroid <code>-5</code> arrives. Final stack?', options: ['[-3, 4, 2, -5]', '[-3, -5]', '[-3, 4]', '[-5]'], answer: 1, explain: '-5 destroys 2 and 4 (both smaller). The top is now -3, also moving left, so no collision: push -5.' },
     hints: [
@@ -4835,7 +5587,9 @@ public:
       <p><code>"2[abc]3[cd]ef"</code> → <code>"abcabccdcdcdef"</code>.</p>`,
     brute: {
       why: `<p>Find the innermost bracket (first <code>]</code> and the nearest <code>[</code> before it), expand it, rebuild the string, repeat. Each expansion rebuilds the whole (possibly huge) string → roughly O(levels × output length). Acceptable for tiny inputs but wasteful: a stack expands each level exactly once, in place.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 String decodeBrute(String s) {
     int close;
     while ((close = s.indexOf(']')) >= 0) {
@@ -4847,7 +5601,49 @@ String decodeBrute(String s) {
         s = s.substring(0, start) + expanded + s.substring(close + 1);
     }
     return s;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def decode_string(s):
+    while True:
+        close = s.find(']')
+        if close < 0:
+            break
+        open_ = s.rfind('[', 0, close)               # innermost '[' for this ']'
+        start = open_
+        while start > 0 and s[start - 1].isdigit():
+            start -= 1
+        times = int(s[start:open_])
+        expanded = s[open_ + 1:close] * times
+        s = s[:start] + expanded + s[close + 1:]
+    return s` },
+            { lang: 'js', code: `function decodeString(s) {
+  let close;
+  while ((close = s.indexOf(']')) >= 0) {
+    const open = s.lastIndexOf('[', close);          // innermost '[' for this ']'
+    let start = open;
+    while (start > 0 && s[start - 1] >= '0' && s[start - 1] <= '9') start--;
+    const times = parseInt(s.slice(start, open), 10);
+    const expanded = s.slice(open + 1, close).repeat(times);
+    s = s.slice(0, start) + expanded + s.slice(close + 1);
+  }
+  return s;
+}` },
+            { lang: 'cpp', code: `string decodeString(string s) {
+    size_t close;
+    while ((close = s.find(']')) != string::npos) {
+        size_t open = s.rfind('[', close);               // innermost '[' for this ']'
+        size_t start = open;
+        while (start > 0 && isdigit((unsigned char)s[start - 1])) start--;
+        int times = stoi(s.substr(start, open - start));
+        string inner = s.substr(open + 1, close - open - 1);
+        string expanded;
+        for (int t = 0; t < times; t++) expanded += inner;
+        s = s.substr(0, start) + expanded + s.substr(close + 1);
+    }
+    return s;
+}` }
+          ]
+        }
     },
     mcq: { q: 'When we read <code>[</code>, what must we save before starting a fresh inner string?', options: ['Nothing', 'Only the count k', 'The count k and the string built so far', 'The index of ['], answer: 2, explain: 'After the inner part is finished we need to repeat it k times and append it to the outer string we were building — both must be restored.' },
     hints: [
@@ -4973,7 +5769,9 @@ public:
     example: `<p><code>"1432219"</code>, k = 3 → remove ${H.c('r', '4, 3, 2')} → ${H.c('g', '"1219"')}.</p><p><code>"10200"</code>, k = 1 → remove 1 → "0200" → <code>"200"</code>. <code>"10"</code>, k = 2 → <code>"0"</code>.</p>`,
     brute: {
       why: `<p>Remove one digit at a time, k times, each time trying all N positions and keeping the smallest string: O(k·N<sup>2</sup>) → far too slow for 10<sup>5</sup>. The waste: the best digit to remove is simply the first one that is bigger than its right neighbour — a monotonic stack finds all of them in one pass.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 String removeKdigitsBrute(String num, int k) {
     for (int r = 0; r < k; r++) {
         String best = null;
@@ -4987,7 +5785,52 @@ String removeKdigitsBrute(String num, int k) {
     while (i < num.length() - 1 && num.charAt(i) == '0') i++;
     num = num.substring(i);
     return num.isEmpty() ? "0" : num;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def remove_kdigits(num, k):
+    for _ in range(k):
+        best = None
+        for i in range(len(num)):
+            cand = num[:i] + num[i + 1:]
+            if best is None or cand < best:          # same length -> lexicographic = numeric
+                best = cand
+        num = best
+    i = 0
+    while i < len(num) - 1 and num[i] == '0':
+        i += 1
+    num = num[i:]
+    return "0" if num == "" else num` },
+            { lang: 'js', code: `function removeKdigits(num, k) {
+  for (let r = 0; r < k; r++) {
+    let best = null;
+    for (let i = 0; i < num.length; i++) {
+      const cand = num.slice(0, i) + num.slice(i + 1);
+      if (best === null || cand < best) best = cand;   // same length -> lexicographic = numeric
+    }
+    num = best;
+  }
+  let i = 0;
+  while (i < num.length - 1 && num[i] === '0') i++;
+  num = num.slice(i);
+  return num === "" ? "0" : num;
+}` },
+            { lang: 'cpp', code: `string removeKdigits(string num, int k) {
+    for (int r = 0; r < k; r++) {
+        string best;
+        bool have = false;
+        for (size_t i = 0; i < num.size(); i++) {
+            string cand = num.substr(0, i) + num.substr(i + 1);
+            if (!have || cand < best) { best = cand; have = true; }   // same length -> lexicographic = numeric
+        }
+        num = best;
+    }
+    size_t i = 0;
+    while (i + 1 < num.size() && num[i] == '0') i++;
+    num = num.substr(i);
+    return num.empty() ? "0" : num;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Stack is <code>1 4</code>, next digit is <code>3</code>, k = 3. What do we do?', options: ['Push 3', 'Pop 4 (k becomes 2), then push 3', 'Pop 4 and 1', 'Skip 3'], answer: 1, explain: 'A bigger digit before a smaller one should be removed (14… &gt; 13…). Pop 4, k-1; top 1 &lt; 3 stops; push 3.' },
     hints: [
@@ -5086,7 +5929,9 @@ public:
     example: `<p><code>[3, 1, 2, 4]</code>: subarrays and minimums: [3]=3, [1]=1, [2]=2, [4]=4, [3,1]=1, [1,2]=1, [2,4]=2, [3,1,2]=1, [1,2,4]=1, [3,1,2,4]=1. Sum = ${H.c('g', '17')}.</p>`,
     brute: {
       why: `<p>For every start i, extend j to the right keeping a running minimum: O(N<sup>2</sup>) = 9·10<sup>8</sup> — too slow. The waste: we never ask "for how many subarrays is a[i] the minimum?", which can be answered with two nearest-smaller boundaries.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 int sumSubarrayMinsBrute(int[] arr) {
     long MOD = 1_000_000_007L, sum = 0;
     for (int i = 0; i < arr.length; i++) {
@@ -5097,7 +5942,43 @@ int sumSubarrayMinsBrute(int[] arr) {
         }
     }
     return (int) sum;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def sum_subarray_mins(arr):
+    MOD = 1_000_000_007
+    total = 0
+    for i in range(len(arr)):
+        mn = float("inf")
+        for j in range(i, len(arr)):
+            mn = min(mn, arr[j])
+            total = (total + mn) % MOD
+    return total` },
+            { lang: 'js', code: `function sumSubarrayMins(arr) {
+  const MOD = 1000000007;
+  let sum = 0;
+  for (let i = 0; i < arr.length; i++) {
+    let mn = Infinity;
+    for (let j = i; j < arr.length; j++) {
+      mn = Math.min(mn, arr[j]);
+      sum = (sum + mn) % MOD;
+    }
+  }
+  return sum;
+}` },
+            { lang: 'cpp', code: `int sumSubarrayMins(const vector<int>& arr) {
+    const long long MOD = 1000000007LL;
+    long long sum = 0;
+    for (size_t i = 0; i < arr.size(); i++) {
+        int mn = INT_MAX;
+        for (size_t j = i; j < arr.size(); j++) {
+            mn = min(mn, arr[j]);
+            sum = (sum + mn) % MOD;
+        }
+    }
+    return (int)sum;
+}` }
+          ]
+        }
     },
     mcq: { q: 'a[i] = 1 at index 1 of [3, 1, 2, 4]. Previous smaller index = -1, next smaller-or-equal index = 4. Contribution?', options: ['1', '1 × 2 × 3 = 6', '1 × 4 = 4', '1 × 2 = 2'], answer: 1, explain: 'Left choices: i − left = 2 (start at 0 or 1). Right choices: right − i = 3 (end at 1, 2 or 3). 2 × 3 = 6 subarrays have 1 as their minimum.' },
     hints: [
@@ -5231,7 +6112,9 @@ public:
     example: `${H.table(['call', 'returns', 'buffer (k = 3)'], [['enQueue(1)', 'true', '[1, ·, ·]'], ['enQueue(2)', 'true', '[1, 2, ·]'], ['enQueue(3)', 'true', '[1, 2, 3]'], ['enQueue(4)', '<span class="c-r">false</span> (full)', '[1, 2, 3]'], ['Rear()', '3', ''], ['deQueue()', 'true', '[·, 2, 3] head → 1'], ['enQueue(4)', 'true', '[<b>4</b>, 2, 3] wrapped!'], ['Rear()', '<span class="c-g">4</span>', '']])}`,
     brute: {
       why: `<p>Use an <code>ArrayList</code>; <code>deQueue</code> = <code>remove(0)</code>, which shifts every remaining element left → <b>O(N)</b> per dequeue. The waste: moving data that did not change, when we could just move a <code>head</code> index.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 import java.util.*;
 
 class MyCircularQueueSlow {
@@ -5244,7 +6127,60 @@ class MyCircularQueueSlow {
     public int Rear() { return list.isEmpty() ? -1 : list.get(list.size() - 1); }
     public boolean isEmpty() { return list.isEmpty(); }
     public boolean isFull() { return list.size() == cap; }
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `class MyCircularQueueSlow:
+    def __init__(self, k):
+        self.lst = []
+        self.cap = k
+
+    def enQueue(self, v):
+        if len(self.lst) == self.cap:
+            return False
+        self.lst.append(v)
+        return True
+
+    def deQueue(self):
+        if not self.lst:
+            return False
+        self.lst.pop(0)                      # O(N) shift
+        return True
+
+    def Front(self):
+        return -1 if not self.lst else self.lst[0]
+
+    def Rear(self):
+        return -1 if not self.lst else self.lst[-1]
+
+    def isEmpty(self):
+        return not self.lst
+
+    def isFull(self):
+        return len(self.lst) == self.cap` },
+            { lang: 'js', code: `class MyCircularQueueSlow {
+  constructor(k) { this.list = []; this.cap = k; }
+  enQueue(v) { if (this.list.length === this.cap) return false; this.list.push(v); return true; }
+  deQueue() { if (this.list.length === 0) return false; this.list.splice(0, 1); return true; }   // O(N) shift
+  Front() { return this.list.length === 0 ? -1 : this.list[0]; }
+  Rear() { return this.list.length === 0 ? -1 : this.list[this.list.length - 1]; }
+  isEmpty() { return this.list.length === 0; }
+  isFull() { return this.list.length === this.cap; }
+}` },
+            { lang: 'cpp', code: `class MyCircularQueueSlow {
+    vector<int> list;
+    int cap;
+
+public:
+    MyCircularQueueSlow(int k) : cap(k) {}
+    bool enQueue(int v) { if ((int)list.size() == cap) return false; list.push_back(v); return true; }
+    bool deQueue() { if (list.empty()) return false; list.erase(list.begin()); return true; }   // O(N) shift
+    int Front() { return list.empty() ? -1 : list.front(); }
+    int Rear() { return list.empty() ? -1 : list.back(); }
+    bool isEmpty() { return list.empty(); }
+    bool isFull() { return (int)list.size() == cap; }
+};` }
+          ]
+        }
     },
     mcq: { q: 'k = 4, head = 3, size = 2. At which index is the Rear element?', options: ['4', '0', '1', '3'], answer: 1, explain: 'Rear = (head + size − 1) % k = (3 + 2 − 1) % 4 = 0. The queue wrapped around.' },
     hints: [
@@ -5389,7 +6325,9 @@ public:
     example: `<p>pushed = [1,2,3,4,5], popped = [4,5,3,2,1] → ${H.c('g', 'true')}: push 1..4, pop 4, push 5, pop 5, 3, 2, 1.</p><p>popped = [4,3,5,1,2] → ${H.c('r', 'false')}: 1 cannot leave before 2 because 2 is on top of it.</p>`,
     brute: {
       why: `<p>Try every interleaving of pushes and pops with backtracking: exponential. The waste: there is never a real choice — if the top equals the next value to pop, popping now is always safe (it could not be popped later if we buried it).</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 boolean validateBrute(int[] pushed, int[] popped) {
     return go(pushed, popped, 0, 0, new ArrayDeque<>());
 }
@@ -5409,7 +6347,71 @@ boolean go(int[] pu, int[] po, int i, int j, Deque<Integer> st) {
         if (ok) return true;
     }
     return false;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def validate_stack_sequences(pushed, popped):
+    return go(pushed, popped, 0, 0, [])
+
+
+def go(pu, po, i, j, st):
+    if j == len(po):
+        return True
+    if st and st[-1] == po[j]:                     # option 1: pop now
+        x = st.pop()
+        ok = go(pu, po, i, j + 1, st)
+        st.append(x)
+        if ok:
+            return True
+    if i < len(pu):                                # option 2: push next
+        st.append(pu[i])
+        ok = go(pu, po, i + 1, j, st)
+        st.pop()
+        if ok:
+            return True
+    return False` },
+            { lang: 'js', code: `function validateStackSequences(pushed, popped) {
+  return go(pushed, popped, 0, 0, []);
+}
+
+function go(pu, po, i, j, st) {
+  if (j === po.length) return true;
+  if (st.length > 0 && st[st.length - 1] === po[j]) {   // option 1: pop now
+    const x = st.pop();
+    const ok = go(pu, po, i, j + 1, st);
+    st.push(x);
+    if (ok) return true;
+  }
+  if (i < pu.length) {                                  // option 2: push next
+    st.push(pu[i]);
+    const ok = go(pu, po, i + 1, j, st);
+    st.pop();
+    if (ok) return true;
+  }
+  return false;
+}` },
+            { lang: 'cpp', code: `bool go(const vector<int>& pu, const vector<int>& po, int i, int j, vector<int>& st) {
+    if (j == (int)po.size()) return true;
+    if (!st.empty() && st.back() == po[j]) {            // option 1: pop now
+        int x = st.back(); st.pop_back();
+        bool ok = go(pu, po, i, j + 1, st);
+        st.push_back(x);
+        if (ok) return true;
+    }
+    if (i < (int)pu.size()) {                           // option 2: push next
+        st.push_back(pu[i]);
+        bool ok = go(pu, po, i + 1, j, st);
+        st.pop_back();
+        if (ok) return true;
+    }
+    return false;
+}
+
+bool validateStackSequences(const vector<int>& pushed, const vector<int>& popped) {
+    vector<int> st;
+    return go(pushed, popped, 0, 0, st);
+}` }
+          ]
+        }
     },
     mcq: { q: 'Why is greedy popping (pop whenever top == popped[j]) always safe?', options: ['Because values are sorted', 'Values are distinct: if we push more on top of it, that value can never come out before them', 'Because the stack is small', 'It is not always safe'], answer: 1, explain: 'With distinct values, delaying the pop only buries the needed value under newer items, which must leave first — that contradicts the popped order.' },
     hints: [
@@ -5503,7 +6505,9 @@ public:
     example: `${H.table(['row', 'cells', 'histogram heights'], [['0', '1 0 1 0 0', '1 0 1 0 0'], ['1', '1 0 1 1 1', '2 0 2 1 1'], ['2', '1 1 1 1 1', '3 1 3 2 2'], ['3', '1 0 0 1 0', '4 0 0 3 0']])}<p>Output ${H.c('g', '6')}: rows 1–2 × columns 2–4. In row 2's histogram, height 2 spans columns 2..4 → 2 × 3 = 6.</p>`,
     brute: {
       why: `<p>Try every top-left and bottom-right corner and check that the rectangle is all 1s: O(R<sup>3</sup>·C<sup>3</sup>) in the naive form — hopeless at 200 × 200. The waste: rectangles sharing the same bottom row share almost all their work, which the per-row histogram captures.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 int maximalRectangleBrute(char[][] m) {
     int R = m.length, C = R == 0 ? 0 : m[0].length, best = 0;
     for (int r1 = 0; r1 < R; r1++)
@@ -5517,7 +6521,55 @@ int maximalRectangleBrute(char[][] m) {
                     if (ok) best = Math.max(best, (r2 - r1 + 1) * (c2 - c1 + 1));
                 }
     return best;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def maximal_rectangle(m):
+    R = len(m)
+    C = len(m[0]) if R else 0
+    best = 0
+    for r1 in range(R):
+        for c1 in range(C):
+            for r2 in range(r1, R):
+                for c2 in range(c1, C):
+                    ok = True
+                    for r in range(r1, r2 + 1):
+                        for c in range(c1, c2 + 1):
+                            if m[r][c] != '1':
+                                ok = False
+                    if ok:
+                        best = max(best, (r2 - r1 + 1) * (c2 - c1 + 1))
+    return best` },
+            { lang: 'js', code: `function maximalRectangle(m) {
+  const R = m.length, C = R === 0 ? 0 : m[0].length;
+  let best = 0;
+  for (let r1 = 0; r1 < R; r1++)
+    for (let c1 = 0; c1 < C; c1++)
+      for (let r2 = r1; r2 < R; r2++)
+        for (let c2 = c1; c2 < C; c2++) {
+          let ok = true;
+          for (let r = r1; r <= r2 && ok; r++)
+            for (let c = c1; c <= c2 && ok; c++)
+              if (m[r][c] !== '1') ok = false;
+          if (ok) best = Math.max(best, (r2 - r1 + 1) * (c2 - c1 + 1));
+        }
+  return best;
+}` },
+            { lang: 'cpp', code: `int maximalRectangle(vector<vector<char>>& m) {
+    int R = m.size(), C = R == 0 ? 0 : m[0].size(), best = 0;
+    for (int r1 = 0; r1 < R; r1++)
+        for (int c1 = 0; c1 < C; c1++)
+            for (int r2 = r1; r2 < R; r2++)
+                for (int c2 = c1; c2 < C; c2++) {
+                    bool ok = true;
+                    for (int r = r1; r <= r2 && ok; r++)
+                        for (int c = c1; c <= c2 && ok; c++)
+                            if (m[r][c] != '1') ok = false;
+                    if (ok) best = max(best, (r2 - r1 + 1) * (c2 - c1 + 1));
+                }
+    return best;
+}` }
+          ]
+        }
     },
     mcq: { q: 'How is heights[c] updated when moving to the next row?', options: ['heights[c] = 1 always', 'heights[c] + 1 if the cell is 1, else 0', 'max(heights[c], 1)', 'heights[c] + cell value, never reset'], answer: 1, explain: 'A 0 breaks the vertical run of 1s, so the bar height resets to 0.' },
     hints: [
@@ -5659,7 +6711,9 @@ public:
     example: `${H.arr([0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1], { label: 'height' })}<p>Output ${H.c('g', '6')}. E.g. the valley at index 5 (height 0) between walls 2 (index 3) and 3 (index 7) holds water in two horizontal layers.</p>`,
     brute: {
       why: `<p>For each bar, scan left for the tallest wall and right for the tallest wall; water = <code>min(leftMax, rightMax) − h[i]</code>. O(N<sup>2</sup>). The waste: the same maxima are recomputed for every bar (prefix/suffix max arrays or a stack fix it).</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 int trapBrute(int[] h) {
     int water = 0;
     for (int i = 0; i < h.length; i++) {
@@ -5669,7 +6723,37 @@ int trapBrute(int[] h) {
         water += Math.min(lm, rm) - h[i];
     }
     return water;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def trap(h):
+    water = 0
+    for i in range(len(h)):
+        lm = max(h[:i + 1])
+        rm = max(h[i:])
+        water += min(lm, rm) - h[i]
+    return water` },
+            { lang: 'js', code: `function trap(h) {
+  let water = 0;
+  for (let i = 0; i < h.length; i++) {
+    let lm = 0, rm = 0;
+    for (let j = 0; j <= i; j++) lm = Math.max(lm, h[j]);
+    for (let j = i; j < h.length; j++) rm = Math.max(rm, h[j]);
+    water += Math.min(lm, rm) - h[i];
+  }
+  return water;
+}` },
+            { lang: 'cpp', code: `int trap(const vector<int>& h) {
+    int water = 0;
+    for (size_t i = 0; i < h.size(); i++) {
+        int lm = 0, rm = 0;
+        for (size_t j = 0; j <= i; j++) lm = max(lm, h[j]);
+        for (size_t j = i; j < h.size(); j++) rm = max(rm, h[j]);
+        water += min(lm, rm) - h[i];
+    }
+    return water;
+}` }
+          ]
+        }
     },
     mcq: { q: 'We pop a "floor" bar of height 1. The new top (left wall) has height 2 and the current bar (right wall) has height 3, 2 positions apart (width 1). Water added?', options: ['1 × (2 − 1) = 1', '1 × (3 − 1) = 2', '2 × 1 = 2', '0'], answer: 0, explain: 'Water level is limited by the shorter wall: min(2, 3) − floor 1 = 1, times width (i − left − 1) = 1.' },
     hints: [
@@ -5776,7 +6860,9 @@ public:
     example: `<p><code>"(1+(4+5+2)-3)+(6+8)"</code> → ${H.c('g', '23')}. <code>"- (3 + (4 + 5))"</code> → ${H.c('g', '-12')}.</p>`,
     brute: {
       why: `<p>Repeatedly find the innermost parentheses, evaluate the flat expression inside, substitute the number back into the string, repeat. Each substitution rebuilds the string → <b>O(N<sup>2</sup>)</b> for deep nesting, and substituted negatives create awkward <code>"--"</code> sequences. A stack saves the outer state once per <code>(</code> instead.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 int calculateBrute(String s) {
     s = s.replace(" ", "");
     int close;
@@ -5802,7 +6888,91 @@ long evalFlat(String e) {                    // only digits, '+' and '-'
     }
     if (inNum) total += sign * num;
     return total;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def calculate(s):
+    s = s.replace(" ", "")
+    while True:
+        close = s.find(')')
+        if close < 0:
+            break
+        open_ = s.rfind('(', 0, close)
+        v = eval_flat(s[open_ + 1:close])
+        s = s[:open_] + str(v) + s[close + 1:]      # may create "--5" or "+-5"
+    return eval_flat(s)
+
+
+def eval_flat(e):                                   # only digits, '+' and '-'
+    total = num = 0
+    sign = 1
+    in_num = False
+    for c in e:
+        if c.isdigit():
+            num = num * 10 + int(c)
+            in_num = True
+        else:
+            if in_num:
+                total += sign * num
+                num = 0
+                in_num = False
+                sign = 1
+            if c == '-':
+                sign = -sign                        # "--" cancels, "+-" stays negative
+    if in_num:
+        total += sign * num
+    return total` },
+            { lang: 'js', code: `function calculate(s) {
+  s = s.replaceAll(" ", "");
+  let close;
+  while ((close = s.indexOf(')')) >= 0) {
+    const open = s.lastIndexOf('(', close);
+    const v = evalFlat(s.slice(open + 1, close));
+    s = s.slice(0, open) + v + s.slice(close + 1);   // may create "--5" or "+-5"
+  }
+  return evalFlat(s);
+}
+
+function evalFlat(e) {                               // only digits, '+' and '-'
+  let total = 0, num = 0, sign = 1, inNum = false;
+  for (const c of e) {
+    if (c >= '0' && c <= '9') { num = num * 10 + (c.charCodeAt(0) - 48); inNum = true; }
+    else {
+      if (inNum) { total += sign * num; num = 0; inNum = false; sign = 1; }
+      if (c === '-') sign = -sign;                   // "--" cancels, "+-" stays negative
+    }
+  }
+  if (inNum) total += sign * num;
+  return total;
+}` },
+            { lang: 'cpp', code: `long long evalFlat(const string& e) {                // only digits, '+' and '-'
+    long long total = 0, num = 0;
+    int sign = 1;
+    bool inNum = false;
+    for (char c : e) {
+        if (isdigit((unsigned char)c)) { num = num * 10 + (c - '0'); inNum = true; }
+        else {
+            if (inNum) { total += sign * num; num = 0; inNum = false; sign = 1; }
+            if (c == '-') sign = -sign;              // "--" cancels, "+-" stays negative
+        }
+    }
+    if (inNum) total += sign * num;
+    return total;
+}
+
+int calculate(string s) {
+    string t;
+    for (char c : s) if (c != ' ') t += c;
+    s = t;
+    size_t close;
+    while ((close = s.find(')')) != string::npos) {
+        size_t open = s.rfind('(', close);
+        long long v = evalFlat(s.substr(open + 1, close - open - 1));
+        s = s.substr(0, open) + to_string(v) + s.substr(close + 1);   // may create "--5" or "+-5"
+    }
+    return (int)evalFlat(s);
+}` }
+          ]
+        }
     },
     mcq: { q: 'On reading <code>(</code>, what do we push?', options: ['Only the current number', 'The result so far and the sign in front of the (', 'Nothing; recursion is required', 'The index of ('], answer: 1, explain: 'Inside the parentheses we start a fresh result. On ), result = savedResult + savedSign × innerResult.' },
     hints: [
@@ -5946,7 +7116,9 @@ public:
     example: `<p><code>")()())"</code> → ${H.c('g', '4')} for <code>"()()"</code>. <code>"(()"</code> → 2. <code>""</code> → 0.</p>`,
     brute: {
       why: `<p>For every start i, extend j with a running balance; whenever balance is 0 the substring is valid, and when it goes negative stop. O(N<sup>2</sup>) = 9·10<sup>8</sup>. The waste: a valid run is rediscovered from every start inside it.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 int longestValidBrute(String s) {
     int best = 0;
     for (int i = 0; i < s.length(); i++) {
@@ -5958,7 +7130,45 @@ int longestValidBrute(String s) {
         }
     }
     return best;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def longest_valid_parentheses(s):
+    best = 0
+    for i in range(len(s)):
+        bal = 0
+        for j in range(i, len(s)):
+            bal += 1 if s[j] == '(' else -1
+            if bal < 0:
+                break                           # a ')' with nothing open
+            if bal == 0:
+                best = max(best, j - i + 1)
+    return best` },
+            { lang: 'js', code: `function longestValidParentheses(s) {
+  let best = 0;
+  for (let i = 0; i < s.length; i++) {
+    let bal = 0;
+    for (let j = i; j < s.length; j++) {
+      bal += s[j] === '(' ? 1 : -1;
+      if (bal < 0) break;                        // a ')' with nothing open
+      if (bal === 0) best = Math.max(best, j - i + 1);
+    }
+  }
+  return best;
+}` },
+            { lang: 'cpp', code: `int longestValidParentheses(const string& s) {
+    int best = 0;
+    for (int i = 0; i < (int)s.size(); i++) {
+        int bal = 0;
+        for (int j = i; j < (int)s.size(); j++) {
+            bal += s[j] == '(' ? 1 : -1;
+            if (bal < 0) break;                  // a ')' with nothing open
+            if (bal == 0) best = max(best, j - i + 1);
+        }
+    }
+    return best;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Why do we push -1 onto the stack before scanning?', options: ['To avoid an empty-stack exception only', 'It marks "the index just before the current valid run", so length = i − top works from index 0', 'It is the answer for an empty string', 'It counts unmatched )'], answer: 1, explain: 'The stack bottom always holds the last position that cannot be part of a valid run. Starting with -1 lets a run that begins at index 0 be measured as i − (−1).' },
     hints: [
@@ -6064,7 +7274,9 @@ public:
     example: `<p><code>[2, -1, 2]</code>, k = 3 → ${H.c('g', '3')} (the whole array). <code>[1, 2]</code>, k = 4 → ${H.c('r', '-1')}. Negatives break the normal sliding window, because shrinking the window can <i>increase</i> its sum.</p>`,
     brute: {
       why: `<p>Prefix sums + check every pair (i, j): O(N<sup>2</sup>) = 10<sup>10</sup>. The waste: many starting points i are useless — if a later prefix is smaller or equal, it is a better start (shorter and larger difference).</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
 int shortestSubarrayBrute(int[] nums, int k) {
     int n = nums.length, best = Integer.MAX_VALUE;
     long[] pre = new long[n + 1];
@@ -6073,7 +7285,40 @@ int shortestSubarrayBrute(int[] nums, int k) {
         for (int j = i + 1; j <= n; j++)
             if (pre[j] - pre[i] >= k) { best = Math.min(best, j - i); break; }
     return best == Integer.MAX_VALUE ? -1 : best;
-}`
+}`,
+          alt: [
+            { lang: 'python', code: `def shortest_subarray(nums, k):
+    n, best = len(nums), float("inf")
+    pre = [0] * (n + 1)
+    for i in range(n):
+        pre[i + 1] = pre[i] + nums[i]
+    for i in range(n):
+        for j in range(i + 1, n + 1):
+            if pre[j] - pre[i] >= k:
+                best = min(best, j - i)
+                break
+    return -1 if best == float("inf") else best` },
+            { lang: 'js', code: `function shortestSubarray(nums, k) {
+  const n = nums.length;
+  let best = Infinity;
+  const pre = new Array(n + 1).fill(0);
+  for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j <= n; j++)
+      if (pre[j] - pre[i] >= k) { best = Math.min(best, j - i); break; }
+  return best === Infinity ? -1 : best;
+}` },
+            { lang: 'cpp', code: `int shortestSubarray(const vector<int>& nums, int k) {
+    int n = nums.size(), best = INT_MAX;
+    vector<long long> pre(n + 1, 0);
+    for (int i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j <= n; j++)
+            if (pre[j] - pre[i] >= k) { best = min(best, j - i); break; }
+    return best == INT_MAX ? -1 : best;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Deque holds prefix indices with increasing prefix values. Why pop the BACK while pre[back] ≥ pre[j]?', options: ['To keep memory low only', 'j is a later start with a smaller-or-equal prefix: it gives larger sums and shorter subarrays, so back is dominated', 'Because the deque must be sorted by index', 'To find the maximum'], answer: 1, explain: 'For any future end, starting at j beats starting at back: shorter length and at least as large a sum.' },
     hints: [
@@ -6203,7 +7448,7 @@ public:
     { q: 'Stack vs queue: explain the difference and give two real uses of each.', level: 'B', a: `<p>A <b>stack</b> is LIFO — the last item added is the first removed (pile of plates). Uses: function call stack, undo/redo, browser back button, DFS, bracket matching, expression evaluation. A <b>queue</b> is FIFO — the oldest item leaves first (ticket line). Uses: BFS, task schedulers, printer spooling, message queues (Kafka/SQS consumers), rate-limiting buffers. Both support O(1) insert/remove at their ends; the difference is only <i>which</i> end you remove from.</p>`, followUps: ['What is a deque and when would you need one?', 'How does the JVM use a stack?'] },
     { q: 'How would you implement a stack and a queue in Java, and why not use <code>Stack</code> or <code>LinkedList</code>?', level: 'B', a: `<p>Use <code>Deque&lt;Integer&gt; st = new ArrayDeque&lt;&gt;()</code> with <code>push/pop/peek</code> for a stack and <code>Queue&lt;Integer&gt; q = new ArrayDeque&lt;&gt;()</code> with <code>offer/poll/peek</code> for a queue. <code>Stack</code> extends <code>Vector</code>: every call is synchronized (unneeded overhead) and it exposes index access that breaks LIFO. <code>LinkedList</code> allocates a node per element and has poor cache locality. <code>ArrayDeque</code> is a resizable circular array: O(1) amortized at both ends, compact, fast. One caveat: it rejects <code>null</code>.</p>`, followUps: ['What happens when ArrayDeque is full?', 'Which methods throw on empty and which return null?'] },
     { q: 'Walk me through checking whether a bracket string is valid. What are the failure cases?', level: 'B', a: `<p>Scan left to right with a stack of openers. Opener → push. Closer → if the stack is empty, invalid (nothing to close); else pop and check the popped opener matches the closer's type, otherwise invalid. At the end the stack must be empty, otherwise some opener was never closed. Failure cases: <code>")("</code> (empty-stack closer), <code>"(]"</code> (wrong type), <code>"([)]"</code> (wrong order), <code>"(("</code> (leftovers). Time O(N), space O(N); with a single bracket type a counter suffices (O(1) space).</p>`, followUps: ['How would you return the index of the first error?', 'What changes if there is a wildcard * that can be ( ) or empty?'] },
-    { q: 'Design a stack that returns the minimum in O(1). What variations do you know?', level: 'I', a: `<p>Store with every element the minimum of itself and everything below it — e.g. a stack of <code>int[]{value, minSoFar}</code>. Push computes <code>min(x, top.min)</code>; pop needs no work because the entry below already holds its own min; getMin reads the top. All O(1), space 2N. Variations: (1) two stacks where the min stack is pushed only when <code>x ≤ currentMin</code> (the ≤ keeps duplicates), saving space for random data; (2) an encoded single-variable version storing <code>2x − min</code> when a new min arrives, which needs <code>long</code> to avoid overflow. The trick works because a stack's lower elements never change while the top exists.</p>`, followUps: ['How would you build a Max Stack with popMax()?', 'How do you get a queue with O(1) getMin?'] },
+    { q: 'Design a stack that returns the minimum in O(1). What variations do you know?', level: 'I', a: `<p>Store with every element the minimum of itself and everything below it — e.g. a stack of <code>(value, minSoFar)</code> pairs. Push computes <code>min(x, top.min)</code>; pop needs no work because the entry below already holds its own min; getMin reads the top. All O(1), space 2N. Variations: (1) two stacks where the min stack is pushed only when <code>x ≤ currentMin</code> (the ≤ keeps duplicates), saving space for random data; (2) an encoded single-variable version storing <code>2x − min</code> when a new min arrives, which needs <code>long</code> to avoid overflow. The trick works because a stack's lower elements never change while the top exists.</p>`, followUps: ['How would you build a Max Stack with popMax()?', 'How do you get a queue with O(1) getMin?'] },
     { q: 'Explain the monotonic stack. Why is it O(N) even though there is a nested loop?', level: 'I', a: `<p>A monotonic stack keeps indices whose values are sorted (increasing or decreasing) from bottom to top. For "next greater", each new element pops every smaller waiting element — it is their answer — and then waits itself, keeping the stack decreasing. Although the <code>while</code> sits inside a <code>for</code>, each index is pushed exactly once and popped at most once, so the total number of pops over the whole run is ≤ N. Total work ≤ 2N → O(N). Formally: potential = stack size; each step has amortized cost 2.</p>`, followUps: ['Which comparison do you use for strictly greater vs greater-or-equal?', 'How do you handle a circular array?'] },
     { q: 'Give the four variants (next/previous × greater/smaller) and how the code differs.', level: 'I', a: `<p>Scanning left to right: <b>next greater</b> — pop while <code>a[top] &lt; x</code>, popped elements get x; stack decreasing. <b>Next smaller</b> — pop while <code>a[top] &gt; x</code>; stack increasing. <b>Previous greater</b> — pop while <code>a[top] ≤ x</code>, then the surviving top is the answer for x. <b>Previous smaller</b> — pop while <code>a[top] ≥ x</code>, surviving top is the answer. Rule of thumb: "next" answers come from <i>popped</i> elements; "previous" answers come from the <i>survivor</i>. Flip strict/non-strict depending on whether equal values should count.</p>`, followUps: ['Get both previous and next smaller in a single pass.', 'Why store indices rather than values?'] },
     { q: 'Solve Largest Rectangle in Histogram in O(N) and explain correctness.', level: 'A', a: `<p>The best rectangle uses some bar as its shortest bar; for that bar, the rectangle extends to the nearest strictly smaller bar on each side, so area = <code>h[i] × (right − left − 1)</code>. Keep an increasing stack of indices. When <code>h[i] ≤ h[top]</code>, the top bar's right boundary is i; pop it, its left boundary is the new top (or -1); compute its area. Append a sentinel bar of height 0 at index n to flush the stack. Each bar is pushed/popped once → O(N) time, O(N) space. With duplicates, earlier equal bars get underestimated widths but the last one of the run measures the full width, so the max is still right.</p>`, followUps: ['Extend to Maximal Rectangle in a binary matrix.', 'When do you need long for the area?'] },

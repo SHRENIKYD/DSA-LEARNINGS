@@ -1188,7 +1188,9 @@ vector<int> postorder(TreeNode* root) {
 <p><b>Why:</b> before writing 1 we must finish its whole left side (4, 2, 5). Inside that side, before writing 2 we finish its left (4). So 4 first, then 2, then 2's right (5), then ${H.c('y', '1')}, then 3.</p>`,
       brute: {
         why: `<p>The "obvious" answer is plain recursion. It is O(N), but with a <b>skewed</b> tree of 10<sup>5</sup> nodes the recursion goes 10<sup>5</sup> calls deep and a default call stack can overflow (Python already stops at 1,000). A truly brute force alternative without recursion — repeatedly scanning for "the leftmost node not yet printed" from the root — costs O(N·h), i.e. O(N<sup>2</sup>) on a skewed tree, because we walk the same path again and again.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           List<Integer> inorderRecursive(TreeNode root) {
               List<Integer> out = new ArrayList<>();
               walk(root, out);
@@ -1199,7 +1201,46 @@ vector<int> postorder(TreeNode* root) {
               walk(n.left, out);   // can go 100000 calls deep on a skewed tree
               out.add(n.val);
               walk(n.right, out);
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def inorder_traversal(root):
+    out = []
+    walk(root, out)
+    return out
+
+
+def walk(n, out):
+    if n is None:
+        return
+    walk(n.left, out)              # can go 100000 calls deep on a skewed tree
+    out.append(n.val)
+    walk(n.right, out)` },
+            { lang: 'js', code: `function inorderTraversal(root) {
+  const out = [];
+  walk(root, out);
+  return out;
+}
+
+function walk(n, out) {
+  if (n === null) return;
+  walk(n.left, out);   // can go 100000 calls deep on a skewed tree
+  out.push(n.val);
+  walk(n.right, out);
+}` },
+            { lang: 'cpp', code: `void walk(TreeNode* n, vector<int>& out) {
+    if (n == nullptr) return;
+    walk(n->left, out);   // can go 100000 calls deep on a skewed tree
+    out.push_back(n->val);
+    walk(n->right, out);
+}
+
+vector<int> inorderTraversal(TreeNode* root) {
+    vector<int> out;
+    walk(root, out);
+    return out;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'You popped node X from the stack. Why is it safe to write X right now?',
@@ -1602,7 +1643,9 @@ ${H.table(['level', 'queue at start', 'size', 'taken out', 'added to back'], [
 </pre><p>Output: ${H.c('g', '[[3], [9, 20], [15, 7]]')}</p><p><b>Why:</b> ${H.c('y', '3')} is alone at depth 0; ${H.c('y', '9 and 20')} are at depth 1 (left to right); ${H.c('y', '15 and 7')} are at depth 2.</p>`,
       brute: {
         why: `<p>Find the height h, then for every depth d run a fresh DFS from the root that collects nodes at depth d. Each DFS walks the whole tree, so total work is O(N·h) — O(N<sup>2</sup>) for a skewed tree. The waste: the top of the tree is re-walked for every single level.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           List<List<Integer>> levelOrderBrute(TreeNode root) {
               List<List<Integer>> res = new ArrayList<>();
               int h = height(root);
@@ -1619,7 +1662,70 @@ ${H.table(['level', 'queue at start', 'size', 'taken out', 'added to back'], [
               if (depth == target) { row.add(n.val); return; }
               collect(n.left, depth + 1, target, row);
               collect(n.right, depth + 1, target, row);
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def level_order(root):
+    res = []
+    h = height(root)
+    for d in range(h):                      # one full DFS per level
+        row = []
+        collect(root, 0, d, row)
+        res.append(row)
+    return res
+
+
+def height(n):
+    return 0 if n is None else 1 + max(height(n.left), height(n.right))
+
+
+def collect(n, depth, target, row):
+    if n is None:
+        return
+    if depth == target:
+        row.append(n.val)
+        return
+    collect(n.left, depth + 1, target, row)
+    collect(n.right, depth + 1, target, row)` },
+            { lang: 'js', code: `function levelOrder(root) {
+  const res = [];
+  const h = height(root);
+  for (let d = 0; d < h; d++) {          // one full DFS per level
+    const row = [];
+    collect(root, 0, d, row);
+    res.push(row);
+  }
+  return res;
+}
+
+function height(n) { return n === null ? 0 : 1 + Math.max(height(n.left), height(n.right)); }
+
+function collect(n, depth, target, row) {
+  if (n === null) return;
+  if (depth === target) { row.push(n.val); return; }
+  collect(n.left, depth + 1, target, row);
+  collect(n.right, depth + 1, target, row);
+}` },
+            { lang: 'cpp', code: `int height(TreeNode* n) { return n == nullptr ? 0 : 1 + max(height(n->left), height(n->right)); }
+
+void collect(TreeNode* n, int depth, int target, vector<int>& row) {
+    if (n == nullptr) return;
+    if (depth == target) { row.push_back(n->val); return; }
+    collect(n->left, depth + 1, target, row);
+    collect(n->right, depth + 1, target, row);
+}
+
+vector<vector<int>> levelOrder(TreeNode* root) {
+    vector<vector<int>> res;
+    int h = height(root);
+    for (int d = 0; d < h; d++) {          // one full DFS per level
+        vector<int> row;
+        collect(root, 0, d, row);
+        res.push_back(row);
+    }
+    return res;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Inside the while-loop, why do we save <code>int size = q.size()</code> BEFORE the inner for-loop?',
@@ -2072,7 +2178,9 @@ ${H.table(['visit (left-first)', 'depth', 'ans.size()', 'new depth?', 'ans'], [
 <p><b>Why:</b> level 1 is [2, 3]: last = ${H.c('p', '3')}, first = ${H.c('g', '2')}. Level 2 is [5, 4]: last = ${H.c('p', '4')}, first = ${H.c('g', '5')} — even though 5 hangs on the <i>right</i> of 2.</p>`,
       brute: {
         why: `<p>Brute: build every level as a full list (or, worse, for each depth d run a separate DFS to find the first/last node at depth d → O(N·h) = O(N<sup>2</sup>) for skewed trees). Storing all levels also wastes memory when you only need one value per level.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           List<Integer> rightViewBrute(TreeNode root) {
               List<Integer> res = new ArrayList<>();
               for (int d = 0; ; d++) {
@@ -2088,7 +2196,65 @@ ${H.table(['visit (left-first)', 'depth', 'ans.size()', 'new depth?', 'ans'], [
               if (depth == target) { row.add(n.val); return; }
               collect(n.left, depth + 1, target, row);
               collect(n.right, depth + 1, target, row);
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def right_side_view(root):
+    res = []
+    d = 0
+    while True:
+        row = []
+        collect(root, 0, d, row)            # full DFS for every depth
+        if not row:
+            break
+        res.append(row[-1])
+        d += 1
+    return res
+
+
+def collect(n, depth, target, row):
+    if n is None:
+        return
+    if depth == target:
+        row.append(n.val)
+        return
+    collect(n.left, depth + 1, target, row)
+    collect(n.right, depth + 1, target, row)` },
+            { lang: 'js', code: `function rightSideView(root) {
+  const res = [];
+  for (let d = 0; ; d++) {
+    const row = [];
+    collect(root, 0, d, row);       // full DFS for every depth
+    if (row.length === 0) break;
+    res.push(row[row.length - 1]);
+  }
+  return res;
+}
+
+function collect(n, depth, target, row) {
+  if (n === null) return;
+  if (depth === target) { row.push(n.val); return; }
+  collect(n.left, depth + 1, target, row);
+  collect(n.right, depth + 1, target, row);
+}` },
+            { lang: 'cpp', code: `void collect(TreeNode* n, int depth, int target, vector<int>& row) {
+    if (n == nullptr) return;
+    if (depth == target) { row.push_back(n->val); return; }
+    collect(n->left, depth + 1, target, row);
+    collect(n->right, depth + 1, target, row);
+}
+
+vector<int> rightSideView(TreeNode* root) {
+    vector<int> res;
+    for (int d = 0; ; d++) {
+        vector<int> row;
+        collect(root, 0, d, row);       // full DFS for every depth
+        if (row.empty()) break;
+        res.push_back(row.back());
+    }
+    return res;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Using DFS for the RIGHT view, which order should you visit children, and when do you record a node?',
@@ -2451,7 +2617,9 @@ ${H.table(['BFS order', 'hd', 'top map', 'bottom map'], [
 <p><b>Why:</b> column 0 holds 20 (top) and ${H.c('p', '3')} (bottom). Column −1 holds 8 (top) and ${H.c('p', '10')} (lower). Column +1 holds 22 and ${H.c('p', '14')}.</p>`,
       brute: {
         why: `<p>Brute: DFS to list every node with its (hd, depth). Then for each column from min to max, scan the whole list to find the smallest / largest depth. That is O(N × number of columns) ≈ O(N<sup>2</sup>) for wide trees. The waste: re-scanning all N nodes for every column.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           List<Integer> topViewBrute(TreeNode root) {
               List<int[]> all = new ArrayList<>();    // {hd, depth, value}
               collect(root, 0, 0, all);
@@ -2470,7 +2638,71 @@ ${H.table(['BFS order', 'hd', 'top map', 'bottom map'], [
               all.add(new int[]{hd, depth, n.val});
               collect(n.left, hd - 1, depth + 1, all);
               collect(n.right, hd + 1, depth + 1, all);
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def top_view(root):
+    all_nodes = []                          # (hd, depth, value)
+    collect(root, 0, 0, all_nodes)
+    lo = min(e[0] for e in all_nodes)
+    hi = max(e[0] for e in all_nodes)
+    res = []
+    for hd in range(lo, hi + 1):            # one full scan per column
+        best_depth, val = float("inf"), 0
+        for e in all_nodes:
+            if e[0] == hd and e[1] < best_depth:
+                best_depth, val = e[1], e[2]
+        res.append(val)
+    return res
+
+
+def collect(n, hd, depth, all_nodes):
+    if n is None:
+        return
+    all_nodes.append((hd, depth, n.val))
+    collect(n.left, hd - 1, depth + 1, all_nodes)
+    collect(n.right, hd + 1, depth + 1, all_nodes)` },
+            { lang: 'js', code: `function topView(root) {
+  const all = [];                          // [hd, depth, value]
+  collect(root, 0, 0, all);
+  let lo = Infinity, hi = -Infinity;
+  for (const e of all) { lo = Math.min(lo, e[0]); hi = Math.max(hi, e[0]); }
+  const res = [];
+  for (let hd = lo; hd <= hi; hd++) {      // one full scan per column
+    let bestDepth = Infinity, val = 0;
+    for (const e of all) if (e[0] === hd && e[1] < bestDepth) { bestDepth = e[1]; val = e[2]; }
+    res.push(val);
+  }
+  return res;
+}
+
+function collect(n, hd, depth, all) {
+  if (n === null) return;
+  all.push([hd, depth, n.val]);
+  collect(n.left, hd - 1, depth + 1, all);
+  collect(n.right, hd + 1, depth + 1, all);
+}` },
+            { lang: 'cpp', code: `void collect(TreeNode* n, int hd, int depth, vector<array<int, 3>>& all) {
+    if (n == nullptr) return;
+    all.push_back({hd, depth, n->val});
+    collect(n->left, hd - 1, depth + 1, all);
+    collect(n->right, hd + 1, depth + 1, all);
+}
+
+vector<int> topView(TreeNode* root) {
+    vector<array<int, 3>> all;              // {hd, depth, value}
+    collect(root, 0, 0, all);
+    int lo = INT_MAX, hi = INT_MIN;
+    for (auto& e : all) { lo = min(lo, e[0]); hi = max(hi, e[0]); }
+    vector<int> res;
+    for (int hd = lo; hd <= hi; hd++) {     // one full scan per column
+        int bestDepth = INT_MAX, val = 0;
+        for (auto& e : all) if (e[0] == hd && e[1] < bestDepth) { bestDepth = e[1]; val = e[2]; }
+        res.push_back(val);
+    }
+    return res;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'For the TOP view with BFS, a node arrives at column hd = −1 but the map already has hd −1. What do you do?',
@@ -2815,7 +3047,9 @@ ${H.table(['node (postorder)', 'left h', 'right h', 'height = 1+max', 'path thro
 </pre><p>Max depth = ${H.c('g', '3')} (1 → 2 → 4). Diameter = ${H.c('p', '3')}: the path ${H.c('p', '4 → 2 → 1 → 3')} has 3 edges (so does 5 → 2 → 1 → 3).</p>`,
       brute: {
         why: `<p>Brute: diameter(node) = max( height(left) + height(right), diameter(left), diameter(right) ), calling a separate <code>height()</code> each time. Each height call walks a whole subtree, and we call it at every node → O(N<sup>2</sup>) on a skewed tree. The wasted work: the same subtree heights are recomputed again and again by every ancestor.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           int height(TreeNode n) {
               if (n == null) return 0;
               return 1 + Math.max(height(n.left), height(n.right));
@@ -2824,7 +3058,41 @@ ${H.table(['node (postorder)', 'left h', 'right h', 'height = 1+max', 'path thro
               if (n == null) return 0;
               int through = height(n.left) + height(n.right);  // recomputed for every node
               return Math.max(through, Math.max(diameterBrute(n.left), diameterBrute(n.right)));
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def height(n):
+    if n is None:
+        return 0
+    return 1 + max(height(n.left), height(n.right))
+
+
+def diameter_of_binary_tree(n):
+    if n is None:
+        return 0
+    through = height(n.left) + height(n.right)      # recomputed for every node
+    return max(through, diameter_of_binary_tree(n.left), diameter_of_binary_tree(n.right))` },
+            { lang: 'js', code: `function height(n) {
+  if (n === null) return 0;
+  return 1 + Math.max(height(n.left), height(n.right));
+}
+
+function diameterOfBinaryTree(n) {
+  if (n === null) return 0;
+  const through = height(n.left) + height(n.right);  // recomputed for every node
+  return Math.max(through, Math.max(diameterOfBinaryTree(n.left), diameterOfBinaryTree(n.right)));
+}` },
+            { lang: 'cpp', code: `int height(TreeNode* n) {
+    if (n == nullptr) return 0;
+    return 1 + max(height(n->left), height(n->right));
+}
+
+int diameterOfBinaryTree(TreeNode* n) {
+    if (n == nullptr) return 0;
+    int through = height(n->left) + height(n->right);  // recomputed for every node
+    return max(through, max(diameterOfBinaryTree(n->left), diameterOfBinaryTree(n->right)));
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'At node X the left subtree has height 3 and the right subtree has height 2. What is the longest path (in edges) whose highest point is X?',
@@ -3184,7 +3452,9 @@ ${H.table(['node', 'lh', 'rh', '|lh−rh|', 'returns'], [
 <p>Input: <code>root = [3,9,20,null,null,15,7]</code> → Output: ${H.c('g', 'true')} (heights 1 vs 2 at the root, and all lower nodes are fine).</p>`,
       brute: {
         why: `<p>Top-down: at each node compute <code>height(left)</code> and <code>height(right)</code> from scratch, compare, then recurse into both children. Every node's height gets recomputed by each of its ancestors → O(N<sup>2</sup>) for a skewed tree (5000<sup>2</sup> = 2.5·10<sup>7</sup>, OK here, but not for 10<sup>5</sup>).</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           int height(TreeNode n) {
               return n == null ? 0 : 1 + Math.max(height(n.left), height(n.right));
           }
@@ -3192,7 +3462,38 @@ ${H.table(['node', 'lh', 'rh', '|lh−rh|', 'returns'], [
               if (n == null) return true;
               if (Math.abs(height(n.left) - height(n.right)) > 1) return false;
               return isBalancedBrute(n.left) && isBalancedBrute(n.right);  // heights recomputed below
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def height(n):
+    return 0 if n is None else 1 + max(height(n.left), height(n.right))
+
+
+def is_balanced(n):
+    if n is None:
+        return True
+    if abs(height(n.left) - height(n.right)) > 1:
+        return False
+    return is_balanced(n.left) and is_balanced(n.right)    # heights recomputed below` },
+            { lang: 'js', code: `function height(n) {
+  return n === null ? 0 : 1 + Math.max(height(n.left), height(n.right));
+}
+
+function isBalanced(n) {
+  if (n === null) return true;
+  if (Math.abs(height(n.left) - height(n.right)) > 1) return false;
+  return isBalanced(n.left) && isBalanced(n.right);  // heights recomputed below
+}` },
+            { lang: 'cpp', code: `int height(TreeNode* n) {
+    return n == nullptr ? 0 : 1 + max(height(n->left), height(n->right));
+}
+
+bool isBalanced(TreeNode* n) {
+    if (n == nullptr) return true;
+    if (abs(height(n->left) - height(n->right)) > 1) return false;
+    return isBalanced(n->left) && isBalanced(n->right);  // heights recomputed below
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'A tree where the ROOT\'s two subtrees have equal height. Is it guaranteed to be balanced?',
@@ -3595,7 +3896,9 @@ TreeNode* lcaBST(TreeNode* root, TreeNode* p, TreeNode* q) {
 </pre><p><b>Why:</b> 6 is in 5's left subtree, 4 is in 5's right subtree (under 2). Going any lower (6 or 2) loses one of them; going higher (3) is not the <i>lowest</i>.</p>`,
       brute: {
         why: `<p>Brute: find the root-to-p path and the root-to-q path (each by a full DFS that copies paths), then walk both lists until they differ; the last common node is the LCA. It is O(N) but needs two traversals plus two path lists. An even slower version checks, for every node, "does my subtree contain both p and q?" → O(N<sup>2</sup>) because each check walks a subtree again.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           TreeNode lcaBrute(TreeNode root, TreeNode p, TreeNode q) {
               List<TreeNode> a = new ArrayList<>(), b = new ArrayList<>();
               path(root, p, a);
@@ -3610,7 +3913,62 @@ TreeNode* lcaBST(TreeNode* root, TreeNode* p, TreeNode* q) {
               if (n == target || path(n.left, target, out) || path(n.right, target, out)) return true;
               out.remove(out.size() - 1);   // dead end: undo
               return false;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def lowest_common_ancestor(root, p, q):
+    a, b = [], []
+    path(root, p, a)
+    path(root, q, b)
+    ans = None
+    i = 0
+    while i < len(a) and i < len(b) and a[i] is b[i]:
+        ans = a[i]
+        i += 1
+    return ans
+
+
+def path(n, target, out):
+    if n is None:
+        return False
+    out.append(n)
+    if n is target or path(n.left, target, out) or path(n.right, target, out):
+        return True
+    out.pop()                               # dead end: undo
+    return False` },
+            { lang: 'js', code: `function lowestCommonAncestor(root, p, q) {
+  const a = [], b = [];
+  path(root, p, a);
+  path(root, q, b);
+  let ans = null;
+  for (let i = 0; i < a.length && i < b.length && a[i] === b[i]; i++) ans = a[i];
+  return ans;
+}
+
+function path(n, target, out) {
+  if (n === null) return false;
+  out.push(n);
+  if (n === target || path(n.left, target, out) || path(n.right, target, out)) return true;
+  out.pop();   // dead end: undo
+  return false;
+}` },
+            { lang: 'cpp', code: `bool path(TreeNode* n, TreeNode* target, vector<TreeNode*>& out) {
+    if (n == nullptr) return false;
+    out.push_back(n);
+    if (n == target || path(n->left, target, out) || path(n->right, target, out)) return true;
+    out.pop_back();   // dead end: undo
+    return false;
+}
+
+TreeNode* lowestCommonAncestor(TreeNode* root, TreeNode* p, TreeNode* q) {
+    vector<TreeNode*> a, b;
+    path(root, p, a);
+    path(root, q, b);
+    TreeNode* ans = nullptr;
+    for (size_t i = 0; i < a.size() && i < b.size() && a[i] == b[i]; i++) ans = a[i];
+    return ans;
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'In the recursive LCA, the left call returns node 6 and the right call returns node 4. What should the current node return?',
@@ -4382,7 +4740,9 @@ for (auto it = s.lower_bound(30); it != s.upper_bound(60); ++it) cout << *it << 
 </pre><p>Output: ${H.c('g', '[4,2,7,1,3,5]')}. <b>Why:</b> 5 &gt; 4 → go right to 7; 5 &lt; 7 → go left; empty → 5 becomes the left child of 7. Nothing else moves.</p>`,
       brute: {
         why: `<p>Brute: read every value with an inorder walk (O(N)), add the new value, sort (O(N log N)), and rebuild a whole new balanced BST from the sorted list. It works, but we touched all N nodes to add one, when the ordering tells us exactly where the new leaf belongs after h comparisons.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           TreeNode insertBrute(TreeNode root, int val) {
               List<Integer> all = new ArrayList<>();
               collect(root, all);                 // O(N)
@@ -4398,7 +4758,67 @@ for (auto it = s.lower_bound(30); it != s.upper_bound(60); ++it) cout << *it << 
               if (lo > hi) return null;
               int mid = (lo + hi) >>> 1;          // middle element becomes the root
               return new TreeNode(a.get(mid), build(a, lo, mid - 1), build(a, mid + 1, hi));
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def insert_into_bst(root, val):
+    all_vals = []
+    collect(root, all_vals)                 # O(N)
+    all_vals.append(val)
+    all_vals.sort()                         # O(N log N)
+    return build(all_vals, 0, len(all_vals) - 1)
+
+
+def collect(n, out):
+    if n is None:
+        return
+    collect(n.left, out)
+    out.append(n.val)
+    collect(n.right, out)
+
+
+def build(a, lo, hi):
+    if lo > hi:
+        return None
+    mid = (lo + hi) // 2                    # middle element becomes the root
+    return TreeNode(a[mid], build(a, lo, mid - 1), build(a, mid + 1, hi))` },
+            { lang: 'js', code: `function insertIntoBST(root, val) {
+  const all = [];
+  collect(root, all);                       // O(N)
+  all.push(val);
+  all.sort((a, b) => a - b);                // O(N log N)
+  return build(all, 0, all.length - 1);
+}
+
+function collect(n, out) {
+  if (n === null) return;
+  collect(n.left, out); out.push(n.val); collect(n.right, out);
+}
+
+function build(a, lo, hi) {
+  if (lo > hi) return null;
+  const mid = (lo + hi) >>> 1;              // middle element becomes the root
+  return new TreeNode(a[mid], build(a, lo, mid - 1), build(a, mid + 1, hi));
+}` },
+            { lang: 'cpp', code: `void collect(TreeNode* n, vector<int>& out) {
+    if (n == nullptr) return;
+    collect(n->left, out); out.push_back(n->val); collect(n->right, out);
+}
+
+TreeNode* build(const vector<int>& a, int lo, int hi) {
+    if (lo > hi) return nullptr;
+    int mid = (lo + hi) / 2;                // middle element becomes the root
+    return new TreeNode(a[mid], build(a, lo, mid - 1), build(a, mid + 1, hi));
+}
+
+TreeNode* insertIntoBST(TreeNode* root, int val) {
+    vector<int> all;
+    collect(root, all);                     // O(N)
+    all.push_back(val);
+    sort(all.begin(), all.end());           // O(N log N)
+    return build(all, 0, (int)all.size() - 1);
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Where does a newly inserted value end up in a plain (non-balancing) BST?',
@@ -4927,7 +5347,9 @@ TreeNode* deleteWithPredecessor(TreeNode* node, int key) {
 </pre><p>Output: ${H.c('g', '[5,4,6,2,null,null,7]')}. <b>Why:</b> 3 has two children; its successor is ${H.c('p', '4')} (right once, no left child). Copy 4 into 3's place, then delete the old 4 (a leaf). Using the predecessor 2 instead gives <code>[5,2,6,null,4,null,7]</code> — also accepted.</p>`,
       brute: {
         why: `<p>Brute: collect all values by inorder (O(N)), drop the key, and rebuild a balanced BST from the remaining sorted list (O(N)). Correct, but it rebuilds the whole tree to remove one node and allocates N new nodes; the ordering already tells us the key's location in O(h).</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           TreeNode deleteBrute(TreeNode root, int key) {
               List<Integer> keep = new ArrayList<>();
               collect(root, key, keep);                       // sorted, without the key
@@ -4943,7 +5365,66 @@ TreeNode* deleteWithPredecessor(TreeNode* node, int key) {
               if (lo > hi) return null;
               int mid = (lo + hi) >>> 1;
               return new TreeNode(a.get(mid), build(a, lo, mid - 1), build(a, mid + 1, hi));
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def delete_node(root, key):
+    keep = []
+    collect(root, key, keep)                # sorted, without the key
+    return build(keep, 0, len(keep) - 1)
+
+
+def collect(n, key, out):
+    if n is None:
+        return
+    collect(n.left, key, out)
+    if n.val != key:
+        out.append(n.val)
+    collect(n.right, key, out)
+
+
+def build(a, lo, hi):
+    if lo > hi:
+        return None
+    mid = (lo + hi) // 2
+    return TreeNode(a[mid], build(a, lo, mid - 1), build(a, mid + 1, hi))` },
+            { lang: 'js', code: `function deleteNode(root, key) {
+  const keep = [];
+  collect(root, key, keep);                 // sorted, without the key
+  return build(keep, 0, keep.length - 1);
+}
+
+function collect(n, key, out) {
+  if (n === null) return;
+  collect(n.left, key, out);
+  if (n.val !== key) out.push(n.val);
+  collect(n.right, key, out);
+}
+
+function build(a, lo, hi) {
+  if (lo > hi) return null;
+  const mid = (lo + hi) >>> 1;
+  return new TreeNode(a[mid], build(a, lo, mid - 1), build(a, mid + 1, hi));
+}` },
+            { lang: 'cpp', code: `void collect(TreeNode* n, int key, vector<int>& out) {
+    if (n == nullptr) return;
+    collect(n->left, key, out);
+    if (n->val != key) out.push_back(n->val);
+    collect(n->right, key, out);
+}
+
+TreeNode* build(const vector<int>& a, int lo, int hi) {
+    if (lo > hi) return nullptr;
+    int mid = (lo + hi) / 2;
+    return new TreeNode(a[mid], build(a, lo, mid - 1), build(a, mid + 1, hi));
+}
+
+TreeNode* deleteNode(TreeNode* root, int key) {
+    vector<int> keep;
+    collect(root, key, keep);               // sorted, without the key
+    return build(keep, 0, (int)keep.size() - 1);
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'The node to delete has two children. Which value can safely replace it?',
@@ -5577,7 +6058,9 @@ int kthLargest(TreeNode* root, int k) {
 <p>Input: <code>root = [2,1,3]</code> → Output: ${H.c('g', 'true')}.</p>`,
       brute: {
         why: `<p>Brute: for every node, compute the max of its left subtree and the min of its right subtree with separate full traversals, and check <code>maxLeft &lt; node &lt; minRight</code>. Correct, but every node re-scans its subtrees → O(N<sup>2</sup>) on a skewed tree. The waste: the same subtree minimums/maximums are recomputed by each ancestor.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           boolean isValidBrute(TreeNode n) {
               if (n == null) return true;
               if (n.left != null && maxOf(n.left) >= n.val) return false;
@@ -5595,7 +6078,76 @@ int kthLargest(TreeNode* root, int k) {
               if (n.left != null) m = Math.min(m, minOf(n.left));
               if (n.right != null) m = Math.min(m, minOf(n.right));
               return m;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def is_valid_bst(n):
+    if n is None:
+        return True
+    if n.left is not None and max_of(n.left) >= n.val:
+        return False
+    if n.right is not None and min_of(n.right) <= n.val:
+        return False
+    return is_valid_bst(n.left) and is_valid_bst(n.right)
+
+
+def max_of(n):                              # full scan of the subtree
+    m = n.val
+    if n.left is not None:
+        m = max(m, max_of(n.left))
+    if n.right is not None:
+        m = max(m, max_of(n.right))
+    return m
+
+
+def min_of(n):
+    m = n.val
+    if n.left is not None:
+        m = min(m, min_of(n.left))
+    if n.right is not None:
+        m = min(m, min_of(n.right))
+    return m` },
+            { lang: 'js', code: `function isValidBST(n) {
+  if (n === null) return true;
+  if (n.left !== null && maxOf(n.left) >= n.val) return false;
+  if (n.right !== null && minOf(n.right) <= n.val) return false;
+  return isValidBST(n.left) && isValidBST(n.right);
+}
+
+function maxOf(n) {   // full scan of the subtree
+  let m = n.val;
+  if (n.left !== null) m = Math.max(m, maxOf(n.left));
+  if (n.right !== null) m = Math.max(m, maxOf(n.right));
+  return m;
+}
+
+function minOf(n) {
+  let m = n.val;
+  if (n.left !== null) m = Math.min(m, minOf(n.left));
+  if (n.right !== null) m = Math.min(m, minOf(n.right));
+  return m;
+}` },
+            { lang: 'cpp', code: `int maxOf(TreeNode* n) {   // full scan of the subtree
+    int m = n->val;
+    if (n->left != nullptr) m = max(m, maxOf(n->left));
+    if (n->right != nullptr) m = max(m, maxOf(n->right));
+    return m;
+}
+
+int minOf(TreeNode* n) {
+    int m = n->val;
+    if (n->left != nullptr) m = min(m, minOf(n->left));
+    if (n->right != nullptr) m = min(m, minOf(n->right));
+    return m;
+}
+
+bool isValidBST(TreeNode* n) {
+    if (n == nullptr) return true;
+    if (n->left != nullptr && maxOf(n->left) >= n->val) return false;
+    if (n->right != nullptr && minOf(n->right) <= n->val) return false;
+    return isValidBST(n->left) && isValidBST(n->right);
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'You move from node 50 to its RIGHT child, and the range passed into 50 was (30, 70). What range does the right child get?',
@@ -5723,7 +6275,9 @@ private:
 </pre><p><b>Why:</b> sorted values are 1, 2, ${H.c('g', '3')}, 4, 5, 6 — the third is 3. Inorder produces exactly this sequence, so we stop at the third value written.</p>`,
       brute: {
         why: `<p>Brute: collect every value (any traversal), sort the list, return element k − 1. O(N log N) time and O(N) memory, ignoring that a BST is already sorted. Slightly better: full inorder into a list (O(N)) — but still visits all N nodes even when k = 1.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           int kthSmallestBrute(TreeNode root, int k) {
               List<Integer> all = new ArrayList<>();
               collect(root, all);
@@ -5735,7 +6289,49 @@ private:
               out.add(n.val);
               collect(n.left, out);
               collect(n.right, out);
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def kth_smallest(root, k):
+    all_vals = []
+    collect(root, all_vals)
+    all_vals.sort()                         # ignores the BST order completely
+    return all_vals[k - 1]
+
+
+def collect(n, out):
+    if n is None:
+        return
+    out.append(n.val)
+    collect(n.left, out)
+    collect(n.right, out)` },
+            { lang: 'js', code: `function kthSmallest(root, k) {
+  const all = [];
+  collect(root, all);
+  all.sort((a, b) => a - b);                // ignores the BST order completely
+  return all[k - 1];
+}
+
+function collect(n, out) {
+  if (n === null) return;
+  out.push(n.val);
+  collect(n.left, out);
+  collect(n.right, out);
+}` },
+            { lang: 'cpp', code: `void collect(TreeNode* n, vector<int>& out) {
+    if (n == nullptr) return;
+    out.push_back(n->val);
+    collect(n->left, out);
+    collect(n->right, out);
+}
+
+int kthSmallest(TreeNode* root, int k) {
+    vector<int> all;
+    collect(root, all);
+    sort(all.begin(), all.end());           // ignores the BST order completely
+    return all[k - 1];
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'Why can we stop the inorder walk as soon as the counter reaches k?',
@@ -6252,7 +6848,9 @@ int main() {
 <p><b>Why:</b> 3 is first in preorder → root. In inorder, [9] is left of 3 and [15, 20, 7] is right. The next preorder value 9 roots the left window; then 20 roots the right window, splitting it into [15] and [7].</p>`,
       brute: {
         why: `<p>Brute: for every root, linearly search inorder for its index and copy the left/right pieces of both arrays into new arrays before recursing. Each level does O(N) scanning and copying → O(N<sup>2</sup>) time and lots of garbage on skewed trees. The waste: re-searching and re-copying data we already have, when indices and a value → index map suffice.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           TreeNode buildBrute(int[] pre, int[] in) {
               if (pre.length == 0) return null;
               TreeNode root = new TreeNode(pre[0]);
@@ -6261,7 +6859,38 @@ int main() {
               root.left = buildBrute(Arrays.copyOfRange(pre, 1, m + 1), Arrays.copyOfRange(in, 0, m));
               root.right = buildBrute(Arrays.copyOfRange(pre, m + 1, pre.length), Arrays.copyOfRange(in, m + 1, in.length));
               return root;                                       // copies: O(N) per level
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def build_tree(pre, inorder):
+    if len(pre) == 0:
+        return None
+    root = TreeNode(pre[0])
+    m = 0
+    while inorder[m] != pre[0]:             # linear search: O(N)
+        m += 1
+    root.left = build_tree(pre[1:m + 1], inorder[:m])
+    root.right = build_tree(pre[m + 1:], inorder[m + 1:])
+    return root                             # copies: O(N) per level` },
+            { lang: 'js', code: `function buildTree(pre, inorder) {
+  if (pre.length === 0) return null;
+  const root = new TreeNode(pre[0]);
+  let m = 0;
+  while (inorder[m] !== pre[0]) m++;                      // linear search: O(N)
+  root.left = buildTree(pre.slice(1, m + 1), inorder.slice(0, m));
+  root.right = buildTree(pre.slice(m + 1), inorder.slice(m + 1));
+  return root;                                            // copies: O(N) per level
+}` },
+            { lang: 'cpp', code: `TreeNode* buildTree(vector<int> pre, vector<int> inorder) {
+    if (pre.empty()) return nullptr;
+    TreeNode* root = new TreeNode(pre[0]);
+    int m = 0;
+    while (inorder[m] != pre[0]) m++;                     // linear search: O(N)
+    root->left = buildTree(vector<int>(pre.begin() + 1, pre.begin() + m + 1), vector<int>(inorder.begin(), inorder.begin() + m));
+    root->right = buildTree(vector<int>(pre.begin() + m + 1, pre.end()), vector<int>(inorder.begin() + m + 1, inorder.end()));
+    return root;                                          // copies: O(N) per level
+}` }
+          ]
+        }
       },
       mcq: {
         q: 'The root sits at index m of the current inorder window in[lo..hi]. How many nodes does its left subtree have?',
@@ -6393,7 +7022,9 @@ public:
 <p><code>p = [1,2]</code>, <code>q = [1,null,2]</code> → ${H.c('r', 'false')}: same values, but 2 is a <b>left</b> child in p and a <b>right</b> child in q — the shapes differ.</p>`,
     brute: {
       why: `<p>Serialize both trees into strings (preorder with a marker for null) and compare the strings. It works and is O(N), but builds two strings of size O(N) and cannot stop at the first difference until both are fully built.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         boolean isSameBrute(TreeNode p, TreeNode q) {
             StringBuilder a = new StringBuilder(), b = new StringBuilder();
             ser(p, a); ser(q, b);
@@ -6403,7 +7034,46 @@ public:
             if (n == null) { sb.append("#,"); return; }   // null marker keeps the shape
             sb.append(n.val).append(',');
             ser(n.left, sb); ser(n.right, sb);
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def is_same_tree(p, q):
+    a, b = [], []
+    ser(p, a)
+    ser(q, b)
+    return "".join(a) == "".join(b)
+
+
+def ser(n, sb):
+    if n is None:
+        sb.append("#,")                     # null marker keeps the shape
+        return
+    sb.append(str(n.val) + ",")
+    ser(n.left, sb)
+    ser(n.right, sb)` },
+            { lang: 'js', code: `function isSameTree(p, q) {
+  const a = [], b = [];
+  ser(p, a); ser(q, b);
+  return a.join("") === b.join("");
+}
+
+function ser(n, sb) {
+  if (n === null) { sb.push("#,"); return; }   // null marker keeps the shape
+  sb.push(n.val + ",");
+  ser(n.left, sb); ser(n.right, sb);
+}` },
+            { lang: 'cpp', code: `void ser(TreeNode* n, string& sb) {
+    if (n == nullptr) { sb += "#,"; return; }   // null marker keeps the shape
+    sb += to_string(n->val) + ",";
+    ser(n->left, sb); ser(n->right, sb);
+}
+
+bool isSameTree(TreeNode* p, TreeNode* q) {
+    string a, b;
+    ser(p, a); ser(q, b);
+    return a == b;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Comparing only the preorder value lists (without null markers) of the two trees is…', options: ['Enough', 'Not enough: different shapes can give the same list', 'Enough if values are unique', 'Only wrong for empty trees'], answer: 1, explain: '[1,2] and [1,null,2] both have preorder 1, 2. Null markers (or a structural recursion) are needed to capture shape.' },
     hints: [
@@ -6481,7 +7151,9 @@ public:
 </pre><p>Output ${H.c('g', 'true')}: the left 2's ${H.c('b', 'outer')} child 3 matches the right 2's ${H.c('b', 'outer')} child 3, and the ${H.c('y', 'inner')} 4s match each other. <code>[1,2,2,null,3,null,3]</code> → ${H.c('r', 'false')} (both 3s are right children).</p>`,
     brute: {
       why: `<p>Build a mirrored <b>copy</b> of the tree (O(N) extra nodes), then check if the copy equals the original with Same Tree. Correct and O(N), but allocates a whole second tree just to compare.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         boolean isSymmetricBrute(TreeNode root) {
             return same(root, mirror(root));
         }
@@ -6492,7 +7164,50 @@ public:
         boolean same(TreeNode a, TreeNode b) {
             if (a == null || b == null) return a == b;
             return a.val == b.val && same(a.left, b.left) && same(a.right, b.right);
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def is_symmetric(root):
+    return same(root, mirror(root))
+
+
+def mirror(n):
+    if n is None:
+        return None
+    return TreeNode(n.val, mirror(n.right), mirror(n.left))    # new nodes!
+
+
+def same(a, b):
+    if a is None or b is None:
+        return a is b
+    return a.val == b.val and same(a.left, b.left) and same(a.right, b.right)` },
+            { lang: 'js', code: `function isSymmetric(root) {
+  return same(root, mirror(root));
+}
+
+function mirror(n) {
+  if (n === null) return null;
+  return new TreeNode(n.val, mirror(n.right), mirror(n.left));   // new nodes!
+}
+
+function same(a, b) {
+  if (a === null || b === null) return a === b;
+  return a.val === b.val && same(a.left, b.left) && same(a.right, b.right);
+}` },
+            { lang: 'cpp', code: `TreeNode* mirror(TreeNode* n) {
+    if (n == nullptr) return nullptr;
+    return new TreeNode(n->val, mirror(n->right), mirror(n->left));   // new nodes!
+}
+
+bool same(TreeNode* a, TreeNode* b) {
+    if (a == nullptr || b == nullptr) return a == b;
+    return a->val == b->val && same(a->left, b->left) && same(a->right, b->right);
+}
+
+bool isSymmetric(TreeNode* root) {
+    return same(root, mirror(root));
+}` }
+          ]
+        }
     },
     mcq: { q: 'When comparing nodes a (left side) and b (right side) for symmetry, which pairs must match next?', options: ['a.left with b.left, a.right with b.right', 'a.left with b.right, a.right with b.left', 'a.left with a.right', 'Only the values of a and b'], answer: 1, explain: 'In a mirror, the outer children (a.left, b.right) face each other and the inner children (a.right, b.left) face each other.' },
     hints: [
@@ -6590,7 +7305,9 @@ private:
 </pre><p>Output ${H.c('g', '[4,7,2,9,6,3,1]')}. Every node swaps its two children; doing it at every node mirrors the whole tree. Inorder flips from 1 2 3 4 6 7 9 to 9 7 6 4 3 2 1.</p>`,
     brute: {
       why: `<p>Collect each level with BFS, reverse every level list, and rebuild a new tree from the reversed levels (with null placeholders). Much more code, O(N) extra memory for the copy, and easy to get wrong with missing children — when a simple swap at every node does the job in place.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         TreeNode invertCopy(TreeNode n) {
             // builds a brand-new mirrored tree: O(N) extra nodes
             if (n == null) return null;
@@ -6598,7 +7315,34 @@ private:
             copy.left = invertCopy(n.right);
             copy.right = invertCopy(n.left);
             return copy;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def invert_tree(n):
+    # builds a brand-new mirrored tree: O(N) extra nodes
+    if n is None:
+        return None
+    copy = TreeNode(n.val)
+    copy.left = invert_tree(n.right)
+    copy.right = invert_tree(n.left)
+    return copy` },
+            { lang: 'js', code: `function invertTree(n) {
+  // builds a brand-new mirrored tree: O(N) extra nodes
+  if (n === null) return null;
+  const copy = new TreeNode(n.val);
+  copy.left = invertTree(n.right);
+  copy.right = invertTree(n.left);
+  return copy;
+}` },
+            { lang: 'cpp', code: `TreeNode* invertTree(TreeNode* n) {
+    // builds a brand-new mirrored tree: O(N) extra nodes
+    if (n == nullptr) return nullptr;
+    TreeNode* copy = new TreeNode(n->val);
+    copy->left = invertTree(n->right);
+    copy->right = invertTree(n->left);
+    return copy;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Which traversal order can you use to invert the tree in place?', options: ['Only preorder', 'Only postorder', 'Preorder, postorder or level order — any order that swaps every node exactly once', 'Only inorder'], answer: 2, explain: 'Each node just needs its children swapped once. Careful with plain inorder: after swapping at a node, the "right" subtree you visit next is the one you already processed.' },
     hints: [
@@ -6679,7 +7423,9 @@ public:
     example: `<p><code>root = [5,4,8,11,null,13,4,7,2,null,null,null,1]</code>, targetSum = 22 → ${H.c('g', 'true')} because ${H.c('g', '5 + 4 + 11 + 2 = 22')} and 2 is a leaf. A path that stops at a non-leaf does not count: with root = [1,2] and target 1 the answer is ${H.c('r', 'false')} (1 alone is not a leaf path).</p>`,
     brute: {
       why: `<p>List every root-to-leaf path explicitly (copying the path at each leaf), then sum each list. Copying costs O(h) per leaf, so O(N·h) time and memory — up to O(N<sup>2</sup>) on bad shapes. We only need a running total, not the paths.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         boolean hasPathSumBrute(TreeNode root, int target) {
             List<List<Integer>> paths = new ArrayList<>();
             collect(root, new ArrayList<>(), paths);
@@ -6697,7 +7443,70 @@ public:
             collect(n.left, path, out);
             collect(n.right, path, out);
             path.remove(path.size() - 1);
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def has_path_sum(root, target):
+    paths = []
+    collect(root, [], paths)
+    for p in paths:
+        s = 0
+        for v in p:
+            s += v
+        if s == target:
+            return True
+    return False
+
+
+def collect(n, path, out):
+    if n is None:
+        return
+    path.append(n.val)
+    if n.left is None and n.right is None:
+        out.append(list(path))
+    collect(n.left, path, out)
+    collect(n.right, path, out)
+    path.pop()` },
+            { lang: 'js', code: `function hasPathSum(root, target) {
+  const paths = [];
+  collect(root, [], paths);
+  for (const p of paths) {
+    let s = 0;
+    for (const v of p) s += v;
+    if (s === target) return true;
+  }
+  return false;
+}
+
+function collect(n, path, out) {
+  if (n === null) return;
+  path.push(n.val);
+  if (n.left === null && n.right === null) out.push([...path]);
+  collect(n.left, path, out);
+  collect(n.right, path, out);
+  path.pop();
+}` },
+            { lang: 'cpp', code: `void collect(TreeNode* n, vector<int>& path, vector<vector<int>>& out) {
+    if (n == nullptr) return;
+    path.push_back(n->val);
+    if (n->left == nullptr && n->right == nullptr) out.push_back(path);
+    collect(n->left, path, out);
+    collect(n->right, path, out);
+    path.pop_back();
+}
+
+bool hasPathSum(TreeNode* root, int target) {
+    vector<vector<int>> paths;
+    vector<int> path;
+    collect(root, path, paths);
+    for (auto& p : paths) {
+        int s = 0;
+        for (int v : p) s += v;
+        if (s == target) return true;
+    }
+    return false;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Where must the "remaining == 0" check happen?', options: ['At every node', 'Only at leaves', 'Only at the root', 'At null children'], answer: 1, explain: 'The path must end at a leaf. Checking at null children is a classic bug: a node with ONE child would be treated as a path end.' },
     hints: [
@@ -6785,7 +7594,9 @@ public:
     example: `${H.arr([-10, -3, 0, 5, 9], { label: 'nums', hl: { 2: 'p' } })}<p>Output e.g. ${H.c('g', '[0,-3,9,-10,null,5]')}: the middle value ${H.c('p', '0')} becomes the root, [−10, −3] builds the left subtree and [5, 9] the right. Several answers are valid as long as every node's subtrees differ in height by at most 1 — the code below picks the lower middle and returns ${H.c('g', '[0,-10,5,null,-3,null,9]')}, also correct.</p>`,
     brute: {
       why: `<p>Insert the values one by one into an empty BST. Because they arrive <b>sorted</b>, each new value goes to the far right and the "tree" becomes a chain of height n — a valid BST, but not balanced, and building it costs O(n<sup>2</sup>).</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         TreeNode sortedToBSTBrute(int[] nums) {
             TreeNode root = null;
             for (int x : nums) root = insert(root, x);   // sorted input -> a chain!
@@ -6795,7 +7606,47 @@ public:
             if (n == null) return new TreeNode(v);
             if (v < n.val) n.left = insert(n.left, v); else n.right = insert(n.right, v);
             return n;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def sorted_array_to_bst(nums):
+    root = None
+    for x in nums:
+        root = insert(root, x)              # sorted input -> a chain!
+    return root
+
+
+def insert(n, v):
+    if n is None:
+        return TreeNode(v)
+    if v < n.val:
+        n.left = insert(n.left, v)
+    else:
+        n.right = insert(n.right, v)
+    return n` },
+            { lang: 'js', code: `function sortedArrayToBST(nums) {
+  let root = null;
+  for (const x of nums) root = insert(root, x);   // sorted input -> a chain!
+  return root;
+}
+
+function insert(n, v) {
+  if (n === null) return new TreeNode(v);
+  if (v < n.val) n.left = insert(n.left, v); else n.right = insert(n.right, v);
+  return n;
+}` },
+            { lang: 'cpp', code: `TreeNode* insert(TreeNode* n, int v) {
+    if (n == nullptr) return new TreeNode(v);
+    if (v < n->val) n->left = insert(n->left, v); else n->right = insert(n->right, v);
+    return n;
+}
+
+TreeNode* sortedArrayToBST(const vector<int>& nums) {
+    TreeNode* root = nullptr;
+    for (int x : nums) root = insert(root, x);   // sorted input -> a chain!
+    return root;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Which element should be the root of the subtree built from nums[lo..hi]?', options: ['nums[lo]', 'nums[hi]', 'nums[(lo + hi) / 2], the middle', 'The largest element'], answer: 2, explain: 'The middle splits the remaining values into two halves whose sizes differ by at most 1, so heights also differ by at most 1.' },
     hints: [
@@ -6882,7 +7733,9 @@ private:
     example: `<p><code>root = [3,9,20,null,null,15,7]</code> → ${H.c('g', '[[3], [20, 9], [15, 7]]')}. Level 1 is [9, 20] in normal order and is reversed because it is an odd level.</p>`,
     brute: {
       why: `<p>Run normal level order, then reverse every odd level (<code>Collections.reverse</code> / <code>row[::-1]</code> / <code>reverse()</code> / <code>std::reverse</code>). Still O(N) overall, but it does an extra pass per level and is the version interviewers ask you to improve ("can you produce each row in the right order directly?").</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         List<List<Integer>> zigzagBrute(TreeNode root) {
             List<List<Integer>> res = new ArrayList<>();
             if (root == null) return res;
@@ -6901,7 +7754,67 @@ private:
                 res.add(row);
             }
             return res;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `from collections import deque
+
+def zigzag_level_order(root):
+    res = []
+    if root is None:
+        return res
+    q = deque([root])
+    while q:
+        row = []
+        for _ in range(len(q)):
+            n = q.popleft()
+            row.append(n.val)
+            if n.left is not None:
+                q.append(n.left)
+            if n.right is not None:
+                q.append(n.right)
+        if len(res) % 2 == 1:
+            row.reverse()                   # extra pass
+        res.append(row)
+    return res` },
+            { lang: 'js', code: `function zigzagLevelOrder(root) {
+  const res = [];
+  if (root === null) return res;
+  let q = [root];
+  while (q.length) {
+    const row = [];
+    const next = [];
+    for (const n of q) {
+      row.push(n.val);
+      if (n.left !== null) next.push(n.left);
+      if (n.right !== null) next.push(n.right);
+    }
+    q = next;
+    if (res.length % 2 === 1) row.reverse();   // extra pass
+    res.push(row);
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `vector<vector<int>> zigzagLevelOrder(TreeNode* root) {
+    vector<vector<int>> res;
+    if (root == nullptr) return res;
+    queue<TreeNode*> q;
+    q.push(root);
+    while (!q.empty()) {
+        int size = q.size();
+        vector<int> row;
+        for (int i = 0; i < size; i++) {
+            TreeNode* n = q.front(); q.pop();
+            row.push_back(n->val);
+            if (n->left != nullptr) q.push(n->left);
+            if (n->right != nullptr) q.push(n->right);
+        }
+        if (res.size() % 2 == 1) reverse(row.begin(), row.end());   // extra pass
+        res.push_back(row);
+    }
+    return res;
+}` }
+          ]
+        }
     },
     mcq: { q: 'To avoid reversing, how can you build an odd level row directly?', options: ['Visit children right-to-left in the queue', 'Add each value at the FRONT of a deque/LinkedList on odd levels', 'Sort the row', 'Use a stack instead of a queue for the whole BFS'], answer: 1, explain: 'Keep the queue in normal order (so the next levels stay correct) and only change where values are placed in the row: addFirst on odd levels.' },
     hints: [
@@ -7010,7 +7923,9 @@ public:
     example: `<p><code>root = [1,3,2,5,3,null,9]</code> → ${H.c('g', '4')}. The last level is 5, 3, (null), 9: from position 0 to position 3 → width 4.</p>`,
     brute: {
       why: `<p>BFS that also enqueues <b>null placeholders</b> for every missing child so each level is "complete", then trims leading/trailing nulls and measures. On a deep skewed tree the placeholder count doubles every level: 2<sup>depth</sup> entries — impossible for depth 3000.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int widthBrute(TreeNode root) {
             List<TreeNode> level = new ArrayList<>();
             level.add(root);
@@ -7028,7 +7943,60 @@ public:
                 level = next;
             }
             return best;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def width_of_binary_tree(root):
+    level = [root]
+    best = 0
+    while any(n is not None for n in level):
+        l, r = 0, len(level) - 1
+        while level[l] is None:
+            l += 1
+        while level[r] is None:
+            r -= 1
+        best = max(best, r - l + 1)
+        nxt = []
+        for n in level:                       # placeholders double each level
+            nxt.append(None if n is None else n.left)
+            nxt.append(None if n is None else n.right)
+        level = nxt
+    return best` },
+            { lang: 'js', code: `function widthOfBinaryTree(root) {
+  let level = [root];
+  let best = 0;
+  while (level.some((n) => n !== null)) {
+    let l = 0, r = level.length - 1;
+    while (level[l] === null) l++;
+    while (level[r] === null) r--;
+    best = Math.max(best, r - l + 1);
+    const next = [];
+    for (const n of level) {                     // placeholders double each level
+      next.push(n === null ? null : n.left);
+      next.push(n === null ? null : n.right);
+    }
+    level = next;
+  }
+  return best;
+}` },
+            { lang: 'cpp', code: `int widthOfBinaryTree(TreeNode* root) {
+    vector<TreeNode*> level = {root};
+    int best = 0;
+    while (any_of(level.begin(), level.end(), [](TreeNode* n) { return n != nullptr; })) {
+        int l = 0, r = (int)level.size() - 1;
+        while (level[l] == nullptr) l++;
+        while (level[r] == nullptr) r--;
+        best = max(best, r - l + 1);
+        vector<TreeNode*> next;
+        for (TreeNode* n : level) {              // placeholders double each level
+            next.push_back(n == nullptr ? nullptr : n->left);
+            next.push_back(n == nullptr ? nullptr : n->right);
+        }
+        level = next;
+    }
+    return best;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Nodes are numbered root = 0, children 2p+1 and 2p+2. Why subtract the first position of each level?', options: ['To sort the level', 'To keep the numbers small so they never overflow on deep trees', 'Because positions must start at 1', 'It changes the answer'], answer: 1, explain: 'Positions double every level; on a deep chain they exceed 2^63. Re-basing each level to start at 0 keeps them bounded by the level width without changing differences.' },
     hints: [
@@ -7143,7 +8111,9 @@ public:
     example: `<p><code>root = [3,1,4,3,null,1,5]</code> → ${H.c('g', '4')}: the root ${H.c('g', '3')}, ${H.c('g', '4')} (path 3 → 4), ${H.c('g', '5')} (3 → 4 → 5) and the lower ${H.c('g', '3')} (3 → 1 → 3, equal is allowed). 1 under 3 is not good, nor is 1 under 4.</p>`,
     brute: {
       why: `<p>For each node, walk the path from the root again to find the maximum on it (for example by searching for the node from the root while recording the path). That repeats the same prefix of the path for every node → O(N·h), O(N<sup>2</sup>) on a skewed tree of 10<sup>5</sup> nodes.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int goodBrute(TreeNode root) {
             List<TreeNode> all = new ArrayList<>();
             gather(root, all);
@@ -7158,7 +8128,73 @@ public:
             if (n == target) return n.val;
             int below = Math.max(maxOnPath(n.left, target), maxOnPath(n.right, target));
             return below == Integer.MIN_VALUE ? below : Math.max(below, n.val);
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def good_nodes(root):
+    all_nodes = []
+    gather(root, all_nodes)
+    count = 0
+    for x in all_nodes:
+        if max_on_path(root, x) <= x.val:     # re-walk per node
+            count += 1
+    return count
+
+
+def gather(n, out):
+    if n is None:
+        return
+    out.append(n)
+    gather(n.left, out)
+    gather(n.right, out)
+
+
+# max value on the path root -> target (negative infinity if target is not below n)
+def max_on_path(n, target):
+    if n is None:
+        return float("-inf")
+    if n is target:
+        return n.val
+    below = max(max_on_path(n.left, target), max_on_path(n.right, target))
+    return below if below == float("-inf") else max(below, n.val)` },
+            { lang: 'js', code: `function goodNodes(root) {
+  const all = [];
+  gather(root, all);
+  let count = 0;
+  for (const x of all) if (maxOnPath(root, x) <= x.val) count++;   // re-walk per node
+  return count;
+}
+
+function gather(n, out) { if (n === null) return; out.push(n); gather(n.left, out); gather(n.right, out); }
+
+// max value on the path root -> target (-Infinity if target is not below n)
+function maxOnPath(n, target) {
+  if (n === null) return -Infinity;
+  if (n === target) return n.val;
+  const below = Math.max(maxOnPath(n.left, target), maxOnPath(n.right, target));
+  return below === -Infinity ? below : Math.max(below, n.val);
+}` },
+            { lang: 'cpp', code: `void gather(TreeNode* n, vector<TreeNode*>& out) {
+    if (n == nullptr) return;
+    out.push_back(n); gather(n->left, out); gather(n->right, out);
+}
+
+// max value on the path root -> target (INT_MIN if target is not below n)
+int maxOnPath(TreeNode* n, TreeNode* target) {
+    if (n == nullptr) return INT_MIN;
+    if (n == target) return n->val;
+    int below = max(maxOnPath(n->left, target), maxOnPath(n->right, target));
+    return below == INT_MIN ? below : max(below, n->val);
+}
+
+int goodNodes(TreeNode* root) {
+    vector<TreeNode*> all;
+    gather(root, all);
+    int count = 0;
+    for (TreeNode* x : all) if (maxOnPath(root, x) <= x->val) count++;   // re-walk per node
+    return count;
+}` }
+          ]
+        }
     },
     mcq: { q: 'What should be passed DOWN to each recursive call?', options: ['The depth', 'The maximum value seen so far on the path from the root', 'The number of good nodes so far', 'The parent node'], answer: 1, explain: 'A node is good exactly when its value is >= the maximum of all values above it, so that maximum is the only information needed from the ancestors.' },
     hints: [
@@ -7265,7 +8301,9 @@ public:
     example: `<p>BST <code>[7,3,15,null,null,9,20]</code>. Calls: next → ${H.c('g', '3')}, next → ${H.c('g', '7')}, hasNext → true, next → ${H.c('g', '9')}, next → 15, next → 20, hasNext → ${H.c('r', 'false')}. The values come out in sorted order because this is a paused inorder walk.</p>`,
     brute: {
       why: `<p>Flatten the whole tree into a sorted list in the constructor (inorder) and walk an index. next() is O(1), but memory is O(N) instead of O(h), and the constructor does all N steps even if the caller only wants the first few values.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         class BSTIteratorBrute {
             private final List<Integer> vals = new ArrayList<>();
             private int i = 0;
@@ -7273,7 +8311,50 @@ public:
             private void fill(TreeNode n) { if (n == null) return; fill(n.left); vals.add(n.val); fill(n.right); }
             int next() { return vals.get(i++); }
             boolean hasNext() { return i < vals.size(); }
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `class BSTIteratorBrute:
+    def __init__(self, root):
+        self.vals = []
+        self.i = 0
+        self._fill(root)                    # O(N) memory up front
+
+    def _fill(self, n):
+        if n is None:
+            return
+        self._fill(n.left)
+        self.vals.append(n.val)
+        self._fill(n.right)
+
+    def next(self):
+        v = self.vals[self.i]
+        self.i += 1
+        return v
+
+    def hasNext(self):
+        return self.i < len(self.vals)` },
+            { lang: 'js', code: `class BSTIteratorBrute {
+  constructor(root) {
+    this.vals = [];
+    this.i = 0;
+    this.fill(root);                        // O(N) memory up front
+  }
+  fill(n) { if (n === null) return; this.fill(n.left); this.vals.push(n.val); this.fill(n.right); }
+  next() { return this.vals[this.i++]; }
+  hasNext() { return this.i < this.vals.length; }
+}` },
+            { lang: 'cpp', code: `class BSTIteratorBrute {
+    vector<int> vals;
+    size_t i = 0;
+    void fill(TreeNode* n) { if (n == nullptr) return; fill(n->left); vals.push_back(n->val); fill(n->right); }
+
+public:
+    BSTIteratorBrute(TreeNode* root) { fill(root); }       // O(N) memory up front
+    int next() { return vals[i++]; }
+    bool hasNext() { return i < vals.size(); }
+};` }
+          ]
+        }
     },
     mcq: { q: 'Why is next() O(1) amortised even though one call may push many nodes?', options: ['Because the tree is balanced', 'Because every node is pushed once and popped once over the whole iteration', 'Because ArrayDeque is O(1)', 'It is actually O(log N) per call'], answer: 1, explain: 'Total work across all N calls is O(N) (one push and one pop per node), so the average per call is O(1), even if a single call slides down a long left chain.' },
     hints: [
@@ -7389,7 +8470,9 @@ public:
     example: `<p>inorder = ${H.c('b', '[9,3,15,20,7]')}, postorder = ${H.c('p', '[9,15,7,20,3]')} → ${H.c('g', '[3,9,20,null,null,15,7]')}. The <b>last</b> postorder value 3 is the root; inorder puts [9] on its left and [15,20,7] on its right. Reading postorder backwards (3, 20, 7, 15, 9) gives roots in Me, Right, Left order.</p>`,
     brute: {
       why: `<p>Take the last postorder value as root, scan inorder linearly to find it, copy the left and right sub-arrays of both traversals and recurse. Linear search + copying at every node → O(n<sup>2</sup>) time and memory churn on skewed trees.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         TreeNode buildBrute(int[] in, int[] post) {
             int n = in.length;
             if (n == 0) return null;
@@ -7399,7 +8482,41 @@ public:
             root.left = buildBrute(Arrays.copyOfRange(in, 0, m), Arrays.copyOfRange(post, 0, m));
             root.right = buildBrute(Arrays.copyOfRange(in, m + 1, n), Arrays.copyOfRange(post, m, n - 1));
             return root;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def build_tree(inorder, postorder):
+    n = len(inorder)
+    if n == 0:
+        return None
+    root = TreeNode(postorder[n - 1])
+    m = 0
+    while inorder[m] != root.val:           # O(n) search
+        m += 1
+    root.left = build_tree(inorder[:m], postorder[:m])
+    root.right = build_tree(inorder[m + 1:], postorder[m:n - 1])
+    return root` },
+            { lang: 'js', code: `function buildTree(inorder, postorder) {
+  const n = inorder.length;
+  if (n === 0) return null;
+  const root = new TreeNode(postorder[n - 1]);
+  let m = 0;
+  while (inorder[m] !== root.val) m++;                      // O(n) search
+  root.left = buildTree(inorder.slice(0, m), postorder.slice(0, m));
+  root.right = buildTree(inorder.slice(m + 1, n), postorder.slice(m, n - 1));
+  return root;
+}` },
+            { lang: 'cpp', code: `TreeNode* buildTree(vector<int> inorder, vector<int> postorder) {
+    int n = inorder.size();
+    if (n == 0) return nullptr;
+    TreeNode* root = new TreeNode(postorder[n - 1]);
+    int m = 0;
+    while (inorder[m] != root->val) m++;                    // O(n) search
+    root->left = buildTree(vector<int>(inorder.begin(), inorder.begin() + m), vector<int>(postorder.begin(), postorder.begin() + m));
+    root->right = buildTree(vector<int>(inorder.begin() + m + 1, inorder.end()), vector<int>(postorder.begin() + m, postorder.begin() + n - 1));
+    return root;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Reading postorder from the END with one shared index, which subtree must you build first?', options: ['Left', 'Right', 'Either', 'Whichever window is larger'], answer: 1, explain: 'Postorder is Left, Right, Me. Backwards it is Me, Right, Left — so after the root the next values belong to the RIGHT subtree.' },
     hints: [
@@ -7512,7 +8629,9 @@ public:
     example: `<p><code>root = [3,5,1,6,2,0,8,null,null,7,4]</code>, target = ${H.c('b', '5')}, k = 2 → ${H.c('g', '[7, 4, 1]')}. 7 and 4 are two steps <b>down</b> (5 → 2 → 7/4); 1 is reached by going <b>up</b> to 3 and down to 1.</p>`,
     brute: {
       why: `<p>For every node, compute its distance to the target separately (e.g. via LCA: depth(x) + depth(t) − 2·depth(lca)) and keep those at distance k. Each distance costs O(N) → O(N<sup>2</sup>) overall, redoing the same walks again and again.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         List<Integer> distanceKBrute(TreeNode root, TreeNode target, int k) {
             List<TreeNode> all = new ArrayList<>();
             gather(root, all);
@@ -7535,7 +8654,101 @@ public:
             int d = depth(from.left, to);
             if (d < 0) d = depth(from.right, to);
             return d < 0 ? -1 : d + 1;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def distance_k(root, target, k):
+    all_nodes = []
+    gather(root, all_nodes)
+    res = []
+    for x in all_nodes:
+        l = lca(root, x, target)
+        if depth(l, x) + depth(l, target) == k:      # O(N) per node
+            res.append(x.val)
+    return res
+
+
+def gather(n, out):
+    if n is None:
+        return
+    out.append(n)
+    gather(n.left, out)
+    gather(n.right, out)
+
+
+def lca(n, p, q):
+    if n is None or n is p or n is q:
+        return n
+    a, b = lca(n.left, p, q), lca(n.right, p, q)
+    return n if a is not None and b is not None else (a if a is not None else b)
+
+
+def depth(frm, to):                         # edges from 'frm' down to 'to', -1 if absent
+    if frm is None:
+        return -1
+    if frm is to:
+        return 0
+    d = depth(frm.left, to)
+    if d < 0:
+        d = depth(frm.right, to)
+    return -1 if d < 0 else d + 1` },
+            { lang: 'js', code: `function distanceK(root, target, k) {
+  const all = [];
+  gather(root, all);
+  const res = [];
+  for (const x of all) {
+    const l = lca(root, x, target);
+    if (depth(l, x) + depth(l, target) === k) res.push(x.val);   // O(N) per node
+  }
+  return res;
+}
+
+function gather(n, out) { if (n === null) return; out.push(n); gather(n.left, out); gather(n.right, out); }
+
+function lca(n, p, q) {
+  if (n === null || n === p || n === q) return n;
+  const a = lca(n.left, p, q), b = lca(n.right, p, q);
+  return a !== null && b !== null ? n : (a !== null ? a : b);
+}
+
+function depth(from, to) {               // edges from 'from' down to 'to', -1 if absent
+  if (from === null) return -1;
+  if (from === to) return 0;
+  let d = depth(from.left, to);
+  if (d < 0) d = depth(from.right, to);
+  return d < 0 ? -1 : d + 1;
+}` },
+            { lang: 'cpp', code: `void gather(TreeNode* n, vector<TreeNode*>& out) {
+    if (n == nullptr) return;
+    out.push_back(n); gather(n->left, out); gather(n->right, out);
+}
+
+TreeNode* lca(TreeNode* n, TreeNode* p, TreeNode* q) {
+    if (n == nullptr || n == p || n == q) return n;
+    TreeNode* a = lca(n->left, p, q);
+    TreeNode* b = lca(n->right, p, q);
+    return a != nullptr && b != nullptr ? n : (a != nullptr ? a : b);
+}
+
+int depth(TreeNode* from, TreeNode* to) {   // edges from 'from' down to 'to', -1 if absent
+    if (from == nullptr) return -1;
+    if (from == to) return 0;
+    int d = depth(from->left, to);
+    if (d < 0) d = depth(from->right, to);
+    return d < 0 ? -1 : d + 1;
+}
+
+vector<int> distanceK(TreeNode* root, TreeNode* target, int k) {
+    vector<TreeNode*> all;
+    gather(root, all);
+    vector<int> res;
+    for (TreeNode* x : all) {
+        TreeNode* l = lca(root, x, target);
+        if (depth(l, x) + depth(l, target) == k) res.push_back(x->val);   // O(N) per node
+    }
+    return res;
+}` }
+          ]
+        }
     },
     mcq: { q: 'What turns this tree problem into a simple BFS?', options: ['Sorting the values', 'Recording each node\'s parent so you can move up as well as down — the tree becomes an undirected graph', 'Using a TreeMap', 'Inorder traversal'], answer: 1, explain: 'With parent links every node has up to 3 neighbours (left, right, parent). A BFS from the target for k rounds (with a visited set) finds exactly the nodes at distance k.' },
     hints: [
@@ -7682,7 +8895,9 @@ public:
     example: `<p><code>root = [1,3,null,null,2]</code> → ${H.c('g', '[3,1,null,null,2]')}. Inorder is ${H.c('r', '3 2 1')} instead of 1 2 3: the drops are 3 → 2 and 2 → 1, so the swapped values are ${H.c('r', '3')} (first drop's bigger) and ${H.c('r', '1')} (last drop's smaller). Swap them back.</p>`,
     brute: {
       why: `<p>Copy the inorder values into a list, sort it, then walk the tree in inorder again and overwrite each node with the sorted values. O(N log N) time and O(N) memory, and it rewrites every node even though only two are wrong.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         void recoverBrute(TreeNode root) {
             List<Integer> vals = new ArrayList<>();
             collect(root, vals);
@@ -7696,7 +8911,68 @@ public:
             rewrite(n.left, vals, i);
             n.val = vals.get(i[0]++);                         // overwrite in sorted order
             rewrite(n.right, vals, i);
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def recover_tree(root):
+    vals = []
+    collect(root, vals)
+    vals.sort()
+    i = [0]
+    rewrite(root, vals, i)
+
+
+def collect(n, out):
+    if n is None:
+        return
+    collect(n.left, out)
+    out.append(n.val)
+    collect(n.right, out)
+
+
+def rewrite(n, vals, i):
+    if n is None:
+        return
+    rewrite(n.left, vals, i)
+    n.val = vals[i[0]]                      # overwrite in sorted order
+    i[0] += 1
+    rewrite(n.right, vals, i)` },
+            { lang: 'js', code: `function recoverTree(root) {
+  const vals = [];
+  collect(root, vals);
+  vals.sort((a, b) => a - b);
+  const i = [0];
+  rewrite(root, vals, i);
+}
+
+function collect(n, out) { if (n === null) return; collect(n.left, out); out.push(n.val); collect(n.right, out); }
+
+function rewrite(n, vals, i) {
+  if (n === null) return;
+  rewrite(n.left, vals, i);
+  n.val = vals[i[0]++];                     // overwrite in sorted order
+  rewrite(n.right, vals, i);
+}` },
+            { lang: 'cpp', code: `void collect(TreeNode* n, vector<int>& out) {
+    if (n == nullptr) return;
+    collect(n->left, out); out.push_back(n->val); collect(n->right, out);
+}
+
+void rewrite(TreeNode* n, const vector<int>& vals, int& i) {
+    if (n == nullptr) return;
+    rewrite(n->left, vals, i);
+    n->val = vals[i++];                     // overwrite in sorted order
+    rewrite(n->right, vals, i);
+}
+
+void recoverTree(TreeNode* root) {
+    vector<int> vals;
+    collect(root, vals);
+    sort(vals.begin(), vals.end());
+    int i = 0;
+    rewrite(root, vals, i);
+}` }
+          ]
+        }
     },
     mcq: { q: 'Inorder is 1 4 3 2 5 (two values swapped). Which two nodes are wrong?', options: ['4 and 3', '3 and 2', '4 and 2', '1 and 5'], answer: 2, explain: 'Drops at 4→3 and 3→2. First wrong = bigger of the first drop (4); second wrong = smaller of the last drop (2). Swapping 4 and 2 gives 1 2 3 4 5.' },
     hints: [
@@ -7813,7 +9089,9 @@ public:
     example: `<p><code>root = [-10,9,20,null,null,15,7]</code> → ${H.c('g', '42')} from the path ${H.c('g', '15 → 20 → 7')}. Including −10 would only lower the sum. <code>root = [-3]</code> → ${H.c('r', '-3')}: the path must contain at least one node, so the answer can be negative.</p>`,
     brute: {
       why: `<p>Try every node as the "bend" of the path; for each, compute the best downward path into the left and right child with a fresh recursion. Every bend re-walks its subtrees → O(N<sup>2</sup>) for skewed trees (9·10<sup>8</sup> steps at the limit).</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int maxPathBrute(TreeNode root) {
             if (root == null) return Integer.MIN_VALUE;
             int through = root.val + Math.max(0, down(root.left)) + Math.max(0, down(root.right));
@@ -7822,7 +9100,41 @@ public:
         int down(TreeNode n) {          // best path starting at n going down (recomputed every time)
             if (n == null) return 0;
             return n.val + Math.max(0, Math.max(down(n.left), down(n.right)));
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def max_path_sum(root):
+    if root is None:
+        return float("-inf")
+    through = root.val + max(0, down(root.left)) + max(0, down(root.right))
+    return max(through, max_path_sum(root.left), max_path_sum(root.right))
+
+
+def down(n):                                # best path starting at n going down (recomputed every time)
+    if n is None:
+        return 0
+    return n.val + max(0, down(n.left), down(n.right))` },
+            { lang: 'js', code: `function maxPathSum(root) {
+  if (root === null) return -Infinity;
+  const through = root.val + Math.max(0, down(root.left)) + Math.max(0, down(root.right));
+  return Math.max(through, Math.max(maxPathSum(root.left), maxPathSum(root.right)));
+}
+
+function down(n) {          // best path starting at n going down (recomputed every time)
+  if (n === null) return 0;
+  return n.val + Math.max(0, Math.max(down(n.left), down(n.right)));
+}` },
+            { lang: 'cpp', code: `int down(TreeNode* n) {          // best path starting at n going down (recomputed every time)
+    if (n == nullptr) return 0;
+    return n->val + max(0, max(down(n->left), down(n->right)));
+}
+
+int maxPathSum(TreeNode* root) {
+    if (root == nullptr) return INT_MIN;
+    int through = root->val + max(0, down(root->left)) + max(0, down(root->right));
+    return max(through, max(maxPathSum(root->left), maxPathSum(root->right)));
+}` }
+          ]
+        }
     },
     mcq: { q: 'What should the recursive helper RETURN to the parent?', options: ['val + leftGain + rightGain', 'val + max(leftGain, rightGain), where negative gains are clipped to 0', 'The best path sum anywhere in the subtree', 'max(leftGain, rightGain)'], answer: 1, explain: 'The parent can extend the path into only ONE side (a path cannot fork). The two-sided sum val + left + right is a candidate answer recorded in the global maximum, not returned.' },
     hints: [
@@ -7952,7 +9264,9 @@ public:
     example: `<p>Tree <code>[1,2,3,null,null,4,5]</code> → preorder with null markers: ${H.c('g', '"1,2,#,#,3,4,#,#,5,#,#,"')}. Reading it back: 1 is the root; its left subtree starts with 2, whose children are #, # (empty); then 3 with children 4 (#, #) and 5 (#, #). The markers make the shape unambiguous even with duplicate values.</p>`,
     brute: {
       why: `<p>Store the tree as a <b>full array of slots</b> (index i has children 2i+1, 2i+2) including all empty slots. Easy to decode, but a skewed tree of depth 10<sup>4</sup> needs 2<sup>10000</sup> slots. Another tempting brute — storing only preorder + inorder — fails because values may repeat.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         String serializeBrute(TreeNode root) {
             int h = height(root);
             String[] slots = new String[(1 << Math.min(h, 20)) - 1];   // explodes for deep trees
@@ -7966,7 +9280,59 @@ public:
             fill(n.left, 2 * i + 1, slots);
             fill(n.right, 2 * i + 2, slots);
         }
-        int height(TreeNode n) { return n == null ? 0 : 1 + Math.max(height(n.left), height(n.right)); }`
+        int height(TreeNode n) { return n == null ? 0 : 1 + Math.max(height(n.left), height(n.right)); }`,
+          alt: [
+            { lang: 'python', code: `def serialize(root):
+    h = height(root)
+    slots = ["#"] * ((1 << min(h, 20)) - 1)     # explodes for deep trees
+    fill(root, 0, slots)
+    return ",".join(slots)
+
+
+def fill(n, i, slots):
+    if n is None or i >= len(slots):
+        return
+    slots[i] = str(n.val)
+    fill(n.left, 2 * i + 1, slots)
+    fill(n.right, 2 * i + 2, slots)
+
+
+def height(n):
+    return 0 if n is None else 1 + max(height(n.left), height(n.right))` },
+            { lang: 'js', code: `function serialize(root) {
+  const h = height(root);
+  const slots = new Array((1 << Math.min(h, 20)) - 1).fill("#");   // explodes for deep trees
+  fill(root, 0, slots);
+  return slots.join(",");
+}
+
+function fill(n, i, slots) {
+  if (n === null || i >= slots.length) return;
+  slots[i] = String(n.val);
+  fill(n.left, 2 * i + 1, slots);
+  fill(n.right, 2 * i + 2, slots);
+}
+
+function height(n) { return n === null ? 0 : 1 + Math.max(height(n.left), height(n.right)); }` },
+            { lang: 'cpp', code: `int height(TreeNode* n) { return n == nullptr ? 0 : 1 + max(height(n->left), height(n->right)); }
+
+void fill(TreeNode* n, int i, vector<string>& slots) {
+    if (n == nullptr || i >= (int)slots.size()) return;
+    slots[i] = to_string(n->val);
+    fill(n->left, 2 * i + 1, slots);
+    fill(n->right, 2 * i + 2, slots);
+}
+
+string serialize(TreeNode* root) {
+    int h = height(root);
+    vector<string> slots((1 << min(h, 20)) - 1, "#");   // explodes for deep trees
+    fill(root, 0, slots);
+    string out;
+    for (size_t i = 0; i < slots.size(); i++) out += (i ? "," : "") + slots[i];
+    return out;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Why is a single preorder WITH null markers enough to rebuild the tree?', options: ['Because preorder is always sorted', 'Because each marker tells the decoder exactly where a subtree ends, so recursion knows when to stop', 'Because values are unique', 'It is not enough; inorder is also required'], answer: 1, explain: 'The decoder reads a value, then recursively reads a whole left subtree (ending when its markers are consumed), then a right subtree. No ambiguity remains, even with repeated values.' },
     hints: [
@@ -8133,7 +9499,9 @@ private:
     example: `<p><code>root = [1,2,3,4,5,6,7]</code> → ${H.c('g', '[[4],[2],[1,5,6],[3],[7]]')}. Column 0 holds 1 (row 0) and both 5 and 6 at (row 2, col 0); the tie is broken by value: 5 before 6.</p>`,
     brute: {
       why: `<p>Collect (col, row, val) for every node; then for every column from min to max, scan the whole list for nodes in that column and sort them. Scanning once per column is O(N·C) — up to O(N<sup>2</sup>) for wide trees — on top of the sorting.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         List<List<Integer>> verticalBrute(TreeNode root) {
             List<int[]> all = new ArrayList<>();       // {col, row, val}
             collect(root, 0, 0, all);
@@ -8155,7 +9523,75 @@ private:
             out.add(new int[]{col, row, n.val});
             collect(n.left, row + 1, col - 1, out);
             collect(n.right, row + 1, col + 1, out);
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def vertical_traversal(root):
+    all_nodes = []                          # (col, row, val)
+    collect(root, 0, 0, all_nodes)
+    lo = min(e[0] for e in all_nodes)
+    hi = max(e[0] for e in all_nodes)
+    res = []
+    for c in range(lo, hi + 1):             # full scan per column
+        col = [e for e in all_nodes if e[0] == c]
+        col.sort(key=lambda e: (e[1], e[2]))
+        res.append([e[2] for e in col])
+    return res
+
+
+def collect(n, row, col, out):
+    if n is None:
+        return
+    out.append((col, row, n.val))
+    collect(n.left, row + 1, col - 1, out)
+    collect(n.right, row + 1, col + 1, out)` },
+            { lang: 'js', code: `function verticalTraversal(root) {
+  const all = [];                           // [col, row, val]
+  collect(root, 0, 0, all);
+  let lo = Infinity, hi = -Infinity;
+  for (const e of all) { lo = Math.min(lo, e[0]); hi = Math.max(hi, e[0]); }
+  const res = [];
+  for (let c = lo; c <= hi; c++) {          // full scan per column
+    const col = [];
+    for (const e of all) if (e[0] === c) col.push(e);
+    col.sort((a, b) => (a[1] !== b[1] ? a[1] - b[1] : a[2] - b[2]));
+    res.push(col.map((e) => e[2]));
+  }
+  return res;
+}
+
+function collect(n, row, col, out) {
+  if (n === null) return;
+  out.push([col, row, n.val]);
+  collect(n.left, row + 1, col - 1, out);
+  collect(n.right, row + 1, col + 1, out);
+}` },
+            { lang: 'cpp', code: `void collect(TreeNode* n, int row, int col, vector<array<int, 3>>& out) {
+    if (n == nullptr) return;
+    out.push_back({col, row, n->val});
+    collect(n->left, row + 1, col - 1, out);
+    collect(n->right, row + 1, col + 1, out);
+}
+
+vector<vector<int>> verticalTraversal(TreeNode* root) {
+    vector<array<int, 3>> all;              // {col, row, val}
+    collect(root, 0, 0, all);
+    int lo = INT_MAX, hi = INT_MIN;
+    for (auto& e : all) { lo = min(lo, e[0]); hi = max(hi, e[0]); }
+    vector<vector<int>> res;
+    for (int c = lo; c <= hi; c++) {        // full scan per column
+        vector<array<int, 3>> col;
+        for (auto& e : all) if (e[0] == c) col.push_back(e);
+        sort(col.begin(), col.end(), [](const array<int, 3>& a, const array<int, 3>& b) {
+            return a[1] != b[1] ? a[1] < b[1] : a[2] < b[2];
+        });
+        vector<int> vals;
+        for (auto& e : col) vals.push_back(e[2]);
+        res.push_back(vals);
+    }
+    return res;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Why can\'t plain BFS order (without sorting) solve this version?', options: ['BFS is too slow', 'Nodes at the same row and column must be ordered by value, and BFS orders them by position instead', 'BFS cannot compute columns', 'BFS visits columns right to left'], answer: 1, explain: 'BFS gives rows top-down correctly, but ties within the same (row, col) come out in left-to-right discovery order, not value order. A sort on (col, row, val) handles every rule at once.' },
     hints: [
@@ -8278,7 +9714,9 @@ private:
     example: `<p><code>root = [1,4,3,2,4,2,5,null,null,null,null,null,null,4,6]</code> → ${H.c('g', '20')}. The subtree rooted at ${H.c('g', '3')} (values 3, 2, 5, 4, 6) is a valid BST with sum 20. The whole tree is not a BST (4 is left of 1), and the subtree at 4 has a duplicate 4 on its right.</p>`,
     brute: {
       why: `<p>For every node, check whether its subtree is a BST with a range-validation walk and, if so, sum it with another walk. Each check is O(subtree size), so the total is O(N<sup>2</sup>) on a skewed tree (1.6·10<sup>9</sup> steps at the limit).</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int bestBrute = 0;
         int maxSumBSTBrute(TreeNode root) {
             if (root == null) return 0;
@@ -8292,7 +9730,67 @@ private:
             if (n.val <= lo || n.val >= hi) return false;
             return valid(n.left, lo, n.val) && valid(n.right, n.val, hi);
         }
-        int sum(TreeNode n) { return n == null ? 0 : n.val + sum(n.left) + sum(n.right); }`
+        int sum(TreeNode n) { return n == null ? 0 : n.val + sum(n.left) + sum(n.right); }`,
+          alt: [
+            { lang: 'python', code: `best_brute = 0
+
+def max_sum_bst(root):
+    global best_brute
+    if root is None:
+        return 0
+    if valid(root, float("-inf"), float("inf")):
+        best_brute = max(best_brute, total(root))
+    max_sum_bst(root.left)
+    max_sum_bst(root.right)
+    return best_brute
+
+
+def valid(n, lo, hi):
+    if n is None:
+        return True
+    if n.val <= lo or n.val >= hi:
+        return False
+    return valid(n.left, lo, n.val) and valid(n.right, n.val, hi)
+
+
+def total(n):
+    return 0 if n is None else n.val + total(n.left) + total(n.right)` },
+            { lang: 'js', code: `let bestBrute = 0;
+
+function maxSumBST(root) {
+  if (root === null) return 0;
+  if (valid(root, -Infinity, Infinity)) bestBrute = Math.max(bestBrute, sum(root));
+  maxSumBST(root.left);
+  maxSumBST(root.right);
+  return bestBrute;
+}
+
+function valid(n, lo, hi) {
+  if (n === null) return true;
+  if (n.val <= lo || n.val >= hi) return false;
+  return valid(n.left, lo, n.val) && valid(n.right, n.val, hi);
+}
+
+function sum(n) { return n === null ? 0 : n.val + sum(n.left) + sum(n.right); }` },
+            { lang: 'cpp', code: `int bestBrute = 0;
+
+bool valid(TreeNode* n, long long lo, long long hi) {
+    if (n == nullptr) return true;
+    if (n->val <= lo || n->val >= hi) return false;
+    return valid(n->left, lo, n->val) && valid(n->right, n->val, hi);
+}
+
+int sum(TreeNode* n) { return n == nullptr ? 0 : n->val + sum(n->left) + sum(n->right); }
+
+int maxSumBST(TreeNode* root) {
+    if (root == nullptr) return 0;
+    if (valid(root, LLONG_MIN, LLONG_MAX)) bestBrute = max(bestBrute, sum(root));
+    maxSumBST(root->left);
+    maxSumBST(root->right);
+    return bestBrute;
+}` }
+          ]
+        }
     },
     mcq: { q: 'Which facts must each subtree report upward so the parent can decide in O(1) whether it is a BST?', options: ['Only its sum', 'Whether it is a BST, its min, its max and its sum', 'Its height and size', 'Its inorder list'], answer: 1, explain: 'The parent is a BST iff both children are BSTs and leftMax < val < rightMin. The sum is needed for the answer. Four numbers per subtree → O(1) work per node.' },
     hints: [

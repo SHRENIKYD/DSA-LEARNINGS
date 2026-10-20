@@ -426,7 +426,7 @@ int minSessions(vector<int>& tasks, int T) {
       statement: `<p>There are <code>n</code> workers and <code>n</code> jobs. <code>cost[w][j]</code> is what worker <code>w</code> charges for job <code>j</code>. Every worker must do <b>exactly one</b> job and every job must be done by exactly one worker. Return the <b>minimum total cost</b>.</p>`,
       constraints: `1 ≤ n ≤ 20, 0 ≤ cost[w][j] ≤ 10<sup>4</sup>`,
       example: `${H.table(['', 'J0', 'J1', 'J2'], [['W0', '9', '<span class="c-g">2</span>', '7'], ['W1', '<span class="c-g">6</span>', '4', '3'], ['W2', '5', '8', '<span class="c-g">1</span>']])}<p>Output <b>9</b>: W0→J1 (2) + W1→J0 (6) + W2→J2 (1). Greedy "each worker takes his cheapest free job" gives W0→J1 (2), W1→J2 (3), W2→J0 (5) = 10 — <span class="c-r">worse</span>, so we need DP.</p>`,
-      brute: { why: `<p>Try every permutation of jobs: n! orders. For n = 20 that is 2.4·10<sup>18</sup>. The waste: the permutations "J1,J0,…" and "J0,J1,…" lead to the <i>same</i> leftover problem (jobs 0 and 1 gone, worker 2 next), yet brute force solves that leftover again and again.</p>`, code: `
+      brute: { why: `<p>Try every permutation of jobs: n! orders. For n = 20 that is 2.4·10<sup>18</sup>. The waste: the permutations "J1,J0,…" and "J0,J1,…" lead to the <i>same</i> leftover problem (jobs 0 and 1 gone, worker 2 next), yet brute force solves that leftover again and again.</p>`, code: { lang: 'java', code: `
         int best;
         int bruteAssign(int[][] cost) {
             best = Integer.MAX_VALUE;
@@ -441,7 +441,59 @@ int minSessions(vector<int>& tasks, int T) {
                 go(cost, w + 1, used, sum + cost[w][j]);   // worker w takes job j
                 used[j] = false;
             }
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+def min_cost(cost):
+    n = len(cost)
+    best = float("inf")
+    used = [False] * n
+
+    def go(w, total):
+        nonlocal best
+        if w == n:
+            best = min(best, total)
+            return
+        for j in range(n):
+            if used[j]:
+                continue
+            used[j] = True
+            go(w + 1, total + cost[w][j])             # worker w takes job j
+            used[j] = False
+
+    go(0, 0)
+    return best` }, { lang: 'js', code: String.raw`
+function minCost(cost) {
+  const n = cost.length;
+  const used = new Array(n).fill(false);
+  let best = Infinity;
+
+  function go(w, sum) {
+    if (w === n) { best = Math.min(best, sum); return; }
+    for (let j = 0; j < n; j++) {
+      if (used[j]) continue;
+      used[j] = true;
+      go(w + 1, sum + cost[w][j]);                    // worker w takes job j
+      used[j] = false;
+    }
+  }
+
+  go(0, 0);
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int minCost(vector<vector<int>>& cost) {
+    int n = cost.size(), best = INT_MAX;
+    vector<char> used(n, 0);
+    function<void(int, int)> go = [&](int w, int sum) {
+        if (w == n) { best = min(best, sum); return; }
+        for (int j = 0; j < n; j++) {
+            if (used[j]) continue;
+            used[j] = 1;
+            go(w + 1, sum + cost[w][j]);              // worker w takes job j
+            used[j] = 0;
+        }
+    };
+    go(0, 0);
+    return best;
+}` }] } },
       mcq: { q: 'Jobs {0, 2} are already taken (mask 101). Which worker must be assigned next if we always fill workers in order?', options: ['Worker 0', 'Worker 1', 'Worker 2', 'It depends on the order the jobs were taken'], answer: 2, explain: 'Two jobs are taken, so workers 0 and 1 are done; the next is worker bitCount(101) = 2. The order of the earlier choices does not matter — that is why one index (the mask) is enough.' },
       hints: [`<p><b>Aha:</b> after placing some workers, the only thing that matters for the rest is <i>which jobs are gone</i>. That set is a bitmask.</p>`, `<p>Assign workers in fixed order 0, 1, 2… Then the next worker is <code>bitCount(mask)</code>, so the state is just <code>dp[mask]</code>. Transition: try every free job.</p>`, `<p>Recipe: dp[0] = 0, rest = ∞. For mask from 0 up: w = bitCount(mask); if w == n skip; for each free job j: dp[mask | 1&lt;&lt;j] = min(…, dp[mask] + cost[w][j]). Answer dp[(1&lt;&lt;n) − 1]. Edge: n = 1 → cost[0][0].</p>`],
       tests: { sig: "int[][] -> int", fn: "minCost", cases: [
@@ -891,7 +943,7 @@ int countDigitOne(int n) {
       statement: `<p>Given <code>L</code>, <code>R</code> and <code>K</code>, return how many integers <code>x</code> with <code>L ≤ x ≤ R</code> have a digit sum that is divisible by <code>K</code>.</p>`,
       constraints: `0 ≤ L ≤ R ≤ 10<sup>18</sup>, 1 ≤ K ≤ 100`,
       example: `<p>L = 1, R = 20, K = 3 → Output <b>6</b>: ${H.c('g', '3, 6, 9, 12, 15, 18')}. (12 → 1+2 = 3 ✓; 20 → 2 ✗.)</p>`,
-      brute: { why: `<p>Loop x from L to R and add up the digits: up to 10<sup>18</sup> iterations — centuries. Wasted work: all numbers 4000..4999 share the same "free last three digits" sub-problem, yet we redo it for each one.</p>`, code: `
+      brute: { why: `<p>Loop x from L to R and add up the digits: up to 10<sup>18</sup> iterations — centuries. Wasted work: all numbers 4000..4999 share the same "free last three digits" sub-problem, yet we redo it for each one.</p>`, code: { lang: 'java', code: `
         long brute(long L, long R, int K) {
             long cnt = 0;
             for (long x = L; x <= R; x++) {
@@ -900,7 +952,35 @@ int countDigitOne(int n) {
                 if (s % K == 0) cnt++;
             }
             return cnt;
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+def count_in_range(L, R, K):
+    cnt = 0
+    for x in range(L, R + 1):
+        s, t = 0, x
+        while t > 0:
+            s += t % 10                               # digit sum
+            t //= 10
+        if s % K == 0:
+            cnt += 1
+    return cnt` }, { lang: 'js', code: String.raw`
+function countInRange(L, R, K) {
+  let cnt = 0n;                                       // counts can pass 2^53, so BigInt
+  for (let x = BigInt(L); x <= BigInt(R); x++) {
+    let s = 0, t = x;
+    while (t > 0n) { s += Number(t % 10n); t /= 10n; }   // digit sum
+    if (s % K === 0) cnt++;
+  }
+  return cnt;
+}` }, { lang: 'cpp', code: String.raw`
+long long countInRange(long long L, long long R, int K) {
+    long long cnt = 0;
+    for (long long x = L; x <= R; x++) {
+        long long s = 0, t = x;
+        while (t > 0) { s += t % 10; t /= 10; }       // digit sum
+        if (s % K == 0) cnt++;
+    }
+    return cnt;
+}` }] } },
       mcq: { q: 'We are building a number below N = 4729. The first digit chosen is 3. What digits may the second position take?', options: ['0..7', '0..9', '0..4', 'Only 7'], answer: 1, explain: '3 &lt; 4, so the number is already smaller than N — we are free (tight = false) and the rest can be anything 0..9.' },
       hints: [`<p><b>Aha:</b> count(L..R) = f(R) − f(L − 1) where f(N) counts x in [0, N]. Now handle one bound.</p>`, `<p>Build x digit by digit: state (pos, digit sum mod K, tight). Only the remainder matters for divisibility — not the exact sum. Memoise when tight is false.</p>`, `<p>Edge cases: L = 0 → f(−1) = 0; x = 0 has digit sum 0 which is divisible by K (it appears in both f(R) and f(L−1) when L ≥ 1, so it cancels). Recipe: digits = str(N); go(pos, rem, tight): if pos == len return rem == 0; limit = tight ? d[pos] : 9; sum go(pos+1, (rem+dig)%K, tight &amp;&amp; dig==limit).</p>`],
       tests: { sig: "long long int -> long", fn: "countInRange", cases: [
@@ -1286,7 +1366,7 @@ print("coupon n=6 exact:", round(coupon(6), 3), " simulated:", round(simulate(6)
       statement: `<p>A knight starts on cell <code>(row, column)</code> of an <code>n × n</code> chessboard and makes exactly <code>k</code> moves. Each move picks one of the 8 knight jumps uniformly at random — even if it leaves the board. Once off the board, the knight stays off. Return the probability that the knight is still on the board after the k moves.</p>`,
       constraints: `1 ≤ n ≤ 25, 0 ≤ k ≤ 100, 0 ≤ row, column &lt; n. Answers within 10<sup>−5</sup> accepted.`,
       example: `<p>n = 3, k = 2, start (0, 0) → Output <b>0.0625</b>. From (0, 0) only (1, 2) and (2, 1) are on the board (2 of 8 → 0.25). From each of those, again only 2 of 8 jumps stay → 0.25 × 0.25 = ${H.c('g', '0.0625')}.</p>`,
-      brute: { why: `<p>Recursively try all 8 moves for k levels: 8<sup>k</sup> paths. k = 100 → 8<sup>100</sup> ≈ 10<sup>90</sup>. Waste: many different paths reach the same (cell, moves left) — the probability from there is identical.</p>`, code: `
+      brute: { why: `<p>Recursively try all 8 moves for k levels: 8<sup>k</sup> paths. k = 100 → 8<sup>100</sup> ≈ 10<sup>90</sup>. Waste: many different paths reach the same (cell, moves left) — the probability from there is identical.</p>`, code: { lang: 'java', code: `
         int[][] MOVES = {{2,1},{1,2},{-1,2},{-2,1},{-2,-1},{-1,-2},{1,-2},{2,-1}};
         double bruteKnight(int n, int k, int r, int c) {
             if (r < 0 || r >= n || c < 0 || c >= n) return 0.0;  // fell off
@@ -1294,7 +1374,36 @@ print("coupon n=6 exact:", round(coupon(6), 3), " simulated:", round(simulate(6)
             double p = 0;
             for (int[] m : MOVES) p += bruteKnight(n, k - 1, r + m[0], c + m[1]) / 8.0;
             return p;
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+MOVES = [(2, 1), (1, 2), (-1, 2), (-2, 1), (-2, -1), (-1, -2), (1, -2), (2, -1)]
+
+def knight_probability(n, k, row, column):
+    if row < 0 or row >= n or column < 0 or column >= n:
+        return 0.0                                    # fell off
+    if k == 0:
+        return 1.0                                    # survived all moves
+    p = 0.0
+    for dr, dc in MOVES:
+        p += knight_probability(n, k - 1, row + dr, column + dc) / 8.0
+    return p` }, { lang: 'js', code: String.raw`
+const MOVES = [[2, 1], [1, 2], [-1, 2], [-2, 1], [-2, -1], [-1, -2], [1, -2], [2, -1]];
+
+function knightProbability(n, k, row, column) {
+  if (row < 0 || row >= n || column < 0 || column >= n) return 0;   // fell off
+  if (k === 0) return 1;                              // survived all moves
+  let p = 0;
+  for (const [dr, dc] of MOVES) p += knightProbability(n, k - 1, row + dr, column + dc) / 8;
+  return p;
+}` }, { lang: 'cpp', code: String.raw`
+const int MOVES[8][2] = {{2,1},{1,2},{-1,2},{-2,1},{-2,-1},{-1,-2},{1,-2},{2,-1}};
+
+double knightProbability(int n, int k, int row, int column) {
+    if (row < 0 || row >= n || column < 0 || column >= n) return 0.0;   // fell off
+    if (k == 0) return 1.0;                           // survived all moves
+    double p = 0;
+    for (auto& m : MOVES) p += knightProbability(n, k - 1, row + m[0], column + m[1]) / 8.0;
+    return p;
+}` }] } },
       mcq: { q: 'Which state fully describes "the rest of the problem"?', options: ['(row, col) only', '(row, col, moves left)', '(the whole path so far)', '(moves left) only'], answer: 1, explain: 'The future only depends on where the knight stands and how many moves remain, not how it got there. n² × (k + 1) states.' },
       hints: [`<p><b>Aha:</b> instead of following random knights, move the <i>probability mass</i>: keep a grid P where P[r][c] = chance of being there now.</p>`, `<p>For each step build a fresh grid: every on-board target gets <code>P[r][c] / 8</code> from each source. Off-board targets are simply dropped.</p>`, `<p>Edge cases: k = 0 → 1.0; use double and divide by 8.0 (not 8 integer). Recipe: cur = zeros; cur[row][col] = 1; repeat k times: nxt = zeros; push; cur = nxt. Return the sum of cur.</p>`],
       tests: { sig: "int int int int -> double", fn: "knightProbability", cmp: "float", cases: [
@@ -1705,7 +1814,7 @@ int maxResult(vector<int>& nums, int k) {
       statement: `<p>Given an integer array <code>nums</code> and an integer <code>k</code>, return the maximum sum of a <b>non-empty</b> subsequence such that for every two consecutive chosen indices <code>i &lt; j</code>, <code>j − i ≤ k</code>.</p>`,
       constraints: `1 ≤ k ≤ N ≤ 10<sup>5</sup>, −10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup>`,
       example: `${H.arr([10, 2, -10, 5, 20], { label: 'nums, k = 2', hl: { 0: 'g', 1: 'g', 3: 'g', 4: 'g' } })}<p>Output <b>37</b> = 10 + 2 + 5 + 20. We skip −10 (index 2) — allowed, because index 1 → index 3 is a gap of 2 ≤ k.</p>`,
-      brute: { why: `<p>O(N·k) DP: for each i scan the previous k dp values. With N = k = 10<sup>5</sup> that is 10<sup>10</sup>. The waste: consecutive windows overlap in k − 1 positions but we rescan them all.</p>`, code: `
+      brute: { why: `<p>O(N·k) DP: for each i scan the previous k dp values. With N = k = 10<sup>5</sup> that is 10<sup>10</sup>. The waste: consecutive windows overlap in k − 1 positions but we rescan them all.</p>`, code: { lang: 'java', code: `
         int bruteConstrained(int[] nums, int k) {
             int n = nums.length, best = Integer.MIN_VALUE;
             int[] dp = new int[n];
@@ -1716,7 +1825,41 @@ int maxResult(vector<int>& nums, int k) {
                 best = Math.max(best, dp[i]);
             }
             return best;
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+def constrained_subset_sum(nums, k):
+    n = len(nums)
+    best = float("-inf")
+    dp = [0] * n
+    for i in range(n):
+        prev = 0                                      # 0 = start a new subsequence here
+        for j in range(max(0, i - k), i):
+            prev = max(prev, dp[j])
+        dp[i] = nums[i] + prev
+        best = max(best, dp[i])
+    return best` }, { lang: 'js', code: String.raw`
+function constrainedSubsetSum(nums, k) {
+  const n = nums.length;
+  const dp = new Array(n).fill(0);
+  let best = -Infinity;
+  for (let i = 0; i < n; i++) {
+    let prev = 0;                                     // 0 = start a new subsequence here
+    for (let j = Math.max(0, i - k); j < i; j++) prev = Math.max(prev, dp[j]);
+    dp[i] = nums[i] + prev;
+    best = Math.max(best, dp[i]);
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int constrainedSubsetSum(vector<int>& nums, int k) {
+    int n = nums.size(), best = INT_MIN;
+    vector<int> dp(n);
+    for (int i = 0; i < n; i++) {
+        int prev = 0;                                 // 0 = start a new subsequence here
+        for (int j = max(0, i - k); j < i; j++) prev = max(prev, dp[j]);
+        dp[i] = nums[i] + prev;
+        best = max(best, dp[i]);
+    }
+    return best;
+}` }] } },
       mcq: { q: 'The deque holds indices 3 (dp 17) and 5 (dp 9). New index 6 gets dp 12. What happens?', options: ['Pop 5, push 6 → [3, 6]', 'Pop 3 and 5, push 6', 'Push 6 → [3, 5, 6]', 'Pop 3 only'], answer: 0, explain: 'From the back: dp[5] = 9 ≤ 12 → index 5 is older and worse, pop it. dp[3] = 17 &gt; 12 → stop. Push 6. Deque stays decreasing: 17, 12.' },
       hints: [`<p><b>Aha:</b> dp[i] = nums[i] + max(0, max of dp[j] for j in [i−k, i−1]). The 0 means "start fresh at i".</p>`, `<p>The inner max is a <b>sliding window maximum</b> over dp → keep a deque of indices with decreasing dp values.</p>`, `<p>Recipe per i: pop front while front &lt; i − k; dp[i] = nums[i] + max(0, dp[front]); best = max(best, dp[i]); pop back while dp[back] ≤ dp[i]; push i. All-negative array → answer is the single largest element (the "non-empty" rule).</p>`],
       tests: { sig: "int[] int -> int", fn: "constrainedSubsetSum", cases: [
@@ -2206,7 +2349,7 @@ long long queryAnyOrder(const vector<long long>& M, const vector<long long>& B, 
       statement: `<p>There are <code>N</code> stones with strictly increasing heights <code>h[0] &lt; h[1] &lt; … &lt; h[N−1]</code>. A frog on stone <code>j</code> may jump to any stone <code>i &gt; j</code>, paying <code>(h[i] − h[j])<sup>2</sup> + C</code>. Starting on stone 0, return the minimum total cost to reach stone N − 1.</p>`,
       constraints: `2 ≤ N ≤ 2·10<sup>5</sup>, 1 ≤ C ≤ 10<sup>12</sup>, 1 ≤ h[i] ≤ 10<sup>6</sup>, h strictly increasing`,
       example: `${H.arr([1, 2, 3, 4, 5], { label: 'h, C = 6', hl: { 0: 'g', 2: 'g', 4: 'g' } })}<p>Output <b>20</b>: 0 → 2 costs (3−1)² + 6 = 10, 2 → 4 costs (5−3)² + 6 = 10. Jumping 0 → 4 directly costs 16 + 6 = 22; stepping one by one costs 4 × 7 = 28. The fixed fee C rewards fewer jumps, the square rewards shorter jumps — DP balances both.</p>`,
-      brute: { why: `<p>O(N<sup>2</sup>): for every i scan all j &lt; i. For N = 2·10<sup>5</sup> that is 2·10<sup>10</sup> operations. The waste: each scan evaluates N "lines" at one point although most of them can never be the minimum again.</p>`, code: `
+      brute: { why: `<p>O(N<sup>2</sup>): for every i scan all j &lt; i. For N = 2·10<sup>5</sup> that is 2·10<sup>10</sup> operations. The waste: each scan evaluates N "lines" at one point although most of them can never be the minimum again.</p>`, code: { lang: 'java', code: `
         long bruteFrog(long[] h, long C) {
             int n = h.length;
             long[] dp = new long[n];
@@ -2218,7 +2361,40 @@ long long queryAnyOrder(const vector<long long>& M, const vector<long long>& B, 
                 }
             }
             return dp[n - 1];
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+def frog3(h, C):
+    n = len(h)
+    dp = [0] * n
+    for i in range(1, n):
+        dp[i] = float("inf")
+        for j in range(i):
+            d = h[i] - h[j]
+            dp[i] = min(dp[i], dp[j] + d * d + C)
+    return dp[n - 1]` }, { lang: 'js', code: String.raw`
+function frog3(h, C) {
+  const n = h.length;
+  const dp = new Array(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    dp[i] = Infinity;
+    for (let j = 0; j < i; j++) {
+      const d = h[i] - h[j];
+      dp[i] = Math.min(dp[i], dp[j] + d * d + C);
+    }
+  }
+  return dp[n - 1];
+}` }, { lang: 'cpp', code: String.raw`
+long long frog3(vector<long long>& h, long long C) {
+    int n = h.size();
+    vector<long long> dp(n, 0);
+    for (int i = 1; i < n; i++) {
+        dp[i] = LLONG_MAX;
+        for (int j = 0; j < i; j++) {
+            long long d = h[i] - h[j];
+            dp[i] = min(dp[i], dp[j] + d * d + C);
+        }
+    }
+    return dp[n - 1];
+}` }] } },
       mcq: { q: 'After expanding (h<sub>i</sub> − h<sub>j</sub>)², which quantity is the <b>slope</b> of line j?', options: ['h<sub>j</sub><sup>2</sup>', '−2h<sub>j</sub>', 'dp[j]', 'h<sub>i</sub>'], answer: 1, explain: 'The mixed term is −2h<sub>i</sub>h<sub>j</sub>. Treat h<sub>i</sub> as x; then −2h<sub>j</sub> multiplies x, so it is the slope. dp[j] + h<sub>j</sub>² is the intercept.' },
       hints: [`<p><b>Aha:</b> expand the square. dp[i] = h<sub>i</sub>² + C + min<sub>j</sub>(−2h<sub>j</sub>·h<sub>i</sub> + dp[j] + h<sub>j</sub>²). Inside the min: a line in x = h<sub>i</sub>.</p>`, `<p>Heights increase → slopes −2h<sub>j</sub> are added in decreasing order and queries x = h<sub>i</sub> increase → monotone deque CHT, O(N).</p>`, `<p>Recipe: add line(j=0); for i = 1..N−1: pop front while line 2 ≤ line 1 at h[i]; dp[i] = front(h[i]) + h[i]² + C; add line(−2h[i], dp[i] + h[i]²) popping useless back lines. Overflow check: dp ≤ ~2·10<sup>12</sup>, slope diff ≤ 2·10<sup>6</sup> → products ≤ ~6·10<sup>18</sup>, fits in a signed 64-bit integer (barely!).</p>`],
       tests: { sig: "long[] long -> long", fn: "frog3", cases: [
@@ -2608,7 +2784,7 @@ print(dnc([1, 3, 2, 4, 1, 5, 2], 3))       # 110`, run: true, title: 'Stress tes
       statement: `<p>Given an array of <b>non-negative</b> integers <code>a</code> and an integer <code>K</code>, split the array into exactly <code>K</code> non-empty contiguous groups. The cost of a group is (sum of its elements)<sup>2</sup>. Return the minimum total cost.</p>`,
       constraints: `1 ≤ K ≤ N ≤ 10<sup>4</sup>, 0 ≤ a[i] ≤ 10<sup>4</sup> (answers fit in a signed 64-bit integer)`,
       example: `${H.arr([1, 3, 2, 4, 1, 5, 2], { label: 'a, K = 3', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'b', 4: 'b', 5: 'p', 6: 'p' } })}<p>Output <b>110</b> = (1+3+2)² + (4+1)² + (5+2)² = 36 + 25 + 49. Sums 6, 5, 7 are as equal as possible — squaring rewards balance.</p>`,
-      brute: { why: `<p>Layered DP with a full scan: O(K·N<sup>2</sup>) = 10<sup>4</sup> · 10<sup>8</sup> = 10<sup>12</sup> for the max input. The waste: for i and i + 1 we scan all j again, although the best j for i + 1 is never left of the best j for i.</p>`, code: `
+      brute: { why: `<p>Layered DP with a full scan: O(K·N<sup>2</sup>) = 10<sup>4</sup> · 10<sup>8</sup> = 10<sup>12</sup> for the max input. The waste: for i and i + 1 we scan all j again, although the best j for i + 1 is never left of the best j for i.</p>`, code: { lang: 'java', code: `
         long bruteSplit(int[] a, int K) {
             int n = a.length;
             long[] P = new long[n + 1];
@@ -2625,7 +2801,55 @@ print(dnc([1, 3, 2, 4, 1, 5, 2], 3))       # 110`, run: true, title: 'Stress tes
                             dp[k][i] = Math.min(dp[k][i], dp[k - 1][j] + s * s);
                         }
             return dp[K][n];
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+def min_squared_split(a, K):
+    n = len(a)
+    P = [0] * (n + 1)
+    for i in range(n):
+        P[i + 1] = P[i] + a[i]
+    INF = float("inf")
+    dp = [[INF] * (n + 1) for _ in range(K + 1)]
+    dp[0][0] = 0
+    for k in range(1, K + 1):
+        for i in range(1, n + 1):
+            for j in range(i):                        # last group = a[j..i-1]
+                if dp[k - 1][j] < INF:
+                    s = P[i] - P[j]
+                    dp[k][i] = min(dp[k][i], dp[k - 1][j] + s * s)
+    return dp[K][n]` }, { lang: 'js', code: String.raw`
+function minSquaredSplit(a, K) {
+  const n = a.length;
+  const P = new Array(n + 1).fill(0n);                // answers pass 2^53, so BigInt
+  for (let i = 0; i < n; i++) P[i + 1] = P[i] + BigInt(a[i]);
+  const INF = 1n << 62n;
+  const dp = Array.from({ length: K + 1 }, () => new Array(n + 1).fill(INF));
+  dp[0][0] = 0n;
+  for (let k = 1; k <= K; k++)
+    for (let i = 1; i <= n; i++)
+      for (let j = 0; j < i; j++)                     // last group = a[j..i-1]
+        if (dp[k - 1][j] < INF) {
+          const s = P[i] - P[j];
+          const cand = dp[k - 1][j] + s * s;
+          if (cand < dp[k][i]) dp[k][i] = cand;
+        }
+  return dp[K][n];
+}` }, { lang: 'cpp', code: String.raw`
+long long minSquaredSplit(vector<int>& a, int K) {
+    int n = a.size();
+    vector<long long> P(n + 1, 0);
+    for (int i = 0; i < n; i++) P[i + 1] = P[i] + a[i];
+    const long long INF = LLONG_MAX / 4;
+    vector<vector<long long>> dp(K + 1, vector<long long>(n + 1, INF));
+    dp[0][0] = 0;
+    for (int k = 1; k <= K; k++)
+        for (int i = 1; i <= n; i++)
+            for (int j = 0; j < i; j++)               // last group = a[j..i-1]
+                if (dp[k - 1][j] < INF) {
+                    long long s = P[i] - P[j];
+                    dp[k][i] = min(dp[k][i], dp[k - 1][j] + s * s);
+                }
+    return dp[K][n];
+}` }] } },
       mcq: { q: 'In layer k we found opt(mid = 5) = 3. Which j values must solve() try for i = 6 or 7?', options: ['Only j ≥ 3', 'Only j ≤ 3', 'All j from k−1 to i−1', 'Only j = 3'], answer: 0, explain: 'Monotone opt: i &gt; mid ⇒ opt(i) ≥ opt(mid) = 3. The right half searches [3, optR]. The left half (i &lt; 5) searches [optL, 3].' },
       hints: [`<p><b>Aha:</b> dp[k][i] = min<sub>j</sub> dp[k−1][j] + (P[i] − P[j])². As i grows, the best start of the last group never moves left (non-negative values + convex square cost).</p>`, `<p>Compute each layer with solve(l, r, optL, optR): fix mid, scan j ∈ [optL, min(mid−1, optR)], then recurse with the found best split as the new bound.</p>`, `<p>Edge cases: K = 1 → (total)²; K = N → Σ a[i]²; groups must be non-empty → layer k fills i ∈ [k, n] and j ∈ [k−1, i−1]. Use 64-bit integers; keep the INF marker (about 2<sup>61</sup>) skipped explicitly.</p>`],
       tests: { sig: "int[] int -> long", fn: "minSquaredSplit", cases: [
@@ -2973,7 +3197,7 @@ long long minCostCuts(int n, vector<int> cuts) {
       statement: `<p>There are <code>N</code> piles in a row, pile <code>i</code> has <code>a[i]</code> stones. In one move you merge <b>two adjacent</b> piles into one; the cost equals the total stones in the new pile. Merge until one pile remains. Return the minimum total cost.</p>`,
       constraints: `1 ≤ N ≤ 5 000, 1 ≤ a[i] ≤ 10<sup>4</sup> (answer fits in a signed 64-bit integer)`,
       example: `${H.arr([4, 1, 3, 2, 5], { label: 'a' })}<p>Output <b>34</b>: merge (1,3) → 4 [cost 4], then (4,4) → 8 [cost 8], then (2,5) → 7 [cost 7], finally (8,7) → 15 [cost 15]. Total 4 + 8 + 7 + 15 = ${H.c('g', '34')}. A tempting order like (4,1) first gives 5 + 8 + 7 + 15 = 35. The last merge always costs the total (15); the DP decides how to build the two halves cheaply.</p>`,
-      brute: { why: `<p>The standard O(N³) interval DP: every cell tries every split. N = 5 000 → ~2·10<sup>10</sup> steps. The waste: the best split of [i, j] is always between the best splits of [i, j−1] and [i+1, j], but we ignore that and scan all of them.</p>`, code: `
+      brute: { why: `<p>The standard O(N³) interval DP: every cell tries every split. N = 5 000 → ~2·10<sup>10</sup> steps. The waste: the best split of [i, j] is always between the best splits of [i, j−1] and [i+1, j], but we ignore that and scan all of them.</p>`, code: { lang: 'java', code: `
         long bruteMerge(int[] a) {
             int n = a.length;
             long[] P = new long[n + 1];
@@ -2988,7 +3212,49 @@ long long minCostCuts(int n, vector<int> cuts) {
                     dp[i][j] += P[j + 1] - P[i];                  // final merge of [i..j]
                 }
             return dp[0][n - 1];
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+def merge_piles(a):
+    n = len(a)
+    P = [0] * (n + 1)
+    for i in range(n):
+        P[i + 1] = P[i] + a[i]
+    dp = [[0] * n for _ in range(n)]
+    for length in range(2, n + 1):
+        for i in range(n - length + 1):
+            j = i + length - 1
+            dp[i][j] = min(dp[i][k] + dp[k + 1][j] for k in range(i, j))   # every split point
+            dp[i][j] += P[j + 1] - P[i]               # final merge of [i..j]
+    return dp[0][n - 1]` }, { lang: 'js', code: String.raw`
+function mergePiles(a) {
+  const n = a.length;
+  const P = new Array(n + 1).fill(0);
+  for (let i = 0; i < n; i++) P[i + 1] = P[i] + a[i];
+  const dp = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let len = 2; len <= n; len++)
+    for (let i = 0; i + len - 1 < n; i++) {
+      const j = i + len - 1;
+      dp[i][j] = Infinity;
+      for (let k = i; k < j; k++)                     // every split point
+        dp[i][j] = Math.min(dp[i][j], dp[i][k] + dp[k + 1][j]);
+      dp[i][j] += P[j + 1] - P[i];                    // final merge of [i..j]
+    }
+  return dp[0][n - 1];
+}` }, { lang: 'cpp', code: String.raw`
+long long mergePiles(vector<int>& a) {
+    int n = a.size();
+    vector<long long> P(n + 1, 0);
+    for (int i = 0; i < n; i++) P[i + 1] = P[i] + a[i];
+    vector<vector<long long>> dp(n, vector<long long>(n, 0));
+    for (int len = 2; len <= n; len++)
+        for (int i = 0; i + len - 1 < n; i++) {
+            int j = i + len - 1;
+            dp[i][j] = LLONG_MAX;
+            for (int k = i; k < j; k++)               // every split point
+                dp[i][j] = min(dp[i][j], dp[i][k] + dp[k + 1][j]);
+            dp[i][j] += P[j + 1] - P[i];              // final merge of [i..j]
+        }
+    return dp[0][n - 1];
+}` }] } },
       mcq: { q: 'opt[2][6] = 4 and opt[3][7] = 5. Which split points must be tried for the interval [2, 7]?', options: ['k = 4 and 5 only', 'k = 2..6', 'k = 5 only', 'k = 3..6'], answer: 0, explain: 'Knuth: opt[i][j−1] ≤ opt[i][j] ≤ opt[i+1][j], i.e. opt[2][6] = 4 ≤ opt[2][7] ≤ opt[3][7] = 5. Only k ∈ {4, 5}.' },
       hints: [`<p><b>Aha:</b> the last merge joins [i..k] and [k+1..j] and always costs sum(i..j). So dp[i][j] = min<sub>k</sub>(dp[i][k] + dp[k+1][j]) + sum(i..j).</p>`, `<p>w(i, j) = sum(i..j) satisfies the quadrangle inequality (with equality!) and is monotone on intervals → Knuth: scan k only in [opt[i][j−1], opt[i+1][j]].</p>`, `<p>Recipe: prefix sums; opt[i][i] = i; for len = 2..N, for i: j = i+len−1; lo = opt[i][j−1]; hi = min(opt[i+1][j], j−1); scan; add sum. N = 1 → 0. Memory: two N×N tables — consider int opt and long dp.</p>`],
       tests: { sig: "int[] -> long", fn: "mergePiles", cases: [
@@ -3340,7 +3606,7 @@ print(sum(F[((1 << n) - 1) ^ x] for x in a))   # 17`, run: true, title: 'SOS + b
       statement: `<p>Given an array <code>a</code>, for each <code>a[i]</code> output <b>any</b> element <code>a[j]</code> of the array such that <code>a[i] &amp; a[j] == 0</code>, or <code>−1</code> if none exists.</p>`,
       constraints: `1 ≤ N ≤ 10<sup>6</sup>, 1 ≤ a[i] ≤ 4·10<sup>6</sup> (&lt; 2<sup>22</sup>)`,
       example: `${H.arr([10, 6, 9, 8, 2], { label: 'a' })}<p>One valid output: <b>[−1, 9, 6, 6, 9]</b>. 10 = 1010 shares a bit with every other value (6 = 0110, 9 = 1001, 8 = 1000, 2 = 0010) → ${H.c('r', '−1')}. 6 &amp; 9 = 0110 &amp; 1001 = 0 ✓. 8 &amp; 6 = 0 ✓. 2 &amp; 9 = 0 ✓. Other valid partners are fine too (e.g. 8 for 6).</p>`,
-      brute: { why: `<p>Check every pair: N<sup>2</sup> = 10<sup>12</sup>. The waste: we don't need a specific j, only "does any value fit inside the complement of a[i]?" — a question about masks, which has only 2<sup>22</sup> possible answers.</p>`, code: `
+      brute: { why: `<p>Check every pair: N<sup>2</sup> = 10<sup>12</sup>. The waste: we don't need a specific j, only "does any value fit inside the complement of a[i]?" — a question about masks, which has only 2<sup>22</sup> possible answers.</p>`, code: { lang: 'java', code: `
         int[] brutePartners(int[] a) {
             int[] res = new int[a.length];
             for (int i = 0; i < a.length; i++) {
@@ -3349,7 +3615,33 @@ print(sum(F[((1 << n) - 1) ^ x] for x in a))   # 17`, run: true, title: 'SOS + b
                     if ((a[i] & a[j]) == 0) { res[i] = a[j]; break; }
             }
             return res;
-        }` },
+        }`, alt: [{ lang: 'python', code: String.raw`
+def compatible(a):
+    res = []
+    for i in range(len(a)):
+        found = -1
+        for j in range(len(a)):
+            if (a[i] & a[j]) == 0:
+                found = a[j]
+                break
+        res.append(found)
+    return res` }, { lang: 'js', code: String.raw`
+function compatible(a) {
+  const res = new Array(a.length);
+  for (let i = 0; i < a.length; i++) {
+    res[i] = -1;
+    for (let j = 0; j < a.length; j++)
+      if ((a[i] & a[j]) === 0) { res[i] = a[j]; break; }
+  }
+  return res;
+}` }, { lang: 'cpp', code: String.raw`
+vector<int> compatible(vector<int>& a) {
+    vector<int> res(a.size(), -1);
+    for (int i = 0; i < (int)a.size(); i++)
+        for (int j = 0; j < (int)a.size(); j++)
+            if ((a[i] & a[j]) == 0) { res[i] = a[j]; break; }
+    return res;
+}` }] } },
       mcq: { q: 'a[i] = 0101 (4 bits). A valid partner must be…', options: ['a submask of 1010', 'a superset of 1010', 'equal to 1010', 'any number with an even popcount'], answer: 0, explain: 'a[i] &amp; x == 0 means x has no bit where a[i] has one, i.e. all of x\'s bits lie inside ~a[i] = 1010. So x ⊆ 1010 — a submask query.' },
       hints: [`<p><b>Aha:</b> a[i] &amp; x == 0 ⇔ x ⊆ complement(a[i]) = FULL ^ a[i]. So we need "any array value that is a submask of mask M" for M = FULL ^ a[i].</p>`, `<p>SOS with "any" instead of sum: any[v] = v for values in the array, −1 elsewhere; for each bit, for masks with the bit: if any[mask] == −1 take any[mask ^ bit].</p>`, `<p>Edge cases: duplicates are fine; a value can partner with itself only if it's 0 (not possible here since a[i] ≥ 1). Use FULL = 2<sup>22</sup> − 1; array of 4 M ints = 16 MB. Recipe: build any[], SOS pass over 22 bits, answer any[FULL ^ a[i]].</p>`],
       tests: { sig: "int[] -> int[]", fn: "compatible", check: "(args, out, expected) => { const a = args[0], set = new Set(a); if (!Array.isArray(out) || out.length !== a.length) return false; for (let i = 0; i < a.length; i++) { if (expected[i] === -1) { if (out[i] !== -1) return false; } else if (out[i] === -1 || !set.has(out[i]) || (a[i] & out[i]) !== 0) return false; } return true; }", cases: [
@@ -3443,7 +3735,7 @@ print(sum(F[((1 << n) - 1) ^ x] for x in a))   # 17`, run: true, title: 'SOS + b
     statement: `<p>Given <code>n</code>, return how many integers <code>x</code> with <code>0 ≤ x &lt; 10<sup>n</sup></code> have all <b>distinct</b> digits.</p>`,
     constraints: `0 ≤ n ≤ 8`,
     example: `<p>n = 2 → Output <b>91</b>. There are 100 numbers 0..99; the 9 numbers ${H.c('r', '11, 22, …, 99')} repeat a digit. 100 − 9 = 91.</p>`,
-    brute: { why: `<p>Check all 10<sup>n</sup> numbers: 10<sup>8</sup> digit checks — slow but borderline. The waste: every number of length L with distinct digits is counted by the same simple product, but we test them one by one.</p>`, code: `
+    brute: { why: `<p>Check all 10<sup>n</sup> numbers: 10<sup>8</sup> digit checks — slow but borderline. The waste: every number of length L with distinct digits is counted by the same simple product, but we test them one by one.</p>`, code: { lang: 'java', code: `
       int bruteUnique(int n) {
           int limit = 1;
           for (int i = 0; i < n; i++) limit *= 10;
@@ -3458,7 +3750,43 @@ print(sum(F[((1 << n) - 1) ^ x] for x in a))   # 17`, run: true, title: 'SOS + b
               if (ok) count++;
           }
           return count;
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def count_numbers_with_unique_digits(n):
+    count = 0
+    for x in range(10 ** n):
+        s = str(x)
+        if len(set(s)) == len(s):                     # no digit repeats
+            count += 1
+    return count` }, { lang: 'js', code: String.raw`
+function countNumbersWithUniqueDigits(n) {
+  const limit = 10 ** n;
+  let count = 0;
+  for (let x = 0; x < limit; x++) {
+    const seen = new Array(10).fill(false);
+    let ok = true;
+    for (const c of String(x)) {
+      if (seen[c]) { ok = false; break; }
+      seen[c] = true;
+    }
+    if (ok) count++;
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+int countNumbersWithUniqueDigits(int n) {
+    int limit = 1;
+    for (int i = 0; i < n; i++) limit *= 10;
+    int count = 0;
+    for (int x = 0; x < limit; x++) {
+        bool seen[10] = {false};
+        bool ok = true;
+        for (char c : to_string(x)) {
+            if (seen[c - '0']) { ok = false; break; }
+            seen[c - '0'] = true;
+        }
+        if (ok) count++;
+    }
+    return count;
+}` }] } },
     mcq: { q: 'How many 3-digit numbers (100..999) have distinct digits?', options: ['9 · 9 · 8 = 648', '9 · 10 · 10 = 900', '10 · 9 · 8 = 720', '9 · 8 · 7 = 504'], answer: 0, explain: 'First digit 1..9 (9 ways), second any of the other 9 digits (0 now allowed), third any of the remaining 8.' },
     hints: [`<p><b>Aha:</b> this is the free (non-tight) part of a digit DP with a "used digits" state — and because the bound is 10<sup>n</sup>, every length is completely free.</p>`, `<p>Count by length L: 9 choices for the first digit (no leading zero), then 9, 8, 7, … for the next ones.</p>`, `<p>n = 0 → 1 (just 0). Total = 10 (all 1-digit numbers incl. 0) + Σ<sub>L=2..n</sub> 9·9·8·…·(11 − L). Lengths above 10 add nothing (only 10 digits exist).</p>`],
     tests: { sig: "int -> int", fn: "countNumbersWithUniqueDigits", cases: [
@@ -3523,7 +3851,7 @@ print(sum(F[((1 << n) - 1) ^ x] for x in a))   # 17`, run: true, title: 'SOS + b
     statement: `<p>You have <code>n</code> coins; coin <code>i</code> lands heads with probability <code>prob[i]</code>. Toss every coin once. Return the probability that <b>exactly</b> <code>target</code> coins show heads.</p>`,
     constraints: `1 ≤ n ≤ 1000, 0 ≤ prob[i] ≤ 1, 0 ≤ target ≤ n. Answers within 10<sup>−5</sup> accepted.`,
     example: `<p>prob = [0.5, 0.5, 0.5, 0.5, 0.5], target = 0 → <b>0.03125</b> = 0.5<sup>5</sup> (all tails). prob = [0.4], target = 1 → <b>0.4</b>.</p>`,
-    brute: { why: `<p>Enumerate all 2<sup>n</sup> head/tail outcomes and add the probabilities of those with exactly target heads. n = 1000 → 2<sup>1000</sup> outcomes. The waste: many outcomes share "first i coins, j heads so far" and have identical futures.</p>`, code: `
+    brute: { why: `<p>Enumerate all 2<sup>n</sup> head/tail outcomes and add the probabilities of those with exactly target heads. n = 1000 → 2<sup>1000</sup> outcomes. The waste: many outcomes share "first i coins, j heads so far" and have identical futures.</p>`, code: { lang: 'java', code: `
       double bruteCoins(double[] prob, int target) {
           int n = prob.length;
           double total = 0;
@@ -3534,7 +3862,42 @@ print(sum(F[((1 << n) - 1) ^ x] for x in a))   # 17`, run: true, title: 'SOS + b
               total += p;
           }
           return total;
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def probability_of_heads(prob, target):
+    n = len(prob)
+    total = 0.0
+    for mask in range(1 << n):                        # only feasible for n <= 20
+        if bin(mask).count("1") != target:
+            continue
+        p = 1.0
+        for i in range(n):
+            p *= prob[i] if (mask >> i & 1) else 1 - prob[i]
+        total += p
+    return total` }, { lang: 'js', code: String.raw`
+function probabilityOfHeads(prob, target) {
+  const n = prob.length;
+  let total = 0;
+  for (let mask = 0; mask < (1 << n); mask++) {       // only feasible for n <= 20
+    let heads = 0;
+    for (let x = mask; x; x &= x - 1) heads++;
+    if (heads !== target) continue;
+    let p = 1;
+    for (let i = 0; i < n; i++) p *= ((mask >> i & 1) === 1) ? prob[i] : 1 - prob[i];
+    total += p;
+  }
+  return total;
+}` }, { lang: 'cpp', code: String.raw`
+double probabilityOfHeads(vector<double>& prob, int target) {
+    int n = prob.size();
+    double total = 0;
+    for (int mask = 0; mask < (1 << n); mask++) {     // only feasible for n <= 20
+        if (__builtin_popcount(mask) != target) continue;
+        double p = 1;
+        for (int i = 0; i < n; i++) p *= ((mask >> i & 1) == 1) ? prob[i] : 1 - prob[i];
+        total += p;
+    }
+    return total;
+}` }] } },
     mcq: { q: 'dp[j] = probability of j heads among the coins processed so far. Adding a coin with probability p, the new dp[j] is…', options: ['dp[j]·(1−p) + dp[j−1]·p', 'dp[j]·p + dp[j−1]·(1−p)', 'dp[j] + dp[j−1]', 'dp[j−1]·p'], answer: 0, explain: 'Either we already had j heads and this coin is tails (1 − p), or we had j − 1 heads and this coin is heads (p).' },
     hints: [`<p><b>Aha:</b> process coins one by one; the only thing that matters is how many heads so far — a probability version of 0/1 knapsack.</p>`, `<p>dp[j] over j = 0..target, update j from high to low so each coin is used once (like 0/1 knapsack).</p>`, `<p>Recipe: dp[0] = 1. For each p: for j = target..1: dp[j] = dp[j]·(1−p) + dp[j−1]·p; then dp[0] *= (1−p). Return dp[target].</p>`],
     tests: { sig: "double[] int -> double", fn: "probabilityOfHeads", cmp: "float", cases: [
@@ -3608,7 +3971,7 @@ print(sum(F[((1 << n) - 1) ^ x] for x in a))   # 17`, run: true, title: 'SOS + b
     statement: `<p>You start at index 0 of <code>nums</code> and must reach the last index. From index <code>i</code> you may jump to any index in <code>[i + 1, min(n − 1, i + k)]</code>. Your score is the sum of <code>nums</code> at every index you visit (including the first and last). Return the maximum score.</p>`,
     constraints: `1 ≤ n, k ≤ 10<sup>5</sup>, −10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup>`,
     example: `${H.arr([1, -1, -2, 4, -7, 3], { label: 'nums, k = 2', hl: { 0: 'g', 1: 'g', 3: 'g', 5: 'g' } })}<p>Output <b>7</b> = 1 + (−1) + 4 + 3. We must step on −1 (cannot jump 0 → 3 with k = 2), but we skip −2 and −7.</p>`,
-    brute: { why: `<p>dp[i] = nums[i] + max(dp[i−k..i−1]) scanned directly: O(n·k) = 10<sup>10</sup>. Waste: neighbouring windows share k − 1 values.</p>`, code: `
+    brute: { why: `<p>dp[i] = nums[i] + max(dp[i−k..i−1]) scanned directly: O(n·k) = 10<sup>10</sup>. Waste: neighbouring windows share k − 1 values.</p>`, code: { lang: 'java', code: `
       int bruteJump(int[] nums, int k) {
           int n = nums.length;
           int[] dp = new int[n];
@@ -3619,7 +3982,37 @@ print(sum(F[((1 << n) - 1) ^ x] for x in a))   # 17`, run: true, title: 'SOS + b
               dp[i] = nums[i] + best;
           }
           return dp[n - 1];
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def max_result(nums, k):
+    n = len(nums)
+    dp = [0] * n
+    dp[0] = nums[0]
+    for i in range(1, n):
+        best = max(dp[max(0, i - k):i])               # scan the whole window
+        dp[i] = nums[i] + best
+    return dp[n - 1]` }, { lang: 'js', code: String.raw`
+function maxResult(nums, k) {
+  const n = nums.length;
+  const dp = new Array(n).fill(0);
+  dp[0] = nums[0];
+  for (let i = 1; i < n; i++) {
+    let best = -Infinity;
+    for (let j = Math.max(0, i - k); j < i; j++) best = Math.max(best, dp[j]);   // scan the whole window
+    dp[i] = nums[i] + best;
+  }
+  return dp[n - 1];
+}` }, { lang: 'cpp', code: String.raw`
+int maxResult(vector<int>& nums, int k) {
+    int n = nums.size();
+    vector<int> dp(n);
+    dp[0] = nums[0];
+    for (int i = 1; i < n; i++) {
+        int best = INT_MIN;
+        for (int j = max(0, i - k); j < i; j++) best = max(best, dp[j]);   // scan the whole window
+        dp[i] = nums[i] + best;
+    }
+    return dp[n - 1];
+}` }] } },
     mcq: { q: 'Why can we delete index j from the deque when dp[j] ≤ dp[i] and j &lt; i?', options: ['j expires sooner and is never better than i', 'j is out of the window already', 'Because dp values are always increasing', 'To keep the deque sorted by index'], answer: 0, explain: 'Every future window containing j also contains i, and dp[i] ≥ dp[j]. So j can never be the unique maximum again.' },
     hints: [`<p><b>Aha:</b> dp[i] = nums[i] + (maximum dp in the previous k positions) — a sliding window maximum.</p>`, `<p>Monotonic deque of indices with decreasing dp values; the front is the window max.</p>`, `<p>Per i: pop front while front &lt; i − k; dp[i] = nums[i] + dp[front]; pop back while dp[back] ≤ dp[i]; push i. Answer dp[n−1].</p>`],
     tests: { sig: "int[] int -> int", fn: "maxResult", cases: [
@@ -3719,7 +4112,7 @@ def max_result(nums, k):
     statement: `<p>You are given <code>n</code> and an array <code>A</code> of length <code>2<sup>n</sup></code>. For every mask <code>m</code>, compute <code>F[m] = Σ A[s]</code> over all <code>s</code> that are submasks of <code>m</code> (<code>s &amp; m == s</code>).</p>`,
     constraints: `1 ≤ n ≤ 20, |A[i]| ≤ 10<sup>9</sup> (use long)`,
     example: `<p>n = 2, A = [1, 2, 3, 4] → Output <b>[1, 3, 4, 10]</b>. F[01] = A[00] + A[01] = 3; F[10] = A[00] + A[10] = 4; F[11] = all four = 10.</p>`,
-    brute: { why: `<p>Test every (m, s) pair: 4<sup>n</sup> = 10<sup>12</sup> for n = 20. Even the 3<sup>n</sup> submask walk is 3.5·10<sup>9</sup>. Waste: F[m] and F[m without one bit] share almost all their terms.</p>`, code: `
+    brute: { why: `<p>Test every (m, s) pair: 4<sup>n</sup> = 10<sup>12</sup> for n = 20. Even the 3<sup>n</sup> submask walk is 3.5·10<sup>9</sup>. Waste: F[m] and F[m without one bit] share almost all their terms.</p>`, code: { lang: 'java', code: `
       long[] bruteSOS(long[] A, int n) {
           int size = 1 << n;
           long[] F = new long[size];
@@ -3727,7 +4120,31 @@ def max_result(nums, k):
               for (int s = 0; s < size; s++)
                   if ((s & m) == s) F[m] += A[s];          // s is a submask of m
           return F;
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def sum_over_submasks(A, n):
+    size = 1 << n
+    F = [0] * size
+    for m in range(size):
+        for s in range(size):
+            if (s & m) == s:                          # s is a submask of m
+                F[m] += A[s]
+    return F` }, { lang: 'js', code: String.raw`
+function sumOverSubmasks(A, n) {
+  const size = 1 << n;
+  const F = new Array(size).fill(0);
+  for (let m = 0; m < size; m++)
+    for (let s = 0; s < size; s++)
+      if ((s & m) === s) F[m] += A[s];                // s is a submask of m
+  return F;
+}` }, { lang: 'cpp', code: String.raw`
+vector<long long> sumOverSubmasks(vector<long long>& A, int n) {
+    int size = 1 << n;
+    vector<long long> F(size, 0);
+    for (int m = 0; m < size; m++)
+        for (int s = 0; s < size; s++)
+            if ((s & m) == s) F[m] += A[s];           // s is a submask of m
+    return F;
+}` }] } },
     mcq: { q: 'Which loop order is correct for SOS DP?', options: ['for bit { for mask { … } }', 'for mask { for bit { … } }', 'Either order works', 'for mask descending only'], answer: 0, explain: 'Bits must be processed one full pass at a time (like prefix sums along each axis). Putting the bit loop inside counts some submasks several times.' },
     hints: [`<p><b>Aha:</b> a mask is a corner of an n-dimensional cube; "submask" = "≤ in every coordinate". That's an n-D prefix sum.</p>`, `<p>Do a prefix sum along one axis at a time: for each bit, every mask with that bit adds the value of the mask without it.</p>`, `<p>Recipe: F = A copy; for bit in 0..n−1: for mask in 0..2<sup>n</sup>−1: if mask has bit: F[mask] += F[mask ^ (1 &lt;&lt; bit)]. Use long.</p>`],
     tests: { sig: "long[] int -> long[]", fn: "sumOverSubmasks", check: "(args, out, expected) => { const n = args[1]; if (!Array.isArray(out) || out.length !== (1 << n)) return false; if (expected.length === 1 && expected[0] === \"pop\") { for (let m = 0; m < (1 << n); m++) { let c = 0; for (let x = m; x; x &= x - 1) c++; if (String(out[m]) !== String(args[0][0] * Math.pow(2, c))) return false; } return true; } return out.length === expected.length && out.every((v, i) => String(v) === String(expected[i])); }", cases: [
@@ -3789,7 +4206,7 @@ def max_result(nums, k):
     statement: `<p>Given an integer array <code>nums</code> and an integer <code>k</code>, return <code>true</code> if it can be divided into <code>k</code> non-empty subsets with equal sums.</p>`,
     constraints: `1 ≤ k ≤ n ≤ 16, 1 ≤ nums[i] ≤ 10<sup>4</sup>`,
     example: `<p>nums = [4, 3, 2, 3, 5, 2, 1], k = 4 → <b>true</b>: ${H.c('g', '(5), (1, 4), (2, 3), (2, 3)')} each sum to 5.</p>`,
-    brute: { why: `<p>Assign every number to one of k buckets: k<sup>n</sup> = 4<sup>16</sup> ≈ 4·10<sup>9</sup> in the worst case. Waste: the order in which buckets were filled doesn't matter, only <i>which</i> numbers are used.</p>`, code: `
+    brute: { why: `<p>Assign every number to one of k buckets: k<sup>n</sup> = 4<sup>16</sup> ≈ 4·10<sup>9</sup> in the worst case. Waste: the order in which buckets were filled doesn't matter, only <i>which</i> numbers are used.</p>`, code: { lang: 'java', code: `
       boolean bruteK(int[] nums, int k) {
           int sum = 0;
           for (int x : nums) sum += x;
@@ -3808,7 +4225,65 @@ def max_result(nums, k):
               bucket[b] -= nums[i];
           }
           return false;
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def can_partition_k_subsets(nums, k):
+    total = sum(nums)
+    if total % k != 0:
+        return False
+    target = total // k
+    bucket = [0] * k
+
+    def place(i):
+        if i == len(nums):
+            return all(b == target for b in bucket)
+        for b in range(k):
+            if bucket[b] + nums[i] > target:
+                continue
+            bucket[b] += nums[i]
+            if place(i + 1):
+                return True
+            bucket[b] -= nums[i]
+        return False
+
+    return place(0)` }, { lang: 'js', code: String.raw`
+function canPartitionKSubsets(nums, k) {
+  const sum = nums.reduce((s, x) => s + x, 0);
+  if (sum % k !== 0) return false;
+  const target = sum / k, bucket = new Array(k).fill(0);
+
+  function place(i) {
+    if (i === nums.length) return bucket.every((b) => b === target);
+    for (let b = 0; b < k; b++) {
+      if (bucket[b] + nums[i] > target) continue;
+      bucket[b] += nums[i];
+      if (place(i + 1)) return true;
+      bucket[b] -= nums[i];
+    }
+    return false;
+  }
+
+  return place(0);
+}` }, { lang: 'cpp', code: String.raw`
+bool canPartitionKSubsets(vector<int>& nums, int k) {
+    int sum = accumulate(nums.begin(), nums.end(), 0);
+    if (sum % k != 0) return false;
+    int target = sum / k;
+    vector<int> bucket(k, 0);
+    function<bool(int)> place = [&](int i) {
+        if (i == (int)nums.size()) {
+            for (int b : bucket) if (b != target) return false;
+            return true;
+        }
+        for (int b = 0; b < k; b++) {
+            if (bucket[b] + nums[i] > target) continue;
+            bucket[b] += nums[i];
+            if (place(i + 1)) return true;
+            bucket[b] -= nums[i];
+        }
+        return false;
+    };
+    return place(0);
+}` }] } },
     mcq: { q: 'Why is dp[mask] = (sum of mask) mod target enough as the state?', options: ['Full buckets are interchangeable; only the fill level of the current bucket matters', 'Because k ≤ 16', 'Because numbers are positive', 'It is not enough'], answer: 0, explain: 'Fill buckets one at a time. Completed buckets are all equal, so the only live information is which items are used (the mask) and how full the open bucket is — which is determined by the mask\'s sum mod target.' },
     hints: [`<p><b>Aha:</b> fill buckets one after another. A used-set (mask) determines the total used; the current bucket's level is that total mod target.</p>`, `<p>dp[mask] = reachable? (store the level, −1 if unreachable). From a reachable mask add any unused number that still fits in the current bucket.</p>`, `<p>Pre-checks: sum % k ≠ 0 → false; any number &gt; target → false. Answer: dp[full] reachable. 2<sup>16</sup> · 16 ≈ 10<sup>6</sup> steps.</p>`],
     tests: { sig: "int[] int -> bool", fn: "canPartitionKSubsets", cases: [
@@ -3923,7 +4398,7 @@ def max_result(nums, k):
     statement: `<p>Given a sorted array of distinct digit strings <code>digits</code> (from '1' to '9'), you can write numbers using these digits as many times as you like. Return how many positive integers you can write that are <b>≤ n</b>.</p>`,
     constraints: `1 ≤ digits.length ≤ 9, 1 ≤ n ≤ 10<sup>9</sup>`,
     example: `<p>digits = ["1", "3", "5", "7"], n = 100 → <b>20</b>: 4 one-digit numbers + 16 two-digit numbers (11, 13, …, 77). No 3-digit number made of these digits is ≤ 100.</p>`,
-    brute: { why: `<p>Generate every number from the digit set by DFS until it exceeds n — up to D<sup>9</sup> ≈ 3.9·10<sup>8</sup> numbers for 9 digits. Waste: once a prefix is smaller than n's prefix, all completions are valid and can be counted with a power.</p>`, code: `
+    brute: { why: `<p>Generate every number from the digit set by DFS until it exceeds n — up to D<sup>9</sup> ≈ 3.9·10<sup>8</sup> numbers for 9 digits. Waste: once a prefix is smaller than n's prefix, all completions are valid and can be counted with a power.</p>`, code: { lang: 'java', code: `
       int bruteDigitSet(String[] digits, int n) {
           return gen(digits, 0L, n);
       }
@@ -3934,7 +4409,39 @@ def max_result(nums, k):
               if (next <= n) count += 1 + gen(digits, next, n);
           }
           return count;
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def at_most_n_given_digit_set(digits, n):
+    def gen(cur):
+        count = 0
+        for d in digits:
+            nxt = cur * 10 + int(d)                   # digits are 1..9, so nxt > cur
+            if nxt <= n:
+                count += 1 + gen(nxt)
+        return count
+
+    return gen(0)` }, { lang: 'js', code: String.raw`
+function atMostNGivenDigitSet(digits, n) {
+  function gen(cur) {
+    let count = 0;
+    for (const d of digits) {
+      const next = cur * 10 + Number(d);              // digits are 1..9, so next > cur
+      if (next <= n) count += 1 + gen(next);
+    }
+    return count;
+  }
+  return gen(0);
+}` }, { lang: 'cpp', code: String.raw`
+int atMostNGivenDigitSet(vector<string>& digits, int n) {
+    function<int(long long)> gen = [&](long long cur) {
+        int count = 0;
+        for (auto& d : digits) {
+            long long next = cur * 10 + (d[0] - '0'); // digits are 1..9, so next > cur
+            if (next <= n) count += 1 + gen(next);
+        }
+        return count;
+    };
+    return gen(0);
+}` }] } },
     mcq: { q: 'n = 3245, digits {1, 2, 4}. The first digit 1 or 2 is chosen. How many completions of length 4?', options: ['3<sup>3</sup> each', '4<sup>3</sup> each', '3<sup>4</sup> each', 'Depends on n\'s remaining digits'], answer: 0, explain: '1 and 2 are smaller than 3, so we are free: each of the 3 remaining positions can be any of the 3 digits → 27 numbers each.' },
     hints: [`<p><b>Aha:</b> numbers shorter than n are always fine: Σ D<sup>len</sup> for len &lt; L.</p>`, `<p>For length L, walk n's digits left to right (the tight path): a smaller allowed digit frees the rest (D<sup>remaining</sup>); an equal digit keeps you tight; if no equal digit exists, stop.</p>`, `<p>If you stay tight through all digits, n itself is writable → +1. Example n = 100: the first digit 1 equals → tight; second digit 0: no allowed digit ≤ 0 → stop.</p>`],
     tests: { sig: "string[] int -> int", fn: "atMostNGivenDigitSet", cases: [
@@ -4037,14 +4544,37 @@ def max_result(nums, k):
     statement: `<p>Two soups A and B start with <code>n</code> ml each. Each turn, one of four operations is chosen with probability 0.25: serve (100 A, 0 B), (75, 25), (50, 50), (25, 75). If a soup has less than requested, serve what remains. Stop when either soup is empty. Return P(A empties first) + ½·P(both empty at the same time).</p>`,
     constraints: `0 ≤ n ≤ 10<sup>9</sup>. Answers within 10<sup>−5</sup> accepted.`,
     example: `<p>n = 50 → <b>0.625</b>. The first two operations empty A first (prob 0.5 → counts 1 each), the third empties both at once (0.25 × ½), the fourth empties B first (0). 0.25 + 0.25 + 0.125 = 0.625.</p>`,
-    brute: { why: `<p>Plain recursion without memo branches 4 ways per turn: about 4<sup>n/25</sup> calls — explodes for n = 1000. And n = 10<sup>9</sup> would need 4·10<sup>7</sup> × 4·10<sup>7</sup> states even with memo. Waste: (a, b) states repeat; and for big n the answer converges to 1.</p>`, code: `
+    brute: { why: `<p>Plain recursion without memo branches 4 ways per turn: about 4<sup>n/25</sup> calls — explodes for n = 1000. And n = 10<sup>9</sup> would need 4·10<sup>7</sup> × 4·10<sup>7</sup> states even with memo. Waste: (a, b) states repeat; and for big n the answer converges to 1.</p>`, code: { lang: 'java', code: `
       double bruteSoup(int a, int b) {                 // a, b in units of 25 ml
           if (a <= 0 && b <= 0) return 0.5;
           if (a <= 0) return 1.0;
           if (b <= 0) return 0.0;
           return 0.25 * (bruteSoup(a - 4, b) + bruteSoup(a - 3, b - 1)
                        + bruteSoup(a - 2, b - 2) + bruteSoup(a - 1, b - 3));
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def soup_servings(a, b):                              # a, b in units of 25 ml
+    if a <= 0 and b <= 0:
+        return 0.5
+    if a <= 0:
+        return 1.0
+    if b <= 0:
+        return 0.0
+    return 0.25 * (soup_servings(a - 4, b) + soup_servings(a - 3, b - 1)
+                   + soup_servings(a - 2, b - 2) + soup_servings(a - 1, b - 3))` }, { lang: 'js', code: String.raw`
+function soupServings(a, b) {                         // a, b in units of 25 ml
+  if (a <= 0 && b <= 0) return 0.5;
+  if (a <= 0) return 1.0;
+  if (b <= 0) return 0.0;
+  return 0.25 * (soupServings(a - 4, b) + soupServings(a - 3, b - 1)
+               + soupServings(a - 2, b - 2) + soupServings(a - 1, b - 3));
+}` }, { lang: 'cpp', code: String.raw`
+double soupServings(int a, int b) {                   // a, b in units of 25 ml
+    if (a <= 0 && b <= 0) return 0.5;
+    if (a <= 0) return 1.0;
+    if (b <= 0) return 0.0;
+    return 0.25 * (soupServings(a - 4, b) + soupServings(a - 3, b - 1)
+                 + soupServings(a - 2, b - 2) + soupServings(a - 1, b - 3));
+}` }] } },
     mcq: { q: 'Why can we return 1.0 when n is large (≈ 4800+)?', options: ['A is served 2.5 units on average vs 1.5 for B, so A almost surely empties first and the answer is within 10<sup>−5</sup> of 1', 'Because the DP overflows', 'Because both soups always empty together', 'It is a LeetCode rule'], answer: 0, explain: 'The expected serving per turn is 62.5 ml of A vs 37.5 ml of B. As n grows, the probability mass shifts to "A first", and numerically it is within 10<sup>−5</sup> of 1 once n exceeds about 4800.' },
     hints: [`<p><b>Aha:</b> divide by 25 (round up) so moves become (4,0), (3,1), (2,2), (1,3). State (a, b) with memo.</p>`, `<p>Base cases: both ≤ 0 → 0.5; only a ≤ 0 → 1; only b ≤ 0 → 0. Otherwise average the four children.</p>`, `<p>For n &gt; 4800 return 1.0 (measure the threshold by printing the DP for growing n). States ≤ 193 × 193.</p>`],
     tests: { sig: "int -> double", fn: "soupServings", cmp: "float", cases: [
@@ -4151,7 +4681,7 @@ public:
     statement: `<p>Alice starts with 0 points and draws while she has <b>fewer than</b> <code>k</code> points. Each draw adds a uniform random integer in <code>[1, maxPts]</code>. Return the probability that she finishes with <b>≤ n</b> points.</p>`,
     constraints: `0 ≤ k ≤ n ≤ 10<sup>4</sup>, 1 ≤ maxPts ≤ 10<sup>4</sup>`,
     example: `<p>n = 6, k = 1, maxPts = 10 → <b>0.6</b>: she draws once; 6 of the 10 outcomes are ≤ 6. n = 21, k = 17, maxPts = 10 → ≈ <b>0.73278</b>.</p>`,
-    brute: { why: `<p>dp[i] = (1/maxPts) · Σ dp[i − d] for d = 1..maxPts, only over i − d &lt; k: O(n · maxPts) = 10<sup>8</sup>. The waste: consecutive sums share maxPts − 1 terms.</p>`, code: `
+    brute: { why: `<p>dp[i] = (1/maxPts) · Σ dp[i − d] for d = 1..maxPts, only over i − d &lt; k: O(n · maxPts) = 10<sup>8</sup>. The waste: consecutive sums share maxPts − 1 terms.</p>`, code: { lang: 'java', code: `
       double bruteNew21(int n, int k, int maxPts) {
           if (k == 0) return 1.0;
           double[] dp = new double[n + 1];
@@ -4165,7 +4695,49 @@ public:
               if (i >= k) ans += dp[i];
           }
           return ans;
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def new21_game(n, k, max_pts):
+    if k == 0:
+        return 1.0
+    dp = [0.0] * (n + 1)
+    dp[0] = 1.0
+    ans = 0.0
+    for i in range(1, n + 1):
+        for d in range(1, max_pts + 1):
+            frm = i - d
+            if 0 <= frm < k:                          # only draw while < k
+                dp[i] += dp[frm] / max_pts
+        if i >= k:
+            ans += dp[i]
+    return ans` }, { lang: 'js', code: String.raw`
+function new21Game(n, k, maxPts) {
+  if (k === 0) return 1.0;
+  const dp = new Array(n + 1).fill(0);
+  dp[0] = 1.0;
+  let ans = 0;
+  for (let i = 1; i <= n; i++) {
+    for (let d = 1; d <= maxPts; d++) {
+      const from = i - d;
+      if (from >= 0 && from < k) dp[i] += dp[from] / maxPts;   // only draw while < k
+    }
+    if (i >= k) ans += dp[i];
+  }
+  return ans;
+}` }, { lang: 'cpp', code: String.raw`
+double new21Game(int n, int k, int maxPts) {
+    if (k == 0) return 1.0;
+    vector<double> dp(n + 1, 0.0);
+    dp[0] = 1.0;
+    double ans = 0;
+    for (int i = 1; i <= n; i++) {
+        for (int d = 1; d <= maxPts; d++) {
+            int from = i - d;
+            if (from >= 0 && from < k) dp[i] += dp[from] / maxPts;   // only draw while < k
+        }
+        if (i >= k) ans += dp[i];
+    }
+    return ans;
+}` }] } },
     mcq: { q: 'dp[i] = probability of ever having exactly i points. Which previous states contribute to dp[i]?', options: ['dp[j] for i − maxPts ≤ j ≤ i − 1 and j &lt; k', 'All dp[j] with j &lt; i', 'Only dp[i − 1]', 'dp[j] for j ≥ k'], answer: 0, explain: 'She reaches i from j by drawing i − j ∈ [1, maxPts], and she only draws when j &lt; k.' },
     hints: [`<p><b>Aha:</b> dp[i] = windowSum / maxPts where windowSum = Σ dp[j] over the last maxPts j's that are still &lt; k.</p>`, `<p>Maintain the window sum: add dp[i] if i &lt; k (it can still draw), subtract dp[i − maxPts] when it leaves the window (if it was &lt; k).</p>`, `<p>Shortcut: k = 0 or n ≥ k − 1 + maxPts → answer 1.0. Answer = Σ dp[i] for k ≤ i ≤ n.</p>`],
     tests: { sig: "int int int -> double", fn: "new21Game", cmp: "float", cases: [
@@ -4258,7 +4830,7 @@ public:
     statement: `<p>Given two arrays <code>nums1</code> and <code>nums2</code> of length <code>n</code>, rearrange <code>nums2</code> to minimise <code>Σ (nums1[i] XOR nums2[i])</code>. Return the minimum sum.</p>`,
     constraints: `1 ≤ n ≤ 14, 0 ≤ nums[i] ≤ 10<sup>7</sup>`,
     example: `<p>nums1 = [1, 0, 3], nums2 = [5, 3, 4] → <b>8</b>: rearrange nums2 to [5, 4, 3]: (1⊕5) + (0⊕4) + (3⊕3) = 4 + 4 + 0 = 8.</p>`,
-    brute: { why: `<p>Try all n! orders of nums2: 14! ≈ 8.7·10<sup>10</sup>. Waste: after matching the first i elements of nums1, only <i>which</i> nums2 elements are used matters.</p>`, code: `
+    brute: { why: `<p>Try all n! orders of nums2: 14! ≈ 8.7·10<sup>10</sup>. Waste: after matching the first i elements of nums1, only <i>which</i> nums2 elements are used matters.</p>`, code: { lang: 'java', code: `
       int bestX;
       int bruteXor(int[] a, int[] b) {
           bestX = Integer.MAX_VALUE;
@@ -4273,7 +4845,58 @@ public:
               perm(a, b, i + 1, used, sum + (a[i] ^ b[j]));
               used[j] = false;
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def minimum_xor_sum(nums1, nums2):
+    n = len(nums1)
+    used = [False] * n
+    best = float("inf")
+
+    def perm(i, total):
+        nonlocal best
+        if i == n:
+            best = min(best, total)
+            return
+        for j in range(n):
+            if used[j]:
+                continue
+            used[j] = True
+            perm(i + 1, total + (nums1[i] ^ nums2[j]))
+            used[j] = False
+
+    perm(0, 0)
+    return best` }, { lang: 'js', code: String.raw`
+function minimumXORSum(nums1, nums2) {
+  const n = nums1.length, used = new Array(n).fill(false);
+  let best = Infinity;
+
+  function perm(i, sum) {
+    if (i === n) { best = Math.min(best, sum); return; }
+    for (let j = 0; j < n; j++) {
+      if (used[j]) continue;
+      used[j] = true;
+      perm(i + 1, sum + (nums1[i] ^ nums2[j]));
+      used[j] = false;
+    }
+  }
+
+  perm(0, 0);
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int minimumXORSum(vector<int>& nums1, vector<int>& nums2) {
+    int n = nums1.size(), best = INT_MAX;
+    vector<char> used(n, 0);
+    function<void(int, int)> perm = [&](int i, int sum) {
+        if (i == n) { best = min(best, sum); return; }
+        for (int j = 0; j < n; j++) {
+            if (used[j]) continue;
+            used[j] = 1;
+            perm(i + 1, sum + (nums1[i] ^ nums2[j]));
+            used[j] = 0;
+        }
+    };
+    perm(0, 0);
+    return best;
+}` }] } },
     mcq: { q: 'Which known problem is this in disguise?', options: ['Assignment problem with cost[i][j] = a[i] XOR b[j]', 'Travelling salesman', 'Knapsack', 'Longest common subsequence'], answer: 0, explain: 'Each nums1 index gets exactly one nums2 index — a perfect matching minimising total cost. Topic 1\'s dp[mask] with the popcount trick solves it in O(2<sup>n</sup>·n).' },
     hints: [`<p><b>Aha:</b> it's the worker–job assignment problem from topic 1.</p>`, `<p>dp[mask] = min sum after pairing nums1[0..popcount(mask)−1] with the nums2 elements in mask.</p>`, `<p>Recipe: dp[0] = 0; for mask ascending: i = bitCount(mask); for j not in mask: relax dp[mask | 1&lt;&lt;j] with dp[mask] + (nums1[i] ^ nums2[j]). Answer dp[full].</p>`],
     tests: { sig: "int[] int[] -> int", fn: "minimumXORSum", cases: [
@@ -4378,7 +5001,7 @@ public:
     statement: `<p>Given an array of strings <code>words</code> (no word is a substring of another), return the <b>shortest</b> string that contains every word as a substring. If several exist, return any.</p>`,
     constraints: `1 ≤ words.length ≤ 12, 1 ≤ words[i].length ≤ 20, lowercase letters, all distinct`,
     example: `<p>words = ["catg", "ctaagt", "gcta", "ttca", "atgcatc"] → <b>"gctaagttcatgcatc"</b> (length 16). Overlaps: "gcta"+"ctaagt" share "cta", "ctaagt"+"ttca" share "t", "ttca"+"catg" share "ca", "catg"+"atgcatc" share "atg".</p>`,
-    brute: { why: `<p>Try all n! orders and glue each with maximum overlaps: 12! ≈ 4.8·10<sup>8</sup> orders × n work. Waste: the best way to glue a <i>set</i> of words ending with word j is reused by many orders — that's TSP structure.</p>`, code: `
+    brute: { why: `<p>Try all n! orders and glue each with maximum overlaps: 12! ≈ 4.8·10<sup>8</sup> orders × n work. Waste: the best way to glue a <i>set</i> of words ending with word j is reused by many orders — that's TSP structure.</p>`, code: { lang: 'java', code: `
       String bestS;
       String bruteSuperstring(String[] words) {
           bestS = null;
@@ -4400,7 +5023,79 @@ public:
               permute(w, used, j, cur + w[j].substring(o), placed + 1);
               used[j] = false;
           }
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def shortest_superstring(words):
+    used = [False] * len(words)
+    best = None
+
+    def permute(last, cur, placed):
+        nonlocal best
+        if placed == len(words):
+            if best is None or len(cur) < len(best):
+                best = cur
+            return
+        for j, w in enumerate(words):
+            if used[j]:
+                continue
+            o = 0
+            if last >= 0:
+                for ln in range(min(len(cur), len(w)), 0, -1):
+                    if cur.endswith(w[:ln]):
+                        o = ln
+                        break
+            used[j] = True
+            permute(j, cur + w[o:], placed + 1)
+            used[j] = False
+
+    permute(-1, "", 0)
+    return best` }, { lang: 'js', code: String.raw`
+function shortestSuperstring(words) {
+  const used = new Array(words.length).fill(false);
+  let best = null;
+
+  function permute(last, cur, placed) {
+    if (placed === words.length) {
+      if (best === null || cur.length < best.length) best = cur;
+      return;
+    }
+    for (let j = 0; j < words.length; j++) {
+      if (used[j]) continue;
+      let o = 0;
+      if (last >= 0)
+        for (let len = Math.min(cur.length, words[j].length); len > 0; len--)
+          if (cur.endsWith(words[j].slice(0, len))) { o = len; break; }
+      used[j] = true;
+      permute(j, cur + words[j].slice(o), placed + 1);
+      used[j] = false;
+    }
+  }
+
+  permute(-1, "", 0);
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+string shortestSuperstring(vector<string>& w) {
+    vector<char> used(w.size(), 0);
+    string best;
+    bool found = false;
+    function<void(int, string, int)> permute = [&](int last, string cur, int placed) {
+        if (placed == (int)w.size()) {
+            if (!found || cur.size() < best.size()) { best = cur; found = true; }
+            return;
+        }
+        for (int j = 0; j < (int)w.size(); j++) {
+            if (used[j]) continue;
+            int o = 0;
+            if (last >= 0)
+                for (int len = min(cur.size(), w[j].size()); len > 0; len--)
+                    if (cur.compare(cur.size() - len, len, w[j], 0, len) == 0) { o = len; break; }
+            used[j] = 1;
+            permute(j, cur + w[j].substr(o), placed + 1);
+            used[j] = 0;
+        }
+    };
+    permute(-1, "", 0);
+    return best;
+}` }] } },
     mcq: { q: 'What plays the role of "distance" between word i and word j in the TSP view?', options: ['−overlap(i, j): the longer the overlap, the cheaper the step', 'The edit distance', 'The length of word j', 'The number of common letters'], answer: 0, explain: 'Appending j after i adds len(j) − overlap(i, j) characters. Minimising total length = maximising total overlap along a path (no return edge).' },
     hints: [`<p><b>Aha:</b> precompute overlap[i][j] = longest suffix of words[i] that is a prefix of words[j]. Then pick an order (a path) maximising the sum of overlaps — TSP without returning home.</p>`, `<p>dp[mask][j] = max total overlap for a path visiting mask and ending at j. Store parent[mask][j] to rebuild the order.</p>`, `<p>Start states dp[1&lt;&lt;i][i] = 0 for every i (any start). After the DP, pick the best last word, walk parents back, glue words skipping their overlaps.</p>`],
     tests: { sig: "string[] -> string", fn: "shortestSuperstring", check: "(args, out, expected) => typeof out === \"string\" && out.length === expected && args[0].every((w) => out.includes(w))", cases: [
@@ -4580,7 +5275,7 @@ public:
     statement: `<p>Given <code>n</code>, return how many positive integers in <code>[1, n]</code> have <b>at least one repeated digit</b>.</p>`,
     constraints: `1 ≤ n ≤ 10<sup>9</sup>`,
     example: `<p>n = 20 → <b>1</b> (only ${H.c('r', '11')}). n = 100 → <b>10</b> (11, 22, …, 99 and 100). n = 1000 → <b>262</b>.</p>`,
-    brute: { why: `<p>Loop 1..n and check digits with a 10-slot seen array: 10<sup>9</sup> × ~10 operations — about 10 seconds or more even in a compiled language, far worse in Python. Waste: digit states repeat massively.</p>`, code: `
+    brute: { why: `<p>Loop 1..n and check digits with a 10-slot seen array: 10<sup>9</sup> × ~10 operations — about 10 seconds or more even in a compiled language, far worse in Python. Waste: digit states repeat massively.</p>`, code: { lang: 'java', code: `
       int bruteRepeated(int n) {
           int count = 0;
           for (int x = 1; x <= n; x++) {
@@ -4591,7 +5286,41 @@ public:
               }
           }
           return count;
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def num_dup_digits_at_most_n(n):
+    count = 0
+    for x in range(1, n + 1):
+        seen = [False] * 10
+        t = x
+        while t > 0:
+            if seen[t % 10]:
+                count += 1
+                break
+            seen[t % 10] = True
+            t //= 10
+    return count` }, { lang: 'js', code: String.raw`
+function numDupDigitsAtMostN(n) {
+  let count = 0;
+  for (let x = 1; x <= n; x++) {
+    const seen = new Array(10).fill(false);
+    for (let t = x; t > 0; t = Math.floor(t / 10)) {
+      if (seen[t % 10]) { count++; break; }
+      seen[t % 10] = true;
+    }
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+int numDupDigitsAtMostN(int n) {
+    int count = 0;
+    for (int x = 1; x <= n; x++) {
+        bool seen[10] = {false};
+        for (int t = x; t > 0; t /= 10) {
+            if (seen[t % 10]) { count++; break; }
+            seen[t % 10] = true;
+        }
+    }
+    return count;
+}` }] } },
     mcq: { q: 'What extra state does this digit DP need compared with a "digit sum" DP?', options: ['A 10-bit mask of used digits, plus a started flag for leading zeros', 'Only the last digit', 'The digit sum mod 10', 'Nothing extra'], answer: 0, explain: 'Distinctness depends on which digits were already used (mask). Leading zeros must not mark 0 as used, so we track whether the number has started.' },
     hints: [`<p><b>Aha:</b> complement counting: answer = n − (numbers in [1, n] with all distinct digits).</p>`, `<p>Digit DP state (pos, usedMask, tight, started). Skip a digit already in the mask once started. Memoise free and started states.</p>`, `<p>The DP counts 0 too (all-leading-zeros path) → subtract 1. Check: n = 20 → 20 distinct-digit numbers in [0, 20] minus 11 → 21 − 1 = 20 with 0 → distinct count in [1,20] = 19 → answer 1.</p>`],
     tests: { sig: "int -> int", fn: "numDupDigitsAtMostN", cases: [
@@ -4736,7 +5465,7 @@ public:
     statement: `<p>Find the length of the longest subsequence of <code>nums</code> that is <b>strictly increasing</b> and where every two adjacent chosen elements differ by <b>at most</b> <code>k</code>.</p>`,
     constraints: `1 ≤ N ≤ 10<sup>5</sup>, 1 ≤ nums[i], k ≤ 10<sup>5</sup>`,
     example: `<p>nums = [4, 2, 1, 4, 3, 4, 5, 8, 15], k = 3 → <b>5</b>: ${H.c('g', '1, 3, 4, 5, 8')} (gaps 2, 1, 1, 3). 15 can't follow 8 (gap 7 &gt; 3).</p>`,
-    brute: { why: `<p>O(N<sup>2</sup>) DP: dp[i] = 1 + max dp[j] over j &lt; i with nums[i] − k ≤ nums[j] &lt; nums[i]. 10<sup>10</sup> steps. Waste: the condition is a <b>value range</b> — a segment tree over values answers it in O(log V).</p>`, code: `
+    brute: { why: `<p>O(N<sup>2</sup>) DP: dp[i] = 1 + max dp[j] over j &lt; i with nums[i] − k ≤ nums[j] &lt; nums[i]. 10<sup>10</sup> steps. Waste: the condition is a <b>value range</b> — a segment tree over values answers it in O(log V).</p>`, code: { lang: 'java', code: `
       int bruteLis2(int[] nums, int k) {
           int n = nums.length, best = 0;
           int[] dp = new int[n];
@@ -4747,7 +5476,41 @@ public:
               best = Math.max(best, dp[i]);
           }
           return best;
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def length_of_lis(nums, k):
+    n = len(nums)
+    best = 0
+    dp = [0] * n
+    for i in range(n):
+        dp[i] = 1
+        for j in range(i):
+            if nums[j] < nums[i] and nums[i] - nums[j] <= k:
+                dp[i] = max(dp[i], dp[j] + 1)
+        best = max(best, dp[i])
+    return best` }, { lang: 'js', code: String.raw`
+function lengthOfLIS(nums, k) {
+  const n = nums.length;
+  const dp = new Array(n).fill(0);
+  let best = 0;
+  for (let i = 0; i < n; i++) {
+    dp[i] = 1;
+    for (let j = 0; j < i; j++)
+      if (nums[j] < nums[i] && nums[i] - nums[j] <= k) dp[i] = Math.max(dp[i], dp[j] + 1);
+    best = Math.max(best, dp[i]);
+  }
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int lengthOfLIS(vector<int>& nums, int k) {
+    int n = nums.size(), best = 0;
+    vector<int> dp(n);
+    for (int i = 0; i < n; i++) {
+        dp[i] = 1;
+        for (int j = 0; j < i; j++)
+            if (nums[j] < nums[i] && nums[i] - nums[j] <= k) dp[i] = max(dp[i], dp[j] + 1);
+        best = max(best, dp[i]);
+    }
+    return best;
+}` }] } },
     mcq: { q: 'Which range do we query for x = nums[i]?', options: ['values [x − k, x − 1]', 'values [x − k, x]', 'indices [i − k, i − 1]', 'values [1, x − 1]'], answer: 0, explain: 'The previous chosen value must be strictly smaller (≤ x − 1) and within k (≥ x − k). It is a range over <b>values</b>, not indices.' },
     hints: [`<p><b>Aha:</b> index the DP by value: best[v] = longest valid subsequence ending with value v, processed left to right.</p>`, `<p>Need max(best[x−k .. x−1]) → segment tree with range max and point update (values only grow, but the range has a lower bound, so Fenwick-prefix-max isn't enough).</p>`, `<p>Recipe: for x in nums: q = rangeMax(max(1, x−k), x−1); cur = q + 1; update(x, cur); ans = max(ans, cur). Iterative bottom-up segment tree keeps it short.</p>`],
     tests: { sig: "int[] int -> int", fn: "lengthOfLIS", cases: [
@@ -4886,7 +5649,7 @@ public:
     statement: `<p>Houses stand on a street at positions <code>houses[i]</code>. Place <code>k</code> mailboxes anywhere on the street to minimise the total distance from every house to its nearest mailbox. Return that minimum.</p>`,
     constraints: `1 ≤ k ≤ n ≤ 100 (LeetCode); the D&amp;C version scales to n ≈ 10<sup>4</sup>. Positions are distinct, ≤ 10<sup>4</sup>.`,
     example: `<p>houses = [1, 4, 8, 10, 20], k = 3 → <b>5</b>: mailboxes at 3, 9, 20 → |1−3| + |4−3| + |8−9| + |10−9| + 0 = 2 + 1 + 1 + 1 + 0 = 5.</p>`,
-    brute: { why: `<p>Layered DP where each group cost is recomputed from scratch: O(k·n<sup>2</sup>) transitions × O(n) per cost = O(k·n<sup>3</sup>). Fine for n = 100, hopeless for 10<sup>4</sup>. Waste: group costs can be precomputed, and the best split is monotone.</p>`, code: `
+    brute: { why: `<p>Layered DP where each group cost is recomputed from scratch: O(k·n<sup>2</sup>) transitions × O(n) per cost = O(k·n<sup>3</sup>). Fine for n = 100, hopeless for 10<sup>4</sup>. Waste: group costs can be precomputed, and the best split is monotone.</p>`, code: { lang: 'java', code: `
       int bruteMailboxes(int[] houses, int k) {
           int[] h = houses.clone();
           Arrays.sort(h);
@@ -4907,7 +5670,60 @@ public:
           long best = INF;
           for (int t = 1; t <= k; t++) best = Math.min(best, dp[t][n]);
           return (int) best;
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def min_distance(houses, k):
+    h = sorted(houses)
+    n = len(h)
+    INF = float("inf")
+    dp = [[INF] * (n + 1) for _ in range(k + 1)]
+    dp[0][0] = 0
+    for t in range(1, k + 1):
+        for i in range(1, n + 1):
+            for j in range(i):
+                if dp[t - 1][j] >= INF:
+                    continue
+                med = h[(j + i - 1) // 2]             # a mailbox at the median is optimal
+                s = sum(abs(h[q] - med) for q in range(j, i))
+                dp[t][i] = min(dp[t][i], dp[t - 1][j] + s)
+    return min(dp[t][n] for t in range(1, k + 1))` }, { lang: 'js', code: String.raw`
+function minDistance(houses, k) {
+  const h = houses.slice().sort((x, y) => x - y);
+  const n = h.length;
+  const dp = Array.from({ length: k + 1 }, () => new Array(n + 1).fill(Infinity));
+  dp[0][0] = 0;
+  for (let t = 1; t <= k; t++)
+    for (let i = 1; i <= n; i++)
+      for (let j = 0; j < i; j++) {
+        if (dp[t - 1][j] === Infinity) continue;
+        const med = h[Math.floor((j + i - 1) / 2)];   // a mailbox at the median is optimal
+        let s = 0;
+        for (let q = j; q < i; q++) s += Math.abs(h[q] - med);
+        dp[t][i] = Math.min(dp[t][i], dp[t - 1][j] + s);
+      }
+  let best = Infinity;
+  for (let t = 1; t <= k; t++) best = Math.min(best, dp[t][n]);
+  return best;
+}` }, { lang: 'cpp', code: String.raw`
+int minDistance(vector<int>& houses, int k) {
+    vector<int> h = houses;
+    sort(h.begin(), h.end());
+    int n = h.size();
+    const long long INF = LLONG_MAX / 4;
+    vector<vector<long long>> dp(k + 1, vector<long long>(n + 1, INF));
+    dp[0][0] = 0;
+    for (int t = 1; t <= k; t++)
+        for (int i = 1; i <= n; i++)
+            for (int j = 0; j < i; j++) {
+                if (dp[t - 1][j] >= INF) continue;
+                int med = h[(j + i - 1) / 2];         // a mailbox at the median is optimal
+                long long s = 0;
+                for (int q = j; q < i; q++) s += abs(h[q] - med);
+                dp[t][i] = min(dp[t][i], dp[t - 1][j] + s);
+            }
+    long long best = INF;
+    for (int t = 1; t <= k; t++) best = min(best, dp[t][n]);
+    return (int)best;
+}` }] } },
     mcq: { q: 'Where should one mailbox go for a group of sorted houses?', options: ['At the median house', 'At the mean position', 'At the first house', 'Anywhere between the two ends'], answer: 0, explain: 'Sum of absolute distances is minimised at a median: moving away from it increases the distance to more than half of the houses.' },
     hints: [`<p><b>Aha:</b> sort; each mailbox serves a contiguous block, placed at its median. cost[i][j] = cost[i+1][j−1] + h[j] − h[i] (peel off the two ends).</p>`, `<p>dp[t][i] = min<sub>j</sub> dp[t−1][j] + cost(j, i−1). The cost satisfies the quadrangle inequality → opt monotone → divide &amp; conquer per layer.</p>`, `<p>k ≥ n → 0. Recipe: precompute cost by length; layer 1 = cost(0, i−1); layers 2..k with compute(l, r, optL, optR) as in topic 6.</p>`],
     tests: { sig: "int[] int -> int", fn: "minDistance", cases: [
@@ -5088,7 +5904,7 @@ public:
     statement: `<p>There are <code>n</code> trees with heights <code>a[0] &lt; a[1] &lt; … &lt; a[n−1]</code> (a[0] = 1) and recharge costs <code>b[0] &gt; b[1] &gt; … &gt; b[n−1] = 0</code>. Cutting tree i completely costs <code>a[i]</code> uses of the saw; after each use you must recharge, paying <code>b[j]</code> where j is the <b>largest index of a tree already cut down</b>. Tree 0 is cut at the start for free. Minimise the total cost to cut tree n − 1 (after which recharging is free).</p>`,
     constraints: `1 ≤ n ≤ 10<sup>5</sup>, 1 ≤ a[i] ≤ 10<sup>9</sup>, 0 ≤ b[i] ≤ 10<sup>9</sup>; answers up to ~10<sup>18</sup>`,
     example: `<p>a = [1, 2, 3, 4, 5], b = [5, 4, 3, 2, 0] → <b>25</b>: cut tree 4 right after tree 0, paying b[0]·a[4] = 5 × 5 = 25. Any detour (e.g. 0 → 1 → 4: 5·2 + 4·5 = 30) costs more here. With a = [1, 2, 3, 10, 20, 30], b = [6, 5, 4, 3, 2, 0] the answer is <b>138</b>.</p>`,
-    brute: { why: `<p>dp[i] = min<sub>j&lt;i</sub> dp[j] + b[j]·a[i]: O(n<sup>2</sup>) = 10<sup>10</sup>. Waste: each j is a line with slope b[j] and intercept dp[j]; most lines are never the minimum.</p>`, code: `
+    brute: { why: `<p>dp[i] = min<sub>j&lt;i</sub> dp[j] + b[j]·a[i]: O(n<sup>2</sup>) = 10<sup>10</sup>. Waste: each j is a line with slope b[j] and intercept dp[j]; most lines are never the minimum.</p>`, code: { lang: 'java', code: `
       long bruteKalila(long[] a, long[] b) {
           int n = a.length;
           long[] dp = new long[n];
@@ -5097,7 +5913,35 @@ public:
               for (int j = 0; j < i; j++) dp[i] = Math.min(dp[i], dp[j] + b[j] * a[i]);
           }
           return dp[n - 1];
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def min_cost(a, b):
+    n = len(a)
+    dp = [0] * n
+    for i in range(1, n):
+        dp[i] = min(dp[j] + b[j] * a[i] for j in range(i))
+    return dp[n - 1]` }, { lang: 'js', code: String.raw`
+function minCost(a, b) {
+  const n = a.length;
+  const A = a.map(BigInt), B = b.map(BigInt);         // costs reach 10^18, past 2^53, so BigInt
+  const dp = new Array(n).fill(0n);
+  for (let i = 1; i < n; i++) {
+    dp[i] = dp[0] + B[0] * A[i];
+    for (let j = 1; j < i; j++) {
+      const cand = dp[j] + B[j] * A[i];
+      if (cand < dp[i]) dp[i] = cand;
+    }
+  }
+  return dp[n - 1];
+}` }, { lang: 'cpp', code: String.raw`
+long long minCost(vector<long long>& a, vector<long long>& b) {
+    int n = a.size();
+    vector<long long> dp(n, 0);
+    for (int i = 1; i < n; i++) {
+        dp[i] = LLONG_MAX;
+        for (int j = 0; j < i; j++) dp[i] = min(dp[i], dp[j] + b[j] * a[i]);
+    }
+    return dp[n - 1];
+}` }] } },
     mcq: { q: 'In dp[i] = min(dp[j] + b[j]·a[i]), which guarantees make the O(n) deque version valid?', options: ['b decreasing (slopes added in decreasing order) and a increasing (queries move right)', 'a and b both increasing', 'b[n−1] = 0 only', 'Nothing — CHT always works in O(n)'], answer: 0, explain: 'For min-CHT with a deque we need slopes inserted in decreasing order (b strictly decreasing) and monotone queries (a strictly increasing) so the front pointer only moves forward.' },
     hints: [`<p><b>Aha:</b> once you cut tree n−1 everything is free, and the optimal plan is a chain 0 → j<sub>1</sub> → … → n−1. dp[i] = min<sub>j</sub> dp[j] + b[j]·a[i].</p>`, `<p>Line for j: y = b[j]·x + dp[j]; query at x = a[i]. Sorted slopes and queries → monotone CHT deque.</p>`, `<p>Overflow: intercepts ~10<sup>18</sup> × slope differences ~10<sup>9</sup> → 10<sup>27</sup>. Compare 128-bit products: <code>__int128</code> in C++; Java <code>Math.multiplyHigh</code> (high 64 bits) + <code>Long.compareUnsigned</code> (low bits); <code>BigInt</code> in JS; plain integers in Python.</p>`],
     tests: { sig: "long[] long[] -> long", fn: "minCost", cases: [
@@ -5212,7 +6056,7 @@ public:
     statement: `<p>Given <code>n</code> integers, count the non-empty subsets (by index) whose bitwise AND equals 0. Return the count modulo 10<sup>9</sup> + 7.</p>`,
     constraints: `1 ≤ n ≤ 10<sup>6</sup>, 0 ≤ a[i] ≤ 10<sup>6</sup> (&lt; 2<sup>20</sup>)`,
     example: `<p>a = [0, 1, 2, 3] → <b>10</b>: all 8 subsets containing 0, plus {1, 2} and {1, 2, 3}. a = [2, 3, 3] → <b>0</b> (every element has bit 1 set).</p>`,
-    brute: { why: `<p>Enumerate 2<sup>n</sup> subsets — impossible for n = 10<sup>6</sup>. Waste: the AND only cares about bit patterns; with 2<sup>20</sup> possible masks we can count via supersets.</p>`, code: `
+    brute: { why: `<p>Enumerate 2<sup>n</sup> subsets — impossible for n = 10<sup>6</sup>. Waste: the AND only cares about bit patterns; with 2<sup>20</sup> possible masks we can count via supersets.</p>`, code: { lang: 'java', code: `
       int bruteAndZero(int[] a) {                         // n <= 20 only
           int n = a.length, count = 0;
           for (int s = 1; s < (1 << n); s++) {
@@ -5221,7 +6065,37 @@ public:
               if (and == 0) count++;
           }
           return count;
-      }` },
+      }`, alt: [{ lang: 'python', code: String.raw`
+def count_and_zero(a):                                # n <= 20 only
+    n = len(a)
+    count = 0
+    for s in range(1, 1 << n):
+        acc = -1                                      # all ones
+        for i in range(n):
+            if s >> i & 1:
+                acc &= a[i]
+        if acc == 0:
+            count += 1
+    return count` }, { lang: 'js', code: String.raw`
+function countAndZero(a) {                            // n <= 20 only
+  const n = a.length;
+  let count = 0;
+  for (let s = 1; s < (1 << n); s++) {
+    let and = -1;                                     // all ones
+    for (let i = 0; i < n; i++) if ((s >> i & 1) === 1) and &= a[i];
+    if (and === 0) count++;
+  }
+  return count;
+}` }, { lang: 'cpp', code: String.raw`
+int countAndZero(vector<int>& a) {                    // n <= 20 only
+    int n = a.size(), count = 0;
+    for (int s = 1; s < (1 << n); s++) {
+        int acc = -1;                                 // all ones
+        for (int i = 0; i < n; i++) if (s >> i & 1) acc &= a[i];
+        if (acc == 0) count++;
+    }
+    return count;
+}` }] } },
     mcq: { q: 'G[m] = how many elements are supersets of m. How many non-empty subsets have an AND that contains all bits of m?', options: ['2<sup>G[m]</sup> − 1', 'G[m]', 'G[m]²', '2<sup>n</sup> − G[m]'], answer: 0, explain: 'AND ⊇ m ⇔ every chosen element ⊇ m. Any non-empty subset of those G[m] elements works: 2<sup>G[m]</sup> − 1.' },
     hints: [`<p><b>Aha:</b> "AND = 0" is hard to count directly, but "AND ⊇ m" is easy: 2<sup>G[m]</sup> − 1 with G = count of supersets of m.</p>`, `<p>Inclusion–exclusion: #(AND = 0) = Σ<sub>m</sub> (−1)<sup>popcount(m)</sup> (2<sup>G[m]</sup> − 1). Compute G with sum-over-supersets SOS DP.</p>`, `<p>Precompute powers of 2 mod p up to n. Keep results in [0, p) with +MOD before %. 20 bits × 2<sup>20</sup> ≈ 2·10<sup>7</sup> steps.</p>`],
     tests: { sig: 'int[] -> int', fn: 'countAndZero', cases: [
@@ -5337,7 +6211,7 @@ public:
   quiz.push({ q: 'count(L..R) of numbers with property P is computed as…', options: ['f(R) − f(L − 1), where f(N) counts in [0, N]', 'f(R) − f(L)', 'f(R − L)', 'f(R) + f(L) − 1'], answer: 0, explain: 'f(R) counts [0, R], f(L − 1) counts [0, L − 1]; the difference is exactly [L, R]. Using f(L) would wrongly exclude L itself.' });
   quiz.push({ q: 'Rolling a die until you see a 6. Expected number of rolls?', options: ['6', '3.5', '5', '36'], answer: 0, explain: 'E = 1 + (5/6)·E ⇒ E = 6. In general a success with probability p takes 1/p tries on average.' });
   quiz.push({ q: 'An expected-value answer must be printed as P · Q<sup>−1</sup> mod 10<sup>9</sup>+7. How do you divide by Q?', options: ['Multiply by Q<sup>p−2</sup> mod p (Fermat)', 'Use integer division Q', 'Use doubles and round', 'Multiply by Q mod p'], answer: 0, explain: 'p is prime, so Q<sup>p−1</sup> ≡ 1 and Q<sup>p−2</sup> is the modular inverse. Fast exponentiation computes it in O(log p).' });
-  quiz.push({ q: 'dp[i] = nums[i] + max(dp[i−k..i−1]). Best data structure for the max?', options: ['Monotonic deque (O(1) amortised)', 'Sorted array with insertion (O(k))', 'HashMap', 'Stack of all dp values'], answer: 0, explain: 'A sliding-window maximum over dp values: indices with dominated dp are discarded, the front is the window max.' });
+  quiz.push({ q: 'dp[i] = nums[i] + max(dp[i−k..i−1]). Best data structure for the max?', options: ['Monotonic deque (O(1) amortised)', 'Sorted array with insertion (O(k))', 'A hash map (HashMap / dict / Map / unordered_map)', 'Stack of all dp values'], answer: 0, explain: 'A sliding-window maximum over dp values: indices with dominated dp are discarded, the front is the window max.' });
   quiz.push({ q: 'Frog 3: dp[i] = min<sub>j</sub> dp[j] + (h<sub>i</sub> − h<sub>j</sub>)² + C. After expanding, the line for j has…', options: ['slope −2h<sub>j</sub>, intercept dp[j] + h<sub>j</sub>²', 'slope h<sub>j</sub>², intercept dp[j]', 'slope dp[j], intercept −2h<sub>j</sub>', 'slope −2h<sub>i</sub>, intercept h<sub>i</sub>²'], answer: 0, explain: '(h<sub>i</sub> − h<sub>j</sub>)² = h<sub>i</sub>² − 2h<sub>i</sub>h<sub>j</sub> + h<sub>j</sub>². With x = h<sub>i</sub>: slope −2h<sub>j</sub>, intercept dp[j] + h<sub>j</sub>²; h<sub>i</sub>² + C is added after the min.' });
   quiz.push({ q: 'Divide &amp; conquer optimisation requires…', options: ['opt(i) ≤ opt(i + 1) within a layer (e.g. cost satisfies the quadrangle inequality)', 'The cost to be linear', 'K = 2', 'All values to be distinct'], answer: 0, explain: 'Monotone split points let solve(l, r, optL, optR) restrict each half\'s search range. QI on the cost is the usual sufficient condition.' });
   quiz.push({ q: 'Knuth optimisation scans k in which range for cell (i, j)?', options: ['[opt[i][j−1], opt[i+1][j]]', '[i, j − 1]', '[opt[i][j+1], opt[i−1][j]]', '[0, n − 1]'], answer: 0, explain: 'Knuth\'s condition sandwiches the optimum between the optima of the two shorter neighbouring intervals; the scan lengths telescope to O(N) per diagonal → O(N²) total.' });

@@ -297,13 +297,35 @@ cout << ((long long)lo + hi) / 2 << "\\n"; // 1750000000  (safe, 64-bit sum)` }
         <p>target = 2 → Output: ${H.c('r', '-1')}: 2 would sit between 0 and 3, but it is not in the array.</p>`,
       brute: {
         why: `<p>Walk from left to right and compare every element with the target. That is up to N comparisons → O(N). The waste: the array is <b>sorted</b>, and we ignore that gift. Once we see 3 &lt; 9 we already know 9 is not at any index to the left of 3, yet we keep scanning.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           int linearSearch(int[] nums, int target) {
               for (int i = 0; i < nums.length; i++) {
                   if (nums[i] == target) return i;   // found
               }
               return -1;                             // checked all N items
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def search(nums, target):
+    for i in range(len(nums)):
+        if nums[i] == target:
+            return i           # found
+    return -1                  # checked all N items` },
+            { lang: 'js', code: `function search(nums, target) {
+  for (let i = 0; i < nums.length; i++) {
+    if (nums[i] === target) return i;   // found
+  }
+  return -1;                            // checked all N items
+}` },
+            { lang: 'cpp', code: `int search(const vector<int>& nums, int target) {
+    for (size_t i = 0; i < nums.size(); i++) {
+        if (nums[i] == target) return i;   // found
+    }
+    return -1;                             // checked all N items
+}` }
+          ]
+        }
       },
       mcq: {
         q: `Searching for 9 in <code>[-1, 0, 3, 5, 9, 12]</code>: mid = 2 and <code>nums[2] = 3</code>. What should you do?`,
@@ -681,7 +703,9 @@ cout << (present ? "905 present" : "905 missing") << ", " << (to - from) << " ev
         <p>target = 6 → Output: ${H.c('r', '[-1, -1]')} (6 never appears).</p>`,
       brute: {
         why: `<p>Scan left to right; the first match is "first", keep updating "last". That is O(N). Even "binary search to find one 8, then walk left and right" is O(N) in the worst case: if all 10<sup>5</sup> elements are 8, the walk visits all of them. The wasted work is stepping over equal values one by one.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           int[] brute(int[] nums, int target) {
               int first = -1, last = -1;
               for (int i = 0; i < nums.length; i++) {
@@ -691,7 +715,38 @@ cout << (present ? "905 present" : "905 missing") << ", " << (to - from) << " ev
                   }
               }
               return new int[]{first, last};
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def search_range(nums, target):
+    first, last = -1, -1
+    for i in range(len(nums)):
+        if nums[i] == target:
+            if first == -1:
+                first = i      # first time we see it
+            last = i           # keep moving the end
+    return [first, last]` },
+            { lang: 'js', code: `function searchRange(nums, target) {
+  let first = -1, last = -1;
+  for (let i = 0; i < nums.length; i++) {
+    if (nums[i] === target) {
+      if (first === -1) first = i;   // first time we see it
+      last = i;                      // keep moving the end
+    }
+  }
+  return [first, last];
+}` },
+            { lang: 'cpp', code: `vector<int> searchRange(const vector<int>& nums, int target) {
+    int first = -1, last = -1;
+    for (int i = 0; i < (int)nums.size(); i++) {
+        if (nums[i] == target) {
+            if (first == -1) first = i;   // first time we see it
+            last = i;                     // keep moving the end
+        }
+    }
+    return {first, last};
+}` }
+          ]
+        }
       },
       mcq: {
         q: `While searching for the <b>first</b> 8 you land on <code>nums[mid] == 8</code>. What next?`,
@@ -966,12 +1021,32 @@ public:
         <p>target = 3 → Output: ${H.c('r', '-1')}.</p>`,
       brute: {
         why: `<p>A linear scan finds the target in O(N). It ignores that each of the two pieces is sorted. Another slow idea: first find the rotation point linearly, then binary search one piece — still O(N) because of the first step.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           int brute(int[] nums, int target) {
               for (int i = 0; i < nums.length; i++)
                   if (nums[i] == target) return i;   // check every element
               return -1;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def search(nums, target):
+    for i in range(len(nums)):
+        if nums[i] == target:
+            return i           # check every element
+    return -1` },
+            { lang: 'js', code: `function search(nums, target) {
+  for (let i = 0; i < nums.length; i++)
+    if (nums[i] === target) return i;   // check every element
+  return -1;
+}` },
+            { lang: 'cpp', code: `int search(const vector<int>& nums, int target) {
+    for (size_t i = 0; i < nums.size(); i++)
+        if (nums[i] == target) return i;   // check every element
+    return -1;
+}` }
+          ]
+        }
       },
       mcq: {
         q: `<code>nums = [4,5,6,7,0,1,2]</code>, lo = 0, hi = 6, mid = 3 (value 7), target = 0. What do you conclude?`,
@@ -1219,13 +1294,36 @@ cout << lo << "\\n"; // 3` }
         ${H.arr([1, 2, 3], { label: 'nums', hl: { 2: 'p' } })}<p>Output: ${H.c('p', '2')}: the last element is a peak because beyond it is -∞.</p>`,
       brute: {
         why: `<p>Check every index: is it bigger than both neighbours? Or simply return the index of the maximum. Both are O(N). The waste: a single comparison <code>a[mid]</code> vs <code>a[mid+1]</code> already tells us a whole half is guaranteed to contain a peak, but the scan never uses that.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           int brute(int[] nums) {
               int best = 0;
               for (int i = 1; i < nums.length; i++)
                   if (nums[i] > nums[best]) best = i;   // the global max is always a peak
               return best;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def find_peak_element(nums):
+    best = 0
+    for i in range(1, len(nums)):
+        if nums[i] > nums[best]:
+            best = i           # the global max is always a peak
+    return best` },
+            { lang: 'js', code: `function findPeakElement(nums) {
+  let best = 0;
+  for (let i = 1; i < nums.length; i++)
+    if (nums[i] > nums[best]) best = i;   // the global max is always a peak
+  return best;
+}` },
+            { lang: 'cpp', code: `int findPeakElement(const vector<int>& nums) {
+    int best = 0;
+    for (int i = 1; i < (int)nums.size(); i++)
+        if (nums[i] > nums[best]) best = i;   // the global max is always a peak
+    return best;
+}` }
+          ]
+        }
       },
       mcq: {
         q: `<code>nums[mid] = 5</code> and <code>nums[mid + 1] = 6</code>. Where is a peak guaranteed?`,
@@ -1576,12 +1674,32 @@ cout << ans << "\\n"; // 46340` }
         <p>4 is the biggest whole number whose square still fits. x = 8 → 2 (√8 ≈ 2.83, rounded down).</p>`,
       brute: {
         why: `<p>Try k = 0, 1, 2, ... while <code>(k+1)² ≤ x</code>. That is √x steps: for x = 2·10<sup>9</sup> about 44,700 steps — acceptable once, but too slow if asked for many queries, and it ignores that k² only grows. Binary search needs ~31 steps.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           int brute(int x) {
               long k = 0;
               while ((k + 1) * (k + 1) <= x) k++;   // walk up one by one
               return (int) k;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def my_sqrt(x):
+    k = 0
+    while (k + 1) * (k + 1) <= x:    # walk up one by one
+        k += 1
+    return k` },
+            { lang: 'js', code: `function mySqrt(x) {
+  let k = 0;
+  while ((k + 1) * (k + 1) <= x) k++;   // walk up one by one
+  return k;
+}` },
+            { lang: 'cpp', code: `int mySqrt(int x) {
+    long long k = 0;
+    while ((k + 1) * (k + 1) <= x) k++;   // walk up one by one
+    return (int)k;
+}` }
+          ]
+        }
       },
       mcq: {
         q: `For x = 2147483647 the search tries mid = 1073741823. What goes wrong with <code>if (mid * mid &lt;= x)</code> in <code>int</code>?`,
@@ -1873,7 +1991,9 @@ cout << ans << "\\n"; // 3` }
         <p>k = 3 → Output ${H.c('p', '3')}: cows at ${H.c('g', '1, 4, 8')}; gaps are 3 and 4, so the minimum gap is 3. No placement achieves a minimum of 4 (after 1 and 8 there is no stall ≥ 12).</p>`,
       brute: {
         why: `<p>Try every d from 1 up to <code>max - min</code> and run the greedy check for each; the last d that works is the answer. The range can be 10<sup>9</sup>, so that is 10<sup>9</sup> × N work → hopeless. The waste: once d = 3 works we already know 1 and 2 work, and once d = 4 fails we know 5, 6, ... fail; checking them one by one learns nothing new.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           int brute(int[] stalls, int k) {
               Arrays.sort(stalls);
               int best = 0;
@@ -1886,7 +2006,50 @@ cout << ans << "\\n"; // 3` }
                   else break;                 // bigger d can only be worse
               }
               return best;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def aggressive_cows(stalls, k):
+    stalls.sort()
+    best = 0
+    for d in range(1, stalls[-1] - stalls[0] + 1):
+        count, last = 1, stalls[0]
+        for i in range(1, len(stalls)):
+            if stalls[i] - last >= d:
+                count += 1
+                last = stalls[i]
+        if count >= k:
+            best = d           # d is achievable
+        else:
+            break              # bigger d can only be worse
+    return best` },
+            { lang: 'js', code: `function aggressiveCows(stalls, k) {
+  stalls.sort((a, b) => a - b);
+  let best = 0;
+  for (let d = 1; d <= stalls[stalls.length - 1] - stalls[0]; d++) {
+    let count = 1, last = stalls[0];
+    for (let i = 1; i < stalls.length; i++) {
+      if (stalls[i] - last >= d) { count++; last = stalls[i]; }
+    }
+    if (count >= k) best = d;   // d is achievable
+    else break;                 // bigger d can only be worse
+  }
+  return best;
+}` },
+            { lang: 'cpp', code: `int aggressiveCows(vector<int>& stalls, int k) {
+    sort(stalls.begin(), stalls.end());
+    int best = 0;
+    for (int d = 1; d <= stalls.back() - stalls[0]; d++) {
+        int count = 1, last = stalls[0];
+        for (size_t i = 1; i < stalls.size(); i++) {
+            if (stalls[i] - last >= d) { count++; last = stalls[i]; }
+        }
+        if (count >= k) best = d;   // d is achievable
+        else break;                 // bigger d can only be worse
+    }
+    return best;
+}` }
+          ]
+        }
       },
       mcq: {
         q: `You checked d = 5 and the greedy could place all k cows. What do you know?`,
@@ -2202,7 +2365,9 @@ cout << ans << "\\n"; // 15` }
         <p>k = 2 → Output ${H.c('p', '60')}: painter 1 takes ${H.c('b', '10 + 20 + 30 = 60')}, painter 2 takes ${H.c('p', '40')}. Max = 60. Other splits are worse, e.g. [10,20] [30,40] → max 70.</p>`,
       brute: {
         why: `<p>Try every way to cut the array into k contiguous groups (recursion over cut positions) — that is C(n-1, k-1) splits, exponential. A DP over (index, painters) is O(k·n²), still too slow for 10<sup>5</sup>. Or try every limit L from max to sum with the greedy check: up to 10<sup>10</sup> limits. The waste: if limit 60 works, 61, 62, ... obviously work too; we only need the boundary.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           // Try every limit from max to sum; the first feasible one is the answer.
           long brute(int[] boards, int k) {
               long max = 0, sum = 0;
@@ -2217,7 +2382,54 @@ cout << ans << "\\n"; // 15` }
                   if (painters <= k) return L;     // first limit that works
               }
               return sum;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `# Try every limit from max to sum; the first feasible one is the answer.
+def min_time(boards, k):
+    mx, total = max(boards), sum(boards)
+    for L in range(mx, total + 1):
+        painters = 1
+        load = 0
+        for b in boards:
+            if load + b > L:
+                painters += 1
+                load = 0
+            load += b
+        if painters <= k:
+            return L           # first limit that works
+    return total` },
+            { lang: 'js', code: `// Try every limit from max to sum; the first feasible one is the answer.
+function minTime(boards, k) {
+  const max = Math.max(...boards);
+  const sum = boards.reduce((s, b) => s + b, 0);
+  for (let L = max; L <= sum; L++) {
+    let painters = 1;
+    let load = 0;
+    for (const b of boards) {
+      if (load + b > L) { painters++; load = 0; }
+      load += b;
+    }
+    if (painters <= k) return L;     // first limit that works
+  }
+  return sum;
+}` },
+            { lang: 'cpp', code: `// Try every limit from max to sum; the first feasible one is the answer.
+long long minTime(const vector<int>& boards, int k) {
+    long long mx = 0, sum = 0;
+    for (int b : boards) { mx = max(mx, (long long)b); sum += b; }
+    for (long long L = mx; L <= sum; L++) {
+        int painters = 1;
+        long long load = 0;
+        for (int b : boards) {
+            if (load + b > L) { painters++; load = 0; }
+            load += b;
+        }
+        if (painters <= k) return L;     // first limit that works
+    }
+    return sum;
+}` }
+          ]
+        }
       },
       mcq: {
         q: `With limit L = 55 the greedy needs 3 painters but you have k = 2. What next?`,
@@ -2377,7 +2589,9 @@ public:
         <p>m = 5 → ${H.c('r', '-1')} (only 4 books, someone would get none).</p>`,
       brute: {
         why: `<p>Try all ways to place m-1 cut points between n books: C(n-1, m-1) possibilities — astronomically many for n = 10<sup>5</sup>. Or try every limit from max to sum one by one: up to 10<sup>11</sup> limits. The waste: feasibility is monotonic, so we only need the boundary.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           // Recursively try every cut position; returns the best possible max load.
           long brute(int[] pages, int start, int students) {
               int n = pages.length;
@@ -2394,7 +2608,56 @@ public:
                   best = Math.min(best, Math.max(first, rest));
               }
               return best;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `# Recursively try every cut position; returns the best possible max load.
+def find_pages(pages, start, students):
+    n = len(pages)
+    if students == 1:                          # last student takes everything left
+        return sum(pages[start:])
+    best, first = float("inf"), 0
+    # first student takes books start..end, leaving >= students-1 books for the rest
+    for end in range(start, n - students + 1):
+        first += pages[end]
+        rest = find_pages(pages, end + 1, students - 1)
+        best = min(best, max(first, rest))
+    return best` },
+            { lang: 'js', code: `// Recursively try every cut position; returns the best possible max load.
+function findPages(pages, start, students) {
+  const n = pages.length;
+  if (students === 1) {                        // last student takes everything left
+    let s = 0;
+    for (let i = start; i < n; i++) s += pages[i];
+    return s;
+  }
+  let best = Infinity, first = 0;
+  // first student takes books start..end, leaving >= students-1 books for the rest
+  for (let end = start; end <= n - students; end++) {
+    first += pages[end];
+    const rest = findPages(pages, end + 1, students - 1);
+    best = Math.min(best, Math.max(first, rest));
+  }
+  return best;
+}` },
+            { lang: 'cpp', code: `// Recursively try every cut position; returns the best possible max load.
+long long findPages(const vector<int>& pages, int start, int students) {
+    int n = pages.size();
+    if (students == 1) {                       // last student takes everything left
+        long long s = 0;
+        for (int i = start; i < n; i++) s += pages[i];
+        return s;
+    }
+    long long best = LLONG_MAX, first = 0;
+    // first student takes books start..end, leaving >= students-1 books for the rest
+    for (int end = start; end <= n - students; end++) {
+        first += pages[end];
+        long long rest = findPages(pages, end + 1, students - 1);
+        best = min(best, max(first, rest));
+    }
+    return best;
+}` }
+          ]
+        }
       },
       mcq: {
         q: `What is the correct search range for the answer?`,
@@ -2789,14 +3052,42 @@ cout << goodSum << "\\n";          // 3000000000` }
         <p>piles = [30, 11, 23, 4, 20], h = 5 → ${H.c('p', '30')}; h = 6 → ${H.c('p', '23')}.</p>`,
       brute: {
         why: `<p>Try k = 1, 2, 3, … and return the first speed whose total hours ≤ h. Each try is O(n), and the answer can be up to 10<sup>9</sup> → 10<sup>4</sup> × 10<sup>9</sup> = 10<sup>13</sup> operations. The waste: when k = 3 fails, we already know 1 and 2 fail; when k = 6 works, 7, 8, … also work. Only the boundary matters.</p>`,
-        code: `
+        code: {
+          lang: 'java',
+          code: `
           int bruteSpeed(int[] piles, int h) {
               for (int k = 1; ; k++) {                    // try every speed in order
                   long hours = 0;
                   for (int p : piles) hours += (p + (long) k - 1) / k;
                   if (hours <= h) return k;               // first speed that works
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def min_eating_speed(piles, h):
+    k = 1
+    while True:                                  # try every speed in order
+        hours = 0
+        for p in piles:
+            hours += (p + k - 1) // k
+        if hours <= h:
+            return k                             # first speed that works
+        k += 1` },
+            { lang: 'js', code: `function minEatingSpeed(piles, h) {
+  for (let k = 1; ; k++) {                       // try every speed in order
+    let hours = 0;
+    for (const p of piles) hours += Math.ceil(p / k);
+    if (hours <= h) return k;                    // first speed that works
+  }
+}` },
+            { lang: 'cpp', code: `int minEatingSpeed(const vector<int>& piles, int h) {
+    for (int k = 1; ; k++) {                     // try every speed in order
+        long long hours = 0;
+        for (int p : piles) hours += ((long long)p + k - 1) / k;
+        if (hours <= h) return k;                // first speed that works
+    }
+}` }
+          ]
+        }
       },
       mcq: {
         q: `Speed mid = 6 gives 6 hours with h = 8. What do you do?`,
@@ -2924,12 +3215,32 @@ public:
       <p>target = 5 → ${H.c('g', '2')} (found). target = 2 → ${H.c('p', '1')} (between 1 and 3). target = 7 → ${H.c('p', '4')} (after everything, index n).</p>`,
     brute: {
       why: `<p>Walk from the left and return the first index with <code>nums[i] ≥ target</code>, or n. O(N). It ignores sortedness — this "first index with value ≥ target" is exactly the lower bound, which binary search finds in O(log N).</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int brute(int[] nums, int target) {
             for (int i = 0; i < nums.length; i++)
                 if (nums[i] >= target) return i;   // first slot that is not smaller
             return nums.length;                    // bigger than everything
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def search_insert(nums, target):
+    for i in range(len(nums)):
+        if nums[i] >= target:
+            return i           # first slot that is not smaller
+    return len(nums)           # bigger than everything` },
+            { lang: 'js', code: `function searchInsert(nums, target) {
+  for (let i = 0; i < nums.length; i++)
+    if (nums[i] >= target) return i;   // first slot that is not smaller
+  return nums.length;                  // bigger than everything
+}` },
+            { lang: 'cpp', code: `int searchInsert(const vector<int>& nums, int target) {
+    for (int i = 0; i < (int)nums.size(); i++)
+        if (nums[i] >= target) return i;   // first slot that is not smaller
+    return nums.size();                    // bigger than everything
+}` }
+          ]
+        }
     },
     mcq: {
       q: `Using <code>while (lo &lt;= hi)</code> classic search, target is missing and the loop ends. Which variable is the insert position?`,
@@ -3025,7 +3336,9 @@ public:
       ${H.table(['i', '0', '1', '2', '3', '4'], [['arr[i]', '2', '3', '4', '7', '11'], ['should be (i + 1)', '1', '2', '3', '4', '5'], ['missing so far = arr[i] - (i+1)', '1', '1', '1', '3', H.c('y', '6')]])}`,
     brute: {
       why: `<p>Count up 1, 2, 3, ... and skip numbers that are in the array until k numbers were skipped. O(n + k). It walks over every number one by one even though "how many are missing before index i" can be computed instantly as <code>arr[i] - (i + 1)</code>.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int brute(int[] arr, int k) {
             int idx = 0, num = 1;
             while (true) {
@@ -3033,7 +3346,36 @@ public:
                 else if (--k == 0) return num;                    // missing: count it
                 num++;
             }
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def find_kth_positive(arr, k):
+    idx, num = 0, 1
+    while True:
+        if idx < len(arr) and arr[idx] == num:
+            idx += 1                  # present: not missing
+        else:
+            k -= 1                    # missing: count it
+            if k == 0:
+                return num
+        num += 1` },
+            { lang: 'js', code: `function findKthPositive(arr, k) {
+  let idx = 0, num = 1;
+  while (true) {
+    if (idx < arr.length && arr[idx] === num) idx++;   // present: not missing
+    else if (--k === 0) return num;                    // missing: count it
+    num++;
+  }
+}` },
+            { lang: 'cpp', code: `int findKthPositive(const vector<int>& arr, int k) {
+    int idx = 0, num = 1;
+    while (true) {
+        if (idx < (int)arr.size() && arr[idx] == num) idx++;   // present: not missing
+        else if (--k == 0) return num;                         // missing: count it
+        num++;
+    }
+}` }
+          ]
+        }
     },
     mcq: {
       q: `In <code>[2, 3, 4, 7, 11]</code>, how many positives are missing before index 3 (value 7)?`,
@@ -3134,12 +3476,49 @@ public:
       <p>Output ${H.c('p', '1')} — the element right after the "drop" (5 → 1). For an un-rotated array like [11, 13, 15, 17] the answer is the first element, 11.</p>`,
     brute: {
       why: `<p>Scan for the smallest value: O(N). Or find the drop by walking. Both ignore that each comparison with the last element tells which side of the drop mid is on.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int brute(int[] nums) {
             int best = nums[0];
             for (int x : nums) best = Math.min(best, x);   // look at everything
             return best;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `class GuessGame:
+    def __init__(self, pick):
+        self.pick = pick
+
+    def guess(self, num):                       # the judge's API
+        return (self.pick > num) - (self.pick < num)
+
+    def guessNumber(self, n):
+        for x in range(1, n + 1):               # one by one
+            if self.guess(x) == 0:
+                return x
+        return -1` },
+            { lang: 'js', code: `class GuessGame {
+  constructor(pick) { this.pick = pick; }
+  guess(num) { return Math.sign(this.pick - num); }   // the judge's API
+
+  guessNumber(n) {
+    for (let x = 1; x <= n; x++) if (this.guess(x) === 0) return x;   // one by one
+    return -1;
+  }
+}` },
+            { lang: 'cpp', code: `class GuessGame {
+    int pick;
+public:
+    explicit GuessGame(int pick) : pick(pick) {}
+    int guess(int num) const { return (pick > num) - (pick < num); }   // the judge's API
+
+    int guessNumber(int n) {
+        for (long long x = 1; x <= n; x++) if (guess((int)x) == 0) return (int)x;   // one by one
+        return -1;
+    }
+};` }
+          ]
+        }
     },
     mcq: {
       q: `<code>nums[mid] &gt; nums[hi]</code>. Where is the minimum?`,
@@ -3234,12 +3613,32 @@ public:
       <p>Output ${H.c('p', '2')}. ${H.c('g', 'Before')} the single, pairs start at <b>even</b> indices (0,1). ${H.c('r', 'After')} it, pairs start at <b>odd</b> indices (3,4), (5,6), (7,8): the single element shifts everyone by one.</p>`,
     brute: {
       why: `<p>XOR all elements (pairs cancel) or walk in steps of 2 checking <code>nums[i] != nums[i+1]</code>. Both O(N). They miss the pattern "pair starts at even index ⇒ the single is further right", which lets us skip half.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int brute(int[] nums) {
             int x = 0;
             for (int v : nums) x ^= v;   // equal pairs cancel out
             return x;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def is_perfect_square(num):
+    k = 1
+    while k * k <= num:
+        if k * k == num:
+            return True
+        k += 1
+    return False` },
+            { lang: 'js', code: `function isPerfectSquare(num) {
+  for (let k = 1; k * k <= num; k++) if (k * k === num) return true;
+  return false;
+}` },
+            { lang: 'cpp', code: `bool isPerfectSquare(int num) {
+    for (long long k = 1; k * k <= num; k++) if (k * k == num) return true;
+    return false;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `mid = 4 (even) and <code>nums[4] == nums[5]</code>. Where is the single element?`,
@@ -3344,7 +3743,9 @@ public:
       ])}`,
     brute: {
       why: `<p>Call guess(1), guess(2), … until it returns 0. Up to n calls — for n = 2<sup>31</sup> − 1 that is two billion API calls. The API's "higher / lower" answer is a free comparison that lets you discard half of the numbers each time; the linear approach ignores it.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         class GuessGame {
             private final int pick;
             GuessGame(int pick) { this.pick = pick; }
@@ -3354,7 +3755,25 @@ public:
                 for (int x = 1; x <= n; x++) if (guess(x) == 0) return x;   // one by one
                 return -1;
             }
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def find_min(nums):
+    best = nums[0]
+    for x in nums:
+        best = min(best, x)    # look at everything
+    return best` },
+            { lang: 'js', code: `function findMin(nums) {
+  let best = nums[0];
+  for (const x of nums) best = Math.min(best, x);   // look at everything
+  return best;
+}` },
+            { lang: 'cpp', code: `int findMin(const vector<int>& nums) {
+    int best = nums[0];
+    for (int x : nums) best = min(best, x);   // look at everything
+    return best;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `n = 2<sup>31</sup> − 1 and the range is [2·10<sup>9</sup>, 2,147,483,647]. Which mid is safe?`,
@@ -3483,11 +3902,31 @@ public:
     example: `<p>num = 16 → ${H.c('g', 'true')} (4 · 4). num = 14 → ${H.c('r', 'false')}: 3² = 9 &lt; 14 &lt; 16 = 4², no whole number squares to 14.</p>`,
     brute: {
       why: `<p>Try k = 1, 2, 3, … while k² ≤ num: about √num ≈ 46,000 steps for the largest input. Fine once, but it ignores that k² is increasing, so a binary search over k needs only ~31 steps.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         boolean brute(int num) {
             for (long k = 1; k * k <= num; k++) if (k * k == num) return true;
             return false;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def single_non_duplicate(nums):
+    x = 0
+    for v in nums:
+        x ^= v                 # equal pairs cancel out
+    return x` },
+            { lang: 'js', code: `function singleNonDuplicate(nums) {
+  let x = 0;
+  for (const v of nums) x ^= v;   // equal pairs cancel out
+  return x;
+}` },
+            { lang: 'cpp', code: `int singleNonDuplicate(const vector<int>& nums) {
+    int x = 0;
+    for (int v : nums) x ^= v;   // equal pairs cancel out
+    return x;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `Binary searching k in [1, num] for num = 14: mid = 7 gives 49. What next?`,
@@ -3592,13 +4031,36 @@ public:
       <p>Reading row by row gives one sorted list of 12 numbers. Virtual index 6 → row 6 / 4 = 1, column 6 % 4 = 2 → matrix[1][2] = 16.</p>`,
     brute: {
       why: `<p>Check every cell: O(m · n) = 10<sup>4</sup> steps. Or binary search each row: O(m log n). Both ignore that the whole matrix is one sorted sequence in row-major order.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         boolean brute(int[][] matrix, int target) {
             for (int[] row : matrix)
                 for (int v : row)
                     if (v == target) return true;
             return false;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def search_matrix(matrix, target):
+    for row in matrix:
+        for v in row:
+            if v == target:
+                return True
+    return False` },
+            { lang: 'js', code: `function searchMatrix(matrix, target) {
+  for (const row of matrix)
+    for (const v of row)
+      if (v === target) return true;
+  return false;
+}` },
+            { lang: 'cpp', code: `bool searchMatrix(const vector<vector<int>>& matrix, int target) {
+    for (const auto& row : matrix)
+        for (int v : row)
+            if (v == target) return true;
+    return false;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `For a 3 × 4 matrix, which cell is virtual index 9?`,
@@ -3705,11 +4167,29 @@ public:
       <p>target = 0 → ${H.c('g', 'true')}; target = 3 → ${H.c('r', 'false')}. With <code>[1, 0, 1, 1, 1]</code> and lo = 0, mid = 2, hi = 4, all three probes are 1 — you cannot tell which side is sorted.</p>`,
     brute: {
       why: `<p>A linear scan is O(n) — and, surprisingly, that is also the <b>worst case</b> of any algorithm here (all equal values except one). But the binary search version is O(log n) for most inputs, which is why interviews still want it.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         boolean brute(int[] nums, int target) {
             for (int v : nums) if (v == target) return true;
             return false;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def search(nums, target):
+    for v in nums:
+        if v == target:
+            return True
+    return False` },
+            { lang: 'js', code: `function search(nums, target) {
+  for (const v of nums) if (v === target) return true;
+  return false;
+}` },
+            { lang: 'cpp', code: `bool search(const vector<int>& nums, int target) {
+    for (int v : nums) if (v == target) return true;
+    return false;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `nums[lo] == nums[mid] == nums[hi] and none equals target. What is the safe move?`,
@@ -3840,7 +4320,9 @@ public:
       <p>days = 3 → ${H.c('p', '6')}: day 1 = ${H.c('b', '3 + 2')}, day 2 = ${H.c('p', '2 + 4')}, day 3 = ${H.c('g', '1 + 4')}. Capacity 5 would need 4 days.</p>`,
     brute: {
       why: `<p>Try every capacity from max(weights) upward, simulating the days each time: up to (sum − max) × n ≈ 2.5·10<sup>7</sup> × 5·10<sup>4</sup> work in the worst case. The days-needed count never increases as capacity grows, so we only need the boundary.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int brute(int[] weights, int days) {
             int cap = 0;
             for (int w : weights) cap = Math.max(cap, w);   // smallest sensible capacity
@@ -3850,7 +4332,40 @@ public:
                 if (need <= days) return cap;              // first capacity that works
                 cap++;
             }
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def ship_within_days(weights, days):
+    cap = max(weights)                # smallest sensible capacity
+    while True:
+        need, load = 1, 0
+        for w in weights:
+            if load + w > cap:
+                need += 1
+                load = 0
+            load += w
+        if need <= days:
+            return cap                # first capacity that works
+        cap += 1` },
+            { lang: 'js', code: `function shipWithinDays(weights, days) {
+  let cap = Math.max(...weights);              // smallest sensible capacity
+  while (true) {
+    let need = 1, load = 0;
+    for (const w of weights) { if (load + w > cap) { need++; load = 0; } load += w; }
+    if (need <= days) return cap;              // first capacity that works
+    cap++;
+  }
+}` },
+            { lang: 'cpp', code: `int shipWithinDays(const vector<int>& weights, int days) {
+    int cap = *max_element(weights.begin(), weights.end());   // smallest sensible capacity
+    while (true) {
+        int need = 1, load = 0;
+        for (int w : weights) { if (load + w > cap) { need++; load = 0; } load += w; }
+        if (need <= days) return cap;                         // first capacity that works
+        cap++;
+    }
+}` }
+          ]
+        }
     },
     mcq: {
       q: `What is the right search range for the capacity?`,
@@ -3983,7 +4498,9 @@ public:
       <p>m = 2, k = 3 → ${H.c('p', '12')}. On day 7: bloomed = ✔✔✔✔✘✔✔ → one group of 3 (+1 left over) and a run of 2 → only 1 bouquet. On day 12 everything has bloomed: ✔✔✔ ✔✔✔ ✔ → 2 bouquets.</p>`,
     brute: {
       why: `<p>Try every distinct bloom day in increasing order and count bouquets each time: O(n) days × O(n) per count = O(n²) = 10<sup>10</sup>. More bloomed flowers can never make fewer bouquets, so the "enough bouquets by day D?" answer is monotonic.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int brute(int[] bloomDay, int m, int k) {
             if ((long) m * k > bloomDay.length) return -1;
             int[] days = bloomDay.clone();
@@ -3997,7 +4514,50 @@ public:
                 if (made >= m) return d;
             }
             return -1;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def min_days(bloom_day, m, k):
+    if m * k > len(bloom_day):
+        return -1
+    for d in sorted(bloom_day):               # candidate answers in order
+        made, run = 0, 0
+        for b in bloom_day:
+            run = run + 1 if b <= d else 0
+            if run == k:
+                made += 1
+                run = 0
+        if made >= m:
+            return d
+    return -1` },
+            { lang: 'js', code: `function minDays(bloomDay, m, k) {
+  if (m * k > bloomDay.length) return -1;
+  const days = [...bloomDay].sort((a, b) => a - b);
+  for (const d of days) {                       // candidate answers in order
+    let made = 0, run = 0;
+    for (const b of bloomDay) {
+      run = b <= d ? run + 1 : 0;
+      if (run === k) { made++; run = 0; }
+    }
+    if (made >= m) return d;
+  }
+  return -1;
+}` },
+            { lang: 'cpp', code: `int minDays(const vector<int>& bloomDay, int m, int k) {
+    if ((long long)m * k > (long long)bloomDay.size()) return -1;
+    vector<int> days = bloomDay;
+    sort(days.begin(), days.end());
+    for (int d : days) {                         // candidate answers in order
+        int made = 0, run = 0;
+        for (int b : bloomDay) {
+            run = b <= d ? run + 1 : 0;
+            if (run == k) { made++; run = 0; }
+        }
+        if (made >= m) return d;
+    }
+    return -1;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `Why check <code>(long) m * k &gt; n</code> first?`,
@@ -4150,7 +4710,9 @@ public:
       <p>k = 2 → ${H.c('p', '18')}: ${H.c('b', '[7, 2, 5]')} sums to 14 and ${H.c('p', '[10, 8]')} sums to 18. Any other cut makes one side bigger (e.g. [7,2,5,10] | [8] → 24).</p>`,
     brute: {
       why: `<p>Dynamic programming: <code>dp[j][i]</code> = best possible largest sum when the first i numbers are split into j parts — try every last cut p. That is O(k · n²) = 50 × 10<sup>6</sup>, which passes here but not for n = 10<sup>5</sup>. Binary search on the answer with a greedy check is O(n log(sum)) and far simpler to get right.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int brute(int[] nums, int k) {
             int n = nums.length;
             long[] pre = new long[n + 1];
@@ -4164,7 +4726,50 @@ public:
                         if (dp[j - 1][p] != Long.MAX_VALUE)
                             dp[j][i] = Math.min(dp[j][i], Math.max(dp[j - 1][p], pre[i] - pre[p]));
             return (int) dp[k][n];
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def split_array(nums, k):
+    n = len(nums)
+    INF = float("inf")
+    pre = [0] * (n + 1)
+    for i in range(n):
+        pre[i + 1] = pre[i] + nums[i]
+    dp = [[INF] * (n + 1) for _ in range(k + 1)]
+    dp[0][0] = 0
+    for j in range(1, k + 1):
+        for i in range(1, n + 1):
+            for p in range(j - 1, i):                  # last part is nums[p..i-1]
+                if dp[j - 1][p] != INF:
+                    dp[j][i] = min(dp[j][i], max(dp[j - 1][p], pre[i] - pre[p]))
+    return dp[k][n]` },
+            { lang: 'js', code: `function splitArray(nums, k) {
+  const n = nums.length;
+  const pre = new Array(n + 1).fill(0);
+  for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+  const dp = Array.from({ length: k + 1 }, () => new Array(n + 1).fill(Infinity));
+  dp[0][0] = 0;
+  for (let j = 1; j <= k; j++)
+    for (let i = 1; i <= n; i++)
+      for (let p = j - 1; p < i; p++)                  // last part is nums[p..i-1]
+        if (dp[j - 1][p] !== Infinity)
+          dp[j][i] = Math.min(dp[j][i], Math.max(dp[j - 1][p], pre[i] - pre[p]));
+  return dp[k][n];
+}` },
+            { lang: 'cpp', code: `int splitArray(const vector<int>& nums, int k) {
+    int n = nums.size();
+    vector<long long> pre(n + 1, 0);
+    for (int i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+    vector<vector<long long>> dp(k + 1, vector<long long>(n + 1, LLONG_MAX));
+    dp[0][0] = 0;
+    for (int j = 1; j <= k; j++)
+        for (int i = 1; i <= n; i++)
+            for (int p = j - 1; p < i; p++)            // last part is nums[p..i-1]
+                if (dp[j - 1][p] != LLONG_MAX)
+                    dp[j][i] = min(dp[j][i], max(dp[j - 1][p], pre[i] - pre[p]));
+    return (int)dp[k][n];
+}` }
+          ]
+        }
     },
     mcq: {
       q: `The greedy check for limit 15 needs 3 parts and k = 2. Conclusion?`,
@@ -4300,7 +4905,9 @@ public:
       <p>Merged: 1 3 7 ${H.c('p', '8')} 9 10 11 → median ${H.c('p', '8')}. The ${H.c('b', 'blue')} cells are the "left half" (4 smallest): all of A and the first element of B. Every blue value ≤ every purple value, and the median is the largest blue value.</p>`,
     brute: {
       why: `<p>Merge both arrays like in merge sort (O(m + n)) and read the middle. Simple and correct, but it reads every element although we only need to know <b>where the cut</b> between the smaller half and the bigger half falls. The cut position in A determines the cut in B, so we can binary search one number: how many elements A contributes to the left half.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         double brute(int[] A, int[] B) {
             int[] all = new int[A.length + B.length];
             int i = 0, j = 0, k = 0;
@@ -4309,7 +4916,42 @@ public:
             while (j < B.length) all[k++] = B[j++];
             int t = all.length;
             return t % 2 == 1 ? all[t / 2] : (all[t / 2 - 1] + (long) all[t / 2]) / 2.0;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def find_median_sorted_arrays(A, B):
+    all_ = []
+    i = j = 0
+    while i < len(A) and j < len(B):
+        if A[i] <= B[j]:
+            all_.append(A[i])
+            i += 1
+        else:
+            all_.append(B[j])
+            j += 1
+    all_.extend(A[i:])
+    all_.extend(B[j:])
+    t = len(all_)
+    return all_[t // 2] if t % 2 == 1 else (all_[t // 2 - 1] + all_[t // 2]) / 2` },
+            { lang: 'js', code: `function findMedianSortedArrays(A, B) {
+  const all = [];
+  let i = 0, j = 0;
+  while (i < A.length && j < B.length) all.push(A[i] <= B[j] ? A[i++] : B[j++]);
+  while (i < A.length) all.push(A[i++]);
+  while (j < B.length) all.push(B[j++]);
+  const t = all.length;
+  return t % 2 === 1 ? all[(t - 1) / 2] : (all[t / 2 - 1] + all[t / 2]) / 2;
+}` },
+            { lang: 'cpp', code: `double findMedianSortedArrays(const vector<int>& A, const vector<int>& B) {
+    vector<int> all;
+    size_t i = 0, j = 0;
+    while (i < A.size() && j < B.size()) all.push_back(A[i] <= B[j] ? A[i++] : B[j++]);
+    while (i < A.size()) all.push_back(A[i++]);
+    while (j < B.size()) all.push_back(B[j++]);
+    int t = all.size();
+    return t % 2 == 1 ? all[t / 2] : (all[t / 2 - 1] + (long long)all[t / 2]) / 2.0;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `With the cut taking i elements from A and j from B, which condition means the cut is correct?`,
@@ -4463,12 +5105,32 @@ public:
       <p>Output ${H.c('p', '1')}. Compare with ${H.arr([10, 10, 10, 1, 10], { label: 'nums' })} — at lo = 0, mid = 2, hi = 4 both arrays show 10, 10, 10, yet the minimum is on different sides.</p>`,
     brute: {
       why: `<p>Scan for the minimum: O(n). For the duplicates version this is also the worst case of any algorithm, but binary search with "hi−−" on ties is O(log n) whenever duplicates do not block the decision.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int brute(int[] nums) {
             int best = nums[0];
             for (int v : nums) best = Math.min(best, v);
             return best;
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def find_min(nums):
+    best = nums[0]
+    for v in nums:
+        best = min(best, v)
+    return best` },
+            { lang: 'js', code: `function findMin(nums) {
+  let best = nums[0];
+  for (const v of nums) best = Math.min(best, v);
+  return best;
+}` },
+            { lang: 'cpp', code: `int findMin(const vector<int>& nums) {
+    int best = nums[0];
+    for (int v : nums) best = min(best, v);
+    return best;
+}` }
+          ]
+        }
     },
     mcq: {
       q: `nums[mid] == nums[hi]. Why is <code>hi--</code> safe?`,
@@ -4572,7 +5234,9 @@ public:
       <p>Sorted: 1, 2, 2, 3, ${H.c('p', '3')}, 4, 6, 6, 9 → the 5th smallest is ${H.c('p', '3')}.</p>`,
     brute: {
       why: `<p>Write all m·n products into an array, sort, pick index k − 1. With m = n = 3·10<sup>4</sup> that is 9·10<sup>8</sup> numbers — too much memory and time. We never need the whole table: "how many values are ≤ x?" can be counted row by row in O(m) without building it.</p>`,
-      code: `
+      code: {
+          lang: 'java',
+          code: `
         int brute(int m, int n, int k) {
             int[] all = new int[m * n];
             int idx = 0;
@@ -4580,7 +5244,31 @@ public:
                 for (int j = 1; j <= n; j++) all[idx++] = i * j;
             Arrays.sort(all);
             return all[k - 1];
-        }`
+        }`,
+          alt: [
+            { lang: 'python', code: `def find_kth_number(m, n, k):
+    all_ = []
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            all_.append(i * j)
+    all_.sort()
+    return all_[k - 1]` },
+            { lang: 'js', code: `function findKthNumber(m, n, k) {
+  const all = [];
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++) all.push(i * j);
+  all.sort((a, b) => a - b);
+  return all[k - 1];
+}` },
+            { lang: 'cpp', code: `int findKthNumber(int m, int n, int k) {
+    vector<int> all;
+    for (int i = 1; i <= m; i++)
+        for (int j = 1; j <= n; j++) all.push_back(i * j);
+    sort(all.begin(), all.end());
+    return all[k - 1];
+}` }
+          ]
+        }
     },
     mcq: {
       q: `How many values in row i (i, 2i, …, n·i) are ≤ x?`,
@@ -4695,10 +5383,10 @@ public:
     { q: 'Java <code>Arrays.binarySearch</code> on an array with duplicates returns…', options: ['The first occurrence', 'The last occurrence', 'Some matching index — no guarantee which', 'Always −1'], answer: 2, explain: 'The Javadoc says: if the array contains multiple equal elements, there is no guarantee which one will be found. Write your own lower bound for "first".' },
     { q: 'Rotated array (distinct): <code>a[lo] = 9, a[mid] = 3, a[hi] = 7</code>. Which half is sorted?', options: ['Left half [lo..mid]', 'Right half [mid..hi]', 'Both', 'Neither'], answer: 1, explain: 'a[lo] &gt; a[mid] means the drop lies between lo and mid, so the right half has no drop and is sorted (values 3..7).' },
     { q: 'Find Peak Element: <code>a[mid] &gt; a[mid+1]</code>. Correct move?', options: ['<code>lo = mid + 1</code>', '<code>hi = mid</code>', '<code>hi = mid - 1</code>', 'return mid'], answer: 1, explain: 'Downhill to the right: mid itself may be the peak or there is one to the left. Keep mid in the window.' },
-    { q: 'Integer sqrt of 2,147,483,647 by binary search. What breaks if you compute <code>mid * mid</code> in int?', options: ['Nothing', 'Overflow gives wrong comparisons', 'Division by zero', 'Infinite recursion'], answer: 1, explain: 'mid ≈ 10<sup>9</sup> squared is 10<sup>18</sup>, far outside int. Use (long) mid * mid or compare mid ≤ x / mid.' },
+    { q: 'Integer sqrt of 2,147,483,647 by binary search. What breaks if you compute <code>mid * mid</code> in int?', options: ['Nothing', 'Overflow gives wrong comparisons', 'Division by zero', 'Infinite recursion'], answer: 1, explain: 'mid ≈ 10<sup>9</sup> squared is 10<sup>18</sup>, far outside int. Use a 64-bit multiply (Java <code>(long) mid * mid</code>, C++ <code>(long long) mid * mid</code>) or compare mid ≤ x / mid.' },
     { q: '"Maximize the minimum distance" (Aggressive Cows) has a feasibility strip shaped like…', options: ['no no yes yes — want first yes', 'yes yes no no — want last yes', 'random — binary search does not apply', 'yes no yes no'], answer: 1, explain: 'If cows can be d apart they can be d − 1 apart, so feasibility is true for small d and false for large d. The answer is the last yes.' },
     { q: 'For Painter\'s Partition / Allocate Books, the correct search range is…', options: ['[0, sum]', '[1, max]', '[max(a), sum(a)]', '[min(a), max(a)]'], answer: 2, explain: 'Someone must take the largest item (≥ max) and one worker could take everything (≤ sum). Below max the greedy check is invalid.' },
-    { q: 'Koko: what is wrong with <code>hours += Math.ceil(p / k)</code> when p and k are ints?', options: ['Nothing', '<code>p / k</code> is integer division, already rounded down before ceil', 'Math.ceil is too slow', 'It overflows at k = 1 only'], answer: 1, explain: 'p / k truncates first (7 / 2 = 3), so Math.ceil(3) = 3 instead of 4. Use (p + k − 1) / k or Math.ceil((double) p / k).' },
+    { q: 'Koko: what is wrong with <code>hours += Math.ceil(p / k)</code> in Java or C++ when p and k are ints (in Python and JavaScript <code>/</code> is not integer division)?', options: ['Nothing', '<code>p / k</code> is integer division, already rounded down before ceil', 'Math.ceil is too slow', 'It overflows at k = 1 only'], answer: 1, explain: 'p / k truncates first (7 / 2 = 3), so Math.ceil(3) = 3 instead of 4. Use (p + k − 1) / k or Math.ceil((double) p / k).' },
     { q: 'Which statement best describes when binary search on the answer is valid?', options: ['When the input array is sorted', 'When a yes/no check on a candidate answer is monotonic over the answer range', 'When N ≤ 1000', 'Only for minimization problems'], answer: 1, explain: 'The input need not be sorted (Koko, Painter\'s). What matters is a monotonic predicate: once true it stays true (or vice versa).' },
     { q: 'Search in Rotated Sorted Array II (duplicates): worst-case time?', options: ['O(log n)', 'O(n)', 'O(n log n)', 'O(1)'], answer: 1, explain: 'When a[lo] == a[mid] == a[hi] you can only shrink by one. Adversarial input like [1,1,…,0,…,1] forces O(n), and no algorithm can do better.' }
   );
@@ -4714,7 +5402,7 @@ public:
     { q: 'Find Peak Element works on an unsorted array. Why is binary search valid there?', level: 'I', a: `<p>Binary search only needs a rule that guarantees an answer on one side. If a[mid] &lt; a[mid+1], walking right is uphill, and since the boundary is −∞ the climb must end at a peak in (mid, hi]. Otherwise a peak exists in [lo, mid]. The invariant "a[lo−1] &lt; a[lo] and a[hi] &gt; a[hi+1]" holds throughout, so when lo == hi that element is a peak. It needs neighbours to differ; plateaus break the argument.</p>`, followUps: ['How about finding a peak in a 2D grid?', 'Can you find the global maximum in O(log n)? (No — Ω(n).)'] },
     { q: 'What is "binary search on the answer"? Give the recipe and two examples.', level: 'A', a: `<p>Instead of searching positions in an array, search the space of possible answers with a feasibility check. Recipe: (1) define the range [lo, hi] of possible answers; (2) write ok(x), usually a greedy O(n) pass; (3) prove ok is monotonic; (4) binary search for the first true (minimize) or last true (maximize). Cost O(n log range). Examples: Koko's minimum eating speed (first true over speeds 1..max), Aggressive Cows (last true over distances 1..max−min), Painter's Partition / Ship Packages (first true over [max, sum]).</p>`, followUps: ['How do you choose hi when no natural upper bound exists? (Exponential search.)', 'What if ok() is expensive, e.g. a 10-minute load test?'] },
     { q: 'Prove the greedy check in Aggressive Cows is optimal.', level: 'A', a: `<p>Exchange argument. Sort stalls. Greedy places cow 1 at the first stall and each next cow at the first stall ≥ d from the previous cow. Compare with any valid placement O. By induction greedy's i-th cow is at or left of O's i-th cow: true for i = 1; if true for i, O's (i+1)-th cow is ≥ d from O's i-th cow, hence ≥ d from greedy's i-th cow (which is further left), so greedy's (i+1)-th cow is at or left of it. So greedy places at least as many cows as any valid placement — if any placement of k cows exists, greedy finds one.</p>`, followUps: ['Why must the stalls be sorted?', 'Prove monotonicity of feasibility in d.'] },
-    { q: 'Painter\'s Partition: why is the range [max, sum] and why use long?', level: 'A', a: `<p>The answer is the maximum load of a worker. Someone must take the single largest board, so the answer ≥ max; one worker taking everything gives exactly sum, so the answer ≤ sum. Starting below max breaks the greedy (a single board larger than the limit would be "accepted" into a fresh group). Sum can be n × max = 10<sup>5</sup> × 10<sup>9</sup> = 10<sup>14</sup>, beyond int, so lo, hi, mid and running loads must be long. Total time O(n log(sum)) ≈ 10<sup>5</sup> × 47.</p>`, followUps: ['What if items need not be contiguous? (NP-hard partitioning.)', 'Compare with the O(k n²) DP.'] },
+    { q: 'Painter\'s Partition: why is the range [max, sum] and why use a 64-bit integer?', level: 'A', a: `<p>The answer is the maximum load of a worker. Someone must take the single largest board, so the answer ≥ max; one worker taking everything gives exactly sum, so the answer ≤ sum. Starting below max breaks the greedy (a single board larger than the limit would be "accepted" into a fresh group). Sum can be n × max = 10<sup>5</sup> × 10<sup>9</sup> = 10<sup>14</sup>, beyond int, so lo, hi, mid and running loads must be 64-bit integers (Java <code>long</code>, C++ <code>long long</code>). Total time O(n log(sum)) ≈ 10<sup>5</sup> × 47.</p>`, followUps: ['What if items need not be contiguous? (NP-hard partitioning.)', 'Compare with the O(k n²) DP.'] },
     { q: 'How does Median of Two Sorted Arrays reach O(log(min(m, n)))?', level: 'E', a: `<p>The median splits the combined data into a left half of size half = (m + n + 1) / 2 and a right half. If A contributes i elements, B contributes j = half − i, so only i ∈ [0, m] is unknown. A cut is valid when A[i−1] ≤ B[j] and B[j−1] ≤ A[i] (with ±∞ sentinels). If A[i−1] &gt; B[j], A gave too many → move left; else move right. Searching the shorter array keeps j in range and gives O(log(min(m, n))). The median is max(left) for odd totals, else the average of max(left) and min(right).</p>`, followUps: ['Generalize to the k-th smallest of two arrays.', 'Why must we binary search the shorter array?'] },
     { q: 'Where does binary search appear in real systems?', level: 'E', a: `<p>B-tree/B+tree pages in databases binary search keys within each node; LSM-tree stores binary search SSTable sparse indexes; Kafka binary searches its offset and time index files to locate a message; <code>git bisect</code> binary searches commits to find a regression; load testing binary searches the max sustainable QPS; ML picks a decision threshold meeting a precision target; network MTU discovery and rate limiters binary search thresholds. Performance-sensitive code uses branchless or cache-friendly (Eytzinger) layouts because cache misses, not comparisons, dominate.</p>`, followUps: ['Why can a linear scan beat binary search on 32 elements?', 'How would you binary search over data on disk with minimal I/O?'] },
     { q: 'How do you binary search over real numbers, and what goes wrong with an epsilon loop?', level: 'E', a: `<p>Keep lo, hi as doubles and set lo = mid or hi = mid depending on the check. A loop like <code>while (hi - lo &gt; 1e-9)</code> can run forever for large magnitudes (e.g. 10<sup>12</sup>), where adjacent doubles are farther apart than 10<sup>-9</sup>, so the gap stops shrinking. Safer: a fixed number of iterations (60–100 halvings exhaust double precision) or a relative tolerance. Each iteration gains one bit of precision; Newton's method converges faster when a derivative is available.</p>`, followUps: ['How many iterations for error 10<sup>-6</sup> on an initial gap of 10<sup>9</sup>? (~50.)', 'When would you choose ternary search?'] }
