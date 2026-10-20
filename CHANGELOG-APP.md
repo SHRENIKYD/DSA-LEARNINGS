@@ -2,6 +2,20 @@
 
 Versions follow [Semantic Versioning](https://semver.org). The app's version is `appVersion` in `package.json`; it sets the Android `versionName` and `versionCode` (`1.7.0` → `10700`) and, through `node tools/version-sync.js`, the iOS project. The Android workflow tags each new one as `app-vX.Y.Z` on `main`, publishes a GitHub Release with the APK and bundle, and uploads it to Google Play. Up to 1.6.1 the app and website shared one version; that history is in [CHANGELOG.md](CHANGELOG.md).
 
+## [1.10.0] — 2026-10-20 · Phase 2 of 3
+
+Full release notes: [docs/RELEASE_PHASE2.md](docs/RELEASE_PHASE2.md).
+
+### Added
+- Lessons inside the app include the website's Phase 2 content:
+  - all 28 DSA modules with four-language solutions and tabs;
+  - Low-Level Design 1–12 in Java, Python, TypeScript and C++;
+  - Cloud & DevOps 13–18, completing the 18-module track;
+  - the JavaScript heap lesson.
+
+### Fixed
+- The new-version popup now opens the app's page in the Google Play Store (button "Update on Google Play") instead of the GitHub release page. Without the Play Store app, it opens the Play listing in the browser. GitHub is still used only to find out that a new version exists.
+
 ## [1.9.0] — 2026-10-19 · Phase 1 of 3
 
 Full release notes: [docs/RELEASE_PHASE1.md](docs/RELEASE_PHASE1.md).

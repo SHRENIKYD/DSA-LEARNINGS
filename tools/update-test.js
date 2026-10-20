@@ -17,7 +17,7 @@ function runtime(platform = 'android') {
   // Use distinct close-event wiring to model native dialog's close event.
   const create = document.createElement;
   document.createElement = () => { const n = create(); const old = n.addEventListener; n.addEventListener = function (k, f) { old.call(this, k === 'close' ? 'close-event' : k, f); }; return n; };
-  const ctx = { window: { IM_VERSION: '1.7.0', Capacitor: { isNativePlatform: () => platform !== 'web', getPlatform: () => platform, Plugins: { App: { getInfo: async () => ({ version: '1.7.0' }), addListener() {} }, Browser: { async open() { counts.opens++; } } } }, addEventListener(k, f) { handlers[k] = f; } }, document, location: { hash: '#home' }, localStorage: { getItem(k) { return storage[k] || null; }, setItem(k, v) { storage[k] = v; } }, AbortController, setTimeout, clearTimeout, Date, Promise, fetch: async () => { counts.fetch++; return { ok: true, json: async () => [release('app-v1.8.0')] }; } };
+  const ctx = { window: { IM_VERSION: '1.7.0', Capacitor: { isNativePlatform: () => platform !== 'web', getPlatform: () => platform, Plugins: { App: { getInfo: async () => ({ version: '1.7.0' }), addListener() {} }, Browser: { async open(o) { counts.opens++; counts.lastUrl = o.url; } } } }, addEventListener(k, f) { handlers[k] = f; } }, document, location: { hash: '#home' }, localStorage: { getItem(k) { return storage[k] || null; }, setItem(k, v) { storage[k] = v; } }, AbortController, setTimeout, clearTimeout, Date, Promise, fetch: async () => { counts.fetch++; return { ok: true, json: async () => [release('app-v1.8.0')] }; } };
   vm.createContext(ctx); vm.runInContext(fs.readFileSync(__dirname + '/../app/update.js', 'utf8'), ctx);
   return { ctx, U: ctx.AppUpdates, elements, storage, handlers, counts, status };
 }
@@ -29,15 +29,20 @@ function runtime(platform = 'android') {
   delete r.elements.appUpdateDialog;
   await r.U.check(false); assert.equal(r.counts.fetch, 1, 'automatic checks are throttled');
   await r.U.check(true); assert(r.elements.appUpdateDialog, 'manual check bypasses snooze');
-  r.elements.appUpdateDialog.querySelector('#updateNow').click(); await new Promise(setImmediate);
-  assert.equal(r.counts.opens, 1);
+  r.elements.appUpdateDialog.querySelector('#updateNow').click(); await new Promise(resolve => setTimeout(resolve, 1300));
+  assert.equal(r.ctx.location.href, 'market://details?id=io.github.shrenikyd.interviewmastery', 'opens the Play Store app');
+  assert.equal(r.counts.opens, 1, 'falls back to the Play listing in the browser when the Play app does not open');
+  assert.equal(r.counts.lastUrl, 'https://play.google.com/store/apps/details?id=io.github.shrenikyd.interviewmastery');
+  const played = runtime(); await played.U.check(true); played.elements.appUpdateDialog.querySelector('#updateNow').click(); played.ctx.document.hidden = true; await new Promise(resolve => setTimeout(resolve, 1300));
+  assert.equal(played.counts.opens, 0, 'no browser fallback once the Play Store app has opened');
+  assert.equal(played.elements.appUpdateDialog, undefined, 'dialog closes after opening Google Play');
   const game = runtime(); game.ctx.location.hash = '#game/guess'; game.U.init(); await new Promise(setImmediate);
   assert.equal(game.elements.appUpdateDialog, undefined, 'does not interrupt games');
   game.ctx.location.hash = '#home'; game.handlers.hashchange(); await new Promise(resolve => setTimeout(resolve, 5)); assert(game.elements.appUpdateDialog);
   const nativeVersion = runtime(); nativeVersion.ctx.window.Capacitor.Plugins.App.getInfo = async () => ({ version: '1.8.0' }); await nativeVersion.U.check(true); assert.equal(nativeVersion.elements.appUpdateDialog, undefined, 'native installed version takes precedence');
   const persisted = runtime(); Object.assign(persisted.storage, r.storage); await persisted.U.check(false); assert.equal(persisted.elements.appUpdateDialog, undefined, 'snooze survives app restarts');
-  const browserError = runtime(); browserError.ctx.window.Capacitor.Plugins.Browser.open = async () => { throw new Error('unavailable'); }; await browserError.U.check(true); browserError.elements.appUpdateDialog.querySelector('#updateNow').click(); await new Promise(setImmediate); assert.match(browserError.elements.appUpdateDialog.querySelector('#updateOpenStatus').textContent, /Could not open/);
+  const browserError = runtime(); browserError.ctx.window.Capacitor.Plugins.Browser.open = async () => { throw new Error('unavailable'); }; await browserError.U.check(true); browserError.elements.appUpdateDialog.querySelector('#updateNow').click(); await new Promise(resolve => setTimeout(resolve, 1300)); assert.match(browserError.elements.appUpdateDialog.querySelector('#updateOpenStatus').textContent, /Could not open/);
   const offline = runtime(); offline.ctx.fetch = async () => { throw new Error('offline'); }; await offline.U.check(true); assert.match(offline.status.textContent, /Could not check/); assert.equal(offline.elements.appUpdateDialog, undefined);
   for (const platform of ['web', 'ios']) { const other = runtime(platform); await other.U.check(true); assert.equal(other.counts.fetch, 0); }
-  console.log('PASS: numeric versions, stable app releases, APK availability, trusted URLs, startup check, snooze, manual check, rate limiting, update action, game deferral, offline handling, platform guards');
+  console.log('PASS: numeric versions, stable app releases, APK availability, trusted URLs, startup check, snooze, manual check, rate limiting, Play Store update action and browser fallback, game deferral, offline handling, platform guards');
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -128,6 +128,13 @@ tests: { io: true, cases: [{ stdin: '', stdout: 'circle 12.57\nsquare 9.00\n...'
   - C++: abstract base classes with virtual destructors, `unique_ptr`/`shared_ptr` ownership, RAII, `override`.
 - `langNotes` for LLD covers interfaces vs abstract classes, equality and hashing, immutability, ownership and lifetimes (C++), and composition idioms per language.
 - Required languages: `--require java,python,ts,cpp`.
+- Lessons from LLD 1:
+  - Write the expected stdout by hand from the design's logic, then compare it with the Java run.
+  - Extend short demos so they also print failure paths, such as a rejected payment or an unknown item.
+  - The Java set-up already imports `java.util.*`, `java.util.function.*`, `java.util.stream.*`, `java.util.concurrent.*` (with `atomic` and `locks`), `java.time.*`, `java.math.*` and `java.io.*`.
+  - The main class is the last class declared before `main`. Comments and strings are ignored when finding it.
+  - Program mode does not type-check TypeScript. Type-check it yourself with `npx tsc --strict --noEmit --target es2022 --lib es2022`, and avoid class names that clash with DOM types (for example `Location`) or with C++ keywords (`delete`, `new`, `default`).
+  - Python abstract methods may use `...` as their body.
 
 ## Commands
 

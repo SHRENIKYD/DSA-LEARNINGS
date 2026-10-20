@@ -194,8 +194,11 @@ var App = (function () {
         '["log","info","warn","error","table"].forEach(function(k){console[k]=function(){__s(k,arguments)}});' +
         'var process={stdout:{write:function(t){__s("log",[String(t).replace(/\\n$/,"")]);return true}},stderr:{write:function(t){__s("error",[String(t).replace(/\\n$/,"")]);return true}},argv:["node","main.js"],env:{},exit:function(){}};' +
         'window.onerror=function(m){__s("error",["Uncaught "+m])};window.addEventListener("unhandledrejection",function(e){__s("error",["Unhandled rejection: "+(e.reason&&e.reason.message||e.reason)])});';
-      // The snippet runs inside a block so its let/const names (top, name, status...) cannot clash with browser globals.
-      ifr.srcdoc = '<script>' + shim + '<\/script><script>{\n' + code.replace(/<\/script/gi, '<\\/script') + '\n}<\/script>';
+      // let/const/class names that the browser reserves on window (top, window, document, location) would throw at the top
+      // level, so only such snippets run inside a block. Others run unwrapped, so var/function hoisting demos behave as written.
+      var clash = /(^|[^.\w$])(let|const|class)\s+(top|window|document|location)\b/.test(code);
+      var body = code.replace(/<\/script/gi, '<\\/script');
+      ifr.srcdoc = '<script>' + shim + '<\/script><script>' + (clash ? '{\n' + body + '\n}' : body) + '<\/script>';
       var render = function (fin) {
         out.innerHTML = '<pre class="out">' + (lines.length ? lines.map(function (l) { return l.t === 'error' || l.t === 'warn' ? '<span class="c-r">' + esc(l.a) + '</span>' : esc(l.a); }).join('\n') : '<span class="c-m">(no console output yet)</span>') + '</pre>' + (fin ? '<div class="meta">Finished (captured for 3s, including timers & promises).</div>' : '');
       };

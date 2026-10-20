@@ -43,7 +43,7 @@
     title: 'Why Creational Patterns? The Trouble with "new" Everywhere',
     analogy: `<p>When you eat at a restaurant you say <b>"one margherita, please"</b>. You do not walk into the kitchen, pick the oven, knead the dough and choose the cheese supplier yourself. The kitchen hides all of that. If the restaurant changes its cheese supplier tomorrow, <b>you</b> do not have to learn anything new — you still say "one margherita".</p>
 <p>Writing <code>new SmtpMailer()</code> inside twenty classes is like every customer walking into the kitchen and cooking for themselves. The day the recipe changes, twenty people have to re-learn it. <b>Creational patterns are the kitchen</b>: one place that knows <i>how</i> objects are made, so everyone else just asks for them.</p>`,
-    explain: `<p>🟢 <b>The plain idea.</b> In Java you make objects with <code>new</code>. That is fine for tiny things like <code>new Point(2, 3)</code>. But when the <i>kind</i> of object, the <i>number</i> of objects, or the <i>steps</i> to build it might change, sprinkling <code>new</code> everywhere glues your code to one exact class. A <b>creational design pattern</b> is a well-known recipe for moving "how do I make this object?" into <b>one place</b>, so the rest of the code only says "give me one".</p>
+    explain: `<p>🟢 <b>The plain idea.</b> You make objects by calling a constructor (<code>new</code> in Java, TypeScript and C++; a plain <code>Point(2, 3)</code> call in Python). That is fine for tiny things like <code>new Point(2, 3)</code>. But when the <i>kind</i> of object, the <i>number</i> of objects, or the <i>steps</i> to build it might change, sprinkling <code>new</code> everywhere glues your code to one exact class. A <b>creational design pattern</b> is a well-known recipe for moving "how do I make this object?" into <b>one place</b>, so the rest of the code only says "give me one".</p>
 <p>Three pains of <code>new</code> everywhere:</p>
 <ul>
 <li><b>Ripple changes</b> — switch from <code>SmtpMailer</code> to <code>SendGridMailer</code> and you edit every file that wrote <code>new SmtpMailer()</code>.</li>
@@ -99,7 +99,95 @@ class PasswordService {
         SmtpMailer mailer = new SmtpMailer();   // ...and again
         mailer.send(email, "Here is your reset link");
     }
+}`,
+alt: [
+  { lang: 'python', code: `
+# Every service creates its own SmtpMailer with "SmtpMailer()".
+# Changing the email provider means editing EVERY one of these classes.
+class SmtpMailer:
+    def send(self, to: str, msg: str) -> None:
+        print(f"SMTP -> {to}: {msg}")
+
+
+class SignupService:
+    def register(self, email: str) -> None:
+        mailer = SmtpMailer()                    # hard-wired concrete class
+        mailer.send(email, "Welcome!")
+
+
+class OrderService:
+    def place(self, email: str) -> None:
+        mailer = SmtpMailer()                    # same decision copy-pasted
+        mailer.send(email, "Order placed")
+
+
+class PasswordService:
+    def reset(self, email: str) -> None:
+        mailer = SmtpMailer()                    # ...and again
+        mailer.send(email, "Here is your reset link")` },
+  { lang: 'ts', code: `
+// Every service creates its own SmtpMailer with "new".
+// Changing the email provider means editing EVERY one of these classes.
+class SmtpMailer {
+  send(to: string, msg: string): void {
+    console.log(\`SMTP -> \${to}: \${msg}\`);
+  }
+}
+
+class SignupService {
+  register(email: string): void {
+    const mailer = new SmtpMailer();             // hard-wired concrete class
+    mailer.send(email, "Welcome!");
+  }
+}
+
+class OrderService {
+  place(email: string): void {
+    const mailer = new SmtpMailer();             // same decision copy-pasted
+    mailer.send(email, "Order placed");
+  }
+}
+
+class PasswordService {
+  reset(email: string): void {
+    const mailer = new SmtpMailer();             // ...and again
+    mailer.send(email, "Here is your reset link");
+  }
 }` },
+  { lang: 'cpp', code: `
+// Every service creates its own SmtpMailer directly.
+// Changing the email provider means editing EVERY one of these classes.
+class SmtpMailer {
+public:
+    void send(const string& to, const string& msg) const {
+        cout << "SMTP -> " << to << ": " << msg << "\\n";
+    }
+};
+
+class SignupService {
+public:
+    void registerUser(const string& email) const {
+        SmtpMailer mailer;                       // hard-wired concrete class
+        mailer.send(email, "Welcome!");
+    }
+};
+
+class OrderService {
+public:
+    void place(const string& email) const {
+        SmtpMailer mailer;                       // same decision copy-pasted
+        mailer.send(email, "Order placed");
+    }
+};
+
+class PasswordService {
+public:
+    void reset(const string& email) const {
+        SmtpMailer mailer;                       // ...and again
+        mailer.send(email, "Here is your reset link");
+    }
+};` }
+] },
       { lang: 'java', title: 'Refactored: one factory decides, services depend on an interface', code: `
 // 1) Clients talk to an interface, not a concrete class.
 interface Mailer {
@@ -142,7 +230,143 @@ public class Main {
         Mailer mailer = MailerFactory.create("sendgrid");
         new SignupService(mailer).register("asha@example.com");
     }
+}`,
+alt: [
+  { lang: 'python', code: `
+from abc import ABC, abstractmethod
+
+
+# 1) Clients talk to an abstract type, not a concrete class.
+class Mailer(ABC):
+    @abstractmethod
+    def send(self, to: str, msg: str) -> None: ...
+
+
+class SmtpMailer(Mailer):
+    def send(self, to: str, msg: str) -> None:
+        print(f"SMTP -> {to}: {msg}")
+
+
+class SendGridMailer(Mailer):
+    def send(self, to: str, msg: str) -> None:
+        print(f"SendGrid API -> {to}: {msg}")
+
+
+# 2) ONE place knows how to pick and build the concrete class.
+class MailerFactory:
+    @staticmethod
+    def create(provider: str) -> Mailer:
+        match provider.lower():
+            case "smtp":
+                return SmtpMailer()
+            case "sendgrid":
+                return SendGridMailer()
+            case _:
+                raise ValueError(f"Unknown mail provider: {provider}")
+
+
+# 3) Services receive the dependency (constructor injection) -> easy to test.
+class SignupService:
+    def __init__(self, mailer: Mailer) -> None:
+        self._mailer = mailer
+
+    def register(self, email: str) -> None:
+        self._mailer.send(email, "Welcome!")
+
+
+if __name__ == "__main__":
+    # Changing provider = changing ONE string (usually read from config).
+    mailer = MailerFactory.create("sendgrid")
+    SignupService(mailer).register("asha@example.com")` },
+  { lang: 'ts', code: `
+// 1) Clients talk to an interface, not a concrete class.
+interface Mailer {
+  send(to: string, msg: string): void;
+}
+
+class SmtpMailer implements Mailer {
+  send(to: string, msg: string): void { console.log(\`SMTP -> \${to}: \${msg}\`); }
+}
+
+class SendGridMailer implements Mailer {
+  send(to: string, msg: string): void { console.log(\`SendGrid API -> \${to}: \${msg}\`); }
+}
+
+// 2) ONE place knows how to pick and build the concrete class.
+const MailerFactory = {
+  create(provider: string): Mailer {
+    switch (provider.toLowerCase()) {
+      case "smtp": return new SmtpMailer();
+      case "sendgrid": return new SendGridMailer();
+      default: throw new Error(\`Unknown mail provider: \${provider}\`);
+    }
+  },
+};
+
+// 3) Services receive the dependency (constructor injection) -> easy to test.
+class SignupService {
+  constructor(private readonly mailer: Mailer) {}
+
+  register(email: string): void { this.mailer.send(email, "Welcome!"); }
+}
+
+// Changing provider = changing ONE string (usually read from config).
+const mailer = MailerFactory.create("sendgrid");
+new SignupService(mailer).register("asha@example.com");` },
+  { lang: 'cpp', code: `
+#include <algorithm>
+#include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <string>
+using namespace std;
+
+// 1) Clients talk to an abstract class, not a concrete one.
+class Mailer {
+public:
+    virtual ~Mailer() = default;
+    virtual void send(const string& to, const string& msg) const = 0;
+};
+
+class SmtpMailer : public Mailer {
+public:
+    void send(const string& to, const string& msg) const override { cout << "SMTP -> " << to << ": " << msg << "\\n"; }
+};
+
+class SendGridMailer : public Mailer {
+public:
+    void send(const string& to, const string& msg) const override { cout << "SendGrid API -> " << to << ": " << msg << "\\n"; }
+};
+
+// 2) ONE place knows how to pick and build the concrete class.
+class MailerFactory {
+public:
+    MailerFactory() = delete;                    // utility class: no instances
+
+    static unique_ptr<Mailer> create(string provider) {
+        transform(provider.begin(), provider.end(), provider.begin(), [](unsigned char c) { return tolower(c); });
+        if (provider == "smtp") return make_unique<SmtpMailer>();
+        if (provider == "sendgrid") return make_unique<SendGridMailer>();
+        throw invalid_argument("Unknown mail provider: " + provider);
+    }
+};
+
+// 3) Services receive the dependency (constructor injection) -> easy to test.
+class SignupService {
+    const Mailer& mailer;
+
+public:
+    explicit SignupService(const Mailer& m) : mailer(m) {}
+
+    void registerUser(const string& email) const { mailer.send(email, "Welcome!"); }
+};
+
+int main() {
+    // Changing provider = changing ONE string (usually read from config).
+    auto mailer = MailerFactory::create("sendgrid");
+    SignupService(*mailer).registerUser("asha@example.com");
 }` }
+] }
     ],
     codeTitle: ['Brute force: new everywhere', 'Refactored with a factory + interface'],
     viz: [
@@ -230,7 +454,7 @@ public class Main {
       }
     ],
     examples: [
-      { title: 'Test pain: you cannot fake what you "new" yourself', html: `<p>If <code>CheckoutService</code> does <code>new StripeGateway()</code> inside <code>pay()</code>, every unit test hits the real Stripe sandbox (slow, flaky, needs network). Pass the gateway in through the constructor and the test can hand in a <code>FakeGateway</code> that just records calls. The fix is not "more patterns" — it is "creation happens <b>outside</b> the class that uses the object".</p>`, code: `
+      { title: 'Test pain: you cannot fake what you "new" yourself', html: `<p>If <code>CheckoutService</code> does <code>new StripeGateway()</code> inside <code>pay()</code>, every unit test hits the real Stripe sandbox (slow, flaky, needs network). Pass the gateway in through the constructor and the test can hand in a <code>FakeGateway</code> that just records calls. The fix is not "more patterns" — it is "creation happens <b>outside</b> the class that uses the object".</p>`, code: { lang: 'java', code: `
 interface PaymentGateway { boolean charge(String user, long cents); }
 
 class FakeGateway implements PaymentGateway {
@@ -250,9 +474,98 @@ class CheckoutTest {
         boolean ok = new CheckoutService(fake).pay("asha", 4999);
         System.out.println(ok + " " + fake.calls);   // true [asha:4999]
     }
-}` },
+}`,
+alt: [
+  { lang: 'python', code: `
+from abc import ABC, abstractmethod
+
+
+class PaymentGateway(ABC):
+    @abstractmethod
+    def charge(self, user: str, cents: int) -> bool: ...
+
+
+class FakeGateway(PaymentGateway):
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def charge(self, user: str, cents: int) -> bool:
+        self.calls.append(f"{user}:{cents}")
+        return True
+
+
+class CheckoutService:
+    def __init__(self, gateway: PaymentGateway) -> None:    # injected, not created here
+        self._gateway = gateway
+
+    def pay(self, user: str, cents: int) -> bool:
+        return cents > 0 and self._gateway.charge(user, cents)
+
+
+if __name__ == "__main__":
+    fake = FakeGateway()
+    ok = CheckoutService(fake).pay("asha", 4999)
+    print(str(ok).lower(), "[" + ", ".join(fake.calls) + "]")    # true [asha:4999]` },
+  { lang: 'ts', code: `
+interface PaymentGateway { charge(user: string, cents: number): boolean; }
+
+class FakeGateway implements PaymentGateway {
+  readonly calls: string[] = [];
+
+  charge(user: string, cents: number): boolean {
+    this.calls.push(\`\${user}:\${cents}\`);
+    return true;
+  }
+}
+
+class CheckoutService {
+  constructor(private readonly gateway: PaymentGateway) {}      // injected, not created here
+
+  pay(user: string, cents: number): boolean { return cents > 0 && this.gateway.charge(user, cents); }
+}
+
+const fake = new FakeGateway();
+const ok = new CheckoutService(fake).pay("asha", 4999);
+console.log(\`\${ok} [\${fake.calls.join(", ")}]\`);   // true [asha:4999]` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <string>
+#include <vector>
+using namespace std;
+
+class PaymentGateway {
+public:
+    virtual ~PaymentGateway() = default;
+    virtual bool charge(const string& user, long long cents) = 0;
+};
+
+class FakeGateway : public PaymentGateway {
+public:
+    vector<string> calls;
+
+    bool charge(const string& user, long long cents) override {
+        calls.push_back(user + ":" + to_string(cents));
+        return true;
+    }
+};
+
+class CheckoutService {
+    PaymentGateway& gateway;                    // injected, not created here
+
+public:
+    explicit CheckoutService(PaymentGateway& g) : gateway(g) {}
+
+    bool pay(const string& user, long long cents) { return cents > 0 && gateway.charge(user, cents); }
+};
+
+int main() {
+    FakeGateway fake;
+    bool ok = CheckoutService(fake).pay("asha", 4999);
+    cout << boolalpha << ok << " [" << fake.calls[0] << "]\\n";   // true [asha:4999]
+}` }
+] } },
       { title: 'The 9-argument constructor (a Builder is waiting to happen)', html: `<p><code>new Pizza("L", "thin", "tomato", true, false, true, null, 2, "no onion")</code> — which <code>true</code> is cheese? Swap two booleans and it still compiles. When you see long parameter lists with many optional values, the creational fix is a <b>Builder</b> (topic 5). The brute force — many overloaded constructors — is called the <b>telescoping constructor</b> anti-pattern.</p>` },
-      { title: 'When plain new is perfectly fine', html: `<p>Value objects and data holders — <code>new Point(2, 3)</code>, a <code>record Money(long cents, String currency)</code>, <code>new ArrayList&lt;&gt;()</code> inside a method — have one obvious implementation and no lifecycle. Wrapping them in factories is <b>over-engineering</b> (YAGNI). Use patterns where change, cost, or complexity actually lives.</p>`, code: `
+      { title: 'When plain new is perfectly fine', html: `<p>Value objects and data holders — <code>new Point(2, 3)</code>, a <code>record Money(long cents, String currency)</code>, <code>new ArrayList&lt;&gt;()</code> inside a method — have one obvious implementation and no lifecycle. Wrapping them in factories is <b>over-engineering</b> (YAGNI). Use patterns where change, cost, or complexity actually lives.</p>`, code: { lang: 'java', code: `
 record Money(long cents, String currency) {
     Money {
         if (cents < 0) throw new IllegalArgumentException("negative money");
@@ -264,8 +577,60 @@ class Demo {
         Money price = new Money(4999, "INR");   // plain new is the right call here
         System.out.println(price);
     }
-}` },
-      { title: 'Static factory methods: the JDK already does this', html: `<p><code>Integer.valueOf(100)</code> returns a <b>cached</b> object for -128..127, <code>List.of(1, 2)</code> returns a hidden immutable class, <code>EnumSet.noneOf(Day.class)</code> picks <code>RegularEnumSet</code> or <code>JumboEnumSet</code> based on size. A <b>named static method</b> that returns an object is the lightest creational tool: it can cache, pick a subclass, and has a meaningful name (<code>of</code>, <code>from</code>, <code>valueOf</code>, <code>newInstance</code>).</p>`, code: `
+}`,
+alt: [
+  { lang: 'python', code: `
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Money:
+    cents: int
+    currency: str
+
+    def __post_init__(self) -> None:
+        if self.cents < 0:
+            raise ValueError("negative money")
+
+    def __str__(self) -> str:
+        return f"Money[cents={self.cents}, currency={self.currency}]"
+
+
+if __name__ == "__main__":
+    price = Money(4999, "INR")                  # plain construction is the right call here
+    print(price)` },
+  { lang: 'ts', code: `
+class Money {
+  constructor(readonly cents: number, readonly currency: string) {
+    if (cents < 0) throw new Error("negative money");
+  }
+
+  toString(): string { return \`Money[cents=\${this.cents}, currency=\${this.currency}]\`; }
+}
+
+const price = new Money(4999, "INR");           // plain new is the right call here
+console.log(String(price));` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <stdexcept>
+#include <string>
+using namespace std;
+
+struct Money {
+    const long long cents;
+    const string currency;
+
+    Money(long long c, string cur) : cents(c), currency(std::move(cur)) {
+        if (c < 0) throw invalid_argument("negative money");
+    }
+};
+
+int main() {
+    Money price(4999, "INR");                   // plain construction is the right call here
+    cout << "Money[cents=" << price.cents << ", currency=" << price.currency << "]\\n";
+}` }
+] } },
+      { title: 'Static factory methods: the JDK already does this', html: `<p><code>Integer.valueOf(100)</code> returns a <b>cached</b> object for -128..127, <code>List.of(1, 2)</code> returns a hidden immutable class, <code>EnumSet.noneOf(Day.class)</code> picks <code>RegularEnumSet</code> or <code>JumboEnumSet</code> based on size. A <b>named static method</b> that returns an object is the lightest creational tool: it can cache, pick a subclass, and has a meaningful name (<code>of</code>, <code>from</code>, <code>valueOf</code>, <code>newInstance</code>).</p>`, code: { lang: 'java', code: `
 class StaticFactoryDemo {
     public static void main(String[] args) {
         Integer a = Integer.valueOf(100), b = Integer.valueOf(100);
@@ -273,10 +638,35 @@ class StaticFactoryDemo {
         List<Integer> list = List.of(1, 2, 3);                // concrete class is hidden
         System.out.println(list.getClass().getSimpleName()); // e.g. ListN (JDK internal)
     }
+}`,
+alt: [
+  { lang: 'python', code: `
+if __name__ == "__main__":
+    a, b = int("100"), int("100")
+    print(str(a is b).lower())                  # true: small ints are cached
+    items = (1, 2, 3)                            # a tuple literal: the concrete class is built-in
+    print(type(items).__name__)                  # tuple` },
+  { lang: 'ts', code: `
+const a: symbol = Symbol.for("100"), b: symbol = Symbol.for("100");
+console.log(a === b);                            // true: the global registry returns the same symbol
+const list: readonly number[] = Object.freeze([1, 2, 3]);   // read-only view of an array
+console.log(list.constructor.name);              // Array` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <locale>
+using namespace std;
+
+int main() {
+    locale a = locale::classic(), b = locale::classic();
+    // every copy of the classic locale shares the same facet object
+    cout << boolalpha << (&use_facet<ctype<char>>(a) == &use_facet<ctype<char>>(b)) << "\\n";   // true
+    auto items = {1, 2, 3};                      // std::initializer_list: the type is deduced, not named
+    cout << items.size() << "\\n";                // 3
 }` }
+] } }
     ],
     deepDive: `<p>🟣 <b>Where the patterns come from.</b> The 1994 "Gang of Four" (GoF) book lists five creational patterns: Abstract Factory, Builder, Factory Method, Prototype, Singleton. <b>Object Pool</b> is not in GoF but is a classic creational idiom (connection pools, thread pools). "Simple Factory" (one method with a <code>switch</code>) is also not a GoF pattern — it is a useful idiom that interviewers still call "factory".</p>
-<p><b>The real principle underneath</b> is the <b>Dependency Inversion Principle</b> plus separating <i>construction</i> from <i>use</i>. In 2026 production Java, most of that separation is done by a <b>dependency-injection container</b> (Spring, Micronaut, Quarkus, Guice, Dagger): it is effectively a giant configurable factory that builds the object graph once at startup, with "singleton" as the default bean scope. Knowing the patterns still matters because (1) DI containers are built from them, (2) you need them in libraries, CLIs and Android code without a container, and (3) LLD interviews expect you to write them by hand.</p>
+<p><b>The real principle underneath</b> is the <b>Dependency Inversion Principle</b> plus separating <i>construction</i> from <i>use</i>. In production code, most of that separation is done by a <b>dependency-injection container</b> (Spring, Micronaut, Quarkus, Guice or Dagger in Java; FastAPI <code>Depends</code> or <code>dependency-injector</code> in Python; NestJS or tsyringe in TypeScript; Boost.DI in C++): it is effectively a giant configurable factory that builds the object graph once at startup, with "singleton" as the default bean scope. Knowing the patterns still matters because (1) DI containers are built from them, (2) you need them in libraries, CLIs and Android code without a container, and (3) LLD interviews expect you to write them by hand.</p>
 <p><b>Costs.</b> Every factory adds a type and an indirection; a reader must jump one more hop to find the concrete class. A good rule: introduce a factory when there are <b>two or more</b> implementations, creation needs <b>logic</b> (validation, caching, config), or tests need <b>substitution</b>. Effective Java (Item 1) recommends static factory methods over constructors for named creation, caching and returning subtypes; Item 2 recommends Builders once you pass four or so parameters.</p>
 <p><b>Performance reality.</b> Object allocation on the modern JVM is a pointer bump in a thread-local buffer (TLAB) — roughly ten nanoseconds — and short-lived garbage is very cheap with G1/ZGC. So "avoid new for speed" is almost never a good reason; <b>"avoid new for coupling"</b> is.</p>`,
     aiEra: `<p>🤖 <b>What AI changes:</b> assistants generate a Builder, a factory registry or a holder-idiom Singleton in seconds, so the typing is free. The scarce skill is <b>deciding</b> whether a pattern is needed at all and which one. AI tools love to over-pattern: ask for "a clean notification service" and you may get an AbstractNotificationFactoryProvider for a single implementation.</p>
@@ -317,6 +707,7 @@ class ReportService {
           `<p>Hint 2: instead of a growing <code>switch</code>, store <code>Map&lt;String, Supplier&lt;Exporter&gt;&gt;</code>. A <code>Supplier</code> is "a recipe that makes a new object when called", e.g. <code>CsvExporter::new</code>.</p>`,
           `<p>Hint 3: normalise the key with <code>toLowerCase(Locale.ROOT)</code>, throw a helpful message for unknown keys, and inject the factory into <code>ReportService</code> so tests can register a fake format.</p>`
         ],
+        tests: { io: true, cases: [{ stdin: '', stdout: "a,b\n[\"x\"]\nPDF[q|r]\nUnsupported format xml, supported: [csv, json, pdf]\n" }] },
         solution: {
           approach: `<p><b>Idea:</b> separate <i>choosing and building</i> exporters from <i>using</i> them.</p>
 <ol><li>Create interface <code>Exporter</code>; each format is one small class.</li>
@@ -386,6 +777,7 @@ public class Main {
         ReportService service = new ReportService(factory);
         System.out.println(service.daily("CSV", List.of("a", "b")));    // a,b
         System.out.println(service.monthly("json", List.of("x")));      // ["x"]
+        System.out.println(service.daily("Pdf", List.of("q", "r")));    // PDF[q|r]
         try {
             service.daily("xml", List.of());
         } catch (IllegalArgumentException e) {
@@ -393,6 +785,225 @@ public class Main {
         }
     }
 }`,
+          alt: [
+            { lang: 'python', code: `
+from abc import ABC, abstractmethod
+from typing import Callable
+
+
+class Exporter(ABC):
+    @abstractmethod
+    def export(self, rows: list[str]) -> str: ...
+
+
+class PdfExporter(Exporter):
+    def export(self, rows: list[str]) -> str:
+        return "PDF[" + "|".join(rows) + "]"
+
+
+class CsvExporter(Exporter):
+    def export(self, rows: list[str]) -> str:
+        return ",".join(rows)
+
+
+class JsonExporter(Exporter):
+    def export(self, rows: list[str]) -> str:
+        return "[" + ",".join(f'"{r}"' for r in rows) + "]"
+
+
+class ExporterFactory:
+    def __init__(self) -> None:
+        # format -> recipe that builds a fresh exporter
+        self._registry: dict[str, Callable[[], Exporter]] = {}
+
+    def register(self, fmt: str, recipe: Callable[[], Exporter]) -> "ExporterFactory":
+        self._registry[fmt.lower()] = recipe
+        return self                                    # allows chaining at startup
+
+    def create(self, fmt: str) -> Exporter:
+        recipe = self._registry.get(fmt.lower())
+        if recipe is None:
+            supported = ", ".join(sorted(self._registry))
+            raise ValueError(f"Unsupported format {fmt}, supported: [{supported}]")
+        return recipe()
+
+
+class ReportService:
+    def __init__(self, factory: ExporterFactory) -> None:
+        self._factory = factory
+
+    def daily(self, fmt: str, rows: list[str]) -> str:
+        return self._factory.create(fmt).export(rows)
+
+    def monthly(self, fmt: str, rows: list[str]) -> str:
+        return self._factory.create(fmt).export(rows)
+
+
+if __name__ == "__main__":
+    factory = (ExporterFactory()
+               .register("pdf", PdfExporter)
+               .register("csv", CsvExporter)
+               .register("json", JsonExporter))
+    service = ReportService(factory)
+    print(service.daily("CSV", ["a", "b"]))
+    print(service.monthly("json", ["x"]))
+    print(service.daily("Pdf", ["q", "r"]))
+    try:
+        service.daily("xml", [])
+    except ValueError as e:
+        print(e)` },
+            { lang: 'ts', code: `
+interface Exporter {
+  export(rows: string[]): string;
+}
+
+class PdfExporter implements Exporter {
+  export(rows: string[]): string { return "PDF[" + rows.join("|") + "]"; }
+}
+
+class CsvExporter implements Exporter {
+  export(rows: string[]): string { return rows.join(","); }
+}
+
+class JsonExporter implements Exporter {
+  export(rows: string[]): string { return "[" + rows.map((r) => \`"\${r}"\`).join(",") + "]"; }
+}
+
+class ExporterFactory {
+  // format -> recipe that builds a fresh exporter
+  private readonly registry = new Map<string, () => Exporter>();
+
+  register(format: string, recipe: () => Exporter): this {
+    this.registry.set(format.toLowerCase(), recipe);
+    return this;                                       // allows chaining at startup
+  }
+
+  create(format: string): Exporter {
+    const recipe = this.registry.get(format.toLowerCase());
+    if (!recipe) {
+      const supported = [...this.registry.keys()].sort().join(", ");
+      throw new Error(\`Unsupported format \${format}, supported: [\${supported}]\`);
+    }
+    return recipe();
+  }
+}
+
+class ReportService {
+  constructor(private readonly factory: ExporterFactory) {}
+
+  daily(format: string, rows: string[]): string { return this.factory.create(format).export(rows); }
+
+  monthly(format: string, rows: string[]): string { return this.factory.create(format).export(rows); }
+}
+
+const factory = new ExporterFactory()
+  .register("pdf", () => new PdfExporter())
+  .register("csv", () => new CsvExporter())
+  .register("json", () => new JsonExporter());
+const service = new ReportService(factory);
+console.log(service.daily("CSV", ["a", "b"]));
+console.log(service.monthly("json", ["x"]));
+console.log(service.daily("Pdf", ["q", "r"]));
+try {
+  service.daily("xml", []);
+} catch (e) {
+  console.log((e as Error).message);
+}` },
+            { lang: 'cpp', code: `
+#include <algorithm>
+#include <functional>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+using namespace std;
+
+class Exporter {
+public:
+    virtual ~Exporter() = default;
+    virtual string exportRows(const vector<string>& rows) const = 0;
+};
+
+string joinWith(const vector<string>& v, const string& sep) {
+    string out;
+    for (size_t i = 0; i < v.size(); i++) out += (i ? sep : "") + v[i];
+    return out;
+}
+
+string lower(string s) {
+    transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return tolower(c); });
+    return s;
+}
+
+class PdfExporter : public Exporter {
+public:
+    string exportRows(const vector<string>& rows) const override { return "PDF[" + joinWith(rows, "|") + "]"; }
+};
+
+class CsvExporter : public Exporter {
+public:
+    string exportRows(const vector<string>& rows) const override { return joinWith(rows, ","); }
+};
+
+class JsonExporter : public Exporter {
+public:
+    string exportRows(const vector<string>& rows) const override {
+        vector<string> quoted;
+        for (const auto& r : rows) quoted.push_back("\\"" + r + "\\"");
+        return "[" + joinWith(quoted, ",") + "]";
+    }
+};
+
+class ExporterFactory {
+    // format -> recipe that builds a fresh exporter (std::map keeps keys sorted)
+    map<string, function<unique_ptr<Exporter>()>> registry;
+
+public:
+    ExporterFactory& registerFormat(const string& format, function<unique_ptr<Exporter>()> recipe) {
+        registry[lower(format)] = std::move(recipe);
+        return *this;                                  // allows chaining at startup
+    }
+
+    unique_ptr<Exporter> create(const string& format) const {
+        auto it = registry.find(lower(format));
+        if (it == registry.end()) {
+            vector<string> keys;
+            for (const auto& kv : registry) keys.push_back(kv.first);
+            throw invalid_argument("Unsupported format " + format + ", supported: [" + joinWith(keys, ", ") + "]");
+        }
+        return it->second();
+    }
+};
+
+class ReportService {
+    const ExporterFactory& factory;
+
+public:
+    explicit ReportService(const ExporterFactory& f) : factory(f) {}
+
+    string daily(const string& format, const vector<string>& rows) const { return factory.create(format)->exportRows(rows); }
+
+    string monthly(const string& format, const vector<string>& rows) const { return factory.create(format)->exportRows(rows); }
+};
+
+int main() {
+    ExporterFactory factory;
+    factory.registerFormat("pdf", [] { return make_unique<PdfExporter>(); })
+        .registerFormat("csv", [] { return make_unique<CsvExporter>(); })
+        .registerFormat("json", [] { return make_unique<JsonExporter>(); });
+    ReportService service(factory);
+    cout << service.daily("CSV", {"a", "b"}) << "\\n";
+    cout << service.monthly("json", {"x"}) << "\\n";
+    cout << service.daily("Pdf", {"q", "r"}) << "\\n";
+    try {
+        service.daily("xml", {});
+    } catch (const invalid_argument& e) {
+        cout << e.what() << "\\n";
+    }
+}` }
+          ],
           complexity: `<p><code>create</code> is one hash lookup: O(1) average. Memory O(F) for F registered formats. Adding a format: O(1) code change (one class + one line).</p>`,
           followUps: ['How would you load formats automatically from plugins? (ServiceLoader / classpath scanning)', 'Should exporters be stateless and cached instead of created per call?', 'How does Spring replace this registry? (inject Map&lt;String, Exporter&gt; of beans)']
         }
@@ -458,7 +1069,7 @@ public class Main {
       ['A', 4, 'new Config() -> #1', '#1', 'JVM', 'ok', 'Constructor completes; the static final field is safely published.'],
       ['A', 7, 'returns #1', '#1', '-', 'ok', 'A returns #1. Initialisation is marked complete.'],
       ['B', 7, 'returns #1', '#1', '-', 'ok', 'B wakes up and reads the same #1.'],
-      ['C', 7, 'returns #1, no lock', '#1', '-', 'ok', 'Later calls just read a static final field: no lock, no volatile, fully lazy. <span class="c-g">Simplest correct lazy singleton in Java.</span>']
+      ['C', 7, 'returns #1, no lock', '#1', '-', 'ok', 'Later calls just read a static final field: no lock, no volatile, fully lazy. <span class="c-g">Simplest correct lazy singleton in Java (a function-local static in C++).</span>']
     ]
   };
 
@@ -471,7 +1082,7 @@ public class Main {
 <li>A <b>static field</b> holding the one instance.</li>
 <li>A <b>static access method</b> (usually <code>getInstance()</code>) that returns it.</li></ol>
 <p><b>Good uses:</b> something that is <i>truly</i> one per process — app configuration loaded once, a registry, an in-memory cache, a metrics collector, a driver for one physical device. <b>Bad uses:</b> "I want a global variable" — that hides dependencies and makes tests share state.</p>
-<p>🔵 <b>The five Java variants</b> (all with a private constructor):</p>
+<p>🔵 <b>The five variants</b> (all with a private constructor; the table uses Java names, and the code tabs show the Python, TypeScript and C++ equivalents):</p>
 ${H.table(['Variant', 'Lazy?', 'Thread-safe?', 'Cost per call', 'Verdict'], [
   ['Eager <code>static final INSTANCE = new X()</code>', 'No (created when class loads)', '<span class="c-g">Yes</span> (class init is safe)', 'Field read', 'Great when creation is cheap'],
   ['Lazy, no locking', 'Yes', '<span class="c-r">No</span> — race creates two', 'Field read', '<span class="c-r">Never in multi-threaded code</span>'],
@@ -567,7 +1178,259 @@ public class Main {
         EnumConfig.INSTANCE.set("region", "ap-south-1");
         System.out.println(EnumConfig.INSTANCE.get("region"));
     }
-}` },
+}`,
+alt: [
+  { lang: 'python', code: `
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from enum import Enum
+from functools import cache
+
+
+# 1) EAGER: created when the module is imported. Thread-safe for free (imports are locked).
+class EagerConfig:
+    _instance: "EagerConfig"
+
+    @classmethod
+    def get_instance(cls) -> "EagerConfig":
+        return cls._instance
+
+
+EagerConfig._instance = EagerConfig()
+
+
+# 2) LAZY + lock on every call: correct, but every call takes the lock.
+class SyncConfig:
+    _instance = None
+    _lock = threading.Lock()
+
+    @classmethod
+    def get_instance(cls) -> "SyncConfig":
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = SyncConfig()
+            return cls._instance
+
+
+# 3) DOUBLE-CHECKED LOCKING: reading a class attribute is atomic under the GIL, so no volatile is needed.
+class DclConfig:
+    _instance = None
+    _lock = threading.Lock()
+
+    @classmethod
+    def get_instance(cls) -> "DclConfig":
+        local = cls._instance                    # 1st check: no lock
+        if local is None:
+            with cls._lock:
+                local = cls._instance
+                if local is None:                # 2nd check: inside the lock
+                    cls._instance = local = DclConfig()
+        return local
+
+
+# 4) CACHED FACTORY (closest to the holder idiom): lazy, and later calls skip all locking.
+class HolderConfig:
+    @staticmethod
+    @cache
+    def get_instance() -> "HolderConfig":        # cache stores the first result (use a lock if construction has side effects)
+        return HolderConfig()
+
+
+# 5) ENUM: one member, created once, also safe against pickle round-trips.
+class EnumConfig(Enum):
+    INSTANCE = 1
+
+    def __init__(self, _value: int) -> None:
+        self._settings: dict[str, str] = {}
+
+    def get(self, key: str) -> str:
+        return self._settings.get(key, "")
+
+    def set(self, key: str, value: str) -> None:
+        self._settings[key] = value
+
+
+if __name__ == "__main__":
+    start = threading.Event()
+    ids: set[int] = set()
+
+    def grab() -> None:
+        start.wait()                             # release all threads together
+        ids.add(id(DclConfig.get_instance()))
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(grab) for _ in range(8)]
+        start.set()
+        for f in futures:
+            f.result()
+    print("distinct DCL instances:", len(ids))   # 1
+    print(str(HolderConfig.get_instance() is HolderConfig.get_instance()).lower())   # true
+    EnumConfig.INSTANCE.set("region", "ap-south-1")
+    print(EnumConfig.INSTANCE.get("region"))` },
+  { lang: 'ts', code: `
+// 1) EAGER: created when the class is initialised.
+class EagerConfig {
+  private static readonly INSTANCE = new EagerConfig();
+  private constructor() {}
+  static getInstance(): EagerConfig { return EagerConfig.INSTANCE; }
+}
+
+// 2) LAZY: JavaScript runs one task at a time, so a plain check is already safe. No lock needed.
+class SyncConfig {
+  private static instance: SyncConfig | undefined;
+  private constructor() {}
+  static getInstance(): SyncConfig {
+    SyncConfig.instance ??= new SyncConfig();
+    return SyncConfig.instance;
+  }
+}
+
+// 3) "DOUBLE-CHECKED" LOCKING does not exist here: with no threads there is nothing to lock or to make volatile.
+class DclConfig {
+  private static instance: DclConfig | undefined;
+  private constructor() {}
+  static getInstance(): DclConfig {
+    if (DclConfig.instance === undefined) DclConfig.instance = new DclConfig();
+    return DclConfig.instance;
+  }
+}
+
+// 4) HOLDER: a module-level lazy function (closure) that builds the object on first call.
+class HolderConfig {
+  private constructor() {}
+  static getInstance: () => HolderConfig = (() => {
+    let instance: HolderConfig | undefined;
+    return () => (instance ??= new HolderConfig());
+  })();
+}
+
+// 5) "ENUM": an exported const object is the TypeScript module singleton.
+const EnumConfig = {
+  settings: new Map<string, string>(),
+  get(key: string): string { return this.settings.get(key) ?? ""; },
+  set(key: string, value: string): void { this.settings.set(key, value); },
+};
+
+async function main(): Promise<void> {
+  const ids = new Set<DclConfig>();
+  await Promise.all(Array.from({ length: 8 }, async () => {
+    await Promise.resolve();                         // let all tasks start together
+    ids.add(DclConfig.getInstance());
+  }));
+  console.log(\`distinct DCL instances: \${ids.size}\`);   // 1
+  console.log(HolderConfig.getInstance() === HolderConfig.getInstance());   // true
+  EnumConfig.set("region", "ap-south-1");
+  console.log(EnumConfig.get("region"));
+}
+
+main();` },
+  { lang: 'cpp', code: `
+#include <atomic>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <set>
+#include <string>
+#include <thread>
+#include <vector>
+using namespace std;
+
+// 1) EAGER: created before main() runs. Thread-safe for free.
+class EagerConfig {
+    EagerConfig() = default;
+    static EagerConfig INSTANCE;
+public:
+    EagerConfig(const EagerConfig&) = delete;
+    static EagerConfig& getInstance() { return INSTANCE; }
+};
+EagerConfig EagerConfig::INSTANCE;
+
+// 2) LAZY + mutex on every call: correct, but every call takes the lock.
+class SyncConfig {
+    SyncConfig() = default;
+    static inline SyncConfig* instance = nullptr;
+    static inline mutex lock;
+public:
+    static SyncConfig& getInstance() {
+        lock_guard<mutex> g(lock);
+        if (!instance) instance = new SyncConfig();   // lives until the program ends
+        return *instance;
+    }
+};
+
+// 3) DOUBLE-CHECKED LOCKING: the atomic with acquire/release is what volatile does in Java.
+class DclConfig {
+    DclConfig() = default;
+    static inline atomic<DclConfig*> instance{nullptr};
+    static inline mutex lock;
+public:
+    static DclConfig& getInstance() {
+        DclConfig* local = instance.load(memory_order_acquire);   // 1st check: no lock
+        if (!local) {
+            lock_guard<mutex> g(lock);
+            local = instance.load(memory_order_relaxed);          // 2nd check: inside the lock
+            if (!local) {
+                local = new DclConfig();
+                instance.store(local, memory_order_release);
+            }
+        }
+        return *local;
+    }
+};
+
+// 4) FUNCTION-LOCAL STATIC (Meyers singleton): lazy, and the compiler makes it thread-safe since C++11.
+class HolderConfig {
+    HolderConfig() = default;
+public:
+    HolderConfig(const HolderConfig&) = delete;
+    static HolderConfig& getInstance() {
+        static HolderConfig instance;
+        return instance;
+    }
+};
+
+// 5) call_once (C++ has no enum trick): runs the initialiser exactly once, even under a race.
+class OnceConfig {
+    map<string, string> settings;
+    mutex guard;
+    OnceConfig() = default;
+public:
+    static OnceConfig& getInstance() {
+        static unique_ptr<OnceConfig> instance;
+        static once_flag flag;
+        call_once(flag, [] { instance.reset(new OnceConfig()); });
+        return *instance;
+    }
+    string get(const string& key) {
+        lock_guard<mutex> g(guard);
+        auto it = settings.find(key);
+        return it == settings.end() ? "" : it->second;
+    }
+    void set(const string& key, const string& value) {
+        lock_guard<mutex> g(guard);
+        settings[key] = value;
+    }
+};
+
+int main() {
+    atomic<bool> start{false};
+    vector<DclConfig*> found(8);
+    vector<thread> threads;
+    for (int i = 0; i < 8; i++) {
+        threads.emplace_back([&, i] {
+            while (!start) this_thread::yield();      // release all threads together
+            found[i] = &DclConfig::getInstance();
+        });
+    }
+    start = true;
+    for (auto& t : threads) t.join();
+    cout << "distinct DCL instances: " << set<DclConfig*>(found.begin(), found.end()).size() << "\\n";   // 1
+    cout << boolalpha << (&HolderConfig::getInstance() == &HolderConfig::getInstance()) << "\\n";        // true
+    OnceConfig::getInstance().set("region", "ap-south-1");
+    cout << OnceConfig::getInstance().get("region") << "\\n";
+}` }
+] },
       { lang: 'java', title: 'Breaking a Singleton (reflection, serialization) and defending it', code: `
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -613,7 +1476,114 @@ public class BreakDemo {
             System.out.println("same after deserialize? " + (copy == Settings.getInstance())); // true
         }
     }
+}`,
+alt: [
+  { lang: 'python', code: `
+import pickle
+import threading
+
+
+class Settings:
+    _instance = None
+    _lock = threading.Lock()
+    _created = False
+
+    def __init__(self) -> None:
+        with Settings._lock:
+            if Settings._created:                # direct-construction guard
+                raise RuntimeError("Use Settings.get_instance()")
+            Settings._created = True
+
+    @classmethod
+    def get_instance(cls) -> "Settings":
+        return cls._instance
+
+    # Serialization guard: unpickling calls this function, so it returns THE instance, not a copy.
+    def __reduce__(self):
+        return (Settings.get_instance, ())
+
+
+Settings._instance = Settings()
+
+
+if __name__ == "__main__":
+    # Attack 1: calling the constructor again
+    try:
+        Settings()
+    except RuntimeError as e:
+        print("constructor blocked:", e)
+
+    # Attack 2: pickle round-trip
+    copy = pickle.loads(pickle.dumps(Settings.get_instance()))
+    print("same after unpickle?", str(copy is Settings.get_instance()).lower())   # true` },
+  { lang: 'ts', code: `
+class Settings {
+  private static created = false;                          // initialised before INSTANCE (textual order)
+  private static readonly INSTANCE = new Settings();
+
+  private constructor() {
+    if (Settings.created) {                                // run-time guard: private is only a compile-time rule
+      throw new Error("Use Settings.getInstance()");
+    }
+    Settings.created = true;
+  }
+
+  static getInstance(): Settings { return Settings.INSTANCE; }
+
+  // Serialization guard: write a marker, and read it back as THE instance (Java's readResolve).
+  toJSON(): { singleton: string } { return { singleton: "Settings" }; }
+
+  static fromJSON(text: string): Settings {
+    JSON.parse(text);
+    return Settings.INSTANCE;
+  }
+}
+
+// Attack 1: bypass the private constructor with a cast
+try {
+  new (Settings as unknown as new () => Settings)();
+} catch (e) {
+  console.log("constructor blocked: " + (e as Error).message);
+}
+
+// Attack 2: serialization round-trip
+const copy = Settings.fromJSON(JSON.stringify(Settings.getInstance()));
+console.log(\`same after parse? \${copy === Settings.getInstance()}\`);   // true` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <string>
+#include <type_traits>
+using namespace std;
+
+class Settings {
+    Settings() = default;                          // private: nobody else can construct one
+
+public:
+    Settings(const Settings&) = delete;            // copying would be a second instance
+    Settings& operator=(const Settings&) = delete;
+    Settings(Settings&&) = delete;
+
+    static Settings& getInstance() {
+        static Settings instance;
+        return instance;
+    }
+
+    // Serialization guard: reading a marker returns THE instance (Java's readResolve).
+    string serialize() const { return "Settings"; }
+    static Settings& deserialize(const string&) { return getInstance(); }
+};
+
+int main() {
+    // Attack 1 (construction, copying, moving) is rejected by the compiler, so it can be checked at compile time.
+    static_assert(!is_default_constructible_v<Settings>, "no outside construction");
+    static_assert(!is_copy_constructible_v<Settings> && !is_move_constructible_v<Settings>, "no copies");
+    cout << "constructor blocked at compile time\\n";
+
+    // Attack 2: serialization round-trip
+    Settings& copy = Settings::deserialize(Settings::getInstance().serialize());
+    cout << boolalpha << "same after deserialize? " << (&copy == &Settings::getInstance()) << "\\n";   // true
 }` }
+] }
     ],
     codeTitle: ['Five variants + smoke test', 'Attacks and defences'],
     viz: [
@@ -690,7 +1660,7 @@ public class BreakDemo {
       }
     ],
     examples: [
-      { title: 'Configuration loaded once (holder idiom)', html: `<p>Reading <code>app.properties</code> from disk on every call is slow and can give different answers if the file changes mid-request. Load it once, lazily, and expose read-only getters. The holder idiom gives laziness and thread-safety without any lock in our code.</p>`, code: `
+      { title: 'Configuration loaded once (holder idiom)', html: `<p>Reading <code>app.properties</code> from disk on every call is slow and can give different answers if the file changes mid-request. Load it once, lazily, and expose read-only getters. The holder idiom gives laziness and thread-safety without any lock in our code.</p>`, code: { lang: 'java', code: `
 final class AppConfig {
     private final Map<String, String> values;
 
@@ -714,8 +1684,82 @@ class ConfigDemo {
         System.out.println(AppConfig.get().value("db.url"));
         System.out.println(AppConfig.get() == AppConfig.get());   // true
     }
-}` },
-      { title: 'Enum singleton logger with thread-safe state', html: `<p>An enum constant is created once when the enum class initialises. Keep internal state thread-safe (here an <code>AtomicLong</code> counter) because many threads will call it.</p>`, code: `
+}`,
+alt: [
+  { lang: 'python', code: `
+from functools import cache
+from types import MappingProxyType
+
+
+class AppConfig:
+    def __init__(self) -> None:
+        # Imagine reading app.properties here; we fake it for the demo.
+        self._values = MappingProxyType({"db.url": "jdbc:postgresql://localhost/shop", "cache.ttl": "300"})   # read-only
+
+    @staticmethod
+    @cache
+    def get() -> "AppConfig":                    # built on first call, then the same object every time
+        return AppConfig()
+
+    def value(self, key: str) -> str:
+        return self._values.get(key, "")
+
+
+if __name__ == "__main__":
+    print(AppConfig.get().value("db.url"))
+    print(str(AppConfig.get() is AppConfig.get()).lower())   # true` },
+  { lang: 'ts', code: `
+class AppConfig {
+  private readonly values: ReadonlyMap<string, string>;
+  private static instance: AppConfig | undefined;
+
+  private constructor() {
+    // Imagine reading app.properties here; we fake it for the demo.
+    this.values = new Map([["db.url", "jdbc:postgresql://localhost/shop"], ["cache.ttl", "300"]]);
+  }
+
+  static get(): AppConfig {                      // built on first call, then the same object every time
+    AppConfig.instance ??= new AppConfig();
+    return AppConfig.instance;
+  }
+
+  value(key: string): string { return this.values.get(key) ?? ""; }
+}
+
+console.log(AppConfig.get().value("db.url"));
+console.log(AppConfig.get() === AppConfig.get());   // true` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <map>
+#include <string>
+using namespace std;
+
+class AppConfig {
+    const map<string, string> values;              // const: filled once, never changed
+
+    // Imagine reading app.properties here; we fake it for the demo.
+    AppConfig() : values{{"db.url", "jdbc:postgresql://localhost/shop"}, {"cache.ttl", "300"}} {}
+
+public:
+    AppConfig(const AppConfig&) = delete;
+
+    static const AppConfig& get() {                // built on first call, thread-safe since C++11
+        static const AppConfig instance;
+        return instance;
+    }
+
+    string value(const string& key) const {
+        auto it = values.find(key);
+        return it == values.end() ? "" : it->second;
+    }
+};
+
+int main() {
+    cout << AppConfig::get().value("db.url") << "\\n";
+    cout << boolalpha << (&AppConfig::get() == &AppConfig::get()) << "\\n";   // true
+}` }
+] } },
+      { title: 'Enum singleton logger with thread-safe state', html: `<p>An enum constant is created once when the enum class initialises. Keep internal state thread-safe (here an <code>AtomicLong</code> counter) because many threads will call it.</p>`, code: { lang: 'java', code: `
 enum AuditLog {
     INSTANCE;
 
@@ -732,8 +1776,72 @@ class LogDemo {
         AuditLog.INSTANCE.log("user asha logged in");
         AuditLog.INSTANCE.log("order 42 placed");
     }
-}` },
-      { title: 'The testability problem and the DI fix', html: `<p><code>PriceService</code> calls <code>SystemClock.getInstance().now()</code> — tests cannot control time, so "expires after 30 days" is untestable. Fix: depend on an interface and <b>inject</b> it. Production wires the one real instance (still a single object — "singleton by configuration"), tests pass a fixed clock. This is why modern code prefers <b>one instance managed by DI</b> over the Singleton <i>pattern</i>.</p>`, code: `
+}`,
+alt: [
+  { lang: 'python', code: `
+import itertools
+from enum import Enum
+
+
+class AuditLog(Enum):
+    INSTANCE = 1
+
+    def __init__(self, _value: int) -> None:
+        self._lines = itertools.count(1)          # next() on a count is atomic in CPython
+
+    def log(self, msg: str) -> None:
+        n = next(self._lines)
+        print(f"[{n}] {msg}")
+
+
+if __name__ == "__main__":
+    AuditLog.INSTANCE.log("user asha logged in")
+    AuditLog.INSTANCE.log("order 42 placed")` },
+  { lang: 'ts', code: `
+class AuditLog {
+  static readonly INSTANCE = new AuditLog();
+
+  private lines = 0;
+  private constructor() {}
+
+  log(msg: string): void {
+    const n = ++this.lines;
+    console.log(\`[\${n}] \${msg}\`);
+  }
+}
+
+AuditLog.INSTANCE.log("user asha logged in");
+AuditLog.INSTANCE.log("order 42 placed");` },
+  { lang: 'cpp', code: `
+#include <atomic>
+#include <iostream>
+#include <string>
+using namespace std;
+
+class AuditLog {
+    atomic<long long> lines{0};
+    AuditLog() = default;
+
+public:
+    AuditLog(const AuditLog&) = delete;
+
+    static AuditLog& instance() {
+        static AuditLog inst;
+        return inst;
+    }
+
+    void log(const string& msg) {
+        long long n = ++lines;
+        cout << "[" << n << "] " << msg << "\\n";
+    }
+};
+
+int main() {
+    AuditLog::instance().log("user asha logged in");
+    AuditLog::instance().log("order 42 placed");
+}` }
+] } },
+      { title: 'The testability problem and the DI fix', html: `<p><code>PriceService</code> calls <code>SystemClock.getInstance().now()</code> — tests cannot control time, so "expires after 30 days" is untestable. Fix: depend on an interface and <b>inject</b> it. Production wires the one real instance (still a single object — "singleton by configuration"), tests pass a fixed clock. This is why modern code prefers <b>one instance managed by DI</b> over the Singleton <i>pattern</i>.</p>`, code: { lang: 'java', code: `
 interface TimeSource { long nowMillis(); }
 
 final class SystemTime implements TimeSource {
@@ -755,7 +1863,114 @@ class CouponTest {
         System.out.println(new Coupon(fixed, 2_000L).valid());  // true
         System.out.println(new Coupon(SystemTime.INSTANCE, 0L).valid()); // false
     }
-}` },
+}`,
+alt: [
+  { lang: 'python', code: `
+import time
+from abc import ABC, abstractmethod
+from typing import Callable
+
+
+class TimeSource(ABC):
+    @abstractmethod
+    def now_millis(self) -> int: ...
+
+
+class SystemTime(TimeSource):
+    def now_millis(self) -> int:
+        return int(time.time() * 1000)
+
+
+SYSTEM_TIME = SystemTime()                       # the one real clock
+
+
+class FixedTime(TimeSource):                     # test clock
+    def __init__(self, millis: int) -> None:
+        self._millis = millis
+
+    def now_millis(self) -> int:
+        return self._millis
+
+
+class Coupon:
+    def __init__(self, time_source: TimeSource, expires_at: int) -> None:
+        self._time = time_source
+        self._expires_at = expires_at
+
+    def valid(self) -> bool:
+        return self._time.now_millis() < self._expires_at
+
+
+if __name__ == "__main__":
+    print(str(Coupon(FixedTime(1_000), 2_000).valid()).lower())   # true
+    print(str(Coupon(SYSTEM_TIME, 0).valid()).lower())            # false` },
+  { lang: 'ts', code: `
+interface TimeSource { nowMillis(): number; }
+
+class SystemTime implements TimeSource {
+  static readonly INSTANCE = new SystemTime();
+  private constructor() {}
+  nowMillis(): number { return Date.now(); }
+}
+
+class Coupon {
+  constructor(private readonly time: TimeSource, private readonly expiresAt: number) {}
+
+  valid(): boolean { return this.time.nowMillis() < this.expiresAt; }
+}
+
+const fixed: TimeSource = { nowMillis: () => 1_000 };            // test clock
+console.log(new Coupon(fixed, 2_000).valid());                   // true
+console.log(new Coupon(SystemTime.INSTANCE, 0).valid());         // false` },
+  { lang: 'cpp', code: `
+#include <chrono>
+#include <iostream>
+using namespace std;
+
+class TimeSource {
+public:
+    virtual ~TimeSource() = default;
+    virtual long long nowMillis() const = 0;
+};
+
+class SystemTime : public TimeSource {
+    SystemTime() = default;
+
+public:
+    static const SystemTime& instance() {
+        static const SystemTime inst;
+        return inst;
+    }
+
+    long long nowMillis() const override {
+        using namespace chrono;
+        return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+    }
+};
+
+class FixedTime : public TimeSource {            // test clock
+    long long millis;
+public:
+    explicit FixedTime(long long m) : millis(m) {}
+    long long nowMillis() const override { return millis; }
+};
+
+class Coupon {
+    const TimeSource& time;
+    long long expiresAt;
+
+public:
+    Coupon(const TimeSource& t, long long expires) : time(t), expiresAt(expires) {}
+
+    bool valid() const { return time.nowMillis() < expiresAt; }
+};
+
+int main() {
+    FixedTime fixed(1000);
+    cout << boolalpha << Coupon(fixed, 2000).valid() << "\\n";                   // true
+    cout << Coupon(SystemTime::instance(), 0).valid() << "\\n";                  // false
+}` }
+] } },
       { title: '"One per JVM" is not "one per system"', html: `<p>A Singleton is unique per <b>class loader</b> in <b>one JVM</b>. Run 10 pods of your service and you have 10 "singletons". Web servers with per-app class loaders can even have two in one JVM. If you need one-per-cluster (a single scheduler, a global counter) you need a <b>distributed</b> mechanism: leader election (ZooKeeper/etcd), a database row lock, or a Redis <code>INCR</code> — not a Java pattern.</p>` }
     ],
     deepDive: `<p>🟣 <b>Java Memory Model details.</b> A <code>volatile</code> write <i>happens-before</i> every subsequent read of that field, which forbids the "publish before construct" reordering. Since Java 5 (JSR-133) DCL with <code>volatile</code> is correct; before that it was famously broken. <code>final</code> fields get a special guarantee: once a constructor finishes, other threads that see the reference see correct final field values — which is why <b>immutable</b> singletons are robust even when published sloppily.</p>
@@ -807,6 +2022,7 @@ class InvoiceService {
           `<p>Hint 2: for creation, either make the constructor private and use the holder idiom, or keep DCL but add <code>volatile</code> and a second <code>null</code> check inside <code>synchronized</code>.</p>`,
           `<p>Hint 3: replace <code>long next</code> with <code>AtomicLong</code> and use <code>incrementAndGet()</code>. Then prove it with a test: N threads, a <code>CountDownLatch</code> start gate, collect IDs in a concurrent set and compare its size.</p>`
         ],
+        tests: { io: true, cases: [{ stdin: '', stdout: "distinct ids = 80000 (expected 80000)\n" }] },
         solution: {
           approach: `<p><b>Fix list:</b></p>
 <ol><li><b>Private constructor</b> so <code>new IdGenerator()</code> is impossible outside the class.</li>
@@ -849,6 +2065,122 @@ public class Main {
         System.out.println("distinct ids = " + seen.size() + " (expected " + threads * perThread + ")");
     }
 }`,
+          alt: [
+            { lang: 'python', code: `
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
+
+class IdGenerator:
+    _instance = None
+    _create_lock = threading.Lock()
+
+    def __new__(cls) -> "IdGenerator":
+        # double-checked creation: the lock is taken only until the instance exists
+        if cls._instance is None:
+            with cls._create_lock:
+                if cls._instance is None:
+                    inst = super().__new__(cls)
+                    inst._next = 0
+                    inst._lock = threading.Lock()
+                    cls._instance = inst
+        return cls._instance
+
+    @classmethod
+    def get_instance(cls) -> "IdGenerator":
+        return cls()
+
+    def next_id(self) -> int:
+        with self._lock:                         # += is not atomic in Python
+            self._next += 1
+            return self._next                    # 1, 2, 3, ... never duplicated
+
+
+def worker(go: threading.Event, per_thread: int) -> set[int]:
+    go.wait()
+    return {IdGenerator.get_instance().next_id() for _ in range(per_thread)}
+
+
+if __name__ == "__main__":
+    threads, per_thread = 8, 10_000
+    go = threading.Event()
+    with ThreadPoolExecutor(max_workers=threads) as pool:
+        jobs = [pool.submit(worker, go, per_thread) for _ in range(threads)]
+        go.set()
+        seen: set[int] = set().union(*(j.result() for j in jobs))
+    print(f"distinct ids = {len(seen)} (expected {threads * per_thread})")` },
+            { lang: 'ts', code: `
+class IdGenerator {
+  private static instance: IdGenerator | undefined;
+  private next = 0;
+
+  private constructor() {}                          // no outside "new"
+
+  static getInstance(): IdGenerator {
+    // JavaScript runs one thread at a time, so lazy creation needs no lock
+    IdGenerator.instance ??= new IdGenerator();
+    return IdGenerator.instance;
+  }
+
+  nextId(): number { return ++this.next; }          // 1, 2, 3, ... never duplicated
+}
+
+// 8 concurrent tasks that interleave at every await, like threads would
+async function worker(perThread: number, seen: Set<number>): Promise<void> {
+  for (let i = 0; i < perThread; i++) {
+    seen.add(IdGenerator.getInstance().nextId());
+    if (i % 100 === 0) await Promise.resolve();
+  }
+}
+
+async function main(): Promise<void> {
+  const threads = 8, perThread = 10_000;
+  const seen = new Set<number>();
+  await Promise.all(Array.from({ length: threads }, () => worker(perThread, seen)));
+  console.log(\`distinct ids = \${seen.size} (expected \${threads * perThread})\`);
+}
+
+main();` },
+            { lang: 'cpp', code: `
+#include <atomic>
+#include <iostream>
+#include <set>
+#include <thread>
+#include <vector>
+using namespace std;
+
+class IdGenerator {
+    atomic<long long> next{0};                       // atomic counter
+
+    IdGenerator() = default;                         // no outside construction
+
+public:
+    IdGenerator(const IdGenerator&) = delete;
+    IdGenerator& operator=(const IdGenerator&) = delete;
+
+    static IdGenerator& getInstance() {
+        static IdGenerator instance;                 // created on first use, once (thread-safe since C++11)
+        return instance;
+    }
+
+    long long nextId() { return ++next; }            // 1, 2, 3, ... never duplicated
+};
+
+int main() {
+    const int threads = 8, perThread = 10000;
+    vector<set<long long>> parts(threads);
+    vector<thread> pool;
+    for (int t = 0; t < threads; t++) {
+        pool.emplace_back([&parts, t] {
+            for (int i = 0; i < perThread; i++) parts[t].insert(IdGenerator::getInstance().nextId());
+        });
+    }
+    for (auto& th : pool) th.join();
+    set<long long> seen;
+    for (const auto& p : parts) seen.insert(p.begin(), p.end());
+    cout << "distinct ids = " << seen.size() << " (expected " << threads * perThread << ")\\n";
+}` }
+          ],
           complexity: `<p><code>getInstance()</code>: O(1), lock-free after initialisation. <code>nextId()</code>: O(1) CAS; under extreme contention consider <code>LongAdder</code>-style striping or pre-allocated ID blocks per thread.</p>`,
           followUps: ['Rewrite it as an enum singleton. What do you gain?', 'How would you generate unique IDs across 50 servers?', 'Why is the holder idiom lazy even though the field is static?']
         }
@@ -933,7 +2265,188 @@ public class Main {
         factory.register("whatsapp", () -> (to, text) -> "WHATSAPP to " + to + ": " + text);
         System.out.println(factory.create("whatsapp").send("asha", "Your order shipped"));
     }
-}` },
+}`,
+alt: [
+  { lang: 'python', code: `
+from abc import ABC, abstractmethod
+from typing import Callable
+
+
+class Notification(ABC):
+    @abstractmethod
+    def send(self, to: str, text: str) -> str: ...
+
+
+class EmailNotification(Notification):
+    def send(self, to: str, text: str) -> str:
+        return f"EMAIL to {to}: {text}"
+
+
+class SmsNotification(Notification):
+    def send(self, to: str, text: str) -> str:
+        return f"SMS to {to}: {text}"
+
+
+class PushNotification(Notification):
+    def send(self, to: str, text: str) -> str:
+        return f"PUSH to device of {to}: {text}"
+
+
+class NotificationFactory:
+    def __init__(self) -> None:
+        self._registry: dict[str, Callable[[], Notification]] = {}
+        self.register("email", EmailNotification)
+        self.register("sms", SmsNotification)
+        self.register("push", PushNotification)
+
+    # New channels plug in here -- no edits to create() or to any client.
+    def register(self, channel: str, recipe: Callable[[], Notification]) -> None:
+        self._registry[channel.lower()] = recipe
+
+    def create(self, channel: str) -> Notification:
+        recipe = self._registry.get(channel.lower())
+        if recipe is None:
+            raise ValueError(f"Unknown channel '{channel}'. Known: {sorted(self._registry)}")
+        return recipe()                            # a brand-new product each call
+
+
+class WhatsAppNotification(Notification):
+    def send(self, to: str, text: str) -> str:
+        return f"WHATSAPP to {to}: {text}"
+
+
+if __name__ == "__main__":
+    factory = NotificationFactory()
+    n = factory.create("SMS")                      # client knows only the abstract type
+    print(n.send("+91-98xxxx", "OTP 4821"))
+
+    # A plugin adds a channel at startup:
+    factory.register("whatsapp", WhatsAppNotification)
+    print(factory.create("whatsapp").send("asha", "Your order shipped"))` },
+  { lang: 'ts', code: `
+interface Notification {
+  send(to: string, text: string): string;
+}
+
+class EmailNotification implements Notification {
+  send(to: string, text: string): string { return \`EMAIL to \${to}: \${text}\`; }
+}
+
+class SmsNotification implements Notification {
+  send(to: string, text: string): string { return \`SMS to \${to}: \${text}\`; }
+}
+
+class PushNotification implements Notification {
+  send(to: string, text: string): string { return \`PUSH to device of \${to}: \${text}\`; }
+}
+
+class NotificationFactory {
+  private readonly registry = new Map<string, () => Notification>();
+
+  constructor() {
+    this.register("email", () => new EmailNotification());
+    this.register("sms", () => new SmsNotification());
+    this.register("push", () => new PushNotification());
+  }
+
+  // New channels plug in here -- no edits to create() or to any client.
+  register(channel: string, recipe: () => Notification): void {
+    this.registry.set(channel.toLowerCase(), recipe);
+  }
+
+  create(channel: string): Notification {
+    const recipe = this.registry.get(channel.toLowerCase());
+    if (!recipe) {
+      throw new Error(\`Unknown channel '\${channel}'. Known: [\${[...this.registry.keys()].join(", ")}]\`);
+    }
+    return recipe();                               // a brand-new product each call
+  }
+}
+
+const factory = new NotificationFactory();
+const n = factory.create("SMS");                   // client knows only the interface
+console.log(n.send("+91-98xxxx", "OTP 4821"));
+
+// A plugin adds a channel at startup:
+factory.register("whatsapp", () => ({ send: (to, text) => \`WHATSAPP to \${to}: \${text}\` }));
+console.log(factory.create("whatsapp").send("asha", "Your order shipped"));` },
+  { lang: 'cpp', code: `
+#include <algorithm>
+#include <functional>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <stdexcept>
+#include <string>
+using namespace std;
+
+class Notification {
+public:
+    virtual ~Notification() = default;
+    virtual string send(const string& to, const string& text) const = 0;
+};
+
+class EmailNotification : public Notification {
+public:
+    string send(const string& to, const string& text) const override { return "EMAIL to " + to + ": " + text; }
+};
+
+class SmsNotification : public Notification {
+public:
+    string send(const string& to, const string& text) const override { return "SMS to " + to + ": " + text; }
+};
+
+class PushNotification : public Notification {
+public:
+    string send(const string& to, const string& text) const override { return "PUSH to device of " + to + ": " + text; }
+};
+
+class WhatsAppNotification : public Notification {
+public:
+    string send(const string& to, const string& text) const override { return "WHATSAPP to " + to + ": " + text; }
+};
+
+class NotificationFactory {
+    map<string, function<unique_ptr<Notification>()>> registry;
+
+    static string lower(string s) {
+        transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return tolower(c); });
+        return s;
+    }
+
+public:
+    NotificationFactory() {
+        registerChannel("email", [] { return make_unique<EmailNotification>(); });
+        registerChannel("sms", [] { return make_unique<SmsNotification>(); });
+        registerChannel("push", [] { return make_unique<PushNotification>(); });
+    }
+
+    // New channels plug in here -- no edits to create() or to any client.
+    void registerChannel(const string& channel, function<unique_ptr<Notification>()> recipe) {
+        registry[lower(channel)] = std::move(recipe);
+    }
+
+    unique_ptr<Notification> create(const string& channel) const {
+        auto it = registry.find(lower(channel));
+        if (it == registry.end()) {
+            string known;
+            for (const auto& kv : registry) known += (known.empty() ? "" : ", ") + kv.first;
+            throw invalid_argument("Unknown channel '" + channel + "'. Known: [" + known + "]");
+        }
+        return it->second();                       // a brand-new product each call
+    }
+};
+
+int main() {
+    NotificationFactory factory;
+    auto n = factory.create("SMS");                // client knows only the abstract class
+    cout << n->send("+91-98xxxx", "OTP 4821") << "\\n";
+
+    // A plugin adds a channel at startup:
+    factory.registerChannel("whatsapp", [] { return make_unique<WhatsAppNotification>(); });
+    cout << factory.create("whatsapp")->send("asha", "Your order shipped") << "\\n";
+}` }
+] },
       { lang: 'java', title: 'GoF Factory Method: the parent workflow calls an overridable creation method', code: `
 interface Transport {
     String deliver(String cargo);
@@ -981,7 +2494,174 @@ public class LogisticsApp {
             System.out.println(branch.planDelivery("200 boxes"));
         }
     }
+}`,
+alt: [
+  { lang: 'python', code: `
+from abc import ABC, abstractmethod
+
+
+class Transport(ABC):
+    @abstractmethod
+    def deliver(self, cargo: str) -> str: ...
+
+
+class Truck(Transport):
+    def deliver(self, cargo: str) -> str:
+        return f"{cargo} delivered by road in a truck"
+
+
+class Ship(Transport):
+    def deliver(self, cargo: str) -> str:
+        return f"{cargo} delivered by sea in a container ship"
+
+
+class Plane(Transport):
+    def deliver(self, cargo: str) -> str:
+        return f"{cargo} delivered by air"
+
+
+class Logistics(ABC):
+    # The FACTORY METHOD: the one step subclasses must supply.
+    @abstractmethod
+    def create_transport(self) -> Transport: ...
+
+    # Shared business logic written once; it does not know Truck/Ship/Plane.
+    def plan_delivery(self, cargo: str) -> str:
+        t = self.create_transport()
+        return "[plan] " + t.deliver(cargo)
+
+
+class RoadLogistics(Logistics):
+    def create_transport(self) -> Transport:
+        return Truck()
+
+
+class SeaLogistics(Logistics):
+    def create_transport(self) -> Transport:
+        return Ship()
+
+
+class AirLogistics(Logistics):
+    def create_transport(self) -> Transport:
+        return Plane()
+
+
+if __name__ == "__main__":
+    branches: list[Logistics] = [RoadLogistics(), SeaLogistics(), AirLogistics()]
+    for branch in branches:
+        print(branch.plan_delivery("200 boxes"))` },
+  { lang: 'ts', code: `
+interface Transport {
+  deliver(cargo: string): string;
+}
+
+class Truck implements Transport {
+  deliver(cargo: string): string { return \`\${cargo} delivered by road in a truck\`; }
+}
+
+class Ship implements Transport {
+  deliver(cargo: string): string { return \`\${cargo} delivered by sea in a container ship\`; }
+}
+
+class Plane implements Transport {
+  deliver(cargo: string): string { return \`\${cargo} delivered by air\`; }
+}
+
+abstract class Logistics {
+  // The FACTORY METHOD: the one step subclasses must supply.
+  protected abstract createTransport(): Transport;
+
+  // Shared business logic written once; it does not know Truck/Ship/Plane.
+  planDelivery(cargo: string): string {
+    const t = this.createTransport();
+    return "[plan] " + t.deliver(cargo);
+  }
+}
+
+class RoadLogistics extends Logistics {
+  protected createTransport(): Transport { return new Truck(); }
+}
+
+class SeaLogistics extends Logistics {
+  protected createTransport(): Transport { return new Ship(); }
+}
+
+class AirLogistics extends Logistics {
+  protected createTransport(): Transport { return new Plane(); }
+}
+
+const branches: Logistics[] = [new RoadLogistics(), new SeaLogistics(), new AirLogistics()];
+for (const branch of branches) {
+  console.log(branch.planDelivery("200 boxes"));
+}` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <memory>
+#include <string>
+#include <vector>
+using namespace std;
+
+class Transport {
+public:
+    virtual ~Transport() = default;
+    virtual string deliver(const string& cargo) const = 0;
+};
+
+class Truck : public Transport {
+public:
+    string deliver(const string& cargo) const override { return cargo + " delivered by road in a truck"; }
+};
+
+class Ship : public Transport {
+public:
+    string deliver(const string& cargo) const override { return cargo + " delivered by sea in a container ship"; }
+};
+
+class Plane : public Transport {
+public:
+    string deliver(const string& cargo) const override { return cargo + " delivered by air"; }
+};
+
+class Logistics {
+protected:
+    // The FACTORY METHOD: the one step subclasses must supply.
+    virtual unique_ptr<Transport> createTransport() const = 0;
+
+public:
+    virtual ~Logistics() = default;
+
+    // Shared business logic written once; it does not know Truck/Ship/Plane.
+    string planDelivery(const string& cargo) const {
+        auto t = createTransport();
+        return "[plan] " + t->deliver(cargo);
+    }
+};
+
+class RoadLogistics : public Logistics {
+protected:
+    unique_ptr<Transport> createTransport() const override { return make_unique<Truck>(); }
+};
+
+class SeaLogistics : public Logistics {
+protected:
+    unique_ptr<Transport> createTransport() const override { return make_unique<Ship>(); }
+};
+
+class AirLogistics : public Logistics {
+protected:
+    unique_ptr<Transport> createTransport() const override { return make_unique<Plane>(); }
+};
+
+int main() {
+    vector<unique_ptr<Logistics>> branches;
+    branches.push_back(make_unique<RoadLogistics>());
+    branches.push_back(make_unique<SeaLogistics>());
+    branches.push_back(make_unique<AirLogistics>());
+    for (const auto& branch : branches) {
+        cout << branch->planDelivery("200 boxes") << "\\n";
+    }
 }` }
+] }
     ],
     codeTitle: ['Simple Factory + registry', 'GoF Factory Method'],
     viz: [
@@ -1049,7 +2729,7 @@ public class LogisticsApp {
       }
     ],
     examples: [
-      { title: 'You use Factory Method every day: Collection.iterator()', html: `<p><code>Iterable</code> declares <code>iterator()</code>; <code>ArrayList</code> returns its private <code>Itr</code>, <code>HashSet</code> returns a key iterator of its map, <code>TreeMap</code> returns an in-order iterator. The enhanced <code>for</code> loop is the "parent workflow" that only knows <code>Iterator</code>. Other JDK factories: <code>Calendar.getInstance()</code>, <code>NumberFormat.getCurrencyInstance(locale)</code>, <code>Executors.newFixedThreadPool(n)</code>, <code>DriverManager.getConnection(url)</code>.</p>`, code: `
+      { title: 'You use Factory Method every day: Collection.iterator()', html: `<p><code>Iterable</code> declares <code>iterator()</code>; <code>ArrayList</code> returns its private <code>Itr</code>, <code>HashSet</code> returns a key iterator of its map, <code>TreeMap</code> returns an in-order iterator. The enhanced <code>for</code> loop is the "parent workflow" that only knows <code>Iterator</code>. Other JDK factories: <code>Calendar.getInstance()</code>, <code>NumberFormat.getCurrencyInstance(locale)</code>, <code>Executors.newFixedThreadPool(n)</code>, <code>DriverManager.getConnection(url)</code>.</p>`, code: { lang: 'java', code: `
 class IteratorFactoryDemo {
     public static void main(String[] args) {
         List<Iterable<Integer>> sources = List.of(new ArrayList<Integer>(List.of(3, 1, 2)), new TreeSet<Integer>(List.of(3, 1, 2)));
@@ -1058,8 +2738,36 @@ class IteratorFactoryDemo {
             System.out.println(it.getClass().getName());
         }
     }
+}`,
+alt: [
+  { lang: 'python', code: `
+if __name__ == "__main__":
+    sources = [[3, 1, 2], {3, 1, 2}]
+    for src in sources:
+        it = iter(src)                           # factory method: each class picks its iterator
+        print(type(it).__name__)                 # list_iterator, set_iterator` },
+  { lang: 'ts', code: `
+const sources: Iterable<number>[] = [[3, 1, 2], new Set([3, 1, 2])];
+for (const src of sources) {
+  const it = src[Symbol.iterator]();             // factory method: each class picks its iterator
+  console.log(Object.prototype.toString.call(it)); // [object Array Iterator], [object Set Iterator]
 }` },
-      { title: 'Enum-based factory: compile-time safe types', html: `<p>When the set of types is fixed and known, an <code>enum</code> where each constant knows how to build its product removes string typos and makes a <code>switch</code> unnecessary. Adding a constant forces you to implement <code>create</code> — the compiler checks completeness.</p>`, code: `
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <iterator>
+#include <set>
+#include <vector>
+using namespace std;
+
+int main() {
+    vector<int> v = {3, 1, 2};
+    set<int> s = {3, 1, 2};
+    auto vi = v.begin();                         // factory method: each container picks its iterator type
+    auto si = s.begin();
+    cout << *vi << " " << *si << "\\n";           // 3 1  (vector keeps insertion order, set sorts)
+}` }
+] } },
+      { title: 'Enum-based factory: compile-time safe types', html: `<p>When the set of types is fixed and known, an <code>enum</code> where each constant knows how to build its product removes string typos and makes a <code>switch</code> unnecessary. Adding a constant forces you to implement <code>create</code> — the compiler checks completeness.</p>`, code: { lang: 'java', code: `
 interface Shape { double area(); }
 
 enum ShapeType {
@@ -1076,8 +2784,79 @@ class ShapeDemo {
             System.out.printf("%s area(2) = %.2f%n", t, t.create(2).area());
         }
     }
+}`,
+alt: [
+  { lang: 'python', code: `
+import math
+from enum import Enum
+from typing import Callable
+
+
+class ShapeType(Enum):
+    # each member carries its own factory function for the area
+    CIRCLE = (lambda s: math.pi * s * s,)
+    SQUARE = (lambda s: s * s,)
+    TRIANGLE = (lambda s: math.sqrt(3) / 4 * s * s,)
+
+    def create(self, size: float) -> Callable[[], float]:
+        area = self.value[0]
+        return lambda: area(size)
+
+
+if __name__ == "__main__":
+    for t in ShapeType:
+        print(f"{t.name} area(2) = {t.create(2)():.2f}")` },
+  { lang: 'ts', code: `
+interface Shape { area(): number; }
+
+const ShapeType = {
+  CIRCLE: (s: number): Shape => ({ area: () => Math.PI * s * s }),
+  SQUARE: (s: number): Shape => ({ area: () => s * s }),
+  TRIANGLE: (s: number): Shape => ({ area: () => (Math.sqrt(3) / 4) * s * s }),
+} as const;              // each entry is its own factory method
+
+for (const [name, create] of Object.entries(ShapeType)) {
+  console.log(\`\${name} area(2) = \${create(2).area().toFixed(2)}\`);
 }` },
-      { title: 'Factory Method as a testing seam ("subclass and override")', html: `<p>Legacy class <code>ReportJob</code> creates a real <code>S3Uploader</code> inside <code>run()</code>. Extract that <code>new</code> into a <b>protected factory method</b>; production keeps working, and the test subclass overrides it to return a fake. This is the smallest safe refactor before full dependency injection.</p>`, code: `
+  { lang: 'cpp', code: `
+#include <cmath>
+#include <cstdio>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+using namespace std;
+
+class Shape {
+public:
+    virtual ~Shape() = default;
+    virtual double area() const = 0;
+};
+
+class AreaShape : public Shape {
+    double value;
+public:
+    explicit AreaShape(double v) : value(v) {}
+    double area() const override { return value; }
+};
+
+struct ShapeType {
+    string name;
+    function<unique_ptr<Shape>(double)> create;     // each entry is its own factory method
+};
+
+int main() {
+    vector<ShapeType> types = {
+        {"CIRCLE", [](double s) { return make_unique<AreaShape>(M_PI * s * s); }},
+        {"SQUARE", [](double s) { return make_unique<AreaShape>(s * s); }},
+        {"TRIANGLE", [](double s) { return make_unique<AreaShape>(sqrt(3.0) / 4 * s * s); }},
+    };
+    for (const auto& t : types) {
+        printf("%s area(2) = %.2f\\n", t.name.c_str(), t.create(2)->area());
+    }
+}` }
+] } },
+      { title: 'Factory Method as a testing seam ("subclass and override")', html: `<p>Legacy class <code>ReportJob</code> creates a real <code>S3Uploader</code> inside <code>run()</code>. Extract that <code>new</code> into a <b>protected factory method</b>; production keeps working, and the test subclass overrides it to return a fake. This is the smallest safe refactor before full dependency injection.</p>`, code: { lang: 'java', code: `
 interface Uploader { String upload(String data); }
 
 class S3Uploader implements Uploader {
@@ -1100,7 +2879,121 @@ class ReportJobTest {
         };
         System.out.println(job.run("sales") + " " + uploaded);   // fake://ok [SALES]
     }
-}` },
+}`,
+alt: [
+  { lang: 'python', code: `
+from abc import ABC, abstractmethod
+from typing import Callable
+
+
+class Uploader(ABC):
+    @abstractmethod
+    def upload(self, data: str) -> str: ...
+
+
+class S3Uploader(Uploader):
+    def upload(self, data: str) -> str:
+        return f"s3://bucket/report-{len(data)}"
+
+
+class FakeUploader(Uploader):
+    def __init__(self, sink: list[str]) -> None:
+        self._sink = sink
+
+    def upload(self, data: str) -> str:
+        self._sink.append(data)
+        return "fake://ok"
+
+
+class ReportJob:
+    def create_uploader(self) -> Uploader:       # factory method seam
+        return S3Uploader()
+
+    def run(self, data: str) -> str:
+        return self.create_uploader().upload(data.upper())
+
+
+if __name__ == "__main__":
+    uploaded: list[str] = []
+
+    class TestJob(ReportJob):
+        def create_uploader(self) -> Uploader:
+            return FakeUploader(uploaded)
+
+    print(TestJob().run("sales"), "[" + ", ".join(uploaded) + "]")   # fake://ok [SALES]` },
+  { lang: 'ts', code: `
+interface Uploader { upload(data: string): string; }
+
+class S3Uploader implements Uploader {
+  upload(data: string): string { return \`s3://bucket/report-\${data.length}\`; }
+}
+
+class ReportJob {
+  protected createUploader(): Uploader { return new S3Uploader(); }   // factory method seam
+
+  run(data: string): string { return this.createUploader().upload(data.toUpperCase()); }
+}
+
+const uploaded: string[] = [];
+const job = new (class extends ReportJob {
+  protected override createUploader(): Uploader {
+    return { upload: (data) => { uploaded.push(data); return "fake://ok"; } };
+  }
+})();
+console.log(\`\${job.run("sales")} [\${uploaded.join(", ")}]\`);   // fake://ok [SALES]` },
+  { lang: 'cpp', code: `
+#include <algorithm>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <vector>
+using namespace std;
+
+class Uploader {
+public:
+    virtual ~Uploader() = default;
+    virtual string upload(const string& data) = 0;
+};
+
+class S3Uploader : public Uploader {
+public:
+    string upload(const string& data) override { return "s3://bucket/report-" + to_string(data.size()); }
+};
+
+class FakeUploader : public Uploader {
+    vector<string>& sink;
+public:
+    explicit FakeUploader(vector<string>& s) : sink(s) {}
+    string upload(const string& data) override { sink.push_back(data); return "fake://ok"; }
+};
+
+class ReportJob {
+protected:
+    virtual unique_ptr<Uploader> createUploader() const { return make_unique<S3Uploader>(); }   // factory method seam
+
+public:
+    virtual ~ReportJob() = default;
+
+    string run(string data) const {
+        transform(data.begin(), data.end(), data.begin(), [](unsigned char c) { return toupper(c); });
+        return createUploader()->upload(data);
+    }
+};
+
+class TestJob : public ReportJob {
+    vector<string>& uploaded;
+public:
+    explicit TestJob(vector<string>& u) : uploaded(u) {}
+protected:
+    unique_ptr<Uploader> createUploader() const override { return make_unique<FakeUploader>(uploaded); }
+};
+
+int main() {
+    vector<string> uploaded;
+    TestJob job(uploaded);
+    cout << job.run("sales") << " [" << uploaded[0] << "]\\n";   // fake://ok [SALES]
+}` }
+] } },
       { title: 'Choosing a parser by file extension (data-driven)', html: `<p>An importer gets <code>orders.csv</code>, <code>orders.json</code>, <code>orders.xml</code>. The extension is <b>data</b>, so a registry-based simple factory fits: <code>parsers.get(ext).get()</code>. Unknown extension → a clear "unsupported file type" error shown to the user, not a <code>NullPointerException</code>.</p>` }
     ],
     deepDive: `<p>🟣 <b>Factory Method vs Simple Factory vs Template Method.</b> GoF Factory Method is really a special case of <b>Template Method</b>: the parent's algorithm has one step — "create the product" — that subclasses fill in. A Simple Factory has no inheritance at all; it is a function from a key to an object. Interviewers accept "factory" for both, but naming the difference precisely is a signal of seniority.</p>
@@ -1140,6 +3033,7 @@ class FareServiceNaive {
           `<p>Hint 2: since AUTO/MINI/SEDAN share the formula, one class <code>StandardRide(type, base, perKm)</code> can serve all three via different constructor arguments; SUV can extend or wrap it.</p>`,
           `<p>Hint 3: the factory is a <code>LinkedHashMap&lt;String, Supplier&lt;Ride&gt;&gt;</code> (keeps insertion order for quotes). <code>FareService</code> loops over <code>factory.types()</code>, calls <code>create</code>, and builds a result map.</p>`
         ],
+        tests: { io: true, cases: [{ stdin: '', stdout: "{AUTO=125, MINI=160, SEDAN=210, SUV=330}\n75\nUnknown ride type: heli\nDuplicate type AUTO\nkm must be >= 1\n" }] },
         solution: {
           approach: `<p>Products own the fare rule; the factory owns the "name → product" mapping; the service only uses the interface.</p>
 <ol><li><code>StandardRide</code> holds type, base and per-km rate. <code>SuvRide</code> extends it and adds the comfort fee by overriding <code>fare</code>.</li>
@@ -1219,8 +3113,300 @@ public class Main {
         System.out.println(service.quoteAll(10));        // {AUTO=125, MINI=160, SEDAN=210, SUV=330}
         factory.register("BIKE", () -> new StandardRide("BIKE", 15, 6));
         System.out.println(service.quoteAll(10).get("BIKE"));   // 75
+        try {
+            factory.create("heli");
+        } catch (IllegalArgumentException e) {
+            System.out.println(e.getMessage());                 // Unknown ride type: heli
+        }
+        try {
+            factory.register("auto", () -> new StandardRide("AUTO", 1, 1));
+        } catch (IllegalStateException e) {
+            System.out.println(e.getMessage());                 // Duplicate type AUTO
+        }
+        try {
+            factory.create("mini").fare(0);
+        } catch (IllegalArgumentException e) {
+            System.out.println(e.getMessage());                 // km must be >= 1
+        }
     }
 }`,
+          alt: [
+            { lang: 'python', code: `
+from abc import ABC, abstractmethod
+from typing import Callable
+
+
+class Ride(ABC):
+    @abstractmethod
+    def type(self) -> str: ...
+
+    @abstractmethod
+    def fare(self, km: int) -> int: ...
+
+
+class StandardRide(Ride):
+    def __init__(self, ride_type: str, base: int, per_km: int) -> None:
+        self._type = ride_type
+        self._base = base
+        self._per_km = per_km
+
+    def type(self) -> str:
+        return self._type
+
+    def fare(self, km: int) -> int:
+        if km < 1:
+            raise ValueError("km must be >= 1")
+        return self._base + self._per_km * km
+
+
+class SuvRide(StandardRide):
+    COMFORT_FEE = 50
+
+    def __init__(self) -> None:
+        super().__init__("SUV", 80, 20)
+
+    def fare(self, km: int) -> int:
+        return super().fare(km) + self.COMFORT_FEE
+
+
+class RideFactory:
+    def __init__(self) -> None:
+        self._registry: dict[str, Callable[[], Ride]] = {}      # dicts keep insertion order
+        self.register("AUTO", lambda: StandardRide("AUTO", 25, 10))
+        self.register("MINI", lambda: StandardRide("MINI", 40, 12))
+        self.register("SEDAN", lambda: StandardRide("SEDAN", 60, 15))
+        self.register("SUV", SuvRide)
+
+    def register(self, ride_type: str, recipe: Callable[[], Ride]) -> None:
+        key = ride_type.upper()
+        if key in self._registry:
+            raise RuntimeError(f"Duplicate type {key}")
+        self._registry[key] = recipe
+
+    def create(self, ride_type: str) -> Ride:
+        recipe = self._registry.get(ride_type.upper())
+        if recipe is None:
+            raise ValueError(f"Unknown ride type: {ride_type}")
+        return recipe()
+
+    def types(self) -> list[str]:
+        return list(self._registry)
+
+
+class FareService:
+    def __init__(self, factory: RideFactory) -> None:
+        self._factory = factory
+
+    def quote_all(self, km: int) -> dict[str, int]:
+        return {t: self._factory.create(t).fare(km) for t in self._factory.types()}
+
+
+def show(quotes: dict[str, int]) -> str:
+    return "{" + ", ".join(f"{k}={v}" for k, v in quotes.items()) + "}"
+
+
+if __name__ == "__main__":
+    factory = RideFactory()
+    service = FareService(factory)
+    print(show(service.quote_all(10)))
+    factory.register("BIKE", lambda: StandardRide("BIKE", 15, 6))
+    print(service.quote_all(10)["BIKE"])
+    try:
+        factory.create("heli")
+    except ValueError as e:
+        print(e)
+    try:
+        factory.register("auto", lambda: StandardRide("AUTO", 1, 1))
+    except RuntimeError as e:
+        print(e)
+    try:
+        factory.create("mini").fare(0)
+    except ValueError as e:
+        print(e)` },
+            { lang: 'ts', code: `
+interface Ride {
+  type(): string;
+  fare(km: number): number;
+}
+
+class StandardRide implements Ride {
+  constructor(
+    private readonly rideType: string,
+    private readonly base: number,
+    private readonly perKm: number,
+  ) {}
+
+  type(): string { return this.rideType; }
+
+  fare(km: number): number {
+    if (km < 1) throw new Error("km must be >= 1");
+    return this.base + this.perKm * km;
+  }
+}
+
+class SuvRide extends StandardRide {
+  private static readonly COMFORT_FEE = 50;
+
+  constructor() { super("SUV", 80, 20); }
+
+  override fare(km: number): number { return super.fare(km) + SuvRide.COMFORT_FEE; }
+}
+
+class RideFactory {
+  private readonly registry = new Map<string, () => Ride>();   // Map keeps insertion order
+
+  constructor() {
+    this.register("AUTO", () => new StandardRide("AUTO", 25, 10));
+    this.register("MINI", () => new StandardRide("MINI", 40, 12));
+    this.register("SEDAN", () => new StandardRide("SEDAN", 60, 15));
+    this.register("SUV", () => new SuvRide());
+  }
+
+  register(type: string, recipe: () => Ride): void {
+    const key = type.toUpperCase();
+    if (this.registry.has(key)) throw new Error(\`Duplicate type \${key}\`);
+    this.registry.set(key, recipe);
+  }
+
+  create(type: string): Ride {
+    const recipe = this.registry.get(type.toUpperCase());
+    if (!recipe) throw new Error(\`Unknown ride type: \${type}\`);
+    return recipe();
+  }
+
+  types(): string[] { return [...this.registry.keys()]; }
+}
+
+class FareService {
+  constructor(private readonly factory: RideFactory) {}
+
+  quoteAll(km: number): Map<string, number> {
+    const quotes = new Map<string, number>();
+    for (const t of this.factory.types()) quotes.set(t, this.factory.create(t).fare(km));
+    return quotes;
+  }
+}
+
+const show = (m: Map<string, number>): string =>
+  "{" + [...m].map(([k, v]) => \`\${k}=\${v}\`).join(", ") + "}";
+
+const factory = new RideFactory();
+const service = new FareService(factory);
+console.log(show(service.quoteAll(10)));
+factory.register("BIKE", () => new StandardRide("BIKE", 15, 6));
+console.log(service.quoteAll(10).get("BIKE"));
+for (const attempt of [
+  () => factory.create("heli"),
+  () => factory.register("auto", () => new StandardRide("AUTO", 1, 1)),
+  () => factory.create("mini").fare(0),
+]) {
+  try {
+    attempt();
+  } catch (e) {
+    console.log((e as Error).message);
+  }
+}` },
+            { lang: 'cpp', code: `
+#include <algorithm>
+#include <functional>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+using namespace std;
+
+class Ride {
+public:
+    virtual ~Ride() = default;
+    virtual string type() const = 0;
+    virtual long long fare(int km) const = 0;
+};
+
+class StandardRide : public Ride {
+    string rideType;
+    long long base, perKm;
+
+public:
+    StandardRide(string t, long long b, long long p) : rideType(std::move(t)), base(b), perKm(p) {}
+
+    string type() const override { return rideType; }
+
+    long long fare(int km) const override {
+        if (km < 1) throw invalid_argument("km must be >= 1");
+        return base + perKm * km;
+    }
+};
+
+class SuvRide : public StandardRide {
+    static constexpr long long COMFORT_FEE = 50;
+
+public:
+    SuvRide() : StandardRide("SUV", 80, 20) {}
+
+    long long fare(int km) const override { return StandardRide::fare(km) + COMFORT_FEE; }
+};
+
+string upper(string s) {
+    transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return toupper(c); });
+    return s;
+}
+
+class RideFactory {
+    map<string, function<unique_ptr<Ride>()>> registry;
+    vector<string> order;                            // registration order for types()
+
+public:
+    RideFactory() {
+        registerType("AUTO", [] { return make_unique<StandardRide>("AUTO", 25, 10); });
+        registerType("MINI", [] { return make_unique<StandardRide>("MINI", 40, 12); });
+        registerType("SEDAN", [] { return make_unique<StandardRide>("SEDAN", 60, 15); });
+        registerType("SUV", [] { return make_unique<SuvRide>(); });
+    }
+
+    void registerType(const string& type, function<unique_ptr<Ride>()> recipe) {
+        string key = upper(type);
+        if (registry.count(key)) throw runtime_error("Duplicate type " + key);
+        registry[key] = std::move(recipe);
+        order.push_back(key);
+    }
+
+    unique_ptr<Ride> create(const string& type) const {
+        auto it = registry.find(upper(type));
+        if (it == registry.end()) throw invalid_argument("Unknown ride type: " + type);
+        return it->second();
+    }
+
+    const vector<string>& types() const { return order; }
+};
+
+class FareService {
+    const RideFactory& factory;
+
+public:
+    explicit FareService(const RideFactory& f) : factory(f) {}
+
+    vector<pair<string, long long>> quoteAll(int km) const {
+        vector<pair<string, long long>> quotes;
+        for (const auto& t : factory.types()) quotes.emplace_back(t, factory.create(t)->fare(km));
+        return quotes;
+    }
+};
+
+int main() {
+    RideFactory factory;
+    FareService service(factory);
+    string shown = "{";
+    for (const auto& [name, fare] : service.quoteAll(10)) shown += (shown.size() > 1 ? ", " : "") + name + "=" + to_string(fare);
+    cout << shown << "}\\n";
+    factory.registerType("BIKE", [] { return make_unique<StandardRide>("BIKE", 15, 6); });
+    for (const auto& [name, fare] : service.quoteAll(10)) if (name == "BIKE") cout << fare << "\\n";
+    try { factory.create("heli"); } catch (const exception& e) { cout << e.what() << "\\n"; }
+    try { factory.registerType("auto", [] { return make_unique<StandardRide>("AUTO", 1, 1); }); } catch (const exception& e) { cout << e.what() << "\\n"; }
+    try { factory.create("mini")->fare(0); } catch (const exception& e) { cout << e.what() << "\\n"; }
+}` }
+          ],
           complexity: `<p><code>create</code>: O(1) hash lookup. <code>quoteAll</code>: O(T) for T ride types. Adding a type: one class (or one lambda) + one registration line.</p>`,
           followUps: ['Add surge pricing without editing every ride class (hint: Decorator or Strategy)', 'Load rates from config instead of hard-coding them', 'Make register() safe to call while quotes are running concurrently']
         }
@@ -1321,7 +3507,240 @@ public class Main {
         System.out.println(new SettingsScreen(themeFor("dark")).draw());
         System.out.println(new SettingsScreen(themeFor("light")).draw());
     }
+}`,
+alt: [
+  { lang: 'python', code: `
+from abc import ABC, abstractmethod
+
+
+# Abstract products
+class Button(ABC):
+    @abstractmethod
+    def render(self) -> str: ...
+
+
+class Checkbox(ABC):
+    @abstractmethod
+    def render(self, checked: bool) -> str: ...
+
+
+# Concrete products: Light family
+class LightButton(Button):
+    def render(self) -> str:
+        return "[ OK ] (black text on white)"
+
+
+class LightCheckbox(Checkbox):
+    def render(self, checked: bool) -> str:
+        return ("[x]" if checked else "[ ]") + " (grey border on white)"
+
+
+# Concrete products: Dark family
+class DarkButton(Button):
+    def render(self) -> str:
+        return "[ OK ] (white text on charcoal)"
+
+
+class DarkCheckbox(Checkbox):
+    def render(self, checked: bool) -> str:
+        return ("[x]" if checked else "[ ]") + " (teal border on charcoal)"
+
+
+# The ABSTRACT FACTORY: one create method per product type.
+class ThemeFactory(ABC):
+    @abstractmethod
+    def create_button(self) -> Button: ...
+
+    @abstractmethod
+    def create_checkbox(self) -> Checkbox: ...
+
+
+class LightThemeFactory(ThemeFactory):
+    def create_button(self) -> Button:
+        return LightButton()
+
+    def create_checkbox(self) -> Checkbox:
+        return LightCheckbox()
+
+
+class DarkThemeFactory(ThemeFactory):
+    def create_button(self) -> Button:
+        return DarkButton()
+
+    def create_checkbox(self) -> Checkbox:
+        return DarkCheckbox()
+
+
+# Client: knows only the abstract types. Cannot mix families by accident.
+class SettingsScreen:
+    def __init__(self, theme: ThemeFactory) -> None:
+        self._save = theme.create_button()
+        self._notifications = theme.create_checkbox()
+
+    def draw(self) -> str:
+        return self._notifications.render(True) + " | " + self._save.render()
+
+
+# Pick the family ONCE (from config), usually at startup.
+def theme_for(name: str) -> ThemeFactory:
+    match name.lower():
+        case "dark":
+            return DarkThemeFactory()
+        case "light":
+            return LightThemeFactory()
+        case _:
+            raise ValueError(f"Unknown theme {name}")
+
+
+if __name__ == "__main__":
+    print(SettingsScreen(theme_for("dark")).draw())
+    print(SettingsScreen(theme_for("light")).draw())` },
+  { lang: 'ts', code: `
+// Abstract products
+interface Button { render(): string; }
+interface Checkbox { render(checked: boolean): string; }
+
+// Concrete products: Light family
+class LightButton implements Button {
+  render(): string { return "[ OK ] (black text on white)"; }
+}
+class LightCheckbox implements Checkbox {
+  render(c: boolean): string { return (c ? "[x]" : "[ ]") + " (grey border on white)"; }
+}
+
+// Concrete products: Dark family
+class DarkButton implements Button {
+  render(): string { return "[ OK ] (white text on charcoal)"; }
+}
+class DarkCheckbox implements Checkbox {
+  render(c: boolean): string { return (c ? "[x]" : "[ ]") + " (teal border on charcoal)"; }
+}
+
+// The ABSTRACT FACTORY: one create method per product type.
+interface ThemeFactory {
+  createButton(): Button;
+  createCheckbox(): Checkbox;
+}
+
+class LightThemeFactory implements ThemeFactory {
+  createButton(): Button { return new LightButton(); }
+  createCheckbox(): Checkbox { return new LightCheckbox(); }
+}
+
+class DarkThemeFactory implements ThemeFactory {
+  createButton(): Button { return new DarkButton(); }
+  createCheckbox(): Checkbox { return new DarkCheckbox(); }
+}
+
+// Client: knows only interfaces. Cannot mix families by accident.
+class SettingsScreen {
+  private readonly save: Button;
+  private readonly notifications: Checkbox;
+
+  constructor(theme: ThemeFactory) {
+    this.save = theme.createButton();
+    this.notifications = theme.createCheckbox();
+  }
+
+  draw(): string { return this.notifications.render(true) + " | " + this.save.render(); }
+}
+
+// Pick the family ONCE (from config), usually at startup.
+function themeFor(name: string): ThemeFactory {
+  switch (name.toLowerCase()) {
+    case "dark": return new DarkThemeFactory();
+    case "light": return new LightThemeFactory();
+    default: throw new Error(\`Unknown theme \${name}\`);
+  }
+}
+
+console.log(new SettingsScreen(themeFor("dark")).draw());
+console.log(new SettingsScreen(themeFor("light")).draw());` },
+  { lang: 'cpp', code: `
+#include <algorithm>
+#include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <string>
+using namespace std;
+
+// Abstract products
+class Button {
+public:
+    virtual ~Button() = default;
+    virtual string render() const = 0;
+};
+
+class Checkbox {
+public:
+    virtual ~Checkbox() = default;
+    virtual string render(bool checked) const = 0;
+};
+
+// Concrete products: Light family
+class LightButton : public Button {
+public:
+    string render() const override { return "[ OK ] (black text on white)"; }
+};
+class LightCheckbox : public Checkbox {
+public:
+    string render(bool c) const override { return string(c ? "[x]" : "[ ]") + " (grey border on white)"; }
+};
+
+// Concrete products: Dark family
+class DarkButton : public Button {
+public:
+    string render() const override { return "[ OK ] (white text on charcoal)"; }
+};
+class DarkCheckbox : public Checkbox {
+public:
+    string render(bool c) const override { return string(c ? "[x]" : "[ ]") + " (teal border on charcoal)"; }
+};
+
+// The ABSTRACT FACTORY: one create method per product type.
+class ThemeFactory {
+public:
+    virtual ~ThemeFactory() = default;
+    virtual unique_ptr<Button> createButton() const = 0;
+    virtual unique_ptr<Checkbox> createCheckbox() const = 0;
+};
+
+class LightThemeFactory : public ThemeFactory {
+public:
+    unique_ptr<Button> createButton() const override { return make_unique<LightButton>(); }
+    unique_ptr<Checkbox> createCheckbox() const override { return make_unique<LightCheckbox>(); }
+};
+
+class DarkThemeFactory : public ThemeFactory {
+public:
+    unique_ptr<Button> createButton() const override { return make_unique<DarkButton>(); }
+    unique_ptr<Checkbox> createCheckbox() const override { return make_unique<DarkCheckbox>(); }
+};
+
+// Client: knows only the abstract classes. Cannot mix families by accident.
+class SettingsScreen {
+    unique_ptr<Button> save;
+    unique_ptr<Checkbox> notifications;
+
+public:
+    explicit SettingsScreen(const ThemeFactory& theme) : save(theme.createButton()), notifications(theme.createCheckbox()) {}
+
+    string draw() const { return notifications->render(true) + " | " + save->render(); }
+};
+
+// Pick the family ONCE (from config), usually at startup.
+unique_ptr<ThemeFactory> themeFor(string name) {
+    transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return tolower(c); });
+    if (name == "dark") return make_unique<DarkThemeFactory>();
+    if (name == "light") return make_unique<LightThemeFactory>();
+    throw invalid_argument("Unknown theme " + name);
+}
+
+int main() {
+    cout << SettingsScreen(*themeFor("dark")).draw() << "\\n";
+    cout << SettingsScreen(*themeFor("light")).draw() << "\\n";
 }` }
+] }
     ],
     codeTitle: ['Abstract Factory: theme kit'],
     viz: [
@@ -1370,7 +3789,7 @@ public class Main {
           } else {
             frames.push({ narr: 'Add a <b>Slider</b> product: one new <b>column</b>. The <code>ThemeFactory</code> interface needs <code>createSlider()</code>...', parts: [{ type: 'grid', label: 'New column appears', colHead: ch.concat(['createSlider()']), rowHead: rh, rows: [['LightButton', 'LightCheckbox', 'LightSlider'], ['DarkButton', 'DarkCheckbox', 'DarkSlider']], hl: { '0,2': 'bad', '1,2': 'bad' } }] });
             frames.push({ narr: '...so <b>every</b> concrete factory fails to compile until it implements the new method. With 6 families that is 6 edits plus 6 new slider classes.', parts: [{ type: 'table', label: 'Files you must touch', columns: ['File', 'Change'], rows: [['ThemeFactory.java', 'add createSlider()'], ['LightThemeFactory.java', 'implement it'], ['DarkThemeFactory.java', 'implement it'], ['LightSlider.java', 'new'], ['DarkSlider.java', 'new']], hl: { 0: 'bad', 1: 'bad', 2: 'bad' } }, { type: 'vars', label: 'Edits', vals: { newClasses: 2, existingFilesEdited: 3 }, hl: { existingFilesEdited: 'bad' } }] });
-            frames.push({ narr: 'Mitigations: a Java <b>default method</b> in the interface (<code>default Slider createSlider() { return new BasicSlider(); }</code>) lets old factories compile, or split into smaller factories. Still, product-type growth is Abstract Factory\'s weak spot.', parts: [note('Say this trade-off in interviews: "Easy to add families, hard to add product types."', 'Takeaway')] });
+            frames.push({ narr: 'Mitigations: a <b>default method</b> in the interface (Java; other languages use a base-class stub) (<code>default Slider createSlider() { return new BasicSlider(); }</code>) lets old factories compile, or split into smaller factories. Still, product-type growth is Abstract Factory\'s weak spot.', parts: [note('Say this trade-off in interviews: "Easy to add families, hard to add product types."', 'Takeaway')] });
           }
           return frames;
         }
@@ -1378,7 +3797,7 @@ public class Main {
     ],
     examples: [
       { title: 'Cross-platform UI (the classic GoF example)', html: `<p>A desktop app runs on Windows and macOS. <code>GuiFactory</code> has <code>createButton()</code>, <code>createMenu()</code>, <code>createScrollbar()</code>. At startup: <code>GuiFactory f = os.startsWith("Mac") ? new MacFactory() : new WinFactory();</code>. Every screen then builds widgets through <code>f</code>, so a Mac menu never appears next to a Windows scrollbar. Java's own Swing used a related idea with pluggable Look-and-Feel (<code>UIManager</code>).</p>` },
-      { title: 'Test kit vs production kit', html: `<p>Integration tests need a <b>fake payment gateway</b>, a <b>fake email sender</b> and an <b>in-memory clock</b> — all together. Wrap them in a family: <code>InfraFactory</code> with <code>ProdInfraFactory</code> and <code>TestInfraFactory</code>. One switch flips every collaborator, so you never run a test that charges a real card because one dependency was forgotten.</p>`, code: `
+      { title: 'Test kit vs production kit', html: `<p>Integration tests need a <b>fake payment gateway</b>, a <b>fake email sender</b> and an <b>in-memory clock</b> — all together. Wrap them in a family: <code>InfraFactory</code> with <code>ProdInfraFactory</code> and <code>TestInfraFactory</code>. One switch flips every collaborator, so you never run a test that charges a real card because one dependency was forgotten.</p>`, code: { lang: 'java', code: `
 interface Payments { String charge(long cents); }
 interface Mailer { String mail(String to); }
 
@@ -1408,12 +3827,176 @@ class InfraDemo {
     public static void main(String[] args) {
         System.out.println(new Checkout(new TestInfra()).run());   // both fakes, guaranteed
     }
-}` },
+}`,
+alt: [
+  { lang: 'python', code: `
+from abc import ABC, abstractmethod
+from typing import Callable
+
+
+class Payments(ABC):
+    @abstractmethod
+    def charge(self, cents: int) -> str: ...
+
+
+class Mailer(ABC):
+    @abstractmethod
+    def mail(self, to: str) -> str: ...
+
+
+class InfraFactory(ABC):
+    @abstractmethod
+    def payments(self) -> Payments: ...
+
+    @abstractmethod
+    def mailer(self) -> Mailer: ...
+
+
+class _Payments(Payments):
+    def __init__(self, label: str) -> None:
+        self._label = label
+
+    def charge(self, cents: int) -> str:
+        return f"{self._label} {cents}"
+
+
+class _Mailer(Mailer):
+    def __init__(self, label: str) -> None:
+        self._label = label
+
+    def mail(self, to: str) -> str:
+        return f"{self._label} {to}"
+
+
+class ProdInfra(InfraFactory):
+    def payments(self) -> Payments:
+        return _Payments("charged card")
+
+    def mailer(self) -> Mailer:
+        return _Mailer("smtp to")
+
+
+class TestInfra(InfraFactory):
+    def payments(self) -> Payments:
+        return _Payments("FAKE charge")
+
+    def mailer(self) -> Mailer:
+        return _Mailer("FAKE mail")
+
+
+class Checkout:
+    def __init__(self, infra: InfraFactory) -> None:
+        self._payments = infra.payments()
+        self._mailer = infra.mailer()
+
+    def run(self) -> str:
+        return self._payments.charge(999) + " / " + self._mailer.mail("asha")
+
+
+if __name__ == "__main__":
+    print(Checkout(TestInfra()).run())           # both fakes, guaranteed` },
+  { lang: 'ts', code: `
+interface Payments { charge(cents: number): string; }
+interface Mailer { mail(to: string): string; }
+
+interface InfraFactory {
+  payments(): Payments;
+  mailer(): Mailer;
+}
+
+class ProdInfra implements InfraFactory {
+  payments(): Payments { return { charge: (cents) => \`charged card \${cents}\` }; }
+  mailer(): Mailer { return { mail: (to) => \`smtp to \${to}\` }; }
+}
+
+class TestInfra implements InfraFactory {
+  payments(): Payments { return { charge: (cents) => \`FAKE charge \${cents}\` }; }
+  mailer(): Mailer { return { mail: (to) => \`FAKE mail \${to}\` }; }
+}
+
+class Checkout {
+  private readonly payments: Payments;
+  private readonly mailer: Mailer;
+
+  constructor(infra: InfraFactory) {
+    this.payments = infra.payments();
+    this.mailer = infra.mailer();
+  }
+
+  run(): string { return this.payments.charge(999) + " / " + this.mailer.mail("asha"); }
+}
+
+console.log(new Checkout(new TestInfra()).run());   // both fakes, guaranteed` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <memory>
+#include <string>
+using namespace std;
+
+class Payments {
+public:
+    virtual ~Payments() = default;
+    virtual string charge(long long cents) const = 0;
+};
+
+class Mailer {
+public:
+    virtual ~Mailer() = default;
+    virtual string mail(const string& to) const = 0;
+};
+
+class InfraFactory {
+public:
+    virtual ~InfraFactory() = default;
+    virtual unique_ptr<Payments> payments() const = 0;
+    virtual unique_ptr<Mailer> mailer() const = 0;
+};
+
+class LabelPayments : public Payments {
+    string label;
+public:
+    explicit LabelPayments(string l) : label(std::move(l)) {}
+    string charge(long long cents) const override { return label + " " + to_string(cents); }
+};
+
+class LabelMailer : public Mailer {
+    string label;
+public:
+    explicit LabelMailer(string l) : label(std::move(l)) {}
+    string mail(const string& to) const override { return label + " " + to; }
+};
+
+class ProdInfra : public InfraFactory {
+public:
+    unique_ptr<Payments> payments() const override { return make_unique<LabelPayments>("charged card"); }
+    unique_ptr<Mailer> mailer() const override { return make_unique<LabelMailer>("smtp to"); }
+};
+
+class TestInfra : public InfraFactory {
+public:
+    unique_ptr<Payments> payments() const override { return make_unique<LabelPayments>("FAKE charge"); }
+    unique_ptr<Mailer> mailer() const override { return make_unique<LabelMailer>("FAKE mail"); }
+};
+
+class Checkout {
+    unique_ptr<Payments> payments;
+    unique_ptr<Mailer> mailer;
+
+public:
+    explicit Checkout(const InfraFactory& infra) : payments(infra.payments()), mailer(infra.mailer()) {}
+
+    string run() const { return payments->charge(999) + " / " + mailer->mail("asha"); }
+};
+
+int main() {
+    cout << Checkout(TestInfra()).run() << "\\n";   // both fakes, guaranteed
+}` }
+] } },
       { title: 'Database vendor family (dialect mismatch bug)', html: `<p>A reporting tool supports MySQL and PostgreSQL. Each needs a matching <b>connection URL builder</b>, <b>SQL dialect</b> (<code>LIMIT ?</code> vs <code>FETCH FIRST ? ROWS ONLY</code>, backticks vs double quotes) and <b>migration runner</b>. Without a family factory a developer pairs the Postgres connection with the MySQL dialect and queries fail only at runtime. <code>DatabaseKitFactory</code> with <code>MySqlKit</code> and <code>PostgresKit</code> makes that pairing impossible.</p>` },
       { title: 'Abstract Factory inside the JDK', html: `<p><code>javax.xml.parsers.DocumentBuilderFactory.newInstance()</code> returns a vendor implementation that then creates matching <code>DocumentBuilder</code>s; <code>java.sql.Connection</code> (from a driver) acts as a factory for driver-specific <code>Statement</code>, <code>PreparedStatement</code> and <code>Blob</code> objects that only work with that same connection.</p>` }
     ],
     deepDive: `<p>🟣 <b>How concrete factories are chosen.</b> The family is picked once at a <b>composition root</b>: <code>main()</code>, a DI configuration class (<code>@Configuration</code> with <code>@Profile("aws")</code>), or <code>ServiceLoader</code> discovering a provider on the classpath. The factory itself is usually stateless, so it is commonly a <b>singleton</b> (or a DI singleton bean) — this is the classic "Abstract Factory implemented as a Singleton" combination in GoF.</p>
-<p><b>Generic / reflective variant:</b> instead of one method per product, a single <code>&lt;T&gt; T create(Class&lt;T&gt; productType)</code> backed by a <code>Map&lt;Class&lt;?&gt;, Supplier&lt;?&gt;&gt;</code> makes adding products easy but loses compile-time completeness checks: a family can silently miss a product until runtime. A middle ground is a <b>sealed interface</b> family in Java 17+ so the compiler knows every implementation.</p>
+<p><b>Generic / reflective variant:</b> instead of one method per product, a single <code>&lt;T&gt; T create(Class&lt;T&gt; productType)</code> backed by a <code>Map&lt;Class&lt;?&gt;, Supplier&lt;?&gt;&gt;</code> makes adding products easy but loses compile-time completeness checks: a family can silently miss a product until runtime. A middle ground is a closed family (a <b>sealed interface</b> in Java 17+, a discriminated union in TypeScript, <code>std::variant</code> in C++) so the compiler knows every implementation.</p>
 <p><b>Family rules beyond types.</b> Sometimes products must also share <i>state</i> — the same AWS region and credentials, the same JDBC connection. Make the concrete factory hold that shared context (<code>new AwsFactory(region, credentials)</code>) and pass it into every product it creates. That is where Abstract Factory clearly beats scattered <code>new</code>s.</p>
 <p><b>Combination patterns:</b> Abstract Factory + Prototype (the factory clones configured prototypes instead of hard-coding classes — new families become data, not code), Abstract Factory + Builder (the factory returns pre-configured builders), and Bridge (structural) when abstraction and platform must vary independently.</p>`,
     aiEra: `<p>🤖 <b>What AI changes:</b> asked to "support AWS and GCP", assistants often sprinkle <code>if (provider.equals("aws"))</code> in every service — a family-mismatch bug waiting to happen. Your job is to spot that the problem is a <b>family</b> and centralise it. Conversely, AI may generate Abstract Factories for a single product type, which is just a Factory Method with extra ceremony.</p>
@@ -1449,6 +4032,7 @@ class UploadServiceNaive {
           `<p>Hint 2: give each concrete kit a constructor parameter <code>region</code> and pass it into both products, so shared context cannot drift.</p>`,
           `<p>Hint 3: select the kit once in a static <code>CloudKit.forProvider(name, region)</code> that throws on unknown names, and inject the kit (or its two products) into <code>UploadService</code>.</p>`
         ],
+        tests: { io: true, cases: [{ stdin: '', stdout: "s3://ap-south-1/a.png | sqs[ap-south-1]/uploads: a.png\ngs://asia-south1/b.png | pubsub[asia-south1]/uploads: b.png\nUnsupported provider: azure\n" }] },
         solution: {
           approach: `<p><b>Abstract Factory with shared family context.</b></p>
 <ol><li>Interfaces <code>BlobStore</code> and <code>EventBus</code> are the abstract products.</li>
@@ -1507,8 +4091,281 @@ public class Main {
         CloudKit kit = CloudKit.forProvider("aws", "ap-south-1");   // chosen once at startup
         System.out.println(new UploadService(kit).upload("a.png", new byte[] {1, 2, 3}));
         System.out.println(new UploadService(CloudKit.forProvider("GCP", "asia-south1")).upload("b.png", new byte[0]));
+        try {
+            CloudKit.forProvider("azure", "westeurope");
+        } catch (IllegalArgumentException e) {
+            System.out.println(e.getMessage());                  // Unsupported provider: azure
+        }
     }
 }`,
+          alt: [
+            { lang: 'python', code: `
+from abc import ABC, abstractmethod
+
+
+class BlobStore(ABC):
+    @abstractmethod
+    def put(self, name: str, data: bytes) -> str: ...
+
+
+class EventBus(ABC):
+    @abstractmethod
+    def publish(self, topic: str, msg: str) -> str: ...
+
+
+class CloudKit(ABC):
+    @abstractmethod
+    def blob_store(self) -> BlobStore: ...
+
+    @abstractmethod
+    def event_bus(self) -> EventBus: ...
+
+    @staticmethod
+    def for_provider(provider: str, region: str) -> "CloudKit":
+        match provider.lower():
+            case "aws":
+                return AwsKit(region)
+            case "gcp":
+                return GcpKit(region)
+            case _:
+                raise ValueError(f"Unsupported provider: {provider}")
+
+
+class S3(BlobStore):
+    def __init__(self, region: str) -> None:
+        self._region = region
+
+    def put(self, name: str, data: bytes) -> str:
+        return f"s3://{self._region}/{name}"
+
+
+class Sqs(EventBus):
+    def __init__(self, region: str) -> None:
+        self._region = region
+
+    def publish(self, topic: str, msg: str) -> str:
+        return f"sqs[{self._region}]/{topic}: {msg}"
+
+
+class GcsBucket(BlobStore):
+    def __init__(self, region: str) -> None:
+        self._region = region
+
+    def put(self, name: str, data: bytes) -> str:
+        return f"gs://{self._region}/{name}"
+
+
+class PubSub(EventBus):
+    def __init__(self, region: str) -> None:
+        self._region = region
+
+    def publish(self, topic: str, msg: str) -> str:
+        return f"pubsub[{self._region}]/{topic}: {msg}"
+
+
+class AwsKit(CloudKit):
+    def __init__(self, region: str) -> None:
+        self._region = region                    # shared by every product of this family
+
+    def blob_store(self) -> BlobStore:
+        return S3(self._region)
+
+    def event_bus(self) -> EventBus:
+        return Sqs(self._region)
+
+
+class GcpKit(CloudKit):
+    def __init__(self, region: str) -> None:
+        self._region = region
+
+    def blob_store(self) -> BlobStore:
+        return GcsBucket(self._region)
+
+    def event_bus(self) -> EventBus:
+        return PubSub(self._region)
+
+
+class UploadService:
+    def __init__(self, kit: CloudKit) -> None:   # both products from ONE family
+        self._store = kit.blob_store()
+        self._bus = kit.event_bus()
+
+    def upload(self, name: str, data: bytes) -> str:
+        uri = self._store.put(name, data)
+        evt = self._bus.publish("uploads", name)
+        return f"{uri} | {evt}"
+
+
+if __name__ == "__main__":
+    kit = CloudKit.for_provider("aws", "ap-south-1")          # chosen once at startup
+    print(UploadService(kit).upload("a.png", bytes([1, 2, 3])))
+    print(UploadService(CloudKit.for_provider("GCP", "asia-south1")).upload("b.png", b""))
+    try:
+        CloudKit.for_provider("azure", "westeurope")
+    except ValueError as e:
+        print(e)` },
+            { lang: 'ts', code: `
+interface BlobStore { put(name: string, data: Uint8Array): string; }
+interface EventBus { publish(topic: string, msg: string): string; }
+
+interface CloudKit {
+  blobStore(): BlobStore;
+  eventBus(): EventBus;
+}
+
+class AwsKit implements CloudKit {
+  constructor(private readonly region: string) {}      // shared by every product of this family
+
+  blobStore(): BlobStore { return { put: (name) => \`s3://\${this.region}/\${name}\` }; }
+  eventBus(): EventBus { return { publish: (topic, msg) => \`sqs[\${this.region}]/\${topic}: \${msg}\` }; }
+}
+
+class GcpKit implements CloudKit {
+  constructor(private readonly region: string) {}
+
+  blobStore(): BlobStore { return { put: (name) => \`gs://\${this.region}/\${name}\` }; }
+  eventBus(): EventBus { return { publish: (topic, msg) => \`pubsub[\${this.region}]/\${topic}: \${msg}\` }; }
+}
+
+function forProvider(provider: string, region: string): CloudKit {
+  switch (provider.toLowerCase()) {
+    case "aws": return new AwsKit(region);
+    case "gcp": return new GcpKit(region);
+    default: throw new Error(\`Unsupported provider: \${provider}\`);
+  }
+}
+
+class UploadService {
+  private readonly store: BlobStore;
+  private readonly bus: EventBus;
+
+  constructor(kit: CloudKit) {                           // both products from ONE family
+    this.store = kit.blobStore();
+    this.bus = kit.eventBus();
+  }
+
+  upload(name: string, data: Uint8Array): string {
+    const uri = this.store.put(name, data);
+    const evt = this.bus.publish("uploads", name);
+    return \`\${uri} | \${evt}\`;
+  }
+}
+
+const kit = forProvider("aws", "ap-south-1");            // chosen once at startup
+console.log(new UploadService(kit).upload("a.png", new Uint8Array([1, 2, 3])));
+console.log(new UploadService(forProvider("GCP", "asia-south1")).upload("b.png", new Uint8Array(0)));
+try {
+  forProvider("azure", "westeurope");
+} catch (e) {
+  console.log((e as Error).message);
+}` },
+            { lang: 'cpp', code: `
+#include <algorithm>
+#include <cstdint>
+#include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+using namespace std;
+
+class BlobStore {
+public:
+    virtual ~BlobStore() = default;
+    virtual string put(const string& name, const vector<uint8_t>& data) const = 0;
+};
+
+class EventBus {
+public:
+    virtual ~EventBus() = default;
+    virtual string publish(const string& topic, const string& msg) const = 0;
+};
+
+class CloudKit {
+public:
+    virtual ~CloudKit() = default;
+    virtual unique_ptr<BlobStore> blobStore() const = 0;
+    virtual unique_ptr<EventBus> eventBus() const = 0;
+    static unique_ptr<CloudKit> forProvider(string provider, const string& region);
+};
+
+class S3 : public BlobStore {
+    string region;
+public:
+    explicit S3(string r) : region(std::move(r)) {}
+    string put(const string& name, const vector<uint8_t>&) const override { return "s3://" + region + "/" + name; }
+};
+
+class Sqs : public EventBus {
+    string region;
+public:
+    explicit Sqs(string r) : region(std::move(r)) {}
+    string publish(const string& topic, const string& msg) const override { return "sqs[" + region + "]/" + topic + ": " + msg; }
+};
+
+class GcsBucket : public BlobStore {
+    string region;
+public:
+    explicit GcsBucket(string r) : region(std::move(r)) {}
+    string put(const string& name, const vector<uint8_t>&) const override { return "gs://" + region + "/" + name; }
+};
+
+class PubSub : public EventBus {
+    string region;
+public:
+    explicit PubSub(string r) : region(std::move(r)) {}
+    string publish(const string& topic, const string& msg) const override { return "pubsub[" + region + "]/" + topic + ": " + msg; }
+};
+
+class AwsKit : public CloudKit {
+    string region;                                   // shared by every product of this family
+public:
+    explicit AwsKit(string r) : region(std::move(r)) {}
+    unique_ptr<BlobStore> blobStore() const override { return make_unique<S3>(region); }
+    unique_ptr<EventBus> eventBus() const override { return make_unique<Sqs>(region); }
+};
+
+class GcpKit : public CloudKit {
+    string region;
+public:
+    explicit GcpKit(string r) : region(std::move(r)) {}
+    unique_ptr<BlobStore> blobStore() const override { return make_unique<GcsBucket>(region); }
+    unique_ptr<EventBus> eventBus() const override { return make_unique<PubSub>(region); }
+};
+
+unique_ptr<CloudKit> CloudKit::forProvider(string provider, const string& region) {
+    string key = provider;
+    transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return tolower(c); });
+    if (key == "aws") return make_unique<AwsKit>(region);
+    if (key == "gcp") return make_unique<GcpKit>(region);
+    throw invalid_argument("Unsupported provider: " + provider);
+}
+
+class UploadService {
+    unique_ptr<BlobStore> store;
+    unique_ptr<EventBus> bus;
+
+public:
+    explicit UploadService(const CloudKit& kit) : store(kit.blobStore()), bus(kit.eventBus()) {}   // ONE family
+
+    string upload(const string& name, const vector<uint8_t>& data) const {
+        string uri = store->put(name, data);
+        string evt = bus->publish("uploads", name);
+        return uri + " | " + evt;
+    }
+};
+
+int main() {
+    auto kit = CloudKit::forProvider("aws", "ap-south-1");      // chosen once at startup
+    cout << UploadService(*kit).upload("a.png", {1, 2, 3}) << "\\n";
+    cout << UploadService(*CloudKit::forProvider("GCP", "asia-south1")).upload("b.png", {}) << "\\n";
+    try {
+        CloudKit::forProvider("azure", "westeurope");
+    } catch (const invalid_argument& e) {
+        cout << e.what() << "\\n";
+    }
+}` }
+          ],
           complexity: `<p>All operations O(1). Adding a provider: one kit + its products (new row). Adding a product type (e.g. <code>SecretStore</code>): edit the interface and every kit — call out this trade-off.</p>`,
           followUps: ['Add a SecretStore product: how do you avoid breaking every kit at once?', 'How would Spring profiles replace forProvider()?', 'How would you test UploadService without any cloud?']
         }
@@ -1614,7 +4471,205 @@ public class Main {
             System.out.println("rejected: " + e.getMessage());
         }
     }
+}`,
+alt: [
+  { lang: 'python', code: `
+from typing import Optional
+
+
+class Pizza:
+    def __init__(self, b: "Pizza.Builder") -> None:     # only the Builder should call this
+        self._size = b._size
+        self._crust = b._crust
+        self._sauce = b._sauce
+        self._cheese = b._cheese
+        self._toppings = tuple(b._toppings)             # copy -> truly immutable
+
+    @staticmethod
+    def builder() -> "Pizza.Builder":
+        return Pizza.Builder()
+
+    def __str__(self) -> str:
+        toppings = "[" + ", ".join(self._toppings) + "]"
+        return f"{self._size} {self._crust} pizza, {self._sauce} sauce, cheese={str(self._cheese).lower()}, toppings={toppings}"
+
+    class Builder:
+        def __init__(self) -> None:
+            self._size: Optional[str] = None              # no default: required
+            self._crust = "regular"                       # sensible defaults
+            self._sauce = "tomato"
+            self._cheese = True
+            self._toppings: list[str] = []
+
+        def size(self, s: str) -> "Pizza.Builder":
+            if s not in ("S", "M", "L"):
+                raise ValueError("size must be S, M or L")
+            self._size = s
+            return self                                   # fluent chaining
+
+        def crust(self, c: str) -> "Pizza.Builder":
+            self._crust = c
+            return self
+
+        def sauce(self, s: str) -> "Pizza.Builder":
+            self._sauce = s
+            return self
+
+        def cheese(self, c: bool) -> "Pizza.Builder":
+            self._cheese = c
+            return self
+
+        def topping(self, t: str) -> "Pizza.Builder":
+            self._toppings.append(t)
+            return self
+
+        def build(self) -> "Pizza":
+            # cross-field rules live here, checked once, before the object exists
+            if self._size is None:
+                raise RuntimeError("size is required")
+            if self._crust == "stuffed" and self._size != "L":
+                raise RuntimeError("stuffed crust only for L")
+            if len(self._toppings) > 5:
+                raise RuntimeError("max 5 toppings")
+            return Pizza(self)
+
+
+if __name__ == "__main__":
+    p = Pizza.builder().size("L").crust("thin").topping("olive").topping("corn").build()
+    print(p)
+
+    try:
+        Pizza.builder().size("M").crust("stuffed").build()
+    except RuntimeError as e:
+        print("rejected:", e)` },
+  { lang: 'ts', code: `
+class Pizza {
+  private readonly size: string;
+  private readonly crust: string;
+  private readonly sauce: string;
+  private readonly cheese: boolean;
+  private readonly toppings: readonly string[];
+
+  constructor(b: PizzaBuilder) {                        // call PizzaBuilder.build() instead
+    this.size = b.sizeValue ?? "";
+    this.crust = b.crustValue;
+    this.sauce = b.sauceValue;
+    this.cheese = b.cheeseValue;
+    this.toppings = Object.freeze([...b.toppingList]);  // copy -> truly immutable
+  }
+
+  static builder(): PizzaBuilder { return new PizzaBuilder(); }
+
+  toString(): string {
+    return \`\${this.size} \${this.crust} pizza, \${this.sauce} sauce, cheese=\${this.cheese}, toppings=[\${this.toppings.join(", ")}]\`;
+  }
+}
+
+class PizzaBuilder {
+  sizeValue?: string;                                   // no default: required
+  crustValue = "regular";                               // sensible defaults
+  sauceValue = "tomato";
+  cheeseValue = true;
+  readonly toppingList: string[] = [];
+
+  size(s: string): this {
+    if (!["S", "M", "L"].includes(s)) throw new Error("size must be S, M or L");
+    this.sizeValue = s;
+    return this;                                        // fluent chaining
+  }
+  crust(c: string): this { this.crustValue = c; return this; }
+  sauce(s: string): this { this.sauceValue = s; return this; }
+  cheese(c: boolean): this { this.cheeseValue = c; return this; }
+  topping(t: string): this { this.toppingList.push(t); return this; }
+
+  build(): Pizza {
+    // cross-field rules live here, checked once, before the object exists
+    if (this.sizeValue === undefined) throw new Error("size is required");
+    if (this.crustValue === "stuffed" && this.sizeValue !== "L") throw new Error("stuffed crust only for L");
+    if (this.toppingList.length > 5) throw new Error("max 5 toppings");
+    return new Pizza(this);
+  }
+}
+
+const p = Pizza.builder().size("L").crust("thin").topping("olive").topping("corn").build();
+console.log(String(p));
+
+try {
+  Pizza.builder().size("M").crust("stuffed").build();
+} catch (e) {
+  console.log("rejected: " + (e as Error).message);
+}` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <vector>
+using namespace std;
+
+class Pizza {
+public:
+    class Builder;
+    static Builder builder();
+
+    string str() const {
+        string list;
+        for (size_t i = 0; i < toppings.size(); i++) list += (i ? ", " : "") + toppings[i];
+        return size + " " + crust + " pizza, " + sauce + " sauce, cheese=" + (cheese ? "true" : "false") + ", toppings=[" + list + "]";
+    }
+
+private:
+    explicit Pizza(const Builder& b);               // only the Builder can call this
+
+    string size, crust, sauce;
+    bool cheese;
+    vector<string> toppings;                         // owned by value: a real copy of the builder's list
+};
+
+class Pizza::Builder {
+    friend class Pizza;
+    optional<string> sizeValue;                      // no default: required
+    string crustValue = "regular";                   // sensible defaults
+    string sauceValue = "tomato";
+    bool cheeseValue = true;
+    vector<string> toppingList;
+
+public:
+    Builder& size(const string& s) {
+        if (s != "S" && s != "M" && s != "L") throw invalid_argument("size must be S, M or L");
+        sizeValue = s;
+        return *this;                                // fluent chaining
+    }
+    Builder& crust(const string& c) { crustValue = c; return *this; }
+    Builder& sauce(const string& s) { sauceValue = s; return *this; }
+    Builder& cheese(bool c) { cheeseValue = c; return *this; }
+    Builder& topping(const string& t) { toppingList.push_back(t); return *this; }
+
+    Pizza build() const {
+        // cross-field rules live here, checked once, before the object exists
+        if (!sizeValue) throw logic_error("size is required");
+        if (crustValue == "stuffed" && *sizeValue != "L") throw logic_error("stuffed crust only for L");
+        if (toppingList.size() > 5) throw logic_error("max 5 toppings");
+        return Pizza(*this);
+    }
+};
+
+Pizza::Pizza(const Builder& b)
+    : size(*b.sizeValue), crust(b.crustValue), sauce(b.sauceValue), cheese(b.cheeseValue), toppings(b.toppingList) {}
+
+Pizza::Builder Pizza::builder() { return Builder(); }
+
+int main() {
+    Pizza p = Pizza::builder().size("L").crust("thin").topping("olive").topping("corn").build();
+    cout << p.str() << "\\n";
+
+    try {
+        Pizza::builder().size("M").crust("stuffed").build();
+    } catch (const logic_error& e) {
+        cout << "rejected: " << e.what() << "\\n";
+    }
 }` }
+] }
     ],
     codeTitle: ['Builder with validation'],
     viz: [
@@ -1680,7 +4735,7 @@ public class Main {
       }
     ],
     examples: [
-      { title: 'The JDK HttpRequest builder', html: `<p><code>java.net.http.HttpRequest</code> (Java 11+) is built with a fluent builder: required URI, optional headers (repeatable), method with body, timeout. <code>build()</code> returns an immutable request you can safely reuse across threads. <code>HttpClient.newBuilder()</code> works the same way.</p>`, code: `
+      { title: 'The JDK HttpRequest builder', html: `<p><code>java.net.http.HttpRequest</code> (Java 11+) is built with a fluent builder: required URI, optional headers (repeatable), method with body, timeout. <code>build()</code> returns an immutable request you can safely reuse across threads. <code>HttpClient.newBuilder()</code> works the same way.</p>`, code: { lang: 'java', code: `
 import java.net.URI;
 import java.net.http.HttpRequest;
 
@@ -1695,8 +4750,102 @@ class HttpBuilderDemo {
             .build();
         System.out.println(req.method() + " " + req.uri() + " " + req.headers().map());
     }
-}` },
-      { title: 'Director: reusable recipes on top of a builder', html: `<p>The GoF <b>Director</b> owns a <i>sequence</i> of builder calls so common configurations are not copy-pasted. A cafe has "Margherita" and "Veggie Supreme" presets; the director drives the same builder, and callers can still tweak before <code>build()</code>.</p>`, code: `
+}`,
+alt: [
+  { lang: 'python', code: `
+from urllib.request import Request
+
+# Python usually replaces a builder with keyword arguments: name every option at the call site.
+req = Request(
+    "https://api.example.com/orders",
+    data=b'{"item":42}',
+    headers={"Authorization": "Bearer token-123", "Accept": "application/json"},
+    method="POST",
+)
+print(req.get_method(), req.full_url, req.headers)` },
+  { lang: 'ts', code: `
+// Node and browsers ship a Request class that takes an options object; here is the same idea as a small fluent builder.
+class HttpRequest {
+  constructor(
+    readonly method: string,
+    readonly uri: string,
+    readonly headers: ReadonlyMap<string, string>,
+    readonly timeoutSeconds: number,
+    readonly body: string,
+  ) {}
+}
+
+class HttpRequestBuilder {
+  private uriValue = "";
+  private methodValue = "GET";
+  private bodyValue = "";
+  private timeoutValue = 30;
+  private readonly headerMap = new Map<string, string>();
+
+  uri(u: string): this { this.uriValue = u; return this; }
+  header(name: string, value: string): this { this.headerMap.set(name, value); return this; }
+  timeout(seconds: number): this { this.timeoutValue = seconds; return this; }
+  post(body: string): this { this.methodValue = "POST"; this.bodyValue = body; return this; }
+
+  build(): HttpRequest {
+    if (this.uriValue === "") throw new Error("uri is required");
+    return new HttpRequest(this.methodValue, this.uriValue, new Map(this.headerMap), this.timeoutValue, this.bodyValue);
+  }
+}
+
+const req = new HttpRequestBuilder()
+  .uri("https://api.example.com/orders")
+  .header("Authorization", "Bearer token-123")
+  .header("Accept", "application/json")
+  .timeout(5)
+  .post('{"item":42}')
+  .build();
+console.log(\`\${req.method} \${req.uri} \${[...req.headers].map(([k, v]) => \`\${k}=\${v}\`).join(", ")}\`);` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <map>
+#include <stdexcept>
+#include <string>
+using namespace std;
+
+// The C++ standard library has no HTTP client, so here is the same idea as a small fluent builder.
+struct HttpRequest {
+    string method, uri, body;
+    map<string, string> headers;
+    int timeoutSeconds;
+};
+
+class HttpRequestBuilder {
+    string uriValue, methodValue = "GET", bodyValue;
+    int timeoutValue = 30;
+    map<string, string> headerMap;
+
+public:
+    HttpRequestBuilder& uri(const string& u) { uriValue = u; return *this; }
+    HttpRequestBuilder& header(const string& name, const string& value) { headerMap[name] = value; return *this; }
+    HttpRequestBuilder& timeout(int seconds) { timeoutValue = seconds; return *this; }
+    HttpRequestBuilder& post(const string& body) { methodValue = "POST"; bodyValue = body; return *this; }
+
+    HttpRequest build() const {
+        if (uriValue.empty()) throw invalid_argument("uri is required");
+        return HttpRequest{methodValue, uriValue, bodyValue, headerMap, timeoutValue};
+    }
+};
+
+int main() {
+    HttpRequest req = HttpRequestBuilder()
+        .uri("https://api.example.com/orders")
+        .header("Authorization", "Bearer token-123")
+        .header("Accept", "application/json")
+        .timeout(5)
+        .post("{\\"item\\":42}")
+        .build();
+    cout << req.method << " " << req.uri;
+    for (const auto& [k, v] : req.headers) cout << " " << k << "=" << v;
+    cout << "\\n";
+}` }
+] } },
+      { title: 'Director: reusable recipes on top of a builder', html: `<p>The GoF <b>Director</b> owns a <i>sequence</i> of builder calls so common configurations are not copy-pasted. A cafe has "Margherita" and "Veggie Supreme" presets; the director drives the same builder, and callers can still tweak before <code>build()</code>.</p>`, code: { lang: 'java', code: `
 class Meal {
     final List<String> items;
     Meal(List<String> items) { this.items = List.copyOf(items); }
@@ -1725,8 +4874,128 @@ class DirectorDemo {
         System.out.println(d.kidsCombo().build());
         System.out.println(d.valueCombo().drink("extra water").build());   // tweak before build
     }
-}` },
-      { title: 'toBuilder(): copy an immutable object with one change', html: `<p>Immutable objects cannot be edited, so "change the timeout" means "make a copy with a new timeout". A <code>toBuilder()</code> pre-fills a builder from the existing object — clean and safe. Records give you immutability for free; adding a small builder to a record is common when it has many optional components.</p>`, code: `
+}`,
+alt: [
+  { lang: 'python', code: `
+class Meal:
+    def __init__(self, items: list[str]) -> None:
+        self.items = tuple(items)
+
+    def __str__(self) -> str:
+        return " + ".join(self.items)
+
+
+class MealBuilder:
+    def __init__(self) -> None:
+        self._items: list[str] = []
+
+    def main(self, m: str) -> "MealBuilder":
+        self._items.append(m)
+        return self
+
+    def side(self, s: str) -> "MealBuilder":
+        self._items.append(s)
+        return self
+
+    def drink(self, d: str) -> "MealBuilder":
+        self._items.append(d)
+        return self
+
+    def build(self) -> Meal:
+        if not self._items:
+            raise RuntimeError("empty meal")
+        return Meal(self._items)
+
+
+class MealDirector:                              # knows the recipes, not the representation
+    def kids_combo(self) -> MealBuilder:
+        return MealBuilder().main("mini burger").side("apple slices").drink("milk")
+
+    def value_combo(self) -> MealBuilder:
+        return MealBuilder().main("burger").side("fries").drink("cola")
+
+
+if __name__ == "__main__":
+    d = MealDirector()
+    print(d.kids_combo().build())
+    print(d.value_combo().drink("extra water").build())   # tweak before build` },
+  { lang: 'ts', code: `
+class Meal {
+  readonly items: readonly string[];
+
+  constructor(items: readonly string[]) { this.items = Object.freeze([...items]); }
+
+  toString(): string { return this.items.join(" + "); }
+}
+
+class MealBuilder {
+  private readonly items: string[] = [];
+
+  main(m: string): this { this.items.push(m); return this; }
+  side(s: string): this { this.items.push(s); return this; }
+  drink(d: string): this { this.items.push(d); return this; }
+
+  build(): Meal {
+    if (this.items.length === 0) throw new Error("empty meal");
+    return new Meal(this.items);
+  }
+}
+
+class MealDirector {                             // knows the recipes, not the representation
+  kidsCombo(): MealBuilder { return new MealBuilder().main("mini burger").side("apple slices").drink("milk"); }
+  valueCombo(): MealBuilder { return new MealBuilder().main("burger").side("fries").drink("cola"); }
+}
+
+const d = new MealDirector();
+console.log(String(d.kidsCombo().build()));
+console.log(String(d.valueCombo().drink("extra water").build()));   // tweak before build` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <vector>
+using namespace std;
+
+class Meal {
+    vector<string> items;
+
+public:
+    explicit Meal(vector<string> i) : items(std::move(i)) {}
+
+    string str() const {
+        string out;
+        for (size_t i = 0; i < items.size(); i++) out += (i ? " + " : "") + items[i];
+        return out;
+    }
+};
+
+class MealBuilder {
+    vector<string> items;
+
+public:
+    MealBuilder& main(const string& m) { items.push_back(m); return *this; }
+    MealBuilder& side(const string& s) { items.push_back(s); return *this; }
+    MealBuilder& drink(const string& d) { items.push_back(d); return *this; }
+
+    Meal build() const {
+        if (items.empty()) throw logic_error("empty meal");
+        return Meal(items);
+    }
+};
+
+class MealDirector {                             // knows the recipes, not the representation
+public:
+    MealBuilder kidsCombo() const { MealBuilder b; b.main("mini burger").side("apple slices").drink("milk"); return b; }
+    MealBuilder valueCombo() const { MealBuilder b; b.main("burger").side("fries").drink("cola"); return b; }
+};
+
+int main() {
+    MealDirector d;
+    cout << d.kidsCombo().build().str() << "\\n";
+    cout << d.valueCombo().drink("extra water").build().str() << "\\n";   // tweak before build
+}` }
+] } },
+      { title: 'toBuilder(): copy an immutable object with one change', html: `<p>Immutable objects cannot be edited, so "change the timeout" means "make a copy with a new timeout". A <code>toBuilder()</code> pre-fills a builder from the existing object — clean and safe. Records give you immutability for free; adding a small builder to a record is common when it has many optional components.</p>`, code: { lang: 'java', code: `
 record RetryPolicy(int maxAttempts, long backoffMs, boolean jitter) {
     RetryPolicy {
         if (maxAttempts < 1) throw new IllegalArgumentException("maxAttempts >= 1");
@@ -1751,7 +5020,88 @@ class RetryDemo {
         RetryPolicy aggressive = base.toBuilder().maxAttempts(10).build();
         System.out.println(base + " -> " + aggressive);
     }
-}` },
+}`,
+alt: [
+  { lang: 'python', code: `
+from dataclasses import dataclass, replace
+
+
+@dataclass(frozen=True)
+class RetryPolicy:
+    max_attempts: int = 3
+    backoff_ms: int = 200
+    jitter: bool = True
+
+    def __post_init__(self) -> None:
+        if self.max_attempts < 1:
+            raise ValueError("maxAttempts >= 1")
+
+    def __str__(self) -> str:
+        return f"RetryPolicy[maxAttempts={self.max_attempts}, backoffMs={self.backoff_ms}, jitter={str(self.jitter).lower()}]"
+
+
+if __name__ == "__main__":
+    base = RetryPolicy()                           # defaults replace the builder's defaults
+    aggressive = replace(base, max_attempts=10)    # replace() is toBuilder().x().build() in one step
+    print(f"{base} -> {aggressive}")` },
+  { lang: 'ts', code: `
+interface RetryPolicy {
+  readonly maxAttempts: number;
+  readonly backoffMs: number;
+  readonly jitter: boolean;
+}
+
+function retryPolicy(overrides: Partial<RetryPolicy> = {}): RetryPolicy {
+  const policy = { maxAttempts: 3, backoffMs: 200, jitter: true, ...overrides };   // defaults, then overrides
+  if (policy.maxAttempts < 1) throw new Error("maxAttempts >= 1");
+  return Object.freeze(policy);
+}
+
+const show = (p: RetryPolicy): string =>
+  \`RetryPolicy[maxAttempts=\${p.maxAttempts}, backoffMs=\${p.backoffMs}, jitter=\${p.jitter}]\`;
+
+const base = retryPolicy();
+const aggressive = retryPolicy({ ...base, maxAttempts: 10 });    // spread = toBuilder().maxAttempts(10).build()
+console.log(\`\${show(base)} -> \${show(aggressive)}\`);` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <stdexcept>
+using namespace std;
+
+struct RetryPolicy {
+    int maxAttempts = 3;
+    long long backoffMs = 200;
+    bool jitter = true;
+};
+
+class RetryPolicyBuilder {
+    RetryPolicy p;
+
+public:
+    RetryPolicyBuilder() = default;
+    explicit RetryPolicyBuilder(const RetryPolicy& from) : p(from) {}      // toBuilder()
+
+    RetryPolicyBuilder& maxAttempts(int v) { p.maxAttempts = v; return *this; }
+    RetryPolicyBuilder& backoffMs(long long v) { p.backoffMs = v; return *this; }
+    RetryPolicyBuilder& jitter(bool v) { p.jitter = v; return *this; }
+
+    RetryPolicy build() const {
+        if (p.maxAttempts < 1) throw invalid_argument("maxAttempts >= 1");
+        return p;
+    }
+};
+
+ostream& operator<<(ostream& os, const RetryPolicy& p) {
+    return os << "RetryPolicy[maxAttempts=" << p.maxAttempts << ", backoffMs=" << p.backoffMs
+              << ", jitter=" << boolalpha << p.jitter << "]";
+}
+
+int main() {
+    RetryPolicy base = RetryPolicyBuilder().build();
+    RetryPolicy aggressive = RetryPolicyBuilder(base).maxAttempts(10).build();
+    cout << base << " -> " << aggressive << "\\n";
+}` }
+] } },
       { title: 'Test Data Builders keep tests readable', html: `<p>Tests that need a <code>User</code> with 15 fields become noise. A builder with valid defaults lets each test state only what matters: <code>aUser().withAge(17).build()</code> for the "minors cannot buy" test. Readers instantly see the one field under test.</p>` }
     ],
     deepDive: `<p>🟣 <b>Step builder (type-safe required fields).</b> Return a different interface from each required step — <code>builder().to(..)</code> returns <code>SubjectStep</code>, whose only method <code>subject(..)</code> returns <code>OptionalStep</code> with <code>cc()</code>, <code>body()</code> and <code>build()</code>. Forgetting a required field becomes a <b>compile error</b> instead of a runtime exception. The cost is more interfaces; use it for public APIs with critical required fields.</p>
@@ -1791,6 +5141,7 @@ class ApiRequestNaive {
           `<p>Hint 2: store headers as <code>Map&lt;String, List&lt;String&gt;&gt;</code> in a <code>LinkedHashMap</code> (keeps order, supports repeats). In the product, deep-copy it: copy each list with <code>List.copyOf</code>, then the map with <code>Map.copyOf</code> or wrap unmodifiably.</p>`,
           `<p>Hint 3: per-field checks in setters (url scheme, method name, timeout range), combination checks in <code>build()</code> (body vs method). Write a <code>toString</code> that prints the final URL with query params so tests are easy.</p>`
         ],
+        tests: { io: true, cases: [{ stdin: '', stdout: "POST https://api.shop.com/orders?page=2 headers={X-Trace=[a1]} timeout=30s body={}\nrejected: GET cannot have a body\nrejected: POST requires a body\nrejected: url must start with http:// or https://\nrejected: unsupported method patch\nrejected: timeout must be 1-120 seconds\nGET http://a.io/ping headers={A=[1, 2]} timeout=5s\n" }] },
         solution: {
           approach: `<p><b>Builder with required-args entry point + two validation layers + deep immutability.</b></p>
 <ol><li><code>ApiRequest.builder(url, method)</code> validates and stores the two required values.</li>
@@ -1872,19 +5223,338 @@ final class ApiRequest {
 }
 
 public class Main {
+    static void attempt(Supplier<ApiRequest> action) {
+        try {
+            System.out.println(action.get());
+        } catch (RuntimeException e) {
+            System.out.println("rejected: " + e.getMessage());
+        }
+    }
+
     public static void main(String[] args) {
         ApiRequest.Builder b = ApiRequest.builder("https://api.shop.com/orders", "post")
             .header("X-Trace", "a1").query("page", "2").body("{}");
         ApiRequest req = b.build();
         b.header("X-Trace", "LEAK?");                     // must not affect req
         System.out.println(req);
-        try {
-            ApiRequest.builder("https://api.shop.com/orders", "GET").body("x").build();
-        } catch (IllegalStateException e) {
-            System.out.println("rejected: " + e.getMessage());
-        }
+        attempt(() -> ApiRequest.builder("https://api.shop.com/orders", "GET").body("x").build());
+        attempt(() -> ApiRequest.builder("https://api.shop.com/orders", "POST").build());
+        attempt(() -> ApiRequest.builder("ftp://files.shop.com", "GET").build());
+        attempt(() -> ApiRequest.builder("https://api.shop.com", "patch").build());
+        attempt(() -> ApiRequest.builder("https://api.shop.com", "GET").timeoutSeconds(0).build());
+        attempt(() -> ApiRequest.builder("http://a.io/ping", "get").timeoutSeconds(5).header("A", "1").header("A", "2").build());
     }
 }`,
+          alt: [
+            { lang: 'python', code: `
+from types import MappingProxyType
+from typing import Callable, Mapping, Optional
+
+
+class ApiRequest:
+    def __init__(self, b: "ApiRequest.Builder") -> None:
+        self._url = b._url
+        self._method = b._method
+        self._body = b._body
+        self._timeout_seconds = b._timeout_seconds
+        # deep copy: tuples are immutable, the proxy is a read-only view of our own dict
+        self._headers: Mapping[str, tuple[str, ...]] = MappingProxyType({k: tuple(v) for k, v in b._headers.items()})
+        self._query: Mapping[str, str] = MappingProxyType(dict(b._query))
+
+    @staticmethod
+    def builder(url: str, method: str) -> "ApiRequest.Builder":
+        return ApiRequest.Builder(url, method)
+
+    def headers(self) -> Mapping[str, tuple[str, ...]]:
+        return self._headers
+
+    def __str__(self) -> str:
+        full = self._url + "".join(f"{'?' if i == 0 else '&'}{k}={v}" for i, (k, v) in enumerate(self._query.items()))
+        headers = "{" + ", ".join(f"{k}=[{', '.join(v)}]" for k, v in self._headers.items()) + "}"
+        body = "" if self._body is None else f" body={self._body}"
+        return f"{self._method} {full} headers={headers} timeout={self._timeout_seconds}s{body}"
+
+    class Builder:
+        _METHODS = frozenset({"GET", "POST", "PUT", "DELETE"})
+
+        def __init__(self, url: Optional[str], method: Optional[str]) -> None:
+            if url is None or not url.startswith(("http://", "https://")):
+                raise ValueError("url must start with http:// or https://")
+            m = (method or "").upper()
+            if m not in self._METHODS:
+                raise ValueError(f"unsupported method {method}")
+            self._url = url
+            self._method = m
+            self._body: Optional[str] = None
+            self._timeout_seconds = 30
+            self._headers: dict[str, list[str]] = {}
+            self._query: dict[str, str] = {}
+
+        def header(self, name: str, value: str) -> "ApiRequest.Builder":
+            self._headers.setdefault(name, []).append(value)
+            return self
+
+        def query(self, name: str, value: str) -> "ApiRequest.Builder":
+            self._query[name] = value
+            return self
+
+        def timeout_seconds(self, s: int) -> "ApiRequest.Builder":
+            if s < 1 or s > 120:
+                raise ValueError("timeout must be 1-120 seconds")
+            self._timeout_seconds = s
+            return self
+
+        def body(self, b: str) -> "ApiRequest.Builder":
+            self._body = b
+            return self
+
+        def build(self) -> "ApiRequest":
+            needs_body = self._method in ("POST", "PUT")
+            if needs_body and self._body is None:
+                raise RuntimeError(f"{self._method} requires a body")
+            if not needs_body and self._body is not None:
+                raise RuntimeError(f"{self._method} cannot have a body")
+            return ApiRequest(self)
+
+
+def attempt(action: Callable[[], ApiRequest]) -> None:
+    try:
+        print(action())
+    except (ValueError, RuntimeError) as e:
+        print("rejected:", e)
+
+
+if __name__ == "__main__":
+    b = (ApiRequest.builder("https://api.shop.com/orders", "post")
+         .header("X-Trace", "a1").query("page", "2").body("{}"))
+    req = b.build()
+    b.header("X-Trace", "LEAK?")                      # must not affect req
+    print(req)
+    attempt(lambda: ApiRequest.builder("https://api.shop.com/orders", "GET").body("x").build())
+    attempt(lambda: ApiRequest.builder("https://api.shop.com/orders", "POST").build())
+    attempt(lambda: ApiRequest.builder("ftp://files.shop.com", "GET").build())
+    attempt(lambda: ApiRequest.builder("https://api.shop.com", "patch").build())
+    attempt(lambda: ApiRequest.builder("https://api.shop.com", "GET").timeout_seconds(0).build())
+    attempt(lambda: ApiRequest.builder("http://a.io/ping", "get").timeout_seconds(5).header("A", "1").header("A", "2").build())` },
+            { lang: 'ts', code: `
+interface RequestData {
+  readonly url: string;
+  readonly method: string;
+  readonly body?: string;
+  readonly timeoutSeconds: number;
+  readonly headers: ReadonlyMap<string, readonly string[]>;
+  readonly query: ReadonlyMap<string, string>;
+}
+
+class ApiRequest {
+  private readonly data: RequestData;
+
+  // built only by ApiRequestBuilder.build(), which validates first; every collection is copied here
+  constructor(b: RequestData) {
+    const headers = new Map<string, readonly string[]>();
+    b.headers.forEach((v, k) => headers.set(k, Object.freeze([...v])));      // deep copy
+    this.data = Object.freeze({ ...b, headers, query: new Map(b.query) });
+  }
+
+  static builder(url: string, method: string): ApiRequestBuilder {
+    return new ApiRequestBuilder(url, method);
+  }
+
+  headers(): ReadonlyMap<string, readonly string[]> { return this.data.headers; }
+
+  toString(): string {
+    const d = this.data;
+    const full = d.url + [...d.query].map(([k, v], i) => \`\${i === 0 ? "?" : "&"}\${k}=\${v}\`).join("");
+    const headers = "{" + [...d.headers].map(([k, v]) => \`\${k}=[\${v.join(", ")}]\`).join(", ") + "}";
+    return \`\${d.method} \${full} headers=\${headers} timeout=\${d.timeoutSeconds}s\` + (d.body === undefined ? "" : \` body=\${d.body}\`);
+  }
+}
+
+class ApiRequestBuilder {
+  private static readonly METHODS = new Set(["GET", "POST", "PUT", "DELETE"]);
+  private readonly url: string;
+  private readonly method: string;
+  private bodyText?: string;
+  private timeout = 30;
+  private readonly headerMap = new Map<string, string[]>();
+  private readonly queryMap = new Map<string, string>();
+
+  constructor(url: string, method: string) {
+    if (!(url.startsWith("http://") || url.startsWith("https://"))) {
+      throw new Error("url must start with http:// or https://");
+    }
+    const m = method.toUpperCase();
+    if (!ApiRequestBuilder.METHODS.has(m)) throw new Error(\`unsupported method \${method}\`);
+    this.url = url;
+    this.method = m;
+  }
+
+  header(name: string, value: string): this {
+    const values = this.headerMap.get(name) ?? [];
+    values.push(value);
+    this.headerMap.set(name, values);
+    return this;
+  }
+
+  query(name: string, value: string): this { this.queryMap.set(name, value); return this; }
+
+  timeoutSeconds(s: number): this {
+    if (s < 1 || s > 120) throw new Error("timeout must be 1-120 seconds");
+    this.timeout = s;
+    return this;
+  }
+
+  body(b: string): this { this.bodyText = b; return this; }
+
+  build(): ApiRequest {
+    const needsBody = this.method === "POST" || this.method === "PUT";
+    if (needsBody && this.bodyText === undefined) throw new Error(\`\${this.method} requires a body\`);
+    if (!needsBody && this.bodyText !== undefined) throw new Error(\`\${this.method} cannot have a body\`);
+    return new ApiRequest({
+      url: this.url, method: this.method, body: this.bodyText, timeoutSeconds: this.timeout,
+      headers: this.headerMap, query: this.queryMap,
+    });
+  }
+}
+
+function attempt(action: () => ApiRequest): void {
+  try {
+    console.log(String(action()));
+  } catch (e) {
+    console.log("rejected: " + (e as Error).message);
+  }
+}
+
+const b = ApiRequest.builder("https://api.shop.com/orders", "post")
+  .header("X-Trace", "a1").query("page", "2").body("{}");
+const req = b.build();
+b.header("X-Trace", "LEAK?");                         // must not affect req
+console.log(String(req));
+attempt(() => ApiRequest.builder("https://api.shop.com/orders", "GET").body("x").build());
+attempt(() => ApiRequest.builder("https://api.shop.com/orders", "POST").build());
+attempt(() => ApiRequest.builder("ftp://files.shop.com", "GET").build());
+attempt(() => ApiRequest.builder("https://api.shop.com", "patch").build());
+attempt(() => ApiRequest.builder("https://api.shop.com", "GET").timeoutSeconds(0).build());
+attempt(() => ApiRequest.builder("http://a.io/ping", "get").timeoutSeconds(5).header("A", "1").header("A", "2").build());` },
+            { lang: 'cpp', code: `
+#include <algorithm>
+#include <functional>
+#include <iostream>
+#include <optional>
+#include <set>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+using namespace std;
+
+class ApiRequest {
+public:
+    class Builder;
+
+    static Builder builder(const string& url, const string& method);
+
+    const vector<pair<string, vector<string>>>& headers() const { return hdrs; }
+
+    string str() const {
+        string full = url;
+        for (size_t i = 0; i < query.size(); i++) full += (i == 0 ? "?" : "&") + query[i].first + "=" + query[i].second;
+        string h = "{";
+        for (size_t i = 0; i < hdrs.size(); i++) {
+            if (i) h += ", ";
+            h += hdrs[i].first + "=[";
+            for (size_t j = 0; j < hdrs[i].second.size(); j++) h += (j ? ", " : "") + hdrs[i].second[j];
+            h += "]";
+        }
+        return method + " " + full + " headers=" + h + "} timeout=" + to_string(timeoutSeconds) + "s" +
+               (bodyText ? " body=" + *bodyText : "");
+    }
+
+private:
+    explicit ApiRequest(const Builder& b);                  // only the builder can create one
+
+    string url, method;
+    optional<string> bodyText;
+    int timeoutSeconds;
+    vector<pair<string, vector<string>>> hdrs;              // copied by value: no sharing with the builder
+    vector<pair<string, string>> query;
+};
+
+class ApiRequest::Builder {
+    friend class ApiRequest;
+    string url, method;
+    optional<string> bodyText;
+    int timeout = 30;
+    vector<pair<string, vector<string>>> hdrs;
+    vector<pair<string, string>> params;
+
+public:
+    Builder(const string& u, string m) {
+        if (u.rfind("http://", 0) != 0 && u.rfind("https://", 0) != 0)
+            throw invalid_argument("url must start with http:// or https://");
+        string up = m;
+        transform(up.begin(), up.end(), up.begin(), [](unsigned char c) { return toupper(c); });
+        static const set<string> METHODS = {"GET", "POST", "PUT", "DELETE"};
+        if (!METHODS.count(up)) throw invalid_argument("unsupported method " + m);
+        url = u;
+        method = up;
+    }
+
+    Builder& header(const string& name, const string& value) {
+        for (auto& [k, v] : hdrs) if (k == name) { v.push_back(value); return *this; }
+        hdrs.push_back({name, {value}});
+        return *this;
+    }
+
+    Builder& query(const string& name, const string& value) {
+        for (auto& [k, v] : params) if (k == name) { v = value; return *this; }
+        params.push_back({name, value});
+        return *this;
+    }
+
+    Builder& timeoutSeconds(int s) {
+        if (s < 1 || s > 120) throw invalid_argument("timeout must be 1-120 seconds");
+        timeout = s;
+        return *this;
+    }
+
+    Builder& body(const string& b) { bodyText = b; return *this; }
+
+    ApiRequest build() const {
+        bool needsBody = method == "POST" || method == "PUT";
+        if (needsBody && !bodyText) throw logic_error(method + " requires a body");
+        if (!needsBody && bodyText) throw logic_error(method + " cannot have a body");
+        return ApiRequest(*this);
+    }
+};
+
+ApiRequest::ApiRequest(const Builder& b)
+    : url(b.url), method(b.method), bodyText(b.bodyText), timeoutSeconds(b.timeout), hdrs(b.hdrs), query(b.params) {}
+
+ApiRequest::Builder ApiRequest::builder(const string& url, const string& method) { return Builder(url, method); }
+
+void attempt(const function<ApiRequest()>& action) {
+    try {
+        cout << action().str() << "\\n";
+    } catch (const exception& e) {
+        cout << "rejected: " << e.what() << "\\n";
+    }
+}
+
+int main() {
+    auto b = ApiRequest::builder("https://api.shop.com/orders", "post");
+    b.header("X-Trace", "a1").query("page", "2").body("{}");
+    ApiRequest req = b.build();
+    b.header("X-Trace", "LEAK?");                           // must not affect req
+    cout << req.str() << "\\n";
+    attempt([] { return ApiRequest::builder("https://api.shop.com/orders", "GET").body("x").build(); });
+    attempt([] { return ApiRequest::builder("https://api.shop.com/orders", "POST").build(); });
+    attempt([] { return ApiRequest::builder("ftp://files.shop.com", "GET").build(); });
+    attempt([] { return ApiRequest::builder("https://api.shop.com", "patch").build(); });
+    attempt([] { return ApiRequest::builder("https://api.shop.com", "GET").timeoutSeconds(0).build(); });
+    attempt([] { return ApiRequest::builder("http://a.io/ping", "get").timeoutSeconds(5).header("A", "1").header("A", "2").build(); });
+}` }
+          ],
           complexity: `<p>Each builder call O(1) amortised; <code>build()</code> O(H + Q) to copy H headers and Q query params. Memory O(H + Q).</p>`,
           followUps: ['Turn url/method into a compile-time step builder', 'Add toBuilder() so a retry can change only the timeout', 'How would you URL-encode query values safely?']
         }
@@ -1910,7 +5580,7 @@ ${H.table(['Field type', 'Shallow copy does', 'Deep copy does', 'Safe to share?'
   ['immutable object (<code>String</code>, <code>Integer</code>, records of immutables)', 'copies the reference', 'copies the reference (fine)', '<span class="c-g">Yes</span>'],
   ['mutable object (<code>List</code>, <code>Position</code>, arrays)', 'copies the <b>reference</b> → both share it', 'creates a <b>new</b> copy of it', '<span class="c-r">No</span> — must deep copy']
 ])}
-<p><b>How to copy in Java:</b></p>
+<p><b>How to copy (Java names; the code tabs show the others):</b></p>
 <ol><li><b>Copy constructor / copy method (preferred)</b>: <code>Enemy(Enemy other)</code> or <code>copy()</code> — explicit, works with <code>final</code> fields, no checked exceptions.</li>
 <li><b><code>Cloneable</code> + <code>Object.clone()</code></b>: built-in, but <b>shallow</b> by default, bypasses constructors, clashes with <code>final</code> fields, needs a cast and a <code>CloneNotSupportedException</code> dance. Joshua Bloch calls the design broken; use it mainly for <b>arrays</b> (<code>int[] b = a.clone()</code>, which is fine for 1D primitive arrays).</li>
 <li><b>Serialization round-trip</b>: deep but slow and fragile — avoid in hot paths.</li></ol>
@@ -1985,7 +5655,185 @@ public class Main {
         System.out.println(b);
         System.out.println(registry.spawn("archer"));
     }
-}` },
+}`,
+alt: [
+  { lang: 'python', code: `
+class Position:
+    def __init__(self, x: int, y: int) -> None:
+        self.x = x                                   # mutable on purpose
+        self.y = y
+
+    @classmethod
+    def copy_of(cls, p: "Position") -> "Position":   # copy constructor
+        return cls(p.x, p.y)
+
+    def __str__(self) -> str:
+        return f"({self.x},{self.y})"
+
+
+class Enemy:
+    def __init__(self, kind: str, health: int, loot: list[str], pos: Position) -> None:
+        # Imagine expensive work here: loading a model, building an AI tree...
+        self._kind = kind                            # str is immutable -> sharing is fine
+        self._health = health                        # int -> copied by value
+        self._loot = list(loot)                      # mutable -> must be copied
+        self._pos = Position.copy_of(pos)            # mutable -> must be copied
+
+    def copy(self) -> "Enemy":                       # the prototype copy path
+        return Enemy(self._kind, self._health, self._loot, self._pos)
+
+    def at(self, x: int, y: int) -> "Enemy":
+        self._pos.x, self._pos.y = x, y
+        return self
+
+    def add_loot(self, item: str) -> None:
+        self._loot.append(item)
+
+    def __str__(self) -> str:
+        return f"{self._kind} hp={self._health} loot=[{', '.join(self._loot)}] at {self._pos}"
+
+
+class EnemyRegistry:
+    def __init__(self) -> None:
+        self._prototypes: dict[str, Enemy] = {}
+
+    def register(self, key: str, prototype: Enemy) -> None:
+        self._prototypes[key] = prototype
+
+    def spawn(self, key: str) -> Enemy:
+        proto = self._prototypes.get(key)
+        if proto is None:
+            raise ValueError(f"No prototype for {key}")
+        return proto.copy()                          # cheap copy instead of expensive build
+
+
+if __name__ == "__main__":
+    registry = EnemyRegistry()
+    registry.register("orc", Enemy("Orc", 120, ["axe"], Position(0, 0)))
+    registry.register("archer", Enemy("Archer", 70, ["bow", "arrows"], Position(0, 0)))
+
+    a = registry.spawn("orc").at(5, 2)
+    b = registry.spawn("orc").at(9, 4)
+    a.add_loot("gold")                               # only a changes
+    print(a)
+    print(b)
+    print(registry.spawn("archer"))` },
+  { lang: 'ts', code: `
+class Position {
+  constructor(public x: number, public y: number) {}   // mutable on purpose
+
+  static copyOf(p: Position): Position { return new Position(p.x, p.y); }   // copy constructor
+
+  toString(): string { return \`(\${this.x},\${this.y})\`; }
+}
+
+class Enemy {
+  private readonly kind: string;                        // string is immutable -> sharing is fine
+  private readonly health: number;                      // number -> copied by value
+  private readonly loot: string[];                      // mutable -> must be copied
+  private readonly pos: Position;                       // mutable -> must be copied
+
+  constructor(kind: string, health: number, loot: readonly string[], pos: Position) {
+    // Imagine expensive work here: loading a model, building an AI tree...
+    this.kind = kind;
+    this.health = health;
+    this.loot = [...loot];
+    this.pos = Position.copyOf(pos);
+  }
+
+  copy(): Enemy {                                       // the prototype copy path
+    return new Enemy(this.kind, this.health, this.loot, this.pos);
+  }
+
+  at(x: number, y: number): this { this.pos.x = x; this.pos.y = y; return this; }
+  addLoot(item: string): void { this.loot.push(item); }
+  toString(): string { return \`\${this.kind} hp=\${this.health} loot=[\${this.loot.join(", ")}] at \${this.pos}\`; }
+}
+
+class EnemyRegistry {
+  private readonly prototypes = new Map<string, Enemy>();
+
+  register(key: string, prototype: Enemy): void { this.prototypes.set(key, prototype); }
+
+  spawn(key: string): Enemy {
+    const proto = this.prototypes.get(key);
+    if (!proto) throw new Error(\`No prototype for \${key}\`);
+    return proto.copy();                                // cheap copy instead of expensive build
+  }
+}
+
+const registry = new EnemyRegistry();
+registry.register("orc", new Enemy("Orc", 120, ["axe"], new Position(0, 0)));
+registry.register("archer", new Enemy("Archer", 70, ["bow", "arrows"], new Position(0, 0)));
+
+const a = registry.spawn("orc").at(5, 2);
+const b = registry.spawn("orc").at(9, 4);
+a.addLoot("gold");                                      // only a changes
+console.log(String(a));
+console.log(String(b));
+console.log(String(registry.spawn("archer")));` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <map>
+#include <stdexcept>
+#include <string>
+#include <vector>
+using namespace std;
+
+struct Position {
+    int x, y;                                           // mutable on purpose
+    string str() const { return "(" + to_string(x) + "," + to_string(y) + ")"; }
+};
+
+class Enemy {
+    string kind;
+    int health;
+    vector<string> loot;                                // owned by value -> the implicit copy duplicates it
+    Position pos;
+
+public:
+    Enemy(string k, int h, vector<string> l, Position p) : kind(std::move(k)), health(h), loot(std::move(l)), pos(p) {
+        // Imagine expensive work here: loading a model, building an AI tree...
+    }
+
+    Enemy copy() const { return *this; }                // the prototype copy path: member-wise deep copy
+
+    Enemy& at(int x, int y) { pos.x = x; pos.y = y; return *this; }
+    void addLoot(const string& item) { loot.push_back(item); }
+
+    string str() const {
+        string items;
+        for (size_t i = 0; i < loot.size(); i++) items += (i ? ", " : "") + loot[i];
+        return kind + " hp=" + to_string(health) + " loot=[" + items + "] at " + pos.str();
+    }
+};
+
+class EnemyRegistry {
+    map<string, Enemy> prototypes;
+
+public:
+    void registerPrototype(const string& key, Enemy prototype) { prototypes.insert_or_assign(key, std::move(prototype)); }
+
+    Enemy spawn(const string& key) const {
+        auto it = prototypes.find(key);
+        if (it == prototypes.end()) throw invalid_argument("No prototype for " + key);
+        return it->second.copy();                       // cheap copy instead of expensive build
+    }
+};
+
+int main() {
+    EnemyRegistry registry;
+    registry.registerPrototype("orc", Enemy("Orc", 120, {"axe"}, {0, 0}));
+    registry.registerPrototype("archer", Enemy("Archer", 70, {"bow", "arrows"}, {0, 0}));
+
+    Enemy a = registry.spawn("orc").at(5, 2);
+    Enemy b = registry.spawn("orc").at(9, 4);
+    a.addLoot("gold");                                  // only a changes
+    cout << a.str() << "\\n";
+    cout << b.str() << "\\n";
+    cout << registry.spawn("archer").str() << "\\n";
+}` }
+] },
       { lang: 'java', title: 'Cloneable: shallow by default, and how to deep-fix it', code: `
 class Document implements Cloneable {
     String title;
@@ -2027,7 +5875,127 @@ class CloneDemo {
         copy[0] = 99;
         System.out.println(scores[0]);          // 3
     }
+}`,
+alt: [
+  { lang: 'python', code: `
+import copy
+
+
+class Document:
+    def __init__(self, title: str) -> None:
+        self.title = title
+        self.pages: list[str] = []
+
+    # Shallow: copy.copy copies field values -> the 'pages' reference is SHARED.
+    def clone(self) -> "Document":
+        return copy.copy(self)
+
+    def deep_clone(self) -> "Document":
+        d = self.clone()
+        d.pages = list(self.pages)                  # replace shared list with a private copy
+        return d                                    # (or simply: copy.deepcopy(self))
+
+
+if __name__ == "__main__":
+    original = Document("Spec")
+    original.pages.append("intro")
+
+    shallow = original.clone()
+    shallow.pages.append("SURPRISE")
+    print("[" + ", ".join(original.pages) + "]")   # [intro, SURPRISE]  <- bug
+
+    deep = original.deep_clone()
+    deep.pages.append("only in deep")
+    print("[" + ", ".join(original.pages) + "]")   # unchanged by deep copy
+
+    scores = [3, 1, 2]
+    scores_copy = scores.copy()                     # lists: copy() (or scores[:]) is the idiomatic copy
+    scores_copy[0] = 99
+    print(scores[0])                                # 3` },
+  { lang: 'ts', code: `
+class Document {
+  title: string;
+  pages: string[] = [];
+
+  constructor(title: string) { this.title = title; }
+
+  // Shallow: the new object points at the SAME pages array.
+  clone(): Document {
+    const d = new Document(this.title);
+    d.pages = this.pages;
+    return d;
+  }
+
+  deepClone(): Document {
+    const d = this.clone();
+    d.pages = [...this.pages];                      // replace shared array with a private copy
+    return d;
+  }
+}
+
+const original = new Document("Spec");
+original.pages.push("intro");
+
+const shallow = original.clone();
+shallow.pages.push("SURPRISE");
+console.log(\`[\${original.pages.join(", ")}]\`);      // [intro, SURPRISE]  <- bug
+
+const deep = original.deepClone();
+deep.pages.push("only in deep");
+console.log(\`[\${original.pages.join(", ")}]\`);      // unchanged by deep copy
+
+const scores = [3, 1, 2];
+const copy = [...scores];                           // spread or slice(): the idiomatic array copy
+copy[0] = 99;
+console.log(scores[0]);                             // 3` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <memory>
+#include <string>
+#include <vector>
+using namespace std;
+
+class Document {
+public:
+    string title;
+    shared_ptr<vector<string>> pages = make_shared<vector<string>>();   // a shared handle, like a Java reference
+
+    explicit Document(string t) : title(std::move(t)) {}
+
+    // Shallow: the default copy copies the shared_ptr -> both documents point at the SAME pages.
+    Document clone() const { return *this; }
+
+    Document deepClone() const {
+        Document d = clone();
+        d.pages = make_shared<vector<string>>(*pages);  // replace the shared vector with a private copy
+        return d;
+    }
+};
+
+string show(const vector<string>& v) {
+    string out = "[";
+    for (size_t i = 0; i < v.size(); i++) out += (i ? ", " : "") + v[i];
+    return out + "]";
+}
+
+int main() {
+    Document original("Spec");
+    original.pages->push_back("intro");
+
+    Document shallow = original.clone();
+    shallow.pages->push_back("SURPRISE");
+    cout << show(*original.pages) << "\\n";          // [intro, SURPRISE]  <- bug
+
+    Document deep = original.deepClone();
+    deep.pages->push_back("only in deep");
+    cout << show(*original.pages) << "\\n";          // unchanged by deep copy
+
+    vector<int> scores = {3, 1, 2};
+    vector<int> copy = scores;                      // vectors copy their elements: value semantics
+    copy[0] = 99;
+    cout << scores[0] << "\\n";                      // 3
 }` }
+] }
     ],
     codeTitle: ['Prototype with copy constructor + registry', 'Cloneable shallow vs deep'],
     viz: [
@@ -2078,14 +6046,14 @@ class CloneDemo {
             buildMs += 200; copyMs += 0.02;
             frames.push({ narr: 'Spawn #' + (i + 1) + ': <code>registry.spawn("' + k + '")</code> looks up the prototype and calls <code>copy()</code>, then moves it to (' + x + ',1). No asset loading happens.', parts: [{ type: 'map', label: 'Prototype registry', entries: entries, hl: one(k, 'ok') }, { type: 'array', label: 'Enemies in the world', values: spawned.slice(), hl: one(i, 'ok') }, { type: 'vars', label: 'Total time so far', vals: { naiveNewEachTime: buildMs + ' ms', prototypeCopies: copyMs.toFixed(2) + ' ms' }, hl: { prototypeCopies: 'ok', naiveNewEachTime: 'bad' } }] });
           });
-          frames.push({ narr: 'A designer adds a <b>"elite orc"</b> by registering a tweaked copy of the orc prototype (hp 300). No new Java class — kinds become <b>data</b>.', parts: [{ type: 'map', label: 'Prototype registry', entries: entries.concat([['eliteOrc', 'Orc hp=300 [axe, shield]']]), hl: { eliteOrc: 'ok' } }, note('<code>Enemy elite = registry.spawn("orc"); elite.setHealth(300); registry.register("eliteOrc", elite);</code>', 'Code')] });
+          frames.push({ narr: 'A designer adds a <b>"elite orc"</b> by registering a tweaked copy of the orc prototype (hp 300). No new class — kinds become <b>data</b>.', parts: [{ type: 'map', label: 'Prototype registry', entries: entries.concat([['eliteOrc', 'Orc hp=300 [axe, shield]']]), hl: { eliteOrc: 'ok' } }, note('<code>Enemy elite = registry.spawn("orc"); elite.setHealth(300); registry.register("eliteOrc", elite);</code>', 'Code')] });
           frames.push({ narr: 'Result: ' + keys.length + ' enemies for ' + copyMs.toFixed(2) + ' ms of copying instead of ' + buildMs + ' ms of rebuilding. Remember the copy must be <b>deep</b> for mutable parts, but can <b>share</b> heavy immutable assets like textures.', parts: [{ type: 'table', label: 'Naive vs Prototype', columns: ['Approach', 'Time for ' + keys.length + ' spawns', 'New kind needs'], rows: [['new Enemy(...) each time', buildMs + ' ms', 'new constructor call site'], ['registry.spawn(key)', copyMs.toFixed(2) + ' ms', 'one register() line']], hl: { 1: 'ok', 0: 'bad' } }] });
           return frames;
         }
       }
     ],
     examples: [
-      { title: 'The JDK prefers copy constructors and copy factories', html: `<p><code>new ArrayList&lt;&gt;(other)</code>, <code>new HashMap&lt;&gt;(other)</code>, <code>List.copyOf(other)</code>, <code>EnumSet.copyOf(set)</code> are all "prototype by copy constructor". They are explicit, type-safe and shallow at the element level — the <b>elements</b> are shared, so copying a <code>List&lt;Position&gt;</code> this way still shares each <code>Position</code>.</p>`, code: `
+      { title: 'The JDK prefers copy constructors and copy factories', html: `<p><code>new ArrayList&lt;&gt;(other)</code>, <code>new HashMap&lt;&gt;(other)</code>, <code>List.copyOf(other)</code>, <code>EnumSet.copyOf(set)</code> are all "prototype by copy constructor". They are explicit, type-safe and shallow at the element level — the <b>elements</b> are shared, so copying a <code>List&lt;Position&gt;</code> this way still shares each <code>Position</code>.</p>`, code: { lang: 'java', code: `
 class CopyDemo {
     public static void main(String[] args) {
         List<int[]> original = new ArrayList<>();
@@ -2096,9 +6064,40 @@ class CopyDemo {
         copy.add(new int[] {7});
         System.out.println(original.size());              // 1: the list itself is separate
     }
-}` },
+}`,
+alt: [
+  { lang: 'python', code: `
+if __name__ == "__main__":
+    original = [[1, 2]]
+    copy = list(original)                           # new list, SAME inner list
+    copy[0][0] = 99
+    print(original[0][0])                           # 99: elements are shared
+    copy.append([7])
+    print(len(original))                            # 1: the list itself is separate` },
+  { lang: 'ts', code: `
+const original: number[][] = [[1, 2]];
+const copy = [...original];                         // new array, SAME inner array
+copy[0][0] = 99;
+console.log(original[0][0]);                        // 99: elements are shared
+copy.push([7]);
+console.log(original.length);                       // 1: the array itself is separate` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <memory>
+#include <vector>
+using namespace std;
+
+int main() {
+    vector<shared_ptr<vector<int>>> original = {make_shared<vector<int>>(vector<int>{1, 2})};
+    auto copy = original;                           // new vector, SAME pointed-to vectors
+    (*copy[0])[0] = 99;
+    cout << (*original[0])[0] << "\\n";              // 99: elements are shared
+    copy.push_back(make_shared<vector<int>>(vector<int>{7}));
+    cout << original.size() << "\\n";                // 1: the vector itself is separate
+}` }
+] } },
       { title: 'Invoice template per customer', html: `<p>A billing system prepares an <code>InvoiceTemplate</code>: company header, tax rules for the region, footer text, payment terms — loaded once from the database. For each of 10,000 customers it copies the template and fills in customer name and line items. Copying avoids 10,000 DB reads and guarantees every invoice starts from exactly the same configuration.</p>` },
-      { title: 'Why clone() surprises people', html: `<p>(1) <code>Object.clone()</code> does <b>not</b> call any constructor, so invariants enforced in constructors are skipped. (2) <code>final</code> mutable fields cannot be reassigned in <code>clone()</code>, so you cannot deep-copy them. (3) <code>Cloneable</code> has no methods — it only flips <code>Object.clone</code>'s behaviour. (4) Subclasses inherit a broken clone unless they override it. Copy constructors avoid all four.</p>`, code: `
+      { title: 'Why clone() surprises people', html: `<p>(1) <code>Object.clone()</code> does <b>not</b> call any constructor, so invariants enforced in constructors are skipped. (2) <code>final</code> mutable fields cannot be reassigned in <code>clone()</code>, so you cannot deep-copy them. (3) <code>Cloneable</code> has no methods — it only flips <code>Object.clone</code>'s behaviour. (4) Subclasses inherit a broken clone unless they override it. Copy constructors avoid all four.</p>`, code: { lang: 'java', code: `
 class Account implements Cloneable {
     private final List<String> history = new ArrayList<>();   // final + mutable
 
@@ -2120,7 +6119,75 @@ class AccountDemo {
         b.record("withdraw 500");
         System.out.println(a.size());   // 1 -- a's history changed through b
     }
-}` },
+}`,
+alt: [
+  { lang: 'python', code: `
+import copy
+
+
+class Account:
+    def __init__(self) -> None:
+        self._history: list[str] = []
+
+    def record(self, e: str) -> None:
+        self._history.append(e)
+
+    def clone(self) -> "Account":
+        return copy.copy(self)                      # shallow: _history stays SHARED (copy.deepcopy fixes it)
+
+    def size(self) -> int:
+        return len(self._history)
+
+
+if __name__ == "__main__":
+    a = Account()
+    b = a.clone()
+    b.record("withdraw 500")
+    print(a.size())                                 # 1 -- a's history changed through b` },
+  { lang: 'ts', code: `
+class Account {
+  private history: string[] = [];
+
+  record(e: string): void { this.history.push(e); }
+
+  clone(): Account {
+    const c = new Account();
+    c.history = this.history;                       // shallow: the array stays SHARED (use [...this.history] to fix)
+    return c;
+  }
+
+  size(): number { return this.history.length; }
+}
+
+const a = new Account();
+const b = a.clone();
+b.record("withdraw 500");
+console.log(a.size());                              // 1 -- a's history changed through b` },
+  { lang: 'cpp', code: `
+#include <iostream>
+#include <memory>
+#include <string>
+#include <vector>
+using namespace std;
+
+class Account {
+    shared_ptr<vector<string>> history = make_shared<vector<string>>();   // shared handle, like a Java reference
+
+public:
+    void record(const string& e) { history->push_back(e); }
+
+    Account clone() const { return *this; }         // shallow: the copied shared_ptr points at the SAME history
+
+    size_t size() const { return history->size(); }
+};
+
+int main() {
+    Account a;
+    Account b = a.clone();
+    b.record("withdraw 500");
+    cout << a.size() << "\\n";                       // 1 -- a's history changed through b
+}` }
+] } },
       { title: 'Copy-paste in an editor', html: `<p>Diagram editors (Figma, draw.io) implement "duplicate" by asking the selected shape to copy itself: <code>Shape copy = selected.copy()</code>. The editor does not know whether it is a <code>Circle</code> or a <code>Group</code> of 40 shapes; each class knows how to copy itself (a <code>Group</code> deep-copies its children). That runtime polymorphic copy is exactly what Prototype adds over "just call new".</p>` }
     ],
     deepDive: `<p>🟣 <b>Deep copy of graphs.</b> Real object graphs have shared sub-objects and cycles (a <code>Department</code> lists <code>Employee</code>s who point back to the department). Naive recursive deep copy loops forever or duplicates shared nodes. The fix is a copy with an <b>identity map</b> (<code>IdentityHashMap&lt;Object, Object&gt;</code> from original to copy): before copying a node, check if it was already copied. This is the same idea as cloning a graph in DSA (LeetCode 133).</p>
@@ -2160,6 +6227,7 @@ class LevelNaive {
           `<p>Hint 2: a 2D array is an array of arrays — clone the outer array <b>and</b> each row. For monsters, create a new list containing <code>m.copy()</code> for each monster.</p>`,
           `<p>Hint 3: put the logic in a private copy constructor <code>Level(Level other)</code> and expose <code>copy()</code>. Test independence by mutating every field of the original after copying.</p>`
         ],
+        tests: { io: true, cases: [{ stdin: '', stdout: "saved tile = 0\nsaved hp   = 100\nsaved keys = 0\nlive  hp   = 70\nlive  tile = 9, keys = 1\nsame monster object: false\n" }] },
         solution: {
           approach: `<p><b>Field-by-field deep copy via a copy constructor.</b></p>
 <ul><li><code>name</code>: String is immutable → share the reference.</li>
@@ -2218,8 +6286,135 @@ public class Main {
         System.out.println("saved hp   = " + saved.monsters.get(0).hp);     // 100
         System.out.println("saved keys = " + saved.inventory.get("key"));   // 0
         System.out.println("live  hp   = " + live.monsters.get(0).hp);      // 70
+        System.out.println("live  tile = " + live.tiles[0][0] + ", keys = " + live.inventory.get("key"));   // 9, 1
+        System.out.println("same monster object: " + (live.monsters.get(0) == saved.monsters.get(0)));    // false
     }
 }`,
+          alt: [
+            { lang: 'python', code: `
+class Monster:
+    def __init__(self, type_: str, hp: int) -> None:
+        self.type = type_
+        self.hp = hp
+
+    def copy(self) -> "Monster":
+        return Monster(self.type, self.hp)
+
+
+class Level:
+    def __init__(self, name: str, tiles: list[list[int]], monsters: list[Monster], inventory: dict[str, int]) -> None:
+        self.name = name
+        self.tiles = tiles
+        self.monsters = monsters
+        self.inventory = inventory
+
+    def copy(self) -> "Level":
+        return Level(
+            self.name,                                        # immutable str: share
+            [row[:] for row in self.tiles],                   # copy each row
+            [m.copy() for m in self.monsters],                # deep copy elements
+            dict(self.inventory),                             # str and int are immutable
+        )
+
+
+if __name__ == "__main__":
+    live = Level("Cave-1", [[0, 1], [1, 0]], [Monster("bat", 100)], {"key": 0})
+
+    saved = live.copy()
+
+    live.tiles[0][0] = 9
+    live.monsters[0].hp -= 30
+    live.inventory["key"] = live.inventory.get("key", 0) + 1
+
+    print("saved tile =", saved.tiles[0][0])
+    print("saved hp   =", saved.monsters[0].hp)
+    print("saved keys =", saved.inventory["key"])
+    print("live  hp   =", live.monsters[0].hp)
+    print(f"live  tile = {live.tiles[0][0]}, keys = {live.inventory['key']}")
+    print("same monster object:", str(live.monsters[0] is saved.monsters[0]).lower())` },
+            { lang: 'ts', code: `
+class Monster {
+  constructor(readonly type: string, public hp: number) {}
+
+  copy(): Monster { return new Monster(this.type, this.hp); }
+}
+
+class Level {
+  constructor(
+    readonly name: string,
+    readonly tiles: number[][],
+    readonly monsters: Monster[],
+    readonly inventory: Map<string, number>,
+  ) {}
+
+  copy(): Level {
+    return new Level(
+      this.name,                                      // immutable string: share
+      this.tiles.map((row) => [...row]),              // copy each row
+      this.monsters.map((m) => m.copy()),             // deep copy elements
+      new Map(this.inventory),                        // string and number are immutable
+    );
+  }
+}
+
+const live = new Level("Cave-1", [[0, 1], [1, 0]], [new Monster("bat", 100)], new Map([["key", 0]]));
+
+const saved = live.copy();
+
+live.tiles[0][0] = 9;
+live.monsters[0].hp -= 30;
+live.inventory.set("key", (live.inventory.get("key") ?? 0) + 1);
+
+console.log(\`saved tile = \${saved.tiles[0][0]}\`);
+console.log(\`saved hp   = \${saved.monsters[0].hp}\`);
+console.log(\`saved keys = \${saved.inventory.get("key")}\`);
+console.log(\`live  hp   = \${live.monsters[0].hp}\`);
+console.log(\`live  tile = \${live.tiles[0][0]}, keys = \${live.inventory.get("key")}\`);
+console.log(\`same monster object: \${live.monsters[0] === saved.monsters[0]}\`);` },
+            { lang: 'cpp', code: `
+#include <iostream>
+#include <map>
+#include <string>
+#include <vector>
+using namespace std;
+
+struct Monster {
+    string type;
+    int hp;
+    Monster(string t, int h) : type(std::move(t)), hp(h) {}
+    Monster copy() const { return *this; }                 // member-wise copy: both fields are values
+};
+
+struct Level {
+    string name;
+    vector<vector<int>> tiles;
+    vector<Monster> monsters;                              // owned by value: copying the vector copies every Monster
+    map<string, int> inventory;
+
+    Level(string n, vector<vector<int>> t, vector<Monster> m, map<string, int> inv)
+        : name(std::move(n)), tiles(std::move(t)), monsters(std::move(m)), inventory(std::move(inv)) {}
+
+    // the compiler-generated copy constructor is already a deep copy because no member is a pointer
+    Level copy() const { return Level(*this); }
+};
+
+int main() {
+    Level live("Cave-1", {{0, 1}, {1, 0}}, {Monster("bat", 100)}, {{"key", 0}});
+
+    Level saved = live.copy();
+
+    live.tiles[0][0] = 9;
+    live.monsters[0].hp -= 30;
+    live.inventory["key"] += 1;
+
+    cout << "saved tile = " << saved.tiles[0][0] << "\\n";
+    cout << "saved hp   = " << saved.monsters[0].hp << "\\n";
+    cout << "saved keys = " << saved.inventory["key"] << "\\n";
+    cout << "live  hp   = " << live.monsters[0].hp << "\\n";
+    cout << "live  tile = " << live.tiles[0][0] << ", keys = " << live.inventory["key"] << "\\n";
+    cout << "same monster object: " << boolalpha << (&live.monsters[0] == &saved.monsters[0]) << "\\n";
+}` }
+          ],
           complexity: `<p>Time O(R·C + M + I) for an R×C grid, M monsters and I inventory entries; memory the same. No I/O, unlike rebuilding from the file.</p>`,
           followUps: ['Monsters can target each other (references between monsters). How do you preserve those links in the copy?', 'How could you make save slots cheaper with immutable data and structural sharing?', 'Should a copy share the loaded texture atlas? Why?']
         }
@@ -2239,7 +6434,7 @@ public class Main {
 <li><code>release(obj)</code> — <b>reset</b> it (clear state: rollback open transactions, clear buffers) and put it back.</li>
 <li><b>Validate</b> on borrow (is the connection still alive?) and drop broken ones.</li>
 <li><b>Bound</b> the size — the pool is also a <b>throttle</b> that protects the downstream system.</li></ul>
-<p>🔵 <b>Java building blocks:</b> a <code>ConcurrentLinkedQueue</code> or <code>BlockingQueue</code> of idle objects, a <code>Semaphore(max)</code> to limit how many are borrowed at once (and to block with timeout), a <code>Supplier&lt;T&gt;</code> to create, a <code>Consumer&lt;T&gt;</code> to reset, a <code>Predicate&lt;T&gt;</code> to validate. Wrap a borrowed object in an <code>AutoCloseable</code> lease so <b>try-with-resources</b> always returns it.</p>
+<p>🔵 <b>Building blocks</b> (Java names; Python uses <code>deque</code>, <code>threading.Semaphore</code> and a <code>with</code> block, TypeScript a waiter queue and <code>try</code>/<code>finally</code>, C++ <code>std::counting_semaphore</code> and an RAII lease): a <code>ConcurrentLinkedQueue</code> or <code>BlockingQueue</code> of idle objects, a <code>Semaphore(max)</code> to limit how many are borrowed at once (and to block with timeout), a <code>Supplier&lt;T&gt;</code> to create, a <code>Consumer&lt;T&gt;</code> to reset, a <code>Predicate&lt;T&gt;</code> to validate. Wrap a borrowed object in an <code>AutoCloseable</code> lease so <b>try-with-resources</b> always returns it.</p>
 ${H.table(['Pool this', 'Do NOT pool this'], [
   ['DB connections (HikariCP), HTTP/2 connections', 'Small short-lived objects (<code>new Point</code>, DTOs) — the GC is faster than your pool'],
   ['Platform threads (<code>ThreadPoolExecutor</code>)', 'Virtual threads (Java 21+) — create one per task; limit concurrency with a Semaphore instead'],
@@ -2345,7 +6540,334 @@ public class Main {
         workers.shutdown();
         System.out.println("30 tasks served by " + pool.createdCount() + " connections; idle=" + pool.idleCount());
     }
+}`,
+alt: [
+  { lang: 'python', code: `
+import itertools
+import threading
+import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, Generic, TypeVar
+
+T = TypeVar("T")
+
+
+class BoundedPool(Generic[T]):
+    def __init__(self, max_size: int, factory: Callable[[], T],
+                 is_healthy: Callable[[T], bool], reset: Callable[[T], None]) -> None:
+        if max_size < 1:
+            raise ValueError("max >= 1")
+        self._idle: deque[T] = deque()
+        self._permits = threading.Semaphore(max_size)     # how many may be borrowed at once
+        self._factory = factory                           # creates a new object (expensive)
+        self._is_healthy = is_healthy                     # validation on borrow
+        self._reset = reset                               # clean state on return
+        self._created = 0
+        self._lock = threading.Lock()
+
+    def acquire(self, timeout: float) -> "BoundedPool.Lease":
+        if not self._permits.acquire(timeout=timeout):
+            raise TimeoutError("pool exhausted")
+        try:
+            while self._idle:
+                obj = self._idle.popleft()
+                if self._is_healthy(obj):
+                    return BoundedPool.Lease(self, obj)   # reuse a healthy idle object
+                with self._lock:
+                    self._created -= 1                    # drop a broken one
+            obj = self._factory()                         # none idle: create
+            with self._lock:
+                self._created += 1
+            return BoundedPool.Lease(self, obj)
+        except Exception:
+            self._permits.release()                       # never lose a permit
+            raise
+
+    def created_count(self) -> int:
+        return self._created
+
+    def idle_count(self) -> int:
+        return len(self._idle)
+
+    class Lease(Generic[T]):
+        """\`with\` handle: leaving the block returns the object exactly once."""
+
+        def __init__(self, pool: "BoundedPool[T]", obj: T) -> None:
+            self._pool = pool
+            self._obj = obj
+            self._returned = False
+
+        def get(self) -> T:
+            if self._returned:
+                raise RuntimeError("lease already returned")
+            return self._obj
+
+        def __enter__(self) -> "BoundedPool.Lease":
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            if self._returned:
+                return                                    # double release ignored
+            self._returned = True
+            try:
+                self._pool._reset(self._obj)
+                self._pool._idle.append(self._obj)
+            finally:
+                self._pool._permits.release()
+
+
+class FakeConnection:
+    _ids = itertools.count(1)
+
+    def __init__(self) -> None:
+        self.id = next(FakeConnection._ids)
+        self.open = True
+        self.tx_state = "none"
+        time.sleep(0.02)                                  # slow handshake
+
+
+def reset_connection(c: FakeConnection) -> None:
+    c.tx_state = "none"
+
+
+def use_connection(pool: BoundedPool[FakeConnection]) -> None:
+    with pool.acquire(2) as lease:
+        lease.get().tx_state = "open"                     # use it
+        time.sleep(0.005)
+                                                          # auto-returned + reset
+
+
+if __name__ == "__main__":
+    pool = BoundedPool(3, FakeConnection, lambda c: c.open, reset_connection)
+    with ThreadPoolExecutor(max_workers=10) as workers:
+        jobs = [workers.submit(use_connection, pool) for _ in range(30)]
+        for j in jobs:
+            j.result()
+    print(f"30 tasks served by {pool.created_count()} connections; idle={pool.idle_count()}")` },
+  { lang: 'ts', code: `
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+class BoundedPool<T> {
+  private readonly idle: T[] = [];
+  private permits: number;                                  // how many may still be borrowed
+  private readonly waiters: Array<() => void> = [];         // callers waiting for a permit, in order
+  private created = 0;
+
+  constructor(
+    max: number,
+    private readonly factory: () => T,                      // creates a new object (expensive)
+    private readonly isHealthy: (obj: T) => boolean,        // validation on borrow
+    private readonly reset: (obj: T) => void,               // clean state on return
+  ) {
+    if (max < 1) throw new Error("max >= 1");
+    this.permits = max;
+  }
+
+  private takePermit(timeoutMs: number): Promise<boolean> {
+    if (this.permits > 0) {
+      this.permits--;
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      const handOver = (): void => { clearTimeout(timer); resolve(true); };
+      const timer = setTimeout(() => {
+        this.waiters.splice(this.waiters.indexOf(handOver), 1);
+        resolve(false);
+      }, timeoutMs);
+      this.waiters.push(handOver);
+    });
+  }
+
+  private givePermit(): void {
+    const next = this.waiters.shift();
+    if (next) next();
+    else this.permits++;
+  }
+
+  async acquire(timeoutMs: number): Promise<Lease<T>> {
+    if (!(await this.takePermit(timeoutMs))) throw new Error("pool exhausted");
+    try {
+      let obj: T | undefined;
+      while ((obj = this.idle.shift()) !== undefined) {
+        if (this.isHealthy(obj)) return new Lease(this, obj);   // reuse a healthy idle object
+        this.created--;                                         // drop a broken one
+      }
+      obj = this.factory();                                     // none idle: create
+      this.created++;
+      return new Lease(this, obj);
+    } catch (e) {
+      this.givePermit();                                        // never lose a permit
+      throw e;
+    }
+  }
+
+  createdCount(): number { return this.created; }
+  idleCount(): number { return this.idle.length; }
+
+  /** called by Lease.close() */
+  giveBack(obj: T): void {
+    try {
+      this.reset(obj);
+      this.idle.push(obj);
+    } finally {
+      this.givePermit();
+    }
+  }
+}
+
+/** handle: close() returns the object exactly once (call it in a finally block). */
+class Lease<T> {
+  private returned = false;
+
+  constructor(private readonly pool: BoundedPool<T>, private readonly obj: T) {}
+
+  get(): T {
+    if (this.returned) throw new Error("lease already returned");
+    return this.obj;
+  }
+
+  close(): void {
+    if (this.returned) return;                                  // double release ignored
+    this.returned = true;
+    this.pool.giveBack(this.obj);
+  }
+}
+
+let nextId = 0;
+class FakeConnection {
+  readonly id = ++nextId;
+  open = true;
+  txState = "none";
+}
+
+async function main(): Promise<void> {
+  const pool = new BoundedPool(3, () => new FakeConnection(), (c) => c.open, (c) => { c.txState = "none"; });
+  const jobs = Array.from({ length: 30 }, async () => {
+    const lease = await pool.acquire(2000);
+    try {
+      lease.get().txState = "open";                             // use it
+      await sleep(5);
+    } finally {
+      lease.close();                                            // returned + reset
+    }
+  });
+  await Promise.all(jobs);
+  console.log(\`30 tasks served by \${pool.createdCount()} connections; idle=\${pool.idleCount()}\`);
+}
+
+main();` },
+  { lang: 'cpp', code: `
+#include <atomic>
+#include <chrono>
+#include <deque>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <semaphore>
+#include <stdexcept>
+#include <thread>
+#include <vector>
+using namespace std;
+
+template <class T>
+class BoundedPool {
+    deque<unique_ptr<T>> idle;
+    counting_semaphore<1024> permits;                // how many may be borrowed at once
+    function<unique_ptr<T>()> factory;               // creates a new object (expensive)
+    function<bool(const T&)> isHealthy;              // validation on borrow
+    function<void(T&)> reset;                        // clean state on return
+    int created = 0;
+    mutable mutex lock;                              // guards idle and created
+
+public:
+    BoundedPool(int max, function<unique_ptr<T>()> f, function<bool(const T&)> healthy, function<void(T&)> r)
+        : permits(max), factory(std::move(f)), isHealthy(std::move(healthy)), reset(std::move(r)) {
+        if (max < 1) throw invalid_argument("max >= 1");
+    }
+
+    /** RAII handle: the destructor returns the object exactly once. */
+    class Lease {
+        BoundedPool* pool;
+        unique_ptr<T> obj;
+
+    public:
+        Lease(BoundedPool* p, unique_ptr<T> o) : pool(p), obj(std::move(o)) {}
+        Lease(Lease&& other) noexcept : pool(other.pool), obj(std::move(other.obj)) {}   // movable, not copyable
+        Lease(const Lease&) = delete;
+        Lease& operator=(const Lease&) = delete;
+
+        T& get() {
+            if (!obj) throw logic_error("lease already returned");
+            return *obj;
+        }
+
+        ~Lease() {
+            if (!obj) return;                        // moved-from or already returned: nothing to do
+            pool->reset(*obj);
+            {
+                lock_guard<mutex> g(pool->lock);
+                pool->idle.push_back(std::move(obj));
+            }
+            pool->permits.release();
+        }
+    };
+
+    Lease acquire(chrono::milliseconds timeout) {
+        if (!permits.try_acquire_for(timeout)) throw runtime_error("pool exhausted");
+        try {
+            {
+                lock_guard<mutex> g(lock);
+                while (!idle.empty()) {
+                    unique_ptr<T> obj = std::move(idle.front());
+                    idle.pop_front();
+                    if (isHealthy(*obj)) return Lease(this, std::move(obj));   // reuse a healthy idle object
+                    created--;                                                  // drop a broken one
+                }
+            }
+            unique_ptr<T> obj = factory();           // none idle: create
+            { lock_guard<mutex> g(lock); created++; }
+            return Lease(this, std::move(obj));
+        } catch (...) {
+            permits.release();                       // never lose a permit
+            throw;
+        }
+    }
+
+    int createdCount() const { lock_guard<mutex> g(lock); return created; }
+    int idleCount() const { lock_guard<mutex> g(lock); return static_cast<int>(idle.size()); }
+};
+
+struct FakeConnection {
+    static inline atomic<int> IDS{0};
+    const int id = ++IDS;
+    bool open = true;
+    string txState = "none";
+
+    FakeConnection() { this_thread::sleep_for(chrono::milliseconds(20)); }   // slow handshake
+};
+
+int main() {
+    BoundedPool<FakeConnection> pool(
+        3, [] { return make_unique<FakeConnection>(); },
+        [](const FakeConnection& c) { return c.open; }, [](FakeConnection& c) { c.txState = "none"; });
+
+    atomic<int> next{0};
+    vector<thread> workers;
+    for (int w = 0; w < 10; w++) {
+        workers.emplace_back([&] {
+            while (next++ < 30) {
+                auto lease = pool.acquire(chrono::seconds(2));
+                lease.get().txState = "open";        // use it
+                this_thread::sleep_for(chrono::milliseconds(5));
+            }                                        // lease goes out of scope: returned + reset
+        });
+    }
+    for (auto& t : workers) t.join();
+    cout << "30 tasks served by " << pool.createdCount() << " connections; idle=" << pool.idleCount() << "\\n";
 }` }
+] }
     ],
     codeTitle: ['Generic BoundedPool with leases'],
     viz: [
@@ -2409,7 +6931,7 @@ public class Main {
     ],
     examples: [
       { title: 'HikariCP: the pool you will actually use', html: `<p>Spring Boot's default JDBC pool is HikariCP. Key knobs: <code>maximumPoolSize</code> (often ~10: a classic formula is cores × 2 + effective disks for the database), <code>connectionTimeout</code> (how long <code>getConnection()</code> waits, default 30 s), <code>maxLifetime</code> (retire connections before the DB or a firewall kills them), <code>leakDetectionThreshold</code> (log a stack trace when a connection is held too long). It validates connections with the JDBC4 <code>isValid()</code> check and resets auto-commit, isolation and read-only state on return — exactly the validate/reset steps of the pattern.</p>` },
-      { title: 'A thread pool is an object pool of workers', html: `<p><code>ThreadPoolExecutor</code> keeps up to N platform threads alive and feeds them tasks from a queue. Creating an OS thread costs ~tens of microseconds and ~1 MB of stack reservation, so reusing them matters. The bounded queue plus a rejection policy is the pool's back-pressure.</p>`, code: `
+      { title: 'A thread pool is an object pool of workers', html: `<p><code>ThreadPoolExecutor</code> keeps up to N platform threads alive and feeds them tasks from a queue. Creating an OS thread costs ~tens of microseconds and ~1 MB of stack reservation, so reusing them matters. The bounded queue plus a rejection policy is the pool's back-pressure.</p>`, code: { lang: 'java', code: `
 class ThreadPoolDemo {
     public static void main(String[] args) throws Exception {
         ThreadPoolExecutor pool = new ThreadPoolExecutor(
@@ -2424,8 +6946,72 @@ class ThreadPoolDemo {
         pool.shutdown();
         System.out.println("20 tasks ran on " + workers.size() + " reused threads");
     }
-}` },
-      { title: 'Java 21 virtual threads: do NOT pool them', html: `<p>Virtual threads are cheap (a few hundred bytes, created in microseconds). Pooling them adds overhead and defeats their purpose. If you need to limit concurrency (e.g. at most 20 calls to a fragile API), use a <code>Semaphore</code> — the pool's <i>throttling</i> half without the <i>reuse</i> half.</p>`, code: `
+}`,
+alt: [
+  { lang: 'python', code: `
+from concurrent.futures import ThreadPoolExecutor
+import threading
+
+if __name__ == "__main__":
+    workers: set[str] = set()
+    guard = threading.Lock()
+
+    def task() -> None:
+        with guard:
+            workers.add(threading.current_thread().name)
+
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="pool") as pool:   # threads are created lazily and reused
+        futures = [pool.submit(task) for _ in range(20)]
+        for f in futures:
+            f.result()
+    print(f"20 tasks ran on {len(workers)} reused threads")` },
+  { lang: 'ts', code: `
+// JavaScript runs your code on one thread; a "pool" of async workers limits how many tasks run at once.
+async function runPooled<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < tasks.length) {
+      const i = next++;
+      results[i] = await tasks[i]();
+    }
+  };
+  await Promise.all(Array.from({ length: limit }, worker));    // \`limit\` reusable workers drain the queue
+  return results;
+}
+
+const ran = new Set<number>();
+const tasks = Array.from({ length: 20 }, (_, i) => async () => { ran.add(i); return i; });
+runPooled(tasks, 4).then(() => console.log(\`\${ran.size} tasks ran on 4 reused workers\`));` },
+  { lang: 'cpp', code: `
+#include <atomic>
+#include <iostream>
+#include <mutex>
+#include <set>
+#include <thread>
+#include <vector>
+using namespace std;
+
+int main() {
+    // C++ has no built-in thread pool: start N workers once and let them drain a shared task counter.
+    const int workers = 4, tasks = 20;
+    atomic<int> next{0};
+    set<thread::id> used;
+    mutex guard;
+    vector<thread> pool;
+    for (int w = 0; w < workers; w++) {
+        pool.emplace_back([&] {
+            while (next++ < tasks) {
+                lock_guard<mutex> g(guard);
+                used.insert(this_thread::get_id());
+            }
+        });
+    }
+    for (auto& t : pool) t.join();
+    cout << tasks << " tasks ran on at most " << workers << " reused threads (" << (used.size() <= workers) << ")\\n";
+}` }
+] } },
+      { title: 'Java 21 virtual threads: do NOT pool them', html: `<p>Virtual threads are cheap (a few hundred bytes, created in microseconds). Pooling them adds overhead and defeats their purpose. If you need to limit concurrency (e.g. at most 20 calls to a fragile API), use a <code>Semaphore</code> — the pool's <i>throttling</i> half without the <i>reuse</i> half.</p>`, code: { lang: 'java', code: `
 class VirtualThreadLimit {
     public static void main(String[] args) throws Exception {
         Semaphore apiSlots = new Semaphore(20);                  // throttle, not a pool
@@ -2446,7 +7032,93 @@ class VirtualThreadLimit {
         }                                                        // close() waits for all tasks
         System.out.println("completed " + done.get());
     }
-}` },
+}`,
+alt: [
+  { lang: 'python', code: `
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+if __name__ == "__main__":
+    api_slots = threading.Semaphore(20)              # throttle, not a pool
+    done = 0
+    guard = threading.Lock()
+
+    def call() -> None:
+        global done
+        with api_slots:
+            time.sleep(0.001)                        # pretend remote call
+            with guard:
+                done += 1
+
+    with ThreadPoolExecutor(max_workers=200) as pool:     # many cheap threads; the semaphore does the limiting
+        for _ in range(1_000):
+            pool.submit(call)
+    print("completed", done)                         # the with-block waits for all tasks` },
+  { lang: 'ts', code: `
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+class Semaphore {
+  private readonly waiters: Array<() => void> = [];
+
+  constructor(private permits: number) {}
+
+  async acquire(): Promise<void> {
+    if (this.permits > 0) { this.permits--; return; }
+    await new Promise<void>((resolve) => this.waiters.push(resolve));
+  }
+
+  release(): void {
+    const next = this.waiters.shift();
+    if (next) next();
+    else this.permits++;
+  }
+}
+
+async function main(): Promise<void> {
+  const apiSlots = new Semaphore(20);                // throttle, not a pool
+  let done = 0;
+  const calls = Array.from({ length: 1_000 }, async () => {
+    await apiSlots.acquire();
+    try {
+      await sleep(1);                                // pretend remote call
+      done++;
+    } finally {
+      apiSlots.release();
+    }
+  });
+  await Promise.all(calls);                          // waits for all tasks
+  console.log(\`completed \${done}\`);
+}
+
+main();` },
+  { lang: 'cpp', code: `
+#include <atomic>
+#include <chrono>
+#include <iostream>
+#include <semaphore>
+#include <thread>
+#include <vector>
+using namespace std;
+
+int main() {
+    counting_semaphore<20> apiSlots(20);             // throttle, not a pool
+    atomic<int> done{0};
+    vector<jthread> threads;                         // jthread joins in its destructor
+    for (int i = 0; i < 200; i++) {                  // 200 threads x 5 calls = 1000 tasks
+        threads.emplace_back([&] {
+            for (int k = 0; k < 5; k++) {
+                apiSlots.acquire();
+                this_thread::sleep_for(chrono::milliseconds(1));   // pretend remote call
+                done++;
+                apiSlots.release();
+            }
+        });
+    }
+    threads.clear();                                 // joins all
+    cout << "completed " << done << "\\n";
+}` }
+] } },
       { title: 'The leak that took down checkout', html: `<p>A service did <code>Connection c = pool.getConnection();</code> then returned early on a validation error <b>without closing</b>. Each bad request leaked one of 10 connections; after 10 bad requests every checkout request waited 30 s and timed out. Fixes: <b>try-with-resources</b> on every borrow, a <b>leak-detection</b> threshold that logs the borrower's stack trace, and <b>alerts</b> on pool "active = max" and "pending threads &gt; 0".</p>` }
     ],
     deepDive: `<p>🟣 <b>Sizing.</b> Little's Law: <i>connections needed ≈ request rate × time each request holds a connection</i>. At 500 req/s holding a connection for 8 ms you need ~4 on average; add headroom for bursts. Bigger is not better: a database with 8 cores serving 200 active connections context-switches and fights over locks, so throughput drops. Many teams run 10-20 per app instance and put a server-side pooler (PgBouncer) in front of PostgreSQL when they have hundreds of instances.</p>
@@ -2494,6 +7166,7 @@ class OrderDao {
           `<p>Hint 2: keep a concurrent identity set of borrowed connections. <code>giveBack</code> must <code>remove</code> from it successfully before accepting; otherwise it is a double/foreign return.</p>`,
           `<p>Hint 3: in <code>borrow</code>, loop polling idle connections, discarding unhealthy ones; if none, create. Wrap creation in try/catch and release the permit on failure. <code>shutdown</code> flips a volatile flag and closes idle connections.</p>`
         ],
+        tests: { io: true, cases: [{ stdin: '', stdout: "third borrow: no connection within 50 ms\nreused #1 (same as a: true), tx=false\ndouble return rejected: connection 1 was not borrowed from this pool\nidle = 2\nidle after dead return = 1\nfresh #3 replaced the dead idle connection\ntry 1: db down\ntry 2: db down\nidle after shutdown = 0\nborrow after shutdown: pool is shut down\n" }] },
         solution: {
           approach: `<p><b>Semaphore for capacity + queue for idle objects + identity set for ownership.</b></p>
 <ol><li><code>permits = new Semaphore(maxSize, true)</code>: each borrowed connection holds one permit; <code>tryAcquire(timeout)</code> gives the waiting-with-timeout behaviour and fairness.</li>
@@ -2586,10 +7259,434 @@ public class Main {
             System.out.println("double return rejected: " + e.getMessage());
         }
         pool.giveBack(b);
+        System.out.println("idle = " + pool.idleCount());                // 2
+        Connection d = pool.borrow(100);                                  // oldest idle: #1
+        d.close();                                                        // dies while borrowed
+        pool.giveBack(d);
+        System.out.println("idle after dead return = " + pool.idleCount());   // 1
+        b.close();                                                        // dies while idle
+        Connection e = pool.borrow(100);
+        System.out.println("fresh #" + e.id + " replaced the dead idle connection");
+        ConnectionPool broken = new ConnectionPool(1, () -> { throw new IllegalStateException("db down"); });
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                broken.borrow(10);
+            } catch (IllegalStateException ex) {
+                System.out.println("try " + attempt + ": " + ex.getMessage());   // capacity is not lost
+            }
+        }
+        pool.giveBack(e);
         pool.shutdown();
         System.out.println("idle after shutdown = " + pool.idleCount());
+        try {
+            pool.borrow(10);
+        } catch (IllegalStateException ex) {
+            System.out.println("borrow after shutdown: " + ex.getMessage());
+        }
     }
 }`,
+          alt: [
+            { lang: 'python', code: `
+import itertools
+import threading
+from collections import deque
+from typing import Callable
+
+
+class Connection:
+    _ids = itertools.count(1)
+
+    def __init__(self) -> None:
+        self.id = next(Connection._ids)
+        self.alive = True
+        self.in_transaction = False
+
+    def rollback(self) -> None:
+        self.in_transaction = False
+
+    def close(self) -> None:
+        self.alive = False
+
+
+class ConnectionPool:
+    def __init__(self, max_size: int, factory: Callable[[], Connection]) -> None:
+        if max_size < 1:
+            raise ValueError("maxSize >= 1")
+        self._permits = threading.Semaphore(max_size)
+        self._idle: deque[Connection] = deque()              # deque is thread-safe at both ends
+        self._borrowed: set[Connection] = set()
+        self._lock = threading.Lock()                        # guards _borrowed
+        self._factory = factory
+        self._shut_down = False
+
+    def borrow(self, timeout_ms: int) -> Connection:
+        if self._shut_down:
+            raise RuntimeError("pool is shut down")
+        if not self._permits.acquire(timeout=timeout_ms / 1000):
+            raise TimeoutError(f"no connection within {timeout_ms} ms")
+        try:
+            c = None
+            while self._idle:
+                candidate = self._idle.popleft()
+                if candidate.alive:                          # healthy: reuse
+                    c = candidate
+                    break
+                candidate.close()                            # dead: discard, does not count any more
+            if c is None:
+                c = self._factory()                          # may raise
+            with self._lock:
+                self._borrowed.add(c)
+            return c
+        except Exception:
+            self._permits.release()                          # never lose capacity
+            raise
+
+    def give_back(self, c: Connection) -> None:
+        with self._lock:
+            if c not in self._borrowed:
+                raise RuntimeError(f"connection {c.id} was not borrowed from this pool")
+            self._borrowed.remove(c)
+        try:
+            if c.in_transaction:
+                c.rollback()                                 # reset dirty state
+            if self._shut_down or not c.alive:
+                c.close()
+            else:
+                self._idle.append(c)
+        finally:
+            self._permits.release()
+
+    def shutdown(self) -> None:
+        self._shut_down = True
+        while self._idle:
+            self._idle.popleft().close()
+
+    def idle_count(self) -> int:
+        return len(self._idle)
+
+
+def db_down() -> Connection:
+    raise RuntimeError("db down")
+
+
+if __name__ == "__main__":
+    pool = ConnectionPool(2, Connection)
+    a = pool.borrow(100)
+    b = pool.borrow(100)
+    try:
+        pool.borrow(50)
+    except TimeoutError as e:
+        print("third borrow:", e)
+    a.in_transaction = True
+    pool.give_back(a)                                        # rolled back + idle
+    c = pool.borrow(100)
+    print(f"reused #{c.id} (same as a: {str(c is a).lower()}), tx={str(c.in_transaction).lower()}")
+    try:
+        pool.give_back(a)
+        pool.give_back(a)
+    except RuntimeError as e:
+        print("double return rejected:", e)
+    pool.give_back(b)
+    print("idle =", pool.idle_count())
+    d = pool.borrow(100)                                     # oldest idle: #1
+    d.close()                                                # dies while borrowed
+    pool.give_back(d)
+    print("idle after dead return =", pool.idle_count())
+    b.close()                                                # dies while idle
+    e = pool.borrow(100)
+    print(f"fresh #{e.id} replaced the dead idle connection")
+    broken = ConnectionPool(1, db_down)
+    for attempt in (1, 2):
+        try:
+            broken.borrow(10)
+        except RuntimeError as ex:
+            print(f"try {attempt}: {ex}")                    # capacity is not lost
+    pool.give_back(e)
+    pool.shutdown()
+    print("idle after shutdown =", pool.idle_count())
+    try:
+        pool.borrow(10)
+    except RuntimeError as ex:
+        print("borrow after shutdown:", ex)` },
+            { lang: 'ts', code: `
+class Connection {
+  private static nextId = 0;
+  readonly id = ++Connection.nextId;
+  alive = true;
+  inTransaction = false;
+
+  rollback(): void { this.inTransaction = false; }
+  close(): void { this.alive = false; }
+}
+
+// Fair counting semaphore: waiters are served in order and give up after a timeout.
+class Semaphore {
+  private readonly waiters: Array<() => void> = [];
+
+  constructor(private permits: number) {}
+
+  tryAcquire(timeoutMs: number): Promise<boolean> {
+    if (this.permits > 0) {
+      this.permits--;
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      const handOver = (): void => { clearTimeout(timer); resolve(true); };
+      const timer = setTimeout(() => {
+        this.waiters.splice(this.waiters.indexOf(handOver), 1);
+        resolve(false);
+      }, timeoutMs);
+      this.waiters.push(handOver);
+    });
+  }
+
+  release(): void {
+    const next = this.waiters.shift();
+    if (next) next();                       // pass the permit straight to the oldest waiter
+    else this.permits++;
+  }
+}
+
+class ConnectionPool {
+  private readonly permits: Semaphore;
+  private readonly idle: Connection[] = [];
+  private readonly borrowed = new Set<Connection>();
+  private shutDown = false;
+
+  constructor(maxSize: number, private readonly factory: () => Connection) {
+    if (maxSize < 1) throw new Error("maxSize >= 1");
+    this.permits = new Semaphore(maxSize);
+  }
+
+  async borrow(timeoutMs: number): Promise<Connection> {
+    if (this.shutDown) throw new Error("pool is shut down");
+    if (!(await this.permits.tryAcquire(timeoutMs))) {
+      throw new Error(\`no connection within \${timeoutMs} ms\`);
+    }
+    try {
+      let c: Connection | undefined;
+      while ((c = this.idle.shift()) !== undefined) {
+        if (c.alive) break;                 // healthy: reuse
+        c.close();                          // dead: discard, does not count any more
+      }
+      c ??= this.factory();                 // may throw
+      this.borrowed.add(c);
+      return c;
+    } catch (e) {
+      this.permits.release();               // never lose capacity
+      throw e;
+    }
+  }
+
+  giveBack(c: Connection): void {
+    if (!this.borrowed.delete(c)) throw new Error(\`connection \${c.id} was not borrowed from this pool\`);
+    try {
+      if (c.inTransaction) c.rollback();    // reset dirty state
+      if (this.shutDown || !c.alive) c.close();
+      else this.idle.push(c);
+    } finally {
+      this.permits.release();
+    }
+  }
+
+  shutdown(): void {
+    this.shutDown = true;
+    for (const c of this.idle.splice(0)) c.close();
+  }
+
+  idleCount(): number { return this.idle.length; }
+}
+
+async function main(): Promise<void> {
+  const pool = new ConnectionPool(2, () => new Connection());
+  const a = await pool.borrow(100);
+  const b = await pool.borrow(100);
+  try {
+    await pool.borrow(50);
+  } catch (e) {
+    console.log("third borrow: " + (e as Error).message);
+  }
+  a.inTransaction = true;
+  pool.giveBack(a);                                       // rolled back + idle
+  const c = await pool.borrow(100);
+  console.log(\`reused #\${c.id} (same as a: \${c === a}), tx=\${c.inTransaction}\`);
+  try {
+    pool.giveBack(a);
+    pool.giveBack(a);
+  } catch (e) {
+    console.log("double return rejected: " + (e as Error).message);
+  }
+  pool.giveBack(b);
+  console.log(\`idle = \${pool.idleCount()}\`);
+  const d = await pool.borrow(100);                       // oldest idle: #1
+  d.close();                                              // dies while borrowed
+  pool.giveBack(d);
+  console.log(\`idle after dead return = \${pool.idleCount()}\`);
+  b.close();                                              // dies while idle
+  const e = await pool.borrow(100);
+  console.log(\`fresh #\${e.id} replaced the dead idle connection\`);
+  const broken = new ConnectionPool(1, () => { throw new Error("db down"); });
+  for (const attempt of [1, 2]) {
+    try {
+      await broken.borrow(10);
+    } catch (ex) {
+      console.log(\`try \${attempt}: \${(ex as Error).message}\`);    // capacity is not lost
+    }
+  }
+  pool.giveBack(e);
+  pool.shutdown();
+  console.log(\`idle after shutdown = \${pool.idleCount()}\`);
+  try {
+    await pool.borrow(10);
+  } catch (ex) {
+    console.log("borrow after shutdown: " + (ex as Error).message);
+  }
+}
+
+main();` },
+            { lang: 'cpp', code: `
+#include <atomic>
+#include <chrono>
+#include <deque>
+#include <functional>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <semaphore>
+#include <stdexcept>
+#include <string>
+using namespace std;
+
+class Connection {
+    static inline atomic<int> IDS{0};
+
+public:
+    const int id = ++IDS;
+    atomic<bool> alive{true};
+    atomic<bool> inTransaction{false};
+
+    void rollback() { inTransaction = false; }
+    void close() { alive = false; }
+};
+
+struct TimeoutException : runtime_error {
+    using runtime_error::runtime_error;
+};
+
+class ConnectionPool {
+    counting_semaphore<1024> permits;
+    deque<unique_ptr<Connection>> idle;                      // the pool owns every connection it is not lending
+    map<Connection*, unique_ptr<Connection>> borrowed;       // lent out: callers hold a plain pointer
+    mutable mutex lock;                                      // guards idle and borrowed
+    function<unique_ptr<Connection>()> factory;
+    atomic<bool> shutDown{false};
+
+public:
+    ConnectionPool(int maxSize, function<unique_ptr<Connection>()> f) : permits(maxSize), factory(std::move(f)) {
+        if (maxSize < 1) throw invalid_argument("maxSize >= 1");
+    }
+
+    Connection* borrow(long timeoutMs) {
+        if (shutDown) throw logic_error("pool is shut down");
+        if (!permits.try_acquire_for(chrono::milliseconds(timeoutMs)))
+            throw TimeoutException("no connection within " + to_string(timeoutMs) + " ms");
+        try {
+            unique_ptr<Connection> c;
+            {
+                lock_guard<mutex> g(lock);
+                while (!idle.empty()) {
+                    auto candidate = std::move(idle.front());
+                    idle.pop_front();
+                    if (candidate->alive) { c = std::move(candidate); break; }   // healthy: reuse
+                }                                                                // dead: destroyed here
+            }
+            if (!c) c = factory();                           // may throw
+            Connection* raw = c.get();
+            lock_guard<mutex> g(lock);
+            borrowed[raw] = std::move(c);
+            return raw;
+        } catch (...) {
+            permits.release();                               // never lose capacity
+            throw;
+        }
+    }
+
+    void giveBack(Connection* c) {
+        unique_ptr<Connection> owned;
+        {
+            lock_guard<mutex> g(lock);
+            auto it = borrowed.find(c);
+            if (it == borrowed.end()) throw logic_error("connection " + to_string(c->id) + " was not borrowed from this pool");
+            owned = std::move(it->second);
+            borrowed.erase(it);
+        }
+        if (owned->inTransaction) owned->rollback();         // reset dirty state
+        if (!shutDown && owned->alive) {
+            lock_guard<mutex> g(lock);
+            idle.push_back(std::move(owned));
+        }                                                    // else: destroyed when \`owned\` goes out of scope
+        permits.release();
+    }
+
+    void shutdown() {
+        shutDown = true;
+        lock_guard<mutex> g(lock);
+        idle.clear();
+    }
+
+    int idleCount() const {
+        lock_guard<mutex> g(lock);
+        return static_cast<int>(idle.size());
+    }
+};
+
+int main() {
+    ConnectionPool pool(2, [] { return make_unique<Connection>(); });
+    Connection* a = pool.borrow(100);
+    Connection* b = pool.borrow(100);
+    try {
+        pool.borrow(50);
+    } catch (const TimeoutException& e) {
+        cout << "third borrow: " << e.what() << "\\n";
+    }
+    a->inTransaction = true;
+    pool.giveBack(a);                                        // rolled back + idle
+    Connection* c = pool.borrow(100);
+    cout << boolalpha << "reused #" << c->id << " (same as a: " << (c == a) << "), tx=" << c->inTransaction.load() << "\\n";
+    try {
+        pool.giveBack(c);
+        pool.giveBack(c);                                    // c and a are the same connection
+    } catch (const logic_error& e) {
+        cout << "double return rejected: " << e.what() << "\\n";
+    }
+    pool.giveBack(b);
+    cout << "idle = " << pool.idleCount() << "\\n";
+    Connection* d = pool.borrow(100);                        // oldest idle: #1
+    d->close();                                              // dies while borrowed
+    pool.giveBack(d);
+    cout << "idle after dead return = " << pool.idleCount() << "\\n";
+    b->close();                                              // dies while idle
+    Connection* e = pool.borrow(100);
+    cout << "fresh #" << e->id << " replaced the dead idle connection\\n";
+    ConnectionPool broken(1, []() -> unique_ptr<Connection> { throw runtime_error("db down"); });
+    for (int attempt = 1; attempt <= 2; attempt++) {
+        try {
+            broken.borrow(10);
+        } catch (const runtime_error& ex) {
+            cout << "try " << attempt << ": " << ex.what() << "\\n";    // capacity is not lost
+        }
+    }
+    pool.giveBack(e);
+    pool.shutdown();
+    cout << "idle after shutdown = " << pool.idleCount() << "\\n";
+    try {
+        pool.borrow(10);
+    } catch (const logic_error& ex) {
+        cout << "borrow after shutdown: " << ex.what() << "\\n";
+    }
+}` }
+          ],
           complexity: `<p><code>borrow</code>/<code>giveBack</code>: O(1) amortised (plus discarded dead connections). Memory O(maxSize). Waiting threads are parked by the semaphore, not spinning.</p>`,
           followUps: ['Add maxLifetime: retire connections older than 30 minutes', 'Add leak detection that logs who borrowed a connection held for over 10 s', 'How would you avoid the global queue contention at 10k borrows/s? (HikariCP ConcurrentBag)']
         }
@@ -2625,6 +7722,7 @@ class TransferService {
       `<p>Hint 2: the counter and the write must be atomic together, otherwise line order and numbers can disagree. A <code>synchronized</code> method covering both is simplest.</p>`,
       `<p>Hint 3: keep lines in a list guarded by the same lock and expose a read-only snapshot (<code>List.copyOf</code>) for tests.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "2000 lines, numbered 1..2000 = true\neach writer in order = true (A=1000, B=1000)\nsame instance = true\nsnapshot unchanged = true, live size = 2001\n" }] },
     solution: {
       approach: `<p><b>Pattern: Singleton (enum form).</b> The requirement is "one shared resource for the whole process". The enum gives a single instance created during class initialisation (thread-safe), and is immune to reflection and serialization duplication. Inside, one <code>synchronized</code> method increments the sequence and appends the line in one atomic step, so numbers and order always agree.</p>`,
       code: `
@@ -2649,9 +7747,186 @@ public class Main {
         Thread b = new Thread(() -> { for (int i = 0; i < 1000; i++) AuditLog.INSTANCE.log("B" + i); });
         a.start(); b.start(); a.join(); b.join();
         List<String> snap = AuditLog.INSTANCE.snapshot();
-        System.out.println(snap.size() + " lines, last = " + snap.get(snap.size() - 1));
+        boolean numbered = true;
+        int nextA = 0, nextB = 0;
+        boolean inOrder = true;
+        for (int i = 0; i < snap.size(); i++) {
+            String[] parts = snap.get(i).split(" ");
+            if (!parts[0].equals(String.valueOf(i + 1))) numbered = false;            // numbers must be 1, 2, 3, ...
+            int n = Integer.parseInt(parts[1].substring(1));
+            if (parts[1].charAt(0) == 'A') { if (n != nextA++) inOrder = false; }     // each thread's own order is kept
+            else { if (n != nextB++) inOrder = false; }
+        }
+        System.out.println(snap.size() + " lines, numbered 1.." + snap.size() + " = " + numbered);
+        System.out.println("each writer in order = " + inOrder + " (A=" + nextA + ", B=" + nextB + ")");
+        System.out.println("same instance = " + (AuditLog.valueOf("INSTANCE") == AuditLog.INSTANCE));
+        AuditLog.INSTANCE.log("late");
+        System.out.println("snapshot unchanged = " + (snap.size() == 2000) + ", live size = " + AuditLog.INSTANCE.snapshot().size());
     }
 }`,
+      alt: [
+        { lang: 'python', code: `
+import threading
+from enum import Enum
+
+
+class AuditLog(Enum):
+    INSTANCE = 1                                   # an Enum member is created once and is never copied
+
+    def __init__(self, _value: int) -> None:
+        self._lines: list[str] = []
+        self._seq = 0
+        self._lock = threading.Lock()
+
+    def log(self, msg: str) -> int:
+        with self._lock:                           # number + append happen atomically
+            self._seq += 1
+            self._lines.append(f"{self._seq} {msg}")
+            return self._seq
+
+    def snapshot(self) -> list[str]:
+        with self._lock:
+            return list(self._lines)               # detached copy
+
+
+def writer(prefix: str) -> None:
+    for i in range(1000):
+        AuditLog.INSTANCE.log(f"{prefix}{i}")
+
+
+if __name__ == "__main__":
+    a = threading.Thread(target=writer, args=("A",))
+    b = threading.Thread(target=writer, args=("B",))
+    a.start(); b.start(); a.join(); b.join()
+    snap = AuditLog.INSTANCE.snapshot()
+    numbered = True
+    in_order = True
+    next_a = next_b = 0
+    for i, line in enumerate(snap):
+        number, text = line.split(" ")
+        if number != str(i + 1):
+            numbered = False                       # numbers must be 1, 2, 3, ...
+        n = int(text[1:])
+        if text[0] == "A":
+            in_order = in_order and n == next_a    # each thread's own order is kept
+            next_a += 1
+        else:
+            in_order = in_order and n == next_b
+            next_b += 1
+    print(f"{len(snap)} lines, numbered 1..{len(snap)} = {str(numbered).lower()}")
+    print(f"each writer in order = {str(in_order).lower()} (A={next_a}, B={next_b})")
+    print("same instance =", str(AuditLog["INSTANCE"] is AuditLog.INSTANCE).lower())
+    AuditLog.INSTANCE.log("late")
+    print(f"snapshot unchanged = {str(len(snap) == 2000).lower()}, live size = {len(AuditLog.INSTANCE.snapshot())}")` },
+        { lang: 'ts', code: `
+class AuditLog {
+  static readonly INSTANCE = new AuditLog();         // created once when the class loads
+
+  private readonly lines: string[] = [];
+  private seq = 0;
+
+  private constructor() {}
+
+  log(msg: string): number {                         // number + append happen in one step: no await between them
+    this.seq++;
+    this.lines.push(\`\${this.seq} \${msg}\`);
+    return this.seq;
+  }
+
+  snapshot(): readonly string[] { return [...this.lines]; }     // detached copy
+}
+
+// two writers that take turns at every await, like two threads would
+async function writer(prefix: string): Promise<void> {
+  for (let i = 0; i < 1000; i++) {
+    AuditLog.INSTANCE.log(prefix + i);
+    if (i % 50 === 0) await Promise.resolve();
+  }
+}
+
+async function main(): Promise<void> {
+  await Promise.all([writer("A"), writer("B")]);
+  const snap = AuditLog.INSTANCE.snapshot();
+  let numbered = true, inOrder = true, nextA = 0, nextB = 0;
+  snap.forEach((line, i) => {
+    const [number, text] = line.split(" ");
+    if (number !== String(i + 1)) numbered = false;  // numbers must be 1, 2, 3, ...
+    const n = Number(text.slice(1));
+    if (text[0] === "A") { if (n !== nextA++) inOrder = false; }   // each writer's own order is kept
+    else if (n !== nextB++) inOrder = false;
+  });
+  console.log(\`\${snap.length} lines, numbered 1..\${snap.length} = \${numbered}\`);
+  console.log(\`each writer in order = \${inOrder} (A=\${nextA}, B=\${nextB})\`);
+  console.log(\`same instance = \${AuditLog.INSTANCE === AuditLog.INSTANCE}\`);
+  AuditLog.INSTANCE.log("late");
+  console.log(\`snapshot unchanged = \${snap.length === 2000}, live size = \${AuditLog.INSTANCE.snapshot().length}\`);
+}
+
+main();` },
+        { lang: 'cpp', code: `
+#include <iostream>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
+using namespace std;
+
+class AuditLog {
+    vector<string> lines;
+    long long seq = 0;
+    mutable mutex lock;
+
+    AuditLog() = default;
+
+public:
+    AuditLog(const AuditLog&) = delete;
+    AuditLog& operator=(const AuditLog&) = delete;
+
+    static AuditLog& instance() {
+        static AuditLog inst;                          // thread-safe initialisation since C++11
+        return inst;
+    }
+
+    long long log(const string& msg) {
+        lock_guard<mutex> g(lock);                     // number + append happen atomically
+        seq++;
+        lines.push_back(to_string(seq) + " " + msg);
+        return seq;
+    }
+
+    vector<string> snapshot() const {
+        lock_guard<mutex> g(lock);
+        return lines;                                  // detached copy
+    }
+};
+
+void writer(char prefix) {
+    for (int i = 0; i < 1000; i++) AuditLog::instance().log(string(1, prefix) + to_string(i));
+}
+
+int main() {
+    thread a(writer, 'A'), b(writer, 'B');
+    a.join();
+    b.join();
+    vector<string> snap = AuditLog::instance().snapshot();
+    bool numbered = true, inOrder = true;
+    int nextA = 0, nextB = 0;
+    for (size_t i = 0; i < snap.size(); i++) {
+        size_t space = snap[i].find(' ');
+        if (snap[i].substr(0, space) != to_string(i + 1)) numbered = false;     // numbers must be 1, 2, 3, ...
+        string text = snap[i].substr(space + 1);
+        int n = stoi(text.substr(1));
+        if (text[0] == 'A') { if (n != nextA++) inOrder = false; }               // each thread's own order is kept
+        else if (n != nextB++) inOrder = false;
+    }
+    cout << boolalpha;
+    cout << snap.size() << " lines, numbered 1.." << snap.size() << " = " << numbered << "\\n";
+    cout << "each writer in order = " << inOrder << " (A=" << nextA << ", B=" << nextB << ")\\n";
+    cout << "same instance = " << (&AuditLog::instance() == &AuditLog::instance()) << "\\n";
+    AuditLog::instance().log("late");
+    cout << "snapshot unchanged = " << (snap.size() == 2000) << ", live size = " << AuditLog::instance().snapshot().size() << "\\n";
+}` }
+      ],
       complexity: `<p>O(1) per log call; the lock serialises writers, which is what an ordered log needs. For very high throughput, use a lock-free queue and a single writer thread.</p>`,
       followUps: ['Why might DI (one bean) be better than an enum singleton here?', 'How would you make the logger asynchronous without losing order?']
     }
@@ -2685,6 +7960,7 @@ class FeatureFlagsNaive {
       `<p>Hint 2: <code>private static final FeatureFlags INSTANCE = new FeatureFlags(load());</code> plus a private constructor.</p>`,
       `<p>Hint 3: build a <code>HashMap</code> while parsing, then store <code>Map.copyOf(...)</code> in a <code>final</code> field. Skip blank or malformed pairs instead of crashing.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "true false false\ntrue false false\nflags loaded = 3\nsame instance = true\n" }] },
     solution: {
       approach: `<p>Eager singleton: the JVM creates the instance while initialising the class (thread-safe, once). The constructor parses the config into a temporary map and stores an immutable copy in a final field. Reads are plain map lookups with no locking. In a real app <code>load()</code> would read a file or remote config service once.</p>`,
       code: `
@@ -2695,27 +7971,172 @@ final class FeatureFlags {
 
     private FeatureFlags(String config) {
         Map<String, Boolean> m = new HashMap<>();
-        for (String pair : config.split(",")) {
-            String[] kv = pair.split("=");
+        for (String pair : config.split(",", -1)) {
+            String[] kv = pair.split("=", -1);
             if (kv.length != 2 || kv[0].isBlank()) continue;          // ignore malformed entries
             m.put(kv[0].trim(), Boolean.parseBoolean(kv[1].trim()));
         }
         this.flags = Map.copyOf(m);                                    // immutable snapshot
     }
 
-    private static String load() { return "newCheckout=true,darkMode=false"; }   // stand-in for file/remote
+    private static String load() { return "newCheckout=true,darkMode=false,broken,=oops,a=b=c, spaced = TRUE "; }   // stand-in for file/remote
 
     static FeatureFlags get() { return INSTANCE; }
 
     boolean isOn(String flag) { return flags.getOrDefault(flag, false); }
+
+    int size() { return flags.size(); }
 }
 
 public class Main {
     public static void main(String[] args) {
         FeatureFlags f = FeatureFlags.get();
         System.out.println(f.isOn("newCheckout") + " " + f.isOn("darkMode") + " " + f.isOn("beta"));
+        System.out.println(f.isOn("spaced") + " " + f.isOn("a") + " " + f.isOn("broken"));   // trimmed, malformed ignored
+        System.out.println("flags loaded = " + f.size());
+        System.out.println("same instance = " + (FeatureFlags.get() == f));
     }
 }`,
+      alt: [
+        { lang: 'python', code: `
+class FeatureFlags:
+    _instance: "FeatureFlags | None" = None
+
+    def __init__(self, config: str) -> None:
+        flags: dict[str, bool] = {}
+        for pair in config.split(","):
+            kv = pair.split("=")
+            if len(kv) != 2 or not kv[0].strip():
+                continue                                       # ignore malformed entries
+            flags[kv[0].strip()] = kv[1].strip().lower() == "true"
+        self._flags = dict(flags)                              # private snapshot, never exposed
+
+    @staticmethod
+    def _load() -> str:
+        return "newCheckout=true,darkMode=false,broken,=oops,a=b=c, spaced = TRUE "   # stand-in for file/remote
+
+    @classmethod
+    def get(cls) -> "FeatureFlags":
+        if cls._instance is None:                              # eager in Java; here created on first use
+            cls._instance = cls(cls._load())
+        return cls._instance
+
+    def is_on(self, flag: str) -> bool:
+        return self._flags.get(flag, False)
+
+    def size(self) -> int:
+        return len(self._flags)
+
+
+def yn(b: bool) -> str:
+    return str(b).lower()
+
+
+if __name__ == "__main__":
+    f = FeatureFlags.get()
+    print(yn(f.is_on("newCheckout")), yn(f.is_on("darkMode")), yn(f.is_on("beta")))
+    print(yn(f.is_on("spaced")), yn(f.is_on("a")), yn(f.is_on("broken")))
+    print("flags loaded =", f.size())
+    print("same instance =", yn(FeatureFlags.get() is f))` },
+        { lang: 'ts', code: `
+class FeatureFlags {
+  private static readonly INSTANCE = new FeatureFlags(FeatureFlags.load());   // eager: built when the class loads
+
+  private readonly flags: ReadonlyMap<string, boolean>;
+
+  private constructor(config: string) {
+    const m = new Map<string, boolean>();
+    for (const pair of config.split(",")) {
+      const kv = pair.split("=");
+      if (kv.length !== 2 || kv[0].trim() === "") continue;                     // ignore malformed entries
+      m.set(kv[0].trim(), kv[1].trim().toLowerCase() === "true");
+    }
+    this.flags = m;                                                              // never exposed, so effectively immutable
+  }
+
+  private static load(): string {
+    return "newCheckout=true,darkMode=false,broken,=oops,a=b=c, spaced = TRUE ";   // stand-in for file/remote
+  }
+
+  static get(): FeatureFlags { return FeatureFlags.INSTANCE; }
+
+  isOn(flag: string): boolean { return this.flags.get(flag) ?? false; }
+
+  size(): number { return this.flags.size; }
+}
+
+const f = FeatureFlags.get();
+console.log(\`\${f.isOn("newCheckout")} \${f.isOn("darkMode")} \${f.isOn("beta")}\`);
+console.log(\`\${f.isOn("spaced")} \${f.isOn("a")} \${f.isOn("broken")}\`);
+console.log(\`flags loaded = \${f.size()}\`);
+console.log(\`same instance = \${FeatureFlags.get() === f}\`);` },
+        { lang: 'cpp', code: `
+#include <algorithm>
+#include <iostream>
+#include <map>
+#include <string>
+#include <vector>
+using namespace std;
+
+string trim(const string& s) {
+    size_t b = s.find_first_not_of(" \\t"), e = s.find_last_not_of(" \\t");
+    return b == string::npos ? "" : s.substr(b, e - b + 1);
+}
+
+vector<string> split(const string& s, char sep) {         // keeps empty parts, like split(",", -1)
+    vector<string> parts;
+    size_t start = 0;
+    for (size_t i = 0; i <= s.size(); i++) {
+        if (i == s.size() || s[i] == sep) { parts.push_back(s.substr(start, i - start)); start = i + 1; }
+    }
+    return parts;
+}
+
+class FeatureFlags {
+    const map<string, bool> flags;                        // const: filled once, never changed
+
+    static map<string, bool> parse(const string& config) {
+        map<string, bool> m;
+        for (const auto& pair : split(config, ',')) {
+            auto kv = split(pair, '=');
+            if (kv.size() != 2 || trim(kv[0]).empty()) continue;               // ignore malformed entries
+            string v = trim(kv[1]);
+            transform(v.begin(), v.end(), v.begin(), [](unsigned char c) { return tolower(c); });
+            m[trim(kv[0])] = (v == "true");
+        }
+        return m;
+    }
+
+    static string load() { return "newCheckout=true,darkMode=false,broken,=oops,a=b=c, spaced = TRUE "; }   // stand-in for file/remote
+
+    explicit FeatureFlags(const string& config) : flags(parse(config)) {}
+
+public:
+    FeatureFlags(const FeatureFlags&) = delete;
+    FeatureFlags& operator=(const FeatureFlags&) = delete;
+
+    static const FeatureFlags& get() {
+        static const FeatureFlags instance(load());       // built on first call, thread-safe since C++11
+        return instance;
+    }
+
+    bool isOn(const string& flag) const {
+        auto it = flags.find(flag);
+        return it != flags.end() && it->second;
+    }
+
+    size_t size() const { return flags.size(); }
+};
+
+int main() {
+    const FeatureFlags& f = FeatureFlags::get();
+    cout << boolalpha;
+    cout << f.isOn("newCheckout") << " " << f.isOn("darkMode") << " " << f.isOn("beta") << "\\n";
+    cout << f.isOn("spaced") << " " << f.isOn("a") << " " << f.isOn("broken") << "\\n";
+    cout << "flags loaded = " << f.size() << "\\n";
+    cout << "same instance = " << (&FeatureFlags::get() == &f) << "\\n";
+}` }
+      ],
       complexity: `<p>Parse once: O(F) for F flags. Each <code>isOn</code>: O(1), lock-free.</p>`,
       followUps: ['Flags must refresh every minute without restarts: how do you swap the map safely? (volatile reference to a new immutable map)', 'How would you test code that reads FeatureFlags.get()?']
     }
@@ -2749,6 +8170,7 @@ class CanvasScreen {
       `<p>Hint 2: <code>Map&lt;String, Function&lt;Double, Shape&gt;&gt; recipes</code>; register with constructor references like <code>Circle::new</code>.</p>`,
       `<p>Hint 3: validate size before calling the recipe and lower-case the key with <code>Locale.ROOT</code>. Use a <code>TreeMap</code> so the "known shapes" message is sorted.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "circle 12.57\nsquare 9.00\ntriangle 1.73\nhexagon 2.60\nunknown shape pentagon, known [circle, hexagon, square, triangle]\nsize must be > 0\n" }] },
     solution: {
       approach: `<p>A registry-based simple factory. Each shape is a record implementing <code>Shape</code>. The factory owns a sorted map from name to constructor reference; <code>create</code> validates input, finds the recipe and applies it. New shapes are added with one <code>register</code> call.</p>`,
       code: `
@@ -2794,17 +8216,292 @@ final class ShapeFactory {
 }
 
 public class Main {
+    static String show(Shape s) { return s.name() + " " + String.format("%.2f", s.area()); }
+
     public static void main(String[] args) {
         ShapeFactory f = new ShapeFactory();
-        System.out.println(f.create("Circle", 2).area());
-        System.out.println(f.create("square", 3).area());
+        System.out.println(show(f.create("Circle", 2)));
+        System.out.println(show(f.create("square", 3)));
+        System.out.println(show(f.create("TRIANGLE", 2)));
         f.register("hexagon", s -> new Shape() {
             public String name() { return "hexagon"; }
             public double area() { return 3 * Math.sqrt(3) / 2 * s * s; }
         });
-        System.out.println(f.create("hexagon", 1).name());
+        System.out.println(show(f.create("hexagon", 1)));
+        for (Supplier<Shape> bad : List.<Supplier<Shape>>of(() -> f.create("pentagon", 1), () -> f.create("circle", 0))) {
+            try {
+                bad.get();
+            } catch (IllegalArgumentException e) {
+                System.out.println(e.getMessage());
+            }
+        }
     }
 }`,
+      alt: [
+        { lang: 'python', code: `
+import math
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Callable
+
+
+class Shape(ABC):
+    @abstractmethod
+    def name(self) -> str: ...
+
+    @abstractmethod
+    def area(self) -> float: ...
+
+
+@dataclass(frozen=True)
+class Circle(Shape):
+    r: float
+
+    def name(self) -> str:
+        return "circle"
+
+    def area(self) -> float:
+        return math.pi * self.r * self.r
+
+
+@dataclass(frozen=True)
+class Square(Shape):
+    side: float
+
+    def name(self) -> str:
+        return "square"
+
+    def area(self) -> float:
+        return self.side * self.side
+
+
+@dataclass(frozen=True)
+class Triangle(Shape):                               # equilateral
+    side: float
+
+    def name(self) -> str:
+        return "triangle"
+
+    def area(self) -> float:
+        return math.sqrt(3) / 4 * self.side * self.side
+
+
+class ShapeFactory:
+    def __init__(self) -> None:
+        self._recipes: dict[str, Callable[[float], Shape]] = {}
+        self.register("circle", Circle)
+        self.register("square", Square)
+        self.register("triangle", Triangle)
+
+    def register(self, name: str, recipe: Callable[[float], Shape]) -> None:
+        self._recipes[name.lower()] = recipe
+
+    def create(self, name: str, size: float) -> Shape:
+        if size <= 0:
+            raise ValueError("size must be > 0")
+        recipe = self._recipes.get(name.lower())
+        if recipe is None:
+            known = ", ".join(sorted(self._recipes))
+            raise ValueError(f"unknown shape {name}, known [{known}]")
+        return recipe(size)
+
+
+def show(s: Shape) -> str:
+    return f"{s.name()} {s.area():.2f}"
+
+
+class Hexagon(Shape):
+    def __init__(self, s: float) -> None:
+        self._s = s
+
+    def name(self) -> str:
+        return "hexagon"
+
+    def area(self) -> float:
+        return 3 * math.sqrt(3) / 2 * self._s * self._s
+
+
+if __name__ == "__main__":
+    f = ShapeFactory()
+    print(show(f.create("Circle", 2)))
+    print(show(f.create("square", 3)))
+    print(show(f.create("TRIANGLE", 2)))
+    f.register("hexagon", Hexagon)
+    print(show(f.create("hexagon", 1)))
+    for name, size in (("pentagon", 1), ("circle", 0)):
+        try:
+            f.create(name, size)
+        except ValueError as e:
+            print(e)` },
+        { lang: 'ts', code: `
+interface Shape {
+  name(): string;
+  area(): number;
+}
+
+class Circle implements Shape {
+  constructor(readonly r: number) {}
+  name(): string { return "circle"; }
+  area(): number { return Math.PI * this.r * this.r; }
+}
+
+class Square implements Shape {
+  constructor(readonly side: number) {}
+  name(): string { return "square"; }
+  area(): number { return this.side * this.side; }
+}
+
+class Triangle implements Shape {                    // equilateral
+  constructor(readonly side: number) {}
+  name(): string { return "triangle"; }
+  area(): number { return (Math.sqrt(3) / 4) * this.side * this.side; }
+}
+
+class ShapeFactory {
+  private readonly recipes = new Map<string, (size: number) => Shape>();
+
+  constructor() {
+    this.register("circle", (s) => new Circle(s));
+    this.register("square", (s) => new Square(s));
+    this.register("triangle", (s) => new Triangle(s));
+  }
+
+  register(name: string, recipe: (size: number) => Shape): void {
+    this.recipes.set(name.toLowerCase(), recipe);
+  }
+
+  create(name: string, size: number): Shape {
+    if (size <= 0) throw new Error("size must be > 0");
+    const recipe = this.recipes.get(name.toLowerCase());
+    if (!recipe) {
+      throw new Error(\`unknown shape \${name}, known [\${[...this.recipes.keys()].sort().join(", ")}]\`);
+    }
+    return recipe(size);
+  }
+}
+
+const show = (s: Shape): string => \`\${s.name()} \${s.area().toFixed(2)}\`;
+
+const f = new ShapeFactory();
+console.log(show(f.create("Circle", 2)));
+console.log(show(f.create("square", 3)));
+console.log(show(f.create("TRIANGLE", 2)));
+f.register("hexagon", (s) => ({
+  name: () => "hexagon",
+  area: () => ((3 * Math.sqrt(3)) / 2) * s * s,
+}));
+console.log(show(f.create("hexagon", 1)));
+for (const [name, size] of [["pentagon", 1], ["circle", 0]] as const) {
+  try {
+    f.create(name, size);
+  } catch (e) {
+    console.log((e as Error).message);
+  }
+}` },
+        { lang: 'cpp', code: `
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <functional>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <stdexcept>
+#include <string>
+using namespace std;
+
+class Shape {
+public:
+    virtual ~Shape() = default;
+    virtual string name() const = 0;
+    virtual double area() const = 0;
+};
+
+class Circle : public Shape {
+    double r;
+public:
+    explicit Circle(double radius) : r(radius) {}
+    string name() const override { return "circle"; }
+    double area() const override { return M_PI * r * r; }
+};
+
+class Square : public Shape {
+    double side;
+public:
+    explicit Square(double s) : side(s) {}
+    string name() const override { return "square"; }
+    double area() const override { return side * side; }
+};
+
+class Triangle : public Shape {                      // equilateral
+    double side;
+public:
+    explicit Triangle(double s) : side(s) {}
+    string name() const override { return "triangle"; }
+    double area() const override { return sqrt(3.0) / 4 * side * side; }
+};
+
+class ShapeFactory {
+    map<string, function<unique_ptr<Shape>(double)>> recipes;      // sorted keys, like TreeMap
+
+    static string lower(string s) {
+        transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return tolower(c); });
+        return s;
+    }
+
+public:
+    ShapeFactory() {
+        registerShape("circle", [](double s) { return make_unique<Circle>(s); });
+        registerShape("square", [](double s) { return make_unique<Square>(s); });
+        registerShape("triangle", [](double s) { return make_unique<Triangle>(s); });
+    }
+
+    void registerShape(const string& name, function<unique_ptr<Shape>(double)> recipe) {
+        recipes[lower(name)] = std::move(recipe);
+    }
+
+    unique_ptr<Shape> create(const string& name, double size) const {
+        if (size <= 0) throw invalid_argument("size must be > 0");
+        auto it = recipes.find(lower(name));
+        if (it == recipes.end()) {
+            string known;
+            for (const auto& kv : recipes) known += (known.empty() ? "" : ", ") + kv.first;
+            throw invalid_argument("unknown shape " + name + ", known [" + known + "]");
+        }
+        return it->second(size);
+    }
+};
+
+class Hexagon : public Shape {
+    double s;
+public:
+    explicit Hexagon(double side) : s(side) {}
+    string name() const override { return "hexagon"; }
+    double area() const override { return 3 * sqrt(3.0) / 2 * s * s; }
+};
+
+string show(const Shape& s) {
+    char buf[64];
+    snprintf(buf, sizeof buf, "%.2f", s.area());
+    return s.name() + " " + buf;
+}
+
+int main() {
+    ShapeFactory f;
+    cout << show(*f.create("Circle", 2)) << "\\n";
+    cout << show(*f.create("square", 3)) << "\\n";
+    cout << show(*f.create("TRIANGLE", 2)) << "\\n";
+    f.registerShape("hexagon", [](double s) { return make_unique<Hexagon>(s); });
+    cout << show(*f.create("hexagon", 1)) << "\\n";
+    for (auto [name, size] : {pair<string, double>{"pentagon", 1}, {"circle", 0}}) {
+        try {
+            f.create(name, size);
+        } catch (const invalid_argument& e) {
+            cout << e.what() << "\\n";
+        }
+    }
+}` }
+      ],
       complexity: `<p><code>create</code>: O(log K) with a TreeMap of K shapes (O(1) with a HashMap). Adding a shape: one class + one line.</p>`,
       followUps: ['Parse full commands like "circle 2" robustly', 'Should the factory cache shapes of the same size? When would that be safe?']
     }
@@ -2841,6 +8538,7 @@ class ResumeNaive {
       `<p>Hint 2: give <code>Address</code> its own copy constructor, then in <code>Resume(Resume other)</code> do <code>new ArrayList&lt;&gt;(other.skills)</code> and <code>new Address(other.address)</code>.</p>`,
       `<p>Hint 3: <code>personalised(name)</code> = copy, then set the name. Test by mutating the copy's list and address and printing the template.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "Asha | Backend Engineer | [Java, SQL, Kafka] | Bengaluru-411001\nYour Name | Backend Engineer | [Java, SQL] | Pune-411001\n" }] },
     solution: {
       approach: `<p>Prototype via copy constructors. Strings are shared; the skills list and the address get fresh copies. <code>personalised</code> builds on the copy constructor, so every resume derived from the template is independent.</p>`,
       code: `
@@ -2892,6 +8590,146 @@ public class Main {
         System.out.println(template);
     }
 }`,
+      alt: [
+        { lang: 'python', code: `
+class Address:
+    def __init__(self, city: str, pin: str) -> None:
+        self.city = city
+        self.pin = pin
+
+    @staticmethod
+    def copy_of(o: "Address") -> "Address":
+        return Address(o.city, o.pin)
+
+    def __str__(self) -> str:
+        return f"{self.city}-{self.pin}"
+
+
+class Resume:
+    def __init__(self, name: str, headline: str, skills: list[str], address: Address) -> None:
+        self._name = name
+        self._headline = headline
+        self._skills = list(skills)                      # own copy: the caller's list stays theirs
+        self._address = Address.copy_of(address)
+
+    @classmethod
+    def copy_of(cls, o: "Resume") -> "Resume":           # copy constructor = prototype copy
+        return cls(o._name, o._headline, o._skills, o._address)
+
+    def personalised(self, new_name: str) -> "Resume":
+        r = Resume.copy_of(self)
+        r._name = new_name
+        return r
+
+    def add_skill(self, s: str) -> None:
+        self._skills.append(s)
+
+    def address(self) -> Address:
+        return self._address
+
+    def __str__(self) -> str:
+        return f"{self._name} | {self._headline} | [{', '.join(self._skills)}] | {self._address}"
+
+
+if __name__ == "__main__":
+    template = Resume("Your Name", "Backend Engineer", ["Java", "SQL"], Address("Pune", "411001"))
+    mine = template.personalised("Asha")
+    mine.add_skill("Kafka")
+    mine.address().city = "Bengaluru"
+    print(mine)
+    print(template)` },
+        { lang: 'ts', code: `
+class Address {
+  constructor(public city: string, public pin: string) {}
+
+  static copyOf(o: Address): Address { return new Address(o.city, o.pin); }
+
+  toString(): string { return \`\${this.city}-\${this.pin}\`; }
+}
+
+class Resume {
+  private readonly skills: string[];
+  private readonly addr: Address;
+
+  constructor(private name: string, private readonly headline: string, skills: readonly string[], address: Address) {
+    this.skills = [...skills];                           // own copy: the caller's array stays theirs
+    this.addr = Address.copyOf(address);
+  }
+
+  static copyOf(o: Resume): Resume {                     // copy constructor = prototype copy
+    return new Resume(o.name, o.headline, o.skills, o.addr);
+  }
+
+  personalised(newName: string): Resume {
+    const r = Resume.copyOf(this);
+    r.name = newName;
+    return r;
+  }
+
+  addSkill(s: string): void { this.skills.push(s); }
+
+  address(): Address { return this.addr; }
+
+  toString(): string { return \`\${this.name} | \${this.headline} | [\${this.skills.join(", ")}] | \${this.addr}\`; }
+}
+
+const template = new Resume("Your Name", "Backend Engineer", ["Java", "SQL"], new Address("Pune", "411001"));
+const mine = template.personalised("Asha");
+mine.addSkill("Kafka");
+mine.address().city = "Bengaluru";
+console.log(String(mine));
+console.log(String(template));` },
+        { lang: 'cpp', code: `
+#include <iostream>
+#include <string>
+#include <vector>
+using namespace std;
+
+struct Address {
+    string city, pin;
+    Address(string c, string p) : city(std::move(c)), pin(std::move(p)) {}
+    string str() const { return city + "-" + pin; }
+};
+
+class Resume {
+    string name;
+    string headline;
+    vector<string> skills;
+    Address addr;
+
+public:
+    Resume(string n, string h, vector<string> s, Address a)
+        : name(std::move(n)), headline(std::move(h)), skills(std::move(s)), addr(std::move(a)) {}
+
+    // The implicit copy constructor copies every member by value, so it is already a deep copy here.
+    Resume(const Resume&) = default;
+
+    Resume personalised(const string& newName) const {
+        Resume r(*this);
+        r.name = newName;
+        return r;
+    }
+
+    void addSkill(const string& s) { skills.push_back(s); }
+
+    Address& address() { return addr; }
+
+    string str() const {
+        string list;
+        for (size_t i = 0; i < skills.size(); i++) list += (i ? ", " : "") + skills[i];
+        return name + " | " + headline + " | [" + list + "] | " + addr.str();
+    }
+};
+
+int main() {
+    Resume tmpl("Your Name", "Backend Engineer", {"Java", "SQL"}, Address("Pune", "411001"));
+    Resume mine = tmpl.personalised("Asha");
+    mine.addSkill("Kafka");
+    mine.address().city = "Bengaluru";
+    cout << mine.str() << "\\n";
+    cout << tmpl.str() << "\\n";
+}` }
+      ],
       complexity: `<p>Copy: O(S) for S skills. No shared mutable state between copies.</p>`,
       followUps: ['Make Address a record. What changes in the copy logic?', 'Add a list of Experience objects that are themselves mutable']
     }
@@ -2938,6 +8776,7 @@ class DeskB { RiskEngineNaive engine = new RiskEngineNaive(); }   // different l
       `<p>Hint 2: the enum form fixes the first four at once. If you must keep a class, you need volatile (or holder idiom), no Cloneable, <code>readResolve()</code>, and a constructor guard.</p>`,
       `<p>Hint 3: the internal state must be thread-safe too: <code>ConcurrentHashMap</code>. Prove it with a serialization round-trip and a reflection attempt in <code>main</code>.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "same after round-trip: true\nsecond instance blocked: true\nrejected: limit must be >= 0\nfx limit = 1000000.0, eq limit = 0.0\n" }] },
     solution: {
       approach: `<p>Rewrite as an <b>enum singleton</b> with a <code>ConcurrentHashMap</code> inside. The JVM guarantees: one instance created during class initialisation (thread-safe, safely published), no cloning (<code>Enum.clone()</code> is final and throws), no reflective construction, and serialization by name returns the existing constant. The demo proves the serialization and reflection cases. Eager-ness is acceptable because constructing an empty map is cheap; if construction were expensive, the holder idiom inside a class with <code>readResolve</code> + constructor guard would be the alternative.</p>`,
       code: `
@@ -2966,20 +8805,195 @@ public class Main {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ObjectOutputStream out = new ObjectOutputStream(bytes)) { out.writeObject(RiskEngine.INSTANCE); }
         try (ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()))) {
-            System.out.println("same after deserialize: " + (in.readObject() == RiskEngine.INSTANCE));
+            System.out.println("same after round-trip: " + (in.readObject() == RiskEngine.INSTANCE));
         }
 
         // Reflection cannot create enum constants.
+        boolean blocked = false;
         try {
             Constructor<?> c = RiskEngine.class.getDeclaredConstructors()[0];
             c.setAccessible(true);
             c.newInstance("SECOND", 1);
         } catch (ReflectiveOperationException | IllegalArgumentException e) {
-            System.out.println("reflection blocked: " + e.getClass().getSimpleName());
+            blocked = true;
         }
-        System.out.println("fx limit = " + RiskEngine.getInstance().limit("fx"));
+        System.out.println("second instance blocked: " + blocked);
+
+        try {
+            RiskEngine.getInstance().setLimit("fx", -5);
+        } catch (IllegalArgumentException e) {
+            System.out.println("rejected: " + e.getMessage());
+        }
+        System.out.println(String.format("fx limit = %.1f, eq limit = %.1f",
+            RiskEngine.getInstance().limit("fx"), RiskEngine.getInstance().limit("eq")));
     }
 }`,
+      alt: [
+        { lang: 'python', code: `
+import pickle
+from enum import Enum
+
+
+class RiskEngine(Enum):
+    INSTANCE = 1              # an Enum member is created once; pickle stores only its name
+
+    def __init__(self, _value: int) -> None:
+        self._limits: dict[str, float] = {}
+
+    @staticmethod
+    def get_instance() -> "RiskEngine":
+        return RiskEngine.INSTANCE
+
+    def set_limit(self, desk: str, value: float) -> None:
+        if value < 0:
+            raise ValueError("limit must be >= 0")
+        self._limits[desk] = value
+
+    def limit(self, desk: str) -> float:
+        return self._limits.get(desk, 0.0)
+
+
+if __name__ == "__main__":
+    RiskEngine.get_instance().set_limit("fx", 1_000_000)
+
+    # Pickle round-trip returns the same member.
+    copy = pickle.loads(pickle.dumps(RiskEngine.INSTANCE))
+    print("same after round-trip:", str(copy is RiskEngine.INSTANCE).lower())
+
+    # A second member cannot be created from outside.
+    blocked = False
+    try:
+        RiskEngine(2)
+    except ValueError:
+        blocked = True
+    print("second instance blocked:", str(blocked).lower())
+
+    try:
+        RiskEngine.get_instance().set_limit("fx", -5)
+    except ValueError as e:
+        print("rejected:", e)
+    engine = RiskEngine.get_instance()
+    print(f"fx limit = {engine.limit('fx'):.1f}, eq limit = {engine.limit('eq'):.1f}")` },
+        { lang: 'ts', code: `
+class RiskEngine {
+  private static created = false;
+  private static readonly INSTANCE = new RiskEngine();
+
+  private readonly limits = new Map<string, number>();
+
+  private constructor() {
+    // private is only a compile-time rule in TypeScript, so refuse a second construction at run time too
+    if (RiskEngine.created) throw new Error("RiskEngine already created");
+    RiskEngine.created = true;
+  }
+
+  static getInstance(): RiskEngine { return RiskEngine.INSTANCE; }
+
+  setLimit(desk: string, value: number): void {
+    if (value < 0) throw new Error("limit must be >= 0");
+    this.limits.set(desk, value);
+  }
+
+  limit(desk: string): number { return this.limits.get(desk) ?? 0; }
+
+  // serialization: write only a marker, and resolve it back to the one instance (Java's readResolve)
+  toJSON(): { singleton: string } { return { singleton: "RiskEngine" }; }
+
+  static fromJSON(text: string): RiskEngine {
+    JSON.parse(text);
+    return RiskEngine.INSTANCE;
+  }
+}
+
+RiskEngine.getInstance().setLimit("fx", 1_000_000);
+
+// JSON round-trip returns the same object.
+const copy = RiskEngine.fromJSON(JSON.stringify(RiskEngine.getInstance()));
+console.log(\`same after round-trip: \${copy === RiskEngine.getInstance()}\`);
+
+// Bypassing the private constructor with a cast is stopped by the run-time guard.
+let blocked = false;
+try {
+  new (RiskEngine as unknown as new () => RiskEngine)();
+} catch {
+  blocked = true;
+}
+console.log(\`second instance blocked: \${blocked}\`);
+
+try {
+  RiskEngine.getInstance().setLimit("fx", -5);
+} catch (e) {
+  console.log("rejected: " + (e as Error).message);
+}
+const engine = RiskEngine.getInstance();
+console.log(\`fx limit = \${engine.limit("fx").toFixed(1)}, eq limit = \${engine.limit("eq").toFixed(1)}\`);` },
+        { lang: 'cpp', code: `
+#include <cstdio>
+#include <iostream>
+#include <map>
+#include <mutex>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+using namespace std;
+
+class RiskEngine {
+    map<string, double> limits;
+    mutable mutex lock;
+
+    RiskEngine() = default;                              // private: nobody else can construct one
+
+public:
+    RiskEngine(const RiskEngine&) = delete;              // copying would be a second instance
+    RiskEngine& operator=(const RiskEngine&) = delete;
+
+    static RiskEngine& getInstance() {
+        static RiskEngine instance;
+        return instance;
+    }
+
+    void setLimit(const string& desk, double value) {
+        if (value < 0) throw invalid_argument("limit must be >= 0");
+        lock_guard<mutex> g(lock);
+        limits[desk] = value;
+    }
+
+    double limit(const string& desk) const {
+        lock_guard<mutex> g(lock);
+        auto it = limits.find(desk);
+        return it == limits.end() ? 0.0 : it->second;
+    }
+
+    // serialization writes a marker and reading it resolves back to the one instance (Java's readResolve)
+    string serialize() const { return "RiskEngine"; }
+    static RiskEngine& deserialize(const string&) { return getInstance(); }
+};
+
+string fixed1(double v) {
+    char buf[32];
+    snprintf(buf, sizeof buf, "%.1f", v);
+    return buf;
+}
+
+int main() {
+    RiskEngine::getInstance().setLimit("fx", 1000000);
+
+    RiskEngine& copy = RiskEngine::deserialize(RiskEngine::getInstance().serialize());
+    cout << boolalpha << "same after round-trip: " << (&copy == &RiskEngine::getInstance()) << "\\n";
+
+    // The compiler enforces what Java needs an enum for: no outside construction or copy exists.
+    bool blocked = !is_default_constructible_v<RiskEngine> && !is_copy_constructible_v<RiskEngine>;
+    cout << "second instance blocked: " << blocked << "\\n";
+
+    try {
+        RiskEngine::getInstance().setLimit("fx", -5);
+    } catch (const invalid_argument& e) {
+        cout << "rejected: " << e.what() << "\\n";
+    }
+    const RiskEngine& engine = RiskEngine::getInstance();
+    cout << "fx limit = " << fixed1(engine.limit("fx")) << ", eq limit = " << fixed1(engine.limit("eq")) << "\\n";
+}` }
+      ],
       complexity: `<p>All operations O(1). Lock-free reads/writes via <code>ConcurrentHashMap</code>.</p>`,
       followUps: ['Keep it a class with lazy init: write the holder idiom + readResolve + constructor guard version', 'How would you reset the singleton between unit tests, and why is needing that a design smell?']
     }
@@ -3007,34 +9021,193 @@ class NaiveClassifier {
       `<p>Hint 2: <code>StringBuilder</code> accumulates parts and produces a final immutable <code>String</code> — builder idea. <code>new ArrayList&lt;&gt;(other)</code> creates an object from an existing one — prototype via copy constructor.</p>`,
       `<p>Hint 3: <code>Executors.newFixedThreadPool</code> is a static factory that returns a <code>ThreadPoolExecutor</code>, which itself is an object pool of threads.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "Singleton: same instance = true\nFactory method: fresh object each call = true\nBuilder: Hello, world\nFlyweight cache: true\nPrototype copy: original=[a, b] copy=[a, b, c]\nExecutor factory: sum of squares = 14\nIterator factory: ab\nFactory rejects bad input = true\n" }] },
     solution: {
       approach: `<p>Classification: <b>Runtime.getRuntime()</b> → Singleton (eager). <b>Calendar.getInstance()</b> → factory method choosing a locale-specific subclass, new object per call. <b>StringBuilder</b> → builder idea (accumulate, then <code>toString()</code> builds an immutable String). <b>Integer.valueOf</b> → static factory with caching. <b>new ArrayList&lt;&gt;(other)</b> → prototype by copy constructor (shallow at element level). <b>Executors.newFixedThreadPool</b> → static factory returning an object pool of threads. <b>iterator()</b> → GoF factory method (each collection decides its iterator class). The program prints evidence for each.</p>`,
       code: `
 public class Main {
     public static void main(String[] args) throws Exception {
-        System.out.println("Runtime singleton: " + (Runtime.getRuntime() == Runtime.getRuntime()));
+        // Singleton: one Runtime per JVM
+        System.out.println("Singleton: same instance = " + (Runtime.getRuntime() == Runtime.getRuntime()));
 
-        Calendar c1 = Calendar.getInstance(), c2 = Calendar.getInstance();
-        System.out.println("Calendar factory: " + c1.getClass().getSimpleName() + ", same object? " + (c1 == c2));
+        // Factory Method: getInstance() builds a fresh Calendar each call
+        System.out.println("Factory method: fresh object each call = " + (Calendar.getInstance() != Calendar.getInstance()));
 
+        // Builder: StringBuilder assembles step by step
         String built = new StringBuilder().append("Hello").append(", ").append("world").toString();
-        System.out.println("Builder idea: " + built);
+        System.out.println("Builder: " + built);
 
-        System.out.println("valueOf cache: " + (Integer.valueOf(42) == Integer.valueOf(42)));
+        // Flyweight: Integer.valueOf shares small values
+        System.out.println("Flyweight cache: " + (Integer.valueOf(42) == Integer.valueOf(42)));
 
+        // Prototype: a copy constructor
         List<String> original = new ArrayList<>(List.of("a", "b"));
         List<String> copy = new ArrayList<>(original);
         copy.add("c");
         System.out.println("Prototype copy: original=" + original + " copy=" + copy);
 
+        // Factory for a pool: Executors hides which executor class is built
         ExecutorService pool = Executors.newFixedThreadPool(2);
-        System.out.println("Pool factory returns: " + pool.getClass().getSimpleName());
+        List<Future<Integer>> jobs = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            int n = i;
+            jobs.add(pool.submit(() -> n * n));
+        }
+        int sum = 0;
+        for (Future<Integer> j : jobs) sum += j.get();
         pool.shutdown();
+        System.out.println("Executor factory: sum of squares = " + sum);
 
+        // Factory Method: the collection decides which iterator to give you
         Iterator<String> it = original.iterator();
-        System.out.println("Factory method iterator(): " + it.getClass().getName());
+        System.out.println("Iterator factory: " + it.next() + it.next());
+
+        // A factory rejects bad input instead of returning null
+        try {
+            Integer.valueOf("x");
+        } catch (NumberFormatException e) {
+            System.out.println("Factory rejects bad input = true");
+        }
     }
 }`,
+      alt: [
+        { lang: 'python', code: `
+import io
+from concurrent.futures import ThreadPoolExecutor
+
+if __name__ == "__main__":
+    # Singleton: NoneType() always returns the one None
+    print("Singleton: same instance =", str(type(None)() is type(None)()).lower())
+
+    # Factory Method: an alternate constructor builds a fresh dict each call
+    print("Factory method: fresh object each call =", str(dict.fromkeys("ab") is not dict.fromkeys("ab")).lower())
+
+    # Builder: StringIO assembles step by step
+    sb = io.StringIO()
+    sb.write("Hello")
+    sb.write(", ")
+    sb.write("world")
+    print("Builder:", sb.getvalue())
+
+    # Flyweight: CPython shares small ints
+    print("Flyweight cache:", str(int("42") is int("42")).lower())
+
+    # Prototype: a copy
+    original = ["a", "b"]
+    copy = list(original)
+    copy.append("c")
+    print(f"Prototype copy: original=[{', '.join(original)}] copy=[{', '.join(copy)}]")
+
+    # Factory for a pool: the executor decides how threads are created
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        total = sum(pool.map(lambda n: n * n, range(4)))
+    print("Executor factory: sum of squares =", total)
+
+    # Factory Method: the list decides which iterator to give you
+    it = iter(original)
+    print("Iterator factory:", next(it) + next(it))
+
+    # A factory rejects bad input instead of returning None
+    try:
+        int("x")
+    except ValueError:
+        print("Factory rejects bad input = true")` },
+        { lang: 'ts', code: `
+// Singleton: the global symbol registry hands out one symbol per key
+console.log(\`Singleton: same instance = \${Symbol.for("app") === Symbol.for("app")}\`);
+
+// Factory Method: Array.from builds a fresh array each call
+console.log(\`Factory method: fresh object each call = \${Array.from("ab") !== Array.from("ab")}\`);
+
+// Builder: collect the parts, join once
+const parts: string[] = [];
+parts.push("Hello");
+parts.push(", ");
+parts.push("world");
+console.log(\`Builder: \${parts.join("")}\`);
+
+// Flyweight: a Symbol.for cache shares one object per key
+console.log(\`Flyweight cache: \${Symbol.for("42") === Symbol.for("42")}\`);
+
+// Prototype: a copy
+const original = ["a", "b"];
+const copy = [...original];
+copy.push("c");
+console.log(\`Prototype copy: original=[\${original.join(", ")}] copy=[\${copy.join(", ")}]\`);
+
+async function main(): Promise<void> {
+  // Factory for a pool: the runtime decides how the tasks are scheduled
+  const squares = await Promise.all([0, 1, 2, 3].map(async (n) => n * n));
+  console.log(\`Executor factory: sum of squares = \${squares.reduce((a, b) => a + b, 0)}\`);
+
+  // Factory Method: the array decides which iterator to give you
+  const it = original[Symbol.iterator]();
+  console.log(\`Iterator factory: \${it.next().value}\${it.next().value}\`);
+
+  // A factory rejects bad input instead of returning undefined
+  try {
+    BigInt("x");
+  } catch {
+    console.log("Factory rejects bad input = true");
+  }
+}
+
+main();` },
+        { lang: 'cpp', code: `
+#include <future>
+#include <iostream>
+#include <locale>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <vector>
+using namespace std;
+
+int main() {
+    cout << boolalpha;
+
+    // Singleton: the classic locale is one shared object
+    cout << "Singleton: same instance = " << (&locale::classic() == &locale::classic()) << "\\n";
+
+    // Factory Method: make_shared builds a fresh object each call
+    cout << "Factory method: fresh object each call = " << (make_shared<string>("x") != make_shared<string>("x")) << "\\n";
+
+    // Builder: ostringstream assembles step by step
+    ostringstream sb;
+    sb << "Hello" << ", " << "world";
+    cout << "Builder: " << sb.str() << "\\n";
+
+    // Flyweight: every locale copy shares the same facet object
+    locale a = locale::classic(), b = locale::classic();
+    cout << "Flyweight cache: " << (&use_facet<ctype<char>>(a) == &use_facet<ctype<char>>(b)) << "\\n";
+
+    // Prototype: a copy
+    vector<string> original = {"a", "b"};
+    vector<string> copy = original;
+    copy.push_back("c");
+    cout << "Prototype copy: original=[" << original[0] << ", " << original[1] << "] copy=["
+         << copy[0] << ", " << copy[1] << ", " << copy[2] << "]\\n";
+
+    // Factory for a pool: std::async decides how the tasks are scheduled
+    vector<future<int>> jobs;
+    for (int i = 0; i < 4; i++) jobs.push_back(async(launch::async, [i] { return i * i; }));
+    int sum = 0;
+    for (auto& j : jobs) sum += j.get();
+    cout << "Executor factory: sum of squares = " << sum << "\\n";
+
+    // Factory Method: the vector decides which iterator to give you
+    auto it = original.begin();
+    string first = *it++;
+    cout << "Iterator factory: " << first << *it << "\\n";
+
+    // A factory rejects bad input instead of returning a default
+    try {
+        stoi("x");
+    } catch (const invalid_argument&) {
+        cout << "Factory rejects bad input = true\\n";
+    }
+}` }
+      ],
       complexity: `<p>Not an algorithmic problem; each demonstration is O(1). The value is in the reasoning: test behaviour (identity, class, copies) rather than trusting names.</p>`,
       followUps: ['Find a Builder and an Abstract Factory in java.net.http or javax.xml', 'Is Collections.emptyList() a singleton? How would you check?']
     }
@@ -3067,6 +9240,7 @@ class BundleNaive {
       `<p>Hint 2: products can be tiny records parameterised by collection name and price; each concrete factory fills in its own values.</p>`,
       `<p>Hint 3: compute the discount with integer math: <code>(chair + sofa) * 90 / 100</code>. ArtDeco = a new factory class only.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "Modern chair + Modern sofa = Rs 26100\nVictorian chair + Victorian sofa = Rs 44550\nArtDeco chair + ArtDeco sofa = Rs 39600\nunknown style gothic, choose from [modern, victorian, artdeco]\n" }] },
     solution: {
       approach: `<p>Abstract Factory with one concrete factory per collection. <code>RoomBundle</code> asks a single factory for both pieces, so they always match. Adding ArtDeco is a new row (new factory); <code>RoomBundle</code> and the interfaces stay unchanged.</p>`,
       code: `
@@ -3117,12 +9291,288 @@ class RoomBundle {
 
 public class Main {
     public static void main(String[] args) {
-        for (FurnitureFactory f : List.of(new ModernFactory(), new VictorianFactory(), new ArtDecoFactory())) {
-            RoomBundle b = new RoomBundle(f);
+        Map<String, Supplier<FurnitureFactory>> styles = new LinkedHashMap<>();
+        styles.put("modern", ModernFactory::new);
+        styles.put("victorian", VictorianFactory::new);
+        styles.put("artdeco", ArtDecoFactory::new);
+        for (String style : List.of("modern", "victorian", "artdeco", "gothic")) {
+            Supplier<FurnitureFactory> factory = styles.get(style);
+            if (factory == null) {
+                System.out.println("unknown style " + style + ", choose from " + styles.keySet());
+                continue;
+            }
+            RoomBundle b = new RoomBundle(factory.get());
             System.out.println(b.describe() + " = Rs " + b.total());
         }
     }
 }`,
+      alt: [
+        { lang: 'python', code: `
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Callable
+
+
+class Chair(ABC):
+    @abstractmethod
+    def describe(self) -> str: ...
+
+    @abstractmethod
+    def price(self) -> int: ...
+
+
+class Sofa(ABC):
+    @abstractmethod
+    def describe(self) -> str: ...
+
+    @abstractmethod
+    def price(self) -> int: ...
+
+
+@dataclass(frozen=True)
+class SimpleChair(Chair):
+    collection: str
+    _price: int
+
+    def describe(self) -> str:
+        return f"{self.collection} chair"
+
+    def price(self) -> int:
+        return self._price
+
+
+@dataclass(frozen=True)
+class SimpleSofa(Sofa):
+    collection: str
+    _price: int
+
+    def describe(self) -> str:
+        return f"{self.collection} sofa"
+
+    def price(self) -> int:
+        return self._price
+
+
+class FurnitureFactory(ABC):
+    @abstractmethod
+    def create_chair(self) -> Chair: ...
+
+    @abstractmethod
+    def create_sofa(self) -> Sofa: ...
+
+
+class ModernFactory(FurnitureFactory):
+    def create_chair(self) -> Chair:
+        return SimpleChair("Modern", 4000)
+
+    def create_sofa(self) -> Sofa:
+        return SimpleSofa("Modern", 25000)
+
+
+class VictorianFactory(FurnitureFactory):
+    def create_chair(self) -> Chair:
+        return SimpleChair("Victorian", 7500)
+
+    def create_sofa(self) -> Sofa:
+        return SimpleSofa("Victorian", 42000)
+
+
+class ArtDecoFactory(FurnitureFactory):          # new family: zero edits elsewhere
+    def create_chair(self) -> Chair:
+        return SimpleChair("ArtDeco", 6000)
+
+    def create_sofa(self) -> Sofa:
+        return SimpleSofa("ArtDeco", 38000)
+
+
+class RoomBundle:
+    def __init__(self, factory: FurnitureFactory) -> None:
+        self._chair = factory.create_chair()
+        self._sofa = factory.create_sofa()
+
+    def total(self) -> int:
+        return (self._chair.price() + self._sofa.price()) * 90 // 100
+
+    def describe(self) -> str:
+        return f"{self._chair.describe()} + {self._sofa.describe()}"
+
+
+if __name__ == "__main__":
+    styles: dict[str, Callable[[], FurnitureFactory]] = {
+        "modern": ModernFactory,
+        "victorian": VictorianFactory,
+        "artdeco": ArtDecoFactory,
+    }
+    for style in ("modern", "victorian", "artdeco", "gothic"):
+        make = styles.get(style)
+        if make is None:
+            print(f"unknown style {style}, choose from [{', '.join(styles)}]")
+            continue
+        b = RoomBundle(make())
+        print(f"{b.describe()} = Rs {b.total()}")` },
+        { lang: 'ts', code: `
+interface Chair { describe(): string; price(): number; }
+interface Sofa { describe(): string; price(): number; }
+
+class SimpleChair implements Chair {
+  constructor(readonly collection: string, private readonly cost: number) {}
+  describe(): string { return \`\${this.collection} chair\`; }
+  price(): number { return this.cost; }
+}
+
+class SimpleSofa implements Sofa {
+  constructor(readonly collection: string, private readonly cost: number) {}
+  describe(): string { return \`\${this.collection} sofa\`; }
+  price(): number { return this.cost; }
+}
+
+interface FurnitureFactory {
+  createChair(): Chair;
+  createSofa(): Sofa;
+}
+
+class ModernFactory implements FurnitureFactory {
+  createChair(): Chair { return new SimpleChair("Modern", 4000); }
+  createSofa(): Sofa { return new SimpleSofa("Modern", 25000); }
+}
+
+class VictorianFactory implements FurnitureFactory {
+  createChair(): Chair { return new SimpleChair("Victorian", 7500); }
+  createSofa(): Sofa { return new SimpleSofa("Victorian", 42000); }
+}
+
+class ArtDecoFactory implements FurnitureFactory {         // new family: zero edits elsewhere
+  createChair(): Chair { return new SimpleChair("ArtDeco", 6000); }
+  createSofa(): Sofa { return new SimpleSofa("ArtDeco", 38000); }
+}
+
+class RoomBundle {
+  private readonly chair: Chair;
+  private readonly sofa: Sofa;
+
+  constructor(factory: FurnitureFactory) {
+    this.chair = factory.createChair();
+    this.sofa = factory.createSofa();
+  }
+
+  total(): number { return Math.floor(((this.chair.price() + this.sofa.price()) * 90) / 100); }
+
+  describe(): string { return \`\${this.chair.describe()} + \${this.sofa.describe()}\`; }
+}
+
+const styles = new Map<string, () => FurnitureFactory>([
+  ["modern", () => new ModernFactory()],
+  ["victorian", () => new VictorianFactory()],
+  ["artdeco", () => new ArtDecoFactory()],
+]);
+for (const style of ["modern", "victorian", "artdeco", "gothic"]) {
+  const make = styles.get(style);
+  if (!make) {
+    console.log(\`unknown style \${style}, choose from [\${[...styles.keys()].join(", ")}]\`);
+    continue;
+  }
+  const b = new RoomBundle(make());
+  console.log(\`\${b.describe()} = Rs \${b.total()}\`);
+}` },
+        { lang: 'cpp', code: `
+#include <functional>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+using namespace std;
+
+class Chair {
+public:
+    virtual ~Chair() = default;
+    virtual string describe() const = 0;
+    virtual int price() const = 0;
+};
+
+class Sofa {
+public:
+    virtual ~Sofa() = default;
+    virtual string describe() const = 0;
+    virtual int price() const = 0;
+};
+
+class SimpleChair : public Chair {
+    string collection;
+    int cost;
+public:
+    SimpleChair(string c, int p) : collection(std::move(c)), cost(p) {}
+    string describe() const override { return collection + " chair"; }
+    int price() const override { return cost; }
+};
+
+class SimpleSofa : public Sofa {
+    string collection;
+    int cost;
+public:
+    SimpleSofa(string c, int p) : collection(std::move(c)), cost(p) {}
+    string describe() const override { return collection + " sofa"; }
+    int price() const override { return cost; }
+};
+
+class FurnitureFactory {
+public:
+    virtual ~FurnitureFactory() = default;
+    virtual unique_ptr<Chair> createChair() const = 0;
+    virtual unique_ptr<Sofa> createSofa() const = 0;
+};
+
+class ModernFactory : public FurnitureFactory {
+public:
+    unique_ptr<Chair> createChair() const override { return make_unique<SimpleChair>("Modern", 4000); }
+    unique_ptr<Sofa> createSofa() const override { return make_unique<SimpleSofa>("Modern", 25000); }
+};
+
+class VictorianFactory : public FurnitureFactory {
+public:
+    unique_ptr<Chair> createChair() const override { return make_unique<SimpleChair>("Victorian", 7500); }
+    unique_ptr<Sofa> createSofa() const override { return make_unique<SimpleSofa>("Victorian", 42000); }
+};
+
+class ArtDecoFactory : public FurnitureFactory {          // new family: zero edits elsewhere
+public:
+    unique_ptr<Chair> createChair() const override { return make_unique<SimpleChair>("ArtDeco", 6000); }
+    unique_ptr<Sofa> createSofa() const override { return make_unique<SimpleSofa>("ArtDeco", 38000); }
+};
+
+class RoomBundle {
+    unique_ptr<Chair> chair;
+    unique_ptr<Sofa> sofa;
+
+public:
+    explicit RoomBundle(const FurnitureFactory& factory) : chair(factory.createChair()), sofa(factory.createSofa()) {}
+
+    int total() const { return (chair->price() + sofa->price()) * 90 / 100; }
+
+    string describe() const { return chair->describe() + " + " + sofa->describe(); }
+};
+
+int main() {
+    vector<pair<string, function<unique_ptr<FurnitureFactory>()>>> styles = {
+        {"modern", [] { return make_unique<ModernFactory>(); }},
+        {"victorian", [] { return make_unique<VictorianFactory>(); }},
+        {"artdeco", [] { return make_unique<ArtDecoFactory>(); }},
+    };
+    for (const string style : {"modern", "victorian", "artdeco", "gothic"}) {
+        const function<unique_ptr<FurnitureFactory>()>* make = nullptr;
+        for (const auto& [name, f] : styles) if (name == style) make = &f;
+        if (!make) {
+            string names;
+            for (const auto& [name, f] : styles) names += (names.empty() ? "" : ", ") + name;
+            cout << "unknown style " << style << ", choose from [" << names << "]\\n";
+            continue;
+        }
+        auto factory = (*make)();
+        RoomBundle b(*factory);
+        cout << b.describe() << " = Rs " << b.total() << "\\n";
+    }
+}` }
+      ],
       complexity: `<p>O(1) per bundle. New collection: one factory class. New product type (Table): edit the interface and every factory — the known trade-off.</p>`,
       followUps: ['Add a Table product with a default method so old factories still compile', 'Load collections from a database instead of classes (hint: Prototype registry)']
     }
@@ -3156,6 +9606,7 @@ class UserProfileNaive {
       `<p>Hint 2: validate username with a regex <code>[A-Za-z0-9_]{3,20}</code>, email with <code>indexOf('@') == lastIndexOf('@')</code> and &gt; 0. Age range in the setter.</p>`,
       `<p>Hint 3: in <code>build()</code> check the age/opt-in rule (age unknown = treat as adult? state your assumption). <code>toBuilder()</code> creates a builder pre-filled with every field.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "asha_k, asha@mail.com, age=16, [chess], optIn=false\nrejected: under-18 users cannot opt in\nasha_k, asha@mail.com, age=19, [chess], optIn=true\nrejected: username must be 3-20 letters, digits or _\nrejected: invalid email\nrejected: age must be 13-120\nrejected: max 10 interests\nbob_1, bob@mail.com, age=null, [], optIn=false\n" }] },
     solution: {
       approach: `<p>Builder with a required-args entry point, field validation in setters, cross-field validation in <code>build()</code>, and an immutable product with <code>List.copyOf</code>. Assumption: unknown age is allowed to opt in only if age was never set (stated explicitly; many products would require age instead). <code>toBuilder()</code> copies every field into a fresh builder so edits create a new immutable profile.</p>`,
       code: `
@@ -3224,18 +9675,340 @@ final class UserProfile {
 }
 
 public class Main {
+    static void attempt(Supplier<UserProfile> action) {
+        try {
+            System.out.println(action.get());
+        } catch (RuntimeException e) {
+            System.out.println("rejected: " + e.getMessage());
+        }
+    }
+
     public static void main(String[] args) {
         UserProfile p = UserProfile.builder("asha_k", "asha@mail.com").age(16).interest("chess").interest("chess").build();
         System.out.println(p);
-        try {
-            p.toBuilder().marketingOptIn(true).build();
-        } catch (IllegalStateException e) {
-            System.out.println("rejected: " + e.getMessage());
-        }
-        UserProfile older = p.toBuilder().age(19).marketingOptIn(true).build();
-        System.out.println(older);
+        attempt(() -> p.toBuilder().marketingOptIn(true).build());
+        attempt(() -> p.toBuilder().age(19).marketingOptIn(true).build());
+        attempt(() -> UserProfile.builder("ab", "x@y.com").build());
+        attempt(() -> UserProfile.builder("bob_1", "bob@@mail").build());
+        attempt(() -> UserProfile.builder("bob_1", "bob@mail.com").age(5).build());
+        attempt(() -> {
+            UserProfile.Builder b = UserProfile.builder("bob_1", "bob@mail.com");
+            for (int i = 0; i < 11; i++) b.interest("topic" + i);
+            return b.build();
+        });
+        attempt(() -> UserProfile.builder("bob_1", "bob@mail.com").build());
     }
 }`,
+      alt: [
+        { lang: 'python', code: `
+import re
+from typing import Callable, Optional
+
+USERNAME = re.compile(r"[A-Za-z0-9_]{3,20}")
+
+
+class UserProfile:
+    def __init__(self, b: "UserProfile.Builder") -> None:
+        self._username = b._username
+        self._email = b._email
+        self._phone = b._phone
+        self._age = b._age
+        self._interests = tuple(b._interests)                  # immutable copy
+        self._marketing_opt_in = b._marketing_opt_in
+
+    @staticmethod
+    def builder(username: str, email: str) -> "UserProfile.Builder":
+        return UserProfile.Builder(username, email)
+
+    def to_builder(self) -> "UserProfile.Builder":
+        b = UserProfile.Builder(self._username, self._email)
+        b._phone = self._phone
+        b._age = self._age
+        b._interests.extend(self._interests)
+        b._marketing_opt_in = self._marketing_opt_in
+        return b
+
+    def __str__(self) -> str:
+        age = "null" if self._age is None else self._age
+        return (f"{self._username}, {self._email}, age={age}, [{', '.join(self._interests)}], "
+                f"optIn={str(self._marketing_opt_in).lower()}")
+
+    class Builder:
+        def __init__(self, username: Optional[str], email: Optional[str]) -> None:
+            if username is None or not USERNAME.fullmatch(username):
+                raise ValueError("username must be 3-20 letters, digits or _")
+            if email is None or email.find("@") <= 0 or email.find("@") != email.rfind("@"):
+                raise ValueError("invalid email")
+            self._username = username
+            self._email = email
+            self._phone: Optional[str] = None
+            self._age: Optional[int] = None
+            self._interests: list[str] = []                    # no duplicates, insertion order
+            self._marketing_opt_in = False
+
+        def phone(self, p: str) -> "UserProfile.Builder":
+            self._phone = p
+            return self
+
+        def age(self, a: int) -> "UserProfile.Builder":
+            if a < 13 or a > 120:
+                raise ValueError("age must be 13-120")
+            self._age = a
+            return self
+
+        def interest(self, i: str) -> "UserProfile.Builder":
+            if i not in self._interests and len(self._interests) == 10:
+                raise ValueError("max 10 interests")
+            if i not in self._interests:
+                self._interests.append(i)
+            return self
+
+        def marketing_opt_in(self, v: bool) -> "UserProfile.Builder":
+            self._marketing_opt_in = v
+            return self
+
+        def build(self) -> "UserProfile":
+            if self._marketing_opt_in and self._age is not None and self._age < 18:
+                raise RuntimeError("under-18 users cannot opt in")
+            return UserProfile(self)
+
+
+def attempt(action: Callable[[], UserProfile]) -> None:
+    try:
+        print(action())
+    except (ValueError, RuntimeError) as e:
+        print("rejected:", e)
+
+
+def too_many_interests() -> UserProfile:
+    b = UserProfile.builder("bob_1", "bob@mail.com")
+    for i in range(11):
+        b.interest(f"topic{i}")
+    return b.build()
+
+
+if __name__ == "__main__":
+    p = UserProfile.builder("asha_k", "asha@mail.com").age(16).interest("chess").interest("chess").build()
+    print(p)
+    attempt(lambda: p.to_builder().marketing_opt_in(True).build())
+    attempt(lambda: p.to_builder().age(19).marketing_opt_in(True).build())
+    attempt(lambda: UserProfile.builder("ab", "x@y.com").build())
+    attempt(lambda: UserProfile.builder("bob_1", "bob@@mail").build())
+    attempt(lambda: UserProfile.builder("bob_1", "bob@mail.com").age(5).build())
+    attempt(too_many_interests)
+    attempt(lambda: UserProfile.builder("bob_1", "bob@mail.com").build())` },
+        { lang: 'ts', code: `
+class UserProfile {
+  readonly username: string;
+  readonly email: string;
+  readonly phone?: string;
+  readonly age?: number;
+  readonly interests: readonly string[];
+  readonly marketingOptIn: boolean;
+
+  constructor(b: UserProfileBuilder) {                     // call build() instead; it validates first
+    this.username = b.username;
+    this.email = b.email;
+    this.phone = b.phoneValue;
+    this.age = b.ageValue;
+    this.interests = Object.freeze([...b.interestSet]);    // immutable copy
+    this.marketingOptIn = b.optIn;
+  }
+
+  static builder(username: string, email: string): UserProfileBuilder {
+    return new UserProfileBuilder(username, email);
+  }
+
+  toBuilder(): UserProfileBuilder {
+    const b = new UserProfileBuilder(this.username, this.email);
+    b.phoneValue = this.phone;
+    b.ageValue = this.age;
+    this.interests.forEach((i) => b.interestSet.add(i));
+    b.optIn = this.marketingOptIn;
+    return b;
+  }
+
+  toString(): string {
+    return \`\${this.username}, \${this.email}, age=\${this.age ?? "null"}, [\${this.interests.join(", ")}], optIn=\${this.marketingOptIn}\`;
+  }
+}
+
+class UserProfileBuilder {
+  phoneValue?: string;
+  ageValue?: number;
+  readonly interestSet = new Set<string>();                // keeps insertion order, no duplicates
+  optIn = false;
+
+  constructor(readonly username: string, readonly email: string) {
+    if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) throw new Error("username must be 3-20 letters, digits or _");
+    if (email.indexOf("@") <= 0 || email.indexOf("@") !== email.lastIndexOf("@")) throw new Error("invalid email");
+  }
+
+  phone(p: string): this { this.phoneValue = p; return this; }
+
+  age(a: number): this {
+    if (a < 13 || a > 120) throw new Error("age must be 13-120");
+    this.ageValue = a;
+    return this;
+  }
+
+  interest(i: string): this {
+    if (!this.interestSet.has(i) && this.interestSet.size === 10) throw new Error("max 10 interests");
+    this.interestSet.add(i);
+    return this;
+  }
+
+  marketingOptIn(v: boolean): this { this.optIn = v; return this; }
+
+  build(): UserProfile {
+    if (this.optIn && this.ageValue !== undefined && this.ageValue < 18) {
+      throw new Error("under-18 users cannot opt in");
+    }
+    return new UserProfile(this);
+  }
+}
+
+function attempt(action: () => UserProfile): void {
+  try {
+    console.log(String(action()));
+  } catch (e) {
+    console.log("rejected: " + (e as Error).message);
+  }
+}
+
+const p = UserProfile.builder("asha_k", "asha@mail.com").age(16).interest("chess").interest("chess").build();
+console.log(String(p));
+attempt(() => p.toBuilder().marketingOptIn(true).build());
+attempt(() => p.toBuilder().age(19).marketingOptIn(true).build());
+attempt(() => UserProfile.builder("ab", "x@y.com").build());
+attempt(() => UserProfile.builder("bob_1", "bob@@mail").build());
+attempt(() => UserProfile.builder("bob_1", "bob@mail.com").age(5).build());
+attempt(() => {
+  const b = UserProfile.builder("bob_1", "bob@mail.com");
+  for (let i = 0; i < 11; i++) b.interest("topic" + i);
+  return b.build();
+});
+attempt(() => UserProfile.builder("bob_1", "bob@mail.com").build());` },
+        { lang: 'cpp', code: `
+#include <algorithm>
+#include <functional>
+#include <iostream>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <vector>
+using namespace std;
+
+class UserProfile {
+public:
+    class Builder;
+
+    static Builder builder(const string& username, const string& email);
+    Builder toBuilder() const;
+
+    string str() const {
+        string list;
+        for (size_t i = 0; i < interests.size(); i++) list += (i ? ", " : "") + interests[i];
+        return username + ", " + email + ", age=" + (age ? to_string(*age) : "null") + ", [" + list +
+               "], optIn=" + (marketingOptIn ? "true" : "false");
+    }
+
+private:
+    explicit UserProfile(const Builder& b);                // only the builder can create one
+
+    string username, email;
+    optional<string> phone;
+    optional<int> age;
+    vector<string> interests;
+    bool marketingOptIn;
+};
+
+class UserProfile::Builder {
+    friend class UserProfile;
+    string username, email;
+    optional<string> phoneValue;
+    optional<int> ageValue;
+    vector<string> interestList;                           // insertion order, no duplicates
+    bool optIn = false;
+
+    static bool validUsername(const string& u) {
+        return u.size() >= 3 && u.size() <= 20 &&
+               all_of(u.begin(), u.end(), [](unsigned char c) { return isalnum(c) || c == '_'; });
+    }
+
+public:
+    Builder(const string& u, const string& e) {
+        if (!validUsername(u)) throw invalid_argument("username must be 3-20 letters, digits or _");
+        size_t at = e.find('@');
+        if (at == string::npos || at == 0 || at != e.rfind('@')) throw invalid_argument("invalid email");
+        username = u;
+        email = e;
+    }
+
+    Builder& phone(const string& p) { phoneValue = p; return *this; }
+
+    Builder& age(int a) {
+        if (a < 13 || a > 120) throw invalid_argument("age must be 13-120");
+        ageValue = a;
+        return *this;
+    }
+
+    Builder& interest(const string& i) {
+        bool present = find(interestList.begin(), interestList.end(), i) != interestList.end();
+        if (!present && interestList.size() == 10) throw invalid_argument("max 10 interests");
+        if (!present) interestList.push_back(i);
+        return *this;
+    }
+
+    Builder& marketingOptIn(bool v) { optIn = v; return *this; }
+
+    UserProfile build() const {
+        if (optIn && ageValue && *ageValue < 18) throw logic_error("under-18 users cannot opt in");
+        return UserProfile(*this);
+    }
+
+    friend UserProfile::Builder UserProfile::toBuilder() const;
+};
+
+UserProfile::UserProfile(const Builder& b)
+    : username(b.username), email(b.email), phone(b.phoneValue), age(b.ageValue),
+      interests(b.interestList), marketingOptIn(b.optIn) {}
+
+UserProfile::Builder UserProfile::builder(const string& username, const string& email) { return Builder(username, email); }
+
+UserProfile::Builder UserProfile::toBuilder() const {
+    Builder b(username, email);
+    b.phoneValue = phone;
+    b.ageValue = age;
+    b.interestList = interests;
+    b.optIn = marketingOptIn;
+    return b;
+}
+
+void attempt(const function<UserProfile()>& action) {
+    try {
+        cout << action().str() << "\\n";
+    } catch (const exception& e) {
+        cout << "rejected: " << e.what() << "\\n";
+    }
+}
+
+int main() {
+    UserProfile p = UserProfile::builder("asha_k", "asha@mail.com").age(16).interest("chess").interest("chess").build();
+    cout << p.str() << "\\n";
+    attempt([&] { return p.toBuilder().marketingOptIn(true).build(); });
+    attempt([&] { return p.toBuilder().age(19).marketingOptIn(true).build(); });
+    attempt([] { return UserProfile::builder("ab", "x@y.com").build(); });
+    attempt([] { return UserProfile::builder("bob_1", "bob@@mail").build(); });
+    attempt([] { return UserProfile::builder("bob_1", "bob@mail.com").age(5).build(); });
+    attempt([] {
+        auto b = UserProfile::builder("bob_1", "bob@mail.com");
+        for (int i = 0; i < 11; i++) b.interest("topic" + to_string(i));
+        return b.build();
+    });
+    attempt([] { return UserProfile::builder("bob_1", "bob@mail.com").build(); });
+}` }
+      ],
       complexity: `<p>Each setter O(1); <code>build()</code> O(I) to copy I interests; <code>toBuilder()</code> O(I).</p>`,
       followUps: ['Make age mandatory when marketingOptIn is true', 'How would Lombok @Builder(toBuilder = true) with @Singular reduce this code, and what validation would you still write?']
     }
@@ -3270,6 +10043,7 @@ class DocumentNaive {
       `<p>Hint 2: the registry holds <code>Map&lt;String, Document&gt;</code> prototypes built once; <code>create</code> copies and sets the title.</p>`,
       `<p>Hint 3: count style loads with a static counter in the Style constructor to prove they happen only at registration time.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "Sprint 12 planning [Inter] | Agenda: '' | Notes: 'Ship on Friday' | Action Items: '' | Decisions: ''\nDesign review [Inter] | Agenda: '' | Notes: '' | Action Items: ''\nstyle loads = 2\nshared style = true, own sections = true\nno template memo\n" }] },
     solution: {
       approach: `<p>Prototype registry. Templates are built once (style loaded once). <code>create</code> deep-copies the section list and each <code>Section</code>, shares the immutable <code>Style</code>, and sets the new title. Documents are independent of each other and of the template.</p>`,
       code: `
@@ -3339,8 +10113,225 @@ public class Main {
         System.out.println(a);
         System.out.println(b);
         System.out.println("style loads = " + Style.loads);       // 2 (one per template)
+        System.out.println("shared style = " + (a.style == b.style) + ", own sections = " + (a.sections.get(0) != b.sections.get(0)));
+        try {
+            reg.create("memo", "x");
+        } catch (IllegalArgumentException e) {
+            System.out.println(e.getMessage());
+        }
     }
 }`,
+      alt: [
+        { lang: 'python', code: `
+class Style:
+    loads = 0
+
+    def __init__(self, font: str) -> None:
+        self.font = font
+        Style.loads += 1                              # expensive in real life
+
+
+class Section:
+    def __init__(self, heading: str, body: str = "") -> None:
+        self.heading = heading
+        self.body = body
+
+    @classmethod
+    def copy_of(cls, o: "Section") -> "Section":
+        return cls(o.heading, o.body)
+
+
+class Document:
+    def __init__(self, title: str, style: Style, *headings: str) -> None:
+        self.title = title
+        self.style = style
+        self.sections = [Section(h) for h in headings]
+
+    @classmethod
+    def copy_of(cls, o: "Document") -> "Document":
+        d = cls(o.title, o.style)                     # immutable + heavy: share the style
+        d.sections = [Section.copy_of(s) for s in o.sections]    # deep copy
+        return d
+
+    def __str__(self) -> str:
+        parts = "".join(f" | {s.heading}: '{s.body}'" for s in self.sections)
+        return f"{self.title} [{self.style.font}]{parts}"
+
+
+class TemplateRegistry:
+    def __init__(self) -> None:
+        self._prototypes: dict[str, Document] = {}
+
+    def register(self, name: str, prototype: Document) -> None:
+        self._prototypes[name] = prototype
+
+    def create(self, name: str, title: str) -> Document:
+        proto = self._prototypes.get(name)
+        if proto is None:
+            raise ValueError(f"no template {name}")
+        d = Document.copy_of(proto)
+        d.title = title
+        return d
+
+
+if __name__ == "__main__":
+    reg = TemplateRegistry()
+    reg.register("meeting-notes", Document("Meeting", Style("Inter"), "Agenda", "Notes", "Action Items"))
+    reg.register("invoice", Document("Invoice", Style("Roboto Mono"), "Bill To", "Items", "Total"))
+
+    a = reg.create("meeting-notes", "Sprint 12 planning")
+    b = reg.create("meeting-notes", "Design review")
+    a.sections.append(Section("Decisions"))
+    a.sections[1].body = "Ship on Friday"
+
+    print(a)
+    print(b)
+    print("style loads =", Style.loads)
+    print(f"shared style = {str(a.style is b.style).lower()}, own sections = {str(a.sections[0] is not b.sections[0]).lower()}")
+    try:
+        reg.create("memo", "x")
+    except ValueError as e:
+        print(e)` },
+        { lang: 'ts', code: `
+class Style {
+  static loads = 0;
+
+  constructor(readonly font: string) {
+    Style.loads++;                                      // expensive in real life
+  }
+}
+
+class Section {
+  constructor(public heading: string, public body = "") {}
+
+  static copyOf(o: Section): Section { return new Section(o.heading, o.body); }
+}
+
+class Document {
+  sections: Section[];
+
+  constructor(public title: string, readonly style: Style, ...headings: string[]) {
+    this.sections = headings.map((h) => new Section(h));
+  }
+
+  static copyOf(o: Document): Document {
+    const d = new Document(o.title, o.style);           // immutable + heavy: share the style
+    d.sections = o.sections.map(Section.copyOf);        // deep copy
+    return d;
+  }
+
+  toString(): string {
+    return \`\${this.title} [\${this.style.font}]\` + this.sections.map((s) => \` | \${s.heading}: '\${s.body}'\`).join("");
+  }
+}
+
+class TemplateRegistry {
+  private readonly prototypes = new Map<string, Document>();
+
+  register(name: string, prototype: Document): void { this.prototypes.set(name, prototype); }
+
+  create(name: string, title: string): Document {
+    const proto = this.prototypes.get(name);
+    if (!proto) throw new Error(\`no template \${name}\`);
+    const d = Document.copyOf(proto);
+    d.title = title;
+    return d;
+  }
+}
+
+const reg = new TemplateRegistry();
+reg.register("meeting-notes", new Document("Meeting", new Style("Inter"), "Agenda", "Notes", "Action Items"));
+reg.register("invoice", new Document("Invoice", new Style("Roboto Mono"), "Bill To", "Items", "Total"));
+
+const a = reg.create("meeting-notes", "Sprint 12 planning");
+const b = reg.create("meeting-notes", "Design review");
+a.sections.push(new Section("Decisions"));
+a.sections[1].body = "Ship on Friday";
+
+console.log(String(a));
+console.log(String(b));
+console.log(\`style loads = \${Style.loads}\`);
+console.log(\`shared style = \${a.style === b.style}, own sections = \${a.sections[0] !== b.sections[0]}\`);
+try {
+  reg.create("memo", "x");
+} catch (e) {
+  console.log((e as Error).message);
+}` },
+        { lang: 'cpp', code: `
+#include <iostream>
+#include <map>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+using namespace std;
+
+struct Style {
+    static inline int loads = 0;
+    const string font;
+    explicit Style(string f) : font(std::move(f)) { loads++; }     // expensive in real life
+};
+
+struct Section {
+    string heading, body;
+    explicit Section(string h, string b = "") : heading(std::move(h)), body(std::move(b)) {}
+};
+
+struct Document {
+    string title;
+    shared_ptr<const Style> style;                      // immutable + heavy: copies share it
+    vector<Section> sections;                           // owned by value: a copy gets its own sections
+
+    Document(string t, shared_ptr<const Style> s, const vector<string>& headings) : title(std::move(t)), style(std::move(s)) {
+        for (const auto& h : headings) sections.emplace_back(h);
+    }
+
+    // the implicit copy constructor already does the right thing: share the style, copy the sections
+    Document(const Document&) = default;
+
+    string str() const {
+        string out = title + " [" + style->font + "]";
+        for (const auto& s : sections) out += " | " + s.heading + ": '" + s.body + "'";
+        return out;
+    }
+};
+
+class TemplateRegistry {
+    map<string, Document> prototypes;
+
+public:
+    void registerTemplate(const string& name, Document prototype) { prototypes.insert_or_assign(name, std::move(prototype)); }
+
+    Document create(const string& name, const string& title) const {
+        auto it = prototypes.find(name);
+        if (it == prototypes.end()) throw invalid_argument("no template " + name);
+        Document d(it->second);
+        d.title = title;
+        return d;
+    }
+};
+
+int main() {
+    TemplateRegistry reg;
+    reg.registerTemplate("meeting-notes", Document("Meeting", make_shared<Style>("Inter"), {"Agenda", "Notes", "Action Items"}));
+    reg.registerTemplate("invoice", Document("Invoice", make_shared<Style>("Roboto Mono"), {"Bill To", "Items", "Total"}));
+
+    Document a = reg.create("meeting-notes", "Sprint 12 planning");
+    Document b = reg.create("meeting-notes", "Design review");
+    a.sections.emplace_back("Decisions");
+    a.sections[1].body = "Ship on Friday";
+
+    cout << a.str() << "\\n";
+    cout << b.str() << "\\n";
+    cout << "style loads = " << Style::loads << "\\n";
+    cout << boolalpha << "shared style = " << (a.style == b.style) << ", own sections = " << (&a.sections[0] != &b.sections[0]) << "\\n";
+    try {
+        reg.create("memo", "x");
+    } catch (const invalid_argument& e) {
+        cout << e.what() << "\\n";
+    }
+}` }
+      ],
       complexity: `<p><code>create</code>: O(S) for S sections. Style loading: once per template instead of once per document.</p>`,
       followUps: ['Let users save their own document as a new template', 'Sections can contain nested sub-sections: adapt the deep copy']
     }
@@ -3373,6 +10364,7 @@ class SmtpChannelNaive { boolean send(String to, String msg) { return true; } }
       `<p>Hint 2: define <code>interface Channel { String name(); boolean send(String to, String msg); }</code>. SMS truncation belongs in a protected hook or in the SMS channel itself.</p>`,
       `<p>Hint 3: for testing, an anonymous subclass of <code>NotificationSender</code> can return a channel with a failure counter.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "SENT via SMS on attempt 1 (160 chars)\nSENT via EMAIL on attempt 1 (18 chars)\nSENT via TEST on attempt 3 (2 chars)\nFAILED after 3 attempts\nFAILED after 3 attempts\nrecipient required\n" }] },
     solution: {
       approach: `<p>The parent class owns the workflow (validate → create channel → prepare text → retry loop → status). Subclasses override only <code>createChannel()</code> (the factory method) and optionally the <code>prepare</code> hook. Testing uses an anonymous subclass returning a flaky channel, which also demonstrates the "subclass and override" seam.</p>`,
       code: `
@@ -3439,8 +10431,255 @@ public class Main {
         System.out.println(new EmailSender().deliver("asha@mail.com", "Your order shipped"));
         System.out.println(flaky(2).deliver("anyone", "hi"));
         System.out.println(flaky(5).deliver("anyone", "hi"));
+        System.out.println(new SmsSender().deliver("9800000000", "hello"));       // channel rejects the number
+        try {
+            new EmailSender().deliver(" ", "hello");
+        } catch (IllegalArgumentException e) {
+            System.out.println(e.getMessage());
+        }
     }
 }`,
+      alt: [
+        { lang: 'python', code: `
+from abc import ABC, abstractmethod
+
+
+class Channel(ABC):
+    @abstractmethod
+    def name(self) -> str: ...
+
+    @abstractmethod
+    def send(self, to: str, msg: str) -> bool: ...
+
+
+class NotificationSender(ABC):
+    MAX_ATTEMPTS = 3
+
+    @abstractmethod
+    def create_channel(self) -> Channel: ...             # FACTORY METHOD
+
+    def prepare(self, msg: str) -> str:                  # optional hook
+        return msg
+
+    def deliver(self, to: str, msg: str) -> str:         # template method: subclasses fill the gaps
+        if not to or not to.strip():
+            raise ValueError("recipient required")
+        channel = self.create_channel()
+        text = self.prepare(msg)
+        for attempt in range(1, self.MAX_ATTEMPTS + 1):
+            if channel.send(to, text):
+                return f"SENT via {channel.name()} on attempt {attempt} ({len(text)} chars)"
+        return f"FAILED after {self.MAX_ATTEMPTS} attempts"
+
+
+class EmailChannel(Channel):
+    def name(self) -> str:
+        return "EMAIL"
+
+    def send(self, to: str, msg: str) -> bool:
+        return "@" in to
+
+
+class SmsChannel(Channel):
+    def name(self) -> str:
+        return "SMS"
+
+    def send(self, to: str, msg: str) -> bool:
+        return to.startswith("+")
+
+
+class EmailSender(NotificationSender):
+    def create_channel(self) -> Channel:
+        return EmailChannel()
+
+
+class SmsSender(NotificationSender):
+    def create_channel(self) -> Channel:
+        return SmsChannel()
+
+    def prepare(self, msg: str) -> str:
+        return msg if len(msg) <= 160 else msg[:160]
+
+
+def flaky(failures: int) -> NotificationSender:
+    class FlakyChannel(Channel):
+        def __init__(self) -> None:
+            self._left = failures
+
+        def name(self) -> str:
+            return "TEST"
+
+        def send(self, to: str, msg: str) -> bool:
+            succeeded = self._left <= 0              # fails while failures remain
+            self._left -= 1
+            return succeeded
+
+    class FlakySender(NotificationSender):
+        def create_channel(self) -> Channel:
+            return FlakyChannel()
+
+    return FlakySender()
+
+
+if __name__ == "__main__":
+    print(SmsSender().deliver("+919800000000", "x" * 200))
+    print(EmailSender().deliver("asha@mail.com", "Your order shipped"))
+    print(flaky(2).deliver("anyone", "hi"))
+    print(flaky(5).deliver("anyone", "hi"))
+    print(SmsSender().deliver("9800000000", "hello"))
+    try:
+        EmailSender().deliver(" ", "hello")
+    except ValueError as e:
+        print(e)` },
+        { lang: 'ts', code: `
+interface Channel {
+  name(): string;
+  send(to: string, msg: string): boolean;
+}
+
+abstract class NotificationSender {
+  private static readonly MAX_ATTEMPTS = 3;
+
+  protected abstract createChannel(): Channel;            // FACTORY METHOD
+
+  protected prepare(msg: string): string { return msg; }  // optional hook
+
+  deliver(to: string, msg: string): string {              // template method: subclasses fill the gaps
+    if (!to || to.trim() === "") throw new Error("recipient required");
+    const channel = this.createChannel();
+    const text = this.prepare(msg);
+    for (let attempt = 1; attempt <= NotificationSender.MAX_ATTEMPTS; attempt++) {
+      if (channel.send(to, text)) {
+        return \`SENT via \${channel.name()} on attempt \${attempt} (\${text.length} chars)\`;
+      }
+    }
+    return \`FAILED after \${NotificationSender.MAX_ATTEMPTS} attempts\`;
+  }
+}
+
+class EmailSender extends NotificationSender {
+  protected createChannel(): Channel {
+    return { name: () => "EMAIL", send: (to) => to.includes("@") };
+  }
+}
+
+class SmsSender extends NotificationSender {
+  protected createChannel(): Channel {
+    return { name: () => "SMS", send: (to) => to.startsWith("+") };
+  }
+
+  protected override prepare(msg: string): string { return msg.length <= 160 ? msg : msg.substring(0, 160); }
+}
+
+function flaky(failures: number): NotificationSender {
+  return new (class extends NotificationSender {
+    protected createChannel(): Channel {
+      let left = failures;
+      return { name: () => "TEST", send: () => left-- <= 0 };
+    }
+  })();
+}
+
+console.log(new SmsSender().deliver("+919800000000", "x".repeat(200)));
+console.log(new EmailSender().deliver("asha@mail.com", "Your order shipped"));
+console.log(flaky(2).deliver("anyone", "hi"));
+console.log(flaky(5).deliver("anyone", "hi"));
+console.log(new SmsSender().deliver("9800000000", "hello"));
+try {
+  new EmailSender().deliver(" ", "hello");
+} catch (e) {
+  console.log((e as Error).message);
+}` },
+        { lang: 'cpp', code: `
+#include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <string>
+using namespace std;
+
+class Channel {
+public:
+    virtual ~Channel() = default;
+    virtual string name() const = 0;
+    virtual bool send(const string& to, const string& msg) = 0;
+};
+
+class NotificationSender {
+    static constexpr int MAX_ATTEMPTS = 3;
+
+protected:
+    virtual unique_ptr<Channel> createChannel() const = 0;           // FACTORY METHOD
+
+    virtual string prepare(const string& msg) const { return msg; }  // optional hook
+
+public:
+    virtual ~NotificationSender() = default;
+
+    string deliver(const string& to, const string& msg) const {      // template method: not virtual
+        if (to.find_first_not_of(' ') == string::npos) throw invalid_argument("recipient required");
+        auto channel = createChannel();
+        string text = prepare(msg);
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            if (channel->send(to, text)) {
+                return "SENT via " + channel->name() + " on attempt " + to_string(attempt) + " (" + to_string(text.size()) + " chars)";
+            }
+        }
+        return "FAILED after " + to_string(MAX_ATTEMPTS) + " attempts";
+    }
+};
+
+class EmailChannel : public Channel {
+public:
+    string name() const override { return "EMAIL"; }
+    bool send(const string& to, const string&) override { return to.find('@') != string::npos; }
+};
+
+class SmsChannel : public Channel {
+public:
+    string name() const override { return "SMS"; }
+    bool send(const string& to, const string&) override { return !to.empty() && to[0] == '+'; }
+};
+
+class EmailSender : public NotificationSender {
+protected:
+    unique_ptr<Channel> createChannel() const override { return make_unique<EmailChannel>(); }
+};
+
+class SmsSender : public NotificationSender {
+protected:
+    unique_ptr<Channel> createChannel() const override { return make_unique<SmsChannel>(); }
+    string prepare(const string& msg) const override { return msg.size() <= 160 ? msg : msg.substr(0, 160); }
+};
+
+class FlakyChannel : public Channel {
+    int left;
+public:
+    explicit FlakyChannel(int failures) : left(failures) {}
+    string name() const override { return "TEST"; }
+    bool send(const string&, const string&) override { return left-- <= 0; }
+};
+
+class FlakySender : public NotificationSender {
+    int failures;
+public:
+    explicit FlakySender(int f) : failures(f) {}
+protected:
+    unique_ptr<Channel> createChannel() const override { return make_unique<FlakyChannel>(failures); }
+};
+
+int main() {
+    cout << SmsSender().deliver("+919800000000", string(200, 'x')) << "\\n";
+    cout << EmailSender().deliver("asha@mail.com", "Your order shipped") << "\\n";
+    cout << FlakySender(2).deliver("anyone", "hi") << "\\n";
+    cout << FlakySender(5).deliver("anyone", "hi") << "\\n";
+    cout << SmsSender().deliver("9800000000", "hello") << "\\n";
+    try {
+        EmailSender().deliver(" ", "hello");
+    } catch (const invalid_argument& e) {
+        cout << e.what() << "\\n";
+    }
+}` }
+      ],
       complexity: `<p>O(attempts) per delivery (≤ 3). Adding a channel: one subclass overriding <code>createChannel()</code>.</p>`,
       followUps: ['Add exponential backoff between attempts without touching subclasses', 'When would you prefer composition (inject a ChannelFactory) over this inheritance-based design?']
     }
@@ -3477,6 +10716,7 @@ class Sender {
       `<p>Hint 2: one private static class <code>Steps</code> implements all four interfaces and holds the mutable state; <code>Email.builder()</code> returns it typed as <code>FromStep</code>.</p>`,
       `<p>Hint 3: runtime checks still matter for values ('@' present, attachment limit). Copy lists with <code>List.copyOf</code> in the Email constructor.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "Email[from=ops@x.com, to=[asha@x.com], cc=[lead@x.com], subject=Deploy, attachments=0]\nEmail[from=a@x.com, to=[b@x.com, c@x.com], cc=[], subject=Hi, attachments=2]\nbad address: nope\nmax 5 attachments\n" }] },
     solution: {
       approach: `<p><b>Step builder.</b> The public entry returns <code>FromStep</code>; its only method returns <code>ToStep</code>, whose only method returns <code>SubjectStep</code>, which returns <code>OptionalStep</code>. Only <code>OptionalStep</code> has <code>build()</code>, so the compiler guarantees from, to and subject were provided in that order. One private class implements all steps (no extra allocations). Values are still validated at runtime, and the product is immutable.</p>`,
       code: `
@@ -3540,8 +10780,327 @@ public class Main {
             .build();
         System.out.println(e);
         // Email.builder().from("ops@x.com").subject("Hi");   <- does not compile: ToStep has no subject()
+        Email e2 = Email.builder().from("a@x.com").to("b@x.com").subject("Hi")
+            .to("c@x.com").attachment("r.pdf").attachment("s.png").build();
+        System.out.println(e2);
+        try {
+            Email.builder().from("nope");
+        } catch (IllegalArgumentException ex) {
+            System.out.println(ex.getMessage());
+        }
+        try {
+            Email.OptionalStep step = Email.builder().from("a@x.com").to("b@x.com").subject("Many");
+            for (int i = 1; i <= 6; i++) step.attachment("f" + i + ".txt");
+        } catch (IllegalArgumentException ex) {
+            System.out.println(ex.getMessage());
+        }
     }
 }`,
+      alt: [
+        { lang: 'python', code: `
+from typing import Optional, Protocol
+
+
+class Email:
+    # Each step is a Protocol: a type checker (mypy, pyright) rejects a call in the wrong order.
+    # \`from\` is a keyword in Python, so the first step is called from_.
+    class FromStep(Protocol):
+        def from_(self, address: str) -> "Email.ToStep": ...
+
+    class ToStep(Protocol):
+        def to(self, address: str) -> "Email.SubjectStep": ...
+
+    class SubjectStep(Protocol):
+        def subject(self, subject: str) -> "Email.OptionalStep": ...
+
+    class OptionalStep(Protocol):
+        def to(self, address: str) -> "Email.OptionalStep": ...
+        def cc(self, address: str) -> "Email.OptionalStep": ...
+        def body(self, body: str) -> "Email.OptionalStep": ...
+        def attachment(self, file_name: str) -> "Email.OptionalStep": ...
+        def build(self) -> "Email": ...
+
+    def __init__(self, s: "Email._Steps") -> None:
+        self._from = s._from
+        self._subject = s._subject
+        self._body = s._body
+        self._to = tuple(s._to)
+        self._cc = tuple(s._cc)
+        self._attachments = tuple(s._attachments)
+
+    @staticmethod
+    def builder() -> "Email.FromStep":
+        return Email._Steps()
+
+    def __str__(self) -> str:
+        return (f"Email[from={self._from}, to=[{', '.join(self._to)}], cc=[{', '.join(self._cc)}], "
+                f"subject={self._subject}, attachments={len(self._attachments)}]")
+
+    class _Steps:
+        def __init__(self) -> None:
+            self._from: Optional[str] = None
+            self._subject: Optional[str] = None
+            self._body = ""
+            self._to: list[str] = []
+            self._cc: list[str] = []
+            self._attachments: list[str] = []
+
+        @staticmethod
+        def _checked(address: str) -> str:
+            if address is None or "@" not in address:
+                raise ValueError(f"bad address: {address}")
+            return address
+
+        def from_(self, a: str) -> "Email._Steps":
+            self._from = self._checked(a)
+            return self
+
+        def subject(self, s: str) -> "Email._Steps":
+            self._subject = s
+            return self
+
+        def to(self, a: str) -> "Email._Steps":           # one object plays every step
+            self._to.append(self._checked(a))
+            return self
+
+        def cc(self, a: str) -> "Email._Steps":
+            self._cc.append(self._checked(a))
+            return self
+
+        def body(self, b: str) -> "Email._Steps":
+            self._body = b
+            return self
+
+        def attachment(self, f: str) -> "Email._Steps":
+            if len(self._attachments) == 5:
+                raise ValueError("max 5 attachments")
+            self._attachments.append(f)
+            return self
+
+        def build(self) -> "Email":
+            return Email(self)
+
+
+if __name__ == "__main__":
+    e = (Email.builder()
+         .from_("ops@x.com")
+         .to("asha@x.com")
+         .subject("Deploy")
+         .cc("lead@x.com")
+         .body("Done")
+         .build())
+    print(e)
+    # Email.builder().from_("ops@x.com").subject("Hi")   <- the type checker rejects it: ToStep has no subject()
+    e2 = (Email.builder().from_("a@x.com").to("b@x.com").subject("Hi")
+          .to("c@x.com").attachment("r.pdf").attachment("s.png").build())
+    print(e2)
+    try:
+        Email.builder().from_("nope")
+    except ValueError as ex:
+        print(ex)
+    try:
+        step = Email.builder().from_("a@x.com").to("b@x.com").subject("Many")
+        for i in range(1, 7):
+            step.attachment(f"f{i}.txt")
+    except ValueError as ex:
+        print(ex)` },
+        { lang: 'ts', code: `
+interface FromStep { from(address: string): ToStep; }
+interface ToStep { to(address: string): SubjectStep; }
+interface SubjectStep { subject(subject: string): OptionalStep; }
+interface OptionalStep {
+  to(address: string): OptionalStep;
+  cc(address: string): OptionalStep;
+  body(body: string): OptionalStep;
+  attachment(fileName: string): OptionalStep;
+  build(): Email;
+}
+
+class Email {
+  private readonly from: string;
+  private readonly subject: string;
+  private readonly body: string;
+  private readonly to: readonly string[];
+  private readonly cc: readonly string[];
+  private readonly attachments: readonly string[];
+
+  constructor(s: EmailSteps) {                          // call build() instead of this
+    this.from = s.fromAddress;
+    this.subject = s.subjectText;
+    this.body = s.bodyText;
+    this.to = [...s.toList];
+    this.cc = [...s.ccList];
+    this.attachments = [...s.attachmentList];
+  }
+
+  static builder(): FromStep { return new EmailSteps(); }
+
+  toString(): string {
+    return \`Email[from=\${this.from}, to=[\${this.to.join(", ")}], cc=[\${this.cc.join(", ")}], \` +
+      \`subject=\${this.subject}, attachments=\${this.attachments.length}]\`;
+  }
+}
+
+class EmailSteps implements FromStep, ToStep, SubjectStep, OptionalStep {
+  fromAddress = "";
+  subjectText = "";
+  bodyText = "";
+  readonly toList: string[] = [];
+  readonly ccList: string[] = [];
+  readonly attachmentList: string[] = [];
+
+  private static checked(address: string): string {
+    if (!address || !address.includes("@")) throw new Error(\`bad address: \${address}\`);
+    return address;
+  }
+
+  from(a: string): this { this.fromAddress = EmailSteps.checked(a); return this; }
+  subject(s: string): this { this.subjectText = s; return this; }
+  to(a: string): this { this.toList.push(EmailSteps.checked(a)); return this; }
+  cc(a: string): this { this.ccList.push(EmailSteps.checked(a)); return this; }
+  body(b: string): this { this.bodyText = b; return this; }
+
+  attachment(f: string): this {
+    if (this.attachmentList.length === 5) throw new Error("max 5 attachments");
+    this.attachmentList.push(f);
+    return this;
+  }
+
+  build(): Email { return new Email(this); }
+}
+
+const e = Email.builder()
+  .from("ops@x.com")
+  .to("asha@x.com")
+  .subject("Deploy")
+  .cc("lead@x.com")
+  .body("Done")
+  .build();
+console.log(String(e));
+// Email.builder().from("ops@x.com").subject("Hi");   <- does not compile: ToStep has no subject()
+const e2 = Email.builder().from("a@x.com").to("b@x.com").subject("Hi")
+  .to("c@x.com").attachment("r.pdf").attachment("s.png").build();
+console.log(String(e2));
+try {
+  Email.builder().from("nope");
+} catch (ex) {
+  console.log((ex as Error).message);
+}
+try {
+  const step = Email.builder().from("a@x.com").to("b@x.com").subject("Many");
+  for (let i = 1; i <= 6; i++) step.attachment(\`f\${i}.txt\`);
+} catch (ex) {
+  console.log((ex as Error).message);
+}` },
+        { lang: 'cpp', code: `
+#include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+using namespace std;
+
+class Email {
+public:
+    class OptionalStep {
+    public:
+        virtual ~OptionalStep() = default;
+        virtual OptionalStep& to(const string& address) = 0;
+        virtual OptionalStep& cc(const string& address) = 0;
+        virtual OptionalStep& body(const string& body) = 0;
+        virtual OptionalStep& attachment(const string& fileName) = 0;
+        virtual Email build() = 0;
+    };
+
+    class SubjectStep {
+    public:
+        virtual ~SubjectStep() = default;
+        virtual OptionalStep& subject(const string& subject) = 0;
+    };
+
+    class ToStep {
+    public:
+        virtual ~ToStep() = default;
+        virtual SubjectStep& to(const string& address) = 0;
+    };
+
+    class FromStep {
+    public:
+        virtual ~FromStep() = default;
+        virtual ToStep& from(const string& address) = 0;
+    };
+
+    static unique_ptr<FromStep> builder();
+
+    string str() const {
+        auto join = [](const vector<string>& v) {
+            string out;
+            for (size_t i = 0; i < v.size(); i++) out += (i ? ", " : "") + v[i];
+            return out;
+        };
+        return "Email[from=" + from + ", to=[" + join(to) + "], cc=[" + join(cc) + "], subject=" + subject +
+               ", attachments=" + to_string(attachments.size()) + "]";
+    }
+
+private:
+    class Steps;
+    explicit Email(const Steps& s);
+
+    string from, subject, body;
+    vector<string> to, cc, attachments;
+};
+
+class Email::Steps : public Email::FromStep, public Email::ToStep, public Email::SubjectStep, public Email::OptionalStep {
+public:
+    string fromAddress, subjectText, bodyText;
+    vector<string> toList, ccList, attachmentList;
+
+    static string checked(const string& address) {
+        if (address.find('@') == string::npos) throw invalid_argument("bad address: " + address);
+        return address;
+    }
+
+    // one object plays every step; the static type a caller holds decides which methods it can call
+    ToStep& from(const string& a) override { fromAddress = checked(a); return *this; }
+    OptionalStep& subject(const string& s) override { subjectText = s; return *this; }
+    Steps& to(const string& a) override { toList.push_back(checked(a)); return *this; }
+    OptionalStep& cc(const string& a) override { ccList.push_back(checked(a)); return *this; }
+    OptionalStep& body(const string& b) override { bodyText = b; return *this; }
+    OptionalStep& attachment(const string& f) override {
+        if (attachmentList.size() == 5) throw invalid_argument("max 5 attachments");
+        attachmentList.push_back(f);
+        return *this;
+    }
+    Email build() override { return Email(*this); }
+};
+
+Email::Email(const Steps& s)
+    : from(s.fromAddress), subject(s.subjectText), body(s.bodyText), to(s.toList), cc(s.ccList), attachments(s.attachmentList) {}
+
+unique_ptr<Email::FromStep> Email::builder() { return make_unique<Steps>(); }
+
+int main() {
+    auto b1 = Email::builder();
+    Email e = b1->from("ops@x.com").to("asha@x.com").subject("Deploy").cc("lead@x.com").body("Done").build();
+    cout << e.str() << "\\n";
+    // Email::builder()->from("ops@x.com").subject("Hi");   <- does not compile: ToStep has no subject()
+    auto b2 = Email::builder();
+    Email e2 = b2->from("a@x.com").to("b@x.com").subject("Hi").to("c@x.com").attachment("r.pdf").attachment("s.png").build();
+    cout << e2.str() << "\\n";
+    try {
+        Email::builder()->from("nope");
+    } catch (const invalid_argument& ex) {
+        cout << ex.what() << "\\n";
+    }
+    try {
+        auto b3 = Email::builder();
+        Email::OptionalStep& step = b3->from("a@x.com").to("b@x.com").subject("Many");
+        for (int i = 1; i <= 6; i++) step.attachment("f" + to_string(i) + ".txt");
+    } catch (const invalid_argument& ex) {
+        cout << ex.what() << "\\n";
+    }
+}` }
+      ],
       complexity: `<p>O(1) per step; <code>build()</code> O(T + C + A) for the list copies. Zero runtime cost for the ordering guarantee — it is all in the types.</p>`,
       followUps: ['The single to() method satisfies ToStep (returns SubjectStep) and OptionalStep (returns OptionalStep) by returning Steps, which implements both. Explain why covariant return types make this legal', 'When is a step builder overkill?']
     }
@@ -3578,6 +11137,7 @@ class TenantContextNaive {
       `<p>Hint 2: <code>computeIfAbsent</code> guarantees one creation per key. To avoid holding the map's bin lock during a 50 ms load, store a lightweight holder (e.g. a <code>FutureTask</code> or memoizing wrapper) and run the expensive part outside.</p>`,
       `<p>Hint 3: enforce the cap before inserting new keys (an <code>AtomicInteger</code> counter or checking size; explain the small race and how you handle it), and make <code>evict</code> a <code>remove</code>.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "distinct contexts = 2, loads = 2\nafter evict, new acme? true\nbad tenant id: 'Bad_ID'\nbad tenant id: ''\ntenant limit reached\nafter evict, overflow ok? true\ntotal loads = 1002\n" }] },
     solution: {
       approach: `<p><b>Multiton with per-key futures.</b> The map stores <code>FutureTask&lt;TenantContext&gt;</code>. <code>computeIfAbsent</code> inserts a not-yet-run task atomically (cheap, so the bin lock is held only briefly). The thread whose task was inserted runs it; everyone else calls <code>get()</code> on the same future and waits only for <b>that</b> tenant. Existing tenants are served by a lock-free <code>get</code> + completed future. A counter enforces the cap; if creation fails, the entry is removed so a later call can retry. <code>evict</code> removes the entry and decrements the counter.</p>`,
       code: `
@@ -3639,12 +11199,333 @@ public class Main {
         }
         go.countDown();
         for (Future<?> f : fs) f.get();
-        pool.shutdown();
         System.out.println("distinct contexts = " + seen.size() + ", loads = " + TenantContext.LOADS.get());   // 2, 2
         TenantContext.evict("acme");
         System.out.println("after evict, new acme? " + !seen.contains(TenantContext.of("acme")));
+        for (String bad : new String[] {"Bad_ID", ""}) {
+            try {
+                TenantContext.of(bad);
+            } catch (IllegalArgumentException e) {
+                System.out.println(e.getMessage() + ": '" + bad + "'");
+            }
+        }
+        // fill the registry up to MAX_TENANTS (globex and acme are already in)
+        List<Future<?>> fill = new ArrayList<>();
+        for (int i = 0; i < TenantContext.MAX_TENANTS - 2; i++) {
+            String id = "t" + i;
+            fill.add(pool.submit(() -> TenantContext.of(id)));
+        }
+        for (Future<?> f : fill) f.get();
+        try {
+            TenantContext.of("overflow");
+        } catch (IllegalStateException e) {
+            System.out.println(e.getMessage());
+        }
+        TenantContext.evict("t0");
+        System.out.println("after evict, overflow ok? " + (TenantContext.of("overflow") != null));
+        System.out.println("total loads = " + TenantContext.LOADS.get());
+        pool.shutdown();
     }
 }`,
+      alt: [
+        { lang: 'python', code: `
+import re
+import threading
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
+from types import MappingProxyType
+from typing import Mapping
+
+TENANT_ID = re.compile(r"[a-z0-9-]{1,32}")
+
+
+class TenantContext:
+    MAX_TENANTS = 1000
+    loads = 0
+    _registry: dict[str, "Future[TenantContext]"] = {}
+    _count = 0
+    _lock = threading.Lock()                         # guards inserts, removals and the counters
+
+    def __init__(self, tenant_id: str) -> None:      # call TenantContext.of(), never this directly
+        self.tenant_id = tenant_id
+        with TenantContext._lock:
+            TenantContext.loads += 1
+        time.sleep(0.05)                             # slow load
+        self.settings: Mapping[str, str] = MappingProxyType({"plan": "pro", "region": "ap-south-1"})
+
+    @classmethod
+    def of(cls, tenant_id: str) -> "TenantContext":
+        if tenant_id is None or not TENANT_ID.fullmatch(tenant_id):
+            raise ValueError("bad tenant id")
+        task = cls._registry.get(tenant_id)          # fast path: no lock for tenants that already exist
+        mine = False
+        if task is None:
+            with cls._lock:
+                task = cls._registry.get(tenant_id)
+                if task is None:
+                    if cls._count >= cls.MAX_TENANTS:
+                        raise RuntimeError("tenant limit reached")
+                    cls._count += 1
+                    task = Future()                  # cheap: nothing has run yet
+                    cls._registry[tenant_id] = task
+                    mine = True
+        if mine:                                     # only the inserting thread loads
+            try:
+                task.set_result(cls(tenant_id))
+            except Exception as e:
+                task.set_exception(e)
+        try:
+            return task.result()                     # others wait for THIS tenant only
+        except Exception as e:
+            with cls._lock:
+                if cls._registry.get(tenant_id) is task:
+                    del cls._registry[tenant_id]     # allow retry later
+                    cls._count -= 1
+            raise RuntimeError(f"failed to load tenant {tenant_id}") from e
+
+    @classmethod
+    def evict(cls, tenant_id: str) -> None:
+        with cls._lock:
+            if cls._registry.pop(tenant_id, None) is not None:
+                cls._count -= 1
+
+
+if __name__ == "__main__":
+    pool = ThreadPoolExecutor(max_workers=32)
+    go = threading.Event()
+    seen: set[TenantContext] = set()
+
+    def work(tenant: str) -> None:
+        go.wait()
+        ctx = TenantContext.of(tenant)
+        with TenantContext._lock:
+            seen.add(ctx)
+
+    jobs = [pool.submit(work, "globex" if i % 10 == 0 else "acme") for i in range(100)]
+    go.set()
+    for j in jobs:
+        j.result()
+    print(f"distinct contexts = {len(seen)}, loads = {TenantContext.loads}")
+    TenantContext.evict("acme")
+    print("after evict, new acme?", str(TenantContext.of("acme") not in seen).lower())
+    for bad in ("Bad_ID", ""):
+        try:
+            TenantContext.of(bad)
+        except ValueError as e:
+            print(f"{e}: '{bad}'")
+    # fill the registry up to MAX_TENANTS (globex and acme are already in)
+    fill = [pool.submit(TenantContext.of, f"t{i}") for i in range(TenantContext.MAX_TENANTS - 2)]
+    for f in fill:
+        f.result()
+    try:
+        TenantContext.of("overflow")
+    except RuntimeError as e:
+        print(e)
+    TenantContext.evict("t0")
+    print("after evict, overflow ok?", str(TenantContext.of("overflow") is not None).lower())
+    print("total loads =", TenantContext.loads)
+    pool.shutdown()` },
+        { lang: 'ts', code: `
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+class TenantContext {
+  static readonly MAX_TENANTS = 1000;
+  static loads = 0;
+  private static readonly registry = new Map<string, Promise<TenantContext>>();
+  private static count = 0;
+
+  readonly settings: ReadonlyMap<string, string> = new Map([["plan", "pro"], ["region", "ap-south-1"]]);
+
+  private constructor(readonly tenantId: string) {
+    TenantContext.loads++;
+  }
+
+  private static async load(tenantId: string): Promise<TenantContext> {
+    const ctx = new TenantContext(tenantId);
+    await sleep(50);                                    // slow load
+    return ctx;
+  }
+
+  static async of(tenantId: string): Promise<TenantContext> {
+    if (!/^[a-z0-9-]{1,32}$/.test(tenantId)) throw new Error("bad tenant id");
+    // Single thread: nothing else runs between this lookup and the insert, so no lock is needed.
+    let task = TenantContext.registry.get(tenantId);
+    if (!task) {
+      if (TenantContext.count >= TenantContext.MAX_TENANTS) throw new Error("tenant limit reached");
+      TenantContext.count++;
+      task = TenantContext.load(tenantId);              // the first caller starts the load, the rest await the same promise
+      TenantContext.registry.set(tenantId, task);
+    }
+    try {
+      return await task;
+    } catch {
+      if (TenantContext.registry.get(tenantId) === task) {      // allow retry later
+        TenantContext.registry.delete(tenantId);
+        TenantContext.count--;
+      }
+      throw new Error(\`failed to load tenant \${tenantId}\`);
+    }
+  }
+
+  static evict(tenantId: string): void {
+    if (TenantContext.registry.delete(tenantId)) TenantContext.count--;
+  }
+}
+
+async function main(): Promise<void> {
+  const seen = new Set<TenantContext>();
+  await Promise.all(Array.from({ length: 100 }, async (_, i) => {
+    seen.add(await TenantContext.of(i % 10 === 0 ? "globex" : "acme"));
+  }));
+  console.log(\`distinct contexts = \${seen.size}, loads = \${TenantContext.loads}\`);
+  TenantContext.evict("acme");
+  console.log(\`after evict, new acme? \${!seen.has(await TenantContext.of("acme"))}\`);
+  for (const bad of ["Bad_ID", ""]) {
+    try {
+      await TenantContext.of(bad);
+    } catch (e) {
+      console.log(\`\${(e as Error).message}: '\${bad}'\`);
+    }
+  }
+  // fill the registry up to MAX_TENANTS (globex and acme are already in)
+  await Promise.all(Array.from({ length: TenantContext.MAX_TENANTS - 2 }, (_, i) => TenantContext.of(\`t\${i}\`)));
+  try {
+    await TenantContext.of("overflow");
+  } catch (e) {
+    console.log((e as Error).message);
+  }
+  TenantContext.evict("t0");
+  console.log(\`after evict, overflow ok? \${(await TenantContext.of("overflow")) !== undefined}\`);
+  console.log(\`total loads = \${TenantContext.loads}\`);
+}
+
+main();` },
+        { lang: 'cpp', code: `
+#include <atomic>
+#include <chrono>
+#include <future>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <set>
+#include <shared_mutex>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
+using namespace std;
+
+class TenantContext {
+public:
+    static constexpr int MAX_TENANTS = 1000;
+    static inline atomic<int> LOADS{0};
+
+    const string tenantId;
+    const map<string, string> settings;
+
+    static shared_ptr<const TenantContext> of(const string& tenantId) {
+        bool valid = !tenantId.empty() && tenantId.size() <= 32;
+        for (unsigned char c : tenantId) valid = valid && (islower(c) || isdigit(c) || c == '-');
+        if (!valid) throw invalid_argument("bad tenant id");
+
+        shared_future<shared_ptr<const TenantContext>> task;
+        promise<shared_ptr<const TenantContext>> mine;
+        bool inserted = false;
+        {
+            shared_lock<shared_mutex> reader(lock);          // fast path: readers do not block each other
+            auto it = registry.find(tenantId);
+            if (it != registry.end()) task = it->second;
+        }
+        if (!task.valid()) {
+            unique_lock<shared_mutex> writer(lock);
+            auto it = registry.find(tenantId);
+            if (it != registry.end()) {
+                task = it->second;
+            } else {
+                if (count >= MAX_TENANTS) throw runtime_error("tenant limit reached");
+                count++;
+                task = mine.get_future().share();            // cheap: nothing has run yet
+                registry[tenantId] = task;
+                inserted = true;
+            }
+        }
+        if (inserted) {                                      // only the inserting thread loads
+            try {
+                mine.set_value(shared_ptr<const TenantContext>(new TenantContext(tenantId)));
+            } catch (...) {
+                unique_lock<shared_mutex> writer(lock);      // allow retry later
+                registry.erase(tenantId);
+                count--;
+                mine.set_exception(current_exception());
+            }
+        }
+        try {
+            return task.get();                               // others wait for THIS tenant only
+        } catch (...) {
+            throw runtime_error("failed to load tenant " + tenantId);
+        }
+    }
+
+    static void evict(const string& tenantId) {
+        unique_lock<shared_mutex> writer(lock);
+        if (registry.erase(tenantId) > 0) count--;
+    }
+
+private:
+    explicit TenantContext(string id) : tenantId(std::move(id)), settings{{"plan", "pro"}, {"region", "ap-south-1"}} {
+        LOADS++;
+        this_thread::sleep_for(chrono::milliseconds(50));    // slow load
+    }
+
+    static inline shared_mutex lock;
+    static inline map<string, shared_future<shared_ptr<const TenantContext>>> registry;
+    static inline int count = 0;
+};
+
+int main() {
+    using Ctx = shared_ptr<const TenantContext>;
+    atomic<bool> go{false};
+    vector<Ctx> results(100);
+    vector<thread> threads;
+    for (int i = 0; i < 100; i++) {
+        threads.emplace_back([&, i] {
+            while (!go) this_thread::yield();
+            results[i] = TenantContext::of(i % 10 == 0 ? "globex" : "acme");
+        });
+    }
+    go = true;
+    for (auto& t : threads) t.join();
+    set<Ctx> seen(results.begin(), results.end());
+    cout << "distinct contexts = " << seen.size() << ", loads = " << TenantContext::LOADS << "\\n";
+    TenantContext::evict("acme");
+    cout << boolalpha << "after evict, new acme? " << (seen.count(TenantContext::of("acme")) == 0) << "\\n";
+    for (const string bad : {"Bad_ID", ""}) {
+        try {
+            TenantContext::of(bad);
+        } catch (const invalid_argument& e) {
+            cout << e.what() << ": '" << bad << "'\\n";
+        }
+    }
+    // fill the registry up to MAX_TENANTS (globex and acme are already in)
+    atomic<int> next{0};
+    vector<thread> workers;
+    for (int w = 0; w < 32; w++) {
+        workers.emplace_back([&] {
+            for (int i; (i = next++) < TenantContext::MAX_TENANTS - 2;) TenantContext::of("t" + to_string(i));
+        });
+    }
+    for (auto& t : workers) t.join();
+    try {
+        TenantContext::of("overflow");
+    } catch (const runtime_error& e) {
+        cout << e.what() << "\\n";
+    }
+    TenantContext::evict("t0");
+    cout << "after evict, overflow ok? " << (TenantContext::of("overflow") != nullptr) << "\\n";
+    cout << "total loads = " << TenantContext::LOADS << "\\n";
+}` }
+      ],
       complexity: `<p>Existing tenant: O(1) lock-free read. New tenant: one load per key; concurrent callers for the same key wait on its future; other keys proceed in parallel. Memory O(T) for T tenants.</p>`,
       followUps: ['Replace the hard cap with LRU eviction (e.g. Caffeine) — what changes?', 'Why must the function passed to computeIfAbsent never do slow I/O or touch the same map?', 'How does this relate to Spring\'s request/session scopes?']
     }
@@ -3676,6 +11557,7 @@ class InvoiceService {
       `<p>Hint 2: for thread-safe lazy singletons, synchronise creation per binding (double-checked with a volatile field, or a lock per binding). Do not hold a global lock while a factory runs other <code>get</code>s.</p>`,
       `<p>Hint 3: for cycle detection, keep a <code>ThreadLocal&lt;Deque&lt;Class&lt;?&gt;&gt;&gt;</code> of types currently being built by this thread; if <code>get(X)</code> finds X already on the stack, report the path from X to X.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "different services: true, shared clock: true\nsingleton is stable: true\nno binding for Missing\nalready bound: Clock\ncircular dependency A -> B -> A\ncontainer still works: 42\n" }] },
     solution: {
       approach: `<p>The container is a map from <code>Class</code> to <code>Binding</code>. <code>get</code> looks up the binding (missing → clear error), pushes the type onto a per-thread "currently creating" stack (finding it already there → cycle error with the path), then either runs the factory (PROTOTYPE) or returns the cached singleton, creating it under the binding's own lock with double-checked locking on a volatile field (SINGLETON). The type is popped in <code>finally</code>. Factories receive the container, so dependencies resolve recursively — this is exactly how DI containers combine Factory, Singleton and Prototype.</p>`,
       code: `
@@ -3735,6 +11617,7 @@ class OrderService {
 }
 class A { A(B b) { } }
 class B { B(A a) { } }
+class Missing { }
 
 public class Main {
     public static void main(String[] args) {
@@ -3744,6 +11627,17 @@ public class Main {
 
         OrderService s1 = c.get(OrderService.class), s2 = c.get(OrderService.class);
         System.out.println("different services: " + (s1 != s2) + ", shared clock: " + (s1.clock == s2.clock));
+        System.out.println("singleton is stable: " + (c.get(Clock.class) == c.get(Clock.class)));
+        try {
+            c.get(Missing.class);
+        } catch (IllegalStateException e) {
+            System.out.println(e.getMessage());          // no binding for Missing
+        }
+        try {
+            c.bind(Clock.class, k -> new Clock(), Scope.PROTOTYPE);
+        } catch (IllegalStateException e) {
+            System.out.println(e.getMessage());          // already bound: Clock
+        }
 
         c.bind(A.class, k -> new A(k.get(B.class)), Scope.SINGLETON);
         c.bind(B.class, k -> new B(k.get(A.class)), Scope.SINGLETON);
@@ -3752,8 +11646,308 @@ public class Main {
         } catch (IllegalStateException e) {
             System.out.println(e.getMessage());          // circular dependency A -> B -> A
         }
+        System.out.println("container still works: " + c.get(OrderService.class).clock.now());
     }
 }`,
+      alt: [
+        { lang: 'python', code: `
+import threading
+from enum import Enum, auto
+from typing import Any, Callable, Generic, Optional, TypeVar
+
+T = TypeVar("T")
+
+
+class Scope(Enum):
+    SINGLETON = auto()
+    PROTOTYPE = auto()
+
+
+class _Binding(Generic[T]):
+    def __init__(self, factory: "Callable[[Container], T]", scope: Scope) -> None:
+        self.factory = factory
+        self.scope = scope
+        self.instance: Optional[T] = None             # only used for SINGLETON
+        self.lock = threading.RLock()                 # per-binding lock; re-entrant so a factory may call get()
+
+
+class Container:
+    def __init__(self) -> None:
+        self._bindings: dict[type, _Binding[Any]] = {}
+        self._bind_lock = threading.Lock()
+        self._creating = threading.local()            # each thread has its own "currently creating" stack
+
+    def bind(self, type_: type[T], factory: "Callable[[Container], T]", scope: Scope) -> None:
+        with self._bind_lock:
+            if type_ in self._bindings:
+                raise RuntimeError(f"already bound: {type_.__name__}")
+            self._bindings[type_] = _Binding(factory, scope)
+
+    def get(self, type_: type[T]) -> T:
+        b = self._bindings.get(type_)
+        if b is None:
+            raise RuntimeError(f"no binding for {type_.__name__}")
+        if b.scope is Scope.SINGLETON and b.instance is not None:
+            return b.instance                          # fast path
+
+        stack: list[type] = self._creating.__dict__.setdefault("stack", [])
+        if type_ in stack:
+            path = "".join(t.__name__ + " -> " for t in stack[stack.index(type_):])
+            raise RuntimeError(f"circular dependency {path}{type_.__name__}")
+        stack.append(type_)
+        try:
+            if b.scope is Scope.PROTOTYPE:
+                return b.factory(self)
+            with b.lock:
+                if b.instance is None:
+                    b.instance = b.factory(self)
+                return b.instance
+        finally:
+            stack.pop()
+
+
+class Clock:
+    def now(self) -> int:
+        return 42
+
+
+class OrderService:
+    def __init__(self, clock: Clock) -> None:
+        self.clock = clock
+
+
+class A:
+    def __init__(self, b: "B") -> None:
+        pass
+
+
+class B:
+    def __init__(self, a: A) -> None:
+        pass
+
+
+class Missing:
+    pass
+
+
+if __name__ == "__main__":
+    c = Container()
+    c.bind(Clock, lambda k: Clock(), Scope.SINGLETON)
+    c.bind(OrderService, lambda k: OrderService(k.get(Clock)), Scope.PROTOTYPE)
+
+    s1, s2 = c.get(OrderService), c.get(OrderService)
+    print(f"different services: {str(s1 is not s2).lower()}, shared clock: {str(s1.clock is s2.clock).lower()}")
+    print("singleton is stable:", str(c.get(Clock) is c.get(Clock)).lower())
+    try:
+        c.get(Missing)
+    except RuntimeError as e:
+        print(e)
+    try:
+        c.bind(Clock, lambda k: Clock(), Scope.PROTOTYPE)
+    except RuntimeError as e:
+        print(e)
+
+    c.bind(A, lambda k: A(k.get(B)), Scope.SINGLETON)
+    c.bind(B, lambda k: B(k.get(A)), Scope.SINGLETON)
+    try:
+        c.get(A)
+    except RuntimeError as e:
+        print(e)
+    print("container still works:", c.get(OrderService).clock.now())` },
+        { lang: 'ts', code: `
+type Token<T> = abstract new (...args: never[]) => T;      // a class used as the lookup key
+
+enum Scope { SINGLETON, PROTOTYPE }
+
+class Binding<T> {
+  instance?: T;                                            // only used for SINGLETON
+
+  constructor(readonly factory: (c: Container) => T, readonly scope: Scope) {}
+}
+
+class Container {
+  private readonly bindings = new Map<Token<unknown>, Binding<unknown>>();
+  private readonly creating: Token<unknown>[] = [];        // JavaScript has one thread, so one stack is enough
+
+  bind<T>(type: Token<T>, factory: (c: Container) => T, scope: Scope): void {
+    if (this.bindings.has(type)) throw new Error(\`already bound: \${type.name}\`);
+    this.bindings.set(type, new Binding(factory, scope));
+  }
+
+  get<T>(type: Token<T>): T {
+    const b = this.bindings.get(type) as Binding<T> | undefined;
+    if (!b) throw new Error(\`no binding for \${type.name}\`);
+    if (b.scope === Scope.SINGLETON && b.instance !== undefined) return b.instance;   // fast path
+
+    const at = this.creating.indexOf(type);
+    if (at >= 0) {
+      const path = this.creating.slice(at).map((t) => t.name + " -> ").join("");
+      throw new Error(\`circular dependency \${path}\${type.name}\`);
+    }
+    this.creating.push(type);
+    try {
+      if (b.scope === Scope.PROTOTYPE) return b.factory(this);
+      b.instance ??= b.factory(this);
+      return b.instance;
+    } finally {
+      this.creating.pop();
+    }
+  }
+}
+
+class Clock { now(): number { return 42; } }
+class OrderService { constructor(readonly clock: Clock) {} }
+class A { constructor(_b: B) {} }
+class B { constructor(_a: A) {} }
+class Missing {}
+
+const c = new Container();
+c.bind(Clock, () => new Clock(), Scope.SINGLETON);
+c.bind(OrderService, (k) => new OrderService(k.get(Clock)), Scope.PROTOTYPE);
+
+const s1 = c.get(OrderService), s2 = c.get(OrderService);
+console.log(\`different services: \${s1 !== s2}, shared clock: \${s1.clock === s2.clock}\`);
+console.log(\`singleton is stable: \${c.get(Clock) === c.get(Clock)}\`);
+try {
+  c.get(Missing);
+} catch (e) {
+  console.log((e as Error).message);
+}
+try {
+  c.bind(Clock, () => new Clock(), Scope.PROTOTYPE);
+} catch (e) {
+  console.log((e as Error).message);
+}
+
+c.bind(A, (k) => new A(k.get(B)), Scope.SINGLETON);
+c.bind(B, (k) => new B(k.get(A)), Scope.SINGLETON);
+try {
+  c.get(A);
+} catch (e) {
+  console.log((e as Error).message);
+}
+console.log(\`container still works: \${c.get(OrderService).clock.now()}\`);` },
+        { lang: 'cpp', code: `
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <stdexcept>
+#include <string>
+#include <typeindex>
+#include <unordered_map>
+#include <vector>
+using namespace std;
+
+enum class Scope { SINGLETON, PROTOTYPE };
+
+// C++ type names are mangled, so each bindable type gets a readable name for error messages.
+template <class T> struct TypeName;
+#define TYPE_NAME(T) template <> struct TypeName<T> { static constexpr const char* value = #T; }
+
+class Container {
+    struct Binding {
+        function<shared_ptr<void>(Container&)> factory;
+        Scope scope;
+        string name;
+        shared_ptr<void> instance;                    // only used for SINGLETON
+        recursive_mutex lock;                         // per-binding lock; re-entrant so a factory may call get()
+    };
+
+    unordered_map<type_index, unique_ptr<Binding>> bindings;
+    mutex bindLock;
+    static inline thread_local vector<pair<type_index, string>> creating;   // one stack per thread
+
+public:
+    template <class T>
+    void bind(function<shared_ptr<T>(Container&)> factory, Scope scope) {
+        lock_guard<mutex> g(bindLock);
+        string name = TypeName<T>::value;
+        if (bindings.count(typeid(T))) throw logic_error("already bound: " + name);
+        auto b = make_unique<Binding>();
+        b->factory = [f = std::move(factory)](Container& c) { return static_pointer_cast<void>(f(c)); };
+        b->scope = scope;
+        b->name = name;
+        bindings[typeid(T)] = std::move(b);
+    }
+
+    template <class T>
+    shared_ptr<T> get() {
+        Binding* b;
+        {
+            lock_guard<mutex> g(bindLock);
+            auto it = bindings.find(typeid(T));
+            if (it == bindings.end()) throw logic_error(string("no binding for ") + TypeName<T>::value);
+            b = it->second.get();
+        }
+        if (b->scope == Scope::SINGLETON) {
+            lock_guard<recursive_mutex> g(b->lock);
+            if (b->instance) return static_pointer_cast<T>(b->instance);    // fast path
+        }
+
+        type_index key(typeid(T));
+        for (size_t i = 0; i < creating.size(); i++) {
+            if (creating[i].first == key) {
+                string path;
+                for (size_t j = i; j < creating.size(); j++) path += creating[j].second + " -> ";
+                throw logic_error("circular dependency " + path + b->name);
+            }
+        }
+        creating.emplace_back(key, b->name);
+        struct Pop { ~Pop() { creating.pop_back(); } } pop;                 // RAII: always leave the stack clean
+
+        if (b->scope == Scope::PROTOTYPE) return static_pointer_cast<T>(b->factory(*this));
+        lock_guard<recursive_mutex> g(b->lock);
+        if (!b->instance) b->instance = b->factory(*this);
+        return static_pointer_cast<T>(b->instance);
+    }
+};
+
+struct Clock { long long now() const { return 42; } };
+struct OrderService {
+    shared_ptr<Clock> clock;
+    explicit OrderService(shared_ptr<Clock> c) : clock(std::move(c)) {}
+};
+struct B;
+struct A { explicit A(shared_ptr<B>) {} };
+struct B { explicit B(shared_ptr<A>) {} };
+struct Missing {};
+
+TYPE_NAME(Clock);
+TYPE_NAME(OrderService);
+TYPE_NAME(A);
+TYPE_NAME(B);
+TYPE_NAME(Missing);
+
+int main() {
+    Container c;
+    c.bind<Clock>([](Container&) { return make_shared<Clock>(); }, Scope::SINGLETON);
+    c.bind<OrderService>([](Container& k) { return make_shared<OrderService>(k.get<Clock>()); }, Scope::PROTOTYPE);
+
+    auto s1 = c.get<OrderService>(), s2 = c.get<OrderService>();
+    cout << boolalpha << "different services: " << (s1 != s2) << ", shared clock: " << (s1->clock == s2->clock) << "\\n";
+    cout << "singleton is stable: " << (c.get<Clock>() == c.get<Clock>()) << "\\n";
+    try {
+        c.get<Missing>();
+    } catch (const logic_error& e) {
+        cout << e.what() << "\\n";
+    }
+    try {
+        c.bind<Clock>([](Container&) { return make_shared<Clock>(); }, Scope::PROTOTYPE);
+    } catch (const logic_error& e) {
+        cout << e.what() << "\\n";
+    }
+
+    c.bind<A>([](Container& k) { return make_shared<A>(k.get<B>()); }, Scope::SINGLETON);
+    c.bind<B>([](Container& k) { return make_shared<B>(k.get<A>()); }, Scope::SINGLETON);
+    try {
+        c.get<A>();
+    } catch (const logic_error& e) {
+        cout << e.what() << "\\n";
+    }
+    cout << "container still works: " << c.get<OrderService>()->clock->now() << "\\n";
+}` }
+      ],
       complexity: `<p><code>get</code>: O(1) lookup + O(D) cycle check for current creation depth D; singleton fast path is one volatile read. Memory O(bindings).</p>`,
       followUps: ['Two threads build singletons A and B that depend on each other in opposite orders: can the per-binding locks deadlock? How do real containers avoid it (eager creation at startup)?', 'Add constructor injection by reflection instead of explicit factories', 'Add a request scope']
     }
@@ -3782,6 +11976,7 @@ class RequestHandlerNaive {
       `<p>Hint 2: one <code>ConcurrentLinkedQueue&lt;byte[]&gt;</code> per class plus an <code>AtomicInteger</code> idle counter per class to enforce <code>maxIdlePerClass</code> without calling the O(n) <code>size()</code>.</p>`,
       `<p>Hint 3: in <code>release</code>, find the class by exact length; <code>Arrays.fill(buf, (byte) 0)</code>; increment the idle counter only if below the limit, else drop. Count hits/misses with <code>LongAdder</code>.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "got 4096\nreused: true, zeroed: true\noversize: 20000\nhits=1 misses=2\nidle = 0\nidle = 1\nbytesNeeded >= 1\nidle with limit 1 = 1\n" }] },
     solution: {
       approach: `<p>Three independent sub-pools, one per size class, each a lock-free queue with an atomic idle counter. <code>acquire</code> picks the smallest fitting class, polls a buffer (hit) or allocates (miss); oversize requests bypass the pool. <code>release</code> zeroes the buffer and returns it to its class if there is room. Because a buffer is either in a queue or held by exactly one caller, the same buffer is never handed out twice — as long as callers do not release twice, which a production version would guard with a lease object (see the topic code).</p>`,
       code: `
@@ -3830,6 +12025,12 @@ final class BufferPool {
         }
         queues.get(c).offer(buf);
     }
+
+    int idleCount() {
+        int total = 0;
+        for (AtomicInteger n : idle) total += n.get();
+        return total;
+    }
 }
 
 public class Main {
@@ -3843,8 +12044,246 @@ public class Main {
         System.out.println("reused: " + (a == b) + ", zeroed: " + (b[0] == 0));   // true, true
         System.out.println("oversize: " + pool.acquire(20000).length);            // 20000
         System.out.println("hits=" + pool.hits.sum() + " misses=" + pool.misses.sum());
+        System.out.println("idle = " + pool.idleCount());         // 0 (b is still in use)
+        pool.release(b);
+        pool.release(new byte[100]);                              // not a pool size: ignored
+        System.out.println("idle = " + pool.idleCount());         // 1
+        try {
+            pool.acquire(0);
+        } catch (IllegalArgumentException e) {
+            System.out.println(e.getMessage());
+        }
+        BufferPool small = new BufferPool(1);
+        byte[] x = small.acquire(10), y = small.acquire(10);
+        small.release(x);
+        small.release(y);                                         // class is full: dropped
+        System.out.println("idle with limit 1 = " + small.idleCount());
     }
 }`,
+      alt: [
+        { lang: 'python', code: `
+import bisect
+import threading
+from collections import deque
+
+
+class BufferPool:
+    SIZES = (1024, 4096, 16384)
+
+    def __init__(self, max_idle_per_class: int) -> None:
+        self._max_idle = max_idle_per_class
+        self._queues: list[deque[bytearray]] = [deque() for _ in self.SIZES]
+        self._lock = threading.Lock()                    # guards the queues and the counters
+        self.hits = 0
+        self.misses = 0
+
+    @classmethod
+    def _class_for(cls, n: int) -> int:
+        i = bisect.bisect_left(cls.SIZES, n)             # first size that fits
+        return i if i < len(cls.SIZES) else -1           # -1: too big, unpooled
+
+    def acquire(self, bytes_needed: int) -> bytearray:
+        if bytes_needed < 1:
+            raise ValueError("bytesNeeded >= 1")
+        c = self._class_for(bytes_needed)
+        with self._lock:
+            if c >= 0 and self._queues[c]:
+                self.hits += 1
+                return self._queues[c].popleft()
+            self.misses += 1
+        return bytearray(bytes_needed if c < 0 else self.SIZES[c])
+
+    def release(self, buf: bytearray) -> None:
+        i = bisect.bisect_left(self.SIZES, len(buf))
+        if i == len(self.SIZES) or self.SIZES[i] != len(buf):
+            return                                       # unpooled size: let the garbage collector take it
+        buf[:] = bytes(len(buf))                         # never leak previous contents
+        with self._lock:
+            if len(self._queues[i]) < self._max_idle:    # class full: drop
+                self._queues[i].append(buf)
+
+    def idle_count(self) -> int:
+        with self._lock:
+            return sum(len(q) for q in self._queues)
+
+
+if __name__ == "__main__":
+    pool = BufferPool(64)
+    a = pool.acquire(3000)
+    a[0] = 7
+    print("got", len(a))
+    pool.release(a)
+    b = pool.acquire(2000)
+    print(f"reused: {str(a is b).lower()}, zeroed: {str(b[0] == 0).lower()}")
+    print("oversize:", len(pool.acquire(20000)))
+    print(f"hits={pool.hits} misses={pool.misses}")
+    print("idle =", pool.idle_count())
+    pool.release(b)
+    pool.release(bytearray(100))                         # not a pool size: ignored
+    print("idle =", pool.idle_count())
+    try:
+        pool.acquire(0)
+    except ValueError as e:
+        print(e)
+    small = BufferPool(1)
+    x, y = small.acquire(10), small.acquire(10)
+    small.release(x)
+    small.release(y)                                     # class is full: dropped
+    print("idle with limit 1 =", small.idle_count())` },
+        { lang: 'ts', code: `
+class BufferPool {
+  private static readonly SIZES = [1024, 4096, 16384];
+  private readonly queues: Uint8Array[][] = BufferPool.SIZES.map(() => []);
+  hits = 0;
+  misses = 0;
+
+  constructor(private readonly maxIdlePerClass: number) {}
+
+  private static classFor(n: number): number {
+    return BufferPool.SIZES.findIndex((size) => n <= size);       // -1: too big, unpooled
+  }
+
+  acquire(bytesNeeded: number): Uint8Array {
+    if (bytesNeeded < 1) throw new Error("bytesNeeded >= 1");
+    const c = BufferPool.classFor(bytesNeeded);
+    if (c < 0) {
+      this.misses++;
+      return new Uint8Array(bytesNeeded);
+    }
+    const buf = this.queues[c].shift();
+    if (buf) {
+      this.hits++;
+      return buf;
+    }
+    this.misses++;
+    return new Uint8Array(BufferPool.SIZES[c]);
+  }
+
+  release(buf: Uint8Array): void {
+    const c = BufferPool.SIZES.indexOf(buf.length);
+    if (c < 0) return;                                           // unpooled size: let the garbage collector take it
+    buf.fill(0);                                                 // never leak previous contents
+    if (this.queues[c].length >= this.maxIdlePerClass) return;   // class full: drop
+    this.queues[c].push(buf);
+  }
+
+  idleCount(): number { return this.queues.reduce((sum, q) => sum + q.length, 0); }
+}
+
+const pool = new BufferPool(64);
+const a = pool.acquire(3000);
+a[0] = 7;
+console.log(\`got \${a.length}\`);
+pool.release(a);
+const b = pool.acquire(2000);
+console.log(\`reused: \${a === b}, zeroed: \${b[0] === 0}\`);
+console.log(\`oversize: \${pool.acquire(20000).length}\`);
+console.log(\`hits=\${pool.hits} misses=\${pool.misses}\`);
+console.log(\`idle = \${pool.idleCount()}\`);
+pool.release(b);
+pool.release(new Uint8Array(100));                               // not a pool size: ignored
+console.log(\`idle = \${pool.idleCount()}\`);
+try {
+  pool.acquire(0);
+} catch (e) {
+  console.log((e as Error).message);
+}
+const small = new BufferPool(1);
+const x = small.acquire(10), y = small.acquire(10);
+small.release(x);
+small.release(y);                                                // class is full: dropped
+console.log(\`idle with limit 1 = \${small.idleCount()}\`);` },
+        { lang: 'cpp', code: `
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cstdint>
+#include <deque>
+#include <iostream>
+#include <mutex>
+#include <stdexcept>
+#include <vector>
+using namespace std;
+
+using Buffer = vector<uint8_t>;
+
+class BufferPool {
+    static constexpr array<size_t, 3> SIZES = {1024, 4096, 16384};
+    const size_t maxIdlePerClass;
+    array<deque<Buffer>, 3> queues;
+    mutex lock;                                      // guards the queues
+
+    static int classFor(size_t n) {
+        for (size_t i = 0; i < SIZES.size(); i++) if (n <= SIZES[i]) return static_cast<int>(i);
+        return -1;                                   // too big: unpooled
+    }
+
+public:
+    atomic<long long> hits{0}, misses{0};
+
+    explicit BufferPool(size_t maxIdle) : maxIdlePerClass(maxIdle) {}
+
+    Buffer acquire(int bytesNeeded) {
+        if (bytesNeeded < 1) throw invalid_argument("bytesNeeded >= 1");
+        int c = classFor(bytesNeeded);
+        if (c < 0) { misses++; return Buffer(bytesNeeded); }
+        {
+            lock_guard<mutex> g(lock);
+            if (!queues[c].empty()) {
+                Buffer buf = std::move(queues[c].front());   // the moved vector keeps its heap block, so it is the same buffer
+                queues[c].pop_front();
+                hits++;
+                return buf;
+            }
+        }
+        misses++;
+        return Buffer(SIZES[c]);
+    }
+
+    void release(Buffer buf) {                       // taken by value: the caller hands over ownership
+        auto it = find(SIZES.begin(), SIZES.end(), buf.size());
+        if (it == SIZES.end()) return;               // unpooled size: freed here
+        size_t c = it - SIZES.begin();
+        fill(buf.begin(), buf.end(), 0);             // never leak previous contents
+        lock_guard<mutex> g(lock);
+        if (queues[c].size() < maxIdlePerClass) queues[c].push_back(std::move(buf));   // class full: dropped
+    }
+
+    int idleCount() {
+        lock_guard<mutex> g(lock);
+        size_t total = 0;
+        for (const auto& q : queues) total += q.size();
+        return static_cast<int>(total);
+    }
+};
+
+int main() {
+    BufferPool pool(64);
+    Buffer a = pool.acquire(3000);
+    a[0] = 7;
+    const uint8_t* aData = a.data();
+    cout << "got " << a.size() << "\\n";
+    pool.release(std::move(a));
+    Buffer b = pool.acquire(2000);
+    cout << boolalpha << "reused: " << (b.data() == aData) << ", zeroed: " << (b[0] == 0) << "\\n";
+    cout << "oversize: " << pool.acquire(20000).size() << "\\n";
+    cout << "hits=" << pool.hits << " misses=" << pool.misses << "\\n";
+    cout << "idle = " << pool.idleCount() << "\\n";
+    pool.release(std::move(b));
+    pool.release(Buffer(100));                       // not a pool size: ignored
+    cout << "idle = " << pool.idleCount() << "\\n";
+    try {
+        pool.acquire(0);
+    } catch (const invalid_argument& e) {
+        cout << e.what() << "\\n";
+    }
+    BufferPool small(1);
+    Buffer x = small.acquire(10), y = small.acquire(10);
+    small.release(std::move(x));
+    small.release(std::move(y));                     // class is full: dropped
+    cout << "idle with limit 1 = " << small.idleCount() << "\\n";
+}` }
+      ],
       complexity: `<p><code>acquire</code>/<code>release</code>: O(1) lock-free, plus O(size) to zero on release. Memory bounded by 64 × (1 + 4 + 16) KB = 1.3 MB of idle buffers.</p>`,
       followUps: ['Add per-thread caches (like Netty\'s PoolThreadCache) to avoid queue contention', 'Would you still need this pool with direct ByteBuffers? What changes?', 'How do you detect buffers that are never released?']
     }
@@ -3873,12 +12312,12 @@ public class Main {
      ====================================================================== */
   interview.push(
     { q: 'What are creational design patterns, and why not just use <code>new</code> everywhere?', level: 'B', a: `<p>Creational patterns move the decision of <b>which class to instantiate, how many instances exist, and how they are assembled</b> into one place. Using <code>new ConcreteClass()</code> everywhere couples every caller to that class: changing it ripples through many files, tests cannot substitute fakes, and complex setup (validation, caching, expensive initialisation) gets duplicated. The six to know: Singleton, Factory Method, Abstract Factory, Builder, Prototype (GoF) and Object Pool. I also say clearly that plain <code>new</code> is fine for value objects and classes with one obvious implementation — patterns are for where change or cost actually lives.</p>`, followUps: ['How does dependency injection relate to these patterns?', 'Give an example where a factory would be over-engineering.'] },
-    { q: 'Write a thread-safe lazy Singleton in Java and explain why it is correct.', level: 'I', a: `<p>My default is the <b>holder idiom</b>: a private constructor, a <code>private static final class Holder { static final X INSTANCE = new X(); }</code> and <code>getInstance()</code> returning <code>Holder.INSTANCE</code>. It is lazy because the JVM initialises <code>Holder</code> only on first access, and thread-safe because class initialisation runs exactly once under the JVM's init lock with safe publication (JLS 12.4.2). If I also need protection against reflection and serialization, I use <code>enum X { INSTANCE }</code>. Double-checked locking is correct only with a <b>volatile</b> field and a second null check inside the <code>synchronized</code> block.</p>`, followUps: ['Why exactly is volatile needed in DCL?', 'What happens if the singleton\'s constructor throws?'] },
-    { q: 'How can a Singleton be broken, and how do you prevent each attack?', level: 'I', a: `<p>(1) <b>Race conditions</b> in lazy init → use holder/enum/DCL with volatile. (2) <b>Reflection</b>: <code>setAccessible(true)</code> on the private constructor → throw from the constructor if an instance already exists, or use an enum (the JDK refuses reflective enum creation). (3) <b>Serialization</b>: <code>readObject</code> builds a new instance → implement <code>readResolve()</code> returning the singleton, or use an enum. (4) <b>Cloning</b> → do not implement <code>Cloneable</code>, or override <code>clone()</code> to throw. (5) <b>Multiple class loaders</b> → each has its own copy; only fixable by loading the class from a shared parent loader. (6) <b>Multiple JVMs</b> → a Java singleton is per process; cluster-wide uniqueness needs leader election or a distributed lock.</p>`, followUps: ['Show readResolve in code.', 'Why does enum solve most of these at once?'] },
+    { q: 'Write a thread-safe lazy Singleton in your language and explain why it is correct.', level: 'I', a: `<p>My default is the <b>holder idiom</b>: a private constructor, a <code>private static final class Holder { static final X INSTANCE = new X(); }</code> and <code>getInstance()</code> returning <code>Holder.INSTANCE</code>. It is lazy because the JVM initialises <code>Holder</code> only on first access, and thread-safe because class initialisation runs exactly once under the JVM's init lock with safe publication (JLS 12.4.2). If I also need protection against reflection and serialization, I use <code>enum X { INSTANCE }</code>. Double-checked locking is correct only with a <b>volatile</b> field and a second null check inside the <code>synchronized</code> block. In other languages: Python uses a module-level object, a single-member <code>Enum</code> or a lock around creation; TypeScript uses a static field created with <code>??=</code> or an exported <code>const</code> (one thread, so no lock); C++ uses a function-local <code>static</code>, which the compiler initialises thread-safely.</p>`, followUps: ['Why exactly is volatile needed in DCL?', 'What happens if the singleton\'s constructor throws?'] },
+    { q: 'How can a Singleton be broken, and how do you prevent each attack?', level: 'I', a: `<p>(1) <b>Race conditions</b> in lazy init → use holder/enum/DCL with volatile. (2) <b>Reflection</b>: <code>setAccessible(true)</code> on the private constructor → throw from the constructor if an instance already exists, or use an enum (the JDK refuses reflective enum creation). (3) <b>Serialization</b>: <code>readObject</code> builds a new instance → implement <code>readResolve()</code> returning the singleton, or use an enum. (4) <b>Cloning</b> → do not implement <code>Cloneable</code>, or override <code>clone()</code> to throw. (5) <b>Multiple class loaders</b> → each has its own copy; only fixable by loading the class from a shared parent loader. (6) <b>Multiple JVMs</b> → a singleton is per process; cluster-wide uniqueness needs leader election or a distributed lock.</p>`, followUps: ['Show readResolve in code.', 'Why does enum solve most of these at once?'] },
     { q: 'Why do many teams consider Singleton an anti-pattern, and what do they use instead?', level: 'A', a: `<p>The <b>pattern</b> combines two things: "only one instance" (often fine) and "global static access" (the problem). Global access hides dependencies (you cannot see from a constructor that a class uses the config), couples code to a concrete class, makes unit tests share state and run order-dependent, and blocks substitution with fakes. The modern approach keeps the <i>single instance</i> but drops the <i>global access</i>: a DI container creates one instance (Spring's default singleton scope) and injects it through constructors, usually behind an interface. Tests then pass their own instance. I still use enum/holder singletons for truly stateless, process-wide utilities or in code without a container.</p>`, followUps: ['How would you migrate a codebase away from static getInstance() calls safely?', 'Is Spring\'s singleton scope the same as the GoF Singleton?'] },
     { q: 'Explain the difference between Simple Factory, Factory Method and Abstract Factory.', level: 'I', a: `<p><b>Simple Factory</b> (an idiom, not GoF): one method like <code>create(type)</code> with a switch or a registry map; the choice is driven by <b>data</b>. <b>Factory Method</b> (GoF): a parent class's workflow calls an abstract/overridable <code>createProduct()</code>; <b>subclasses</b> decide the concrete product — inheritance-based, often combined with Template Method. <b>Abstract Factory</b> (GoF): an <b>object</b> with several create methods producing a <b>family</b> of related products that must be compatible (LightTheme vs DarkTheme widgets). Factory Method creates one product via inheritance; Abstract Factory creates a family via composition, and its methods are frequently implemented as factory methods.</p>`, followUps: ['Which one is Collection.iterator()?', 'How do you make a simple factory Open/Closed?'] },
     { q: 'How do you design a factory that follows the Open/Closed Principle?', level: 'I', a: `<p>Replace the growing <code>switch</code> with a <b>registry</b>: <code>Map&lt;String, Supplier&lt;T&gt;&gt;</code> (or <code>Function</code> when creation needs arguments). Each product registers itself once at startup (<code>register("sms", SmsNotification::new)</code>), possibly discovered through <code>ServiceLoader</code> or the DI container (Spring can inject a <code>Map&lt;String, Notification&gt;</code> of all beans). <code>create</code> normalises the key, throws a clear exception for unknown keys (never returns null), and returns a new or shared instance as documented. Adding a product = a new class plus one registration, with no edits to existing code. I also make the map thread-safe or immutable after startup and reject duplicate keys.</p>`, followUps: ['How would you load plugins from JARs at runtime?', 'What are the downsides of reflection-based factories?'] },
-    { q: 'When would you choose Abstract Factory, and what trade-off do you mention?', level: 'I', a: `<p>When the system must create <b>families of related objects</b> that must be used together — UI widgets per platform/theme, cloud clients per provider (storage + queue + secrets sharing a region and credentials), DB vendor kits (connection + dialect + migrator), or prod vs test infrastructure. The client receives one factory (chosen once at the composition root) and can never mix families. The trade-off: adding a <b>new family</b> is cheap (one factory + its products, Open/Closed), but adding a <b>new product type</b> forces changes to the interface and every concrete factory. Java default methods can soften that. If families never vary, it is overkill.</p>`, followUps: ['How does Spring @Profile relate to Abstract Factory?', 'Abstract Factory vs Bridge?'] },
+    { q: 'When would you choose Abstract Factory, and what trade-off do you mention?', level: 'I', a: `<p>When the system must create <b>families of related objects</b> that must be used together — UI widgets per platform/theme, cloud clients per provider (storage + queue + secrets sharing a region and credentials), DB vendor kits (connection + dialect + migrator), or prod vs test infrastructure. The client receives one factory (chosen once at the composition root) and can never mix families. The trade-off: adding a <b>new family</b> is cheap (one factory + its products, Open/Closed), but adding a <b>new product type</b> forces changes to the interface and every concrete factory. A default method (Java), a default argument or a base-class stub (Python, C++) can soften that. If families never vary, it is overkill.</p>`, followUps: ['How does Spring @Profile relate to Abstract Factory?', 'Abstract Factory vs Bridge?'] },
     { q: 'Explain the Builder pattern. When is it better than constructors or setters?', level: 'B', a: `<p>A Builder collects construction parameters step by step through named, chainable methods, then <code>build()</code> validates and creates the product, usually <b>immutable</b>. It beats <b>telescoping constructors</b> (unreadable positional arguments, easy to swap two booleans) and <b>JavaBeans setters</b> (object exists half-built, must be mutable, no place for cross-field validation). Use it from about 4+ parameters, when many are optional, when combinations have rules, or when you want immutability with readable construction. Implementation: private constructor taking the builder, static nested builder with defaults, <code>return this</code> in each method, per-field checks in setters, cross-field checks in <code>build()</code>, defensive copies of collections.</p>`, followUps: ['What is a step builder?', 'What does the GoF Director add?'] },
     { q: 'What are common mistakes when implementing a Builder?', level: 'I', a: `<p>(1) <b>No validation</b> in <code>build()</code>, so invalid combinations still get built. (2) <b>No defensive copy</b> of collections, so the "immutable" product shares the builder's list. (3) Leaving <b>setters on the product</b>, defeating immutability. (4) Sharing one builder across <b>threads</b> — builders are mutable and not thread-safe. (5) Using a builder for a <b>two-field</b> class where a constructor or record is clearer. (6) Required fields as optional builder methods, so forgetting them is only a runtime error — pass them to <code>builder(required...)</code> or use a step builder. (7) Validating in the product constructor <i>before</i> copying, opening a time-of-check/time-of-use gap.</p>`, followUps: ['How does Lombok @Builder handle collections and defaults?', 'How would you add toBuilder()?'] },
     { q: 'Explain the Prototype pattern and shallow vs deep copy with an example.', level: 'I', a: `<p>Prototype creates objects by <b>copying a configured instance</b> instead of building from scratch — useful when construction is expensive (loading assets, parsing, DB reads), when objects are near-identical templates, or when the concrete class is only known at runtime (a registry of prototypes keyed by name). A <b>shallow copy</b> copies field values, so reference fields are shared: copying an <code>Enemy</code> with a <code>List&lt;String&gt; loot</code> shallowly means adding loot to the copy also changes the prototype. A <b>deep copy</b> creates new instances of mutable fields (recursively). Immutable fields (Strings, records of immutables) and heavy read-only data can be shared safely. I implement it with copy constructors rather than <code>Cloneable</code>.</p>`, followUps: ['How do you deep-copy a graph with cycles?', 'Why is Cloneable considered broken?'] },
@@ -3892,16 +12331,22 @@ public class Main {
     id: 'lld04',
     title: 'Creational Design Patterns',
     intro: `<p>Every object in your program is born somewhere. If that "somewhere" is a scattered <code>new ConcreteClass()</code> in fifty files, every change to how objects are made — a new provider, a new theme, a required validation, a limit on connections — turns into a risky hunt through the codebase. <b>Creational design patterns</b> put object creation in one deliberate place.</p>
-<p>In this module you will master all six creational patterns asked in LLD interviews: <b>Singleton</b> (with every thread-safe Java variant, how each one breaks, and why <code>volatile</code> matters), <b>Factory Method</b> (and the Simple Factory and static factory idioms), <b>Abstract Factory</b>, <b>Builder</b>, <b>Prototype</b> (shallow vs deep copy) and <b>Object Pool</b>. Each topic starts with an everyday analogy, animates the class structure and the object-creation flow step by step, shows compilable Java, and finishes with production reality and how AI tools change the work. Practice includes "which pattern fits?" questions, implement-the-pattern exercises, and fix-the-broken-singleton bugs.</p>`,
+<p>In this module you will master all six creational patterns asked in LLD interviews: <b>Singleton</b> (with every thread-safe variant (Java's holder idiom, <code>enum</code> and <code>volatile</code>, plus the Python, TypeScript and C++ equivalents), how each one breaks, and why <code>volatile</code> matters), <b>Factory Method</b> (and the Simple Factory and static factory idioms), <b>Abstract Factory</b>, <b>Builder</b>, <b>Prototype</b> (shallow vs deep copy) and <b>Object Pool</b>. Each topic starts with an everyday analogy, animates the class structure and the object-creation flow step by step, shows compilable code in Java, Python, TypeScript and C++, and finishes with production reality and how AI tools change the work. Practice includes "which pattern fits?" questions, implement-the-pattern exercises, and fix-the-broken-singleton bugs.</p>`,
     goals: [
       'Choose the right creational pattern (or plain <code>new</code>) from the wording of a requirement, and explain the trade-off out loud',
-      'Write a correct thread-safe Singleton (holder idiom, enum, DCL with volatile) and explain the Java Memory Model reason each works — or breaks',
+      'Write a correct thread-safe Singleton (holder idiom, enum, DCL with volatile) and explain the memory-model reason each works — or breaks',
       'Implement Factory Method, a registry-based factory and an Abstract Factory that keep client code depending only on interfaces',
       'Build immutable objects with a validating Builder (including a compile-time step builder) and copy objects safely with deep-copy Prototypes',
       'Design a bounded, thread-safe Object Pool with timeouts, validation, reset and leak protection — and know when not to pool at all'
     ],
     prereqs: `LLD 1 (OOP Modelling &amp; UML), LLD 2 (SOLID — especially Open/Closed and Dependency Inversion) and LLD 3 (Clean Code). Comfortable with Java interfaces, generics, lambdas/method references, and the basics of <code>synchronized</code>, <code>volatile</code> and <code>java.util.concurrent</code> (Java track modules on concurrency help for the Singleton and Pool topics).`,
     hours: 14,
+    langNotes: {
+      java: `<p><b>Interfaces vs abstract classes.</b> A factory returns an <code>interface</code> type (<code>Mailer</code>, <code>Ride</code>) so callers never name the concrete class. Use an <code>abstract class</code> when the parent owns a workflow and subclasses fill one gap (Factory Method with <code>createChannel()</code>), and <code>enum</code> constants with a method per constant as a built-in registry. <b>Singleton.</b> Four correct forms: eager <code>static final</code>, the holder idiom, an <code>enum</code> (also safe against reflection and serialization), and double-checked locking where the field must be <code>volatile</code>. A plain <code>synchronized</code> getter is correct but locks on every call. <b>Equality, hashing and immutability.</b> Override <code>equals</code> and <code>hashCode</code> together or use a <code>record</code>; build products with <code>final</code> fields and <code>List.copyOf</code>, because <code>Collections.unmodifiableList</code> is only a view. <b>Prototype.</b> Prefer a copy constructor over <code>Cloneable</code>: <code>clone()</code> is shallow, skips constructors and cannot reassign <code>final</code> fields. <b>Pools and registries.</b> <code>Semaphore.tryAcquire(timeout)</code> bounds a pool, <code>ConcurrentHashMap.computeIfAbsent</code> makes a Multiton, and try-with-resources (<code>AutoCloseable</code>) returns a borrowed object even when the body throws. <b>Numbers.</b> <code>int</code> overflow wraps silently, so keep money in <code>long</code> and format with <code>String.format("%.2f")</code>.</p>`,
+      python: `<p><b>Interfaces vs abstract classes.</b> <code>abc.ABC</code> with <code>@abstractmethod</code> is the nominal interface (it cannot be instantiated until every abstract method exists); <code>typing.Protocol</code> checks the shape only, which is how the step builder enforces call order for a type checker. A factory registry is just a <code>dict[str, Callable[[], Product]]</code>, and a class is itself a factory, so <code>register("sms", SmsNotification)</code> needs no wrapper. <b>Singleton.</b> Modules are executed once, so a module-level object is already a singleton; <code>Enum</code> with one member also survives <code>pickle</code>, and <code>__new__</code> with a lock covers the lazy case. The GIL makes a single attribute read atomic, so double-checked locking needs no <code>volatile</code>, but <code>x += 1</code> is not atomic: guard counters with a <code>Lock</code>. <b>Equality, hashing and immutability.</b> Defining <code>__eq__</code> removes the default <code>__hash__</code>; use <code>@dataclass(frozen=True)</code> for value objects, tuples and <code>MappingProxyType</code> for read-only data. <code>_name</code> is only a request to keep out. <b>Prototype.</b> <code>copy.copy</code> is shallow, <code>copy.deepcopy</code> follows every reference, and <code>dataclasses.replace</code> is "toBuilder" for a frozen dataclass. <b>Pools.</b> A <code>with</code> block (<code>__enter__</code> and <code>__exit__</code>) returns the object even on an exception; <code>threading.Semaphore.acquire(timeout=...)</code> bounds the pool. Integers never overflow, and <code>from</code> is a keyword, hence <code>from_</code> in the step builder.</p>`,
+      js: `<p><b>TypeScript.</b> <b>Interfaces vs abstract classes.</b> An <code>interface</code> exists only at compile time, so a factory returns the interface and an object literal is a perfectly good product. Use an <code>abstract class</code> for Factory Method with shared steps, and chained interfaces (<code>FromStep</code>, <code>ToStep</code>, ...) for a step builder: the compiler then rejects calls in the wrong order. A <code>Map&lt;string, () =&gt; Product&gt;</code> is the registry. <b>Singleton.</b> JavaScript runs one task at a time, so lazy creation with <code>??=</code> needs no lock and no <code>volatile</code>, and an exported <code>const</code> is a module singleton. <code>private</code> is a compile-time rule only, so add a run-time guard in the constructor against <code>new (X as any)()</code>. Interleaving still happens at every <code>await</code>: finish check-then-act before awaiting. <b>Equality, hashing and immutability.</b> <code>===</code> and <code>Map</code>/<code>Set</code> use identity for objects, so key by a string for value equality. <code>readonly</code> is compile-time; copy with spread (<code>[...items]</code>, <code>{ ...base }</code>) or <code>Object.freeze</code>, and remember both are shallow. <b>Prototype.</b> Spread is a shallow copy; copy nested arrays and objects by hand or with <code>structuredClone</code>. <b>Pools.</b> Use <code>try</code>/<code>finally</code> to return a borrowed object; a promise stored in the registry makes a Multiton wait on one load. <b>Numbers.</b> <code>number</code> is a double, exact for integers up to 2<sup>53</sup>; format with <code>toFixed(2)</code>.</p>`,
+      cpp: `<p><b>Interfaces vs abstract classes.</b> A class with only pure virtual functions is the interface; always give a polymorphic base a <b>virtual destructor</b> and mark overrides with <code>override</code>. A factory returns <code>std::unique_ptr&lt;Product&gt;</code>, so ownership is explicit and the caller cannot leak it; the registry is a <code>std::map&lt;std::string, std::function&lt;std::unique_ptr&lt;Product&gt;()&gt;&gt;</code>. <b>Singleton.</b> A function-local <code>static</code> (the Meyers singleton) is lazy and thread-safe since C++11; delete the copy and move operations and keep the constructor private, and the compiler enforces what Java needs an <code>enum</code> for. Double-checked locking needs <code>std::atomic</code> with acquire/release (the counterpart of <code>volatile</code>), and <code>std::call_once</code> is the simple option. <b>Equality, hashing and immutability.</b> <code>bool operator==(const T&amp;) const = default;</code> compares all members; an <code>unordered_map</code> key also needs a <code>std::hash</code> specialisation. Use <code>const</code> members and <code>const</code> methods for immutable products. <b>Prototype and ownership.</b> Members held by value (<code>std::vector</code>, <code>std::string</code>, <code>std::map</code>) make the implicit copy constructor a deep copy; a <code>std::shared_ptr</code> or raw pointer member makes it shallow, so deep-copy it by hand. Share heavy immutable data with <code>shared_ptr&lt;const T&gt;</code>. <b>Pools.</b> RAII is the lease: a handle whose destructor returns the object, so even an exception cannot leak it. Never keep a pointer into a <code>std::vector</code> that may grow. <b>Numbers.</b> Signed overflow is undefined behaviour: use <code>long long</code>. <code>export</code> is a keyword, so the exporter method is <code>exportRows</code>.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

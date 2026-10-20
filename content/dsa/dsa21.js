@@ -115,7 +115,7 @@
       '"Each query asks for the <b>maximum subarray sum</b> / longest run / number of segments inside [l, r]" → segment tree with a <b>custom node</b> that merges two halves.',
       'The interviewer says "the array is <b>static</b>" → do <i>not</i> reach for a segment tree first; prefix sums or a sparse table are simpler and faster.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Recursive segment tree for range SUM with point assignment.
       // Node numbering starts at 1: node k has children 2k (left) and 2k+1 (right).
       class SegmentTree {
@@ -163,7 +163,140 @@
               st.update(3, 10);
               System.out.println(st.query(2, 6));   // 27
           }
-      }`, `
+      }`,
+      alt: [{ lang: 'python', run: true, code: `# Recursive segment tree for range SUM with point assignment.
+# Node numbering starts at 1: node k has children 2k (left) and 2k+1 (right).
+class SegmentTree:
+    def __init__(self, a):
+        self.n = len(a)
+        self.tree = [0] * (4 * self.n)               # 4N slots are always enough
+        self._build(a, 1, 0, self.n - 1)
+
+    def _build(self, a, node, l, r):
+        if l == r:
+            self.tree[node] = a[l]                   # leaf = one element
+            return
+        mid = (l + r) // 2
+        self._build(a, 2 * node, l, mid)             # left half  [l, mid]
+        self._build(a, 2 * node + 1, mid + 1, r)     # right half [mid+1, r]
+        self.tree[node] = self.tree[2 * node] + self.tree[2 * node + 1]   # parent = merge(children)
+
+    def update(self, idx, value):
+        """a[idx] = value in O(log N)."""
+        self._update(1, 0, self.n - 1, idx, value)
+
+    def _update(self, node, l, r, idx, value):
+        if l == r:
+            self.tree[node] = value                  # reached the leaf
+            return
+        mid = (l + r) // 2
+        if idx <= mid:
+            self._update(2 * node, l, mid, idx, value)
+        else:
+            self._update(2 * node + 1, mid + 1, r, idx, value)
+        self.tree[node] = self.tree[2 * node] + self.tree[2 * node + 1]   # repair this ancestor on the way up
+
+    def query(self, ql, qr):
+        """Sum of a[ql..qr] (inclusive) in O(log N)."""
+        return self._query(1, 0, self.n - 1, ql, qr)
+
+    def _query(self, node, l, r, ql, qr):
+        if qr < l or r < ql:                         # 1) no overlap: identity of sum
+            return 0
+        if ql <= l and r <= qr:                      # 2) fully inside: take it whole
+            return self.tree[node]
+        mid = (l + r) // 2                           # 3) partial: ask both children
+        return self._query(2 * node, l, mid, ql, qr) + self._query(2 * node + 1, mid + 1, r, ql, qr)
+
+
+st = SegmentTree([5, 8, 6, 3, 2, 7, 2, 6])
+print(st.query(2, 6))   # 20
+st.update(3, 10)
+print(st.query(2, 6))   # 27` }, { lang: 'js', run: true, code: `// Recursive segment tree for range SUM with point assignment.
+// Node numbering starts at 1: node k has children 2k (left) and 2k+1 (right).
+class SegmentTree {
+  constructor(a) {
+    this.n = a.length;
+    this.tree = new Array(4 * this.n).fill(0);       // 4N slots are always enough
+    this.build(a, 1, 0, this.n - 1);
+  }
+
+  build(a, node, l, r) {
+    if (l === r) { this.tree[node] = a[l]; return; } // leaf = one element
+    const mid = (l + r) >> 1;
+    this.build(a, 2 * node, l, mid);                 // left half  [l, mid]
+    this.build(a, 2 * node + 1, mid + 1, r);         // right half [mid+1, r]
+    this.tree[node] = this.tree[2 * node] + this.tree[2 * node + 1];   // parent = merge(children)
+  }
+
+  /** a[idx] = value in O(log N). */
+  update(idx, value, node = 1, l = 0, r = this.n - 1) {
+    if (l === r) { this.tree[node] = value; return; }  // reached the leaf
+    const mid = (l + r) >> 1;
+    if (idx <= mid) this.update(idx, value, 2 * node, l, mid);
+    else this.update(idx, value, 2 * node + 1, mid + 1, r);
+    this.tree[node] = this.tree[2 * node] + this.tree[2 * node + 1];   // repair this ancestor on the way up
+  }
+
+  /** Sum of a[ql..qr] (inclusive) in O(log N). */
+  query(ql, qr, node = 1, l = 0, r = this.n - 1) {
+    if (qr < l || r < ql) return 0;                  // 1) no overlap: identity of sum
+    if (ql <= l && r <= qr) return this.tree[node];  // 2) fully inside: take it whole
+    const mid = (l + r) >> 1;                        // 3) partial: ask both children
+    return this.query(ql, qr, 2 * node, l, mid) + this.query(ql, qr, 2 * node + 1, mid + 1, r);
+  }
+}
+
+const st = new SegmentTree([5, 8, 6, 3, 2, 7, 2, 6]);
+console.log(st.query(2, 6));   // 20
+st.update(3, 10);
+console.log(st.query(2, 6));   // 27` }, { lang: 'cpp', code: `// Recursive segment tree for range SUM with point assignment.
+// Node numbering starts at 1: node k has children 2k (left) and 2k+1 (right).
+class SegmentTree {
+    int n;
+    vector<long long> tree;                          // tree[k] = sum of the range node k owns
+
+    void build(const vector<int>& a, int node, int l, int r) {
+        if (l == r) { tree[node] = a[l]; return; }   // leaf = one element
+        int mid = l + (r - l) / 2;
+        build(a, 2 * node, l, mid);                  // left half  [l, mid]
+        build(a, 2 * node + 1, mid + 1, r);          // right half [mid+1, r]
+        tree[node] = tree[2 * node] + tree[2 * node + 1];   // parent = merge(children)
+    }
+
+    void update(int node, int l, int r, int idx, int value) {
+        if (l == r) { tree[node] = value; return; }  // reached the leaf
+        int mid = l + (r - l) / 2;
+        if (idx <= mid) update(2 * node, l, mid, idx, value);
+        else update(2 * node + 1, mid + 1, r, idx, value);
+        tree[node] = tree[2 * node] + tree[2 * node + 1];   // repair this ancestor on the way up
+    }
+
+    long long query(int node, int l, int r, int ql, int qr) {
+        if (qr < l || r < ql) return 0;              // 1) no overlap: identity of sum
+        if (ql <= l && r <= qr) return tree[node];   // 2) fully inside: take it whole
+        int mid = l + (r - l) / 2;                   // 3) partial: ask both children
+        return query(2 * node, l, mid, ql, qr) + query(2 * node + 1, mid + 1, r, ql, qr);
+    }
+
+public:
+    SegmentTree(const vector<int>& a) : n(a.size()), tree(4 * a.size()) {   // 4N slots are always enough
+        build(a, 1, 0, n - 1);
+    }
+
+    /** a[idx] = value in O(log N). */
+    void update(int idx, int value) { update(1, 0, n - 1, idx, value); }
+
+    /** sum of a[ql..qr] (inclusive) in O(log N). */
+    long long query(int ql, int qr) { return query(1, 0, n - 1, ql, qr); }
+};
+
+int main() {
+    SegmentTree st({5, 8, 6, 3, 2, 7, 2, 6});
+    cout << st.query(2, 6) << "\\n";   // 20
+    st.update(3, 10);
+    cout << st.query(2, 6) << "\\n";   // 27
+}` }] }, { lang: 'java', code: `
       // Bottom-up (iterative) segment tree for range MIN — short, fast, no recursion.
       // Leaves live at t[n .. 2n-1]; node p has children 2p and 2p+1; works for ANY n (not only powers of 2).
       class MinSegTree {
@@ -200,7 +333,111 @@
               st.set(5, 10);
               System.out.println(st.query(3, 6));   // 5
           }
-      }`, { lang: 'python', run: true, title: 'Python version + random stress test against brute force (runnable)', code: `class SegTree:
+      }`,
+      alt: [{ lang: 'python', run: true, code: `# Bottom-up (iterative) segment tree for range MIN: short, fast, no recursion.
+# Leaves live at t[n .. 2n-1]; node p has children 2p and 2p+1; works for ANY n (not only powers of 2).
+class MinSegTree:
+    def __init__(self, a):
+        self.n = len(a)
+        self.t = [0] * self.n + list(a)                              # copy leaves
+        for p in range(self.n - 1, 0, -1):                           # parents, bottom-up
+            self.t[p] = min(self.t[2 * p], self.t[2 * p + 1])
+
+    def set(self, idx, value):
+        """a[idx] = value: change the leaf, then climb to the root."""
+        p = idx + self.n
+        self.t[p] = value
+        p //= 2
+        while p >= 1:
+            self.t[p] = min(self.t[2 * p], self.t[2 * p + 1])
+            p //= 2
+
+    def query(self, l, r):
+        """Min of a[l..r] inclusive."""
+        res = float('inf')                                           # identity of min
+        l, r = l + self.n, r + self.n + 1                            # half-open window [l, r) on each level
+        while l < r:
+            if l & 1:                                                # l is a right child: its parent sticks out, take l now
+                res = min(res, self.t[l])
+                l += 1
+            if r & 1:                                                # r-1 is a left child: its parent sticks out, take r-1 now
+                r -= 1
+                res = min(res, self.t[r])
+            l //= 2
+            r //= 2
+        return res
+
+
+st = MinSegTree([4, 6, 1, 5, 7, 3, 8, 2, 9])
+print(st.query(3, 6))   # 3
+st.set(5, 10)
+print(st.query(3, 6))   # 5` }, { lang: 'js', run: true, code: `// Bottom-up (iterative) segment tree for range MIN: short, fast, no recursion.
+// Leaves live at t[n .. 2n-1]; node p has children 2p and 2p+1; works for ANY n (not only powers of 2).
+class MinSegTree {
+  constructor(a) {
+    this.n = a.length;
+    this.t = new Int32Array(2 * this.n);
+    this.t.set(a, this.n);                                           // copy leaves
+    for (let p = this.n - 1; p >= 1; p--) this.t[p] = Math.min(this.t[2 * p], this.t[2 * p + 1]);   // parents, bottom-up
+  }
+
+  /** a[idx] = value: change the leaf, then climb to the root. */
+  set(idx, value) {
+    let p = idx + this.n;
+    this.t[p] = value;
+    for (p >>= 1; p >= 1; p >>= 1) this.t[p] = Math.min(this.t[2 * p], this.t[2 * p + 1]);
+  }
+
+  /** Min of a[l..r] inclusive. */
+  query(l, r) {
+    let res = Infinity;                                              // identity of min
+    for (l += this.n, r += this.n + 1; l < r; l >>= 1, r >>= 1) {    // half-open window [l, r) on each level
+      if (l & 1) res = Math.min(res, this.t[l++]);                   // l is a right child: its parent sticks out, take l now
+      if (r & 1) res = Math.min(res, this.t[--r]);                   // r-1 is a left child: its parent sticks out, take r-1 now
+    }
+    return res;
+  }
+}
+
+const st = new MinSegTree([4, 6, 1, 5, 7, 3, 8, 2, 9]);
+console.log(st.query(3, 6));   // 3
+st.set(5, 10);
+console.log(st.query(3, 6));   // 5` }, { lang: 'cpp', code: `// Bottom-up (iterative) segment tree for range MIN: short, fast, no recursion.
+// Leaves live at t[n .. 2n-1]; node p has children 2p and 2p+1; works for ANY n (not only powers of 2).
+class MinSegTree {
+    int n;
+    vector<int> t;
+
+public:
+    MinSegTree(const vector<int>& a) : n(a.size()), t(2 * a.size()) {
+        for (int i = 0; i < n; i++) t[n + i] = a[i];                              // copy leaves
+        for (int p = n - 1; p >= 1; p--) t[p] = min(t[2 * p], t[2 * p + 1]);      // parents, bottom-up
+    }
+
+    /** a[idx] = value: change the leaf, then climb to the root. */
+    void set(int idx, int value) {
+        int p = idx + n;
+        t[p] = value;
+        for (p >>= 1; p >= 1; p >>= 1) t[p] = min(t[2 * p], t[2 * p + 1]);
+    }
+
+    /** min of a[l..r] inclusive. */
+    int query(int l, int r) {
+        int res = INT_MAX;                                      // identity of min
+        for (l += n, r += n + 1; l < r; l >>= 1, r >>= 1) {     // half-open window [l, r) on each level
+            if (l & 1) res = min(res, t[l++]);                  // l is a right child: its parent sticks out, take l now
+            if (r & 1) res = min(res, t[--r]);                  // r-1 is a left child: its parent sticks out, take r-1 now
+        }
+        return res;
+    }
+};
+
+int main() {
+    MinSegTree st({4, 6, 1, 5, 7, 3, 8, 2, 9});
+    cout << st.query(3, 6) << "\\n";   // 3
+    st.set(5, 10);
+    cout << st.query(3, 6) << "\\n";   // 5
+}` }] }, { lang: 'python', run: true, title: 'Python version + random stress test against brute force (runnable)', code: `class SegTree:
     """Range-sum segment tree, recursive, node k has children 2k and 2k+1."""
 
     def __init__(self, a):
@@ -396,7 +633,7 @@ print("3000 random operations agree with brute force")` }],
         title: 'Why allocate 4N (and not 2N) for the recursive version',
         html: `<p>With node numbering 1, 2k, 2k+1, the indices are <i>not</i> packed tightly when N is not a power of two. N = 6: root [0,5] = 1, [0,2] = 2, [3,5] = 3, [0,1] = 4, [2] = 5, [3,4] = 6, [5] = 7, [0] = 8, [1] = 9, then [3] = <b>12</b> and [4] = <b>13</b>. Only 11 real nodes (2N − 1) but the largest index is 13 &gt; 2N: slots 10 and 11 are empty holes.</p>
           ${H.table(['N', 'real nodes (2N−1)', 'largest index used', '4N'], [['5', '9', '9', '20'], ['6', '11', '13', '24'], ['17', '33', '33', '68'], ['10<sup>5</sup>', '199 999', '262 141', '400 000']])}
-          <p>The tree has height h = ⌈log₂ N⌉, so indices stay below 2<sup>h+1</sup> &lt; 4N. That is why <code>new long[4 * n]</code> is the safe rule. The <b>iterative</b> bottom-up tree packs leaves at [n, 2n) and needs only <b>2N</b>.</p>`
+          <p>The tree has height h = ⌈log₂ N⌉, so indices stay below 2<sup>h+1</sup> &lt; 4N. That is why allocating <code>4 * n</code> slots is the safe rule. The <b>iterative</b> bottom-up tree packs leaves at [n, 2n) and needs only <b>2N</b>.</p>`
       },
       {
         title: 'A custom node: maximum subarray sum inside [l, r] with updates',
@@ -414,10 +651,10 @@ print("3000 random operations agree with brute force")` }],
       <p><b>Identity and associativity are the contract.</b> The merge must be associative because the tree groups elements in a fixed shape that has nothing to do with your query. It does <b>not</b> need to be commutative in the recursive version (left is always merged before right). In the iterative bottom-up version you must keep two accumulators — <code>resLeft = merge(resLeft, t[l++])</code> and <code>resRight = merge(t[--r], resRight)</code> — and combine them at the end, otherwise non-commutative merges (matrix products, string hashes, the max-subarray struct) come out in the wrong order.</p>
       <p><b>Descent: "first index with value ≥ x" in O(log N).</b> If every node stores the max of its range, start at the root: if the left child's max ≥ x go left, else go right. You never backtrack, so it is one root-to-leaf walk. Same idea finds the k-th one in a 0/1 array (store counts; go left if <code>left.count ≥ k</code>, else subtract and go right). Doing this with a binary search over <code>query(0, mid)</code> costs O(log² N) — interviewers like to see the single-walk version.</p>
       <p><b>Huge coordinates.</b> If indices go up to 10<sup>9</sup>, you cannot allocate 4·10<sup>9</sup>. Two fixes: (1) <b>coordinate compression</b> when all positions are known in advance (offline) — sort the distinct positions and map them to 0..K−1; (2) a <b>dynamic (implicit) segment tree</b> that creates child nodes only when first touched, using O(Q log C) memory. A <b>persistent</b> segment tree goes one step further: every update copies only the O(log N) nodes on its path, so you keep every past version — used for "k-th smallest in a[l..r]" online.</p>
-      <p><b>Performance reality (Java).</b> Recursive trees do ~2–3·10<sup>7</sup> node visits per second comfortably; the iterative tree is often 2–3× faster and uses half the memory. Use <code>long[]</code> for sums (10<sup>5</sup> values of 10<sup>9</sup> overflow <code>int</code>), avoid object nodes (pointer chasing kills the cache), and read input with a fast reader — with 2·10<sup>5</sup> queries, <code>Scanner</code> alone can cost a second.</p>
+      <p><b>Performance reality (Java / C++ speeds; Python is roughly 30–100× slower).</b> Recursive trees do ~2–3·10<sup>7</sup> node visits per second comfortably; the iterative tree is often 2–3× faster and uses half the memory. Use 64-bit sums (10<sup>5</sup> values of 10<sup>9</sup> overflow a 32-bit <code>int</code>), avoid object nodes (pointer chasing kills the cache), and read input with a fast reader — with 2·10<sup>5</sup> queries, a slow reader (Java <code>Scanner</code>, C++ <code>cin</code> without <code>sync_with_stdio(false)</code>, Python <code>input()</code> in a loop) alone can cost a second.</p>
       <p><b>Production.</b> The same "store aggregates for power-of-two blocks" idea appears in database indexes that keep counts/sums per B-tree page (order-statistic and aggregate trees), in monitoring systems that pre-aggregate metrics into minute/hour/day rollups, and in game engines and schedulers that need "minimum over a range of slots" with frequent changes. The interview tree is the clean, in-memory version of that idea.</p>`,
     aiEra: `<p><b>What AI changes:</b> any assistant will produce a correct-looking segment tree in seconds, and in an AI-allowed round nobody is impressed by typing it. What is still tested is whether you <b>recognise</b> that the problem needs one (updates + range aggregate), whether you choose the <b>simplest</b> structure that works, and whether you can <b>debug</b> it when the generated code is subtly wrong.</p>
-      <p><b>Where generated segment trees typically go wrong:</b> returning 0 instead of +∞ as the identity for min; sizing the array 2N for the recursive version (index out of bounds only for some N); <code>int</code> sums that overflow; <code>mid = (l + r) / 2</code> with negative coordinates in a dynamic tree; merging in the wrong order in the iterative version for non-commutative operations; using <code>query(0, mid)</code> inside a binary search (O(log² N)) when a descent is expected.</p>
+      <p><b>Where generated segment trees typically go wrong:</b> returning 0 instead of +∞ as the identity for min; sizing the array 2N for the recursive version (index out of bounds only for some N); 32-bit <code>int</code> sums that overflow; <code>mid = (l + r) / 2</code> with negative coordinates in a dynamic tree; merging in the wrong order in the iterative version for non-commutative operations; using <code>query(0, mid)</code> inside a binary search (O(log² N)) when a descent is expected.</p>
       <p><b>Use AI as a partner:</b> ask <code>"Write a brute-force O(N) version and a random stress test that compares it with my segment tree for 10 000 operations"</code> — exactly like the Python snippet above. Ask it to list edge cases (N = 1, l = r, all negative values). <b>What you must own:</b> the three-case query logic, the O(log N) proof (≤ 2 partial nodes per level), the identity/associativity contract, and the judgement call of segment tree vs Fenwick vs sparse table.</p>`,
     problems: [{
       title: 'Range Sum Query — Mutable',
@@ -451,9 +688,21 @@ print("3000 random operations agree with brute force")` }],
       },
       hints: [
         `<p><b>Aha:</b> a sum over [l, r] can be glued together from a few precomputed "block sums", and one element belongs to only log N nested blocks. Precompute blocks of sizes 1, 2, 4, … arranged as a tree.</p>`,
-        `<p>Use a segment tree with <code>long[] tree = new long[4n]</code> (or the iterative 2n version). Build once, <code>update</code> walks root → leaf → repair, <code>sumRange</code> uses the three cases (no overlap → 0, fully inside → tree[node], partial → both children).</p>`,
+        `<p>Use a segment tree stored in an array of 4N sums (or the iterative 2N version). Build once, <code>update</code> walks root → leaf → repair, <code>sumRange</code> uses the three cases (no overlap → 0, fully inside → tree[node], partial → both children).</p>`,
         `<p>Edge cases: N = 1, <code>left == right</code>, updating to the same value, negative numbers. Recipe: build(1, 0, n−1); update → recurse to leaf, set, recompute parents; query → three cases. Alternatively a Fenwick tree works too because sum has an inverse (store the array to compute the delta <code>val − nums[i]</code>).</p>`
       ],
+      tests: { cls: 'NumArray', sigs: {"NumArray":"int[]","update":"int int -> void","sumRange":"int int -> int"}, cases: [
+        {"ops":["NumArray","sumRange","update","sumRange"],"args":[[[1,3,5]],[0,2],[1,2],[0,2]],"out":[null,9,null,8]},
+        {"ops":["NumArray","sumRange","update","sumRange"],"args":[[[7]],[0,0],[0,-100],[0,0]],"out":[null,7,null,-100]},
+        {"ops":["NumArray","sumRange","sumRange","update","sumRange","sumRange"],"args":[[[-100,100,-100,100,-100]],[0,4],[1,3],[2,100],[0,4],[2,2]],"out":[null,-100,100,null,100,100]},
+        {"ops":["NumArray","update","sumRange","update","update","sumRange","sumRange"],"args":[[[5,5,5,5,5,5,5]],[6,1],[3,6],[6,5],[6,5],[6,6],[0,6]],"out":[null,null,16,null,null,5,35]},
+        {"ops":["NumArray","sumRange","sumRange","sumRange","update","update","sumRange","sumRange","update","update","update","update","sumRange","sumRange","sumRange"],"args":[[[43,-66]],[0,0],[0,0],[1,1],[1,51],[1,83],[1,1],[0,0],[1,-74],[1,63],[1,-99],[1,-76],[0,0],[0,0],[1,1]],"out":[null,43,43,-66,null,null,83,43,null,null,null,null,43,43,-76]},
+        {"ops":["NumArray","update","sumRange","update","update","update","update","sumRange","sumRange","update","update","update","update","update","sumRange"],"args":[[[-20,2,24,67,-23]],[0,72],[2,4],[3,68],[1,-16],[3,-18],[4,-49],[3,3],[1,4],[4,-49],[0,92],[1,2],[0,80],[4,-48],[4,4]],"out":[null,null,68,null,null,null,null,-18,-59,null,null,null,null,null,-48]},
+        {"ops":["NumArray","sumRange","sumRange","update","update","update","sumRange","update","update","update","sumRange","sumRange","sumRange","sumRange","sumRange"],"args":[[[-4,93,20,88,-8,-22,-76,-42]],[2,2],[5,6],[1,35],[0,-43],[5,53],[0,0],[7,2],[3,-56],[7,41],[4,4],[4,4],[4,4],[4,4],[4,7]],"out":[null,20,-98,null,null,null,-43,null,null,null,-8,-8,-8,-8,10]},
+        {"ops":["NumArray","sumRange","update","update","update","sumRange","sumRange","update","update","update","sumRange","update","update","sumRange","sumRange"],"args":[[[-64,82,82,54,-81,-23,-72,-7,-7,0]],[7,9],[9,-51],[3,-68],[1,-3],[2,2],[8,9],[5,36],[3,-6],[4,22],[0,9],[2,-50],[5,-45],[0,2],[0,4]],"out":[null,-14,null,null,null,82,-58,null,null,null,-70,null,null,-117,-101]},
+        {"ops":["NumArray","sumRange","sumRange","sumRange","sumRange","sumRange","sumRange","update","update","sumRange","sumRange","sumRange","sumRange","sumRange","update"],"args":[[[29,-72,26,23,7,-90,51,-33,-72,-21,22,88,-80]],[10,11],[6,11],[2,12],[10,10],[3,7],[3,4],[9,-3],[11,15],[10,12],[1,11],[9,11],[10,10],[8,11],[3,23]],"out":[null,110,35,-79,22,-42,30,null,null,-43,-126,34,22,-38,null]},
+        {"ops":["NumArray","sumRange","update","sumRange","sumRange","update","sumRange","sumRange"],"args":[[{"$rep":100,"n":30000}],[0,29999],[29999,-100],[0,29999],[29999,29999],[0,-100],[0,29999],[1,29998]],"out":[null,3000000,null,2999800,-100,null,2999600,2999800]}
+      ] },
       solution: {
         approach: `<p>Build a sum segment tree over <code>nums</code>. <code>update</code> overwrites the leaf and repairs the path to the root; <code>sumRange</code> runs the three-case recursive query. Both are O(log N). The iterative bottom-up tree is shown because it is short and fast; the recursive one from the topic code is equally correct.</p>`,
         code: `
@@ -520,7 +769,57 @@ print("3000 random operations agree with brute force")` }],
 na = NumArray([1, 3, 5])
 print(na.sumRange(0, 2))  # 9
 na.update(1, 2)
-print(na.sumRange(0, 2))  # 8`, run: true }],
+print(na.sumRange(0, 2))  # 8`, run: true }, { lang: 'js', code: `class NumArray {
+  constructor(nums) {
+    this.n = nums.length;
+    this.t = new Int32Array(2 * this.n);              // leaves at t[n..2n-1]
+    this.t.set(nums, this.n);
+    for (let p = this.n - 1; p >= 1; p--) this.t[p] = this.t[2 * p] + this.t[2 * p + 1];
+  }
+
+  update(index, val) {
+    let p = index + this.n;
+    this.t[p] = val;                                   // fix the leaf
+    for (p >>= 1; p >= 1; p >>= 1) this.t[p] = this.t[2 * p] + this.t[2 * p + 1];
+  }
+
+  sumRange(left, right) {
+    let s = 0;
+    for (let l = left + this.n, r = right + this.n + 1; l < r; l >>= 1, r >>= 1) {
+      if (l & 1) s += this.t[l++];                     // l is a right child: take it alone
+      if (r & 1) s += this.t[--r];                     // r-1 is a left child: take it alone
+    }
+    return s;
+  }
+}
+
+const na = new NumArray([1, 3, 5]);
+console.log(na.sumRange(0, 2));  // 9
+na.update(1, 2);
+console.log(na.sumRange(0, 2));  // 8` }, { lang: 'cpp', code: `class NumArray {
+    int n;
+    vector<int> t;                                     // leaves at t[n..2n-1]
+public:
+    NumArray(vector<int>& nums) : n(nums.size()), t(2 * nums.size()) {
+        for (int i = 0; i < n; i++) t[n + i] = nums[i];
+        for (int p = n - 1; p >= 1; p--) t[p] = t[2 * p] + t[2 * p + 1];
+    }
+
+    void update(int index, int val) {
+        int p = index + n;
+        t[p] = val;                                    // fix the leaf
+        for (p >>= 1; p >= 1; p >>= 1) t[p] = t[2 * p] + t[2 * p + 1];
+    }
+
+    int sumRange(int left, int right) {
+        int s = 0;
+        for (int l = left + n, r = right + n + 1; l < r; l >>= 1, r >>= 1) {
+            if (l & 1) s += t[l++];                    // l is a right child: take it alone
+            if (r & 1) s += t[--r];                    // r-1 is a left child: take it alone
+        }
+        return s;
+    }
+};` }],
         dry: {
           head: ['step', 'operation', 'what the tree does', 'result'],
           rows: [
@@ -574,7 +873,7 @@ print(na.sumRange(0, 2))  # 8`, run: true }],
       '"Multiply by b then add c on a range, answer sums mod 998244353" → affine lazy tags (b, c) with composition.',
       'Only range updates + single-element reads (no range queries) → you do <b>not</b> need lazy: use a difference array (offline) or a Fenwick tree on differences.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Lazy segment tree: range ADD + range SUM, both O(log N).
       class LazySegTree {
           private final int n;
@@ -641,7 +940,190 @@ print(na.sumRange(0, 2))  # 8`, run: true }],
               st.add(0, 3, -1);                      // a = 0 1 5 6 8 9 10 8
               System.out.println(st.query(0, 7));    // 47
           }
-      }`, `
+      }`,
+      alt: [{ lang: 'python', run: true, code: `# Lazy segment tree: range ADD + range SUM, both O(log N).
+class LazySegTree:
+    def __init__(self, a):
+        self.n = len(a)
+        self.sum = [0] * (4 * self.n)    # sum[node] = correct sum of node's range (its own IOU already included)
+        self.lazy = [0] * (4 * self.n)   # lazy[node] = "add this to every element below me", not yet given to children
+        self._build(a, 1, 0, self.n - 1)
+
+    def _build(self, a, node, l, r):
+        if l == r:
+            self.sum[node] = a[l]
+            return
+        mid = (l + r) // 2
+        self._build(a, 2 * node, l, mid)
+        self._build(a, 2 * node + 1, mid + 1, r)
+        self.sum[node] = self.sum[2 * node] + self.sum[2 * node + 1]
+
+    def _apply(self, node, l, r, v):
+        """Apply "+v to every element" to a WHOLE node in O(1): fix its sum, remember the IOU."""
+        self.sum[node] += v * (r - l + 1)
+        if l != r:
+            self.lazy[node] += v         # leaves have no children to owe anything to
+
+    def _push(self, node, l, r):
+        """Hand the IOU one level down before looking inside this node."""
+        if self.lazy[node] != 0:
+            mid = (l + r) // 2
+            self._apply(2 * node, l, mid, self.lazy[node])
+            self._apply(2 * node + 1, mid + 1, r, self.lazy[node])
+            self.lazy[node] = 0
+
+    def add(self, ql, qr, v):
+        self._add(1, 0, self.n - 1, ql, qr, v)
+
+    def _add(self, node, l, r, ql, qr, v):
+        if qr < l or r < ql:             # outside: nothing to do
+            return
+        if ql <= l and r <= qr:          # fully covered: O(1) and STOP
+            self._apply(node, l, r, v)
+            return
+        self._push(node, l, r)           # partial: settle old IOUs first
+        mid = (l + r) // 2
+        self._add(2 * node, l, mid, ql, qr, v)
+        self._add(2 * node + 1, mid + 1, r, ql, qr, v)
+        self.sum[node] = self.sum[2 * node] + self.sum[2 * node + 1]   # pull fresh answers up
+
+    def query(self, ql, qr):
+        return self._query(1, 0, self.n - 1, ql, qr)
+
+    def _query(self, node, l, r, ql, qr):
+        if qr < l or r < ql:
+            return 0
+        if ql <= l and r <= qr:
+            return self.sum[node]        # correct: its IOU is already counted
+        self._push(node, l, r)
+        mid = (l + r) // 2
+        return self._query(2 * node, l, mid, ql, qr) + self._query(2 * node + 1, mid + 1, r, ql, qr)
+
+
+st = LazySegTree([1, 2, 3, 4, 5, 6, 7, 8])
+st.add(2, 6, 3)                          # a = 1 2 6 7 8 9 10 8
+print(st.query(3, 7))                    # 7+8+9+10+8 = 42
+st.add(0, 3, -1)                         # a = 0 1 5 6 8 9 10 8
+print(st.query(0, 7))                    # 47` }, { lang: 'js', run: true, code: `// Lazy segment tree: range ADD + range SUM, both O(log N).
+// Plain Numbers are exact up to 2^53; use BigInt64Array if sums can get bigger.
+class LazySegTree {
+  constructor(a) {
+    this.n = a.length;
+    this.sum = new Float64Array(4 * this.n);   // sum[node] = correct sum of node's range (its own IOU already included)
+    this.lazy = new Float64Array(4 * this.n);  // lazy[node] = "add this to every element below me", not yet given to children
+    this.build(a, 1, 0, this.n - 1);
+  }
+
+  build(a, node, l, r) {
+    if (l === r) { this.sum[node] = a[l]; return; }
+    const mid = (l + r) >> 1;
+    this.build(a, 2 * node, l, mid);
+    this.build(a, 2 * node + 1, mid + 1, r);
+    this.sum[node] = this.sum[2 * node] + this.sum[2 * node + 1];
+  }
+
+  // Apply "+v to every element" to a WHOLE node in O(1): fix its sum, remember the IOU.
+  apply(node, l, r, v) {
+    this.sum[node] += v * (r - l + 1);
+    if (l !== r) this.lazy[node] += v;         // leaves have no children to owe anything to
+  }
+
+  // Hand the IOU one level down before looking inside this node.
+  push(node, l, r) {
+    if (this.lazy[node] !== 0) {
+      const mid = (l + r) >> 1;
+      this.apply(2 * node, l, mid, this.lazy[node]);
+      this.apply(2 * node + 1, mid + 1, r, this.lazy[node]);
+      this.lazy[node] = 0;
+    }
+  }
+
+  add(ql, qr, v, node = 1, l = 0, r = this.n - 1) {
+    if (qr < l || r < ql) return;                               // outside: nothing to do
+    if (ql <= l && r <= qr) { this.apply(node, l, r, v); return; }  // fully covered: O(1) and STOP
+    this.push(node, l, r);                                      // partial: settle old IOUs first
+    const mid = (l + r) >> 1;
+    this.add(ql, qr, v, 2 * node, l, mid);
+    this.add(ql, qr, v, 2 * node + 1, mid + 1, r);
+    this.sum[node] = this.sum[2 * node] + this.sum[2 * node + 1];   // pull fresh answers up
+  }
+
+  query(ql, qr, node = 1, l = 0, r = this.n - 1) {
+    if (qr < l || r < ql) return 0;
+    if (ql <= l && r <= qr) return this.sum[node];              // correct: its IOU is already counted
+    this.push(node, l, r);
+    const mid = (l + r) >> 1;
+    return this.query(ql, qr, 2 * node, l, mid) + this.query(ql, qr, 2 * node + 1, mid + 1, r);
+  }
+}
+
+const st = new LazySegTree([1, 2, 3, 4, 5, 6, 7, 8]);
+st.add(2, 6, 3);                       // a = 1 2 6 7 8 9 10 8
+console.log(st.query(3, 7));           // 7+8+9+10+8 = 42
+st.add(0, 3, -1);                      // a = 0 1 5 6 8 9 10 8
+console.log(st.query(0, 7));           // 47` }, { lang: 'cpp', code: `// Lazy segment tree: range ADD + range SUM, both O(log N).
+class LazySegTree {
+    int n;
+    vector<long long> sum;    // sum[node] = correct sum of node's range (its own IOU already included)
+    vector<long long> lazy;   // lazy[node] = "add this to every element below me", not yet given to children
+
+    void build(const vector<int>& a, int node, int l, int r) {
+        if (l == r) { sum[node] = a[l]; return; }
+        int mid = (l + r) / 2;
+        build(a, 2 * node, l, mid);
+        build(a, 2 * node + 1, mid + 1, r);
+        sum[node] = sum[2 * node] + sum[2 * node + 1];
+    }
+
+    // Apply "+v to every element" to a WHOLE node in O(1): fix its sum, remember the IOU.
+    void apply(int node, int l, int r, long long v) {
+        sum[node] += v * (r - l + 1);
+        if (l != r) lazy[node] += v;          // leaves have no children to owe anything to
+    }
+
+    // Hand the IOU one level down before looking inside this node.
+    void push(int node, int l, int r) {
+        if (lazy[node] != 0) {
+            int mid = (l + r) / 2;
+            apply(2 * node, l, mid, lazy[node]);
+            apply(2 * node + 1, mid + 1, r, lazy[node]);
+            lazy[node] = 0;
+        }
+    }
+
+    void add(int node, int l, int r, int ql, int qr, long long v) {
+        if (qr < l || r < ql) return;                              // outside: nothing to do
+        if (ql <= l && r <= qr) { apply(node, l, r, v); return; }  // fully covered: O(1) and STOP
+        push(node, l, r);                                          // partial: settle old IOUs first
+        int mid = (l + r) / 2;
+        add(2 * node, l, mid, ql, qr, v);
+        add(2 * node + 1, mid + 1, r, ql, qr, v);
+        sum[node] = sum[2 * node] + sum[2 * node + 1];             // pull fresh answers up
+    }
+
+    long long query(int node, int l, int r, int ql, int qr) {
+        if (qr < l || r < ql) return 0;
+        if (ql <= l && r <= qr) return sum[node];                  // correct: its IOU is already counted
+        push(node, l, r);
+        int mid = (l + r) / 2;
+        return query(2 * node, l, mid, ql, qr) + query(2 * node + 1, mid + 1, r, ql, qr);
+    }
+
+public:
+    LazySegTree(const vector<int>& a) : n(a.size()), sum(4 * a.size()), lazy(4 * a.size()) {
+        build(a, 1, 0, n - 1);
+    }
+    void add(int ql, int qr, long long v) { add(1, 0, n - 1, ql, qr, v); }
+    long long query(int ql, int qr) { return query(1, 0, n - 1, ql, qr); }
+};
+
+int main() {
+    LazySegTree st({1, 2, 3, 4, 5, 6, 7, 8});
+    st.add(2, 6, 3);                       // a = 1 2 6 7 8 9 10 8
+    cout << st.query(3, 7) << "\\n";        // 7+8+9+10+8 = 42
+    st.add(0, 3, -1);                      // a = 0 1 5 6 8 9 10 8
+    cout << st.query(0, 7) << "\\n";        // 47
+}` }] }, { lang: 'java', code: `
       // Range ADD + range MAX: "after each booking, how busy is the busiest time slot?"
       class AddMaxSegTree {
           private final int n;
@@ -683,7 +1165,136 @@ print(na.sumRange(0, 2))  # 8`, run: true }],
               t.add(4, 5, 1);                             // booking [4,5]
               System.out.println(t.max(0, 9));            // 3: slot 4 is inside all three bookings
           }
-      }`, { lang: 'python', run: true, title: 'Python lazy tree + stress test (runnable)', code: `class LazySeg:
+      }`,
+      alt: [{ lang: 'python', run: true, code: `# Range ADD + range MAX: "after each booking, how busy is the busiest time slot?"
+class AddMaxSegTree:
+    def __init__(self, n):
+        self.n = n
+        self.mx = [0] * (4 * n)          # all slots start at 0
+        self.lz = [0] * (4 * n)
+
+    def _apply(self, node, v):           # the max shifts by v as a whole
+        self.mx[node] += v
+        self.lz[node] += v
+
+    def _push(self, node):
+        if self.lz[node] != 0:
+            self._apply(2 * node, self.lz[node])
+            self._apply(2 * node + 1, self.lz[node])
+            self.lz[node] = 0
+
+    def add(self, ql, qr, v, node=1, l=0, r=None):
+        if r is None:
+            r = self.n - 1
+        if qr < l or r < ql:
+            return
+        if ql <= l and r <= qr:
+            self._apply(node, v)
+            return
+        self._push(node)
+        mid = (l + r) // 2
+        self.add(ql, qr, v, 2 * node, l, mid)
+        self.add(ql, qr, v, 2 * node + 1, mid + 1, r)
+        self.mx[node] = max(self.mx[2 * node], self.mx[2 * node + 1])
+
+    def max(self, ql, qr, node=1, l=0, r=None):
+        if r is None:
+            r = self.n - 1
+        if qr < l or r < ql:
+            return float('-inf')         # identity of max
+        if ql <= l and r <= qr:
+            return self.mx[node]
+        self._push(node)
+        mid = (l + r) // 2
+        return max(self.max(ql, qr, 2 * node, l, mid), self.max(ql, qr, 2 * node + 1, mid + 1, r))
+
+
+t = AddMaxSegTree(10)                    # time slots 0..9
+t.add(1, 4, 1)                           # booking [1,4]
+t.add(3, 7, 1)                           # booking [3,7]
+t.add(4, 5, 1)                           # booking [4,5]
+print(t.max(0, 9))                       # 3: slot 4 is inside all three bookings` }, { lang: 'js', run: true, code: `// Range ADD + range MAX: "after each booking, how busy is the busiest time slot?"
+class AddMaxSegTree {
+  constructor(n) {
+    this.n = n;
+    this.mx = new Float64Array(4 * n);   // all slots start at 0
+    this.lz = new Float64Array(4 * n);
+  }
+
+  apply(node, v) { this.mx[node] += v; this.lz[node] += v; }   // the max shifts by v as a whole
+
+  push(node) {
+    if (this.lz[node] !== 0) {
+      this.apply(2 * node, this.lz[node]);
+      this.apply(2 * node + 1, this.lz[node]);
+      this.lz[node] = 0;
+    }
+  }
+
+  add(ql, qr, v, node = 1, l = 0, r = this.n - 1) {
+    if (qr < l || r < ql) return;
+    if (ql <= l && r <= qr) { this.apply(node, v); return; }
+    this.push(node);
+    const mid = (l + r) >> 1;
+    this.add(ql, qr, v, 2 * node, l, mid);
+    this.add(ql, qr, v, 2 * node + 1, mid + 1, r);
+    this.mx[node] = Math.max(this.mx[2 * node], this.mx[2 * node + 1]);
+  }
+
+  max(ql, qr, node = 1, l = 0, r = this.n - 1) {
+    if (qr < l || r < ql) return -Infinity;          // identity of max
+    if (ql <= l && r <= qr) return this.mx[node];
+    this.push(node);
+    const mid = (l + r) >> 1;
+    return Math.max(this.max(ql, qr, 2 * node, l, mid), this.max(ql, qr, 2 * node + 1, mid + 1, r));
+  }
+}
+
+const t = new AddMaxSegTree(10);         // time slots 0..9
+t.add(1, 4, 1);                          // booking [1,4]
+t.add(3, 7, 1);                          // booking [3,7]
+t.add(4, 5, 1);                          // booking [4,5]
+console.log(t.max(0, 9));                // 3: slot 4 is inside all three bookings` }, { lang: 'cpp', code: `// Range ADD + range MAX: "after each booking, how busy is the busiest time slot?"
+class AddMaxSegTree {
+    int n;
+    vector<long long> mx, lz;
+
+    void apply(int node, long long v) { mx[node] += v; lz[node] += v; }   // the max shifts by v as a whole
+    void push(int node) {
+        if (lz[node] != 0) { apply(2 * node, lz[node]); apply(2 * node + 1, lz[node]); lz[node] = 0; }
+    }
+
+    void add(int node, int l, int r, int ql, int qr, long long v) {
+        if (qr < l || r < ql) return;
+        if (ql <= l && r <= qr) { apply(node, v); return; }
+        push(node);
+        int mid = (l + r) / 2;
+        add(2 * node, l, mid, ql, qr, v);
+        add(2 * node + 1, mid + 1, r, ql, qr, v);
+        mx[node] = max(mx[2 * node], mx[2 * node + 1]);
+    }
+
+    long long query(int node, int l, int r, int ql, int qr) {
+        if (qr < l || r < ql) return LLONG_MIN;                    // identity of max
+        if (ql <= l && r <= qr) return mx[node];
+        push(node);
+        int mid = (l + r) / 2;
+        return max(query(2 * node, l, mid, ql, qr), query(2 * node + 1, mid + 1, r, ql, qr));
+    }
+
+public:
+    AddMaxSegTree(int n) : n(n), mx(4 * n, 0), lz(4 * n, 0) {}     // all slots start at 0
+    void add(int ql, int qr, long long v) { add(1, 0, n - 1, ql, qr, v); }
+    long long maxIn(int ql, int qr) { return query(1, 0, n - 1, ql, qr); }
+};
+
+int main() {
+    AddMaxSegTree t(10);                   // time slots 0..9
+    t.add(1, 4, 1);                        // booking [1,4]
+    t.add(3, 7, 1);                        // booking [3,7]
+    t.add(4, 5, 1);                        // booking [4,5]
+    cout << t.maxIn(0, 9) << "\\n";         // 3: slot 4 is inside all three bookings
+}` }] }, { lang: 'python', run: true, title: 'Python lazy tree + stress test (runnable)', code: `class LazySeg:
     """Range add, range sum."""
 
     def __init__(self, a):
@@ -895,7 +1506,7 @@ print("3000 random range-adds / range-sums match brute force")` }],
       <p><b>Formal view.</b> Values form a monoid (associative merge + identity); tags form another monoid under composition; and applying a tag must distribute over merge: <code>apply(t, merge(x, y)) = merge(apply(t, x), apply(t, y))</code>. AtCoder Library's <code>lazy_segtree&lt;S, op, e, F, mapping, composition, id&gt;</code> is exactly this interface, iterative and fast. If your node needs the length (sum += v·len), store the length inside S.</p>
       <p><b>When lazy breaks.</b> "a[i] = a[i] mod x", "a[i] = ⌊√a[i]⌋" or "a[i] = min(a[i], x)" do not satisfy condition 1. Tricks: (1) <b>amortised brute force</b> — each element can be square-rooted only ~6 times before it becomes 1 (for values ≤ 10<sup>18</sup>), so recurse while max &gt; 1 and stop on all-ones nodes; (2) <b>Segment Tree Beats</b> (Ji Ruyi) for chmin/chmax: store max, second max and count of max; if x is between second max and max, update lazily, else recurse — amortised O((N + Q) log N) for the basic version.</p>
       <p><b>Alternatives you should know.</b> Range add + range sum can also be done with <b>two Fenwick trees</b> (shorter, faster, see Fenwick topic). Range add + point query needs only one Fenwick tree on the difference array. If all updates come before all queries, a plain <b>difference array</b> (O(1) per update, one O(N) prefix pass) beats everything.</p>
-      <p><b>Common bugs.</b> Forgetting to push in the <i>query</i> (only in update); pushing on leaves into out-of-range children (guard with <code>l != r</code> or allocate 4N); multiplying <code>v · len</code> in <code>int</code>; for assign tags using 0 as "no tag" when 0 is a legal value (use a separate boolean or a sentinel like <code>Long.MIN_VALUE</code>).</p>`,
+      <p><b>Common bugs.</b> Forgetting to push in the <i>query</i> (only in update); pushing on leaves into out-of-range children (guard with <code>l != r</code> or allocate 4N); multiplying <code>v · len</code> in a 32-bit <code>int</code>; for assign tags using 0 as "no tag" when 0 is a legal value (use a separate boolean or a sentinel such as the smallest 64-bit value, <code>Long.MIN_VALUE</code> / <code>LLONG_MIN</code>).</p>`,
     aiEra: `<p><b>What AI changes:</b> a lazy segment tree is ~60 lines of fiddly code — the kind of thing assistants autocomplete well for the textbook case (range add, range sum). The value you add is in the <b>non-textbook</b> parts: designing the tag, writing the composition rule, and spotting when an operation is not lazy-friendly at all.</p>
       <p><b>Typical AI mistakes to look for:</b> applying a "set" tag after an "add" in the wrong order; using 0 as the "no assignment" sentinel; forgetting <code>push</code> inside the query; treating min-tree updates as <code>min += v·len</code> (copying the sum formula); proposing lazy propagation for <code>a[i] = √a[i]</code>, which cannot be lazy.</p>
       <p><b>Use AI as a partner:</b> describe your tag algebra in words and ask it to try to find a counter-example to your composition rule; ask for a randomised test that compares your tree with an O(N) simulation (as in the Python snippet) — lazy bugs often appear only after 3–4 overlapping updates, which random tests find in milliseconds. <b>What you must own:</b> the invariant ("ancestors on my path have no pending tags"), the two-condition lazy contract, and the decision whether a cheaper tool (difference array, two BITs) is enough.</p>`,
@@ -905,7 +1516,7 @@ print("3000 random range-adds / range-sums match brute force")` }],
       tags: ['lazy propagation', 'segment tree', 'range update'],
       companies: ['Google', 'Uber', 'Codenation'],
       statement: `<p>An array of <code>N</code> zeros receives <code>Q</code> commands. Command <code>[0, l, r, v]</code> adds <code>v</code> to every element with index in <code>[l, r]</code>. Command <code>[1, l, r]</code> asks for the sum of the elements in <code>[l, r]</code>. Return the answers of all type-1 commands in order. Indices are 0-based.</p>`,
-      constraints: `1 ≤ N, Q ≤ 10<sup>5</sup>, 0 ≤ l ≤ r &lt; N, 0 ≤ v ≤ 10<sup>7</sup>. Sums can reach 10<sup>5</sup> · 10<sup>5</sup> · 10<sup>7</sup> = 10<sup>17</sup> → use <code>long</code>.`,
+      constraints: `1 ≤ N, Q ≤ 10<sup>5</sup>, 0 ≤ l ≤ r &lt; N, 0 ≤ v ≤ 10<sup>7</sup>. Sums can reach 10<sup>5</sup> · 10<sup>5</sup> · 10<sup>7</sup> = 10<sup>17</sup> → use 64-bit integers (and BigInt in JavaScript).`,
       example: `<p>N = 8, commands: [0,1,6,10], [0,0,3,2], [1,2,4], [0,4,7,1], [1,0,7]</p>
         ${H.arr([2, 12, 12, 12, 11, 11, 11, 1], { label: 'after all adds', hl: { 2: 'g', 3: 'g', 4: 'g' } })}
         <p>Output ${H.c('g', '[34, 72]')}. After the first two adds the array is [2,12,12,12,10,10,10,0], so sum[2..4] = 12+12+10 = 34. After +1 on [4,7] it becomes [2,12,12,12,11,11,11,1] and the total is 72.</p>`,
@@ -932,9 +1543,23 @@ print("3000 random range-adds / range-sums match brute force")` }],
       },
       hints: [
         `<p><b>Aha:</b> when an update fully covers a node, you know its new sum without visiting its children: <code>sum += v × length</code>. Remember the unpaid part as a tag.</p>`,
-        `<p>Lazy segment tree with <code>long[] sum, lazy</code> of size 4N: <code>apply</code>, <code>push</code> before descending, <code>pull</code> after. (Alternative: two Fenwick trees with the formula <code>prefix(x) = B1(x)·x − B2(x)</code>.)</p>`,
-        `<p>Edge cases: l = r; adds of 0; queries on untouched parts (sum 0); overflow → long everywhere, including <code>v * (r − l + 1)</code>. Recipe: build zeros → for each command run add or query → collect answers.</p>`
+        `<p>Lazy segment tree with 64-bit arrays <code>sum</code> and <code>lazy</code> of size 4N: <code>apply</code>, <code>push</code> before descending, <code>pull</code> after. (Alternative: two Fenwick trees with the formula <code>prefix(x) = B1(x)·x − B2(x)</code>.)</p>`,
+        `<p>Edge cases: l = r; adds of 0; queries on untouched parts (sum 0); overflow → 64-bit everywhere, including <code>v * (r − l + 1)</code>. Recipe: build zeros → for each command run add or query → collect answers.</p>`
       ],
+      tests: { sig: 'int int[][] -> long[]', fn: 'horrible', cases: [
+        [[8,[[0,1,6,10],[0,0,3,2],[1,2,4],[0,4,7,1],[1,0,7]]],[34,72]],
+        [[1,[[1,0,0],[0,0,0,10000000],[1,0,0]]],[0,10000000]],
+        [[5,[[0,0,4,3],[0,1,2,0]]],[]],
+        [[4,[[1,0,3],[1,1,2]]],[0,0]],
+        [[6,[[0,5,5,7],[1,5,5],[1,0,4],[0,0,5,1],[1,0,5],[1,3,5]]],[7,0,13,10]],
+        [[5,[[1,1,1],[0,4,4,6417987],[1,1,4],[1,1,3],[1,4,4],[0,0,3,351521],[1,0,4],[1,3,3],[0,2,2,5230655],[0,4,4,4633354],[1,4,4],[1,2,3],[0,2,4,7791580],[1,4,4]]],[0,6417987,0,6417987,7824071,351521,11051341,5933697,18842921]],
+        [[5,[[1,4,4],[1,2,3],[1,3,3],[1,0,1],[1,4,4],[1,0,4],[1,2,4],[1,0,3],[1,2,2],[0,1,4,7602951],[0,0,1,1002066],[1,1,2],[1,0,3],[0,1,4,6609064]]],[0,0,0,0,0,0,0,0,0,16207968,24812985]],
+        [[5,[[1,0,2],[1,2,2],[0,2,4,2207109],[1,1,2],[1,3,3],[0,2,2,1522797],[1,2,3],[0,2,4,449603],[1,3,3],[1,2,4],[0,1,2,1817393],[1,1,1],[0,2,4,3208467],[0,0,3,376195]]],[0,0,2207109,2207109,5937015,2656712,9492933,1817393]],
+        [[11,[[0,8,9,6751263],[1,6,7],[1,9,9],[1,0,3],[0,3,4,3787785],[0,7,8,265689],[1,3,7],[1,9,9],[0,3,7,3954491],[0,7,10,6887979],[0,1,8,3611675],[0,2,10,8080651],[0,6,7,5976214],[1,9,9]]],[0,6751263,0,7841259,6751263,21719893]],
+        [[3,[[0,0,1,6957576],[0,0,2,2504120],[1,0,1],[0,0,2,1728602],[0,0,0,6217421],[0,1,2,6392029],[0,2,2,5030893],[1,2,2],[0,1,2,6855047],[0,0,2,341303],[1,0,1],[1,2,2],[0,0,2,6622039],[0,0,1,152879]]],[18923392,15655644,42527699,22851994]],
+        [[100000,{"$concat":[{"$rep":[0,0,99999,10000000],"n":49999},{"$rep":[0,99999,99999,10000000],"n":49998},[[1,0,99999],[1,99999,99999],[1,0,99998]]]}],["49999499980000000","999970000000","49998500010000000"]],
+        [[100000,{"$concat":[{"$rep":[0,0,99999,10000000],"n":99999},[[1,0,99999]]]}],["99999000000000000"]]
+      ] },
       solution: {
         approach: `<p>Lazy segment tree over N zeros. Type 0 → range add (apply on fully covered nodes, push on partial ones, pull on the way up). Type 1 → range sum with push on partial nodes. Each command is O(log N).</p>`,
         code: `
@@ -1025,7 +1650,89 @@ print("3000 random range-adds / range-sums match brute force")` }],
     return out
 
 
-print(horrible(8, [[0, 1, 6, 10], [0, 0, 3, 2], [1, 2, 4], [0, 4, 7, 1], [1, 0, 7]]))  # [34, 72]`, run: true }],
+print(horrible(8, [[0, 1, 6, 10], [0, 0, 3, 2], [1, 2, 4], [0, 4, 7, 1], [1, 0, 7]]))  # [34, 72]`, run: true }, { lang: 'js', code: `function horrible(n, cmds) {
+  // sums can reach 1e17, past 2^53, so the tree stores BigInt values
+  const sum = new BigInt64Array(4 * n), lazy = new BigInt64Array(4 * n);
+
+  const apply = (node, l, r, v) => {
+    sum[node] += v * BigInt(r - l + 1);
+    if (l !== r) lazy[node] += v;
+  };
+  const push = (node, l, r) => {
+    if (lazy[node] === 0n) return;
+    const mid = (l + r) >> 1;
+    apply(2 * node, l, mid, lazy[node]);
+    apply(2 * node + 1, mid + 1, r, lazy[node]);
+    lazy[node] = 0n;
+  };
+  const add = (node, l, r, ql, qr, v) => {
+    if (qr < l || r < ql) return;
+    if (ql <= l && r <= qr) { apply(node, l, r, v); return; }
+    push(node, l, r);
+    const mid = (l + r) >> 1;
+    add(2 * node, l, mid, ql, qr, v);
+    add(2 * node + 1, mid + 1, r, ql, qr, v);
+    sum[node] = sum[2 * node] + sum[2 * node + 1];
+  };
+  const query = (node, l, r, ql, qr) => {
+    if (qr < l || r < ql) return 0n;
+    if (ql <= l && r <= qr) return sum[node];
+    push(node, l, r);
+    const mid = (l + r) >> 1;
+    return query(2 * node, l, mid, ql, qr) + query(2 * node + 1, mid + 1, r, ql, qr);
+  };
+
+  const out = [];
+  for (const c of cmds) {
+    if (c[0] === 0) add(1, 0, n - 1, c[1], c[2], BigInt(c[3]));
+    else out.push(query(1, 0, n - 1, c[1], c[2]));
+  }
+  return out;
+}
+
+console.log(horrible(8, [[0, 1, 6, 10], [0, 0, 3, 2], [1, 2, 4], [0, 4, 7, 1], [1, 0, 7]]));  // [34n, 72n]` }, { lang: 'cpp', code: `class Solution {
+    vector<long long> sum, lazy;
+
+    void apply(int node, int l, int r, long long v) {
+        sum[node] += v * (r - l + 1);
+        if (l != r) lazy[node] += v;
+    }
+    void push(int node, int l, int r) {
+        if (lazy[node] == 0) return;
+        int mid = (l + r) / 2;
+        apply(2 * node, l, mid, lazy[node]);
+        apply(2 * node + 1, mid + 1, r, lazy[node]);
+        lazy[node] = 0;
+    }
+    void add(int node, int l, int r, int ql, int qr, long long v) {
+        if (qr < l || r < ql) return;
+        if (ql <= l && r <= qr) { apply(node, l, r, v); return; }
+        push(node, l, r);
+        int mid = (l + r) / 2;
+        add(2 * node, l, mid, ql, qr, v);
+        add(2 * node + 1, mid + 1, r, ql, qr, v);
+        sum[node] = sum[2 * node] + sum[2 * node + 1];
+    }
+    long long query(int node, int l, int r, int ql, int qr) {
+        if (qr < l || r < ql) return 0;
+        if (ql <= l && r <= qr) return sum[node];
+        push(node, l, r);
+        int mid = (l + r) / 2;
+        return query(2 * node, l, mid, ql, qr) + query(2 * node + 1, mid + 1, r, ql, qr);
+    }
+
+public:
+    vector<long long> horrible(int n, vector<vector<int>>& cmds) {
+        sum.assign(4 * n, 0);
+        lazy.assign(4 * n, 0);
+        vector<long long> out;
+        for (auto& c : cmds) {
+            if (c[0] == 0) add(1, 0, n - 1, c[1], c[2], c[3]);
+            else out.push_back(query(1, 0, n - 1, c[1], c[2]));
+        }
+        return out;
+    }
+};` }],
         dry: {
           head: ['command', 'nodes fully covered (apply)', 'state after', 'output'],
           rows: [
@@ -1080,7 +1787,7 @@ print(horrible(8, [[0, 1, 6, 10], [0, 0, 3, 2], [1, 2, 4], [0, 4, 7, 1], [1, 0, 
       'Values up to 10<sup>9</sup> but only N ≤ 10<sup>5</sup> of them → <b>coordinate compression</b>, then BIT of size N.',
       'The operation is <b>min / max with arbitrary updates</b> → BIT is the wrong tool (no inverse); use a segment tree.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Fenwick tree (Binary Indexed Tree), 1-based: tree[i] = sum of a(i - lowbit(i), i].
       class Fenwick {
           private final int n;
@@ -1131,7 +1838,157 @@ print(horrible(8, [[0, 1, 6, 10], [0, 0, 3, 2], [1, 2, 4], [0, 4, 7, 1], [1, 0, 
               f.add(3, 5);                           // a[3]: -1 -> 4
               System.out.println(f.rangeSum(3, 5));  // 15
           }
-      }`, `
+      }`,
+      alt: [{ lang: 'python', run: true, code: `# Fenwick tree (Binary Indexed Tree), 1-based: tree[i] = sum of a(i - lowbit(i), i].
+class Fenwick:
+    def __init__(self, n):
+        self.n = n
+        self.tree = [0] * (n + 1)
+
+    @classmethod
+    def from_array(cls, a):
+        """O(N) build from a 0-based list: every box hands its total to its parent box once."""
+        f = cls(len(a))
+        for i in range(1, f.n + 1):
+            f.tree[i] += a[i - 1]
+            parent = i + (i & -i)
+            if parent <= f.n:
+                f.tree[parent] += f.tree[i]
+        return f
+
+    def add(self, i, delta):
+        """a[i] += delta (1-based): visit every box whose range contains i."""
+        while i <= self.n:
+            self.tree[i] += delta
+            i += i & -i
+
+    def prefix(self, i):
+        """a[1] + ... + a[i]: strip the lowest set bit each step."""
+        s = 0
+        while i > 0:
+            s += self.tree[i]
+            i -= i & -i
+        return s
+
+    def range_sum(self, l, r):
+        return self.prefix(r) - self.prefix(l - 1)
+
+    def lower_bound(self, k):
+        """Smallest p with prefix(p) >= k (needs all a[i] >= 0). Returns n + 1 if no such p. O(log N)."""
+        pos = 0
+        step = 1 << (max(self.n, 1).bit_length() - 1)      # highest power of two <= n
+        while step > 0:
+            if pos + step <= self.n and self.tree[pos + step] < k:   # whole block still too small: jump over it
+                pos += step
+                k -= self.tree[pos]
+            step >>= 1
+        return pos + 1
+
+
+f = Fenwick.from_array([3, 2, -1, 6, 5, 4, -3, 3])
+print(f.prefix(7))        # 16
+print(f.range_sum(3, 5))  # -1 + 6 + 5 = 10
+f.add(3, 5)               # a[3]: -1 -> 4
+print(f.range_sum(3, 5))  # 15` }, { lang: 'js', run: true, code: `// Fenwick tree (Binary Indexed Tree), 1-based: tree[i] = sum of a(i - lowbit(i), i].
+class Fenwick {
+  constructor(n) {
+    this.n = n;
+    this.tree = new Float64Array(n + 1);
+  }
+
+  /** O(N) build from a 0-based array: every box hands its total to its parent box once. */
+  static from(a) {
+    const f = new Fenwick(a.length);
+    for (let i = 1; i <= f.n; i++) {
+      f.tree[i] += a[i - 1];
+      const parent = i + (i & -i);
+      if (parent <= f.n) f.tree[parent] += f.tree[i];
+    }
+    return f;
+  }
+
+  /** a[i] += delta (1-based): visit every box whose range contains i. */
+  add(i, delta) {
+    for (; i <= this.n; i += i & -i) this.tree[i] += delta;
+  }
+
+  /** a[1] + ... + a[i]: strip the lowest set bit each step. */
+  prefix(i) {
+    let s = 0;
+    for (; i > 0; i -= i & -i) s += this.tree[i];
+    return s;
+  }
+
+  rangeSum(l, r) { return this.prefix(r) - this.prefix(l - 1); }
+
+  /** Smallest p with prefix(p) >= k (needs all a[i] >= 0). Returns n + 1 if no such p. O(log N). */
+  lowerBound(k) {
+    let pos = 0;
+    for (let step = 1 << (31 - Math.clz32(Math.max(this.n, 1))); step > 0; step >>= 1) {
+      if (pos + step <= this.n && this.tree[pos + step] < k) {   // whole block still too small: jump over it
+        pos += step;
+        k -= this.tree[pos];
+      }
+    }
+    return pos + 1;
+  }
+}
+
+const f = Fenwick.from([3, 2, -1, 6, 5, 4, -3, 3]);
+console.log(f.prefix(7));       // 16
+console.log(f.rangeSum(3, 5));  // -1 + 6 + 5 = 10
+f.add(3, 5);                    // a[3]: -1 -> 4
+console.log(f.rangeSum(3, 5));  // 15` }, { lang: 'cpp', code: `// Fenwick tree (Binary Indexed Tree), 1-based: tree[i] = sum of a(i - lowbit(i), i].
+class Fenwick {
+    int n;
+    vector<long long> tree;
+
+public:
+    Fenwick(int n) : n(n), tree(n + 1, 0) {}
+
+    /** O(N) build from a 0-based array: every box hands its total to its parent box once. */
+    Fenwick(const vector<int>& a) : Fenwick((int)a.size()) {
+        for (int i = 1; i <= n; i++) {
+            tree[i] += a[i - 1];
+            int parent = i + (i & -i);
+            if (parent <= n) tree[parent] += tree[i];
+        }
+    }
+
+    /** a[i] += delta (1-based): visit every box whose range contains i. */
+    void add(int i, long long delta) {
+        for (; i <= n; i += i & -i) tree[i] += delta;
+    }
+
+    /** a[1] + ... + a[i]: strip the lowest set bit each step. */
+    long long prefix(int i) {
+        long long s = 0;
+        for (; i > 0; i -= i & -i) s += tree[i];
+        return s;
+    }
+
+    long long rangeSum(int l, int r) { return prefix(r) - prefix(l - 1); }
+
+    /** Smallest p with prefix(p) >= k (needs all a[i] >= 0). Returns n + 1 if no such p. O(log N). */
+    int lowerBound(long long k) {
+        int pos = 0;
+        for (int step = 1 << (31 - __builtin_clz(max(n, 1))); step > 0; step >>= 1) {
+            if (pos + step <= n && tree[pos + step] < k) {   // whole block still too small: jump over it
+                pos += step;
+                k -= tree[pos];
+            }
+        }
+        return pos + 1;
+    }
+};
+
+int main() {
+    Fenwick f(vector<int>{3, 2, -1, 6, 5, 4, -3, 3});
+    cout << f.prefix(7) << "\\n";        // 16
+    cout << f.rangeSum(3, 5) << "\\n";   // -1 + 6 + 5 = 10
+    f.add(3, 5);                        // a[3]: -1 -> 4
+    cout << f.rangeSum(3, 5) << "\\n";   // 15
+}` }] }, { lang: 'java', code: `
       // Range ADD + range SUM with two Fenwick trees (1-based).
       // With d = difference array: prefix(x) = x * sum(d[1..x]) - sum(d[i] * (i - 1)).
       class RangeFenwick {
@@ -1161,7 +2018,103 @@ print(horrible(8, [[0, 1, 6, 10], [0, 0, 3, 2], [1, 2, 4], [0, 4, 7, 1], [1, 0, 
               rf.rangeAdd(4, 8, 1);                     // a = 0 3 3 4 4 1 1 1
               System.out.println(rf.rangeSum(3, 6));    // 3 + 4 + 4 + 1 = 12
           }
-      }`, { lang: 'python', run: true, title: 'Python: BIT, inversion count and k-th smallest (runnable)', code: `class BIT:
+      }`,
+      alt: [{ lang: 'python', run: true, code: `# Range ADD + range SUM with two Fenwick trees (1-based).
+# With d = difference array: prefix(x) = x * sum(d[1..x]) - sum(d[i] * (i - 1)).
+class RangeFenwick:
+    def __init__(self, n):
+        self.n = n
+        self.b1 = [0] * (n + 2)
+        self.b2 = [0] * (n + 2)
+
+    def _upd(self, b, i, v):
+        while i <= self.n:
+            b[i] += v
+            i += i & -i
+
+    def _pre(self, b, i):
+        s = 0
+        while i > 0:
+            s += b[i]
+            i -= i & -i
+        return s
+
+    def range_add(self, l, r, v):
+        """a[l..r] += v"""
+        self._upd(self.b1, l, v)
+        self._upd(self.b1, r + 1, -v)
+        self._upd(self.b2, l, v * (l - 1))
+        self._upd(self.b2, r + 1, -v * r)
+
+    def prefix_sum(self, x):
+        return self._pre(self.b1, x) * x - self._pre(self.b2, x)
+
+    def range_sum(self, l, r):
+        return self.prefix_sum(r) - self.prefix_sum(l - 1)
+
+
+rf = RangeFenwick(8)           # a = 0 0 0 0 0 0 0 0
+rf.range_add(2, 5, 3)          # a = 0 3 3 3 3 0 0 0
+rf.range_add(4, 8, 1)          # a = 0 3 3 4 4 1 1 1
+print(rf.range_sum(3, 6))      # 3 + 4 + 4 + 1 = 12` }, { lang: 'js', run: true, code: `// Range ADD + range SUM with two Fenwick trees (1-based).
+// With d = difference array: prefix(x) = x * sum(d[1..x]) - sum(d[i] * (i - 1)).
+class RangeFenwick {
+  constructor(n) {
+    this.n = n;
+    this.b1 = new Float64Array(n + 2);
+    this.b2 = new Float64Array(n + 2);
+  }
+
+  upd(b, i, v) { for (; i <= this.n; i += i & -i) b[i] += v; }
+  pre(b, i) { let s = 0; for (; i > 0; i -= i & -i) s += b[i]; return s; }
+
+  /** a[l..r] += v */
+  rangeAdd(l, r, v) {
+    this.upd(this.b1, l, v);
+    this.upd(this.b1, r + 1, -v);
+    this.upd(this.b2, l, v * (l - 1));
+    this.upd(this.b2, r + 1, -v * r);
+  }
+
+  prefixSum(x) { return this.pre(this.b1, x) * x - this.pre(this.b2, x); }
+
+  rangeSum(l, r) { return this.prefixSum(r) - this.prefixSum(l - 1); }
+}
+
+const rf = new RangeFenwick(8);   // a = 0 0 0 0 0 0 0 0
+rf.rangeAdd(2, 5, 3);             // a = 0 3 3 3 3 0 0 0
+rf.rangeAdd(4, 8, 1);             // a = 0 3 3 4 4 1 1 1
+console.log(rf.rangeSum(3, 6));   // 3 + 4 + 4 + 1 = 12` }, { lang: 'cpp', code: `// Range ADD + range SUM with two Fenwick trees (1-based).
+// With d = difference array: prefix(x) = x * sum(d[1..x]) - sum(d[i] * (i - 1)).
+class RangeFenwick {
+    int n;
+    vector<long long> b1, b2;
+
+    void upd(vector<long long>& b, int i, long long v) { for (; i <= n; i += i & -i) b[i] += v; }
+    long long pre(const vector<long long>& b, int i) { long long s = 0; for (; i > 0; i -= i & -i) s += b[i]; return s; }
+
+public:
+    RangeFenwick(int n) : n(n), b1(n + 2, 0), b2(n + 2, 0) {}
+
+    /** a[l..r] += v */
+    void rangeAdd(int l, int r, long long v) {
+        upd(b1, l, v);
+        upd(b1, r + 1, -v);
+        upd(b2, l, v * (l - 1));
+        upd(b2, r + 1, -v * r);
+    }
+
+    long long prefixSum(int x) { return pre(b1, x) * x - pre(b2, x); }
+
+    long long rangeSum(int l, int r) { return prefixSum(r) - prefixSum(l - 1); }
+};
+
+int main() {
+    RangeFenwick rf(8);              // a = 0 0 0 0 0 0 0 0
+    rf.rangeAdd(2, 5, 3);            // a = 0 3 3 3 3 0 0 0
+    rf.rangeAdd(4, 8, 1);            // a = 0 3 3 4 4 1 1 1
+    cout << rf.rangeSum(3, 6) << "\\n";   // 3 + 4 + 4 + 1 = 12
+}` }] }, { lang: 'python', run: true, title: 'Python: BIT, inversion count and k-th smallest (runnable)', code: `class BIT:
     def __init__(self, n):
         self.n = n
         self.t = [0] * (n + 1)
@@ -1321,12 +2274,12 @@ print("3rd smallest now =", counts.kth(3))  # 2 5 7 9 -> 7` }],
         ['memory', 'N + 1', '2N (iterative) / 4N (recursive)'],
         ['code', '~10 lines', '30–60 lines'],
         ['ops', 'invertible (sum, xor, counts)', 'any associative op, custom nodes, lazy'],
-        ['speed (Java, 10<sup>6</sup> ops)', 'fastest', '2–3× slower recursive'],
+        ['speed (compiled languages, 10<sup>6</sup> ops)', 'fastest', '2–3× slower recursive'],
         ['range update', 'add only (two BITs)', 'add, assign, affine, flips…']
       ])}
       <p><b>Max-Fenwick caveat.</b> A Fenwick tree for prefix <i>max</i> works only when values never decrease (each update is <code>tree[j] = max(tree[j], v)</code>). That is enough for LIS in O(N log N) or "best dp value among smaller keys", a common DP-with-data-structure trick, but not for general max with arbitrary updates.</p>
       <p><b>2D and beyond.</b> A 2D BIT nests the two loops: update (x, y) touches O(log N · log M) cells; rectangle sum uses inclusion–exclusion of four prefix queries. Memory N·M, so it fits only moderate grids (e.g. 2000 × 2000 longs = 32 MB). For sparse huge grids use offline sweep + 1D BIT instead.</p>
-      <p><b>Practical notes.</b> Keep 1-based indexing inside the class and convert at the boundary — mixing 0- and 1-based is the most common Fenwick bug (an infinite loop at i = 0 because 0 &amp; −0 = 0). Use <code>long</code> sums. For counts over values, compress with sort + dedupe + binary search, or a HashMap from value to rank.</p>`,
+      <p><b>Practical notes.</b> Keep 1-based indexing inside the class and convert at the boundary — mixing 0- and 1-based is the most common Fenwick bug (an infinite loop at i = 0 because 0 &amp; −0 = 0). Use 64-bit sums. For counts over values, compress with sort + dedupe + binary search, or a hash map from value to rank (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>).</p>`,
     aiEra: `<p><b>What AI changes:</b> the 10-line Fenwick is pure boilerplate for a model — and that is exactly why interviewers now probe the <i>why</i>: "why does <code>i &amp; −i</code> work?", "why can't you do max?", "derive the two-BIT formula". Expect to explain two's complement and the tiling argument without notes.</p>
       <p><b>Typical AI mistakes:</b> 0-based Fenwick with <code>for (; i &gt; 0; ...)</code> that silently drops index 0 or loops forever; forgetting coordinate compression and allocating a 10<sup>9</sup>-sized array; inversion counts using <code>prefix(v)</code> where <code>prefix(v − 1)</code> is needed (ties counted wrongly); claiming a BIT can answer range minimum with arbitrary updates.</p>
       <p><b>Use AI as a partner:</b> ask it to generate tricky inputs (duplicates, negatives, all equal values) for your inversion counter and to cross-check against an O(N²) brute force; ask it to explain the two-BIT derivation step by step and verify each line yourself with a tiny numeric example. <b>What you must own:</b> recognising "count of earlier elements with property X" as a BIT-over-values problem, the strict vs non-strict boundary (v vs v − 1), and choosing BIT over a segment tree when the op is invertible.</p>`,
@@ -1363,6 +2316,21 @@ print("3rd smallest now =", counts.kth(3))  # 2 5 7 9 -> 7` }],
         `<p>BIT indexed by <b>value</b>: shift values by +10<sup>4</sup> + 1 so they become 1..20001 (or compress ranks for arbitrary values). Query <code>prefix(rank − 1)</code>, then <code>add(rank, 1)</code>.</p>`,
         `<p>Edge cases: duplicates (strict, so v − 1), negative numbers (offset), N = 1. Recipe: for i from N−1 down to 0 → r = nums[i] + OFFSET → ans[i] = prefix(r − 1) → add(r, 1).</p>`
       ],
+      tests: { sig: 'int[] -> list<int>', fn: 'countSmaller', cases: [
+        [[[5,2,6,1]],[2,1,1,0]],
+        [[[-1,-1]],[0,0]],
+        [[[7]],[0]],
+        [[[1,2,3,4,5]],[0,0,0,0,0]],
+        [[[5,4,3,2,1]],[4,3,2,1,0]],
+        [[[3,3,3,1,3,1]],[2,2,2,0,1,0]],
+        [[[10000,-10000,10000,-10000,0]],[3,0,2,0,0]],
+        [[[0,2,2,4,-6]],[1,1,1,1,0]],
+        [[[3,-4,3,-2,2,-1,1,-6,2,-5,-5,5]],[9,3,8,3,5,3,3,0,2,0,0,0]],
+        [[[-5,-5,-5,-1,-6,1,-6,-3,5,5,5,0]],[2,2,2,3,0,3,0,0,1,1,1,0]],
+        [[{"$rep":7,"n":100000}],{"$rep":0,"n":100000}],
+        [[{"$concat":[{"$rep":10000,"n":50000},{"$rep":-10000,"n":50000}]}],{"$concat":[{"$rep":50000,"n":50000},{"$rep":0,"n":50000}]}],
+        [[{"$range":[10000,-10001,-1]}],{"$range":[20000,-1,-1]}]
+      ] },
       solution: {
         approach: `<p>Right-to-left sweep with a Fenwick tree of counts over the value range. Each step is one prefix query and one point add, so the whole thing is O(N log V). Merge sort with index tracking is the alternative O(N log N) solution.</p>`,
         code: `
@@ -1406,7 +2374,40 @@ print("3rd smallest now =", counts.kth(3))  # 2 5 7 9 -> 7` }],
     return out
 
 
-print(count_smaller([5, 2, 6, 1]))  # [2, 1, 1, 0]`, run: true }],
+print(count_smaller([5, 2, 6, 1]))  # [2, 1, 1, 0]`, run: true }, { lang: 'js', code: `function countSmaller(nums) {
+  const sorted = [...new Set(nums)].sort((a, b) => a - b);   // coordinate compression
+  const rank = new Map(sorted.map((v, i) => [v, i + 1]));
+  const m = sorted.length, bit = new Int32Array(m + 1);
+  const ans = new Array(nums.length);
+  for (let i = nums.length - 1; i >= 0; i--) {
+    const r = rank.get(nums[i]);
+    let c = 0;
+    for (let j = r - 1; j > 0; j -= j & -j) c += bit[j];     // seen values smaller than nums[i]
+    ans[i] = c;
+    for (let j = r; j <= m; j += j & -j) bit[j]++;           // insert nums[i]
+  }
+  return ans;
+}
+
+console.log(countSmaller([5, 2, 6, 1]));  // [2, 1, 1, 0]
+console.log(countSmaller([-1, -1]));      // [0, 0]` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> countSmaller(vector<int>& nums) {
+        vector<int> vals(nums);                            // coordinate compression
+        sort(vals.begin(), vals.end());
+        vals.erase(unique(vals.begin(), vals.end()), vals.end());
+        int m = vals.size();
+        vector<int> bit(m + 1, 0), ans(nums.size());
+        for (int i = (int)nums.size() - 1; i >= 0; i--) {
+            int r = lower_bound(vals.begin(), vals.end(), nums[i]) - vals.begin() + 1;
+            int c = 0;
+            for (int j = r - 1; j > 0; j -= j & -j) c += bit[j];   // seen values smaller than nums[i]
+            ans[i] = c;
+            for (int j = r; j <= m; j += j & -j) bit[j]++;         // insert nums[i]
+        }
+        return ans;
+    }
+};` }],
         dry: {
           head: ['i', 'nums[i]', 'values already in BIT (to the right)', 'prefix(v − 1) = smaller', 'counts[i]'],
           rows: [
@@ -1461,7 +2462,7 @@ print(count_smaller([5, 2, 6, 1]))  # [2, 1, 1, 0]`, run: true }],
       'Q is huge (10<sup>6</sup>–10<sup>7</sup>) and even log N per query is too slow → O(1) RMQ is the hint.',
       'Updates are mentioned at all → sparse table is <b>out</b> (rebuild costs O(N log N)).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Sparse table for static range MIN: O(N log N) build, O(1) query.
       class SparseTable {
           private final int[][] st;   // st[k][i] = min of a[i .. i + 2^k - 1]
@@ -1494,7 +2495,83 @@ print(count_smaller([5, 2, 6, 1]))  # [2, 1, 1, 0]`, run: true }],
               System.out.println(t.query(3, 7));   // 2
               System.out.println(t.query(4, 5));   // 3
           }
-      }`, `
+      }`,
+      alt: [{ lang: 'python', run: true, code: `# Sparse table for static range MIN: O(N log N) build, O(1) query.
+class SparseTable:
+    def __init__(self, a):
+        n = len(a)
+        self.st = [list(a)]                      # st[k][i] = min of a[i .. i + 2^k - 1]; k = 0: windows of length 1
+        k = 1
+        while (1 << k) <= n:
+            half, prev = 1 << (k - 1), self.st[-1]
+            # only windows that fit inside the array; left half, right half
+            self.st.append([min(prev[i], prev[i + half]) for i in range(n - (1 << k) + 1)])
+            k += 1
+
+    def query(self, l, r):
+        """Min of a[l..r] in O(1): two overlapping power-of-two windows."""
+        k = (r - l + 1).bit_length() - 1         # floor(log2(length))
+        return min(self.st[k][l], self.st[k][r - (1 << k) + 1])
+
+
+t = SparseTable([4, 6, 1, 5, 7, 3, 8, 2])
+print(t.query(2, 6))   # 1
+print(t.query(3, 7))   # 2
+print(t.query(4, 5))   # 3` }, { lang: 'js', run: true, code: `// Sparse table for static range MIN: O(N log N) build, O(1) query.
+class SparseTable {
+  constructor(a) {
+    const n = a.length;
+    this.lg = new Int32Array(n + 1);                      // lg[x] = floor(log2 x), precomputed
+    for (let x = 2; x <= n; x++) this.lg[x] = this.lg[x >> 1] + 1;
+    this.st = [Int32Array.from(a)];                       // st[k][i] = min of a[i .. i + 2^k - 1]; k = 0: windows of length 1
+    for (let k = 1; k <= this.lg[n]; k++) {
+      const len = 1 << k, half = len >> 1, prev = this.st[k - 1];
+      const cur = new Int32Array(n - len + 1);            // only windows that fit inside the array
+      for (let i = 0; i + len <= n; i++) cur[i] = Math.min(prev[i], prev[i + half]);   // left half, right half
+      this.st.push(cur);
+    }
+  }
+
+  /** Min of a[l..r] in O(1): two overlapping power-of-two windows. */
+  query(l, r) {
+    const k = this.lg[r - l + 1];
+    return Math.min(this.st[k][l], this.st[k][r - (1 << k) + 1]);
+  }
+}
+
+const t = new SparseTable([4, 6, 1, 5, 7, 3, 8, 2]);
+console.log(t.query(2, 6));   // 1
+console.log(t.query(3, 7));   // 2
+console.log(t.query(4, 5));   // 3` }, { lang: 'cpp', code: `// Sparse table for static range MIN: O(N log N) build, O(1) query.
+class SparseTable {
+    vector<vector<int>> st;   // st[k][i] = min of a[i .. i + 2^k - 1]
+
+public:
+    SparseTable(const vector<int>& a) {
+        int n = a.size();
+        st.push_back(a);                                       // windows of length 1
+        for (int k = 1; (1 << k) <= n; k++) {
+            int len = 1 << k, half = len >> 1;
+            vector<int> cur(n - len + 1);                      // only windows that fit inside the array
+            for (int i = 0; i + len <= n; i++)
+                cur[i] = min(st[k - 1][i], st[k - 1][i + half]);   // left half, right half
+            st.push_back(move(cur));
+        }
+    }
+
+    /** min of a[l..r] in O(1): two overlapping power-of-two windows. */
+    int query(int l, int r) {
+        int k = 31 - __builtin_clz(r - l + 1);                 // floor(log2(length))
+        return min(st[k][l], st[k][r - (1 << k) + 1]);
+    }
+};
+
+int main() {
+    SparseTable t({4, 6, 1, 5, 7, 3, 8, 2});
+    cout << t.query(2, 6) << "\\n";   // 1
+    cout << t.query(3, 7) << "\\n";   // 2
+    cout << t.query(4, 5) << "\\n";   // 3
+}` }] }, { lang: 'java', code: `
       // One table for GCD (idempotent, O(1) query) and one for SUM (not idempotent, O(log N) disjoint jumps).
       class SparseGcdSum {
           private final long[][] g, s;
@@ -1540,7 +2617,129 @@ print(count_smaller([5, 2, 6, 1]))  # [2, 1, 1, 0]`, run: true }],
               System.out.println(t.rangeGcd(1, 4));  // 2
               System.out.println(t.rangeSum(0, 2));  // 54
           }
-      }`, { lang: 'python', run: true, title: 'Python sparse table + brute-force check (runnable)', code: `import random
+      }`,
+      alt: [{ lang: 'python', run: true, code: `from math import gcd
+
+
+# One table for GCD (idempotent, O(1) query) and one for SUM (not idempotent, O(log N) disjoint jumps).
+class SparseGcdSum:
+    def __init__(self, a):
+        n = len(a)
+        self.g = [list(a)]
+        self.s = [list(a)]
+        k = 1
+        while (1 << k) <= n:
+            half, pg, ps = 1 << (k - 1), self.g[-1], self.s[-1]
+            m = n - (1 << k) + 1
+            self.g.append([gcd(pg[i], pg[i + half]) for i in range(m)])
+            self.s.append([ps[i] + ps[i + half] for i in range(m)])
+            k += 1
+
+    def range_gcd(self, l, r):
+        """Overlap is harmless for gcd: gcd(x, x) = x."""
+        k = (r - l + 1).bit_length() - 1
+        return gcd(self.g[k][l], self.g[k][r - (1 << k) + 1])
+
+    def range_sum(self, l, r):
+        """Overlap would double count, so walk the binary digits of the length: disjoint blocks."""
+        total, length = 0, r - l + 1
+        for k in range(length.bit_length() - 1, -1, -1):
+            if (length >> k) & 1:
+                total += self.s[k][l]
+                l += 1 << k
+        return total
+
+
+t = SparseGcdSum([12, 18, 24, 36, 10])
+print(t.range_gcd(0, 3))  # 6
+print(t.range_gcd(1, 4))  # 2
+print(t.range_sum(0, 2))  # 54` }, { lang: 'js', run: true, code: `// One table for GCD (idempotent, O(1) query) and one for SUM (not idempotent, O(log N) disjoint jumps).
+function gcd(x, y) { x = Math.abs(x); y = Math.abs(y); while (y !== 0) { [x, y] = [y, x % y]; } return x; }
+
+class SparseGcdSum {
+  constructor(a) {
+    const n = a.length;
+    this.lg = new Int32Array(n + 1);
+    for (let x = 2; x <= n; x++) this.lg[x] = this.lg[x >> 1] + 1;
+    const levels = this.lg[n] + 1;
+    this.g = [Float64Array.from(a)];                      // Float64Array: sums stay exact up to 2^53
+    this.s = [Float64Array.from(a)];
+    for (let k = 1; k < levels; k++) {
+      const m = n - (1 << k) + 1, half = 1 << (k - 1);
+      const gk = new Float64Array(m), sk = new Float64Array(m);
+      for (let i = 0; i < m; i++) {
+        gk[i] = gcd(this.g[k - 1][i], this.g[k - 1][i + half]);
+        sk[i] = this.s[k - 1][i] + this.s[k - 1][i + half];
+      }
+      this.g.push(gk);
+      this.s.push(sk);
+    }
+  }
+
+  /** Overlap is harmless for gcd: gcd(x, x) = x. */
+  rangeGcd(l, r) {
+    const k = this.lg[r - l + 1];
+    return gcd(this.g[k][l], this.g[k][r - (1 << k) + 1]);
+  }
+
+  /** Overlap would double count, so walk the binary digits of the length: disjoint blocks. */
+  rangeSum(l, r) {
+    let total = 0;
+    const len = r - l + 1;
+    for (let k = this.lg[len]; k >= 0; k--) {
+      if ((len >> k) & 1) { total += this.s[k][l]; l += 1 << k; }
+    }
+    return total;
+  }
+}
+
+const t = new SparseGcdSum([12, 18, 24, 36, 10]);
+console.log(t.rangeGcd(0, 3));  // 6
+console.log(t.rangeGcd(1, 4));  // 2
+console.log(t.rangeSum(0, 2));  // 54` }, { lang: 'cpp', code: `// One table for GCD (idempotent, O(1) query) and one for SUM (not idempotent, O(log N) disjoint jumps).
+class SparseGcdSum {
+    vector<vector<long long>> g, s;
+
+public:
+    SparseGcdSum(const vector<long long>& a) {
+        int n = a.size();
+        g.push_back(a);
+        s.push_back(a);
+        for (int k = 1; (1 << k) <= n; k++) {
+            int m = n - (1 << k) + 1, half = 1 << (k - 1);
+            vector<long long> gk(m), sk(m);
+            for (int i = 0; i < m; i++) {
+                gk[i] = gcd(g[k - 1][i], g[k - 1][i + half]);
+                sk[i] = s[k - 1][i] + s[k - 1][i + half];
+            }
+            g.push_back(move(gk));
+            s.push_back(move(sk));
+        }
+    }
+
+    /** Overlap is harmless for gcd: gcd(x, x) = x. */
+    long long rangeGcd(int l, int r) {
+        int k = 31 - __builtin_clz(r - l + 1);
+        return gcd(g[k][l], g[k][r - (1 << k) + 1]);
+    }
+
+    /** Overlap would double count, so walk the binary digits of the length: disjoint blocks. */
+    long long rangeSum(int l, int r) {
+        long long total = 0;
+        int len = r - l + 1;
+        for (int k = 31 - __builtin_clz(len); k >= 0; k--) {
+            if ((len >> k) & 1) { total += s[k][l]; l += 1 << k; }
+        }
+        return total;
+    }
+};
+
+int main() {
+    SparseGcdSum t({12, 18, 24, 36, 10});
+    cout << t.rangeGcd(0, 3) << "\\n";  // 6
+    cout << t.rangeGcd(1, 4) << "\\n";  // 2
+    cout << t.rangeSum(0, 2) << "\\n";  // 54
+}` }] }, { lang: 'python', run: true, title: 'Python sparse table + brute-force check (runnable)', code: `import random
 
 
 def build(a, op):
@@ -1685,7 +2884,7 @@ print("2000 random max queries match brute force")` }],
       <p><b>Sparse table vs segment tree for static RMQ.</b> Sparse: O(1) query, N log N memory, no updates. Segment tree: O(log N) query, 2N memory, updates. For Q = 10<sup>6</sup> static queries on N = 10<sup>5</sup>, sparse table does 2·10<sup>6</sup> reads vs ~3.4·10<sup>7</sup> node visits.</p>
       <p><b>Where the idea lives in production.</b> Binary lifting tables (<code>up[k][v]</code> = 2<sup>k</sup>-th ancestor) are sparse tables over a tree. Time-series databases and observability tools keep pre-aggregated min/max rollups at several power-of-two-ish granularities so dashboards can show "max latency over any window" instantly — the same "precompute power-of-two windows" thinking.</p>`,
     aiEra: `<p><b>What AI changes:</b> generating a sparse table is trivial; deciding that one is appropriate is not. A model will happily build a sparse table for a problem that later says "and support updates", or use it for range sums with the overlapping trick (wrong answer). Your job is to read the constraints and check idempotence before accepting the code.</p>
-      <p><b>Typical AI mistakes:</b> computing <code>k</code> with <code>(int) Math.log(len) / Math.log(2)</code> (floating-point error at exact powers of two — use a precomputed <code>lg[]</code> or <code>31 − Integer.numberOfLeadingZeros(len)</code>); allocating <code>st[n][LOG]</code> with LOG = 20 for N = 10<sup>6</sup> (memory limit); off-by-one in <code>r − (1 &lt;&lt; k) + 1</code>; using the overlap trick for sum or xor.</p>
+      <p><b>Typical AI mistakes:</b> computing <code>k</code> with a floating-point log such as <code>(int) Math.log(len) / Math.log(2)</code> (floating-point error at exact powers of two — use a precomputed <code>lg[]</code> or a bit trick: <code>31 − Integer.numberOfLeadingZeros(len)</code> in Java, <code>__lg(len)</code> in C++, <code>len.bit_length() − 1</code> in Python, <code>31 − Math.clz32(len)</code> in JS); allocating <code>st[n][LOG]</code> with LOG = 20 for N = 10<sup>6</sup> (memory limit); off-by-one in <code>r − (1 &lt;&lt; k) + 1</code>; using the overlap trick for sum or xor.</p>
       <p><b>Use AI as a partner:</b> ask it "for which of these operations is the sparse table O(1) query valid: min, sum, gcd, xor, OR?" and verify its reasoning with the x ⊕ x = x test; ask for a brute-force checker on random arrays including N = 1 and exact powers of two. <b>What you must own:</b> the static-vs-dynamic decision, the idempotence argument, and the memory estimate.</p>`,
     problems: [{
       title: 'Longest Subarray with Max − Min ≤ Limit',
@@ -1723,6 +2922,26 @@ print("2000 random max queries match brute force")` }],
         `<p>The only thing you need inside the loop is <code>max(l..r) − min(l..r)</code>. Precompute two sparse tables (max and min) → each check is O(1). (The O(N) alternative uses two monotonic deques.)</p>`,
         `<p>Edge cases: limit = 0 (longest run of equal values), N = 1 (answer 1). Recipe: build lg[], mx[][], mn[][] → l = 0 → for r in 0..N−1: while range(l, r) invalid: l++ → best = max(best, r − l + 1).</p>`
       ],
+      tests: { sig: 'int[] int -> int', fn: 'longestSubarray', cases: [
+        [[[8,2,4,7],4],2],
+        [[[10,1,2,4,7,2],5],4],
+        [[[4,2,2,2,4,4,2,2],0],3],
+        [[[1],0],1],
+        [[[1000000000,1],1000000000],2],
+        [[[1000000000,1],999999998],1],
+        [[[5,5,5,5],0],4],
+        [[[1,2,3,4,5,6],2],3],
+        [[[9,8,7,6,5],1],2],
+        [[[3,15,3,11,19,18,10],7],2],
+        [[[17,12,16,4,20,20,19],2],3],
+        [[[3,11,11,19,7,19,15,7,19],5],2],
+        [[[18,18,10,18,10,1,17,13],2],2],
+        [[{"$range":[1,100001]},0],1],
+        [[{"$range":[1,100001]},99999],100000],
+        [[{"$range":[1,100001]},49999],50000],
+        [[{"$concat":[{"$rep":1,"n":50000},{"$rep":1000000000,"n":50000}]},999999998],50000],
+        [[{"$concat":[{"$rep":1,"n":50000},{"$rep":1000000000,"n":50000}]},1000000000],100000]
+      ] },
       solution: {
         approach: `<p>Two pointers over a static array with O(1) range max/min from two sparse tables. Each pointer moves at most N times, so after the O(N log N) build the sweep is O(N).</p>`,
         code: `
@@ -1786,7 +3005,47 @@ def longest_subarray(nums, limit):
 
 
 print(longest_subarray([8, 2, 4, 7], 4))          # 2
-print(longest_subarray([10, 1, 2, 4, 7, 2], 5))   # 4`, run: true }],
+print(longest_subarray([10, 1, 2, 4, 7, 2], 5))   # 4`, run: true }, { lang: 'js', code: `function longestSubarray(nums, limit) {
+  // Two monotonic deques of indices (stored in arrays with head/tail pointers; shift() would be O(n)).
+  const n = nums.length;
+  const mx = new Int32Array(n), mn = new Int32Array(n);
+  let mxH = 0, mxT = 0, mnH = 0, mnT = 0, l = 0, best = 0;
+  for (let r = 0; r < n; r++) {
+    while (mxT > mxH && nums[mx[mxT - 1]] <= nums[r]) mxT--;   // keep maxima decreasing
+    mx[mxT++] = r;
+    while (mnT > mnH && nums[mn[mnT - 1]] >= nums[r]) mnT--;   // keep minima increasing
+    mn[mnT++] = r;
+    while (nums[mx[mxH]] - nums[mn[mnH]] > limit) {            // window too wide: shrink from the left
+      l++;
+      if (mx[mxH] < l) mxH++;
+      if (mn[mnH] < l) mnH++;
+    }
+    best = Math.max(best, r - l + 1);
+  }
+  return best;
+}
+
+console.log(longestSubarray([8, 2, 4, 7], 4));          // 2
+console.log(longestSubarray([10, 1, 2, 4, 7, 2], 5));   // 4` }, { lang: 'cpp', code: `class Solution {
+public:
+    int longestSubarray(vector<int>& nums, int limit) {
+        deque<int> mx, mn;                                 // indices; values decreasing / increasing
+        int l = 0, best = 0;
+        for (int r = 0; r < (int)nums.size(); r++) {
+            while (!mx.empty() && nums[mx.back()] <= nums[r]) mx.pop_back();
+            mx.push_back(r);
+            while (!mn.empty() && nums[mn.back()] >= nums[r]) mn.pop_back();
+            mn.push_back(r);
+            while (nums[mx.front()] - nums[mn.front()] > limit) {   // too wide: shrink from the left
+                l++;
+                if (mx.front() < l) mx.pop_front();
+                if (mn.front() < l) mn.pop_front();
+            }
+            best = max(best, r - l + 1);
+        }
+        return best;
+    }
+};` }],
         dry: {
           head: ['r', 'window before check', 'max − min', 'action', 'best'],
           rows: [
@@ -1833,7 +3092,7 @@ print(longest_subarray([10, 1, 2, 4, 7, 2], 5))   # 4`, run: true }],
       'A threshold like "if the value appears more than √N times" or "degree &gt; √M" in the editorial-style reasoning → heavy/light sqrt split.',
       'You need a <b>fallback</b> in an interview: "I don\'t remember lazy segment trees perfectly, but blocks of √N give O(√N) safely" — a valid, explainable answer.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Sqrt decomposition: range ADD + range SUM, O(√N) per operation.
       class SqrtDecomposition {
           private final int n, B;
@@ -1881,7 +3140,139 @@ print(longest_subarray([10, 1, 2, 4, 7, 2], 5))   # 4`, run: true }],
               sd.rangeAdd(2, 7, 10);                   // six elements +10
               System.out.println(sd.rangeSum(1, 8));   // 101
           }
-      }`, { lang: 'python', run: true, title: 'Python sqrt decomposition + stress test (runnable)', code: `import math
+      }`,
+      alt: [{ lang: 'python', run: true, code: `import math
+
+
+# Sqrt decomposition: range ADD + range SUM, O(sqrt N) per operation.
+class SqrtDecomposition:
+    def __init__(self, arr):
+        self.n = len(arr)
+        self.B = max(1, math.isqrt(self.n))
+        self.a = list(arr)                         # element values WITHOUT their block's pending add
+        blocks = (self.n + self.B - 1) // self.B
+        self.block_sum = [0] * blocks              # sum of a[] inside each block (also without block_add)
+        self.block_add = [0] * blocks              # pending "+v" for a WHOLE block
+        for i, v in enumerate(arr):
+            self.block_sum[i // self.B] += v
+
+    def range_add(self, l, r, v):
+        B, a = self.B, self.a
+        bl, br = l // B, r // B
+        if bl == br:                               # both ends in one block: walk it
+            for i in range(l, r + 1):
+                a[i] += v
+                self.block_sum[bl] += v
+            return
+        for i in range(l, (bl + 1) * B):           # left partial
+            a[i] += v
+            self.block_sum[bl] += v
+        for b in range(bl + 1, br):                # full blocks, O(1) each
+            self.block_add[b] += v
+        for i in range(br * B, r + 1):             # right partial
+            a[i] += v
+            self.block_sum[br] += v
+
+    def range_sum(self, l, r):
+        B, a = self.B, self.a
+        bl, br = l // B, r // B
+        if bl == br:
+            return sum(a[l:r + 1]) + self.block_add[bl] * (r - l + 1)
+        s = sum(a[l:(bl + 1) * B]) + self.block_add[bl] * ((bl + 1) * B - l)
+        for b in range(bl + 1, br):                # middle blocks are full (size B)
+            s += self.block_sum[b] + self.block_add[b] * B
+        return s + sum(a[br * B:r + 1]) + self.block_add[br] * (r - br * B + 1)
+
+
+sd = SqrtDecomposition([4, 1, 7, 2, 9, 3, 6, 8, 5, 2])
+print(sd.range_sum(1, 8))   # 41
+sd.range_add(2, 7, 10)      # six elements +10
+print(sd.range_sum(1, 8))   # 101` }, { lang: 'js', run: true, code: `// Sqrt decomposition: range ADD + range SUM, O(sqrt N) per operation.
+class SqrtDecomposition {
+  constructor(arr) {
+    this.n = arr.length;
+    this.B = Math.max(1, Math.floor(Math.sqrt(this.n)));
+    this.a = Float64Array.from(arr);                   // element values WITHOUT their block's pending add
+    const blocks = Math.ceil(this.n / this.B);
+    this.blockSum = new Float64Array(blocks);          // sum of a[] inside each block (also without blockAdd)
+    this.blockAdd = new Float64Array(blocks);          // pending "+v" for a WHOLE block
+    arr.forEach((v, i) => { this.blockSum[Math.floor(i / this.B)] += v; });
+  }
+
+  rangeAdd(l, r, v) {
+    const B = this.B, bl = Math.floor(l / B), br = Math.floor(r / B);
+    if (bl === br) {                                   // both ends in one block: walk it
+      for (let i = l; i <= r; i++) { this.a[i] += v; this.blockSum[bl] += v; }
+      return;
+    }
+    for (let i = l; i < (bl + 1) * B; i++) { this.a[i] += v; this.blockSum[bl] += v; }   // left partial
+    for (let b = bl + 1; b < br; b++) this.blockAdd[b] += v;                              // full blocks, O(1) each
+    for (let i = br * B; i <= r; i++) { this.a[i] += v; this.blockSum[br] += v; }        // right partial
+  }
+
+  rangeSum(l, r) {
+    const B = this.B, bl = Math.floor(l / B), br = Math.floor(r / B);
+    let s = 0;
+    if (bl === br) {
+      for (let i = l; i <= r; i++) s += this.a[i] + this.blockAdd[bl];
+      return s;
+    }
+    for (let i = l; i < (bl + 1) * B; i++) s += this.a[i] + this.blockAdd[bl];
+    for (let b = bl + 1; b < br; b++) s += this.blockSum[b] + this.blockAdd[b] * B;       // middle blocks are full (size B)
+    for (let i = br * B; i <= r; i++) s += this.a[i] + this.blockAdd[br];
+    return s;
+  }
+}
+
+const sd = new SqrtDecomposition([4, 1, 7, 2, 9, 3, 6, 8, 5, 2]);
+console.log(sd.rangeSum(1, 8));   // 41
+sd.rangeAdd(2, 7, 10);            // six elements +10
+console.log(sd.rangeSum(1, 8));   // 101` }, { lang: 'cpp', code: `// Sqrt decomposition: range ADD + range SUM, O(sqrt N) per operation.
+class SqrtDecomposition {
+    int n, B;
+    vector<long long> a;           // element values WITHOUT their block's pending add
+    vector<long long> blockSum;    // sum of a[] inside each block (also without blockAdd)
+    vector<long long> blockAdd;    // pending "+v" for a WHOLE block
+
+public:
+    SqrtDecomposition(const vector<int>& arr) : n(arr.size()), B(max(1, (int)sqrt((double)arr.size()))), a(arr.begin(), arr.end()) {
+        int blocks = (n + B - 1) / B;
+        blockSum.assign(blocks, 0);
+        blockAdd.assign(blocks, 0);
+        for (int i = 0; i < n; i++) blockSum[i / B] += arr[i];
+    }
+
+    void rangeAdd(int l, int r, long long v) {
+        int bl = l / B, br = r / B;
+        if (bl == br) {                                        // both ends in one block: walk it
+            for (int i = l; i <= r; i++) { a[i] += v; blockSum[bl] += v; }
+            return;
+        }
+        for (int i = l; i < (bl + 1) * B; i++) { a[i] += v; blockSum[bl] += v; }   // left partial
+        for (int b = bl + 1; b < br; b++) blockAdd[b] += v;                         // full blocks, O(1) each
+        for (int i = br * B; i <= r; i++) { a[i] += v; blockSum[br] += v; }        // right partial
+    }
+
+    long long rangeSum(int l, int r) {
+        int bl = l / B, br = r / B;
+        long long s = 0;
+        if (bl == br) {
+            for (int i = l; i <= r; i++) s += a[i] + blockAdd[bl];
+            return s;
+        }
+        for (int i = l; i < (bl + 1) * B; i++) s += a[i] + blockAdd[bl];
+        for (int b = bl + 1; b < br; b++) s += blockSum[b] + blockAdd[b] * B;       // middle blocks are full (size B)
+        for (int i = br * B; i <= r; i++) s += a[i] + blockAdd[br];
+        return s;
+    }
+};
+
+int main() {
+    SqrtDecomposition sd({4, 1, 7, 2, 9, 3, 6, 8, 5, 2});
+    cout << sd.rangeSum(1, 8) << "\\n";   // 41
+    sd.rangeAdd(2, 7, 10);               // six elements +10
+    cout << sd.rangeSum(1, 8) << "\\n";   // 101
+}` }] }, { lang: 'python', run: true, title: 'Python sqrt decomposition + stress test (runnable)', code: `import math
 import random
 
 
@@ -2033,7 +3424,7 @@ print("3000 random range-add / range-sum ops match, block size", sd.B)` }],
             ['full block b2', '6–8', 'read label', '19'],
             ['total', '', '4 steps instead of 8', H.c('g', '41')]
           ])}
-          <p>In the Java version the block containing r is always walked as "right partial" even when it is fully covered (it may be the short last block). Both styles are correct; the Python version checks "whole block inside [l, r]" explicitly.</p>`
+          <p>In the Java, JS and C++ versions the block containing r is always walked as "right partial" even when it is fully covered (it may be the short last block). Both styles are correct; the runnable Python stress-test version checks "whole block inside [l, r]" explicitly.</p>`
       },
       {
         title: 'Count of values ≤ x in [l, r] with sorted blocks',
@@ -2054,7 +3445,7 @@ print("3000 random range-add / range-sum ops match, block size", sd.B)` }],
     ],
     deepDive: `<p><b>Choosing B for real.</b> The textbook B = √N balances only the simplest costs. If full blocks cost log B each (sorted blocks + binary search), minimise 2B + (N/B)·log B → B ≈ √(N log N). If partial-block work is cheap array scanning (cache-friendly) and block work involves random access, a <b>larger</b> B is often faster in practice. Measure with your data; powers of two (e.g. 256, 512) let the compiler turn <code>i / B</code> into a shift.</p>
       <p><b>When sqrt beats a segment tree.</b> (1) The node merge is expensive or impossible (sorted lists, frequency tables, "number of distinct"). (2) Updates change elements in ways that are not lazy-friendly (e.g. "a[i] = a[i] mod x" — rebuild only the touched partial blocks). (3) You need something working in 15 minutes with low bug risk. Constant factors matter too: O(√N) with simple loops can beat O(log² N) with heavy recursion for N ≈ 10<sup>5</sup>.</p>
-      <p><b>Complexity reality check (Java, ~10<sup>8</sup>–10<sup>9</sup> simple ops/s).</b> N = Q = 2·10<sup>5</sup>, B = 450 → Q·(2B + N/B) ≈ 2·10<sup>5</sup> · 1 350 ≈ 2.7·10<sup>8</sup>. Fine if the inner loops are tight primitive-array scans; too slow with boxed collections or HashMaps inside.</p>
+      <p><b>Complexity reality check (compiled languages, ~10<sup>8</sup>–10<sup>9</sup> simple ops/s; Python is 30–100× slower).</b> N = Q = 2·10<sup>5</sup>, B = 450 → Q·(2B + N/B) ≈ 2·10<sup>5</sup> · 1 350 ≈ 2.7·10<sup>8</sup>. Fine if the inner loops are tight primitive-array scans; too slow with boxed collections or hash maps inside.</p>
       <p><b>Classic sqrt problems.</b> "Holes" (jump game with updates): per block store, for each position, how many jumps to leave the block and where you land — updates rebuild one block in O(B), queries hop block to block in O(N/B). "Range mode" (most frequent value) uses precomputed answers between block boundaries. Sqrt ideas also appear in graph algorithms (triangle counting in O(M√M) by orienting edges from low to high degree).</p>
       <p><b>Relation to other techniques.</b> Mo's algorithm is sqrt decomposition applied to the <i>order of queries</i>. Sqrt tree and van Emde Boas-style structures recursively apply √N splits (√N, then √√N, …) to reach O(log log N). In systems, page-level summaries (B-tree pages, columnar storage "zone maps" with per-block min/max that let a database skip whole blocks during a scan) are the same idea: summarise fixed-size blocks, scan only the edges.</p>`,
     aiEra: `<p><b>What AI changes:</b> because AI makes heavy structures cheap to type, people over-engineer: a persistent segment tree where a 30-line sqrt decomposition would do. In an interview, proposing the sqrt version first, stating its complexity honestly ("O(√N) per op, ~3·10<sup>7</sup> total, fits"), and then optionally upgrading shows judgement.</p>
@@ -2099,6 +3490,21 @@ print("3000 random range-add / range-sum ops match, block size", sd.B)` }],
         `<p>Query: loose elements at the two edges are compared one by one; each full block contributes <code>upperBound(sorted[b], x)</code>. Update: in that block's sorted copy, replace the old value by the new one and bubble it into position (O(B)).</p>`,
         `<p>Edge cases: l and r in the same block (just walk), the last block shorter than B, duplicates (use upper bound "≤ x", not lower bound). Recipe: B = √N → build sorted blocks → per op: update = find old value, overwrite, bubble; query = edges + binary searches.</p>`
       ],
+      tests: { sig: 'int[] int[][] -> list<int>', fn: 'process', cases: [
+        [[[5,1,4,8,2,7,3,6,9],[[2,1,7,5],[1,3,0],[2,1,7,5]]],[4,5]],
+        [[[4],[[2,0,0,4],[2,0,0,3],[1,0,3],[2,0,0,3]]],[1,0,1]],
+        [[[2,2,2,2,2,2,2],[[2,0,6,2],[1,3,1],[1,3,9],[2,2,4,2],[2,0,6,1]]],[7,2,0]],
+        [[[1000000000,-1000000000,0,1000000000,-1000000000],[[2,0,4,0],[2,0,4,-1000000000],[2,0,4,1000000000],[1,0,-1000000000],[2,0,4,-1000000000]]],[3,2,5,3]],
+        [[[3,1,2],[[1,0,5],[1,1,6]]],[]],
+        [[[3,1,2],[[2,0,2,2],[2,1,1,1],[2,2,2,1]]],[2,1,0]],
+        [[[-7,-9,1,-4,-4,6,-4,2,2,0,-2,-3,10,6,-3,6,1,2,7,1],[[2,0,0,0],[2,0,8,5],[1,7,-6],[1,7,0],[2,0,16,-2],[1,15,-6],[2,16,16,3],[2,0,11,6],[1,11,8],[1,15,-4],[1,19,-8],[2,18,18,4],[2,2,2,-1],[2,18,18,5],[2,14,14,-6],[1,9,-6]]],[1,8,8,1,12,0,0,0,0]],
+        [[[7],[[2,0,0,-8],[2,0,0,0],[2,0,0,2],[2,0,0,10],[2,0,0,0],[1,0,-3],[1,0,0],[1,0,-1],[1,0,1],[1,0,-7],[2,0,0,3],[2,0,0,3],[2,0,0,6],[2,0,0,-6],[2,0,0,0],[2,0,0,-5]]],[0,0,0,1,0,1,1,1,1,1,1]],
+        [[[3,-2,-8,2,-6,5,3,-4,1,2,2,7,-4,3,-10,0],[[2,3,12,-10],[2,2,8,8],[2,10,12,4],[2,10,15,2],[1,1,-4],[1,5,-5],[1,9,-4],[2,0,0,7],[1,15,7],[2,9,15,3],[2,4,4,-1],[1,3,1],[2,14,14,4],[1,1,0],[1,13,7],[1,12,2]]],[0,7,2,4,1,5,1,1]],
+        [[[-1,6,2,4,-3,2,3,4,3,-10,1,-4,-8,-3,-5,6,-6,-5,-2,3,-4,-1,-4,10,6],[[2,18,23,6],[2,5,7,-8],[2,9,19,-1],[1,9,1],[2,22,24,-8],[1,4,10],[1,20,9],[2,5,17,8],[2,7,17,-8],[2,12,16,-3],[2,13,15,-10],[2,22,23,10],[2,20,21,8],[1,2,-1],[2,23,24,-5],[1,6,5]]],[5,0,8,0,13,1,4,0,2,1,0]],
+        [[[0,-2,7,2,-6,-2,-8,-3,7,-4,4,4,-10],[[1,2,-8],[1,5,1],[2,0,5,-4],[1,9,5],[1,6,-1],[1,1,-5],[2,5,12,9],[2,0,3,-4],[2,11,11,-8],[2,5,5,-5],[2,1,9,4],[2,1,4,-5],[1,6,3],[2,3,4,9],[1,6,3],[1,0,6]]],[2,8,2,0,0,7,3,2]],
+        [[{"$range":[0,50000]},{"$concat":[{"$rep":[2,0,49999,24999],"n":20000},[[1,0,1000000000]],{"$rep":[2,0,49999,24999],"n":20000}]}],{"$concat":[{"$rep":25000,"n":20000},{"$rep":24999,"n":20000}]}],
+        [[{"$rep":1000000000,"n":50000},{"$concat":[{"$rep":[2,0,49999,999999999],"n":25000},{"$rep":[2,0,49999,1000000000],"n":24998},[[1,0,-1000000000],[2,0,49999,999999999]]]}],{"$concat":[{"$rep":0,"n":25000},{"$rep":50000,"n":24998},[1]]}]
+      ] },
       solution: {
         approach: `<p>Sqrt decomposition with a sorted copy per block. Query: O(B + (N/B)·log B). Update: O(B). With B ≈ √N ≈ 224 that is ≈ 2 000 steps per op, 10<sup>8</sup> in total — comfortably inside 2 s.</p>`,
         code: `
@@ -2193,7 +3599,81 @@ def process(arr, ops):
     return out
 
 
-print(process([5, 1, 4, 8, 2, 7, 3, 6, 9], [[2, 1, 7, 5], [1, 3, 0], [2, 1, 7, 5]]))  # [4, 5]`, run: true }],
+print(process([5, 1, 4, 8, 2, 7, 3, 6, 9], [[2, 1, 7, 5], [1, 3, 0], [2, 1, 7, 5]]))  # [4, 5]`, run: true }, { lang: 'js', code: `function process(arr, ops) {
+  const n = arr.length, B = Math.max(1, Math.floor(Math.sqrt(n)));
+  const a = Int32Array.from(arr);
+  const blocks = [];                                       // sorted copy of every block
+  for (let s = 0; s < n; s += B) blocks.push(a.slice(s, s + B).sort());   // typed-array sort is numeric
+
+  const lowerBound = (s, x) => {                           // first index with s[i] >= x
+    let lo = 0, hi = s.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (s[mid] < x) lo = mid + 1; else hi = mid; }
+    return lo;
+  };
+  const countLE = (s, x) => lowerBound(s, x + 1);          // values <= x (x + 1 fits: |x| <= 1e9)
+
+  const out = [];
+  for (const op of ops) {
+    if (op[0] === 1) {
+      const i = op[1], v = op[2];
+      const s = blocks[Math.floor(i / B)];
+      let pos = lowerBound(s, a[i]);                       // a slot holding the old value
+      s[pos] = v;
+      while (pos > 0 && s[pos - 1] > s[pos]) { [s[pos - 1], s[pos]] = [s[pos], s[pos - 1]]; pos--; }
+      while (pos + 1 < s.length && s[pos + 1] < s[pos]) { [s[pos + 1], s[pos]] = [s[pos], s[pos + 1]]; pos++; }
+      a[i] = v;
+    } else {
+      const l = op[1], r = op[2], x = op[3];
+      const bl = Math.floor(l / B), br = Math.floor(r / B);
+      let c = 0;
+      if (bl === br) {
+        for (let i = l; i <= r; i++) if (a[i] <= x) c++;
+      } else {
+        for (let i = l; i < (bl + 1) * B; i++) if (a[i] <= x) c++;      // left edge
+        for (let b = bl + 1; b < br; b++) c += countLE(blocks[b], x);   // full blocks
+        for (let i = br * B; i <= r; i++) if (a[i] <= x) c++;           // right edge
+      }
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+console.log(process([5, 1, 4, 8, 2, 7, 3, 6, 9], [[2, 1, 7, 5], [1, 3, 0], [2, 1, 7, 5]]));  // [4, 5]` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> process(vector<int>& arr, vector<vector<int>>& ops) {
+        int n = arr.size(), B = max(1, (int)sqrt((double)n));
+        vector<int> a(arr);
+        vector<vector<int>> blocks;                        // sorted copy of every block
+        for (int s = 0; s < n; s += B) {
+            blocks.emplace_back(a.begin() + s, a.begin() + min(n, s + B));
+            sort(blocks.back().begin(), blocks.back().end());
+        }
+        vector<int> out;
+        for (auto& op : ops) {
+            if (op[0] == 1) {
+                int i = op[1], v = op[2];
+                auto& b = blocks[i / B];
+                b.erase(lower_bound(b.begin(), b.end(), a[i]));   // remove the old value
+                b.insert(upper_bound(b.begin(), b.end(), v), v);  // insert the new one, O(B)
+                a[i] = v;
+            } else {
+                int l = op[1], r = op[2], x = op[3], c = 0;
+                int bl = l / B, br = r / B;
+                if (bl == br) {
+                    for (int i = l; i <= r; i++) c += a[i] <= x;
+                } else {
+                    for (int i = l; i < (bl + 1) * B; i++) c += a[i] <= x;      // left edge
+                    for (int b = bl + 1; b < br; b++)                            // full blocks
+                        c += upper_bound(blocks[b].begin(), blocks[b].end(), x) - blocks[b].begin();
+                    for (int i = br * B; i <= r; i++) c += a[i] <= x;           // right edge
+                }
+                out.push_back(c);
+            }
+        }
+        return out;
+    }
+};` }],
         dry: {
           head: ['op', 'left edge', 'full blocks (binary search)', 'right edge', 'answer'],
           rows: [
@@ -2249,7 +3729,7 @@ print(process([5, 1, 4, 8, 2, 7, 3, 6, 9], [[2, 1, 7, 5], [1, 3, 0], [2, 1, 7, 5
       '"Queries on <b>paths</b> of a static tree, count distinct colours" → Mo\'s on trees (Euler tour flattening).',
       'Queries arrive <b>online</b> (each depends on the previous answer, "decode with lastans") → Mo\'s is <b>impossible</b>; think persistent segment tree or sqrt structures.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Mo's algorithm: offline "number of distinct values in a[l..r]".
       class MoDistinct {
           private int[] cnt;          // cnt[v] = copies of compressed value v inside the window
@@ -2300,7 +3780,153 @@ print(process([5, 1, 4, 8, 2, 7, 3, 6, 9], [[2, 1, 7, 5], [1, 3, 0], [2, 1, 7, 5
               int[][] qs = {{0, 4}, {2, 7}, {1, 3}, {5, 9}, {6, 8}};
               System.out.println(Arrays.toString(new MoDistinct().solve(a, qs)));   // [3, 4, 3, 4, 3]
           }
-      }`, { lang: 'python', run: true, title: 'Python Mo\'s + move counting vs naive (runnable)', code: `import math
+      }`,
+      alt: [{ lang: 'python', run: true, code: `import math
+
+
+# Mo's algorithm: offline "number of distinct values in a[l..r]".
+class MoDistinct:
+    def __init__(self):
+        self.cnt = []        # cnt[v] = copies of compressed value v inside the window
+        self.distinct = 0    # number of values with cnt > 0
+
+    def _add(self, v):       # first copy enters
+        if self.cnt[v] == 0:
+            self.distinct += 1
+        self.cnt[v] += 1
+
+    def _remove(self, v):    # last copy leaves
+        self.cnt[v] -= 1
+        if self.cnt[v] == 0:
+            self.distinct -= 1
+
+    def solve(self, a, queries):
+        n, q = len(a), len(queries)
+        # 1) compress values to 0..k-1 so cnt[] is a plain list (no dict in the hot loop)
+        rank = {v: i for i, v in enumerate(sorted(set(a)))}
+        comp = [rank[v] for v in a]
+        self.cnt = [0] * len(rank)
+        self.distinct = 0
+
+        # 2) sort queries by (block of l, r); odd blocks sweep r backwards ("odd-even" trick)
+        B = max(1, int(n / math.sqrt(max(1, q))))
+        order = sorted(range(q), key=lambda i: (queries[i][0] // B,
+                                                queries[i][1] if (queries[i][0] // B) % 2 == 0 else -queries[i][1]))
+
+        # 3) slide the window from query to query; grow first, then shrink
+        ans = [0] * q
+        cur_l, cur_r = 0, -1                         # empty window
+        for qid in order:
+            l, r = queries[qid]
+            while cur_r < r:
+                cur_r += 1
+                self._add(comp[cur_r])
+            while cur_l > l:
+                cur_l -= 1
+                self._add(comp[cur_l])
+            while cur_r > r:
+                self._remove(comp[cur_r])
+                cur_r -= 1
+            while cur_l < l:
+                self._remove(comp[cur_l])
+                cur_l += 1
+            ans[qid] = self.distinct                 # store under the ORIGINAL index
+        return ans
+
+
+a = [1, 2, 1, 3, 2, 2, 4, 1, 3, 1]
+qs = [(0, 4), (2, 7), (1, 3), (5, 9), (6, 8)]
+print(MoDistinct().solve(a, qs))   # [3, 4, 3, 4, 3]` }, { lang: 'js', run: true, code: `// Mo's algorithm: offline "number of distinct values in a[l..r]".
+class MoDistinct {
+  solve(a, queries) {
+    const n = a.length, q = queries.length;
+    // 1) compress values to 0..k-1 so cnt[] is a plain typed array (no Map in the hot loop)
+    const ids = new Map();
+    const comp = a.map((v) => { if (!ids.has(v)) ids.set(v, ids.size); return ids.get(v); });
+    const cnt = new Int32Array(ids.size);    // cnt[v] = copies of compressed value v inside the window
+    let distinct = 0;                        // number of values with cnt > 0
+    const add = (v) => { if (cnt[v]++ === 0) distinct++; };      // first copy enters
+    const remove = (v) => { if (--cnt[v] === 0) distinct--; };   // last copy leaves
+
+    // 2) sort queries by (block of l, r); odd blocks sweep r backwards ("odd-even" trick)
+    const B = Math.max(1, Math.floor(n / Math.sqrt(Math.max(1, q))));
+    const order = Array.from({ length: q }, (_, i) => i);
+    order.sort((x, y) => {
+      const bx = Math.floor(queries[x][0] / B), by = Math.floor(queries[y][0] / B);
+      if (bx !== by) return bx - by;
+      return (bx & 1) === 0 ? queries[x][1] - queries[y][1] : queries[y][1] - queries[x][1];
+    });
+
+    // 3) slide the window from query to query; grow first, then shrink
+    const ans = new Array(q);
+    let curL = 0, curR = -1;                 // empty window
+    for (const id of order) {
+      const l = queries[id][0], r = queries[id][1];
+      while (curR < r) add(comp[++curR]);
+      while (curL > l) add(comp[--curL]);
+      while (curR > r) remove(comp[curR--]);
+      while (curL < l) remove(comp[curL++]);
+      ans[id] = distinct;                    // store under the ORIGINAL index
+    }
+    return ans;
+  }
+}
+
+const a = [1, 2, 1, 3, 2, 2, 4, 1, 3, 1];
+const qs = [[0, 4], [2, 7], [1, 3], [5, 9], [6, 8]];
+console.log('[' + new MoDistinct().solve(a, qs).join(', ') + ']');   // [3, 4, 3, 4, 3]` }, { lang: 'cpp', code: `// Mo's algorithm: offline "number of distinct values in a[l..r]".
+class MoDistinct {
+    vector<int> cnt;        // cnt[v] = copies of compressed value v inside the window
+    int distinct = 0;       // number of values with cnt > 0
+
+    void add(int v)    { if (cnt[v]++ == 0) distinct++; }   // first copy enters
+    void remove(int v) { if (--cnt[v] == 0) distinct--; }   // last copy leaves
+
+public:
+    vector<int> solve(const vector<int>& a, const vector<vector<int>>& queries) {
+        int n = a.size(), q = queries.size();
+        // 1) compress values to 0..k-1 so cnt[] is a plain vector (no hash map in the hot loop)
+        vector<int> sorted(a);
+        sort(sorted.begin(), sorted.end());
+        sorted.erase(unique(sorted.begin(), sorted.end()), sorted.end());
+        vector<int> comp(n);
+        for (int i = 0; i < n; i++) comp[i] = lower_bound(sorted.begin(), sorted.end(), a[i]) - sorted.begin();
+        cnt.assign(sorted.size(), 0);
+        distinct = 0;
+
+        // 2) sort queries by (block of l, r); odd blocks sweep r backwards ("odd-even" trick)
+        int B = max(1, (int)(n / sqrt((double)max(1, q))));
+        vector<int> order(q);
+        iota(order.begin(), order.end(), 0);
+        sort(order.begin(), order.end(), [&](int x, int y) {
+            int bx = queries[x][0] / B, by = queries[y][0] / B;
+            if (bx != by) return bx < by;
+            return (bx & 1) == 0 ? queries[x][1] < queries[y][1] : queries[x][1] > queries[y][1];
+        });
+
+        // 3) slide the window from query to query; grow first, then shrink
+        vector<int> ans(q);
+        int curL = 0, curR = -1;                       // empty window
+        for (int id : order) {
+            int l = queries[id][0], r = queries[id][1];
+            while (curR < r) add(comp[++curR]);
+            while (curL > l) add(comp[--curL]);
+            while (curR > r) remove(comp[curR--]);
+            while (curL < l) remove(comp[curL++]);
+            ans[id] = distinct;                        // store under the ORIGINAL index
+        }
+        return ans;
+    }
+};
+
+int main() {
+    vector<int> a = {1, 2, 1, 3, 2, 2, 4, 1, 3, 1};
+    vector<vector<int>> qs = {{0, 4}, {2, 7}, {1, 3}, {5, 9}, {6, 8}};
+    vector<int> ans = MoDistinct().solve(a, qs);
+    cout << "[";
+    for (size_t i = 0; i < ans.size(); i++) cout << (i ? ", " : "") << ans[i];
+    cout << "]\\n";                                     // [3, 4, 3, 4, 3]
+}` }] }, { lang: 'python', run: true, title: 'Python Mo\'s + move counting vs naive (runnable)', code: `import math
 import random
 
 
@@ -2352,7 +3978,7 @@ ans, moves = mo_distinct(a, qs)
 assert all(ans[i] == len(set(a[l:r + 1])) for i, (l, r) in enumerate(qs))
 naive = sum(r - l + 1 for l, r in qs)
 print("pointer moves with Mo:", moves, "| elements a naive scan touches:", naive)` }],
-    codeTitle: ['Mo\'s algorithm in Java (distinct values)', 'Python + how many moves Mo saves'],
+    codeTitle: ['Mo\'s algorithm (distinct values)', 'Python + how many moves Mo saves'],
     viz: {
       title: 'Mo\'s algorithm: sort queries, then slide one window across all of them',
       input: '1 2 1 3 2 2 4 1 3 1 | 0 4 ; 2 7 ; 1 3 ; 5 9 ; 6 8',
@@ -2449,7 +4075,7 @@ print("pointer moves with Mo:", moves, "| elements a naive scan touches:", naive
       }
     ],
     deepDive: `<p><b>Proof of the bound.</b> Group queries by block of l. Inside a group r is sorted, so r moves ≤ N per group; there are ⌈N/B⌉ groups → O(N²/B). Between consecutive queries l moves ≤ 2B inside a group, and ≤ 2B + (block jump) across groups, which sums to O(N) over all groups → O(Q·B + N). Total O(Q·B + N²/B) → with B = N/√Q, O(N√Q). Each move is one add/remove, so the add/remove cost multiplies everything — keep them O(1) with plain arrays (compress values first).</p>
-      <p><b>Constant-factor tricks.</b> (1) <b>Odd-even ordering</b>: in odd blocks sort r descending so r sweeps back instead of resetting to the left — often ~2× fewer moves. (2) <b>Hilbert curve order</b>: map (l, r) to its position on a Hilbert curve and sort by that; empirically faster for large Q. (3) Avoid HashMap and boxing in add/remove; a 2·10<sup>5</sup>-size int array is far faster.</p>
+      <p><b>Constant-factor tricks.</b> (1) <b>Odd-even ordering</b>: in odd blocks sort r descending so r sweeps back instead of resetting to the left — often ~2× fewer moves. (2) <b>Hilbert curve order</b>: map (l, r) to its position on a Hilbert curve and sort by that; empirically faster for large Q. (3) Avoid hash maps and boxed integers in add/remove; a plain integer array of size 2·10<sup>5</sup> is far faster.</p>
       <p><b>Variants.</b></p>
       <ul>
         <li><b>Mo's with updates</b>: add a time coordinate t (number of updates applied). Sort by (l/B, r/B, t) with B ≈ N<sup>2/3</sup>; moving t applies/undoes one update. Total O(N<sup>5/3</sup>) for N ≈ Q.</li>
@@ -2458,7 +4084,7 @@ print("pointer moves with Mo:", moves, "| elements a naive scan touches:", naive
       </ul>
       <p><b>Limits.</b> Mo's needs every query in memory and answers out of order — it is impossible when queries are online (forced decoding with the previous answer). With N, Q around 10<sup>6</sup> it is usually too slow; offline sweeps with BITs or persistent segment trees take over.</p>`,
     aiEra: `<p><b>What AI changes:</b> Mo's algorithm has a fixed template, and assistants reproduce it well. Where they stumble is the <b>problem-specific add/remove</b> logic and the subtle ordering of pointer moves. Also, AI tools will sometimes suggest Mo's for online problems or problems with updates, where it simply does not apply.</p>
-      <p><b>Typical AI mistakes:</b> shrinking before growing (counts go negative); forgetting to store answers under the original query index; using <code>HashMap&lt;Integer,Integer&gt;</code> in the hot loop (5–10× slower); block size computed as <code>sqrt(Q)</code> instead of N/√Q; missing the O(N log N) offline-BIT alternative for distinct counts.</p>
+      <p><b>Typical AI mistakes:</b> shrinking before growing (counts go negative); forgetting to store answers under the original query index; using a hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code>) in the hot loop (5–10× slower); block size computed as <code>sqrt(Q)</code> instead of N/√Q; missing the O(N log N) offline-BIT alternative for distinct counts.</p>
       <p><b>Use AI as a partner:</b> describe your statistic and ask "give me O(1) add and remove functions and prove they keep the invariant"; ask it to count pointer moves for different block sizes on random data (the Python snippet does exactly this). <b>What you must own:</b> checking the three preconditions (offline, static, cheap add/remove), the O(N√Q) argument, and knowing when a smarter offline sweep exists.</p>`,
     problems: [{
       title: 'Distinct Values Queries',
@@ -2492,6 +4118,20 @@ print("pointer moves with Mo:", moves, "| elements a naive scan touches:", naive
         `<p>Mo's algorithm: compress values to 0..K−1, keep <code>cnt[]</code> and <code>distinct</code>; sort queries by (l / B, r) with B ≈ N/√Q; move the window, grow before shrink; store answers by original index.</p>`,
         `<p>Edge cases: equal queries, l = r, all values equal, huge values (compress!). Recipe: compress → order queries → curL = 0, curR = −1 → four while-loops → ans[id] = distinct. Bonus: the offline BIT solution sorts by r and marks last occurrences.</p>`
       ],
+      tests: { sig: 'int[] int[][] -> int[]', fn: 'distinctQueries', cases: [
+        [[[3,2,3,1,2],[[0,2],[1,3],[2,4],[0,4]]],[2,3,3,3]],
+        [[[7],[[0,0]]],[1]],
+        [[[1000000000,1000000000,1000000000],[[0,2],[1,1],[0,0]]],[1,1,1]],
+        [[[1,2,3,4,5,6],[[0,5],[2,3],[5,5],[0,0]]],[6,2,1,1]],
+        [[[1,2,1,2,1,2],[[0,5],[0,5],[1,4],[0,5]]],[2,2,2,2]],
+        [[[5,1,5,1,9],[[4,4],[0,4],[3,4],[0,1],[1,3]]],[1,3,2,2,2]],
+        [[[4,4,6,4,2,4,2,6,1,3,3,5,3,5,5,5,3,1,3],[[1,4],[13,18],[7,11],[6,14],[0,0],[8,12],[17,18],[13,17],[18,18],[8,13],[0,12],[7,12]]],[3,3,4,5,1,3,2,3,1,3,6,4]],
+        [[[1,1,3,5,1],[[2,2],[4,4],[0,4],[1,4],[2,4],[3,4],[4,4],[3,4],[1,2],[4,4],[3,3],[3,3]]],[1,1,3,3,3,2,1,2,2,1,1,1]],
+        [[[5],[[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]]],[1,1,1,1,1,1,1,1,1,1,1,1]],
+        [[[4,2,2,6,2,4,5,3,4,4,6,4,6,6,6,6,4,2,6],[[16,18],[1,8],[2,10],[15,16],[17,17],[1,9],[5,15],[17,18],[6,12],[9,13],[1,11],[17,17]]],[3,5,5,2,1,5,4,2,4,2,5,1]],
+        [[{"$range":[1,200001]},{"$rep":[0,199999],"n":200000}],{"$rep":200000,"n":200000}],
+        [[{"$rep":1000000000,"n":200000},{"$concat":[{"$rep":[0,199999],"n":100000},{"$rep":[5,5],"n":100000}]}],{"$rep":1,"n":200000}]
+      ] },
       solution: {
         approach: `<p>Mo's algorithm with value compression and the odd-even ordering. O((N + Q)·√N) ≈ 10<sup>8</sup> very cheap steps for the maximum input. (The asymptotically faster O((N + Q) log N) offline-BIT approach is a great follow-up.)</p>`,
         code: `
@@ -2571,7 +4211,66 @@ print("pointer moves with Mo:", moves, "| elements a naive scan touches:", naive
     return ans
 
 
-print(distinct_queries([3, 2, 3, 1, 2], [(0, 2), (1, 3), (2, 4), (0, 4)]))  # [2, 3, 3, 3]`, run: true }],
+print(distinct_queries([3, 2, 3, 1, 2], [(0, 2), (1, 3), (2, 4), (0, 4)]))  # [2, 3, 3, 3]`, run: true }, { lang: 'js', code: `function distinctQueries(a, qs) {
+  const q = qs.length;
+  const ids = new Map();                                   // compress values to 0..k-1
+  const c = a.map((v) => { if (!ids.has(v)) ids.set(v, ids.size); return ids.get(v); });
+  const cnt = new Int32Array(ids.size);
+
+  const B = Math.max(1, Math.floor(a.length / Math.sqrt(Math.max(1, q))));
+  const order = Array.from({ length: q }, (_, i) => i);
+  order.sort((x, y) => {                                   // block of l, then r (snake order)
+    const bx = Math.floor(qs[x][0] / B), by = Math.floor(qs[y][0] / B);
+    if (bx !== by) return bx - by;
+    return (bx & 1) === 0 ? qs[x][1] - qs[y][1] : qs[y][1] - qs[x][1];
+  });
+
+  const ans = new Array(q);
+  let curL = 0, curR = -1, distinct = 0;
+  for (const id of order) {
+    const l = qs[id][0], r = qs[id][1];
+    while (curR < r) if (cnt[c[++curR]]++ === 0) distinct++;
+    while (curL > l) if (cnt[c[--curL]]++ === 0) distinct++;
+    while (curR > r) if (--cnt[c[curR--]] === 0) distinct--;
+    while (curL < l) if (--cnt[c[curL++]] === 0) distinct--;
+    ans[id] = distinct;
+  }
+  return ans;
+}
+
+console.log(distinctQueries([3, 2, 3, 1, 2], [[0, 2], [1, 3], [2, 4], [0, 4]]));  // [2, 3, 3, 3]` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> distinctQueries(vector<int>& a, vector<vector<int>>& qs) {
+        int n = a.size(), q = qs.size();
+        vector<int> vals(a);                               // compress values to 0..k-1
+        sort(vals.begin(), vals.end());
+        vals.erase(unique(vals.begin(), vals.end()), vals.end());
+        vector<int> c(n);
+        for (int i = 0; i < n; i++) c[i] = lower_bound(vals.begin(), vals.end(), a[i]) - vals.begin();
+        vector<int> cnt(vals.size(), 0);
+
+        int B = max(1, (int)(n / sqrt((double)max(1, q))));
+        vector<int> order(q);
+        iota(order.begin(), order.end(), 0);
+        sort(order.begin(), order.end(), [&](int x, int y) {   // block of l, then r (snake order)
+            int bx = qs[x][0] / B, by = qs[y][0] / B;
+            if (bx != by) return bx < by;
+            return (bx & 1) == 0 ? qs[x][1] < qs[y][1] : qs[x][1] > qs[y][1];
+        });
+
+        vector<int> ans(q);
+        int curL = 0, curR = -1, distinct = 0;
+        for (int id : order) {
+            int l = qs[id][0], r = qs[id][1];
+            while (curR < r) if (cnt[c[++curR]]++ == 0) distinct++;
+            while (curL > l) if (cnt[c[--curL]]++ == 0) distinct++;
+            while (curR > r) if (--cnt[c[curR--]] == 0) distinct--;
+            while (curL < l) if (--cnt[c[curL++]] == 0) distinct--;
+            ans[id] = distinct;
+        }
+        return ans;
+    }
+};` }],
         dry: {
           head: ['Mo order', 'query', 'window moves', 'cnt after', 'distinct'],
           rows: [
@@ -2600,7 +4299,7 @@ print(distinct_queries([3, 2, 3, 1, 2], [(0, 2), (1, 3), (2, 4), (0, 4)]))  # [2
         <li><b>Are there updates?</b> None / point updates / range updates.</li>
         <li><b>What is the operation like?</b> <i>Invertible</i> (sum, xor: you can "subtract" a prefix) or <i>idempotent</i> (min, max, gcd, and, or: overlap is harmless) or neither.</li>
         <li><b>Online or offline?</b> Must each query be answered before the next one is read (or does it depend on the previous answer)? If not, you may sort queries.</li>
-        <li><b>What do the constraints allow?</b> N, Q → operation budget (≈ 10<sup>8</sup> simple steps per second in Java/C++), and memory (N log N ints for N = 10<sup>6</sup> is 80 MB).</li>
+        <li><b>What do the constraints allow?</b> N, Q → operation budget (≈ 10<sup>8</sup> simple steps per second in Java/C++, about 10<sup>7</sup> in Python), and memory (N log N ints for N = 10<sup>6</sup> is 80 MB).</li>
       </ol>
       ${H.table(['structure', 'build', 'query', 'update', 'memory', 'best for'], [
         ['prefix sums', 'O(N)', H.c('g', 'O(1)'), H.c('r', 'O(N)'), 'N', 'static sum / xor / count'],
@@ -2632,7 +4331,7 @@ print(distinct_queries([3, 2, 3, 1, 2], [(0, 2), (1, 3), (2, 4), (0, 4)]))  # [2
       '"Answer queries in the order given, each depends on the last answer" → online only: Mo\'s and offline sweeps are ruled out.',
       'Constraints: Q ≤ 10<sup>3</sup> → brute force may already pass; Q ~ 10<sup>5</sup> → log or √; Q ~ 10<sup>6</sup>+ static → O(1) queries (prefix, sparse table).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Coordinate compression: map arbitrary values (up to 1e9, negatives) to ranks 1..K
       // so they can index a Fenwick tree / segment tree / count array.
       class Compressor {
@@ -2664,7 +4363,85 @@ print(distinct_queries([3, 2, 3, 1, 2], [(0, 2), (1, 3), (2, 4), (0, 4)]))  # [2
               System.out.println(c.rank(42));        // 3
               System.out.println(c.countLE(10));     // 2 (-5 and 7)
           }
-      }`, `
+      }`,
+      alt: [{ lang: 'python', run: true, code: `from bisect import bisect_left, bisect_right
+
+
+# Coordinate compression: map arbitrary values (up to 1e9, negatives) to ranks 1..K
+# so they can index a Fenwick tree / segment tree / count array.
+class Compressor:
+    def __init__(self, values):
+        self.sorted_unique = sorted(set(values))
+
+    def size(self):
+        return len(self.sorted_unique)
+
+    def rank(self, v):
+        """1-based rank of a value that is present (binary search, O(log K))."""
+        return bisect_left(self.sorted_unique, v) + 1
+
+    def count_le(self, v):
+        """Number of distinct values <= v (works for values that are NOT present too)."""
+        return bisect_right(self.sorted_unique, v)
+
+
+c = Compressor([1000000000, -5, 42, 42, 7])
+print(c.size())         # 4 distinct values: -5, 7, 42, 1e9
+print(c.rank(42))       # 3
+print(c.count_le(10))   # 2 (-5 and 7)` }, { lang: 'js', run: true, code: `// Coordinate compression: map arbitrary values (up to 1e9, negatives) to ranks 1..K
+// so they can index a Fenwick tree / segment tree / count array.
+class Compressor {
+  constructor(values) {
+    this.sortedUnique = [...new Set(values)].sort((x, y) => x - y);   // sort() needs a comparator for numbers
+  }
+
+  size() { return this.sortedUnique.length; }
+
+  /** 1-based rank of a value that is present (binary search, O(log K)). */
+  rank(v) { return this.countLE(v - 1) + 1; }
+
+  /** Number of distinct values <= v (works for values that are NOT present too). */
+  countLE(v) {
+    let lo = 0, hi = this.sortedUnique.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (this.sortedUnique[mid] <= v) lo = mid + 1; else hi = mid; }
+    return lo;
+  }
+}
+
+const c = new Compressor([1000000000, -5, 42, 42, 7]);
+console.log(c.size());         // 4 distinct values: -5, 7, 42, 1e9
+console.log(c.rank(42));       // 3
+console.log(c.countLE(10));    // 2 (-5 and 7)` }, { lang: 'cpp', code: `// Coordinate compression: map arbitrary values (up to 1e9, negatives) to ranks 1..K
+// so they can index a Fenwick tree / segment tree / count array.
+class Compressor {
+    vector<int> sortedUnique;
+
+public:
+    Compressor(vector<int> values) {
+        sort(values.begin(), values.end());
+        values.erase(unique(values.begin(), values.end()), values.end());
+        sortedUnique = move(values);
+    }
+
+    int size() const { return sortedUnique.size(); }
+
+    /** 1-based rank of a value that is present (binary search, O(log K)). */
+    int rank(int v) const {
+        return lower_bound(sortedUnique.begin(), sortedUnique.end(), v) - sortedUnique.begin() + 1;
+    }
+
+    /** number of distinct values <= v (works for values that are NOT present too). */
+    int countLE(int v) const {
+        return upper_bound(sortedUnique.begin(), sortedUnique.end(), v) - sortedUnique.begin();
+    }
+};
+
+int main() {
+    Compressor c({1000000000, -5, 42, 42, 7});
+    cout << c.size() << "\\n";         // 4 distinct values: -5, 7, 42, 1e9
+    cout << c.rank(42) << "\\n";       // 3
+    cout << c.countLE(10) << "\\n";    // 2 (-5 and 7)
+}` }] }, { lang: 'java', code: `
       // Stress-testing harness: compare a fast structure against a brute force on random operations.
       // Writing this takes 5 minutes and catches almost every off-by-one before the interviewer does.
       class StressTest {
@@ -2701,7 +4478,151 @@ print(distinct_queries([3, 2, 3, 1, 2], [(0, 2), (1, 3), (2, 4), (0, 4)]))  # [2
               }
               System.out.println("40 000 random operations: segment tree agrees with brute force");
           }
-      }`, { lang: 'python', run: true, title: 'The decision guide as code (runnable)', code: `def choose(updates, query, online):
+      }`,
+      alt: [{ lang: 'python', run: true, code: `import random
+
+
+# Stress-testing harness: compare a fast structure against a brute force on random operations.
+# Writing this takes 5 minutes and catches almost every off-by-one before the interviewer does.
+
+# structure under test: iterative min segment tree
+class MinTree:
+    def __init__(self, a):
+        self.n = len(a)
+        self.t = [0] * self.n + list(a)
+        for p in range(self.n - 1, 0, -1):
+            self.t[p] = min(self.t[2 * p], self.t[2 * p + 1])
+
+    def set(self, i, v):
+        i += self.n
+        self.t[i] = v
+        while i > 1:
+            self.t[i >> 1] = min(self.t[i], self.t[i ^ 1])
+            i >>= 1
+
+    def query(self, l, r):   # inclusive
+        res = float('inf')
+        l, r = l + self.n, r + self.n + 1
+        while l < r:
+            if l & 1:
+                res = min(res, self.t[l])
+                l += 1
+            if r & 1:
+                r -= 1
+                res = min(res, self.t[r])
+            l >>= 1
+            r >>= 1
+        return res
+
+
+rnd = random.Random(42)
+for rnd_round in range(200):
+    size = 1 + rnd.randrange(20)                      # include tiny sizes like 1 and 2
+    a = [rnd.randrange(21) - 10 for _ in range(size)]
+    tree = MinTree(a)
+    for _ in range(200):
+        l = rnd.randrange(size)
+        r = l + rnd.randrange(size - l)
+        if rnd.random() < 0.5:
+            v = rnd.randrange(21) - 10
+            a[l] = v
+            tree.set(l, v)
+        else:
+            brute = min(a[l:r + 1])
+            assert brute == tree.query(l, r), f"mismatch at round {rnd_round}"
+print("40 000 random operations: segment tree agrees with brute force")` }, { lang: 'js', run: true, code: `// Stress-testing harness: compare a fast structure against a brute force on random operations.
+// Writing this takes 5 minutes and catches almost every off-by-one before the interviewer does.
+
+// structure under test: iterative min segment tree
+class MinTree {
+  constructor(a) {
+    this.n = a.length;
+    this.t = new Int32Array(2 * this.n);
+    this.t.set(a, this.n);
+    for (let p = this.n - 1; p > 0; p--) this.t[p] = Math.min(this.t[2 * p], this.t[2 * p + 1]);
+  }
+
+  set(i, v) {
+    for (this.t[i += this.n] = v; i > 1; i >>= 1) this.t[i >> 1] = Math.min(this.t[i], this.t[i ^ 1]);
+  }
+
+  query(l, r) {   // inclusive
+    let res = Infinity;
+    for (l += this.n, r += this.n + 1; l < r; l >>= 1, r >>= 1) {
+      if (l & 1) res = Math.min(res, this.t[l++]);
+      if (r & 1) res = Math.min(res, this.t[--r]);
+    }
+    return res;
+  }
+}
+
+const randInt = (k) => Math.floor(Math.random() * k);   // 0..k-1
+for (let round = 0; round < 200; round++) {
+  const size = 1 + randInt(20);                          // include tiny sizes like 1 and 2
+  const a = Array.from({ length: size }, () => randInt(21) - 10);
+  const tree = new MinTree(a);
+  for (let op = 0; op < 200; op++) {
+    const l = randInt(size), r = l + randInt(size - l);
+    if (Math.random() < 0.5) {
+      const v = randInt(21) - 10;
+      a[l] = v;
+      tree.set(l, v);
+    } else {
+      const brute = Math.min(...a.slice(l, r + 1));
+      if (brute !== tree.query(l, r)) throw new Error('mismatch at round ' + round);
+    }
+  }
+}
+console.log('40 000 random operations: segment tree agrees with brute force');` }, { lang: 'cpp', code: `// Stress-testing harness: compare a fast structure against a brute force on random operations.
+// Writing this takes 5 minutes and catches almost every off-by-one before the interviewer does.
+
+// structure under test: iterative min segment tree
+class MinTree {
+    int n;
+    vector<int> t;
+
+public:
+    MinTree(const vector<int>& a) : n(a.size()), t(2 * a.size()) {
+        for (int i = 0; i < n; i++) t[n + i] = a[i];
+        for (int p = n - 1; p > 0; p--) t[p] = min(t[2 * p], t[2 * p + 1]);
+    }
+
+    void set(int i, int v) {
+        for (t[i += n] = v; i > 1; i >>= 1) t[i >> 1] = min(t[i], t[i ^ 1]);
+    }
+
+    int query(int l, int r) {   // inclusive
+        int res = INT_MAX;
+        for (l += n, r += n + 1; l < r; l >>= 1, r >>= 1) {
+            if (l & 1) res = min(res, t[l++]);
+            if (r & 1) res = min(res, t[--r]);
+        }
+        return res;
+    }
+};
+
+int main() {
+    mt19937 rng(42);
+    auto randInt = [&](int k) { return (int)(rng() % k); };   // 0..k-1
+    for (int round = 0; round < 200; round++) {
+        int size = 1 + randInt(20);                            // include tiny sizes like 1 and 2
+        vector<int> a(size);
+        for (int& x : a) x = randInt(21) - 10;
+        MinTree tree(a);
+        for (int op = 0; op < 200; op++) {
+            int l = randInt(size), r = l + randInt(size - l);
+            if (randInt(2) == 0) {
+                int v = randInt(21) - 10;
+                a[l] = v;
+                tree.set(l, v);
+            } else {
+                int brute = *min_element(a.begin() + l, a.begin() + r + 1);
+                if (brute != tree.query(l, r)) { cout << "mismatch at round " << round << "\\n"; return 1; }
+            }
+        }
+    }
+    cout << "40 000 random operations: segment tree agrees with brute force\\n";
+}` }] }, { lang: 'python', run: true, title: 'The decision guide as code (runnable)', code: `def choose(updates, query, online):
     """updates: 'none' | 'point' | 'range'; query: 'sum','xor','min','max','gcd','distinct','mode'."""
     mergeable = query not in ("distinct", "mode")
     invertible = query in ("sum", "xor")
@@ -2878,7 +4799,7 @@ for upd, q, online in cases:
       <p><b>Engineering view.</b> In real systems, the same choices show up as: precomputed prefix aggregates (immutable, rebuilt in batch), mutable counters with tree-structured aggregation, block-level summaries that let a scan skip blocks (columnar "zone maps"), and offline batch jobs that sort work to maximise locality — Mo's courier idea at data-centre scale. The interview question "which structure?" is really "what are your update pattern, query pattern and latency budget?".</p>
       <p><b>A good spoken answer</b> has four parts: (1) restate the operations and constraints, (2) reject the brute force with a number, (3) name the structure and its complexity, (4) mention one alternative and the trade-off ("a sparse table would be O(1) per query but cannot handle the updates").</p>`,
     aiEra: `<p><b>What AI changes:</b> writing any one of these structures is now cheap; <b>choosing</b> is the scarce skill. Assistants often default to the most powerful tool they know (lazy segment tree, persistent tree) even when prefix sums or a Fenwick would do, or they miss a decisive word like "static", "offline" or "online".</p>
-      <p><b>A good human–AI workflow:</b> (1) you extract the five decision facts (mergeable? updates? invertible/idempotent? online? limits?) from the statement; (2) you choose the structure and state the complexity; (3) let the assistant write the boilerplate; (4) you demand a brute-force stress test (like the Java harness above) and review the tricky lines yourself — identities, index bases, overflow.</p>
+      <p><b>A good human–AI workflow:</b> (1) you extract the five decision facts (mergeable? updates? invertible/idempotent? online? limits?) from the statement; (2) you choose the structure and state the complexity; (3) let the assistant write the boilerplate; (4) you demand a brute-force stress test (like the stress-test harness above) and review the tricky lines yourself — identities, index bases, overflow.</p>
       <p><b>Prompts that work:</b> <code>"List three data structures that solve this, with complexity and one reason each might fail on these constraints"</code>; <code>"Estimate the number of operations for N = Q = 2e5 for each"</code>. <b>What you must own:</b> the decision itself, the back-of-the-envelope budget, and the honest trade-off discussion — that is exactly what interviewers still score in 2026.</p>`,
     problems: [{
       title: 'Range Frequency Queries',
@@ -2913,6 +4834,18 @@ for upd, q, online in cases:
         `<p>Build <code>Map&lt;Integer, List&lt;Integer&gt;&gt;</code> (or an array of lists since values ≤ 10<sup>4</sup>) by scanning left to right — each list is automatically sorted. Then answer with lowerBound(l) and upperBound(r).</p>`,
         `<p>Edge cases: value never appears (empty list → 0), l = r, value at exactly l or r (inclusive bounds). Recipe: pos = lists[value] → return upperBound(pos, right) − lowerBound(pos, left).</p>`
       ],
+      tests: { cls: 'RangeFreqQuery', sigs: {"RangeFreqQuery":"int[]","query":"int int int -> int"}, cases: [
+        {"ops":["RangeFreqQuery","query","query","query"],"args":[[[12,33,4,56,22,2,34,33,22,12,34,56]],[1,2,4],[0,11,33],[5,8,22]],"out":[null,1,2,1]},
+        {"ops":["RangeFreqQuery","query","query"],"args":[[[5]],[0,0,5],[0,0,6]],"out":[null,1,0]},
+        {"ops":["RangeFreqQuery","query","query","query","query"],"args":[[[1,1,1,1,1]],[0,4,1],[2,2,1],[1,3,1],[0,4,2]],"out":[null,5,1,3,0]},
+        {"ops":["RangeFreqQuery","query","query","query","query","query"],"args":[[[10000,1,10000,2,10000]],[0,4,10000],[1,3,10000],[4,4,10000],[0,0,10000],[3,4,2]],"out":[null,3,1,1,1,1]},
+        {"ops":["RangeFreqQuery","query","query","query","query"],"args":[[[1,2,3,4,5,6,7]],[0,6,4],[4,6,4],[0,2,4],[3,3,4]],"out":[null,1,0,0,1]},
+        {"ops":["RangeFreqQuery","query","query","query","query","query","query","query","query","query","query"],"args":[[[5,5,1,4,5,5,2,5,1,4,4,4,3,3,5]],[14,14,2],[13,14,5],[7,10,2],[13,14,2],[5,12,2],[13,14,2],[10,12,3],[4,11,4],[0,9,5],[8,8,3]],"out":[null,0,1,0,0,1,0,1,3,5,0]},
+        {"ops":["RangeFreqQuery","query","query","query","query","query","query","query","query","query","query"],"args":[[[5,2,5,4]],[3,3,5],[0,0,4],[3,3,6],[3,3,2],[3,3,2],[3,3,2],[2,2,3],[2,3,6],[1,2,1],[0,0,1]],"out":[null,0,0,0,0,0,0,0,0,0,0]},
+        {"ops":["RangeFreqQuery","query","query","query","query","query","query","query","query","query","query"],"args":[[[5,5,1,3,4,3,3,1,1]],[7,8,6],[3,8,5],[0,0,3],[3,6,1],[5,5,3],[6,7,4],[8,8,6],[3,3,3],[1,1,5],[4,8,5]],"out":[null,0,0,0,0,1,0,0,1,1,0]},
+        {"ops":["RangeFreqQuery","query","query","query","query","query","query","query","query","query","query"],"args":[[[2,4,4,2,5,1,3,2,5,3,5,5,2,4,3]],[3,8,3],[0,11,3],[9,11,6],[2,7,1],[1,5,3],[1,10,6],[11,12,6],[7,7,6],[10,10,6],[5,11,3]],"out":[null,1,2,0,1,0,0,0,0,0,2]},
+        {"ops":["RangeFreqQuery","query","query","query","query"],"args":[[{"$rep":10000,"n":100000}],[0,99999,10000],[500,99500,10000],[0,99999,9999],[99999,99999,10000]],"out":[null,100000,99001,0,1]}
+      ] },
       solution: {
         approach: `<p>Per-value sorted position lists + two binary searches. Construction O(N), query O(log N), memory O(N). A good example of "choose the lightest structure": no tree is needed because the query focuses on a single value.</p>`,
         code: `
@@ -2960,7 +4893,44 @@ class RangeFreqQuery:
 
 
 r = RangeFreqQuery([12, 33, 4, 56, 22, 2, 34, 33, 22, 12, 34, 56])
-print(r.query(1, 2, 4), r.query(0, 11, 33), r.query(5, 8, 22))  # 1 2 1`, run: true }],
+print(r.query(1, 2, 4), r.query(0, 11, 33), r.query(5, 8, 22))  # 1 2 1`, run: true }, { lang: 'js', code: `class RangeFreqQuery {
+  constructor(arr) {
+    this.positions = new Map();                        // value -> sorted list of indices
+    arr.forEach((v, i) => {
+      if (!this.positions.has(v)) this.positions.set(v, []);
+      this.positions.get(v).push(i);
+    });
+  }
+
+  // first index in list with list[idx] >= x
+  static lowerBound(list, x) {
+    let lo = 0, hi = list.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (list[mid] < x) lo = mid + 1; else hi = mid; }
+    return lo;
+  }
+
+  query(left, right, value) {
+    const pos = this.positions.get(value);
+    if (!pos) return 0;
+    return RangeFreqQuery.lowerBound(pos, right + 1) - RangeFreqQuery.lowerBound(pos, left);
+  }
+}
+
+const r = new RangeFreqQuery([12, 33, 4, 56, 22, 2, 34, 33, 22, 12, 34, 56]);
+console.log(r.query(1, 2, 4), r.query(0, 11, 33), r.query(5, 8, 22));  // 1 2 1` }, { lang: 'cpp', code: `class RangeFreqQuery {
+    unordered_map<int, vector<int>> positions;         // value -> sorted list of indices
+public:
+    RangeFreqQuery(vector<int>& arr) {
+        for (int i = 0; i < (int)arr.size(); i++) positions[arr[i]].push_back(i);
+    }
+
+    int query(int left, int right, int value) {
+        auto it = positions.find(value);
+        if (it == positions.end()) return 0;
+        const vector<int>& p = it->second;
+        return upper_bound(p.begin(), p.end(), right) - lower_bound(p.begin(), p.end(), left);
+    }
+};` }],
         dry: {
           head: ['call', 'positions list', 'lowerBound(left)', 'lowerBound(right + 1)', 'answer'],
           rows: [
@@ -3012,6 +4982,19 @@ print(r.query(1, 2, 4), r.query(0, 11, 33), r.query(5, 8, 22))  # 1 2 1`, run: t
       `<p>Build <code>pre</code> of length N+1 with <code>pre[0] = 0</code> and <code>pre[i+1] = pre[i] + nums[i]</code>. The extra leading zero removes the special case l = 0.</p>`,
       `<p>Edge cases: left = 0, left = right, negative numbers. Recipe: build pre in the constructor → return pre[right + 1] − pre[left].</p>`
     ],
+    tests: { cls: 'NumArray', sigs: {"NumArray":"int[]","sumRange":"int int -> int"}, cases: [
+      {"ops":["NumArray","sumRange","sumRange","sumRange"],"args":[[[-2,0,3,-5,2,-1]],[0,2],[2,5],[0,5]],"out":[null,1,-1,-3]},
+      {"ops":["NumArray","sumRange"],"args":[[[9]],[0,0]],"out":[null,9]},
+      {"ops":["NumArray","sumRange","sumRange"],"args":[[[0,0,0,0]],[0,3],[1,2]],"out":[null,0,0]},
+      {"ops":["NumArray","sumRange","sumRange","sumRange","sumRange","sumRange"],"args":[[[100000,-100000,100000]],[0,0],[0,1],[0,2],[1,2],[2,2]],"out":[null,100000,0,100000,0,100000]},
+      {"ops":["NumArray","sumRange","sumRange","sumRange","sumRange","sumRange"],"args":[[[1,2,3,4,5,6,7,8]],[0,7],[3,3],[4,7],[0,0],[7,7]],"out":[null,36,4,26,1,8]},
+      {"ops":["NumArray","sumRange","sumRange","sumRange","sumRange","sumRange","sumRange","sumRange","sumRange"],"args":[[[-17]],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]],"out":[null,-17,-17,-17,-17,-17,-17,-17,-17]},
+      {"ops":["NumArray","sumRange","sumRange","sumRange","sumRange","sumRange","sumRange","sumRange","sumRange"],"args":[[[11,-19,-2,0,7,-4,1,5,-1,-9,-12,-1,-16]],[3,10],[8,8],[4,11],[8,12],[11,11],[10,12],[0,1],[8,10]],"out":[null,-13,-1,-14,-39,-1,-29,-8,-22]},
+      {"ops":["NumArray","sumRange","sumRange","sumRange","sumRange","sumRange","sumRange","sumRange","sumRange"],"args":[[[-5,18]],[1,1],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]],"out":[null,18,-5,-5,-5,-5,-5,-5,-5]},
+      {"ops":["NumArray","sumRange","sumRange","sumRange","sumRange","sumRange","sumRange","sumRange","sumRange"],"args":[[[15,-9]],[1,1],[0,0],[0,0],[1,1],[1,1],[1,1],[0,0],[0,0]],"out":[null,-9,15,15,-9,-9,-9,15,15]},
+      {"ops":["NumArray","sumRange","sumRange"],"args":[[{"$rep":100000,"n":10000}],[0,9999],[1,9998]],"out":[null,1000000000,999800000]},
+      {"ops":["NumArray","sumRange","sumRange"],"args":[[{"$rep":-100000,"n":10000}],[0,9999],[9999,9999]],"out":[null,-1000000000,-100000]}
+    ] },
     solution: {
       approach: `<p>Prefix sums with a leading zero; each query is one subtraction.</p>`,
       code: `
@@ -3046,7 +5029,29 @@ class NumArray:
 
 
 na = NumArray([-2, 0, 3, -5, 2, -1])
-print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run: true }],
+print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run: true }, { lang: 'js', code: `class NumArray {
+  constructor(nums) {
+    this.pre = new Array(nums.length + 1).fill(0);
+    for (let i = 0; i < nums.length; i++) this.pre[i + 1] = this.pre[i] + nums[i];
+  }
+
+  sumRange(left, right) {
+    return this.pre[right + 1] - this.pre[left];
+  }
+}
+
+const na = new NumArray([-2, 0, 3, -5, 2, -1]);
+console.log(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5));  // 1 -1 -3` }, { lang: 'cpp', code: `class NumArray {
+    vector<long long> pre;
+public:
+    NumArray(vector<int>& nums) : pre(nums.size() + 1, 0) {
+        for (size_t i = 0; i < nums.size(); i++) pre[i + 1] = pre[i] + nums[i];
+    }
+
+    int sumRange(int left, int right) {
+        return (int)(pre[right + 1] - pre[left]);
+    }
+};` }],
       dry: { head: ['call', 'pre[right+1]', 'pre[left]', 'answer'], rows: [['(0, 2)', '1', '0', '1'], ['(2, 5)', '−3', '−2', '−1'], ['(0, 5)', '−3', '0', '−3']] },
       complexity: `<p>Build O(N), query O(1), memory O(N).</p>`,
       followUps: ['Now nums can change — what do you switch to?', '2D version: sum of a sub-rectangle with 2D prefix sums.']
@@ -3084,6 +5089,21 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
       `<p>Difference array <code>d</code> of size length + 1: for each update <code>d[start] += inc; d[end + 1] −= inc</code>. At the end, a running sum over d rebuilds the array.</p>`,
       `<p>Edge cases: end = length − 1 (d has the extra slot, so it is safe), no updates (all zeros). Recipe: O(1) per update, one O(N) prefix pass. If you had to <i>read</i> between updates you would need a Fenwick on d instead.</p>`
     ],
+    tests: { sig: 'int int[][] -> int[]', fn: 'getModifiedArray', cases: [
+      [[5,[[1,3,2],[2,4,3],[0,2,-2]]],[-2,0,3,5,3]],
+      [[1,[[0,0,5]]],[5]],
+      [[1,[]],[0]],
+      [[6,[]],[0,0,0,0,0,0]],
+      [[4,[[0,3,1000],[0,3,-1000]]],[0,0,0,0]],
+      [[5,[[4,4,-7],[0,0,7],[2,2,1],[2,2,1]]],[7,0,2,0,-7]],
+      [[7,[[0,6,1],[6,6,1],[0,0,1]]],[2,1,1,1,1,1,2]],
+      [[1,[]],[0]],
+      [[7,[[5,5,5],[2,4,-639]]],[0,0,-639,-639,-639,5,0]],
+      [[8,[[0,0,638],[3,7,-109],[1,7,-860],[4,4,377]]],[638,-860,-860,-969,-592,-969,-969,-969]],
+      [[6,[[1,1,557]]],[0,557,0,0,0,0]],
+      [[100000,{"$rep":[0,99999,1000],"n":10000}],{"$rep":10000000,"n":100000}],
+      [[100000,{"$rep":[99999,99999,-1000],"n":10000}],{"$concat":[{"$rep":0,"n":99999},[-10000000]]}]
+    ] },
     solution: {
       approach: `<p>Difference array: two writes per update, one prefix pass at the end. This is the "offline" cousin of lazy propagation.</p>`,
       code: `
@@ -3108,6 +5128,45 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
                 System.out.println(Arrays.toString(new Solution().getModifiedArray(5, ups)));  // [-2, 0, 3, 5, 3]
             }
         }`,
+      alt: [{ lang: 'python', code: `from itertools import accumulate
+
+
+def get_modified_array(length, updates):
+    d = [0] * (length + 1)
+    for start, end, inc in updates:
+        d[start] += inc            # bonus starts at start
+        d[end + 1] -= inc          # and stops right after end
+    return list(accumulate(d[:length]))
+
+
+print(get_modified_array(5, [[1, 3, 2], [2, 4, 3], [0, 2, -2]]))  # [-2, 0, 3, 5, 3]` }, { lang: 'js', code: `function getModifiedArray(length, updates) {
+  const d = new Int32Array(length + 1);
+  for (const [start, end, inc] of updates) {
+    d[start] += inc;                 // bonus starts at start
+    d[end + 1] -= inc;               // and stops right after end
+  }
+  const res = new Array(length);
+  let run = 0;
+  for (let i = 0; i < length; i++) {
+    run += d[i];
+    res[i] = run;
+  }
+  return res;
+}
+
+console.log(getModifiedArray(5, [[1, 3, 2], [2, 4, 3], [0, 2, -2]]));  // [-2, 0, 3, 5, 3]` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> getModifiedArray(int length, vector<vector<int>>& updates) {
+        vector<int> d(length + 1, 0);
+        for (auto& u : updates) {
+            d[u[0]] += u[2];             // bonus starts at start
+            d[u[1] + 1] -= u[2];         // and stops right after end
+        }
+        vector<int> res(length);
+        partial_sum(d.begin(), d.begin() + length, res.begin());
+        return res;
+    }
+};` }],
       dry: { head: ['step', 'd (indices 0..5)', 'note'], rows: [['[1,3,+2]', '0 2 0 0 −2 0', 'start +2 at 1, stop at 4'], ['[2,4,+3]', '0 2 3 0 −2 −3', 'stop at 5 (extra slot)'], ['[0,2,−2]', '−2 2 3 2 −2 −3', ''], ['prefix', '−2 0 3 5 3', H.c('g', 'answer')]] },
       complexity: `<p>O(N + U) time, O(N) extra memory.</p>`,
       followUps: ['Interleave "what is a[i] now?" queries — Fenwick on the difference array.', 'Ranges in 2D (add to a sub-rectangle) — 2D difference array with four corners.']
@@ -3147,6 +5206,21 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
       `<p>Build <code>st[k][i]</code> = min of a[i .. i + 2<sup>k</sup> − 1] from row k−1, plus <code>lg[]</code> for ⌊log₂⌋. Query: k = lg[len]; min(st[k][l], st[k][r − 2<sup>k</sup> + 1]).</p>`,
       `<p>Edge cases: l = r (k = 0, both cells are the same), N = 1, exact powers of two. Use fast input for 2·10<sup>5</sup> queries. Memory: 18 rows × 2·10<sup>5</sup> ints ≈ 14 MB.</p>`
     ],
+    tests: { sig: 'int[] int[][] -> int[]', fn: 'rangeMin', cases: [
+      [[[3,2,4,5,1,1,5,3],[[1,3],[4,5],[0,7],[2,2]]],[2,1,1,4]],
+      [[[42],[[0,0]]],[42]],
+      [[[1000000000,1000000000],[[0,1],[1,1]]],[1000000000,1000000000]],
+      [[[5,4,3,2,1],[[0,4],[0,2],[2,4],[3,3]]],[1,3,1,2]],
+      [[[1,2,3,4,5],[[0,4],[1,4],[2,3],[4,4]]],[1,2,3,5]],
+      [[[2,2,2,2,2,2,2],[[0,6],[3,5],[6,6]]],[2,2,2]],
+      [[[9,1,9,9,9,9,9,9,9],[[0,8],[2,8],[0,0],[1,1],[3,7]]],[1,9,9,1,9]],
+      [[[12,24,18,10,20,4,28,22,16,12,12,22,24,22],[[3,3],[0,3],[3,11],[11,11],[5,5],[5,12],[13,13],[11,11],[5,5],[11,13]]],[10,10,4,22,4,4,22,22,4,22]],
+      [[[24,10,20,7,27,21,13,15,29,29,11,24,27,23,3,15],[[15,15],[12,12],[8,8],[8,8],[0,0],[0,0],[0,11],[15,15],[7,13],[15,15]]],[15,27,29,29,24,24,7,15,11,15]],
+      [[[27,5,15,23,21,29,11,13,15,24,6,8,18,18,8,15],[[11,11],[3,8],[11,11],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]]],[8,11,8,27,27,27,27,27,27,27]],
+      [[[7,27,23,29,1,25,29,5,11,29,7,14,10,14,29],[[4,4],[14,14],[0,0],[5,5],[9,13],[7,9],[7,9],[3,5],[11,12],[1,10]]],[1,29,7,25,7,5,5,1,10,1]],
+      [[{"$range":[1000000000,999800000,-1]},{"$rep":[0,199999],"n":200000}],{"$rep":999800001,"n":200000}],
+      [[{"$range":[1,200001]},{"$concat":[{"$rep":[7,150000],"n":100000},{"$rep":[199999,199999],"n":100000}]}],{"$concat":[{"$rep":8,"n":100000},{"$rep":200000,"n":100000}]}]
+    ] },
     solution: {
       approach: `<p>Sparse table, O(N log N) build, O(1) per query.</p>`,
       code: `
@@ -3176,6 +5250,57 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
                 System.out.println(Arrays.toString(new Solution().rangeMin(a, qs)));  // [2, 1, 1, 4]
             }
         }`,
+      alt: [{ lang: 'python', code: `def range_min(a, qs):
+    n = len(a)
+    st = [list(a)]                                   # st[k][i] = min of a[i .. i + 2^k - 1]
+    k = 1
+    while (1 << k) <= n:
+        prev, half = st[-1], 1 << (k - 1)
+        st.append([min(prev[i], prev[i + half]) for i in range(n - (1 << k) + 1)])
+        k += 1
+    out = []
+    for l, r in qs:
+        k = (r - l + 1).bit_length() - 1             # largest k with 2^k <= length
+        out.append(min(st[k][l], st[k][r - (1 << k) + 1]))
+    return out
+
+
+print(range_min([3, 2, 4, 5, 1, 1, 5, 3], [[1, 3], [4, 5], [0, 7], [2, 2]]))  # [2, 1, 1, 4]` }, { lang: 'js', code: `function rangeMin(a, qs) {
+  const n = a.length;
+  const lg = new Int32Array(n + 1);                  // lg[x] = floor(log2(x))
+  for (let x = 2; x <= n; x++) lg[x] = lg[x >> 1] + 1;
+  const st = [Int32Array.from(a)];                   // st[k][i] = min of a[i .. i + 2^k - 1]
+  for (let k = 1; k <= lg[n]; k++) {
+    const prev = st[k - 1], half = 1 << (k - 1), cur = new Int32Array(n - (1 << k) + 1);
+    for (let i = 0; i < cur.length; i++) cur[i] = Math.min(prev[i], prev[i + half]);
+    st.push(cur);
+  }
+  return qs.map(([l, r]) => {
+    const k = lg[r - l + 1];
+    return Math.min(st[k][l], st[k][r - (1 << k) + 1]);   // two overlapping windows
+  });
+}
+
+console.log(rangeMin([3, 2, 4, 5, 1, 1, 5, 3], [[1, 3], [4, 5], [0, 7], [2, 2]]));  // [2, 1, 1, 4]` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> rangeMin(vector<int>& a, vector<vector<int>>& qs) {
+        int n = a.size();
+        vector<vector<int>> st{a};                   // st[k][i] = min of a[i .. i + 2^k - 1]
+        for (int k = 1; (1 << k) <= n; k++) {
+            vector<int> cur(n - (1 << k) + 1);
+            for (int i = 0; i < (int)cur.size(); i++)
+                cur[i] = min(st[k - 1][i], st[k - 1][i + (1 << (k - 1))]);
+            st.push_back(move(cur));
+        }
+        vector<int> res;
+        for (auto& q : qs) {
+            int l = q[0], r = q[1];
+            int k = 31 - __builtin_clz(r - l + 1);   // floor(log2(length))
+            res.push_back(min(st[k][l], st[k][r - (1 << k) + 1]));   // two overlapping windows
+        }
+        return res;
+    }
+};` }],
       dry: { head: ['query', 'len', 'k', 'cells', 'answer'], rows: [['[1,3]', '3', '1', 'st[1][1]=2, st[1][2]=4', '2'], ['[4,5]', '2', '1', 'st[1][4]=1 (twice)', '1'], ['[0,7]', '8', '3', 'st[3][0]=1', '1'], ['[2,2]', '1', '0', 'st[0][2]=4', '4']] },
       complexity: `<p>Build O(N log N), each query O(1); memory O(N log N).</p>`,
       followUps: ['Add point updates — what replaces the sparse table?', 'Return the index of the minimum (store indices, compare values).']
@@ -3188,7 +5313,7 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
     tags: ['fenwick tree', 'point update'],
     companies: ['CSES classic', 'Microsoft'],
     statement: `<p>Given an array <code>a</code> and a list of operations: <code>[1, k, u]</code> sets <code>a[k] = u</code>; <code>[2, l, r]</code> asks for the sum of <code>a[l..r]</code>. Return the answers of type-2 operations (0-based indices).</p>`,
-    constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i], u ≤ 10<sup>9</sup> → sums up to 2·10<sup>14</sup> (use long).`,
+    constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i], u ≤ 10<sup>9</sup> → sums up to 2·10<sup>14</sup> (use 64-bit integers).`,
     example: `${H.arr([3, 2, 4, 5, 1, 1, 5, 3], { label: 'a' })}
       <p>Ops [2,0,3], [2,4,5], [1,2,1], [2,0,3] → ${H.c('g', '[14, 2, 11]')}. After setting a[2] = 1 the first four sum to 3 + 2 + 1 + 5 = 11.</p>`,
     brute: {
@@ -3215,9 +5340,23 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
     },
     hints: [
       `<p><b>Aha:</b> sum is invertible: sum(l..r) = prefix(r) − prefix(l − 1), and a Fenwick tree gives prefix sums with updates in O(log N).</p>`,
-      `<p>Keep <code>long[] cur</code> with the current values. "set" → <code>add(k + 1, u − cur[k]); cur[k] = u</code> (1-based inside the tree).</p>`,
-      `<p>Edge cases: l = 0 (prefix(0) = 0), setting to the same value (delta 0), overflow → long. Build in O(N) or with N adds.</p>`
+      `<p>Keep an array <code>cur</code> of 64-bit values with the current values. "set" → <code>add(k + 1, u − cur[k]); cur[k] = u</code> (1-based inside the tree).</p>`,
+      `<p>Edge cases: l = 0 (prefix(0) = 0), setting to the same value (delta 0), overflow → 64-bit. Build in O(N) or with N adds.</p>`
     ],
+    tests: { sig: 'int[] int[][] -> long[]', fn: 'process', cases: [
+      [[[3,2,4,5,1,1,5,3],[[2,0,3],[2,4,5],[1,2,1],[2,0,3]]],[14,2,11]],
+      [[[8],[[2,0,0],[1,0,1],[2,0,0]]],[8,1]],
+      [[[1,1,1,1],[[1,0,1000000000],[1,3,1000000000],[2,0,3],[2,1,2]]],[2000000002,2]],
+      [[[5,6,7],[[1,0,9],[1,1,9]]],[]],
+      [[[4,4,4,4,4],[[2,0,4],[1,2,4],[2,2,2],[2,0,4]]],[20,4,20]],
+      [[[1000000000,1000000000,1000000000],[[2,0,2],[1,1,1],[2,0,2],[2,1,1]]],[3000000000,2000000001,1]],
+      [[[10,20,44,4,30,8,36,36,1,21,41,23,2,42,34],[[2,12,14],[1,5,48],[1,7,29],[2,2,9],[2,12,14],[1,12,18],[1,12,40],[2,14,14],[2,8,11],[2,11,11],[1,14,6],[2,1,10],[1,10,22],[1,14,23],[2,8,9],[1,8,2]]],[78,213,78,34,86,23,274,22]],
+      [[[9,1],[[2,0,0],[2,0,0],[2,0,0],[2,0,0],[2,0,1],[1,1,8],[1,0,21],[2,0,0],[2,0,0],[2,0,0],[1,1,25],[2,0,0],[2,0,0],[2,0,0],[2,1,1],[2,0,0]]],[9,9,9,9,10,21,21,21,21,21,21,25,21]],
+      [[[30,24,38,34,35,41,21,1,47,25,47,41],[[1,11,41],[2,1,2],[1,9,40],[2,8,11],[1,11,26],[1,7,9],[2,6,8],[2,5,11],[2,2,6],[2,2,2],[2,2,11],[1,7,6],[1,7,18],[1,2,47],[2,6,10],[2,1,9]]],[62,175,77,231,169,38,338,173,307]],
+      [[[41,25,13,15,33,11,13,43,21,37,1,47,40],[[2,7,12],[1,9,46],[1,3,46],[1,1,9],[2,12,12],[1,2,16],[1,12,16],[1,7,36],[2,11,11],[2,9,10],[2,8,10],[1,1,17],[2,6,8],[2,3,11],[2,9,10],[1,12,26]]],[189,40,47,47,68,70,254,47]],
+      [[[19,11,7,19],[[1,3,23],[2,2,3],[2,0,0],[1,3,28],[1,3,26],[1,3,4],[2,0,0],[1,3,41],[2,2,2],[2,2,2],[2,2,2],[2,2,2],[2,1,3],[1,0,43],[2,0,0],[2,0,0]]],[30,19,19,7,7,7,7,59,43,43]],
+      [[{"$rep":1000000000,"n":200000},{"$concat":[{"$rep":[2,0,199999],"n":100000},[[1,199999,1],[2,0,199999],[2,199999,199999]]]}],{"$concat":[{"$rep":200000000000000,"n":100000},[199999000000001,1]]}]
+    ] },
     solution: {
       approach: `<p>Fenwick tree over the array plus a copy of current values for computing deltas.</p>`,
       code: `
@@ -3253,6 +5392,87 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
                 System.out.println(Arrays.toString(new Solution().process(a, ops)));  // [14, 2, 11]
             }
         }`,
+      alt: [{ lang: 'python', code: `def process(a, ops):
+    n = len(a)
+    bit = [0] * (n + 1)
+    for i in range(1, n + 1):                        # O(N) build
+        bit[i] += a[i - 1]
+        j = i + (i & -i)
+        if j <= n:
+            bit[j] += bit[i]
+    cur = list(a)
+
+    def prefix(i):                                   # sum of the first i elements
+        s = 0
+        while i > 0:
+            s += bit[i]
+            i -= i & -i
+        return s
+
+    out = []
+    for op in ops:
+        if op[0] == 1:
+            _, k, u = op
+            d, cur[k] = u - cur[k], u                # only the difference goes into the tree
+            i = k + 1
+            while i <= n:
+                bit[i] += d
+                i += i & -i
+        else:
+            _, l, r = op
+            out.append(prefix(r + 1) - prefix(l))
+    return out
+
+
+print(process([3, 2, 4, 5, 1, 1, 5, 3], [[2, 0, 3], [2, 4, 5], [1, 2, 1], [2, 0, 3]]))  # [14, 2, 11]` }, { lang: 'js', code: `function process(a, ops) {
+  const n = a.length;
+  const bit = new Float64Array(n + 1);               // sums reach 2e14: exact in a double
+  for (let i = 1; i <= n; i++) {                     // O(N) build
+    bit[i] += a[i - 1];
+    const j = i + (i & -i);
+    if (j <= n) bit[j] += bit[i];
+  }
+  const cur = Float64Array.from(a);
+  const prefix = (i) => { let s = 0; for (; i > 0; i -= i & -i) s += bit[i]; return s; };
+
+  const out = [];
+  for (const op of ops) {
+    if (op[0] === 1) {
+      const k = op[1], u = op[2], d = u - cur[k];    // only the difference goes into the tree
+      cur[k] = u;
+      for (let i = k + 1; i <= n; i += i & -i) bit[i] += d;
+    } else {
+      out.push(prefix(op[2] + 1) - prefix(op[1]));
+    }
+  }
+  return out;
+}
+
+console.log(process([3, 2, 4, 5, 1, 1, 5, 3], [[2, 0, 3], [2, 4, 5], [1, 2, 1], [2, 0, 3]]));  // [14, 2, 11]` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<long long> process(vector<int>& a, vector<vector<int>>& ops) {
+        int n = a.size();
+        vector<long long> bit(n + 1, 0), cur(a.begin(), a.end());
+        for (int i = 1; i <= n; i++) {               // O(N) build
+            bit[i] += a[i - 1];
+            int j = i + (i & -i);
+            if (j <= n) bit[j] += bit[i];
+        }
+        auto prefix = [&](int i) { long long s = 0; for (; i > 0; i -= i & -i) s += bit[i]; return s; };
+
+        vector<long long> out;
+        for (auto& op : ops) {
+            if (op[0] == 1) {
+                long long d = op[2] - cur[op[1]];    // only the difference goes into the tree
+                cur[op[1]] = op[2];
+                for (int i = op[1] + 1; i <= n; i += i & -i) bit[i] += d;
+            } else {
+                out.push_back(prefix(op[2] + 1) - prefix(op[1]));
+            }
+        }
+        return out;
+    }
+};` }],
       complexity: `<p>O((N + Q) log N) time, O(N) memory.</p>`,
       followUps: ['Range add instead of set — two Fenwicks.', 'Return the first index whose prefix sum reaches S — Fenwick binary lifting.']
     }
@@ -3267,7 +5487,7 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
     tags: ['fenwick tree', 'coordinate compression', 'counting'],
     companies: ['Amazon', 'Microsoft', 'Adobe', 'Goldman Sachs'],
     statement: `<p>Given an array <code>a</code>, count the pairs <code>(i, j)</code> with <code>i &lt; j</code> and <code>a[i] &gt; a[j]</code> (inversions).</p>`,
-    constraints: `1 ≤ N ≤ 2·10<sup>5</sup>, −10<sup>9</sup> ≤ a[i] ≤ 10<sup>9</sup>. The answer can reach ~2·10<sup>10</sup> → long.`,
+    constraints: `1 ≤ N ≤ 2·10<sup>5</sup>, −10<sup>9</sup> ≤ a[i] ≤ 10<sup>9</sup>. The answer can reach ~2·10<sup>10</sup> → 64-bit.`,
     example: `${H.arr([8, 4, 2, 1], { label: 'a' })}<p>Output ${H.c('g', '6')}: every pair is inverted (4·3/2). For [3, 1, 2] the answer is ${H.c('g', '2')}: (3,1) and (3,2).</p>`,
     brute: {
       why: `<p>Check all pairs: N(N−1)/2 ≈ 2·10<sup>10</sup> comparisons. The waste: for each new element we recount all earlier elements instead of keeping a running "how many seen values are greater than v".</p>`,
@@ -3291,6 +5511,23 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
       `<p>Compress values to ranks 1..K, then BIT of counts: for each element add <code>seen − prefix(rank)</code>, then <code>add(rank, 1)</code>.</p>`,
       `<p>Edge cases: duplicates (not inversions → use prefix(rank), not prefix(rank − 1)), N = 1 (0), long answer. Alternative: merge sort counting cross pairs.</p>`
     ],
+    tests: { sig: 'int[] -> long', fn: 'countInversions', cases: [
+      [[[8,4,2,1]],6],
+      [[[3,1,2]],2],
+      [[[2,2,1]],2],
+      [[[5]],0],
+      [[[1,2,3,4]],0],
+      [[[7,7,7]],0],
+      [[[1000000000,-1000000000,0]],2],
+      [[[-3,-2,-1,-3,-2,-1]],3],
+      [[[0,5,0,-1,-5,1,-4,2,3,3,-4,-2]],33],
+      [[[-3,-1,3,3,3,-1,2,-4,-5]],21],
+      [[[0,2,-2,-4,-3,-3,4,-1,2,-1,0,-5,-1]],38],
+      [[[-4,1,0,-5,-1,1,-1,-1,-4,-4,-5,1]],33],
+      [[{"$range":[200000,0,-1]}],19999900000],
+      [[{"$concat":[{"$rep":1000000000,"n":100000},{"$rep":-1000000000,"n":100000}]}],10000000000],
+      [[{"$range":[0,200000]}],0]
+    ] },
     solution: {
       approach: `<p>Coordinate compression + Fenwick tree of counts, one pass.</p>`,
       code: `
@@ -3319,6 +5556,59 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
                 System.out.println(new Solution().countInversions(new int[]{2, 2, 1}));        // 2
             }
         }`,
+      alt: [{ lang: 'python', code: `def count_inversions(a):
+    ranks = {v: i + 1 for i, v in enumerate(sorted(set(a)))}
+    k = len(ranks)
+    bit = [0] * (k + 1)
+    inv = 0
+    for seen, v in enumerate(a):
+        r = ranks[v]
+        le, i = 0, r
+        while i > 0:                                 # earlier values <= v
+            le += bit[i]
+            i -= i & -i
+        inv += seen - le                             # earlier values > v
+        i = r
+        while i <= k:
+            bit[i] += 1
+            i += i & -i
+    return inv
+
+
+print(count_inversions([8, 4, 2, 1]), count_inversions([3, 1, 2]), count_inversions([2, 2, 1]))  # 6 2 2` }, { lang: 'js', code: `function countInversions(a) {
+  const sorted = [...new Set(a)].sort((x, y) => x - y);   // coordinate compression
+  const rank = new Map(sorted.map((v, i) => [v, i + 1]));
+  const k = sorted.length, bit = new Int32Array(k + 1);
+  let inv = 0;                                            // up to 2e10: fine for a double
+  for (let seen = 0; seen < a.length; seen++) {
+    const r = rank.get(a[seen]);
+    let le = 0;
+    for (let i = r; i > 0; i -= i & -i) le += bit[i];     // earlier values <= a[seen]
+    inv += seen - le;                                     // earlier values > a[seen]
+    for (let i = r; i <= k; i += i & -i) bit[i]++;
+  }
+  return inv;
+}
+
+console.log(countInversions([8, 4, 2, 1]), countInversions([3, 1, 2]), countInversions([2, 2, 1]));  // 6 2 2` }, { lang: 'cpp', code: `class Solution {
+public:
+    long long countInversions(vector<int>& a) {
+        vector<int> s(a);                            // coordinate compression
+        sort(s.begin(), s.end());
+        s.erase(unique(s.begin(), s.end()), s.end());
+        int k = s.size();
+        vector<int> bit(k + 1, 0);
+        long long inv = 0;
+        for (int seen = 0; seen < (int)a.size(); seen++) {
+            int r = lower_bound(s.begin(), s.end(), a[seen]) - s.begin() + 1;
+            int le = 0;
+            for (int i = r; i > 0; i -= i & -i) le += bit[i];   // earlier values <= a[seen]
+            inv += seen - le;                                   // earlier values > a[seen]
+            for (int i = r; i <= k; i += i & -i) bit[i]++;
+        }
+        return inv;
+    }
+};` }],
       dry: { head: ['v', 'rank', 'seen', 'prefix(rank)', 'added', 'total'], rows: [['8', '4', '0', '0', '0', '0'], ['4', '3', '1', '0', '1', '1'], ['2', '2', '2', '0', '2', '3'], ['1', '1', '3', '0', '3', H.c('g', '6')]] },
       complexity: `<p>O(N log N) time (sort + N BIT operations), O(N) memory.</p>`,
       followUps: ['Count pairs with a[i] &gt; 2·a[j] (Reverse Pairs).', 'Minimum adjacent swaps to sort = number of inversions — why?']
@@ -3331,7 +5621,7 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
     tags: ['fenwick tree', 'difference array'],
     companies: ['CSES classic', 'Uber'],
     statement: `<p>Given an array <code>a</code>, process operations: <code>[1, l, r, u]</code> adds <code>u</code> to every element in <code>[l, r]</code>; <code>[2, k]</code> asks for the current value of <code>a[k]</code>. Return the answers (0-based).</p>`,
-    constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i], u ≤ 10<sup>9</sup> → values up to ~2·10<sup>14</sup> (long).`,
+    constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i], u ≤ 10<sup>9</sup> → values up to ~2·10<sup>14</sup> (64-bit).`,
     example: `${H.arr([3, 2, 4, 5, 1, 1, 5, 3], { label: 'a' })}
       <p>Ops [2,3], [1,1,4,1], [2,3], [2,4] → ${H.c('g', '[5, 6, 2]')}. The add raises a[1..4] by 1, so a[3] becomes 6 and a[4] becomes 2.</p>`,
     brute: {
@@ -3361,6 +5651,21 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
       `<p>BIT of size N+1 starting at zero (only the bonuses): <code>add(l, u); add(r + 1, −u)</code> (1-based). Answer = <code>a[k] + prefix(k)</code>.</p>`,
       `<p>Edge cases: r = N − 1 → r + 2 &gt; N in 1-based, so the second add is skipped automatically by the loop; long values. Recipe: two BIT updates per add, one prefix per query.</p>`
     ],
+    tests: { sig: 'int[] int[][] -> long[]', fn: 'process', cases: [
+      [[[3,2,4,5,1,1,5,3],[[2,3],[1,1,4,1],[2,3],[2,4]]],[5,6,2]],
+      [[[7],[[2,0],[1,0,0,5],[2,0]]],[7,12]],
+      [[[1,1,1],[[1,0,2,1000000000],[1,0,2,1000000000],[2,0],[2,2]]],[2000000001,2000000001]],
+      [[[1,2,3,4],[[1,0,3,1],[1,3,3,1]]],[]],
+      [[[1,2,3,4],[[2,0],[2,1],[2,2],[2,3]]],[1,2,3,4]],
+      [[[5,5,5,5,5],[[1,4,4,2],[1,0,0,3],[2,4],[2,0],[2,2]]],[7,8,5]],
+      [[[17,17,1,17,8,4,4,15],[[1,3,3,20],[1,3,3,12],[2,2],[2,2],[2,2],[2,2],[2,5],[2,4],[2,4],[2,4],[2,4],[2,7],[1,7,7,12],[2,4],[2,4],[2,4]]],[1,1,1,1,4,8,8,8,8,15,8,8,8]],
+      [[[10,6,18,14,10,18,18,17,1,9,1,1,9,4,8,16,16],[[2,1],[2,4],[2,9],[1,16,16,3],[2,9],[2,13],[2,8],[1,2,16,10],[1,0,15,17],[2,0],[2,13],[2,8],[1,11,16,11],[2,7],[2,12],[1,6,12,2]]],[6,10,9,9,4,1,27,31,28,44,47]],
+      [[[11,15],[[1,0,0,3],[2,0],[2,0],[2,0],[2,0],[2,0],[2,0],[1,1,1,1],[2,0],[2,0],[2,1],[1,1,1,12],[1,1,1,20],[2,0],[1,1,1,13],[1,1,1,5]]],[14,14,14,14,14,14,14,14,16,14]],
+      [[[19,19,19],[[1,2,2,6],[2,1],[2,1],[2,1],[1,1,2,9],[2,2],[2,2],[2,0],[2,1],[2,0],[2,0],[2,0],[2,0],[1,0,0,20],[1,0,0,7],[2,0]]],[19,19,19,34,34,19,28,19,19,19,19,46]],
+      [[[2,6,2,18,13,9,9,5,5,13,17],[[1,4,10,6],[2,2],[2,0],[2,10],[2,2],[1,8,10,4],[2,5],[2,5],[1,5,10,14],[2,0],[2,2],[1,8,8,20],[1,0,6,12],[1,2,7,15],[2,7],[2,1]]],[2,2,23,2,15,15,2,2,40,18]],
+      [[{"$rep":1000000000,"n":200000},{"$concat":[{"$rep":[1,0,199999,1000000000],"n":100000},[[2,5],[2,199999]]]}],[100001000000000,100001000000000]],
+      [[{"$rep":1,"n":200000},{"$concat":[{"$rep":[1,199999,199999,1000000000],"n":100000},[[2,199999],[2,199998]]]}],[100000000000001,1]]
+    ] },
     solution: {
       approach: `<p>Fenwick tree over the differences of the bonuses; the original array stays untouched.</p>`,
       code: `
@@ -3391,6 +5696,67 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
                 System.out.println(Arrays.toString(new Solution().process(a, ops)));  // [5, 6, 2]
             }
         }`,
+      alt: [{ lang: 'python', code: `def process(a, ops):
+    n = len(a)
+    bit = [0] * (n + 2)                              # Fenwick over the difference array
+    out = []
+    for op in ops:
+        if op[0] == 1:
+            _, l, r, u = op
+            i = l + 1                                # 1-based: bonus starts at l
+            while i <= n:
+                bit[i] += u
+                i += i & -i
+            i = r + 2                                # and stops after r
+            while i <= n:
+                bit[i] -= u
+                i += i & -i
+        else:
+            bonus, i = 0, op[1] + 1
+            while i > 0:
+                bonus += bit[i]
+                i -= i & -i
+            out.append(a[op[1]] + bonus)
+    return out
+
+
+print(process([3, 2, 4, 5, 1, 1, 5, 3], [[2, 3], [1, 1, 4, 1], [2, 3], [2, 4]]))  # [5, 6, 2]` }, { lang: 'js', code: `function process(a, ops) {
+  const n = a.length;
+  const bit = new Float64Array(n + 2);               // Fenwick over the difference array (values up to 2e14)
+  const out = [];
+  for (const op of ops) {
+    if (op[0] === 1) {
+      const l = op[1] + 1, r = op[2] + 1, u = op[3];   // 1-based
+      for (let i = l; i <= n; i += i & -i) bit[i] += u;        // bonus starts at l
+      for (let i = r + 1; i <= n; i += i & -i) bit[i] -= u;    // and stops after r
+    } else {
+      let bonus = 0;
+      for (let i = op[1] + 1; i > 0; i -= i & -i) bonus += bit[i];
+      out.push(a[op[1]] + bonus);
+    }
+  }
+  return out;
+}
+
+console.log(process([3, 2, 4, 5, 1, 1, 5, 3], [[2, 3], [1, 1, 4, 1], [2, 3], [2, 4]]));  // [5, 6, 2]` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<long long> process(vector<int>& a, vector<vector<int>>& ops) {
+        int n = a.size();
+        vector<long long> bit(n + 2, 0), out;        // Fenwick over the difference array
+        for (auto& op : ops) {
+            if (op[0] == 1) {
+                int l = op[1] + 1, r = op[2] + 1;    // 1-based
+                for (int i = l; i <= n; i += i & -i) bit[i] += op[3];       // bonus starts at l
+                for (int i = r + 1; i <= n; i += i & -i) bit[i] -= op[3];   // and stops after r
+            } else {
+                long long bonus = 0;
+                for (int i = op[1] + 1; i > 0; i -= i & -i) bonus += bit[i];
+                out.push_back(a[op[1]] + bonus);
+            }
+        }
+        return out;
+    }
+};` }],
       complexity: `<p>O(log N) per operation, O(N) memory.</p>`,
       followUps: ['Also ask "sum of [l, r]" — two Fenwicks (range add + range sum).', 'Range assign instead of add — lazy segment tree.']
     }
@@ -3430,6 +5796,18 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
       `<p><code>add(r, c, d)</code>: for i = r; i ≤ R; i += i&amp;−i: for j = c; j ≤ C; j += j&amp;−j: t[i][j] += d. <code>prefix(r, c)</code> mirrors it with subtraction. Keep the matrix to compute deltas for updates.</p>`,
       `<p>Edge cases: r1 = 0 or c1 = 0 (prefix with index 0 returns 0 in 1-based), single cell. Region = inclusion–exclusion of four prefixes.</p>`
     ],
+    tests: { cls: 'NumMatrix', sigs: {"NumMatrix":"int[][]","update":"int int int -> void","sumRegion":"int int int int -> int"}, cases: [
+      {"ops":["NumMatrix","sumRegion","update","sumRegion"],"args":[[[[3,0,1,4,2],[5,6,3,2,1],[1,2,0,1,5],[4,1,0,1,7],[1,0,3,0,5]]],[2,1,4,3],[3,2,2],[2,1,4,3]],"out":[null,8,null,10]},
+      {"ops":["NumMatrix","sumRegion","update","sumRegion"],"args":[[[[5]]],[0,0,0,0],[0,0,-3],[0,0,0,0]],"out":[null,5,null,-3]},
+      {"ops":["NumMatrix","sumRegion","sumRegion","update","sumRegion"],"args":[[[[1,2,3,4]]],[0,0,0,3],[0,1,0,2],[0,3,10],[0,2,0,3]],"out":[null,10,5,null,13]},
+      {"ops":["NumMatrix","sumRegion","sumRegion","update","sumRegion"],"args":[[[[1],[2],[3],[4]]],[0,0,3,0],[1,0,2,0],[3,0,-4],[2,0,3,0]],"out":[null,10,5,null,-1]},
+      {"ops":["NumMatrix","sumRegion","update","sumRegion","sumRegion","sumRegion"],"args":[[[[-1000,1000],[1000,-1000]]],[0,0,1,1],[0,0,1000],[0,0,1,1],[0,0,0,0],[1,1,1,1]],"out":[null,0,null,2000,1000,-1000]},
+      {"ops":["NumMatrix","update","update","sumRegion","sumRegion","sumRegion","sumRegion","update","update","sumRegion","sumRegion","update","sumRegion","sumRegion","sumRegion"],"args":[[[[-2,7,-8,9,-5,0,-4],[-4,-5,6,2,0,9,-8],[-2,2,-3,-9,0,-7,-9],[-4,-5,-5,-3,6,3,-4],[-3,1,-1,5,3,-6,9]]],[0,3,-3],[3,1,-1],[3,2,4,3],[2,4,2,6],[3,5,4,6],[1,5,2,6],[2,1,3],[4,3,-3],[0,3,2,3],[0,4,1,5],[3,2,-2],[2,0,4,6],[3,6,3,6],[1,2,3,6]],"out":[null,null,null,-4,-16,2,-15,null,null,-10,4,null,-32,-4,-19]},
+      {"ops":["NumMatrix","sumRegion","sumRegion","update","sumRegion","sumRegion","update","update","update","sumRegion","update","sumRegion","sumRegion","sumRegion","sumRegion"],"args":[[[[-1,6,0,3],[3,4,8,7],[-5,-7,-9,-6]]],[2,2,2,2],[0,2,0,3],[0,1,-6],[0,3,1,3],[2,1,2,2],[0,1,0],[2,0,-1],[0,2,9],[2,3,2,3],[0,3,0],[2,1,2,3],[2,0,2,0],[0,3,2,3],[2,0,2,0]],"out":[null,-9,3,null,10,-16,null,null,null,-6,null,-22,-1,1,-1]},
+      {"ops":["NumMatrix","update","update","update","sumRegion","update","sumRegion","sumRegion","sumRegion","update","sumRegion","sumRegion","sumRegion","sumRegion","update"],"args":[[[[-9,-8],[-2,2],[4,-7],[-3,7]]],[3,1,-2],[3,1,-3],[3,1,-6],[2,0,2,1],[1,1,0],[0,0,0,0],[0,0,3,1],[2,1,2,1],[2,0,-1],[2,0,2,0],[1,1,1,1],[2,0,2,0],[0,1,3,1],[3,1,1]],"out":[null,null,null,null,-3,null,-9,-31,-7,null,-1,0,-1,-21,null]},
+      {"ops":["NumMatrix","sumRegion","sumRegion","sumRegion","sumRegion","update","sumRegion","sumRegion","update","sumRegion","update","update","sumRegion","update","sumRegion"],"args":[[[[-7,4,9],[-9,3,-4],[-2,5,1]]],[1,2,2,2],[0,2,0,2],[0,2,2,2],[2,2,2,2],[2,0,4],[0,1,2,1],[1,2,2,2],[2,1,9],[1,1,1,1],[0,0,-8],[1,1,2],[0,2,1,2],[0,2,-2],[2,2,2,2]],"out":[null,-3,9,6,1,null,12,-3,null,3,null,null,5,null,1]},
+      {"ops":["NumMatrix","sumRegion","update","sumRegion","sumRegion","sumRegion"],"args":[[{"$rep":{"$rep":1000,"n":200},"n":200}],[0,0,199,199],[199,199,-1000],[0,0,199,199],[199,199,199,199],[1,1,198,198]],"out":[null,40000000,null,39998000,-1000,39204000]}
+    ] },
     solution: {
       approach: `<p>2D Fenwick tree with a copy of the matrix for deltas; inclusion–exclusion for regions.</p>`,
       code: `
@@ -3470,6 +5848,105 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
                 System.out.println(nm.sumRegion(2, 1, 4, 3));  // 10
             }
         }`,
+      alt: [{ lang: 'python', code: `class NumMatrix:
+    def __init__(self, matrix):
+        self.R, self.C = len(matrix), len(matrix[0])
+        self.t = [[0] * (self.C + 1) for _ in range(self.R + 1)]
+        self.val = [[0] * self.C for _ in range(self.R)]
+        for r in range(self.R):
+            for c in range(self.C):
+                self.update(r, c, matrix[r][c])
+
+    def update(self, row, col, val):
+        d = val - self.val[row][col]
+        self.val[row][col] = val
+        i = row + 1
+        while i <= self.R:
+            j = col + 1
+            while j <= self.C:
+                self.t[i][j] += d
+                j += j & -j
+            i += i & -i
+
+    def _prefix(self, row, col):                     # sum of (0,0)..(row-1, col-1)
+        s, i = 0, row
+        while i > 0:
+            j = col
+            while j > 0:
+                s += self.t[i][j]
+                j -= j & -j
+            i -= i & -i
+        return s
+
+    def sumRegion(self, r1, c1, r2, c2):
+        return (self._prefix(r2 + 1, c2 + 1) - self._prefix(r1, c2 + 1)
+                - self._prefix(r2 + 1, c1) + self._prefix(r1, c1))
+
+
+nm = NumMatrix([[3, 0, 1, 4, 2], [5, 6, 3, 2, 1], [1, 2, 0, 1, 5], [4, 1, 0, 1, 7], [1, 0, 3, 0, 5]])
+print(nm.sumRegion(2, 1, 4, 3))  # 8
+nm.update(3, 2, 2)
+print(nm.sumRegion(2, 1, 4, 3))  # 10` }, { lang: 'js', code: `class NumMatrix {
+  constructor(matrix) {
+    this.R = matrix.length;
+    this.C = matrix[0].length;
+    this.t = Array.from({ length: this.R + 1 }, () => new Int32Array(this.C + 1));
+    this.val = Array.from({ length: this.R }, () => new Int32Array(this.C));
+    for (let r = 0; r < this.R; r++)
+      for (let c = 0; c < this.C; c++) this.update(r, c, matrix[r][c]);
+  }
+
+  update(row, col, val) {
+    const d = val - this.val[row][col];
+    this.val[row][col] = val;
+    for (let i = row + 1; i <= this.R; i += i & -i)
+      for (let j = col + 1; j <= this.C; j += j & -j) this.t[i][j] += d;
+  }
+
+  prefix(row, col) {                                 // sum of (0,0)..(row-1, col-1)
+    let s = 0;
+    for (let i = row; i > 0; i -= i & -i)
+      for (let j = col; j > 0; j -= j & -j) s += this.t[i][j];
+    return s;
+  }
+
+  sumRegion(r1, c1, r2, c2) {
+    return this.prefix(r2 + 1, c2 + 1) - this.prefix(r1, c2 + 1) - this.prefix(r2 + 1, c1) + this.prefix(r1, c1);
+  }
+}
+
+const nm = new NumMatrix([[3, 0, 1, 4, 2], [5, 6, 3, 2, 1], [1, 2, 0, 1, 5], [4, 1, 0, 1, 7], [1, 0, 3, 0, 5]]);
+console.log(nm.sumRegion(2, 1, 4, 3));  // 8
+nm.update(3, 2, 2);
+console.log(nm.sumRegion(2, 1, 4, 3));  // 10` }, { lang: 'cpp', code: `class NumMatrix {
+    int R, C;
+    vector<vector<int>> t, val;
+
+    int prefix(int row, int col) {                   // sum of (0,0)..(row-1, col-1)
+        int s = 0;
+        for (int i = row; i > 0; i -= i & -i)
+            for (int j = col; j > 0; j -= j & -j) s += t[i][j];
+        return s;
+    }
+
+public:
+    NumMatrix(vector<vector<int>>& matrix)
+        : R(matrix.size()), C(matrix[0].size()), t(R + 1, vector<int>(C + 1, 0)), val(R, vector<int>(C, 0)) {
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++) update(r, c, matrix[r][c]);
+    }
+
+    void update(int row, int col, int v) {
+        int d = v - val[row][col];
+        val[row][col] = v;
+        for (int i = row + 1; i <= R; i += i & -i)
+            for (int j = col + 1; j <= C; j += j & -j) t[i][j] += d;
+    }
+
+    int sumRegion(int r1, int c1, int r2, int c2) {
+        return prefix(r2 + 1, c2 + 1) - prefix(r1, c2 + 1) - prefix(r2 + 1, c1) + prefix(r1, c1);
+    }
+};` }],
       complexity: `<p>Update and query O(log R · log C); build O(R·C·log R·log C) (or O(R·C) with the parent trick); memory O(R·C).</p>`,
       followUps: ['Range add on rectangles + point query (2D difference + 2D BIT).', 'Huge sparse grid (10<sup>9</sup> × 10<sup>9</sup>) with offline queries — sweep line + 1D BIT.']
     }
@@ -3508,8 +5985,22 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
     hints: [
       `<p><b>Aha:</b> min is associative with identity +∞, so a segment tree handles both operations in O(log N).</p>`,
       `<p>Iterative tree: leaves at <code>t[n + i]</code>; set climbs <code>p &gt;&gt;= 1</code> recomputing <code>min(t[2p], t[2p+1])</code>; query uses the half-open [l, r+1) loop.</p>`,
-      `<p>Edge cases: l = r, N = 1, identity must be <code>Integer.MAX_VALUE</code> (not 0). Use fast I/O for 2·10<sup>5</sup> lines.</p>`
+      `<p>Edge cases: l = r, N = 1, identity must be the largest value (<code>Integer.MAX_VALUE</code> / <code>INT_MAX</code> / <code>Infinity</code>), not 0. Use fast I/O for 2·10<sup>5</sup> lines.</p>`
     ],
+    tests: { sig: 'int[] int[][] -> int[]', fn: 'process', cases: [
+      [[[3,2,4,5,1,1,5,3],[[2,0,3],[2,4,5],[1,1,6],[2,0,3]]],[2,1,3]],
+      [[[8],[[2,0,0],[1,0,1],[2,0,0]]],[8,1]],
+      [[[5,5,5],[[1,1,1000000000],[2,0,2],[2,1,1],[1,1,3],[2,0,2]]],[5,1000000000,3]],
+      [[[1,2,3,4,5],[[1,0,100],[2,0,4],[1,4,100],[2,0,4],[2,1,3]]],[2,2,2]],
+      [[[9,8,7],[[1,0,1],[1,1,1]]],[]],
+      [[[1000000000,1000000000,1000000000,1000000000,1000000000,1000000000,1000000000],[[2,0,6],[1,3,5],[2,0,6],[2,4,6],[1,3,1000000000],[2,0,6]]],[1000000000,5,1000000000,1000000000]],
+      [[[14],[[2,0,0],[2,0,0],[2,0,0],[2,0,0],[2,0,0],[2,0,0],[2,0,0],[2,0,0],[2,0,0],[2,0,0],[1,0,18],[1,0,21],[1,0,35],[2,0,0],[2,0,0],[2,0,0]]],[14,14,14,14,14,14,14,14,14,14,35,35,35]],
+      [[[7,48],[[1,0,39],[2,0,0],[1,1,2],[2,0,0],[1,1,47],[2,0,0],[2,1,1],[1,1,12],[1,1,18],[1,0,25],[2,1,1],[1,1,48],[1,1,16],[1,0,21],[2,0,0],[2,0,0]]],[39,39,39,47,18,21,21]],
+      [[[4,22,33,47,48,8],[[1,5,43],[2,2,5],[1,5,31],[2,0,2],[2,2,2],[2,0,2],[2,2,2],[2,5,5],[1,5,8],[2,4,4],[2,2,2],[2,1,4],[1,5,48],[2,0,3],[1,5,6],[1,3,48]]],[33,4,33,4,33,31,48,33,22,4]],
+      [[[43,17,33,1,9,29,30,6,13,11,6,42,36,50,1],[[2,9,11],[2,7,7],[2,7,7],[2,2,14],[2,11,11],[2,7,7],[2,14,14],[2,2,3],[2,3,3],[1,13,25],[2,13,14],[1,10,32],[1,7,34],[1,2,22],[1,5,45],[2,13,13]]],[6,6,6,1,42,6,1,1,1,1,25]],
+      [[[20,18,30,6,38,7,19,19,36,36,9,21,31,39,33],[[1,13,30],[1,12,15],[2,2,2],[1,12,32],[1,12,8],[1,12,35],[2,11,13],[2,6,9],[1,5,33],[2,3,6],[1,1,36],[2,4,5],[2,9,12],[1,13,48],[1,4,38],[1,10,34]]],[30,21,19,6,33,9]],
+      [[{"$rep":1000000000,"n":200000},{"$concat":[{"$rep":[2,0,199999],"n":100000},[[1,199999,1],[2,0,199999],[2,0,199998],[1,199999,1000000000],[2,0,199999]]]}],{"$concat":[{"$rep":1000000000,"n":100000},[1,1000000000,1000000000]]}]
+    ] },
     solution: {
       approach: `<p>Bottom-up segment tree for min: O(log N) per set and per query, 2N memory.</p>`,
       code: `
@@ -3545,6 +6036,80 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
                 System.out.println(Arrays.toString(new Solution().process(a, ops)));  // [2, 1, 3]
             }
         }`,
+      alt: [{ lang: 'python', code: `def process(a, ops):
+    n = len(a)
+    t = [0] * n + list(a)                            # leaves at t[n..2n-1]
+    for p in range(n - 1, 0, -1):
+        t[p] = min(t[2 * p], t[2 * p + 1])
+    out = []
+    for op in ops:
+        if op[0] == 1:
+            p = op[1] + n
+            t[p] = op[2]
+            p //= 2
+            while p >= 1:
+                t[p] = min(t[2 * p], t[2 * p + 1])
+                p //= 2
+        else:
+            res, l, r = float('inf'), op[1] + n, op[2] + n + 1
+            while l < r:
+                if l & 1:
+                    res = min(res, t[l]); l += 1
+                if r & 1:
+                    r -= 1; res = min(res, t[r])
+                l //= 2; r //= 2
+            out.append(res)
+    return out
+
+
+print(process([3, 2, 4, 5, 1, 1, 5, 3], [[2, 0, 3], [2, 4, 5], [1, 1, 6], [2, 0, 3]]))  # [2, 1, 3]` }, { lang: 'js', code: `function process(a, ops) {
+  const n = a.length;
+  const t = new Int32Array(2 * n);                   // leaves at t[n..2n-1]
+  t.set(a, n);
+  for (let p = n - 1; p >= 1; p--) t[p] = Math.min(t[2 * p], t[2 * p + 1]);
+  const out = [];
+  for (const op of ops) {
+    if (op[0] === 1) {
+      let p = op[1] + n;
+      t[p] = op[2];
+      for (p >>= 1; p >= 1; p >>= 1) t[p] = Math.min(t[2 * p], t[2 * p + 1]);
+    } else {
+      let res = Infinity;
+      for (let l = op[1] + n, r = op[2] + n + 1; l < r; l >>= 1, r >>= 1) {
+        if (l & 1) res = Math.min(res, t[l++]);
+        if (r & 1) res = Math.min(res, t[--r]);
+      }
+      out.push(res);
+    }
+  }
+  return out;
+}
+
+console.log(process([3, 2, 4, 5, 1, 1, 5, 3], [[2, 0, 3], [2, 4, 5], [1, 1, 6], [2, 0, 3]]));  // [2, 1, 3]` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> process(vector<int>& a, vector<vector<int>>& ops) {
+        int n = a.size();
+        vector<int> t(2 * n);                        // leaves at t[n..2n-1]
+        copy(a.begin(), a.end(), t.begin() + n);
+        for (int p = n - 1; p >= 1; p--) t[p] = min(t[2 * p], t[2 * p + 1]);
+        vector<int> out;
+        for (auto& op : ops) {
+            if (op[0] == 1) {
+                int p = op[1] + n;
+                t[p] = op[2];
+                for (p >>= 1; p >= 1; p >>= 1) t[p] = min(t[2 * p], t[2 * p + 1]);
+            } else {
+                int res = INT_MAX;
+                for (int l = op[1] + n, r = op[2] + n + 1; l < r; l >>= 1, r >>= 1) {
+                    if (l & 1) res = min(res, t[l++]);
+                    if (r & 1) res = min(res, t[--r]);
+                }
+                out.push_back(res);
+            }
+        }
+        return out;
+    }
+};` }],
       complexity: `<p>O((N + Q) log N) time, O(N) memory.</p>`,
       followUps: ['Also return how many times the minimum occurs (node = (min, count)).', 'Range add + range min — lazy propagation.']
     }
@@ -3583,6 +6148,23 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
       `<p>Max tree over h. For each group: if root max &lt; g → 0. Otherwise descend to the leaf, record its index, subtract g at that leaf and recompute maxima up the path.</p>`,
       `<p>Edge cases: several hotels with exactly g (take the leftmost), rooms dropping to 0, 1-based output. The descent and the update are both O(log N).</p>`
     ],
+    tests: { sig: 'int[] int[] -> int[]', fn: 'assign', cases: [
+      [[[3,2,4,1,5,5,2,6],[4,4,7,1,1]],[3,5,0,1,1]],
+      [[[5],[5,1]],[1,0]],
+      [[[5],[6]],[0]],
+      [[[1000000000],[1000000000,1,1000000000]],[1,0,0]],
+      [[[1,1,1],[2,2]],[0,0]],
+      [[[2,2,2],[1,1,1,1,1,1,1]],[1,1,2,2,3,3,0]],
+      [[[1,2,3,4,5],[5,4,3,2,1,1]],[5,4,3,2,1,0]],
+      [[[3,7,7,1,1,9,1,7,5,1,1,5,5,1],[1,10,6,3,3,3,5,4,10,5,1,9,9,7,5]],[1,0,2,3,3,6,6,8,0,9,1,0,0,0,12]],
+      [[[7,9,3,7,7,9,3,9,2,4],[4,7,9]],[1,2,6]],
+      [[[1,5,5,7,4,10,2,6,10,4,2,2,10,4,1],[8,6,5,3,5,7]],[6,4,2,3,8,9]],
+      [[[10,2,6,4,2,4,10,4,8,6,4],[1,7,1,3,3,3,5,1,7,5,4,2]],[1,1,1,3,3,4,7,1,9,7,6,2]],
+      [[[1,5,7,7,5,7],[9,10,8,4,2,9,10,2,10,10,6,8]],[0,0,0,2,3,0,0,3,0,0,4,0]],
+      [[{"$rep":1000000000,"n":200000},{"$rep":1000000000,"n":200000}],{"$range":[1,200001]}],
+      [[{"$rep":1,"n":200000},{"$rep":2,"n":200000}],{"$rep":0,"n":200000}],
+      [[{"$rep":1,"n":199999},{"$rep":1,"n":200000}],{"$concat":[{"$range":[1,200000]},[0]]}]
+    ] },
     solution: {
       approach: `<p>Range-max segment tree + descent (no binary search needed) + point update.</p>`,
       code: `
@@ -3625,6 +6207,72 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
                 System.out.println(Arrays.toString(new Solution().assign(h, g)));  // [3, 5, 0, 1, 1]
             }
         }`,
+      alt: [{ lang: 'python', code: `def assign(hotels, groups):
+    n = len(hotels)
+    size = 1
+    while size < n:
+        size *= 2
+    mx = [0] * (2 * size)                            # max free rooms in each node's range
+    mx[size:size + n] = hotels
+    for i in range(size - 1, 0, -1):
+        mx[i] = max(mx[2 * i], mx[2 * i + 1])
+    res = []
+    for g in groups:
+        if mx[1] < g:
+            res.append(0)
+            continue
+        i = 1
+        while i < size:                              # walk down, always preferring the left child
+            i = 2 * i if mx[2 * i] >= g else 2 * i + 1
+        mx[i] -= g
+        res.append(i - size + 1)
+        i //= 2
+        while i >= 1:                                # repair the ancestors
+            mx[i] = max(mx[2 * i], mx[2 * i + 1])
+            i //= 2
+    return res
+
+
+print(assign([3, 2, 4, 1, 5, 5, 2, 6], [4, 4, 7, 1, 1]))  # [3, 5, 0, 1, 1]` }, { lang: 'js', code: `function assign(hotels, groups) {
+  const n = hotels.length;
+  let size = 1;
+  while (size < n) size *= 2;
+  const mx = new Int32Array(2 * size);               // max free rooms in each node's range
+  mx.set(hotels, size);
+  for (let i = size - 1; i >= 1; i--) mx[i] = Math.max(mx[2 * i], mx[2 * i + 1]);
+
+  return groups.map((g) => {
+    if (mx[1] < g) return 0;
+    let i = 1;
+    while (i < size) i = mx[2 * i] >= g ? 2 * i : 2 * i + 1;   // walk down, preferring the left child
+    mx[i] -= g;
+    const hotel = i - size + 1;
+    for (i >>= 1; i >= 1; i >>= 1) mx[i] = Math.max(mx[2 * i], mx[2 * i + 1]);   // repair the ancestors
+    return hotel;
+  });
+}
+
+console.log(assign([3, 2, 4, 1, 5, 5, 2, 6], [4, 4, 7, 1, 1]));  // [3, 5, 0, 1, 1]` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> assign(vector<int>& hotels, vector<int>& groups) {
+        int n = hotels.size(), size = 1;
+        while (size < n) size *= 2;
+        vector<int> mx(2 * size, 0);                 // max free rooms in each node's range
+        copy(hotels.begin(), hotels.end(), mx.begin() + size);
+        for (int i = size - 1; i >= 1; i--) mx[i] = max(mx[2 * i], mx[2 * i + 1]);
+
+        vector<int> res;
+        for (int g : groups) {
+            if (mx[1] < g) { res.push_back(0); continue; }
+            int i = 1;
+            while (i < size) i = mx[2 * i] >= g ? 2 * i : 2 * i + 1;   // walk down, preferring the left child
+            mx[i] -= g;
+            res.push_back(i - size + 1);
+            for (i >>= 1; i >= 1; i >>= 1) mx[i] = max(mx[2 * i], mx[2 * i + 1]);   // repair the ancestors
+        }
+        return res;
+    }
+};` }],
       dry: { head: ['group', 'root max', 'walk', 'hotel', 'rooms after'], rows: [['4', '6', 'left [1..4] max 4 ≥ 4 → … → hotel 3', '3', 'h3 = 0'], ['4', '6', 'left max now 3 &lt; 4 → right → [5..6] → hotel 5', '5', 'h5 = 1'], ['7', '6', 'root max 6 &lt; 7', '0', '—'], ['1', '6', 'leftmost leaf', '1', 'h1 = 2'], ['1', '6', 'leftmost leaf', '1', 'h1 = 1']] },
       complexity: `<p>O(N + M log N) time, O(N) memory.</p>`,
       followUps: ['Groups may only use hotels in [l, r] — descent restricted to a range.', 'Find the first hotel with ≥ g rooms at or after position p.']
@@ -3641,7 +6289,7 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
     example: `${H.arr([2, 6, 1, 4, 2], { label: 'list', start: 1 })}
       <p>Positions [3, 1, 3, 1, 1] → ${H.c('g', '[1, 2, 2, 6, 4]')}. Remove 3rd (1) → [2,6,4,2]; 1st (2) → [6,4,2]; 3rd (2) → [6,4]; 1st (6) → [4]; 1st (4).</p>`,
     brute: {
-      why: `<p>An ArrayList removal shifts everything after it: O(N) per removal, O(N²) = 4·10<sup>10</sup> worst case. The waste: physically moving elements, when we only need to know "which original index is the p-th still alive".</p>`,
+      why: `<p>A dynamic-array removal (<code>ArrayList</code> / <code>list</code> / <code>Array</code> / <code>vector</code>) shifts everything after it: O(N) per removal, O(N²) = 4·10<sup>10</sup> worst case. The waste: physically moving elements, when we only need to know "which original index is the p-th still alive".</p>`,
       code: `
         int[] bruteRemovals(int[] list, int[] positions) {
             List<Integer> cur = new ArrayList<>();
@@ -3662,6 +6310,22 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
       `<p>Fenwick tree of ones. Find the smallest index with prefix ≥ p using binary lifting (walk powers of two from high to low), output list[idx], then <code>add(idx, −1)</code>.</p>`,
       `<p>Edge cases: N = 1, always p = 1 (queue behaviour), always p = current size (stack behaviour). Build the all-ones BIT in O(N) with the parent trick or with N adds.</p>`
     ],
+    tests: { sig: 'int[] int[] -> int[]', fn: 'removals', cases: [
+      [[[2,6,1,4,2],[3,1,3,1,1]],[1,2,2,6,4]],
+      [[[7],[1]],[7]],
+      [[[1,2,3,4],[1,1,1,1]],[1,2,3,4]],
+      [[[1,2,3,4],[4,3,2,1]],[4,3,2,1]],
+      [[[1,2,3,4,5,6,7,8],[4,4,4,4,1,2,2,1]],[4,5,6,7,1,3,8,2]],
+      [[[5,5,5],[2,2,1]],[5,5,5]],
+      [[[1000000000,1,1000000000],[3,2,1]],[1000000000,1,1000000000]],
+      [[[4,92],[2,1]],[92,4]],
+      [[[92,96,12,40,59,41,85,73,89,21,85,25,88,28],[6,10,7,7,8,4,6,2,2,4,4,3,2,1]],[41,85,73,89,25,40,21,96,12,88,28,85,59,92]],
+      [[[63,99,11,39,87,87,35,66,50,25,81,9,85,16,12],[2,2,5,8,7,7,5,5,3,3,3,1,2,1,1]],[99,11,35,81,25,9,66,50,87,87,85,63,16,39,12]],
+      [[[9,85,61,9,65,21,49,1,29,9,36,84,7],[9,7,7,9,2,7,1,2,4,2,2,1,1]],[29,49,1,84,85,36,9,9,9,65,21,61,7]],
+      [[[23,38,98,62,89,83,25,21,77,65,77,81,73,44,15,95,35],[15,7,5,5,10,6,3,6,3,2,1,3,5,1,3,1,1]],[15,25,89,83,73,77,98,77,62,38,23,81,35,21,95,65,44]],
+      [[{"$range":[1,200001]},{"$rep":1,"n":200000}],{"$range":[1,200001]}],
+      [[{"$range":[1,200001]},{"$range":[200000,0,-1]}],{"$range":[200000,0,-1]}]
+    ] },
     solution: {
       approach: `<p>Fenwick tree of alive flags + binary-lifting lower bound. Each removal is O(log N).</p>`,
       code: `
@@ -3693,6 +6357,74 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
                 System.out.println(Arrays.toString(new Solution().removals(list, pos)));  // [1, 2, 2, 6, 4]
             }
         }`,
+      alt: [{ lang: 'python', code: `def removals(lst, positions):
+    n = len(lst)
+    bit = [0] * (n + 1)
+    for i in range(1, n + 1):                        # O(N) build of an all-ones array
+        bit[i] += 1
+        j = i + (i & -i)
+        if j <= n:
+            bit[j] += bit[i]
+    top = 1 << (n.bit_length() - 1)
+    out = []
+    for k in positions:
+        pos, step = 0, top
+        while step:                                  # binary descent for the k-th alive element
+            if pos + step <= n and bit[pos + step] < k:
+                pos += step
+                k -= bit[pos]
+            step >>= 1
+        idx = pos + 1                                # 1-based original index
+        out.append(lst[idx - 1])
+        i = idx
+        while i <= n:                                # mark it dead
+            bit[i] -= 1
+            i += i & -i
+    return out
+
+
+print(removals([2, 6, 1, 4, 2], [3, 1, 3, 1, 1]))  # [1, 2, 2, 6, 4]` }, { lang: 'js', code: `function removals(list, positions) {
+  const n = list.length;
+  const bit = new Int32Array(n + 1);
+  for (let i = 1; i <= n; i++) {                     // O(N) build of an all-ones array
+    bit[i]++;
+    const p = i + (i & -i);
+    if (p <= n) bit[p] += bit[i];
+  }
+  const top = 1 << (31 - Math.clz32(n));             // highest power of two <= n
+  return positions.map((k) => {
+    let pos = 0;
+    for (let step = top; step > 0; step >>= 1)       // binary descent for the k-th alive element
+      if (pos + step <= n && bit[pos + step] < k) { pos += step; k -= bit[pos]; }
+    const idx = pos + 1;                             // 1-based original index
+    for (let i = idx; i <= n; i += i & -i) bit[i]--; // mark it dead
+    return list[idx - 1];
+  });
+}
+
+console.log(removals([2, 6, 1, 4, 2], [3, 1, 3, 1, 1]));  // [1, 2, 2, 6, 4]` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> removals(vector<int>& list, vector<int>& positions) {
+        int n = list.size();
+        vector<int> bit(n + 1, 0);
+        for (int i = 1; i <= n; i++) {               // O(N) build of an all-ones array
+            bit[i]++;
+            int p = i + (i & -i);
+            if (p <= n) bit[p] += bit[i];
+        }
+        int top = 1 << (31 - __builtin_clz(n));      // highest power of two <= n
+        vector<int> out;
+        for (int k : positions) {
+            int pos = 0;
+            for (int step = top; step > 0; step >>= 1)   // binary descent for the k-th alive element
+                if (pos + step <= n && bit[pos + step] < k) { pos += step; k -= bit[pos]; }
+            int idx = pos + 1;                       // 1-based original index
+            out.push_back(list[idx - 1]);
+            for (int i = idx; i <= n; i += i & -i) bit[i]--;   // mark it dead
+        }
+        return out;
+    }
+};` }],
       complexity: `<p>O(N + Q log N) time, O(N) memory.</p>`,
       followUps: ['Josephus problem with step k — same tool.', 'Support insertions at a position too — implicit treap or offline reverse processing.']
     }
@@ -3707,7 +6439,7 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
     tags: ['segment tree', 'custom node', 'Kadane'],
     companies: ['CSES classic', 'Google', 'Jane Street'],
     statement: `<p>Given an array <code>a</code> and a list of updates <code>[k, x]</code> (set <code>a[k] = x</code>, 0-based), output after <b>each</b> update the maximum subarray sum of the whole array. The empty subarray is allowed (so the answer is at least 0).</p>`,
-    constraints: `1 ≤ N, M ≤ 2·10<sup>5</sup>, −10<sup>9</sup> ≤ a[i], x ≤ 10<sup>9</sup> (use long)`,
+    constraints: `1 ≤ N, M ≤ 2·10<sup>5</sup>, −10<sup>9</sup> ≤ a[i], x ≤ 10<sup>9</sup> (use 64-bit integers)`,
     example: `${H.arr([1, 2, -3, 5, -1], { label: 'a' })}
       <p>Updates [1,6], [2,1], [1,−2] → ${H.c('g', '[9, 13, 6]')}. After the first update [1, 6, −3, 5, −1]: best is 1 + 6 − 3 + 5 = 9. After the second: [1, 6, 1, 5, −1] → 13. After the third: [1, −2, 1, 5, −1] → 6 (just 1 + 5).</p>`,
     brute: {
@@ -3735,8 +6467,23 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
     hints: [
       `<p><b>Aha:</b> store four numbers per node — sum, best prefix, best suffix, best — and the best subarray of any range can be merged from its two halves.</p>`,
       `<p>Merge: sum = L.sum + R.sum; pref = max(L.pref, L.sum + R.pref); suf = max(R.suf, R.sum + L.suf); best = max(L.best, R.best, L.suf + R.pref). Leaf with value v (empty allowed): pref = suf = best = max(0, v).</p>`,
-      `<p>Edge cases: all negative (answer 0), huge values (long), N = 1. Recipe: build → for each update: set leaf, recompute the path → print root.best.</p>`
+      `<p>Edge cases: all negative (answer 0), huge values (64-bit), N = 1. Recipe: build → for each update: set leaf, recompute the path → print root.best.</p>`
     ],
+    tests: { sig: 'int[] int[][] -> long[]', fn: 'process', cases: [
+      [[[1,2,-3,5,-1],[[1,6],[2,1],[1,-2]]],[9,13,6]],
+      [[[-5],[[0,-3],[0,4],[0,0]]],[0,4,0]],
+      [[[-1,-2,-3],[[1,-1],[0,-9]]],[0,0]],
+      [[[1,2,3],[[0,1],[2,1000000000]]],[6,1000000003]],
+      [[[1000000000,-1000000000,1000000000,-1000000000,1000000000],[[1,1000000000],[3,-1000000000],[2,-1000000000]]],[3000000000,3000000000,2000000000]],
+      [[[4,-10,4],[[1,-3],[1,-2],[1,-1],[1,0],[1,1]]],[5,6,7,8,9]],
+      [[[10,-7,8,-1,-6,1,-9,8],[[4,9],[4,9],[4,-6],[4,7],[4,10],[4,-5],[4,-5],[4,-10],[4,9],[4,9]]],[20,20,11,18,21,11,11,11,20,20]],
+      [[[-7,-2,4],[[1,-2],[0,8],[0,0],[1,-6],[1,-8],[1,4],[0,1],[0,9],[2,3],[1,-3]]],[4,10,4,4,4,8,9,17,16,9]],
+      [[[-7,-6,10,-3,-6,3,3,8,-7,9,9,-2,-1,-5],[[6,-2],[12,9],[10,-4],[2,4],[10,1],[4,-7],[13,-10],[5,3],[10,-9],[11,8]]],[21,28,15,14,19,19,19,19,11,19]],
+      [[[-1,-1,4,-2],[[3,2],[2,2],[1,-4],[1,-4],[0,-9],[2,9],[1,6],[0,-3],[3,-7],[0,-6]]],[6,4,4,4,4,11,17,17,15,15]],
+      [[[-9,-5,-10,-10,-2,6,-9,1],[[4,4],[7,-10],[7,-7],[7,7],[4,-5],[2,-8],[5,-3],[4,7],[7,6],[7,-10]]],[10,10,10,10,7,7,7,7,7,7]],
+      [[{"$rep":1000000000,"n":200000},{"$rep":[0,1000000000],"n":200000}],{"$rep":200000000000000,"n":200000}],
+      [[{"$rep":-1000000000,"n":200000},{"$concat":[{"$rep":[100,1000000000],"n":1000},{"$rep":[100,-1000000000],"n":1}]}],{"$concat":[{"$rep":1000000000,"n":1000},[0]]}]
+    ] },
     solution: {
       approach: `<p>Segment tree with a 4-field node; each update recomputes O(log N) nodes and the answer is the root's best.</p>`,
       code: `
@@ -3791,6 +6538,106 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
                 System.out.println(Arrays.toString(new Solution().process(a, ups)));  // [9, 13, 6]
             }
         }`,
+      alt: [{ lang: 'python', code: `def process(a, ups):
+    n = len(a)
+    size = 1
+    while size < n:
+        size *= 2
+    sm = [0] * (2 * size)                            # sum of the range
+    pf = [0] * (2 * size)                            # best prefix (empty allowed)
+    sf = [0] * (2 * size)                            # best suffix
+    bs = [0] * (2 * size)                            # best subarray
+    # padding leaves hold 0: sum 0 and best 0 are the identity, so they change nothing
+
+    def set_leaf(p, v):
+        sm[p] = v
+        pf[p] = sf[p] = bs[p] = max(0, v)
+
+    def pull(p):
+        l, r = 2 * p, 2 * p + 1
+        sm[p] = sm[l] + sm[r]
+        pf[p] = max(pf[l], sm[l] + pf[r])
+        sf[p] = max(sf[r], sm[r] + sf[l])
+        bs[p] = max(bs[l], bs[r], sf[l] + pf[r])
+
+    for i, v in enumerate(a):
+        set_leaf(size + i, v)
+    for p in range(size - 1, 0, -1):
+        pull(p)
+    res = []
+    for k, x in ups:
+        p = size + k
+        set_leaf(p, x)
+        p //= 2
+        while p >= 1:
+            pull(p)
+            p //= 2
+        res.append(bs[1])
+    return res
+
+
+print(process([1, 2, -3, 5, -1], [[1, 6], [2, 1], [1, -2]]))  # [9, 13, 6]` }, { lang: 'js', code: `function process(a, ups) {
+  const n = a.length;
+  let size = 1;
+  while (size < n) size *= 2;
+  const sum = new Float64Array(2 * size);            // sums reach 2e14: exact in a double
+  const pref = new Float64Array(2 * size);           // best prefix (empty allowed)
+  const suf = new Float64Array(2 * size);            // best suffix
+  const best = new Float64Array(2 * size);           // best subarray
+  // padding leaves stay 0: sum 0 and best 0 are the identity, so they change nothing
+
+  const setLeaf = (p, v) => { sum[p] = v; pref[p] = suf[p] = best[p] = Math.max(0, v); };
+  const pull = (p) => {
+    const L = 2 * p, R = 2 * p + 1;
+    sum[p] = sum[L] + sum[R];
+    pref[p] = Math.max(pref[L], sum[L] + pref[R]);
+    suf[p] = Math.max(suf[R], sum[R] + suf[L]);
+    best[p] = Math.max(best[L], best[R], suf[L] + pref[R]);
+  };
+
+  a.forEach((v, i) => setLeaf(size + i, v));
+  for (let p = size - 1; p >= 1; p--) pull(p);
+  return ups.map(([k, x]) => {
+    let p = size + k;
+    setLeaf(p, x);
+    for (p >>= 1; p >= 1; p >>= 1) pull(p);
+    return best[1];
+  });
+}
+
+console.log(process([1, 2, -3, 5, -1], [[1, 6], [2, 1], [1, -2]]));  // [9, 13, 6]` }, { lang: 'cpp', code: `class Solution {
+    vector<long long> sum, pref, suf, best;
+
+    void setLeaf(int p, long long v) {
+        sum[p] = v;
+        pref[p] = suf[p] = best[p] = max(0LL, v);    // empty subarray allowed
+    }
+    void pull(int p) {
+        int L = 2 * p, R = 2 * p + 1;
+        sum[p] = sum[L] + sum[R];
+        pref[p] = max(pref[L], sum[L] + pref[R]);
+        suf[p] = max(suf[R], sum[R] + suf[L]);
+        best[p] = max({best[L], best[R], suf[L] + pref[R]});
+    }
+
+public:
+    vector<long long> process(vector<int>& a, vector<vector<int>>& ups) {
+        int n = a.size(), size = 1;
+        while (size < n) size *= 2;
+        sum.assign(2 * size, 0); pref.assign(2 * size, 0);   // padding leaves stay 0 (the identity)
+        suf.assign(2 * size, 0); best.assign(2 * size, 0);
+        for (int i = 0; i < n; i++) setLeaf(size + i, a[i]);
+        for (int p = size - 1; p >= 1; p--) pull(p);
+        vector<long long> res;
+        for (auto& u : ups) {
+            int p = size + u[0];
+            setLeaf(p, u[1]);
+            for (p >>= 1; p >= 1; p >>= 1) pull(p);
+            res.push_back(best[1]);
+        }
+        return res;
+    }
+};` }],
       dry: { head: ['update', 'array', 'best crossing / inside', 'root.best'], rows: [['a[1] = 6', '1 6 −3 5 −1', 'suffix [1,6] + prefix [−3,5] = 7 + 2', '9'], ['a[2] = 1', '1 6 1 5 −1', '[1,6,1,5]', '13'], ['a[1] = −2', '1 −2 1 5 −1', '[1,5] inside right part', '6']] },
       complexity: `<p>Build O(N); each update O(log N); memory 16N longs.</p>`,
       followUps: ['Answer max subarray sum inside [l, r] (combine nodes left-to-right in order).', 'Non-empty subarray required — change the leaf to pref = suf = best = v.']
@@ -3803,7 +6650,7 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
     tags: ['lazy propagation', 'tag composition', 'segment tree'],
     companies: ['CSES classic', 'Codenation', 'Tower Research'],
     statement: `<p>Given an array <code>a</code>, process three kinds of operations (0-based, inclusive): <code>[1, l, r, x]</code> add x to every element in [l, r]; <code>[2, l, r, x]</code> set every element in [l, r] to x; <code>[3, l, r]</code> report the sum of [l, r].</p>`,
-    constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i], x ≤ 10<sup>6</sup> (sums need long).`,
+    constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i], x ≤ 10<sup>6</sup> (sums need 64-bit integers).`,
     example: `${H.arr([2, 3, 1, 1, 5, 3], { label: 'a' })}
       <p>Ops [3,2,4], [1,1,3,2], [3,2,4], [2,1,3,5], [3,2,4] → ${H.c('g', '[7, 11, 15]')}. 1 + 1 + 5 = 7; after +2 on [1,3]: [2,5,3,3,5,3] → 3 + 3 + 5 = 11; after setting [1,3] to 5: [2,5,5,5,5,3] → 15.</p>`,
     brute: {
@@ -3834,6 +6681,22 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
       `<p>Composition: new set x → (x, 0). New add v → (set, add + v). Push order: set first, then add. Use a boolean <code>hasSet</code> because 0 could be a legal value in variants.</p>`,
       `<p>Edge cases: assigning after adds (adds disappear), long overflow in x·len, pushing only on internal nodes. Recipe: applySet, applyAdd, push, update(type), query — all with the three classic cases.</p>`
     ],
+    tests: { sig: 'int[] int[][] -> long[]', fn: 'process', cases: [
+      [[[2,3,1,1,5,3],[[3,2,4],[1,1,3,2],[3,2,4],[2,1,3,5],[3,2,4]]],[7,11,15]],
+      [[[4],[[3,0,0],[1,0,0,3],[2,0,0,9],[1,0,0,1],[3,0,0]]],[4,10]],
+      [[[1,1,1,1],[[2,0,3,7],[1,0,3,1],[3,0,3],[2,1,2,2],[3,0,3],[1,1,2,3],[3,1,2]]],[32,20,10]],
+      [[[1,2,3,4,5,6,7],[[1,0,6,5],[2,2,4,1],[1,3,5,2],[3,0,6],[3,3,3],[2,0,6,4],[3,0,6]]],[45,3,28]],
+      [[[5,5,5],[[1,0,2,1],[1,0,2,1],[2,1,1,2],[1,1,1,1],[3,0,2]]],[17]],
+      [[[3,1,6],[[2,0,2,8],[1,1,2,2],[3,0,0],[1,1,1,4],[1,2,2,2],[1,1,2,1],[3,1,1],[1,2,2,4],[3,0,2],[2,0,0,2],[3,1,1],[3,2,2],[1,2,2,1],[2,1,2,4],[3,1,2],[2,1,1,4],[1,0,0,3],[2,0,2,4]]],[8,15,40,15,17,8]],
+      [[[8,2,4,2,2,3,3],[[1,3,4,2],[2,1,6,5],[3,2,5],[2,3,4,6],[1,3,4,5],[3,3,3],[3,2,5],[2,2,5,7],[2,2,3,6],[1,4,4,2],[3,1,6],[2,2,4,5],[1,4,4,2],[2,0,6,9],[2,5,5,7],[2,5,5,4],[3,0,2],[2,5,5,7]]],[20,11,32,38,27]],
+      [[[3,2,5,4,3,5,5,3,4,5,7,5,4,5],[[3,12,12],[2,0,10,6],[2,9,11,3],[1,5,7,2],[2,4,10,5],[1,0,4,8],[2,1,1,9],[2,13,13,3],[3,6,11],[3,7,10],[3,6,10],[3,6,10],[2,0,4,7],[2,8,10,4],[1,7,9,5],[3,7,13],[3,3,5],[2,2,6,1]]],[4,28,20,25,25,42,19]],
+      [[[7,2,1,6,1,7,3,4,5],[[1,1,7,7],[1,6,6,8],[2,7,8,5],[2,1,2,5],[2,5,5,4],[3,0,4],[2,3,6,6],[1,1,8,2],[1,7,7,9],[2,1,7,9],[3,8,8],[2,1,1,5],[2,4,5,1],[2,2,3,3],[2,0,5,1],[3,3,6],[3,5,5],[3,3,5]]],[38,7,12,1,3]],
+      [[[9,5,1,7,3,1,7,4,4,9,1],[[3,10,10],[2,3,7,7],[3,8,8],[3,1,9],[1,10,10,1],[2,1,1,8],[2,10,10,6],[3,1,7],[2,3,3,8],[3,0,6],[3,7,10],[1,2,10,7],[1,5,9,8],[2,6,10,5],[2,2,6,5],[3,9,10],[1,0,8,7],[2,0,8,3]]],[1,4,54,44,47,26,10]],
+      [[[2,3,6,9,7,1,3,8,4,8,5,8],[[2,6,6,4],[1,4,4,1],[3,0,0],[2,11,11,1],[2,6,6,1],[3,0,4],[1,3,8,9],[3,3,6],[2,7,9,4],[2,11,11,4],[2,8,8,2],[2,3,4,4],[3,10,11],[3,1,7],[3,5,8],[1,4,4,3],[3,8,8],[3,1,3]]],[2,28,55,9,41,26,2,13]],
+      [[[4,8,7,3,4,6,5,2,1],[[2,4,7,4],[3,7,7],[3,2,4],[1,2,6,4],[1,4,8,7],[3,0,8],[3,4,8],[1,0,5,5],[3,2,4],[2,4,6,1],[2,5,7,6],[1,4,8,8],[1,1,6,2],[1,2,7,6],[1,0,7,5],[3,2,4],[3,2,8],[2,7,7,3]]],[4,14,94,64,48,76,171]],
+      [[{"$rep":1,"n":200000},{"$concat":[{"$rep":[1,0,199999,1000000],"n":60000},[[3,0,199999],[3,199999,199999]]]}],["12000000000200000","60000000001"]],
+      [[{"$rep":1000000,"n":200000},{"$concat":[[[2,0,199999,1000000]],{"$rep":[1,5,199990,1000000],"n":50000},[[3,0,199999],[3,0,4],[3,5,5]]]}],["9999500000000000","5000000","50001000000"]]
+    ] },
     solution: {
       approach: `<p>Lazy segment tree with two tags and a fixed composition order (set before add). Every operation is O(log N).</p>`,
       code: `
@@ -3916,6 +6779,203 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
                 System.out.println(Arrays.toString(new Solution().process(a, ops)));  // [7, 11, 15]
             }
         }`,
+      alt: [{ lang: 'python', code: `class _Tree:
+    def __init__(self, a):
+        n = len(a)
+        self.n = n
+        self.sum = [0] * (4 * n)
+        self.add_tag = [0] * (4 * n)
+        self.set_tag = [None] * (4 * n)              # None = no pending assignment
+        self._build(a, 1, 0, n - 1)
+
+    def _build(self, a, node, l, r):
+        if l == r:
+            self.sum[node] = a[l]
+            return
+        mid = (l + r) // 2
+        self._build(a, 2 * node, l, mid)
+        self._build(a, 2 * node + 1, mid + 1, r)
+        self.sum[node] = self.sum[2 * node] + self.sum[2 * node + 1]
+
+    def _apply_set(self, node, l, r, x):
+        self.sum[node] = x * (r - l + 1)
+        self.set_tag[node] = x
+        self.add_tag[node] = 0                       # an assignment wipes older adds
+
+    def _apply_add(self, node, l, r, x):
+        self.sum[node] += x * (r - l + 1)
+        self.add_tag[node] += x                      # stacks on top of any pending set
+
+    def _push(self, node, l, r):
+        mid = (l + r) // 2
+        if self.set_tag[node] is not None:           # order matters: set first
+            self._apply_set(2 * node, l, mid, self.set_tag[node])
+            self._apply_set(2 * node + 1, mid + 1, r, self.set_tag[node])
+            self.set_tag[node] = None
+        if self.add_tag[node]:                       # then add
+            self._apply_add(2 * node, l, mid, self.add_tag[node])
+            self._apply_add(2 * node + 1, mid + 1, r, self.add_tag[node])
+            self.add_tag[node] = 0
+
+    def update(self, node, l, r, ql, qr, kind, x):
+        if qr < l or r < ql:
+            return
+        if ql <= l and r <= qr:
+            if kind == 1:
+                self._apply_add(node, l, r, x)
+            else:
+                self._apply_set(node, l, r, x)
+            return
+        self._push(node, l, r)
+        mid = (l + r) // 2
+        self.update(2 * node, l, mid, ql, qr, kind, x)
+        self.update(2 * node + 1, mid + 1, r, ql, qr, kind, x)
+        self.sum[node] = self.sum[2 * node] + self.sum[2 * node + 1]
+
+    def query(self, node, l, r, ql, qr):
+        if qr < l or r < ql:
+            return 0
+        if ql <= l and r <= qr:
+            return self.sum[node]
+        self._push(node, l, r)
+        mid = (l + r) // 2
+        return self.query(2 * node, l, mid, ql, qr) + self.query(2 * node + 1, mid + 1, r, ql, qr)
+
+
+def process(a, ops):
+    tree, n, out = _Tree(a), len(a), []
+    for op in ops:
+        if op[0] == 3:
+            out.append(tree.query(1, 0, n - 1, op[1], op[2]))
+        else:
+            tree.update(1, 0, n - 1, op[1], op[2], op[0], op[3])
+    return out
+
+
+print(process([2, 3, 1, 1, 5, 3], [[3, 2, 4], [1, 1, 3, 2], [3, 2, 4], [2, 1, 3, 5], [3, 2, 4]]))  # [7, 11, 15]` }, { lang: 'js', code: `function process(a, ops) {
+  const n = a.length;
+  // sums can reach ~4e16, past 2^53, so the tree stores BigInt values
+  const sum = new BigInt64Array(4 * n), addTag = new BigInt64Array(4 * n), setTag = new BigInt64Array(4 * n);
+  const hasSet = new Uint8Array(4 * n);
+
+  const applySet = (node, l, r, x) => {
+    sum[node] = x * BigInt(r - l + 1);
+    setTag[node] = x; hasSet[node] = 1;
+    addTag[node] = 0n;                               // an assignment wipes older adds
+  };
+  const applyAdd = (node, l, r, x) => {
+    sum[node] += x * BigInt(r - l + 1);
+    addTag[node] += x;                               // stacks on top of any pending set
+  };
+  const push = (node, l, r) => {
+    const mid = (l + r) >> 1;
+    if (hasSet[node]) {                              // order matters: set first
+      applySet(2 * node, l, mid, setTag[node]);
+      applySet(2 * node + 1, mid + 1, r, setTag[node]);
+      hasSet[node] = 0;
+    }
+    if (addTag[node] !== 0n) {                       // then add
+      applyAdd(2 * node, l, mid, addTag[node]);
+      applyAdd(2 * node + 1, mid + 1, r, addTag[node]);
+      addTag[node] = 0n;
+    }
+  };
+  const build = (node, l, r) => {
+    if (l === r) { sum[node] = BigInt(a[l]); return; }
+    const mid = (l + r) >> 1;
+    build(2 * node, l, mid);
+    build(2 * node + 1, mid + 1, r);
+    sum[node] = sum[2 * node] + sum[2 * node + 1];
+  };
+  const update = (node, l, r, ql, qr, type, x) => {
+    if (qr < l || r < ql) return;
+    if (ql <= l && r <= qr) { if (type === 1) applyAdd(node, l, r, x); else applySet(node, l, r, x); return; }
+    push(node, l, r);
+    const mid = (l + r) >> 1;
+    update(2 * node, l, mid, ql, qr, type, x);
+    update(2 * node + 1, mid + 1, r, ql, qr, type, x);
+    sum[node] = sum[2 * node] + sum[2 * node + 1];
+  };
+  const query = (node, l, r, ql, qr) => {
+    if (qr < l || r < ql) return 0n;
+    if (ql <= l && r <= qr) return sum[node];
+    push(node, l, r);
+    const mid = (l + r) >> 1;
+    return query(2 * node, l, mid, ql, qr) + query(2 * node + 1, mid + 1, r, ql, qr);
+  };
+
+  build(1, 0, n - 1);
+  const out = [];
+  for (const op of ops) {
+    if (op[0] === 3) out.push(query(1, 0, n - 1, op[1], op[2]));
+    else update(1, 0, n - 1, op[1], op[2], op[0], BigInt(op[3]));
+  }
+  return out;
+}
+
+console.log(process([2, 3, 1, 1, 5, 3], [[3, 2, 4], [1, 1, 3, 2], [3, 2, 4], [2, 1, 3, 5], [3, 2, 4]]));  // [7n, 11n, 15n]` }, { lang: 'cpp', code: `class Solution {
+    vector<long long> sum, addTag, setTag;
+    vector<char> hasSet;
+
+    void applySet(int node, int l, int r, long long x) {
+        sum[node] = x * (r - l + 1);
+        setTag[node] = x; hasSet[node] = 1;
+        addTag[node] = 0;                            // an assignment wipes older adds
+    }
+    void applyAdd(int node, int l, int r, long long x) {
+        sum[node] += x * (r - l + 1);
+        addTag[node] += x;                           // stacks on top of any pending set
+    }
+    void push(int node, int l, int r) {
+        int mid = (l + r) / 2;
+        if (hasSet[node]) {                          // order matters: set first
+            applySet(2 * node, l, mid, setTag[node]);
+            applySet(2 * node + 1, mid + 1, r, setTag[node]);
+            hasSet[node] = 0;
+        }
+        if (addTag[node] != 0) {                     // then add
+            applyAdd(2 * node, l, mid, addTag[node]);
+            applyAdd(2 * node + 1, mid + 1, r, addTag[node]);
+            addTag[node] = 0;
+        }
+    }
+    void build(vector<int>& a, int node, int l, int r) {
+        if (l == r) { sum[node] = a[l]; return; }
+        int mid = (l + r) / 2;
+        build(a, 2 * node, l, mid);
+        build(a, 2 * node + 1, mid + 1, r);
+        sum[node] = sum[2 * node] + sum[2 * node + 1];
+    }
+    void update(int node, int l, int r, int ql, int qr, int type, long long x) {
+        if (qr < l || r < ql) return;
+        if (ql <= l && r <= qr) { if (type == 1) applyAdd(node, l, r, x); else applySet(node, l, r, x); return; }
+        push(node, l, r);
+        int mid = (l + r) / 2;
+        update(2 * node, l, mid, ql, qr, type, x);
+        update(2 * node + 1, mid + 1, r, ql, qr, type, x);
+        sum[node] = sum[2 * node] + sum[2 * node + 1];
+    }
+    long long query(int node, int l, int r, int ql, int qr) {
+        if (qr < l || r < ql) return 0;
+        if (ql <= l && r <= qr) return sum[node];
+        push(node, l, r);
+        int mid = (l + r) / 2;
+        return query(2 * node, l, mid, ql, qr) + query(2 * node + 1, mid + 1, r, ql, qr);
+    }
+
+public:
+    vector<long long> process(vector<int>& a, vector<vector<int>>& ops) {
+        int n = a.size();
+        sum.assign(4 * n, 0); addTag.assign(4 * n, 0); setTag.assign(4 * n, 0); hasSet.assign(4 * n, 0);
+        build(a, 1, 0, n - 1);
+        vector<long long> out;
+        for (auto& op : ops) {
+            if (op[0] == 3) out.push_back(query(1, 0, n - 1, op[1], op[2]));
+            else update(1, 0, n - 1, op[1], op[2], op[0], op[3]);
+        }
+        return out;
+    }
+};` }],
       complexity: `<p>O(log N) per operation, O(Q log N) total; memory ~4 arrays of 4N.</p>`,
       followUps: ['Add "range min" queries too — what extra field per node?', 'Replace add with multiply (affine tags modulo p).']
     }
@@ -3927,14 +6987,14 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
     tags: ['fenwick tree', 'prefix sums', 'coordinate compression'],
     companies: ['Google', 'Amazon', 'ByteDance'],
     statement: `<p>Given an integer array <code>nums</code> and two integers <code>lower</code> and <code>upper</code>, return the number of subarrays whose sum lies in <code>[lower, upper]</code> (inclusive).</p>`,
-    constraints: `1 ≤ N ≤ 10<sup>5</sup>, −2<sup>31</sup> ≤ nums[i] ≤ 2<sup>31</sup> − 1, −10<sup>5</sup> ≤ lower ≤ upper ≤ 10<sup>5</sup>; the answer fits in an int. Prefix sums need long.`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, −2<sup>31</sup> ≤ nums[i] ≤ 2<sup>31</sup> − 1, −10<sup>5</sup> ≤ lower ≤ upper ≤ 10<sup>5</sup>; the answer can reach about 5·10<sup>9</sup> (N·(N+1)/2 subarrays), so return a long. Prefix sums need long too.`,
     example: `${H.arr([-2, 5, -1], { label: 'nums' })}
       <p>lower = −2, upper = 2 → ${H.c('g', '3')}: [0,0] sums to −2, [2,2] to −1, and [0,2] to 2. Prefix sums P = [0, −2, 3, 2]; we need pairs i &lt; j with −2 ≤ P[j] − P[i] ≤ 2.</p>`,
     brute: {
       why: `<p>Every (i, j) pair with a running sum: N²/2 = 5·10<sup>9</sup>. The waste: for each right end j we test every earlier prefix individually instead of asking "how many earlier prefixes lie in the window [P[j] − upper, P[j] − lower]" — a counting query.</p>`,
       code: `
-        int bruteCountRangeSum(int[] nums, int lower, int upper) {
-            int c = 0;
+        long bruteCountRangeSum(int[] nums, int lower, int upper) {
+            long c = 0;
             for (int i = 0; i < nums.length; i++) {
                 long s = 0;
                 for (int j = i; j < nums.length; j++) {
@@ -3954,13 +7014,35 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
     hints: [
       `<p><b>Aha:</b> turn subarray sums into differences of prefix sums. For each j, count earlier prefixes inside a value window — a range-count over values.</p>`,
       `<p>Compress all prefix sums (they are the only values ever inserted). BIT of counts over ranks. For window [lo, hi]: count = (# ≤ hi) − (# &lt; lo), found with binary searches on the sorted unique prefix array (the bounds themselves need not be present).</p>`,
-      `<p>Edge cases: insert P[0] = 0 before anything; use long everywhere (prefixes reach ±2·10<sup>14</sup>); query before inserting P[j] so i &lt; j. Alternative: merge sort counting (also O(N log N)).</p>`
+      `<p>Edge cases: insert P[0] = 0 before anything; use 64-bit integers everywhere (prefixes reach ±2·10<sup>14</sup>); query before inserting P[j] so i &lt; j. Alternative: merge sort counting (also O(N log N)).</p>`
     ],
+    tests: { sig: 'int[] int int -> long', fn: 'countRangeSum', cases: [
+      [[[-2,5,-1],-2,2],3],
+      [[[0],0,0],1],
+      [[[5],1,4],0],
+      [[[5],5,5],1],
+      [[[-5],-5,-5],1],
+      [[[2147483647,-2147483648,2147483647,-2147483648],-1,0],3],
+      [[[2147483647,2147483647],0,100000],0],
+      [[[1,1,1,1],2,3],5],
+      [[[0,0,0],0,0],6],
+      [[[3,-3,3,-3],0,0],4],
+      [[[-2147483648,-2147483648,2147483647,2147483647],-100000,100000],2],
+      [[[0,-2,-5,-6,6,2,2,1,-3,3,4,0,5,2,6],-1,7],49],
+      [[[6,-5,0,0,3,-6,-1,-5,-5,-1],3,10],5],
+      [[[6,-3,3,2,3,-1,-3,-6,-5,-2,4,2],-8,-2],24],
+      [[[4,-1,2,-3,-5],-2,-1],3],
+      [[[-1,4,-6,3,1,-6],0,7],9],
+      [[{"$rep":0,"n":100000},0,0],5000050000],
+      [[{"$rep":0,"n":100000},-100000,100000],5000050000],
+      [[{"$rep":2147483647,"n":100000},-100000,100000],0],
+      [[{"$rep":-2147483648,"n":100000},-100000,100000],0]
+    ] },
     solution: {
       approach: `<p>Prefix sums + coordinate compression + Fenwick tree of counts, sweeping j from left to right.</p>`,
       code: `
         class Solution {
-            public int countRangeSum(int[] nums, int lower, int upper) {
+            public long countRangeSum(int[] nums, int lower, int upper) {
                 int n = nums.length;
                 long[] pre = new long[n + 1];
                 for (int i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
@@ -3978,7 +7060,7 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
                     int r = lowerBound(vals, k, pre[j]) + 1;      // 1-based rank of pre[j]
                     for (int i = r; i <= k; i += i & -i) bit[i]++;
                 }
-                return (int) count;
+                return count;
             }
 
             private static int lowerBound(long[] a, int len, long x) {   // first index with a[idx] >= x
@@ -3998,6 +7080,84 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
                 System.out.println(new Solution().countRangeSum(new int[]{0}, 0, 0));          // 1
             }
         }`,
+      alt: [{ lang: 'python', code: `from bisect import bisect_left
+
+
+def count_range_sum(nums, lower, upper):
+    pre = [0]
+    for x in nums:
+        pre.append(pre[-1] + x)                      # Python ints never overflow
+    vals = sorted(set(pre))
+    k = len(vals)
+    bit = [0] * (k + 1)
+
+    def prefix(i):
+        s = 0
+        while i > 0:
+            s += bit[i]
+            i -= i & -i
+        return s
+
+    count = 0
+    for p in pre:
+        below = bisect_left(vals, p - upper)         # ranks of values < p - upper
+        upto = bisect_left(vals, p - lower + 1)      # ranks of values <= p - lower
+        count += prefix(upto) - prefix(below)
+        i = bisect_left(vals, p) + 1
+        while i <= k:
+            bit[i] += 1
+            i += i & -i
+    return count
+
+
+print(count_range_sum([-2, 5, -1], -2, 2), count_range_sum([0], 0, 0))  # 3 1` }, { lang: 'js', code: `function countRangeSum(nums, lower, upper) {
+  const n = nums.length;
+  const pre = new Float64Array(n + 1);               // prefix sums reach 2e14: exact in a double
+  for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+  const vals = Float64Array.from(new Set(pre)).sort();   // sorted distinct prefix sums (numeric for typed arrays)
+  const k = vals.length, bit = new Int32Array(k + 1);
+
+  const lowerBound = (x) => {                        // first index with vals[idx] >= x
+    let lo = 0, hi = k;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (vals[mid] < x) lo = mid + 1; else hi = mid; }
+    return lo;
+  };
+  const prefix = (i) => { let s = 0; for (; i > 0; i -= i & -i) s += bit[i]; return s; };
+
+  let count = 0;                                     // up to 5e9: fine for a double
+  for (let j = 0; j <= n; j++) {
+    const below = lowerBound(pre[j] - upper);        // ranks of values < pre[j] - upper
+    const upto = lowerBound(pre[j] - lower + 1);     // ranks of values <= pre[j] - lower
+    count += prefix(upto) - prefix(below);
+    for (let i = lowerBound(pre[j]) + 1; i <= k; i += i & -i) bit[i]++;
+  }
+  return count;
+}
+
+console.log(countRangeSum([-2, 5, -1], -2, 2), countRangeSum([0], 0, 0));  // 3 1` }, { lang: 'cpp', code: `class Solution {
+public:
+    long long countRangeSum(vector<int>& nums, int lower, int upper) {
+        int n = nums.size();
+        vector<long long> pre(n + 1, 0);             // prefix sums need 64 bits
+        for (int i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+        vector<long long> vals(pre);
+        sort(vals.begin(), vals.end());
+        vals.erase(unique(vals.begin(), vals.end()), vals.end());
+        int k = vals.size();
+        vector<int> bit(k + 1, 0);
+        auto prefix = [&](int i) { int s = 0; for (; i > 0; i -= i & -i) s += bit[i]; return s; };
+        auto lb = [&](long long x) { return int(lower_bound(vals.begin(), vals.end(), x) - vals.begin()); };
+
+        long long count = 0;
+        for (int j = 0; j <= n; j++) {
+            int below = lb(pre[j] - upper);          // ranks of values < pre[j] - upper
+            int upto = lb(pre[j] - lower + 1);       // ranks of values <= pre[j] - lower
+            count += prefix(upto) - prefix(below);
+            for (int i = lb(pre[j]) + 1; i <= k; i += i & -i) bit[i]++;
+        }
+        return count;
+    }
+};` }],
       dry: { head: ['j', 'P[j]', 'window [P[j]−upper, P[j]−lower]', 'earlier prefixes inside', 'count'], rows: [['0', '0', '[−2, 2]', 'none yet', '0'], ['1', '−2', '[−4, 0]', '0', '1'], ['2', '3', '[1, 5]', '—', '1'], ['3', '2', '[0, 4]', '0 and 3', H.c('g', '3')]] },
       complexity: `<p>O(N log N) time (sort + 2 binary searches + BIT ops per j), O(N) memory.</p>`,
       followUps: ['Solve it with merge sort (count during the merge step).', 'Count subarrays with sum ≥ K only — simpler one-sided query.']
@@ -4010,7 +7170,7 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
     tags: ['mo\'s algorithm', 'offline queries', 'frequency counting'],
     companies: ['Codeforces classic', 'DE Shaw'],
     statement: `<p>For a subarray, let <code>K<sub>s</sub></code> be the number of occurrences of value <code>s</code> in it. Its <b>power</b> is <code>Σ K<sub>s</sub>² · s</code> over all values s. Given an array and Q queries <code>[l, r]</code> (0-based, inclusive, all known in advance), return the power of each subarray.</p>`,
-    constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i] ≤ 10<sup>6</sup>. Answers up to ~4·10<sup>16</sup> → long.`,
+    constraints: `1 ≤ N, Q ≤ 2·10<sup>5</sup>, 1 ≤ a[i] ≤ 10<sup>6</sup>. Answers up to ~4·10<sup>16</sup> → 64-bit (past 2<sup>53</sup>, so JavaScript needs BigInt).`,
     example: `${H.arr([1, 1, 2, 2, 1, 3, 1, 1], { label: 'a' })}
       <p>Query [1, 6] covers [1, 2, 2, 1, 3, 1]: K₁ = 3, K₂ = 2, K₃ = 1 → 9·1 + 4·2 + 1·3 = ${H.c('g', '20')}. For a = [1, 2, 1], queries [0,1] → ${H.c('g', '3')} and [0,2] → ${H.c('g', '6')} (4·1 + 1·2).</p>`,
     brute: {
@@ -4036,9 +7196,24 @@ print(na.sumRange(0, 2), na.sumRange(2, 5), na.sumRange(0, 5))  # 1 -1 -3`, run:
     },
     hints: [
       `<p><b>Aha:</b> when one element enters or leaves, only its own term K²·s changes, by (2K ± 1)·s. O(1) add/remove + offline queries + static array = Mo's algorithm.</p>`,
-      `<p>Plain <code>int[] cnt</code> of size 10<sup>6</sup> + 1 (no HashMap!), <code>long power</code>. Sort queries by (l / B, r) with odd-even trick, B ≈ N/√Q. Add: power += (2·cnt[x] + 1)·x; cnt[x]++. Remove: cnt[x]--; power −= (2·cnt[x] + 1)·x.</p>`,
-      `<p>Edge cases: long arithmetic in (2c + 1)·x, answers stored by original index, grow before shrink. ~(N + Q)√N ≈ 9·10<sup>7</sup> O(1) steps — fine with arrays and fast I/O.</p>`
+      `<p>A plain count array <code>cnt</code> of size 10<sup>6</sup> + 1 (no hash map!) and a 64-bit <code>power</code>. Sort queries by (l / B, r) with odd-even trick, B ≈ N/√Q. Add: power += (2·cnt[x] + 1)·x; cnt[x]++. Remove: cnt[x]--; power −= (2·cnt[x] + 1)·x.</p>`,
+      `<p>Edge cases: 64-bit arithmetic in (2c + 1)·x, answers stored by original index, grow before shrink. ~(N + Q)√N ≈ 9·10<sup>7</sup> O(1) steps — fine with arrays and fast I/O.</p>`
     ],
+    tests: { sig: 'int[] int[][] -> long[]', fn: 'powers', cases: [
+      [[[1,2,1],[[0,1],[0,2]]],[3,6]],
+      [[[1,1,2,2,1,3,1,1],[[1,6],[0,5],[1,6]]],[20,20,20]],
+      [[[7],[[0,0]]],[7]],
+      [[[1000000,1000000,1000000],[[0,2],[1,2],[0,0]]],[9000000,4000000,1000000]],
+      [[[1,2,3,4],[[0,3],[1,2],[3,3]]],[10,5,4]],
+      [[[2,2,2,2,2],[[0,4],[0,0],[1,3]]],[50,2,18]],
+      [[[3,5],[[1,1],[0,0],[0,0],[1,1],[1,1],[0,0],[0,0],[0,0],[0,1],[1,1],[0,0],[0,0]]],[5,3,3,5,5,3,3,3,8,5,3,3]],
+      [[[3,3,5,3,1],[[0,3],[1,2],[1,2],[2,3],[3,3],[4,4],[1,1],[3,3],[3,4],[3,3],[4,4],[0,0]]],[32,8,8,8,3,1,3,3,4,3,1,3]],
+      [[[2,5,3,2,2,5,3,1,1,2,4,1,5,4,3],[[12,12],[6,8],[10,14],[6,13],[1,12],[1,5],[2,6],[2,7],[0,0],[1,3],[10,13],[14,14]]],[5,7,25,35,88,31,25,26,2,10,22,3]],
+      [[[3,1,1,3,4],[[1,1],[4,4],[0,0],[2,2],[4,4],[3,3],[3,3],[1,1],[0,1],[3,3],[3,4],[3,4]]],[1,4,3,1,4,3,3,1,4,3,7,7]],
+      [[[5,4,4,3,3,1,4,1,3,3,4,4,4,2],[[1,2],[12,12],[12,12],[11,11],[6,12],[6,12],[5,7],[12,12],[11,12],[7,11],[7,8],[13,13]]],[16,4,4,4,77,77,8,4,16,29,4,2]],
+      [[{"$rep":1000000,"n":200000},{"$rep":[0,199999],"n":200000}],{"$rep":"40000000000000000","n":200000}],
+      [[{"$rep":1000000,"n":200000},{"$concat":[{"$rep":[0,0],"n":100000},{"$rep":[0,199999],"n":100000}]}],{"$concat":[{"$rep":1000000,"n":100000},{"$rep":"40000000000000000","n":100000}]}]
+    ] },
     solution: {
       approach: `<p>Mo's algorithm with O(1) add/remove updating the power incrementally.</p>`,
       code: `
@@ -4106,7 +7281,73 @@ def powers(a, qs):
 
 
 print(powers([1, 2, 1], [(0, 1), (0, 2)]))                          # [3, 6]
-print(powers([1, 1, 2, 2, 1, 3, 1, 1], [(1, 6), (0, 5), (1, 6)]))   # [20, 20, 20]`, run: true }],
+print(powers([1, 1, 2, 2, 1, 3, 1, 1], [(1, 6), (0, 5), (1, 6)]))   # [20, 20, 20]`, run: true }, { lang: 'js', code: `function powers(a, qs) {
+  const n = a.length, q = qs.length;
+  let maxV = 0;
+  for (const v of a) maxV = Math.max(maxV, v);
+  const cnt = new Int32Array(maxV + 1);
+
+  // The power can reach 4e16, past 2^53. Each step changes it by less than 1e12,
+  // so keep it as hi * 1e12 + lo and fix up with at most one carry.
+  const BASE = 1e12;
+  let hi = 0, lo = 0;
+  const add = (x) => { lo += (2 * cnt[x] + 1) * x; cnt[x]++; if (lo >= BASE) { lo -= BASE; hi++; } };
+  const remove = (x) => { cnt[x]--; lo -= (2 * cnt[x] + 1) * x; if (lo < 0) { lo += BASE; hi--; } };
+
+  const B = Math.max(1, Math.floor(n / Math.sqrt(Math.max(1, q))));
+  const order = Array.from({ length: q }, (_, i) => i);
+  order.sort((x, y) => {                             // block of l, then r (snake order)
+    const bx = Math.floor(qs[x][0] / B), by = Math.floor(qs[y][0] / B);
+    if (bx !== by) return bx - by;
+    return (bx & 1) === 0 ? qs[x][1] - qs[y][1] : qs[y][1] - qs[x][1];
+  });
+
+  const ans = new Array(q);
+  let curL = 0, curR = -1;
+  for (const id of order) {
+    const l = qs[id][0], r = qs[id][1];
+    while (curR < r) add(a[++curR]);
+    while (curL > l) add(a[--curL]);
+    while (curR > r) remove(a[curR--]);
+    while (curL < l) remove(a[curL++]);
+    ans[id] = BigInt(hi) * 1000000000000n + BigInt(lo);
+  }
+  return ans;
+}
+
+console.log(powers([1, 2, 1], [[0, 1], [0, 2]]));  // [3n, 6n]` }, { lang: 'cpp', code: `class Solution {
+    long long power = 0;
+    vector<int> cnt;
+
+    void add(int x)    { power += (2LL * cnt[x] + 1) * x; cnt[x]++; }
+    void remove(int x) { cnt[x]--; power -= (2LL * cnt[x] + 1) * x; }
+
+public:
+    vector<long long> powers(vector<int>& a, vector<vector<int>>& qs) {
+        int n = a.size(), q = qs.size();
+        cnt.assign(*max_element(a.begin(), a.end()) + 1, 0);
+        power = 0;
+        int B = max(1, (int)(n / sqrt((double)max(1, q))));
+        vector<int> order(q);
+        iota(order.begin(), order.end(), 0);
+        sort(order.begin(), order.end(), [&](int x, int y) {   // block of l, then r (snake order)
+            int bx = qs[x][0] / B, by = qs[y][0] / B;
+            if (bx != by) return bx < by;
+            return (bx & 1) == 0 ? qs[x][1] < qs[y][1] : qs[x][1] > qs[y][1];
+        });
+        vector<long long> ans(q);
+        int curL = 0, curR = -1;
+        for (int id : order) {
+            int l = qs[id][0], r = qs[id][1];
+            while (curR < r) add(a[++curR]);
+            while (curL > l) add(a[--curL]);
+            while (curR > r) remove(a[curR--]);
+            while (curL < l) remove(a[curL++]);
+            ans[id] = power;
+        }
+        return ans;
+    }
+};` }],
       dry: { head: ['step', 'element', 'cnt before', 'change', 'power'], rows: [['add a[0]', '1', '0', '+1·1', '1'], ['add a[1]', '2', '0', '+1·2', H.c('g', '3 (query [0,1])')], ['add a[2]', '1', '1', '+3·1', H.c('g', '6 (query [0,2])')]] },
       complexity: `<p>O(Q log Q + (N + Q)·√N) time, O(N + Q + maxV) memory.</p>`,
       followUps: ['Use Hilbert-curve ordering — why does it reduce pointer movement?', 'Add point updates: Mo\'s with a time dimension, B = N<sup>2/3</sup>.']
@@ -4124,7 +7365,7 @@ print(powers([1, 1, 2, 2, 1, 3, 1, 1], [(1, 6), (0, 5), (1, 6)]))   # [20, 20, 2
     { q: 'In a range query on a segment tree, at most how many nodes per level are <i>partially</i> overlapped (and therefore recurse)?', options: ['1', '2', '4', 'log N'], answer: 1, explain: 'Only the node containing the left boundary and the node containing the right boundary can be partial. Everything between them is fully inside. Hence ≤ 4 visits per level and O(log N) total.' },
     { q: 'For a recursive segment tree with node k having children 2k and 2k+1, how big should the array be to be always safe?', options: ['N', '2N', '2N − 1', '4N'], answer: 3, explain: 'Indices are not packed for non-powers of two; the largest index stays below 2<sup>⌈log₂ N⌉+1</sup> &lt; 4N. The iterative bottom-up tree needs only 2N.' },
     { q: 'In lazy propagation, when must <code>push(node)</code> be called?', options: ['After every update at the root', 'Before recursing into the children of a partially covered node (in both updates and queries)', 'Only at leaves', 'Only during queries'], answer: 1, explain: 'Children may be stale while their parent holds an IOU. Anyone who looks inside a node must first hand the IOU down; forgetting it in queries is a classic bug.' },
-    { q: 'A segment tree for range <b>minimum</b>: what should a node that does not overlap the query return?', options: ['0', '−1', '+∞ (e.g. Integer.MAX_VALUE)', 'the node\'s own value'], answer: 2, explain: 'It must be the identity of min, which never wins: min(x, +∞) = x. Returning 0 silently breaks every query on positive data.' },
+    { q: 'A segment tree for range <b>minimum</b>: what should a node that does not overlap the query return?', options: ['0', '−1', '+∞ (the largest value, e.g. INT_MAX or Infinity)', 'the node\'s own value'], answer: 2, explain: 'It must be the identity of min, which never wins: min(x, +∞) = x. Returning 0 silently breaks every query on positive data.' },
     { q: 'Which is NOT a requirement of Mo\'s algorithm?', options: ['All queries known in advance', 'No updates to the array (basic version)', 'O(1)-ish add/remove of one element', 'The query answer must be mergeable from two halves'], answer: 3, explain: 'Mo\'s algorithm is exactly for answers that are NOT easily mergeable (distinct counts, pair counts). It needs offline queries, a static array and cheap add/remove.' },
     { q: 'For sqrt decomposition with point updates and range sums, why is B ≈ √N the best block size?', options: ['Because √N is always an integer', 'Query cost ≈ 2B + N/B, which is smallest when B = N/B', 'It minimizes memory', 'Because the blocks then fit in the CPU cache'], answer: 1, explain: 'Partial blocks cost up to 2B, full blocks cost N/B. B + N/B is minimized at B = √N, giving O(√N) per query.' },
     { q: 'You need "add v to a[l..r]" and "what is a[k] now?" (no range sums). Lightest structure?', options: ['Lazy segment tree', 'One Fenwick tree over the difference array', 'Sparse table', 'Two Fenwick trees'], answer: 1, explain: 'A range add touches the difference array at two points; a[k] is a prefix sum of differences. One BIT does both in O(log N). Two BITs are needed only for range sums.' },
@@ -4196,7 +7437,7 @@ print(powers([1, 1, 2, 2, 1, 3, 1, 1], [(1, 6), (0, 5), (1, 6)]))   # [20, 20, 2
       q: 'Design a segment tree that supports range assign, range add and range sum. What are the tag rules?',
       level: 'A',
       a: `<p>Each node keeps <code>sum</code> and a tag pair <code>(hasSet, setVal, add)</code> meaning "first assign setVal to every element (if hasSet), then add add". Applying to a node of length len: assign x → sum = x·len, tag = (true, x, 0); add v → sum += v·len, tag.add += v (a pending set stays).</p>
-        <p>Composition order is the crux: a newer assign wipes everything older; a newer add stacks on top. When pushing, apply the set to the children first, then the add. Use a separate boolean (not 0) for "no assignment" because 0 can be a real value, and long for x·len. Everything remains O(log N) per operation.</p>`,
+        <p>Composition order is the crux: a newer assign wipes everything older; a newer add stacks on top. When pushing, apply the set to the children first, then the add. Use a separate boolean (not 0) for "no assignment" because 0 can be a real value, and 64-bit integers for x·len. Everything remains O(log N) per operation.</p>`,
       followUps: ['Add range min queries — what changes?', 'Generalize to affine tags (multiply then add) modulo p.']
     },
     {
@@ -4230,7 +7471,7 @@ print(powers([1, 1, 2, 2, 1, 3, 1, 1], [(1, 6), (0, 5), (1, 6)]))   # [20, 20, 2
     {
       q: 'You wrote a segment tree in an interview and one test fails. How do you debug it quickly?',
       level: 'I',
-      a: `<p>First shrink the failing case: N = 1, 2, 3 and a single query often reproduce it. Then check the usual suspects in order: identity value for disjoint nodes (0 vs +∞), boundary conditions (<code>qr &lt; l || r &lt; ql</code>), mid split consistency between build/update/query, array size (4N), overflow (long), and — for lazy trees — a missing push in the query or the wrong tag composition order.</p>
+      a: `<p>First shrink the failing case: N = 1, 2, 3 and a single query often reproduce it. Then check the usual suspects in order: identity value for disjoint nodes (0 vs +∞), boundary conditions (<code>qr &lt; l || r &lt; ql</code>), mid split consistency between build/update/query, array size (4N), overflow (64-bit), and — for lazy trees — a missing push in the query or the wrong tag composition order.</p>
         <p>The most reliable method is a 5-minute <b>stress test</b>: an O(N) brute force and a random generator with tiny sizes and small values, comparing results after every operation and printing the first mismatch. Narrate this plan to the interviewer; systematic debugging is part of the evaluation, especially when AI tools write the first draft.</p>`,
       followUps: ['Which random sizes catch the most bugs?', 'How would you print the tree compactly to inspect it?']
     },
@@ -4259,6 +7500,12 @@ print(powers([1, 1, 2, 2, 1, 3, 1, 1], [(1, 6), (0, 5), (1, 6)]))   # [20, 20, 2
     ],
     prereqs: `<p>DSA 5 (Arrays &amp; Prefix Sums), DSA 4 (Bit Manipulation, for <code>i &amp; −i</code>), DSA 10 (Binary Search), DSA 11 (Recursion), DSA 14 (Trees) and DSA 15 (Heaps, for array-based trees). It also helps to be comfortable with Big-O estimates from DSA 2.</p>`,
     hours: 16,
+    langNotes: {
+      java: `<p><b>Java:</b> every structure here is a plain array, so use primitive <code>int[]</code> / <code>long[]</code> (not <code>Integer</code> lists) and size trees as <code>new long[4 * n]</code> (recursive) or <code>2 * n</code> (iterative). <code>int</code> overflow wraps silently: sums of 10<sup>5</sup> values of 10<sup>9</sup> need <code>long</code>, and so does <code>v * (r - l + 1)</code> in lazy tags. Tree recursion is only about 20 frames deep, so the default stack is never a problem. For Mo's algorithm sort an <code>Integer[]</code> of query ids with a comparator (primitive <code>int[]</code> cannot take one). Use <code>(l + r) &gt;&gt;&gt; 1</code> for midpoints, <code>Integer.highestOneBit</code> for Fenwick descent, and a fast reader (<code>BufferedReader</code>) for 2·10<sup>5</sup> lines.</p>`,
+      python: `<p><b>Python:</b> integers never overflow, so sums, products and <code>10**17</code> just work. The cost is speed: roughly 10<sup>7</sup> simple steps per second, 30–100× slower than Java or C++, so prefer the iterative bottom-up tree, Fenwick tree or sparse table over a recursive lazy tree when N, Q reach 10<sup>5</sup>, and use <code>bisect</code>, <code>itertools.accumulate</code>, <code>math.isqrt</code> and <code>int.bit_length()</code> (<code>(x).bit_length() - 1</code> is floor log2). Tree recursion is only about 20 deep, far below the default limit of 1000 frames. Sort Mo's queries with <code>sorted(range(q), key=...)</code> and negate <code>r</code> for the odd-block trick. Read big inputs with <code>sys.stdin</code>, not <code>input()</code> in a loop. A list of lists works for 2D Fenwick trees; <code>list.pop(0)</code> is O(n), so use <code>deque</code> if you ever need a queue.</p>`,
+      js: `<p><b>JavaScript:</b> a <code>Number</code> is exact only up to 2<sup>53</sup> (about 9·10<sup>15</sup>). Sums such as 10<sup>17</sup> (Horrible Queries), range add with assign, or Powerful Array (4·10<sup>16</sup>) need <code>BigInt</code>: <code>BigInt64Array</code> for the trees, or split the value into two Numbers. Smaller sums (up to about 2·10<sup>14</sup>) are safe in <code>Float64Array</code>. Use typed arrays (<code>Int32Array</code>, <code>Float64Array</code>) for tree arrays: they are fast, zero-filled and their <code>.sort()</code> is numeric, while <code>Array.prototype.sort()</code> compares strings unless you pass <code>(a, b) =&gt; a - b</code>. Bit operations (<code>&gt;&gt;</code>, <code>&amp;</code>, <code>|0</code>) work on 32 bits, which is fine for indices; <code>%</code> keeps the dividend's sign. <code>shift()</code> is O(n), so never use it as a queue. Tree recursion is about 20 frames deep, far below the roughly 10<sup>4</sup>-frame limit.</p>`,
+      cpp: `<p><b>C++:</b> signed overflow is undefined behaviour, so use <code>long long</code> for sums and lazy tags (and <code>2LL * c + 1</code> when a product may pass 2<sup>31</sup>). Trees are <code>vector&lt;long long&gt;(4 * n)</code> or <code>2 * n</code>; build levels of a sparse table as <code>vector&lt;vector&lt;int&gt;&gt;</code>. Use <code>__builtin_clz</code> or <code>__lg</code> for floor log2, <code>lower_bound</code> / <code>upper_bound</code> instead of hand-written binary searches, and a lambda comparator with <code>sort</code> on an <code>iota</code>-filled index vector for Mo's queries. Tree recursion is about 20 frames, so the 8 MB default stack is plenty. <code>unordered_map</code> is O(1) on average but slow in a hot loop and hackable: compress values to ranks and use a plain <code>vector</code> instead. Add <code>ios::sync_with_stdio(false); cin.tie(nullptr);</code> for large input.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,
