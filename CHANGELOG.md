@@ -1,6 +1,6 @@
 # Changelog — website
 
-Versions follow [Semantic Versioning](https://semver.org): MAJOR for breaking changes to progress data or URLs, MINOR for new features or modules, PATCH for fixes.
+From 1.10.1 each website release, whether it brings fixes or features, raises the last number: 1.10.1, 1.10.2, … up to 1.10.100. The release after 1.10.100 is 1.11.0, and the same pattern repeats (1.11.1 … 1.11.100, then 1.12.0). MAJOR is still reserved for breaking changes to progress data or URLs.
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
