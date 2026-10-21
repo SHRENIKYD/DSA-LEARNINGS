@@ -621,7 +621,7 @@ print(f"{name} bought {items} items for ₹{total:,.2f}")
           print(receipt_brute([("Pen", 2, 15.5), ("Wireless Keyboard Pro", 1, 2499)]))
         ` }
       },
-      mcq: { q: 'Which single spec prints 2499 as <code>"    2,499.00"</code> (12 wide)?', options: ['<code>{x:&gt;12,.2f}</code>', '<code>{x:12.2}</code>', '<code>{x:,&gt;12.2f}</code>', '<code>{x:&lt;12,.2f}</code>'], answer: 0, explain: 'Order is fill/align, width, grouping, .precision, type: &gt; then 12 then , then .2f. Option 3 makes "," the FILL character.' },
+      mcq: { q: 'Which single spec prints 2499 as <code>"    2,499.00"</code> (12 wide)?', options: ['<code>{x:&gt;12,.2f}</code>', '<code>{x:12.2}</code>', '<code>{x:,&gt;12.2f}</code>', '<code>{x:&lt;12,.2f}</code>'], answer: 0, explain: 'Order is fill/align, width, grouping, .precision, type: &gt; then 12 then , then .2f. Option C makes "," the FILL character.' },
       hints: [
         R`<p>Hint 1: Each row is one f-string with three fields; widths 14 + 4 + 12 = 30, the same as the dashed line.</p>`,
         R`<p>Hint 2: Shorten long names first: <code>name if len(name) &lt;= 14 else name[:13] + "…"</code>. Width never truncates, precision would cut without the ellipsis.</p>`,
@@ -1759,7 +1759,7 @@ print(receipt([]))   # just the dashes and a zero total
     code: [{ lang: 'python', run: true, title: 'Encoding, decoding and error policies (runnable)', code: R`
       s = "café €😀"
       b = s.encode("utf-8")
-      print(len(s), len(b))          # 7 characters, 14 bytes
+      print(len(s), len(b))          # 7 characters, 13 bytes
       print(b)                       # b'caf\xc3\xa9 \xe2\x82\xac\xf0\x9f\x98\x80'
       print(list("é".encode()))      # [195, 169]  bytes are just numbers 0..255
       print(b[0], b[:3])             # 99 b'caf'   index -> int, slice -> bytes
@@ -3517,6 +3517,7 @@ deactivate</pre>
         def compatible(version, spec):
             """~= check for plain numeric versions, e.g. compatible('2.9', '2.2') -> True."""
             v, s = as_tuple(version), as_tuple(spec)
+            v += (0,) * (len(s) - len(v))         # 2.2 means 2.2.0 (pad with zeros)
             prefix = s[:-1]                       # all but the last part must match
             return v >= s and v[:len(prefix)] == prefix
 
@@ -4571,7 +4572,7 @@ os.remove(p)
         print(fix_brute("cafÃ©"), fix_brute("Ã¼ber"))   # second one not in the table
       ` }
     },
-    mcq: { q: 'Mojibake "Ã©" came from UTF-8 bytes C3 A9 decoded as cp1252. What reverses it?', options: ['<code>s.encode("cp1252").decode("utf-8")</code>', '<code>s.decode("utf-8")</code>', '<code>s.encode("utf-8").decode("cp1252")</code>', '<code>s.lower()</code>'], answer: 0, explain: 'Undo the wrong step first (turn the characters back into the original bytes using the wrong codec), then apply the right decode. Option 3 repeats the mistake.' },
+    mcq: { q: 'Mojibake "Ã©" came from UTF-8 bytes C3 A9 decoded as cp1252. What reverses it?', options: ['<code>s.encode("cp1252").decode("utf-8")</code>', '<code>s.decode("utf-8")</code>', '<code>s.encode("utf-8").decode("cp1252")</code>', '<code>s.lower()</code>'], answer: 0, explain: 'Undo the wrong step first (turn the characters back into the original bytes using the wrong codec), then apply the right decode. Option C repeats the mistake.' },
     hints: [
       R`<p>Hint 1: The bug was <code>bytes.decode("cp1252")</code> on UTF-8 bytes. Reverse: <code>s.encode("cp1252")</code> recovers those bytes, then <code>.decode("utf-8")</code>.</p>`,
       R`<p>Hint 2: If either step raises <code>UnicodeError</code>, this codec was not the culprit; try <code>latin-1</code> next (it can represent bytes cp1252 cannot).</p>`,

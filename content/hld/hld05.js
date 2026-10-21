@@ -1376,7 +1376,7 @@ print("skewed global top 3 :", global_top_k(3))
 <p><b>Step 2 (receiver shard):</b> an outbox relay (or CDC → Kafka) delivers the event; the consumer runs one local transaction: insert into <code>applied_transfers(transfer_id PK)</code> (dedupe), credit B, insert ledger entry (credit). Duplicate deliveries hit the PK and are ignored.</p>
 <p><b>Step 3:</b> an acknowledgement event marks T COMPLETED on the sender shard. If the credit is permanently impossible (receiver account closed), a compensating credit back to A sets FAILED.</p>
 <p><b>Safety:</b> money in flight is visible as DEBITED transfers — never lost. A reconciliation job sums ledger entries per transfer (debit = credit) and alerts on transfers stuck &gt; 5 minutes. <b>Why not 2PC:</b> at 15K/s, holding locks across shards and the in-doubt problem cost more than eventual completion within ~1 s. (If the product requires both balances updated atomically and visible together, use a distributed SQL database that runs 2PC over Raft.)</p>`,
-      complexity: `<p>Sender latency: 1 local transaction (~5–20 ms) + network. Two local transactions per transfer, ~4 writes each; 15K/s ÷ 64 shards ≈ 470 transfers/s per shard.</p>`,
+      complexity: `<p>Sender latency: 1 local transaction (~5–20 ms) + network. Two local transactions per transfer, ~4 writes each; 15K transfers/s × 2 local transactions ÷ 64 shards ≈ 470 local transactions/s per shard.</p>`,
       followUps: ['How do you prevent a user from spending money that is still "in flight" to them?', 'How do you rebuild a balance from the ledger after corruption?', 'What changes for a transfer in two different currencies?']
     }
   });

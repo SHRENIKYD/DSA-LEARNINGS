@@ -1550,7 +1550,7 @@ print("existing key: %.2f I/Os, missing key: %.2f I/Os, without filters: %d" % (
         constraints: `Use the simple models given. 1 MB = 10<sup>6</sup> bytes for this estimate.`,
         example: `<p>B-tree: 200,000 × (16,384 × 2 + 200) ≈ ${H.c('r', '6,594 MB/s')} → impossible. LSM: WA = 2 + 20 = 22 → 200,000 × 200 × 22 = ${H.c('g', '880 MB/s')}... still above the 500 MB/s budget, so you would also need compression (≈ 3× on metrics) → ≈ ${H.c('g', '293 MB/s')}. Recommendation: <b>LSM with compression</b> (or a time-series engine).</p>`,
         brute: {
-          why: `<p>The "brute force" is to deploy both engines and load-test them. That is the final answer in practice, but it costs days. A back-of-envelope model eliminates the hopeless option (the B-tree here is 13× over the device limit) in seconds, so you only benchmark the plausible designs.</p>`,
+          why: `<p>The "brute force" is to deploy both engines and load-test them. That is the final answer in practice, but it costs days. A back-of-envelope model eliminates the hopeless option (the B-tree here is 13× over the 500 MB/s budget (6.6× the device limit)) in seconds, so you only benchmark the plausible designs.</p>`,
           code: { lang: 'python', run: true, code: `# Brute force: "simulate" bytes written for one second of traffic, write by write
 W, ROW, PAGE = 200_000, 200, 16_384
 btree_bytes = 0
@@ -2098,7 +2098,7 @@ FROM kv_log GROUP BY k ORDER BY versions_written DESC, k;`)
 <p><b>Other engines to know.</b> <b>WiredTiger</b> (MongoDB): B-tree with in-memory page images, copy-on-write checkpoints every 60 s plus a journal; supports compression well. <b>LMDB</b>: copy-on-write B+tree via mmap, single writer, no WAL needed. <b>Aurora / Neon / AlloyDB</b>: keep the engine's page format but move WAL processing and page materialisation into a distributed storage layer.</p>`,
     aiEra: `<p><b>What AI changes:</b> assistants generate schemas fast — and they love <code>id CHAR(36) DEFAULT (UUID())</code> as a primary key. In InnoDB that is the random-UUID clustered-index anti-pattern. Knowing the storage engine lets you catch it in review and ask for BIGINT auto-increment or UUIDv7 instead.</p>
 <p><b>Use AI as a partner:</b> give it <code>SHOW ENGINE INNODB STATUS</code> or RocksDB <code>LOG</code> statistics and ask for a summary of buffer pool hit rate, history list length, pending flushes or stall counters. Ask it to write the db_bench/sysbench command lines for a fair InnoDB vs MyRocks comparison.</p>
-<p><b>Where AI goes wrong:</b> saying "Postgres has a clustered index" (CLUSTER is a one-time reorder, not maintained), claiming RocksDB is a full SQL database, recommending the deprecated query cache or change buffer settings from old MySQL versions, or presenting MyRocks savings without the trade-offs.</p>
+<p><b>Where AI goes wrong:</b> saying "Postgres has a clustered index" (CLUSTER is a one-time reorder, not maintained), claiming RocksDB is a full SQL database, recommending the query cache (removed in MySQL 8.0) or change buffer settings from old MySQL versions, or presenting MyRocks savings without the trade-offs.</p>
 <p><b>What you must still own:</b> explaining why InnoDB secondary indexes store the PK, why UUIDv4 PKs hurt, what undo/purge and compaction each clean up, and when you would accept LSM read costs for space and write savings.</p>`,
     problems: [
       {
@@ -2259,7 +2259,7 @@ ${H.table(['', 'row store (InnoDB, Postgres)', 'column store (ClickHouse, DuckDB
 </ul>
 <p><b>Skipping data: zone maps.</b> Each block (Parquet row group/page, ClickHouse granule of 8192 rows, Snowflake micro-partition) stores <b>min/max</b> per column. <code>WHERE day = '2026-10-03'</code> skips every block whose min/max range excludes that day — often 99% of the table — without any B-tree.</p>
 <p><b>Vectorized execution.</b> Instead of pulling one row at a time through the operator tree (the classic "Volcano" iterator), the engine processes <b>vectors</b> of ~1,000–2,000 values per call with tight loops the CPU can SIMD-ize, and may operate <b>directly on compressed data</b> (sum an RLE run as value × count). <b>Late materialization</b>: filter on a few columns first, stitch full rows together only for survivors.</p>
-<p><b>Writes</b> are handled LSM-style: new rows land in a row-oriented <b>delta store</b> or small "parts", which background merges convert into big compressed column segments (ClickHouse MergeTree, Vertica WOS→ROS, SQL Server columnstore delta rowgroups, C-Store's WS→RS).</p>`,
+<p><b>Writes</b> are handled LSM-style: new rows land in a row-oriented <b>delta store</b> or small "parts", which background merges convert into big compressed column segments (ClickHouse MergeTree, older Vertica's WOS→ROS (WOS was removed in 10.0), SQL Server columnstore delta rowgroups, C-Store's WS→RS).</p>`,
     clues: [
       '"Dashboards over billions of rows, few columns per query" → column store / OLAP engine',
       '"Why is Parquet smaller than CSV?" → columnar layout + dictionary/RLE/bit-packing + Zstd',

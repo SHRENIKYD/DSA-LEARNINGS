@@ -371,7 +371,7 @@
       }
     }],
     examples: [
-      { title: 'Deep chain: only the last object counts', html: `<p>For <code>company.team.lead.introduce()</code>, the engine evaluates <code>company.team.lead</code> as an ordinary value, then calls <code>introduce</code> on it. So <code>this</code> is <code>lead</code>, and <code>this.team</code> is <code>undefined</code> unless lead has its own team property.</p>${H.chips(['company', 'team', H.c('g', 'lead ← this'), 'introduce()'], { label: 'chain' })}`,
+      { title: 'Deep chain: only the last object counts', html: `<p>For <code>company.team.lead.introduce()</code>, the engine evaluates <code>company.team.lead</code> as an ordinary value, then calls <code>introduce</code> on it. So <code>this</code> is <code>lead</code>, and <code>this.team</code> is <code>undefined</code> unless lead has its own team property.</p>${H.chips(['company', 'team', 'lead ← this', 'introduce()'], { label: 'chain', hl: { 'lead ← this': 'g' } })}`,
         code: { lang: 'js', run: true, code: `
           const company = {
             name: 'Acme',
@@ -829,7 +829,7 @@ function rng(a, b) { const o = []; for (let i = a; i < b; i++) o.push(i); return
       <p>Step 4 has a twist interviewers love: returning a <b>primitive</b> (<code>return 5</code>, <code>return "hi"</code>) is <b>ignored</b> and you still get the new object; returning an <b>object or function</b> replaces it.</p>
       <p>Not everything can be used with <code>new</code>: <b>arrow functions</b>, <b>object method shorthand</b> (<code>{ m() {} }</code>), <b>async</b> functions and <b>generators</b> throw <code>TypeError: ... is not a constructor</code>. In the other direction, <b>classes</b> must be called with <code>new</code>; calling <code>Person()</code> on a class throws.</p>
       <p><b>🔵 Precedence: when rules fight.</b> Ask the questions in this order; the first YES wins:</p>
-      ${H.chips([H.c('p', '0. arrow? → outer this'), H.c('p', '1. new? → new object'), H.c('b', '2. call/apply/bind? → given object'), H.c('g', '3. obj.fn()? → obj'), H.c('y', '4. default → undefined / globalThis')], { label: 'strongest → weakest' })}
+      ${H.chips(['0. arrow? → outer this', '1. new? → new object', '2. call/apply/bind? → given object', '3. obj.fn()? → obj', '4. default → undefined / globalThis'], { label: 'strongest → weakest', hl: { '0. arrow? → outer this': 'p', '1. new? → new object': 'p', '2. call/apply/bind? → given object': 'b', '3. obj.fn()? → obj': 'g', '4. default → undefined / globalThis': 'y' } })}
       ${H.table(['Fight', 'Winner', 'Result'], [
         ['<code>obj.fn.call(other)</code>: implicit vs explicit', 'explicit', 'other'],
         ['<code>obj.boundFn()</code> where <code>boundFn = fn.bind(x)</code>', 'bind', 'x'],
@@ -943,7 +943,7 @@ function rng(a, b) { const o = []; for (let i = a; i < b; i++) o.push(i); return
           class Strict { constructor() { this.ok = true; } }
           try { Strict(); } catch (e) { console.log(e.constructor.name + ': ' + e.message); }
         ` } },
-      { title: 'What cannot be used with new', html: `<p>Only functions with an internal <code>[[Construct]]</code> method can be <code>new</code>-ed: classic <code>function</code> declarations/expressions, classes and bound versions of those. Arrows, method shorthand, async functions and generators cannot.</p>${H.chips([H.c('g', 'function F(){}'), H.c('g', 'class K{}'), H.c('r', '() => {}'), H.c('r', '{ m() {} }.m'), H.c('r', 'async function'), H.c('r', 'function*')], { label: 'constructible?' })}`,
+      { title: 'What cannot be used with new', html: `<p>Only functions with an internal <code>[[Construct]]</code> method can be <code>new</code>-ed: classic <code>function</code> declarations/expressions, classes and bound versions of those. Arrows, method shorthand, async functions and generators cannot.</p>${H.chips(['function F(){}', 'class K{}', '() => {}', '{ m() {} }.m', 'async function', 'function*'], { label: 'constructible?', hl: { 'function F(){}': 'g', 'class K{}': 'g', '() => {}': 'r', '{ m() {} }.m': 'r', 'async function': 'r', 'function*': 'r' } })}`,
         code: { lang: 'js', run: true, code: `
           const candidates = {
             arrow: () => {},
@@ -1387,7 +1387,7 @@ function rng(a, b) { const o = []; for (let i = a; i < b; i++) o.push(i); return
         <li><b>thisArg parameter</b> where the API offers one: <code>arr.forEach(fn, obj)</code>, <code>Array.from(x, fn, obj)</code>.</li>
         <li><b>Do not use this at all:</b> closures/factory functions (<code>createCounter()</code> returning functions) cannot lose a receiver they never had. Common in modern functional code and React hooks.</li>
       </ol>
-      ${H.chips([H.c('r', 'setTimeout(obj.m)'), H.c('g', 'setTimeout(() => obj.m())'), H.c('g', 'setTimeout(obj.m.bind(obj))')], { label: 'lost vs kept' })}`,
+      ${H.chips(['setTimeout(obj.m)', 'setTimeout(() => obj.m())', 'setTimeout(obj.m.bind(obj))'], { label: 'lost vs kept', hl: { 'setTimeout(obj.m)': 'r', 'setTimeout(() => obj.m())': 'g', 'setTimeout(obj.m.bind(obj))': 'g' } })}`,
     clues: [
       '"Why does <code>this.x</code> become undefined inside <code>setTimeout</code> / <code>.then</code> / <code>forEach</code>?" → method passed as a callback, receiver lost',
       '<code>removeEventListener</code> "does not work" → a new <code>.bind()</code> or arrow was created for add and another for remove; keep one reference',
@@ -2637,7 +2637,7 @@ function rng(a, b) { const o = []; for (let i = a; i < b; i++) o.push(i); return
     level: 'Hard', tags: ['this', 'bind', 'call-site', 'design'], companies: ['Atlassian', 'Salesforce'],
     statement: `<p>Hard binding (<code>bind</code>) is too strict for some libraries: they want a <b>fallback</b> this when a function is called bare, but still allow implicit (<code>obj.fn()</code>) and explicit (<code>fn.call(x)</code>) binding to win. Implement <code>Function.prototype.softBind(fallback, ...preset)</code>: if the incoming this is <code>undefined</code>, <code>null</code> or the global object, use <code>fallback</code>; otherwise use the incoming this. Preset arguments work like bind.</p>`,
     constraints: `Works in strict and sloppy callers; the wrapper must be a normal function.`,
-    example: `<p><code>function who() { return this.id; }</code> <code>const f = who.softBind({ id: 'fallback' })</code>:</p>${H.table(['Call', 'bind would give', 'softBind gives'], [['f()', 'fallback', H.c('g', 'fallback')], ['({ id: "obj", f }).f()', H.c('r', 'fallback')], ['f.call({ id: "x" })', H.c('r', 'fallback')]])}<p>The last two rows: softBind gives <b>obj</b> and <b>x</b>.</p>`,
+    example: `<p><code>function who() { return this.id; }</code> <code>const f = who.softBind({ id: 'fallback' })</code>:</p>${H.table(['Call', 'bind would give', 'softBind gives'], [['f()', 'fallback', H.c('g', 'fallback')], ['({ id: "obj", f }).f()', H.c('r', 'fallback'), H.c('g', 'obj')], ['f.call({ id: "x" })', H.c('r', 'fallback'), H.c('g', 'x')]])}`,
     brute: { why: `<p>Plain <code>bind</code> solves the bare-call case but blocks every override, so the same function cannot be reused as a method on other objects. Wrapping with <code>() =&gt; fn.call(fallback)</code> has the same problem: an arrow throws away the incoming this.</p>`,
       code: `
         Function.prototype.softBindNaive = function (fallback) {

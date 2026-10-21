@@ -68,9 +68,9 @@ topics.push({
     { title: 'Example: a story that fails', html: '<p>"I noticed the team had no tests, so I sent an email to everyone saying we must write tests. Some did." There is no listening, no pilot, no number. It sounds like complaining, not leading.</p>' }
   ],
   deepDive: '<p><b>Sources of influence (use several):</b> expertise (people trust what you know), relationships (you helped them before), data (hard to argue with), shared goals (you link to <i>their</i> metric), and sponsorship (a senior person backs you). Rank alone is the weakest source, which is why this question exists.</p>' +
-    '<p><b>Stakeholder types:</b> champion (wants it), neutral, skeptic (will block unless heard), and decider (signs off). Strong stories name at least one skeptic and show what you did about them. Skipping the skeptic is the number one reason answers sound too easy.</p>' +
+    '<p><b>Stakeholder types:</b> champion (wants it), neutral, skeptic (will block unless heard), and decider (signs off). Strong stories name at least one skeptic and show what you did about them. Skipping the skeptic is a common reason answers sound too easy.</p>' +
     '<p><b>Common traps:</b> using escalation as the first step (it burns trust), claiming "everyone agreed" without proof, and taking all the credit. Also watch for the opposite - stories where you only "supported" and never led. The interviewer must see <b>you</b> starting the movement.</p>' +
-    '<p><b>Senior levels:</b> at L6+ the scope grows - influencing other orgs, setting technical direction, and creating mechanisms (a template, a review process) that keep working after you leave.</p>',
+    '<p><b>Senior levels:</b> at staff level and above the scope grows - influencing other orgs, setting technical direction, and creating mechanisms (a template, a review process) that keep working after you leave.</p>',
   aiEra: '<p><b>What AI changes:</b> Anyone can now draft a persuasive doc in minutes, so a polished doc is no longer proof of influence. What counts is that real people changed behaviour.</p>' +
     '<p><b>Use AI as a partner:</b> Ask it to play the skeptic: <code>Act as an Ops lead worried about on-call load. Poke holes in my release checklist proposal.</code> Use it to prepare data summaries and a one-page brief.</p>' +
     '<p><b>Where AI goes wrong:</b> It invents tidy numbers and writes stories where everyone agrees quickly. Real stories have friction. Interviewers also smell scripted answers.</p>' +
@@ -398,7 +398,7 @@ topics.push({
       ['Dive Deep', 'Know the details and question the numbers'],
       ['Have Backbone; Disagree and Commit', 'Challenge respectfully, then fully support the decision'],
       ['Deliver Results', 'Hit goals despite obstacles'],
-      ['Responsibility to people and planet', 'Think about wider effects, being a good employer and neighbour']]) +
+      ['Earth\'s Best Employer; Broad Responsibility (two principles)', 'Treat people well and think about the wider effects of your work on society and the planet']]) +
     '<p><b>Method:</b> (1) Prepare 6-8 stories. (2) Tag each with 2-3 principles it shows best. (3) Check the grid for gaps. (4) Prepare one story per gap. Most stories hit Ownership, Deliver Results, and one more. Tag by the <b>action you took</b>, not the topic.</p>',
   clues: ['The interviewer mentions "leadership principles" or "bar raiser"', '"Tell me about a time you disagreed and then committed"', '"A time you simplified something"', '"A time you were wrong"', '"A time you took a calculated risk"', '"A time you dove deep into data"', 'Company values list in the job posting'],
   code: { lang: 'python', title: 'Story-to-principle mapper (runnable)', run: true, code:
@@ -558,7 +558,7 @@ practice.push(bp('Said no to scope creep', 'Medium', ['prioritization', 'stakeho
   mq('Best way to push back on scope?', ['Refuse', 'Show cost and offer options', 'Quietly do it', 'Ignore it'], 1, 'Facts and options turn conflict into a decision.')));
 practice.push(bp('Decision with incomplete data', 'Medium', ['ambiguity', 'judgment'], 'Tell me about a time you made an important decision without all the data.',
   '"I went with my gut. It worked."', 'No reasoning, no safety net.',
-  '<p><b>S:</b> Our traffic was growing and the database was near its limit, with a vendor upgrade decision due in two days. <b>T:</b> Choose between buying a bigger plan or sharding. <b>A:</b> I looked at the 90-day trend, asked a teammate for a second opinion, and judged the bigger plan reversible (monthly contract) while sharding was not. I chose the bigger plan and set an alert at 70% to revisit. <b>R:</b> We bought time of four months, then sharded with real data. <b>L:</b> Prefer reversible choices when data is thin.</p>',
+  '<p><b>S:</b> Our traffic was growing and the database was near its limit, with a vendor upgrade decision due in two days. <b>T:</b> Choose between buying a bigger plan or sharding. <b>A:</b> I looked at the 90-day trend, asked a teammate for a second opinion, and judged the bigger plan reversible (monthly contract) while sharding was not. I chose the bigger plan and set an alert at 70% to revisit. <b>R:</b> The bigger plan bought us four months, then we sharded with real data. <b>L:</b> Prefer reversible choices when data is thin.</p>',
   ['Reversibility reasoning', 'Second opinion', 'Checkpoint or alert', 'Honest about uncertainty'],
   ['Hint 1: say what you did not know.', 'Hint 2: why was the option reversible?', 'Hint 3: what was the trigger to revisit?'],
   mq('A decision that is easy to undo should be:', ['Delayed', 'Made faster with partial info', 'Ignored', 'Voted on'], 1, 'Cheap-to-reverse choices reward speed.')));
@@ -625,7 +625,7 @@ iv('How do you use AI tools to prepare for interviews without hurting yourself?'
 iv('Describe a time your priorities changed mid-project.', 'I', '<p>I explain how I noticed (a customer signal or data), told stakeholders early, stopped low-value work, and reset the plan with a new checkpoint. I stress that I shared what we would not do, preserved team morale by explaining why, and documented the lesson.</p>', ['How did the team react?', 'What signal told you to change?']);
 
 registerModule({
-  langExplain: `<p><b>About the code here.</b> The few samples are optional Python helpers you can run in the page, such as a resume-bullet checker or a story-bank matrix. Nothing in the behavioural rounds depends on a programming language, so skip them if you like.</p>`,
+  langExplain: `<p><b>About the code here.</b> The few samples are optional Python helpers you can run in the page, such as an impact/effort prioritizer and a story-to-principle mapper. Nothing in the behavioural rounds depends on a programming language, so skip them if you like.</p>`,
   id: 'beh03',
   title: 'Behavioral Bank II: Leadership, Ownership & Ambiguity',
   intro: '<p>This module covers the "senior" half of behavioral interviews: leading when you have no title, acting like an owner, moving forward in fog, choosing what to do first (and what to refuse), obsessing over the customer, and mapping your stories to the Amazon-style leadership principles. Everything uses simple language, real analogies, weak-versus-strong answers, and runnable Python tools to practise.</p>',

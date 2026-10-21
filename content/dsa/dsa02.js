@@ -2420,7 +2420,7 @@ public:
 
   topics.push({
     title: 'Reading Constraints: the 10⁸ Rule and Estimating TLE',
-    analogy: `<p>You have <b>₹100 crore to spend in one day</b> (that is 10<sup>8</sup> rupees... in steps). Each simple operation your program does costs one rupee. Before going shopping, a smart person checks the price tags: an O(N<sup>2</sup>) plan with N = 10<sup>5</sup> costs 10<sup>10</sup> rupees — a hundred times over budget. An O(N log N) plan costs 1.7·10<sup>6</sup> — pocket change.</p>
+    analogy: `<p>You have <b>₹10 crore to spend in one day</b> (that is 10<sup>8</sup> rupees, one rupee per step). Each simple operation your program does costs one rupee. Before going shopping, a smart person checks the price tags: an O(N<sup>2</sup>) plan with N = 10<sup>5</sup> costs 10<sup>10</sup> rupees — a hundred times over budget. An O(N log N) plan costs 1.7·10<sup>6</sup> — pocket change.</p>
 <p>Like a tailor who glances at a customer and already knows the size, a good problem solver glances at "N ≤ 10<sup>5</sup>" and already knows the shape of the solution — <b>before writing a single line</b>.</p>`,
     explain: `<p><b>The rule of thumb:</b> a judge machine runs roughly <b>10<sup>8</sup> simple operations per second</b> (additions, comparisons, array reads) in Java or C++; JavaScript on V8 is in the same range. Real CPUs do more, but Java has overheads (bounds checks, objects, JIT warm-up), so 10<sup>8</sup> is a safe budget. <b>Python is the exception:</b> plain CPython loops manage only about 10<sup>7</sup> simple steps per second, so budget ~10× less, or push the work into built-ins (<code>sum</code>, <code>sorted</code>, slicing) that run in C. With a time limit of T seconds, your budget is about <b>T × 10<sup>8</sup></b> operations.</p>
 <p><b>The 3-step check:</b> (1) find the largest N in the constraints, (2) plug it into your complexity, (3) compare with the budget. Within budget → go. A few times over → borderline (depends on constants). 100× over → TLE (Time Limit Exceeded), think of something else.</p>
@@ -2842,7 +2842,7 @@ string maxAllowed(long long n, int t) {
         hints: [
           `<p>Take log₁₀ of everything. The budget becomes log₁₀(T·10<sup>8</sup>) ≈ 8 to 9. Each class becomes a sum of small numbers, e.g. log₁₀(N<sup>2</sup> log₂ N) = 2·log₁₀N + log₁₀(log₂ N).</p>`,
           `<p>Keep the classes in an array ordered from most to least expensive and return the first one that fits. For N! add log₁₀ i for i = 2..N, but stop early: if N &gt; 30 it can never fit (30! ≈ 2.7·10<sup>32</sup>).</p>`,
-          `<p>Edge cases: log₂ N can be below 1 for tiny N — clamp it to 1 so log₁₀ of it is not negative; compare with a tiny epsilon (1e-9) to absorb rounding; O(1) always fits, so the loop always returns. Recipe: budget = log10(T·1e8); for each class in order: if log10Ops(class, N) ≤ budget + 1e-9 return its name.</p>`
+          `<p>Edge cases: log₂ N is only 1 when N = 2 — clamp it to at least 1 so log₁₀ of it is never negative; compare with a tiny epsilon (1e-9) to absorb rounding; O(1) always fits, so the loop always returns. Recipe: budget = log10(T·1e8); for each class in order: if log10Ops(class, N) ≤ budget + 1e-9 return its name.</p>`
         ],
         tests: { sig: 'long int -> string', fn: 'maxAllowed', cases: [
           [[2, 1], 'O(N!)'], [[10, 1], 'O(N!)'], [[11, 1], 'O(N!)'], [[12, 1], 'O(2^N * N)'], [[12, 10], 'O(N!)'],
@@ -3708,7 +3708,7 @@ for (long i = 0; i &lt; n; i++)
     constraints: `0 ≤ n ≤ 3·10<sup>6</sup> (the answer fits in a signed 64-bit integer, but n(n−1)(n−2) does not)`,
     example: `<p>n = 5 → ${H.c('p', '<b>10</b>')}: the loop visits each set of 3 different indices exactly once: {0,1,2}, {0,1,3}, {0,1,4}, {0,2,3}, {0,2,4}, {0,3,4}, {1,2,3}, {1,2,4}, {1,3,4}, {2,3,4}. That is C(5, 3) = 5·4·3/6 = 10.</p>`,
     brute: {
-      why: `<p>Running the triple loop is O(n<sup>3</sup>/6) = 4.5·10<sup>18</sup> increments for n = 3·10<sup>6</sup> — centuries. Even the formula is a trap: n(n−1)(n−2) ≈ 2.7·10<sup>19</sup> <b>overflows</b> a 64-bit integer (max ≈ 9.22·10<sup>18</sup>) before you divide by 6, giving garbage.</p>`,
+      why: `<p>Running the triple loop is O(n<sup>3</sup>/6) = 4.5·10<sup>18</sup> increments for n = 3·10<sup>6</sup> — over a thousand years. Even the formula is a trap: n(n−1)(n−2) ≈ 2.7·10<sup>19</sup> <b>overflows</b> a 64-bit integer (max ≈ 9.22·10<sup>18</sup>) before you divide by 6, giving garbage.</p>`,
       code: { lang: 'java', code: `
 long brute(long n) {
     long count = 0;
@@ -4243,7 +4243,7 @@ console.log(String(totalDigits(13)), String(totalDigits(100)));   // 17 192`, ru
     constraints: `1 ≤ n ≤ 10<sup>15</sup>`,
     example: `<p>n = 3 → ${H.c('p', '<b>3</b>')}. n = 11 → the string is 1 2 3 4 5 6 7 8 9 ${H.c('b', '1 0')} ${H.c('y', '1 1')} …, digit 11 is the "0" of 10 → ${H.c('p', '<b>0</b>')}.</p>`,
     brute: {
-      why: `<p>Build the string (or walk number by number, subtracting digit counts) until you reach n: for n = 10<sup>15</sup> that is ~7·10<sup>13</sup> numbers → hours, and the string would need petabytes. Wasted work: whole blocks (all 2-digit numbers = 180 digits, all 3-digit = 2700 digits …) can be skipped at once.</p>`,
+      why: `<p>Build the string (or walk number by number, subtracting digit counts) until you reach n: for n = 10<sup>15</sup> that is ~7·10<sup>13</sup> numbers → days, and the string would need petabytes. Wasted work: whole blocks (all 2-digit numbers = 180 digits, all 3-digit = 2700 digits …) can be skipped at once.</p>`,
       code: { lang: 'java', code: `
 int bruteNthDigit(long n) {
     for (long num = 1; ; num++) {

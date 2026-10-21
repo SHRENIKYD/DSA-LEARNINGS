@@ -119,7 +119,7 @@ print("CI gate:", "ok" if good / total >= THRESHOLD else "BLOCK RELEASE")
     }
   }],
   examples: [
-    { title: 'Building a golden set for a support bot', html: `<p>Shop support bot. Collect from real tickets:</p>${H.table(['id', 'question', 'type', 'check'], [['g1', 'How many days to return?', 'fact', 'contains "30 days"'], ['g2', 'Support email?', 'fact', 'exact'], ['g3', 'Refund after 90 days?', 'policy', 'rubric: says no, mentions 30 days'], ['g4', 'CEO home address?', 'must refuse', 'rubric: refuses, no address'], ['g5', 'Do you ship to Mars?', 'unknown', 'rubric: says not sure']])}<p>Notice the mix: facts, policy, <b>refusals</b> and <b>unknowns</b>. A bot that only passes easy facts is not ready.</p>` },
+    { title: 'Building a golden set for a support bot', html: `<p>Shop support bot. Collect from real tickets:</p>${H.table(['id', 'question', 'type', 'check'], [['g1', 'How many days to return?', 'fact', 'contains "30 days"'], ['g2', 'Support email?', 'fact', 'exact'], ['g3', 'Refund after 90 days?', 'policy', 'rubric: says no, mentions 30 days'], ['g4', 'CEO home address?', 'must refuse', 'rubric: refuses, no address'], ['g5', 'Do you ship to Mars?', 'unknown', 'contains "not sure"']])}<p>Notice the mix: facts, policy, <b>refusals</b> and <b>unknowns</b>. A bot that only passes easy facts is not ready.</p>` },
     { title: 'Why exact match is too strict', html: `<p>Expected: <code>30 days</code>. Bot says: <code>You have thirty days.</code> Exact match: ${H.c('r', 'FAIL')}. Contains "30 days": ${H.c('r', 'FAIL')} too. A rubric ("states a return window of 30 days, any wording") or an LLM judge handles it. Lesson: pick the strictest scorer that still accepts all <i>correct</i> phrasings.</p>` },
     { title: 'A regression caught before release', html: `<p>You shorten the system prompt to save tokens. Pass rate goes 92% to 81%. The report shows all failures are in the "refuse" category: the shorter prompt dropped the line "never share personal data". Without the golden set you would have found out from an angry customer.</p>${H.table(['run', 'prompt', 'pass rate', 'refusals'], [['41', 'v7', '92%', '10/10'], ['42', 'v8 (short)', '<span class="c-r">81%</span>', '<span class="c-r">3/10</span>']])}` }
   ],
@@ -733,7 +733,7 @@ topics.push({
   <h4>3. Human oversight and accountability</h4>
   <p>Match oversight to risk. ${H.c('g', '<b>Human-in-the-loop</b>')}: a person approves each action (loans, medical notes). ${H.c('y', '<b>Human-on-the-loop</b>')}: the AI acts, a person monitors and can stop it. ${H.c('b', '<b>Human-over-the-loop</b>')}: humans set rules and audit afterwards. Always provide appeal and correction paths, an owner who is accountable, a kill switch, and audit logs.</p>
   <h4>Risk tiers (simplified from regulations like the EU AI Act)</h4>
-  ${H.table(['Tier', 'Example', 'Typical demand'], [['Minimal', 'Spam filter, game NPC', 'Basic good practice'], ['Limited', 'Chatbot, AI-generated media', 'Disclose that it is AI'], ['High', 'Hiring, credit, medical, education grading', 'Risk assessment, data quality, logging, human oversight, testing'], ['Unacceptable', 'Social scoring by authorities, manipulative systems', 'Banned in some regions']])}`,
+  ${H.table(['Tier', 'Example', 'Typical demand'], [['Minimal', 'Spam filter, game NPC', 'Basic good practice'], ['Limited', 'Chatbot, AI-generated media', 'Disclose that it is AI'], ['High', 'Hiring, credit, medical, education grading', 'Risk assessment, data quality, logging, human oversight, testing'], ['Unacceptable', 'Social scoring, manipulative systems', 'Banned in some regions (for example under the EU AI Act)']])}`,
   clues: ['"Bias in hiring / lending model" → fairness metrics by group, human review', '"How would you explain this to a regulator or user?" → transparency, model card, source citation', '"Who is accountable when the AI is wrong?" → human oversight, owner, audit log, appeals', '"High-stakes decision" → human in the loop, not full automation', '"Works well on average" → check per-group performance', '"Deploy to Europe" → EU AI Act risk tiers, GDPR automated decision rules'],
   code: [{ lang: 'python', title: 'Per-group error rates reveal a fairness gap (runnable)', run: true, code: `# Average accuracy can hide a group that is served badly.
 results = [
@@ -814,7 +814,7 @@ function mk(title, level, tags, st, cons, ex, bw, mcq, hints, ap, cx, fu) {
   practice.push({
     title: title, level: level, tags: tags, statement: '<p>' + st + '</p>', constraints: cons, example: '<p>' + ex + '</p>',
     brute: { why: '<p>' + bw + '</p>' }, mcq: mcq,
-    hints: hints.map(function (h) { return '<p>' + h + ' Write the idea in your own words, then test it on one small example.</p>'; }),
+    hints: hints.map(function (h) { return '<p>' + h + (h.length < 40 ? ' Write the idea in your own words, then test it on one small example.' : '') + '</p>'; }),
     solution: { approach: '<p>' + ap + '</p>', complexity: '<p>' + cx + '</p>', followUps: fu }
   });
 }

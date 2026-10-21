@@ -20,7 +20,7 @@
     analogy: `<p>An interview loop is like a <b>driving test with several examiners</b>. One checks your paperwork (resume), one checks basic road rules (online test), one rides with you in traffic (coding), one watches how you plan a long trip (system design), and one asks how you treat other drivers (behavioral). At the end all examiners sit together and decide. No single examiner decides alone, and one bad ride rarely fails you if the others are strong.</p>`,
     explain: `<p>Most product companies (Google-style, Amazon-style, startup-style) run the same <b>pipeline</b>. Names change, the shape does not.</p>
 ${H.table(['Stage', 'What happens', 'What it measures'], [
-  ['1. Resume screen', 'A recruiter (and often software) scans your resume for 6-15 seconds', 'Is there matching skill + visible impact?'],
+  ['1. Resume screen', 'A recruiter (and often software) scans your resume quickly, often for well under a minute', 'Is there matching skill + visible impact?'],
   ['2. Online assessment (OA)', '60-120 min timed coding test, sometimes with a work-style quiz', 'Can you code correctly and fast? Basic problem solving'],
   ['3. Recruiter screen', '20-30 min call about your background, salary range, timeline', 'Communication, motivation, logistics, red flags'],
   ['4. Technical phone screen', '45-60 min live coding with one engineer in a shared editor', 'Problem solving, clean code, talking while thinking'],
@@ -55,7 +55,7 @@ ${H.table(['Stage', 'What happens', 'What it measures'], [
         var stop = parseInt(String(input).trim(), 10);
         if (isNaN(stop) || stop < 0 || stop > 7) throw new Error('Enter a number from 0 to 7');
         var stages = [
-          ['Resume', 'Resume screen', 'Skill match + impact in 6-15 seconds', 'Pass: bullets show numbers'],
+          ['Resume', 'Resume screen', 'Skill match + impact in a quick scan', 'Pass: bullets show numbers'],
           ['OA', 'Online assessment', 'Correct code under time pressure', 'Pass: hidden tests green'],
           ['Recruiter', 'Recruiter screen', 'Motivation, communication, logistics', 'Pass: clear 60-second pitch'],
           ['Phone', 'Technical phone screen', 'Problem solving + talking while coding', 'Pass: working code + clean talk'],
@@ -146,7 +146,7 @@ ${H.table(['Time', 'Round', 'Interviewer', 'Main signal written down'], [
   topics.push({
     title: 'A Resume That Passes Screening (and LinkedIn Basics)',
     analogy: `<p>A resume is a <b>shop window</b>, not the whole shop. People walking by give it a few seconds. If the window shows "stuff", they walk on. If it shows one clear product with a price tag (a result with a number), they step inside. Your bullets are the price tags.</p>`,
-    explain: `<p>A recruiter spends roughly <b>6-15 seconds</b> on the first pass. Software (an ATS - Applicant Tracking System) also reads your file first. So the resume must work for a tired human <i>and</i> a simple parser.</p>
+    explain: `<p>A recruiter often spends <b>well under a minute</b> on the first pass. Software (an ATS - Applicant Tracking System) also reads your file first. So the resume must work for a tired human <i>and</i> a simple parser.</p>
 <h4>The impact bullet formula</h4>
 <p><b>"Did X, measured by Y, by doing Z."</b> Start with a strong action verb, say what changed (with a number), and name the how (tool or method).</p>
 ${H.table(['Weak bullet', 'Why weak', 'Impact bullet'], [
@@ -299,7 +299,7 @@ B.Tech Computer Science, Example Institute of Technology (2018 - 2022)`
     examples: [
       {
         title: 'Rewrite 1: from duty to result (backend)',
-        html: `<p><b>Before:</b> "Responsible for maintaining the order API."</p><p><b>After:</b> "Cut order-API error rate from 2.4% to 0.3% by adding idempotency keys and retries."</p><p>Notice: verb (Cut), metric (2.4% to 0.3%), method (idempotency keys, retries). Only 15 words.</p>`
+        html: `<p><b>Before:</b> "Responsible for maintaining the order API."</p><p><b>After:</b> "Cut order-API error rate from 2.4% to 0.3% by adding idempotency keys and retries."</p><p>Notice: verb (Cut), metric (2.4% to 0.3%), method (idempotency keys, retries). Only 14 words.</p>`
       },
       {
         title: 'Rewrite 2: no revenue numbers? Use time and scale',
@@ -310,13 +310,13 @@ B.Tech Computer Science, Example Institute of Technology (2018 - 2022)`
         html: `<p><b>Before:</b> "Was part of a team that moved the site to microservices."</p><p><b>After:</b> "Extracted the cart module into its own service (1 of 4 engineers), cutting its deploy time from 45 to 8 minutes."</p><p>It is honest about the team size and clear about your part.</p>`
       }
     ],
-    deepDive: `<p><b>How ATS actually works.</b> An ATS stores your parsed fields (name, jobs, skills, dates) and lets the recruiter search and filter. Most do <i>not</i> auto-reject with a magic score; the real risk is a bad parse (a two-column layout reading in the wrong order, a header in an image) so your skills simply do not appear in search. Plain structure fixes that. Keyword stuffing (white text with 50 buzzwords) is detected and is a fast no.</p>
+    deepDive: `<p><b>How ATS actually works.</b> An ATS stores your parsed fields (name, jobs, skills, dates) and lets the recruiter search and filter. Most do <i>not</i> auto-reject with a magic score; the real risk is a bad parse (a two-column layout reading in the wrong order, a header in an image) so your skills simply do not appear in search. Plain structure fixes that. Keyword stuffing (white text with 50 buzzwords) is often spotted by recruiters and counts against you.</p>
 <p><b>Tailoring.</b> Read the job post, list the top 5 skills it names, and make sure the true ones appear in your bullets with proof. A "Skills" list says "I know Kafka"; a bullet "retrying queue on Kafka cut failures 87%" proves it. Tailor in 10 minutes per application, not by rewriting everything.</p>
 <p><b>The truth test.</b> Every line is a possible interview question. Rule: <i>if you cannot explain it for 5 minutes, delete it.</i> Inflated numbers ("improved performance by 300%") are the top reason strong candidates get stuck in follow-ups. Background checks and reference calls may also verify titles and dates.</p>
 <p><b>Common senior mistakes.</b> Listing 12 years of every job at equal weight; a skills block with 40 tools; no sign of scope (team size, systems owned, budget). Prefer 3 strong bullets per recent role.</p>
 <p><b>Freshers.</b> Use projects with real details: users, data size, deploy link, tests, what you would change. A GitHub link with a readable README and a few commits is stronger than "Skills: everything". Internships and hackathons count - quantify them too.</p>
 <p><b>Gaps and switches.</b> Career gaps: one honest line ("Career break - family care, upskilled in cloud") beats hiding it. Switching domains: put a 2-line summary that links your past to the new target role.</p>
-<p><b>LinkedIn behaviour.</b> Recruiters search by title, skills, location, and recent activity. A complete profile ranks higher in recruiter search; posting is optional. Keep dates and titles identical to the resume; a mismatch triggers doubt. Connect with recruiters and engineers at target companies and send a short, specific note ("I read your team's post on payments retries - I work on similar problems").</p>`,
+<p><b>LinkedIn behaviour.</b> Recruiters search by title, skills, location, and recent activity. A complete profile is easier for recruiters to find; posting is optional. Keep dates and titles identical to the resume; a mismatch triggers doubt. Connect with recruiters and engineers at target companies and send a short, specific note ("I read your team's post on payments retries - I work on similar problems").</p>`,
     aiEra: `<p><b>What AI changes:</b> companies increasingly use AI to rank resumes against the job description, and candidates use AI to write them. Result: generic, perfectly polished resumes look identical, and recruiters grow suspicious of them. <b>Specific, true, numbers-backed bullets stand out.</b></p>
 <p><b>Use AI as a partner:</b> paste your honest draft and ask <code>Rewrite each bullet as "Did X, measured by Y, by doing Z". Keep every number and fact exactly as I give it. If a number is missing, ask me instead of inventing one.</code> Also ask: <code>Which keywords from this job post are missing from my resume that I can honestly claim?</code></p>
 <p><b>Where AI goes wrong:</b> it invents metrics ("improved efficiency by 40%"), adds tools you never used, and makes everyone sound the same. It may also hide your real voice so you cannot explain the line in the interview.</p>
@@ -678,7 +678,7 @@ ${H.table(['Check', 'Pass looks like'], [
       'Recruiter asks about salary early - know your range and the market band; do not name a number before you know the level',
       'Resume feedback says "too long / generic" - cut to one page and add numbers to every recent bullet',
       '"Are you using AI tools?" in an assessment policy - read the rule; assume no unless it says yes',
-      'Many applications, no replies - fix resume keywords first, then ask for referrals; referrals convert far better than cold applies'
+      'Many applications, no replies - fix resume keywords first, then ask for referrals; referrals often do better than cold applies'
     ],
     viz: {
       title: 'Your 6-week prep timeline',

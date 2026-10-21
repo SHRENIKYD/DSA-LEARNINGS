@@ -703,11 +703,13 @@ CMD python app.py`),
       code: DF(R`# syntax=docker/dockerfile:1
 FROM python:3.12-slim
 WORKDIR /app
-COPY requirements.txt .                                   # step 2: only the manifest
+# step 2: copy only the dependency manifest
+COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt                        # step 3: cached until requirements.txt changes
 RUN useradd --create-home --uid 10001 app
-COPY --chown=app:app src/ ./src/                           # code edits rebuild from here
+# code edits rebuild from here
+COPY --chown=app:app src/ ./src/
 USER 10001
 CMD ["python", "-m", "src.app"]`, 'Dockerfile (fixed order)'),
       alt: [PY(R`import re
@@ -2489,7 +2491,7 @@ docker compose exec web sh -c 'getent hosts db || echo "web cannot see db (good)
 curl -fsS localhost:8080/api/healthz && echo " api via web OK"
 docker compose --profile mail up -d mail               # optional mail catcher on :8025`, 'onboarding')],
     cx: `<p>First start ≈ build time plus ~15 s of health waits; later starts a few seconds. One image for three services means one build and one scan.</p>`,
-    f: ['Note: with <code>data</code> internal, api cannot reach the internet. How would you allow outbound calls for api only?', 'How would you run the same stack in CI for integration tests and tear it down reliably?']
+    f: ['Note: with <code>data</code> internal, worker (which is only on <code>data</code>) cannot reach the internet, while api can through <code>edge</code>. How would you allow outbound calls for worker only?', 'How would you run the same stack in CI for integration tests and tear it down reliably?']
   }));
 
   practice.push(P({

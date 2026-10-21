@@ -493,7 +493,7 @@ main();` },
     { lang: 'http', title: 'The raw text on the wire (HTTP/1.1)', code: `POST /api/orders HTTP/1.1
 Host: shop.example.com
 Content-Type: application/json
-Content-Length: 27
+Content-Length: 24
 Authorization: Bearer eyJhbGciOi...
 
 {"productId":42,"qty":2}
@@ -596,7 +596,7 @@ Set-Cookie: cart=; Max-Age=0
           [500, 'Internal Server Error', 'Server bug — retry later, report'], [502, 'Bad Gateway', 'Proxy got junk from upstream'], [503, 'Service Unavailable', 'Overloaded or down — retry with backoff'], [504, 'Gateway Timeout', 'Upstream too slow']
         ];
         var fam = ['Informational', 'Success', 'Redirect', 'Client error (your fault)', 'Server error (their fault)'];
-        var famTip = ['1xx: hold on, the final answer is coming.', '2xx: it worked.', '3xx: look somewhere else — the browser follows <code>Location</code> automatically.', '4xx: the request is wrong. Retrying the same request will not help.', '5xx: the server failed. Retrying later may help.'];
+        var famTip = ['1xx: hold on, the final answer is coming.', '2xx: it worked.', '3xx: look somewhere else — the browser follows <code>Location</code> automatically.', '4xx: the request is wrong. Retrying the same request usually will not help (429 Too Many Requests is the exception).', '5xx: the server failed. Retrying later may help.'];
         var hi = {};
         table.forEach(function (r, i) { if (r[0] === n) hi[i] = 'sel'; });
         var fc = Math.floor(n / 100);

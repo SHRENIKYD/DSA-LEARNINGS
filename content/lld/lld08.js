@@ -4667,7 +4667,7 @@ int main() {
         cout << MinTransfersDemo::minTransfers(balances) << "\\n";
 }` }
         ] },
-      { title: 'Constraint: only pay people you already owe', html: `<p>Some groups dislike "pay Chen, whom you never met". Then the settlement may only use <b>existing edges</b> (and their directions). That turns the problem into a <b>flow</b> problem: reduce flow along cycles (cycle cancelling) without creating new edges. Splitwise's own "simplify debts" setting is per-group and off by default for exactly this reason.</p>` }
+      { title: 'Constraint: only pay people you already owe', html: `<p>Some groups dislike "pay Chen, whom you never met". Then the settlement may only use <b>existing edges</b> (and their directions). That turns the problem into a <b>flow</b> problem: reduce flow along cycles (cycle cancelling) without creating new edges. Splitwise's own "simplify debts" setting is per-group and can be switched off for exactly this reason.</p>` }
     ],
     deepDive: `<p><b>Why greedy is bounded by n − 1.</b> Each iteration zeroes at least one person (the smaller of the two balances). With n non-zero people there can be at most n − 1 iterations before the last two cancel together (the last transfer zeroes both, since the totals sum to zero).</p>
 <p><b>Why the exact problem is hard.</b> A zero-sum group of size k can always be settled with k − 1 transfers, and no group can do better than that if it contains no smaller zero-sum subgroup. So minimising transfers ⇔ <b>maximising the number of disjoint zero-sum subsets</b> — a generalisation of the PARTITION problem, NP-hard. The subset DP is O(2<sup>n</sup>·n); a DFS with pruning (skip zeros, only pair with opposite signs, skip duplicate values) also works well for n ≤ 12–15.</p>
@@ -7616,7 +7616,7 @@ int main() {
     level: 'Easy', tags: ['library', 'dates', 'money'], companies: ['Zoho', 'TCS', 'Infosys'],
     statement: `<p>Write <code>feePaise(due, returned, bookPricePaise)</code> (<code>due</code> and <code>returned</code> are calendar dates, the price is in paise). No fee if returned on or before the due date. Otherwise the first 7 late days cost ₹2/day, every later day costs ₹5/day, and the total never exceeds the book's price.</p>`,
     constraints: `Dates within 1900–2100; price ≤ ₹10<sup>5</sup>; return paise as long`,
-    example: `<p>due 15 Oct, returned 24 Oct → 9 days late → 7×200 + 2×500 = ${H.c('g', '2400 paise')}.<br>due 28 Oct, returned 2 Nov → ${H.c('g', '5 days')} (crosses a month!) → 1000 paise.<br>due 1 Jan, returned 1 Apr, price ₹300 → raw ₹439 → ${H.c('y', 'capped at 30000')}.</p>`,
+    example: `<p>due 15 Oct, returned 24 Oct → 9 days late → 7×200 + 2×500 = ${H.c('g', '2400 paise')}.<br>due 28 Oct, returned 2 Nov → ${H.c('g', '5 days')} (crosses a month!) → 1000 paise.<br>due 1 Jan, returned 1 Apr, price ₹300 → 90 days late, raw ₹429 → ${H.c('y', 'capped at 30000')}.</p>`,
     brute: { why: `<p>Naive code subtracts day-of-month numbers (2 Nov − 28 Oct = −26 → "no fee") and forgets the cap, so a book lost for a year costs more than buying it. Both are classic date/money bugs.</p>`, code: { lang: 'java', code: `class NaiveFee {
     static long fee(LocalDate due, LocalDate returned) {
         int late = returned.getDayOfMonth() - due.getDayOfMonth();     // WRONG across months
@@ -9781,7 +9781,7 @@ int main() {
   practice.push({
     title: 'Optimal Account Balancing (Exact Minimum Transfers)',
     level: 'Hard', tags: ['splitwise', 'backtracking', 'bitmask dp'], companies: ['Google', 'Uber', 'Splitwise', 'Airbnb'],
-    statement: `<p>Given transactions <code>[from, to, amount]</code> (from gave money to to, so to now owes from — or think of it simply as a debt edge), return the <b>minimum number of transfers</b> needed to settle all debts. This is the exact version of "simplify debts" (LeetCode 465).</p>`,
+    statement: `<p>Given transactions <code>[from, to, amount]</code> (person <code>from</code> gave <code>amount</code> to person <code>to</code>, so <code>to</code> owes <code>from</code>), return the <b>minimum number of transfers</b> needed to settle all debts. This is the exact version of "simplify debts" (LeetCode 465).</p>`,
     constraints: `1 ≤ transactions ≤ 8, ids &lt; 12, amounts ≤ 100 (so ≤ 12 non-zero people)`,
     example: `<p>[[0,1,10],[2,0,5]] → nets: 0: −10+5 = −5, 1: +10, 2: −5 → ${H.c('g', '2')} transfers.<br>[[0,1,10],[1,0,1],[1,2,5],[2,0,5]] → nets 0: −4, 1: +4, 2: 0 → ${H.c('g', '1')}.</p>`,
     brute: { why: `<p>Naive: settle every transaction separately (m transfers), or use greedy max-debtor/max-creditor, which is fast but <b>not optimal</b>: nets +4, +3, −2, −2, −3 give 4 greedy transfers while 3 suffice.</p>`, code: { lang: 'java', code: `class GreedyOnly {

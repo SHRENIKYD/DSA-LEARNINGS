@@ -796,7 +796,7 @@ dis.dis(area)              # prints LOAD_CONST / STORE_FAST / BINARY_OP ... line
 <li>Shebang for executable scripts: <code>#!/usr/bin/env python3</code> on the first line, then <code>chmod +x</code>.</li>
 </ul>
 <h4>🟣 Edge cases worth knowing</h4>
-<ul><li>A file named <code>random.py</code> or <code>math.py</code> in your folder <b>shadows</b> the standard module — a classic beginner mystery ("module has no attribute randint"). Python 3.13 now warns about this.</li>
+<ul><li>A file named <code>random.py</code> or <code>math.py</code> in your folder <b>shadows</b> the standard module — a classic beginner mystery ("module has no attribute randint"). Python 3.13 adds a hint about this to the error message.</li>
 <li>Indentation is syntax: mixing tabs and spaces raises <code>TabError</code>. Configure your editor to insert 4 spaces.</li></ul>`,
     aiEra: R`<p><b>What AI changes:</b> assistants can install toolchains, write <code>pyproject.toml</code> files and explain error tracebacks instantly. Copilot-style tools autocomplete whole scripts, and agents can run code in sandboxes (often exactly this kind of Pyodide/WebAssembly or container REPL).</p>
 <p><b>Use AI as a partner:</b> paste a confusing traceback and ask <code>Explain this error in one sentence, then list the 3 most likely causes — don't rewrite my code yet</code>. Ask it to generate a setup checklist for your OS, then <i>verify each command yourself</i>.</p>
@@ -2086,7 +2086,7 @@ print(bin(flags), (255).bit_count())  # 0b100 8` } }
     return year % 4 == 0
 
 print(is_leap_buggy(2000))    # False  <- wrong, 2000 was a leap year` },
-      mcq: { q: 'Which expression is correct?', options: ['<code>y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)</code>', '<code>y % 4 == 0 and y % 100 != 0 or y % 400 == 0 and False</code>', '<code>y % 400 == 0 and y % 4 == 0 or y % 100 != 0</code>', '<code>y % 4 == 0 or y % 100 != 0</code>'], answer: 0, explain: 'Divisible by 4 AND (not a century OR a 400-multiple). Option 3 makes 2023 a leap year (2023 % 100 != 0 is True).' },
+      mcq: { q: 'Which expression is correct?', options: ['<code>y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)</code>', '<code>y % 4 == 0 and y % 100 != 0 or y % 400 == 0 and False</code>', '<code>y % 400 == 0 and y % 4 == 0 or y % 100 != 0</code>', '<code>y % 4 == 0 or y % 100 != 0</code>'], answer: 0, explain: 'Divisible by 4 AND (not a century OR a 400-multiple). Option C and Option D both end in "or y % 100 != 0", so they make 2023 a leap year (2023 % 100 != 0 is True).' },
       hints: [R`<p>Hint 1: Write the three rules as three small boolean facts: <code>div4</code>, <code>div100</code>, <code>div400</code>. Then combine them in words before writing operators.</p>`, R`<p>Hint 2: <code>and</code> binds tighter than <code>or</code>, so use brackets to make "not a century OR divisible by 400" one group.</p>`, R`<p>Hint 3: Test the four classic years: 2024 (T), 2023 (F), 1900 (F), 2000 (T). Recipe: <code>return y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)</code>.</p>`],
       tests: {
         sig: 'int -> bool',
@@ -2299,7 +2299,7 @@ print(big + 1)                         # 9007199254740993 exact as an int` } }
 <h4>🟣 Algorithms</h4>
 <ul>
 <li>Addition/subtraction: O(n) schoolbook with carries.</li>
-<li>Multiplication: schoolbook O(n²) below ~70 digits (2100 bits), <b>Karatsuba</b> O(n<sup>1.585</sup>) above. CPython does not use FFT multiplication — for million-digit maths use <code>gmpy2</code> (GMP).</li>
+<li>Multiplication: schoolbook O(n²) below ~70 internal 30-bit digits (2100 bits), <b>Karatsuba</b> O(n<sup>1.585</sup>) above. CPython does not use FFT multiplication — for million-digit maths use <code>gmpy2</code> (GMP).</li>
 <li>int → decimal str was quadratic; 3.12 added a faster divide-and-conquer algorithm for very large values, but the 4300-digit default limit (CVE-2020-10735) stays as a guard.</li>
 <li><code>pow(b, e, m)</code>: square-and-multiply with sliding windows, O(log e) multiplications of size log m.</li>
 </ul>

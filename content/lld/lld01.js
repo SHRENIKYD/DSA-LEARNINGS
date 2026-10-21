@@ -1420,7 +1420,7 @@ public:
             { type: 'set', label: 'Classes / enums kept so far', items: classes.slice() }
           ] });
         });
-        frames.push({ narr: 'Result: <b>6 classes + 1 enum</b> from 11 nouns. Two were merged or dropped, three became attributes. This filtering is what interviewers want to hear you say out loud.', parts: [
+        frames.push({ narr: 'Result: <b>6 classes + 1 enum</b> from 11 nouns. Two were merged or dropped, and two groups (title/author/ISBN, day/due date) became attributes. This filtering is what interviewers want to hear you say out loud.', parts: [
           { type: 'set', label: 'Final model', items: ['Library', 'Book', 'BookCopy', 'Member', 'Loan', 'Fine', 'enum CopyStatus'], hl: { 'enum CopyStatus': 'sel' } },
           { type: 'table', label: 'Verbs → owners', columns: ['verb in requirement', 'method', 'owner (who has the data)'], rows: [['borrow', 'checkout(member, copy)', 'Library (coordinates)'], ['up to 3', 'canBorrow()', 'Member'], ['records loan / due date', 'new Loan(...)', 'Loan constructor'], ['charges fine', 'fineFor(today)', 'Loan (knows due date)'], ['available/loaned/lost', 'markLoaned(), markLost()', 'BookCopy']] }
         ] });

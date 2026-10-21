@@ -3338,7 +3338,7 @@ Promise.resolve().then(() => out.push(1)).then(() => out.push(2)).then(() => out
 setTimeout(() => console.log('plain value version:', out.join(' ')), 0);
 ` } },
     mcq: { q: 'How many microtask ticks does `return Promise.resolve(4)` add compared to `return 4`?', options: ['0', '1', '2', 'It waits for a macrotask'], answer: 2, explain: 'Tick A: NewPromiseResolveThenableJob calls inner.then(resolveOuter). Tick B: that then-reaction runs and resolves the outer promise. Then the next handler is queued.' },
-    hints: [`<p>Hint 1: write ticks as columns. Tick 1: log 0 (returns a promise), log 1.</p>`, `<p>Hint 2: resolving with a thenable queues a <b>job</b> (tick 2) that calls <code>p.then(resolve)</code>; that reaction runs on tick 3 and finally fulfils the outer promise.</p>`, `<p>Hint 3: the handler that logs 4 is then queued for tick 4 — the same tick as 3's successor... count carefully: 2 on tick 2, 3 on tick 3, 4 and 5 on tick 4 (4 was queued first), 6 on tick 5.</p>`],
+    hints: [`<p>Hint 1: write ticks as columns. Tick 1: log 0 (returns a promise), log 1.</p>`, `<p>Hint 2: resolving with a thenable queues a <b>job</b> (tick 2) that calls <code>p.then(resolve)</code>; that reaction runs on tick 3 and finally fulfils the outer promise.</p>`, `<p>Hint 3: the handler that logs 4 runs on tick 4. Count the ticks: 2 prints on tick 2, 3 on tick 3, 4 and 5 on tick 4 (4 was queued first), 6 on tick 5.</p>`],
     tests: { io: true, cases: [
       {"stdin":"","stdout":"0 1 2 3 4 5 6"}
     ] },

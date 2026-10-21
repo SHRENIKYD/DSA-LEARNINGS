@@ -67,30 +67,30 @@
         ['"contiguous subarray / substring" + "longest / shortest" + all values ≥ 0', H.c('g', 'Sliding window (grow / shrink)'), 'DSA 6, 8'],
         ['"subarray sum = K" and <b>negatives allowed</b>', H.c('g', 'Prefix sum + hash map of counts'), 'DSA 5, 8'],
         ['"range sum" many times, no updates', H.c('g', 'Prefix sums, O(1) per query'), 'DSA 5'],
-        ['"range query" + "update" mixed', H.c('g', 'Fenwick / segment tree'), 'DSA 23'],
+        ['"range query" + "update" mixed', H.c('g', 'Fenwick / segment tree'), 'DSA 21'],
         ['"sorted" / "rotated" / "find position" in O(log N)', H.c('g', 'Binary search on index'), 'DSA 10'],
         ['"minimize the maximum" / "maximize the minimum" / "smallest speed so that…"', H.c('g', 'Binary search on the answer'), 'DSA 10'],
-        ['"next greater / smaller", "how many days until warmer", "histogram"', H.c('g', 'Monotonic stack'), 'DSA 14'],
-        ['"max of every window of size k"', H.c('g', 'Monotonic deque'), 'DSA 14'],
-        ['"top k", "kth largest", "k closest", "merge k sorted"', H.c('g', 'Heap of size k'), 'DSA 16'],
-        ['"running median", "stream"', H.c('g', 'Two heaps'), 'DSA 16'],
-        ['"prefix", "starts with", "dictionary of words"', H.c('g', 'Trie'), 'DSA 16'],
+        ['"next greater / smaller", "how many days until warmer", "histogram"', H.c('g', 'Monotonic stack'), 'DSA 13'],
+        ['"max of every window of size k"', H.c('g', 'Monotonic deque'), 'DSA 13'],
+        ['"top k", "kth largest", "k closest", "merge k sorted"', H.c('g', 'Heap of size k'), 'DSA 15'],
+        ['"running median", "stream"', H.c('g', 'Two heaps'), 'DSA 15'],
+        ['"prefix", "starts with", "dictionary of words"', H.c('g', 'Trie'), 'DSA 15'],
         ['"appears once while others twice", "XOR", "subset as mask"', H.c('g', 'Bit manipulation'), 'DSA 4'],
         ['"seen before?", "frequency", "anagram", "duplicates"', H.c('g', 'Hash map / hash set'), 'DSA 8'],
         ['"linked list" + "middle / cycle / kth from end"', H.c('g', 'Fast &amp; slow pointers'), 'DSA 12'],
-        ['"tree" + "height / path / subtree"', H.c('g', 'DFS returning a value upward'), 'DSA 15'],
-        ['"level by level", "minimum depth", "right view"', H.c('g', 'BFS with a queue'), 'DSA 15'],
-        ['"grid", "islands", "minimum steps", unweighted', H.c('g', 'BFS / DFS flood fill'), 'DSA 20'],
-        ['"spreads from many sources at once" (rotting, fire)', H.c('g', 'Multi-source BFS'), 'DSA 20'],
-        ['"prerequisites", "order of tasks", "dependencies"', H.c('g', 'Topological sort (Kahn)'), 'DSA 20'],
-        ['"groups merge over time", "are these connected?"', H.c('g', 'Union-Find (DSU)'), 'DSA 20'],
-        ['"weighted edges" + "cheapest / fastest" (non-negative)', H.c('g', 'Dijkstra'), 'DSA 21'],
-        ['"at most K stops / edges"', H.c('g', 'Bellman-Ford K rounds / BFS by level'), 'DSA 21'],
-        ['"connect all with minimum total cost"', H.c('g', 'MST (Kruskal + DSU)'), 'DSA 21'],
-        ['"intervals", "meetings", "minimum rooms / arrows"', H.c('g', 'Sort + greedy sweep / heap'), 'DSA 7, 17'],
-        ['"number of ways", "min cost", "can you reach" + choices at each step', H.c('g', 'Dynamic programming'), 'DSA 18, 19'],
+        ['"tree" + "height / path / subtree"', H.c('g', 'DFS returning a value upward'), 'DSA 14'],
+        ['"level by level", "minimum depth", "right view"', H.c('g', 'BFS with a queue'), 'DSA 14'],
+        ['"grid", "islands", "minimum steps", unweighted', H.c('g', 'BFS / DFS flood fill'), 'DSA 19'],
+        ['"spreads from many sources at once" (rotting, fire)', H.c('g', 'Multi-source BFS'), 'DSA 19'],
+        ['"prerequisites", "order of tasks", "dependencies"', H.c('g', 'Topological sort (Kahn)'), 'DSA 19'],
+        ['"groups merge over time", "are these connected?"', H.c('g', 'Union-Find (DSU)'), 'DSA 19'],
+        ['"weighted edges" + "cheapest / fastest" (non-negative)', H.c('g', 'Dijkstra'), 'DSA 20'],
+        ['"at most K stops / edges"', H.c('g', 'Bellman-Ford K rounds / BFS by level'), 'DSA 20'],
+        ['"connect all with minimum total cost"', H.c('g', 'MST (Kruskal + DSU)'), 'DSA 20'],
+        ['"intervals", "meetings", "minimum rooms / arrows"', H.c('g', 'Sort + greedy sweep / heap'), 'DSA 7, 16'],
+        ['"number of ways", "min cost", "can you reach" + choices at each step', H.c('g', 'Dynamic programming'), 'DSA 17, 18'],
         ['"list / generate ALL subsets / permutations / boards"', H.c('g', 'Backtracking'), 'DSA 11'],
-        ['N ≤ 20 and "choose a subset / visit all"', H.c('g', 'Bitmask DP or backtracking'), 'DSA 4, 24'],
+        ['N ≤ 20 and "choose a subset / visit all"', H.c('g', 'Bitmask DP or backtracking'), 'DSA 4, 23'],
         ['"design a cache / iterator / counter" with O(1) operations', H.c('g', 'Hash map + linked list / deque'), 'DSA 12, 27']
       ])}
       <p>Read the left column as <b>symptoms</b>, not rules. Most real problems show two or three symptoms at once; you pick the technique that explains <b>all</b> of them. Example: "subarray" suggests sliding window, but "negative numbers" breaks the window's grow/shrink logic, so prefix sum + hash wins.</p>
@@ -496,7 +496,7 @@ public:
         <p>Clue: "<b>least</b> X <b>such that</b> it is possible". If capacity 15 works, 16 also works — the answers are <b>monotonic</b> (NO NO NO YES YES YES). That shape is ${H.c('g', 'binary search on the answer')} between max(weight) and sum(weights), with a greedy O(N) check per guess: O(N log(sum)).</p>` },
       { title: 'Disguised graph: "Alien dictionary"', html: `<p>"Given words sorted in an unknown alphabet, find the alphabet order."</p>
         <p>Comparing neighbours <code>"wrt"</code> vs <code>"wrf"</code> tells you <b>t comes before f</b>. "Comes before" = <b>a directed edge</b>; "find an order" = ${H.c('g', 'topological sort')}. A cycle means no valid alphabet. The words were never called a graph — the relationships give it away.</p>` },
-      { title: 'Two clues fighting: "Maximum subarray sum with one deletion"', html: `<p>"Subarray" suggests sliding window, but values are negative and we want a <b>maximum</b>, not a fixed target. Window logic breaks. "Choose to delete or not at each step" is a <b>choice</b> → ${H.c('g', 'DP with two states')} (best ending here with no deletion / with one deletion). This is Kadane (DSA 5) + state-machine DP (DSA 19).</p>`, code: { lang: 'java', code: `int maximumSum(int[] a) {
+      { title: 'Two clues fighting: "Maximum subarray sum with one deletion"', html: `<p>"Subarray" suggests sliding window, but values are negative and we want a <b>maximum</b>, not a fixed target. Window logic breaks. "Choose to delete or not at each step" is a <b>choice</b> → ${H.c('g', 'DP with two states')} (best ending here with no deletion / with one deletion). This is Kadane (DSA 5) + state-machine DP (DSA 18).</p>`, code: { lang: 'java', code: `int maximumSum(int[] a) {
     int noDel = a[0], oneDel = Integer.MIN_VALUE / 2, best = a[0];
     for (int i = 1; i < a.length; i++) {
         oneDel = Math.max(oneDel + a[i], noDel); // either delete a[i] now, or we deleted earlier
@@ -781,8 +781,8 @@ for n in [10, 20, 500, 5000, 100000, 10**9]:
       }
     },
     examples: [
-      { title: 'N ≤ 15 — the size is shouting "bitmask"', html: `<p>"Assign 15 workers to 15 jobs at minimum total cost." 15! ≈ 1.3·10<sup>12</sup> (TLE), but 2<sup>15</sup>·15 ≈ 4.9·10<sup>5</sup> (instant). ${H.c('g', 'Bitmask DP')}: <code>dp[mask]</code> = min cost when the jobs in <code>mask</code> are taken by the first popcount(mask) workers (DSA 24).</p>` },
-      { title: 'N ≤ 10<sup>5</sup> and Q ≤ 10<sup>5</sup> range-sum queries', html: `<p>Answering each query with a loop: 10<sup>5</sup> × 10<sup>5</sup> = 10<sup>10</sup> → TLE. Prefix sums: build O(N) once, each query O(1), total 2·10<sup>5</sup>. If updates are mixed in, prefix sums break (an update costs O(N)) → ${H.c('g', 'Fenwick tree')} with O(log N) for both (DSA 23).</p>` },
+      { title: 'N ≤ 15 — the size is shouting "bitmask"', html: `<p>"Assign 15 workers to 15 jobs at minimum total cost." 15! ≈ 1.3·10<sup>12</sup> (TLE), but 2<sup>15</sup>·15 ≈ 4.9·10<sup>5</sup> (instant). ${H.c('g', 'Bitmask DP')}: <code>dp[mask]</code> = min cost when the jobs in <code>mask</code> are taken by the first popcount(mask) workers (DSA 23).</p>` },
+      { title: 'N ≤ 10<sup>5</sup> and Q ≤ 10<sup>5</sup> range-sum queries', html: `<p>Answering each query with a loop: 10<sup>5</sup> × 10<sup>5</sup> = 10<sup>10</sup> → TLE. Prefix sums: build O(N) once, each query O(1), total 2·10<sup>5</sup>. If updates are mixed in, prefix sums break (an update costs O(N)) → ${H.c('g', 'Fenwick tree')} with O(log N) for both (DSA 21).</p>` },
       { title: 'Values up to 10<sup>9</sup>, N ≤ 10<sup>5</sup>, "minimum largest sum"', html: `<p>You cannot loop over every candidate answer (up to 10<sup>14</sup>), but binary search over that range takes only log<sub>2</sub>(10<sup>14</sup>) ≈ 47 checks of O(N) each → about 5·10<sup>6</sup> steps. Also: sums reach 10<sup>14</sup>, so ${H.c('r', 'int overflows')} → use <code>long</code>.</p>`, code: { lang: 'java', code: `long lo = 0, hi = 0;
 int[] nums = {7, 2, 5, 10, 8};
 for (int x : nums) { lo = Math.max(lo, x); hi += x; }   // answer lies in [max, sum]
@@ -1210,7 +1210,7 @@ for n in [10, 100, 1000]:
       }
     },
     examples: [
-      { title: 'Using "solve it by hand": Gas Station', html: `<p>"Circular route, gas[i] and cost[i]; find the start station to complete the loop." Do it by hand with gas = [1,2,3,4,5], cost = [3,4,5,1,2]: start at 0, tank goes 1−3 = −2 → fail. Start at 1: −2 → fail. You quickly notice: <b>whenever the tank goes negative at station i, no start between the old start and i can work</b> — so jump the start to i+1. That observation <i>is</i> the O(N) greedy (DSA 17). You found it by watching yourself.</p>` },
+      { title: 'Using "solve it by hand": Gas Station', html: `<p>"Circular route, gas[i] and cost[i]; find the start station to complete the loop." Do it by hand with gas = [1,2,3,4,5], cost = [3,4,5,1,2]: start at 0, tank goes 1−3 = −2 → fail. Start at 1: −2 → fail. You quickly notice: <b>whenever the tank goes negative at station i, no start between the old start and i can work</b> — so jump the start to i+1. That observation <i>is</i> the O(N) greedy (DSA 16). You found it by watching yourself.</p>` },
       { title: 'Using "sort the input": Minimum arrows to burst balloons', html: `<p>Balloons are intervals; an arrow at x bursts all intervals containing x. Unsorted, it feels hopeless. Sort by <b>end</b>: shoot at the first end; skip every balloon starting at or before that point; repeat. ${H.arr(['[1,6]', '[2,8]', '[7,12]', '[10,16]'], { hl: { 0: 'g', 1: 'g', 2: 'b', 3: 'b' } })}<p>Arrow at 6 bursts the green pair, arrow at 12 the blue pair → 2 arrows.</p>` },
       { title: 'Using "guess the answer and check": Koko eating bananas', html: `<p>"Minimum eating speed to finish all piles in h hours." If someone told you the speed s, could you check it? Yes: hours = Σ ⌈pile / s⌉, one O(N) pass. And if s works, s+1 works too. Guess-and-check + monotonic ⇒ binary search on s in [1, max pile].</p>`, code: { lang: 'java', code: `long hoursAt(int[] piles, int s) {
     long h = 0;
@@ -1516,13 +1516,13 @@ for day in range(1, 4):
     },
     examples: [
       { title: 'Set A — 45 minutes (Easy, Medium, Medium)', html: `<ol><li>Valid Parentheses</li><li>Product of Array Except Self (no division)</li><li>Course Schedule II</li></ol>
-        <details><summary>Reveal patterns and target times</summary><p>1. Stack of open brackets — 8 min. 2. Prefix product × suffix product (DSA 5) — 15 min. 3. Kahn’s topological sort, return [] if a cycle remains (DSA 20) — 20 min.</p></details>
+        <details><summary>Reveal patterns and target times</summary><p>1. Stack of open brackets — 8 min. 2. Prefix product × suffix product (DSA 5) — 15 min. 3. Kahn’s topological sort, return [] if a cycle remains (DSA 19) — 20 min.</p></details>
         <p>Diagnosis practice: "every opener must match the latest unmatched opener" → LIFO → stack. "Except self" + "no division" → precompute left and right products.</p>` },
       { title: 'Set B — 60 minutes (Medium, Medium, Medium)', html: `<ol><li>Merge Intervals</li><li>Kth Largest Element in an Array</li><li>Word Break</li></ol>
-        <details><summary>Reveal patterns and target times</summary><p>1. Sort by start + merge into the last kept interval (DSA 7) — 15 min. 2. Min-heap of size k, or quickselect for average O(N) (DSA 7, 16) — 15 min. 3. DP: <code>dp[i]</code> = can the prefix of length i be split; try every dictionary word ending at i (DSA 19) — 25 min.</p></details>
+        <details><summary>Reveal patterns and target times</summary><p>1. Sort by start + merge into the last kept interval (DSA 7) — 15 min. 2. Min-heap of size k, or quickselect for average O(N) (DSA 7, 15) — 15 min. 3. DP: <code>dp[i]</code> = can the prefix of length i be split; try every dictionary word ending at i (DSA 18) — 25 min.</p></details>
         <p>The mix forces three different decisions: sort-based greedy, heap selection, and boolean DP.</p>` },
       { title: 'Set C — 75 minutes (Medium, Hard, Hard)', html: `<ol><li>LRU Cache</li><li>Sliding Window Maximum</li><li>Edit Distance</li></ol>
-        <details><summary>Reveal patterns and target times</summary><p>1. Hash map + doubly linked list, O(1) get/put (DSA 12) — 20 min. 2. Monotonic deque of indices, front = max (DSA 14) — 20 min. 3. 2D DP over prefixes: insert/delete/replace (DSA 18) — 30 min.</p></details>
+        <details><summary>Reveal patterns and target times</summary><p>1. Hash map + doubly linked list, O(1) get/put (DSA 12) — 20 min. 2. Monotonic deque of indices, front = max (DSA 13) — 20 min. 3. 2D DP over prefixes: insert/delete/replace (DSA 17) — 30 min.</p></details>
         <p>Typical outcome for a first attempt: 2 solved, 1 partial. That is fine — the error log entry is the win.</p>` },
       { title: 'Reading your set results like a coach', html: `${H.table(['symptom in results', 'diagnosis', 'fix'], [
         ['picked the wrong pattern', 'weak clue recognition', 'drill the master map (Topic 1), more interleaving'],
@@ -1919,7 +1919,7 @@ public:
           orangeGrid(g, 'grid (🍊 fresh, 🟤 rotten, · empty)'), txt('Phase', 'Clarify (minutes 0–5)')
         ] });
         frames.push({ narr: '<b>Candidate:</b> "Brute force would re-scan the whole grid every minute: O((R·C)²). But every rotten orange spreads at the same speed — that is <b>BFS from many sources at once</b>. One BFS level = one minute." <b>Interviewer:</b> "Sounds good, go ahead."', parts: [
-          orangeGrid(g, 'grid'), txt('Phase', 'Approach agreed (minutes 5–15). Pattern: multi-source BFS (DSA 20).')
+          orangeGrid(g, 'grid'), txt('Phase', 'Approach agreed (minutes 5–15). Pattern: multi-source BFS (DSA 19).')
         ] });
         var q = [], fresh = 0;
         g.forEach(function (r, i) { r.forEach(function (v, j) { if (v === 2) q.push([i, j]); else if (v === 1) fresh++; }); });
@@ -2014,7 +2014,7 @@ public:
         ['finished code', '"I think it works."', 'traces a normal case and an edge case, states complexity'],
         ['follow-up', '"I don’t know."', '"I haven’t done that, but my first idea would be…"']
       ])}` },
-      { title: 'Handling a follow-up you have never seen', html: `<p><b>I:</b> "Now the oranges also have a 'resistance' — some take 2 minutes to rot." This changes edge weights from 1 to {1, 2}. Strong answer: "Then BFS levels no longer equal time. With small integer weights I can use a <b>Dijkstra</b> with a heap, or a bucket queue / 0-1 BFS style deque if weights were 0 or 1. Complexity becomes O(R·C log(R·C))." You connected the twist back to the map (DSA 21) instead of panicking.</p>` }
+      { title: 'Handling a follow-up you have never seen', html: `<p><b>I:</b> "Now the oranges also have a 'resistance' — some take 2 minutes to rot." This changes edge weights from 1 to {1, 2}. Strong answer: "Then BFS levels no longer equal time. With small integer weights I can use a <b>Dijkstra</b> with a heap, or a bucket queue / 0-1 BFS style deque if weights were 0 or 1. Complexity becomes O(R·C log(R·C))." You connected the twist back to the map (DSA 20) instead of panicking.</p>` }
     ],
     deepDive: `<p><b>How rounds are actually scored.</b> Most big-tech rubrics have 4 dimensions — problem solving, coding, verification/testing, communication — each rated roughly from "strong no" to "strong yes", plus a free-text summary. Hiring committees read the text. A sentence like "candidate spotted multi-source BFS quickly, explained why BFS gives minutes, traced the −1 case unprompted" is what gets offers. Your job is to <b>generate evidence</b> for those sentences.</p>
       <p><b>Hints are not failures.</b> Interviewers note how much help you needed and how fast you used it. Taking a hint and running with it is a mild signal; needing the same hint repeated is a strong one. Ask for hints with structure: "I am choosing between a heap and sorting; is there a constraint I am missing?"</p>
@@ -2134,7 +2134,7 @@ int orangesRotting(vector<vector<int>> grid) {
         [[{"$rep":[2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"n":300}],299]
       ] },
       solution: {
-        approach: `<p>Multi-source BFS (DSA 20). All rotten cells are level 0. Each level rots all fresh neighbours of the current level. Stop when the queue is empty or no fresh oranges remain.</p>`,
+        approach: `<p>Multi-source BFS (DSA 19). All rotten cells are level 0. Each level rots all fresh neighbours of the current level. Stop when the queue is empty or no fresh oranges remain.</p>`,
         code: `class Solution {
     public int orangesRotting(int[][] grid) {
         int R = grid.length, C = grid[0].length, fresh = 0;
@@ -2547,7 +2547,7 @@ sort(v.begin(), v.end(), [](int x, int y) { return x < y; });   // safe; x - y c
 for (int x : v) cout << x << " ";              // -2000000000 0 2000000000
 cout << endl;` }] } },
       { title: 'Aliasing in backtracking results', html: `<p>In subsets/permutations, <code>result.add(path)</code> stores a <b>reference</b> to the list you keep mutating — at the end every stored "answer" is the same, usually empty, list. Fix: <code>result.add(new ArrayList&lt;&gt;(path))</code>. Quick test: print the result for input [1,2]; if you see [[], [], [], []] it is aliasing.</p>` },
-      { title: 'BFS marks visited on dequeue', html: `<p>On a 3×3 open grid, marking a cell visited only when it is <i>dequeued</i> lets neighbours enqueue it several times. It still gives correct distances but can blow up to O(4<sup>depth</sup>) queue size and TLE on 1000×1000 grids. Mark when you <b>enqueue</b>. Spotting it: count total pushes — more than R·C means a bug.</p>` }
+      { title: 'BFS marks visited on dequeue', html: `<p>On a 3×3 open grid, marking a cell visited only when it is <i>dequeued</i> lets neighbours enqueue it several times. Distances stay correct, but the queue fills with duplicates (up to 4 per cell; exponentially many if duplicates are expanded again) and can TLE on 1000×1000 grids. Mark when you <b>enqueue</b>. Spotting it: count total pushes — more than R·C means a bug.</p>` }
     ],
     deepDive: `<p><b>Why tracing beats staring.</b> Reading code, your brain sees what you <i>meant</i> to write. Writing the state table forces you to compute what the code <i>does</i>. The first row where "does" ≠ "meant" is the bug. This is the same principle as a debugger's single-step, available on a whiteboard.</p>
       <p><b>Invariants as debugging tools.</b> For each loop, state one sentence that must be true at the top of every iteration: "everything left of <code>lo</code> is &lt; t; everything from <code>hi</code> on is ≥ t". Then check it on each row of your trace. Invariants also tell you the right update: if a[mid] &lt; t, the invariant says mid belongs to the left side, so <code>lo = mid + 1</code>, not <code>mid</code>.</p>
@@ -3009,7 +3009,7 @@ public:
         return false;
     }
 };` }],
-        dry: { head: ['call', 'count map', 'check', 'result'], rows: [['add 1, 3, 5', '{1:1, 3:1, 5:1}', '—', '—'], ['find(4)', 'same', 'key 1 → need 3, present', H.c('g', 'true')], ['find(7)', 'same', '1→6 no, 3→4 no, 5→2 no', H.c('r', 'false')], ['add 3; find(6)', '{1:1, 3:2, 5:1}', 'key 1 → need 5, present', H.c('g', 'true')]] },
+        dry: { head: ['call', 'count map', 'check', 'result'], rows: [['add 1, 3, 5', '{1:1, 3:1, 5:1}', '—', '—'], ['find(4)', 'same', 'key 1 → need 3, present', H.c('g', 'true')], ['find(7)', 'same', '1→6 no, 3→4 no, 5→2 no', H.c('r', 'false')], ['add 3; find(6)', '{1:1, 3:2, 5:1}', 'key 3 → need 3, count is 2', H.c('g', 'true')]] },
         complexity: `<p>add O(1), find O(U) with U distinct values, space O(U). Alternative: add O(N), find O(1), space O(N<sup>2</sup>).</p>`,
         followUps: ['Support remove(number).', 'Thread-safe version: which operations need locking?', 'Values arrive as a stream and finds must be O(1) but memory is limited — what do you give up?']
       }
@@ -3209,7 +3209,7 @@ int main() {
         frames.push({ narr: 'Mistake #3 — <b>trusting greedy</b>. Coins {1, 3, 4}, amount 6. Greedy grabs the biggest coin first: 4, then 1, then 1 = <span class="c-r">3 coins</span>.', parts: [
           { type: 'bars', label: 'greedy picks', values: [4, 1, 1], idxLabels: ['pick 1', 'pick 2', 'pick 3'], hl: { 0: 'cur', 1: 'bad', 2: 'bad' } }
         ] });
-        frames.push({ narr: 'But 3 + 3 = 6 uses only <span class="c-g">2 coins</span>. Greedy is wrong here, so the problem needs <b>DP</b> (DSA 18). Habit: before coding a greedy, spend one minute hunting for a small counterexample like this.', parts: [
+        frames.push({ narr: 'But 3 + 3 = 6 uses only <span class="c-g">2 coins</span>. Greedy is wrong here, so the problem needs <b>DP</b> (DSA 17). Habit: before coding a greedy, spend one minute hunting for a small counterexample like this.', parts: [
           { type: 'bars', label: 'optimal picks', values: [3, 3], idxLabels: ['pick 1', 'pick 2'], hl: { 0: 'ok', 1: 'ok' } },
           { type: 'array', label: 'dp[amount] = min coins (0..6)', values: [0, 1, 2, 1, 1, 2, 2], hl: { 6: 'sel' }, showIdx: true }
         ] });
@@ -3221,7 +3221,7 @@ int main() {
       }
     },
     examples: [
-      { title: 'Dijkstra with a negative edge', html: `<p>Edges: A→B 2, A→C 5, C→B −4. Dijkstra settles B at cost 2 first (cheapest in the heap), then finds A→C→B = 1 too late — B was already "final". Correct answer 1, textbook Dijkstra (with a settled set) says 2. Versions that allow re-insertion happen to fix this tiny case but can take exponential time on bigger ones. ${H.c('r', 'Either way, negative edges break the "settled = final" guarantee')}. Use Bellman-Ford (DSA 21), or Johnson’s reweighting for all-pairs.</p>` },
+      { title: 'Dijkstra with a negative edge', html: `<p>Edges: A→B 2, A→C 5, C→B −4. Dijkstra settles B at cost 2 first (cheapest in the heap), then finds A→C→B = 1 too late — B was already "final". Correct answer 1, textbook Dijkstra (with a settled set) says 2. Versions that allow re-insertion happen to fix this tiny case but can take exponential time on bigger ones. ${H.c('r', 'Either way, negative edges break the "settled = final" guarantee')}. Use Bellman-Ford (DSA 20), or Johnson’s reweighting for all-pairs.</p>` },
       { title: 'Sliding window with negatives', html: `<p>"Shortest subarray with sum ≥ K", array [1, −5, 4, 4], K = 8. The window grows: running sums 1, −4, 0, 4 — never reaching 8, so it never shrinks and answers "none". But [4, 4] = 8 exists! The −5 inside the window drags the sum down, and a plain window has no rule for "drop the left part because it hurts". The correct tool is prefix sums + a monotonic deque (LeetCode 862). Clue: <b>negatives + "shortest/longest with sum"</b>.</p>` },
       { title: 'String building in a loop', html: `<p><code>s = s + c</code> inside a loop copies the whole string each time: 1 + 2 + … + N = O(N<sup>2</sup>) characters copied. For N = 10<sup>5</sup> that is 5·10<sup>9</sup> — TLE disguised as an O(N) algorithm.</p>`, code: { lang: 'java', code: `StringBuilder sb = new StringBuilder();
 for (int i = 0; i < 5; i++) sb.append(i).append(',');  // amortised O(1) per append
@@ -3236,11 +3236,11 @@ console.log(parts.join(""));                        // 0,1,2,3,4,` },
           { lang: 'cpp', code: `string sb;
 for (int i = 0; i < 5; i++) sb += to_string(i) + ',';   // amortised O(1) per append
 cout << sb << endl;                                     // 0,1,2,3,4,` }] } },
-      { title: 'DP state missing a dimension: stock with cooldown', html: `<p>Defining <code>dp[i]</code> = best profit up to day i is not enough: whether you may buy on day i depends on whether you <b>hold a stock</b> and whether you <b>sold yesterday</b>. Two different situations share one cell → wrong answers. Fix: states hold / sold / rest (DSA 19). The check: "Does the future depend on anything not stored in my state?" If yes, add it.</p>` }
+      { title: 'DP state missing a dimension: stock with cooldown', html: `<p>Defining <code>dp[i]</code> = best profit up to day i is not enough: whether you may buy on day i depends on whether you <b>hold a stock</b> and whether you <b>sold yesterday</b>. Two different situations share one cell → wrong answers. Fix: states hold / sold / rest (DSA 18). The check: "Does the future depend on anything not stored in my state?" If yes, add it.</p>` }
     ],
     deepDive: `<p><b>Why the same slips repeat.</b> Under stress the brain falls back on the most practised pattern ("windows solve subarray problems") and skips verification. The fix is not more knowledge but <b>cheap checks inserted at fixed points</b>: after choosing a pattern (counter-check table), after writing a loop (sizes 0/1/2), before saying done (edge case trace).</p>
       <p><b>Proof sketches kill pattern mistakes.</b> Greedy needs an exchange argument ("any optimal solution can be changed to include my greedy choice without getting worse"). Binary search on the answer needs monotonicity. Dijkstra needs non-negative weights. DP needs a state that captures everything the future depends on (the Markov property). If you cannot sketch the proof in two sentences, test with a small counterexample.</p>
-      <p><b>Overflow arithmetic in detail.</b> 32-bit ints (Java, and C++ in practice) wrap modulo 2<sup>32</sup> silently, and in C++ signed overflow is formally undefined behaviour. Python ints never overflow, and JavaScript numbers are doubles that lose exactness past 2<sup>53</sup> (use <code>BigInt</code>). In Java, <code>Math.addExact</code> / <code>Math.multiplyExact</code> throw on overflow — useful while testing. When computing modular products, cast to a 64-bit type (<code>long</code> / <code>long long</code>) before multiplying: (10<sup>9</sup>+6)<sup>2</sup> ≈ 10<sup>18</sup> fits in a long (max ≈ 9.2·10<sup>18</sup>), but the sum of two such products does not.</p>
+      <p><b>Overflow arithmetic in detail.</b> 32-bit ints (Java, and C++ in practice) wrap modulo 2<sup>32</sup> silently, and in C++ signed overflow is formally undefined behaviour. Python ints never overflow, and JavaScript numbers are doubles that lose exactness past 2<sup>53</sup> (use <code>BigInt</code>). In Java, <code>Math.addExact</code> / <code>Math.multiplyExact</code> throw on overflow — useful while testing. When computing modular products, cast to a 64-bit type (<code>long</code> / <code>long long</code>) before multiplying: (10<sup>9</sup>+6)<sup>2</sup> ≈ 10<sup>18</sup> fits in a long (max ≈ 9.2·10<sup>18</sup>), but the sum of ten of them does not.</p>
       <p><b>Floating point.</b> Comparing doubles with == fails (0.1 + 0.2 ≠ 0.3). Use integer arithmetic where possible (compare a/b with c/d as a·d vs c·b in long), or an epsilon. Geometry problems (DSA 26) use integer cross products for exactly this reason.</p>
       <p><b>Track your personal list.</b> Everyone has 3–5 favourite slips. Your error log (Topic 4) will reveal them within two weeks. Put them on a sticky note next to your screen in practice — and recite them silently before a real round.</p>`,
     aiEra: `<p><b>What AI changes:</b> AI-generated code makes the <i>same</i> classic mistakes, just faster: <code>(lo + hi) / 2</code>, <code>best = 0</code>, greedy where DP is needed, BFS marking visited on dequeue. Reviewing AI output against this mistake list is one of the most practical skills of 2026.</p>
@@ -3321,7 +3321,7 @@ int maxProduct(vector<int>& nums) {
         [[{"$concat":[{"$rep":2,"n":30},[-1]]}],1073741824]
       ] },
       solution: {
-        approach: `<p>Kadane variant (DSA 5 + DSA 19 state-machine flavour): two states per index — the largest and smallest product of a subarray ending here. A negative x swaps their roles; a zero resets both to 0, and the next element restarts fresh via the "x alone" candidate.</p>`,
+        approach: `<p>Kadane variant (DSA 5 + DSA 18 state-machine flavour): two states per index — the largest and smallest product of a subarray ending here. A negative x swaps their roles; a zero resets both to 0, and the next element restarts fresh via the "x alone" candidate.</p>`,
         code: `class Solution {
     public int maxProduct(int[] nums) {
         // long: the answer fits an int, but curMin can be about 10x larger than that
@@ -3804,7 +3804,7 @@ public:
 };` }],
       dry: { head: ['day', 'price', 'minSoFar', 'best'], rows: [['0', '7', '7', '0'], ['1', '1', '1', '0'], ['2', '5', '1', '4'], ['4', '6', '1', H.c('g', '5')]] },
       complexity: `<p>Time O(N), space O(1).</p>`,
-      followUps: ['Unlimited transactions (sum every rise).', 'At most k transactions (state-machine DP, DSA 19).', 'With a cooldown day after selling.']
+      followUps: ['Unlimited transactions (sum every rise).', 'At most k transactions (state-machine DP, DSA 18).', 'With a cooldown day after selling.']
     }
   });
 
@@ -3977,7 +3977,7 @@ bool isValid(string s) {
       [[{"$concat":[{"$rep":"{","n":5000},{"$rep":"}","n":4999},"("]}],false]
     ] },
     solution: {
-      approach: `<p><b>Clue:</b> nesting / "most recent" → stack (DSA 14). Pushing the <i>expected closer</i> makes the check a single comparison.</p>`,
+      approach: `<p><b>Clue:</b> nesting / "most recent" → stack (DSA 13). Pushing the <i>expected closer</i> makes the check a single comparison.</p>`,
       code: `class Solution {
     public boolean isValid(String s) {
         if (s.length() % 2 == 1) return false;
@@ -4352,7 +4352,7 @@ int numIslands(vector<vector<char>>& g) {
     }
     return islands;
 }` }] } },
-    mcq: { q: 'Each time the outer scan finds an unvisited land cell, what do you do?', options: ['Count +1 and flood-fill (BFS/DFS) its whole island, marking visited', 'Count +1 only', 'Sort the grid', 'Run Dijkstra'], answer: 0, explain: 'The flood fill guarantees each island is counted exactly once — the components pattern (DSA 20).' },
+    mcq: { q: 'Each time the outer scan finds an unvisited land cell, what do you do?', options: ['Count +1 and flood-fill (BFS/DFS) its whole island, marking visited', 'Count +1 only', 'Sort the grid', 'Run Dijkstra'], answer: 0, explain: 'The flood fill guarantees each island is counted exactly once — the components pattern (DSA 19).' },
     hints: [`<p>Hint 1: Islands are connected components of land cells.</p>`, `<p>Hint 2: Scan the grid; on unvisited land, increment the count and flood-fill to mark the whole island.</p>`, `<p>Hint 3: Use an explicit stack/queue — recursive DFS can be 90,000 deep on a 300×300 all-land grid. Mark cells when pushing.</p>`],
     tests: { sig: 'char[][] -> int', fn: 'numIslands', cases: [
       [[[["1","1","0","0","0"],["1","1","0","0","0"],["0","0","1","0","0"],["0","0","0","1","1"]]],3],
@@ -4626,7 +4626,7 @@ vector<int> dailyTemperatures(vector<int>& t) {
             if (t[j] > t[i]) { ans[i] = j - i; break; }
     return ans;
 }` }] } },
-    mcq: { q: '"Days until a warmer temperature" is which classic?', options: ['Next greater element → monotonic decreasing stack of indices', 'Sliding window maximum', 'Binary search on the answer', 'Kadane'], answer: 0, explain: 'Every "next greater/smaller" question is a monotonic stack (DSA 14).' },
+    mcq: { q: '"Days until a warmer temperature" is which classic?', options: ['Next greater element → monotonic decreasing stack of indices', 'Sliding window maximum', 'Binary search on the answer', 'Kadane'], answer: 0, explain: 'Every "next greater/smaller" question is a monotonic stack (DSA 13).' },
     hints: [`<p>Hint 1: This is "next greater element", returning distances instead of values.</p>`, `<p>Hint 2: Keep a stack of indices whose answer is unknown; their temperatures are decreasing from bottom to top.</p>`, `<p>Hint 3: When t[i] is warmer than the top, pop it and set ans[top] = i − top. Repeat, then push i. Leftovers keep 0.</p>`],
     tests: { sig: 'int[] -> int[]', fn: 'dailyTemperatures', cases: [
       [[[73,74,75,71,69,72,76,73]],[1,1,4,2,1,1,0,0]],
@@ -4794,7 +4794,7 @@ vector<int> findOrder(int n, vector<vector<int>>& prerequisites) {
       [[2000,[]],{"$range":[0,2000]}]
     ] },
     solution: {
-      approach: `<p><b>Clue:</b> "prerequisites", "order" → topological sort (DSA 20). Kahn’s BFS gives the order and cycle detection in one pass.</p>`,
+      approach: `<p><b>Clue:</b> "prerequisites", "order" → topological sort (DSA 19). Kahn’s BFS gives the order and cycle detection in one pass.</p>`,
       code: `class Solution {
     public int[] findOrder(int n, int[][] prerequisites) {
         List<List<Integer>> adj = new ArrayList<>();
@@ -5056,7 +5056,7 @@ int coinChange(vector<int>& coins, int amount) {
     }
     return best == INT_MAX ? -1 : best;
 }` }] } },
-    mcq: { q: 'What does dp[a] mean in the standard solution?', options: ['Fewest coins that sum exactly to a', 'Number of ways to make a', 'Largest coin used for a', 'Whether coin a exists'], answer: 0, explain: 'Then dp[a] = 1 + min over coins c ≤ a of dp[a − c] (DSA 18).' },
+    mcq: { q: 'What does dp[a] mean in the standard solution?', options: ['Fewest coins that sum exactly to a', 'Number of ways to make a', 'Largest coin used for a', 'Whether coin a exists'], answer: 0, explain: 'Then dp[a] = 1 + min over coins c ≤ a of dp[a − c] (DSA 17).' },
     hints: [`<p>Hint 1: Greedy fails ({1,3,4}, 6). "Fewest" + choices at each step → DP.</p>`, `<p>Hint 2: dp[a] = min over coins c of dp[a − c] + 1, with dp[0] = 0.</p>`, `<p>Hint 3: Fill a from 1 to amount; use a sentinel "infinity" = amount + 1. Watch out: coins can be up to 2<sup>31</sup>−1, so check c ≤ a before subtracting.</p>`],
     tests: { sig: 'int[] int -> int', fn: 'coinChange', cases: [
       [[[1,3,4],6],2],
@@ -5166,7 +5166,7 @@ vector<int> maxSlidingWindow(vector<int>& nums, int k) {
     }
     return res;
 }` }] } },
-    mcq: { q: 'Why may we discard a value that has a larger value to its right inside the window?', options: ['The larger one stays in the window longer and is bigger, so the smaller can never be a max again', 'To save memory only', 'Because the array is sorted', 'We may not discard it'], answer: 0, explain: 'Dominated elements are useless → keep a decreasing deque (DSA 14).' },
+    mcq: { q: 'Why may we discard a value that has a larger value to its right inside the window?', options: ['The larger one stays in the window longer and is bigger, so the smaller can never be a max again', 'To save memory only', 'Because the array is sorted', 'We may not discard it'], answer: 0, explain: 'Dominated elements are useless → keep a decreasing deque (DSA 13).' },
     hints: [`<p>Hint 1: A value is useless once a bigger value appears after it.</p>`, `<p>Hint 2: Deque of indices with decreasing values: pop from the back while smaller than the new value; the front is the max.</p>`, `<p>Hint 3: Pop the front if its index ≤ i − k (left the window). Record the front once i ≥ k − 1.</p>`],
     tests: { sig: 'int[] int -> int[]', fn: 'maxSlidingWindow', cases: [
       [[[1,3,-1,-3,5,3,6,7],3],[3,3,5,5,6,7]],
@@ -5244,7 +5244,7 @@ public:
         return res;
     }
 };` }],
-      dry: { head: ['i', 'nums[i]', 'deque (values)', 'output'], rows: [['2', '−1', '[3, −1]', '3'], ['3', '−3', '[3, −1, −3]', '3'], ['4', '5', '[5] (3 expired, rest dominated)', '5'], ['6', '6', '[6]', '6'], ['7', '7', '[7]', H.c('g', '7')]] },
+      dry: { head: ['i', 'nums[i]', 'deque (values)', 'output'], rows: [['2', '−1', '[3, −1]', '3'], ['3', '−3', '[3, −1, −3]', '3'], ['4', '5', '[5] (3 expired, rest dominated)', '5'], ['5', '3', '[5, 3]', '5'], ['6', '6', '[6]', '6'], ['7', '7', '[7]', H.c('g', '7')]] },
       complexity: `<p>Time O(N) amortised, space O(k).</p>`,
       followUps: ['Window minimum at the same time.', 'Shortest subarray with sum ≥ K (deque over prefix sums).', 'Constrained subsequence sum (deque-optimised DP).']
     }
@@ -5307,7 +5307,7 @@ ListNode* mergeKLists(vector<ListNode*>& lists) {
     }
     return dummy.next;
 }` }] } },
-    mcq: { q: 'Which structure finds the smallest of k heads in O(log k)?', options: ['Min-heap (priority queue) of list nodes', 'Stack', 'Hash map', 'Sorted array rebuilt each step'], answer: 0, explain: '"Merge k sorted" is a heap signature (DSA 16): poll the smallest, push its successor.' },
+    mcq: { q: 'Which structure finds the smallest of k heads in O(log k)?', options: ['Min-heap (priority queue) of list nodes', 'Stack', 'Hash map', 'Sorted array rebuilt each step'], answer: 0, explain: '"Merge k sorted" is a heap signature (DSA 15): poll the smallest, push its successor.' },
     hints: [`<p>Hint 1: At any moment the next output node is the smallest of the k current heads.</p>`, `<p>Hint 2: Keep those heads in a min-heap ordered by value.</p>`, `<p>Hint 3: Skip null lists. Use a dummy head. Compare nodes by <code>val</code> (Java: <code>Integer.compare(a.val, b.val)</code>; Python: push <code>(val, index, node)</code> tuples).</p>`],
     tests: { sig: 'ListNode[] -> ListNode', fn: 'mergeKLists', cases: [
       [[[[1,4,5],[1,3,4],[2,6]]],[1,1,2,3,4,4,5,6]],
@@ -5621,7 +5621,7 @@ int ladderLength(const string& cur, const string& end, const unordered_set<strin
     }
     return best;
 }` }] } },
-    mcq: { q: '"Shortest sequence of one-letter changes" is…', options: ['BFS on an implicit graph whose nodes are words', 'Dijkstra with weights = letter distance', 'DP over the word list order', 'Backtracking for all paths'], answer: 0, explain: 'All moves cost 1 → unweighted shortest path → BFS (DSA 20). The graph is never given; you generate neighbours.' },
+    mcq: { q: '"Shortest sequence of one-letter changes" is…', options: ['BFS on an implicit graph whose nodes are words', 'Dijkstra with weights = letter distance', 'DP over the word list order', 'Backtracking for all paths'], answer: 0, explain: 'All moves cost 1 → unweighted shortest path → BFS (DSA 19). The graph is never given; you generate neighbours.' },
     hints: [`<p>Hint 1: Words are nodes, one-letter changes are edges, each costs 1.</p>`, `<p>Hint 2: BFS from beginWord. Generate neighbours by trying all 26 letters at each position (O(26·L) per word) and checking the dictionary set.</p>`, `<p>Hint 3: Remove words from the set when enqueued (visited). If endWord is not in the list, return 0 immediately.</p>`],
     tests: { sig: 'string string list<string> -> int', fn: 'ladderLength', cases: [
       [["hit","cog",["hot","dot","dog","lot","log","cog"]],5],
@@ -5790,7 +5790,7 @@ vector<int> countSmaller(vector<int>& nums) {
     }
     return res;
 }` }] } },
-    mcq: { q: 'Scanning from right to left, which operation do you need per element?', options: ['"How many seen values are &lt; x?" then "add x" — a prefix count query + point update (Fenwick tree)', 'Find the maximum seen so far', 'Check whether x was seen', 'Sort the seen values every time'], answer: 0, explain: 'Prefix count + point update on a value-indexed array is exactly what a Fenwick tree does in O(log N) (DSA 23).' },
+    mcq: { q: 'Scanning from right to left, which operation do you need per element?', options: ['"How many seen values are &lt; x?" then "add x" — a prefix count query + point update (Fenwick tree)', 'Find the maximum seen so far', 'Check whether x was seen', 'Sort the seen values every time'], answer: 0, explain: 'Prefix count + point update on a value-indexed array is exactly what a Fenwick tree does in O(log N) (DSA 21).' },
     hints: [`<p>Hint 1: Walk from right to left; the "seen" set is exactly the elements to the right.</p>`, `<p>Hint 2: Keep counts indexed by value; the answer for x is the count of values &lt; x — a prefix sum with updates → Fenwick tree.</p>`, `<p>Hint 3: Shift values by +10<sup>4</sup>+1 so indices are ≥ 1 (or coordinate-compress for large ranges). Query(x − 1) before update(x).</p>`],
     tests: { sig: 'int[] -> list<int>', fn: 'countSmaller', cases: [
       [[[5,2,6,1]],[2,1,1,0]],
@@ -5890,12 +5890,12 @@ public:
   // QUIZ — mixed pattern recognition
   // =====================================================================
   quiz.push({ q: '"Given an array that may contain negative numbers, find the length of the longest subarray with sum exactly k." First technique?', options: ['Prefix sum + hash map storing the FIRST index of each prefix', 'Sliding window', 'Two pointers after sorting', 'Monotonic stack'], answer: 0, explain: 'Negatives break windows; sorting destroys contiguity. Store first occurrence of each prefix sum to maximise length.' });
-  quiz.push({ q: 'Constraint says <code>N ≤ 18</code> and asks for the best way to visit all cities. Target complexity?', options: ['O(2<sup>N</sup> · N<sup>2</sup>) bitmask DP', 'O(N log N)', 'O(N!) is required', 'O(N<sup>3</sup>) Floyd-Warshall only'], answer: 0, explain: '2<sup>18</sup> · 18<sup>2</sup> ≈ 8.5·10<sup>7</sup> fits; 18! ≈ 6.4·10<sup>15</sup> does not. Small N + "visit all" = bitmask DP (DSA 24).' });
+  quiz.push({ q: 'Constraint says <code>N ≤ 18</code> and asks for the best way to visit all cities. Target complexity?', options: ['O(2<sup>N</sup> · N<sup>2</sup>) bitmask DP', 'O(N log N)', 'O(N!) is required', 'O(N<sup>3</sup>) Floyd-Warshall only'], answer: 0, explain: '2<sup>18</sup> · 18<sup>2</sup> ≈ 8.5·10<sup>7</sup> fits; 18! ≈ 6.4·10<sup>15</sup> does not. Small N + "visit all" = bitmask DP (DSA 23).' });
   quiz.push({ q: '"Find the minimum largest distance between adjacent gas stations after adding k stations." Which phrase is the giveaway?', options: ['"minimum largest" — minimise the maximum → binary search on the answer', '"gas stations" → greedy', '"adjacent" → two pointers', '"add k" → heap is the only option'], answer: 0, explain: 'Minimise-the-maximum with a monotone feasibility check is the binary-search-on-answer signature.' });
   quiz.push({ q: 'Which statement about the 10<sup>8</sup>-operations-per-second rule is most accurate?', options: ['It is a rough budget; constants, cache behaviour and language speed shift it', 'It is an exact law for every computer', 'It only applies to C++', 'It means O(N<sup>2</sup>) always passes for N = 10<sup>5</sup>'], answer: 0, explain: 'It is an estimate for planning. N = 10<sup>5</sup> squared is 10<sup>10</sup>, about 100 seconds.' });
   quiz.push({ q: 'In the 8-step approach, when should you start writing real code?', options: ['After clarifying, examples, brute force, optimising and agreeing on the approach', 'Immediately, to save time', 'Only after the interviewer gives the solution', 'After writing all test cases in code'], answer: 0, explain: 'Coding before agreement is the most common process mistake; the thinking steps make the coding short.' });
   quiz.push({ q: 'Your binary search hangs on input [1, 3] with target 2. Most likely bug?', options: ['<code>lo = mid</code> instead of <code>lo = mid + 1</code>', '<code>hi = mid</code>', 'Using a 64-bit integer type (<code>long</code> / <code>long long</code>)', 'The array is too small'], answer: 0, explain: 'With two elements mid == lo, so lo = mid makes no progress.' });
-  quiz.push({ q: 'BFS on a grid where moving into a cell costs either 0 or 1. Best algorithm?', options: ['0-1 BFS with a deque (push front for 0, back for 1)', 'Plain BFS with a queue', 'DFS', 'Floyd-Warshall'], answer: 0, explain: 'Plain BFS assumes equal weights. 0-1 BFS is Dijkstra specialised to weights 0/1, O(V + E) (DSA 21).' });
+  quiz.push({ q: 'BFS on a grid where moving into a cell costs either 0 or 1. Best algorithm?', options: ['0-1 BFS with a deque (push front for 0, back for 1)', 'Plain BFS with a queue', 'DFS', 'Floyd-Warshall'], answer: 0, explain: 'Plain BFS assumes equal weights. 0-1 BFS is Dijkstra specialised to weights 0/1, O(V + E) (DSA 20).' });
   quiz.push({ q: 'Workload: 10<sup>5</sup> range-sum queries and 10<sup>5</sup> point updates on 10<sup>5</sup> numbers. Best fit?', options: ['Fenwick tree (O(log N) each)', 'Prefix sums rebuilt after each update', 'Naive loop per query', 'Sorting'], answer: 0, explain: 'Prefix sums make updates O(N) → 10<sup>10</sup> total. Fenwick: ~3.4·10<sup>6</sup>.' });
   quiz.push({ q: 'Greedy coin change works for coins {1, 5, 10, 25} but not for {1, 3, 4}. What should you do before coding a greedy in an interview?', options: ['Try to break it with a small counterexample, or sketch an exchange argument', 'Trust it if it passes the sample', 'Always use DP instead of greedy', 'Sort coins descending, which fixes it'], answer: 0, explain: 'Greedy needs a proof; a one-minute counterexample hunt is the practical substitute.' });
   quiz.push({ q: 'You compute <code>(lo + hi) / 2</code> with lo = hi = 2·10<sup>9</sup> in 32-bit ints (Java, C++). What happens?', options: ['Overflow: the sum wraps negative and mid becomes negative', 'It throws an arithmetic exception', 'It returns 2·10<sup>9</sup>', 'It promotes to long automatically'], answer: 0, explain: 'A 32-bit int wraps silently (Python ints never overflow; JavaScript numbers are doubles). Use lo + (hi − lo) / 2.' });
@@ -5948,7 +5948,7 @@ public:
       'Explain trade-offs (time vs space, preprocessing vs queries, average vs worst case, simplicity vs optimality) with a clear, constraint-based choice',
       'Solve a mixed set of 16 problems across 12+ patterns and build a personal error log and last-week revision plan'
     ],
-    prereqs: `The whole DSA track, especially DSA 5–6 (prefix sums, two pointers, sliding window), DSA 8 (hashing), DSA 10 (binary search), DSA 14 (stacks/queues), DSA 15–16 (trees, heaps, tries), DSA 17–19 (greedy and DP) and DSA 20–21 (graphs). Advanced modules (DSA 22–27) help with the hardest follow-ups but are not required.`,
+    prereqs: `The whole DSA track, especially DSA 5–6 (prefix sums, two pointers, sliding window), DSA 8 (hashing), DSA 10 (binary search), DSA 13 (stacks/queues), DSA 14–15 (trees, heaps, tries), DSA 16–18 (greedy and DP) and DSA 19–20 (graphs). Advanced modules (DSA 22–27) help with the hardest follow-ups but are not required.`,
     hours: 20,
     langNotes: {
       java: `<p><b>Java:</b> <code>int</code> wraps silently on overflow, so use <code>long</code> for sums, products and the binary-search midpoint (<code>lo + (hi - lo) / 2</code>). Recursion is limited to roughly 10,000 frames, so deep DFS needs an explicit stack. <code>PriorityQueue</code> is a min-heap, <code>ArrayDeque</code> is the stack and the queue, <code>HashMap</code> is O(1) on average and <code>TreeMap</code> is O(log N). Compare boxed values with <code>equals</code>, and sort with <code>Integer.compare</code>, never <code>a - b</code>.</p>`,

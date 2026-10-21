@@ -136,7 +136,7 @@ topics.push({
   <p><b>Tags, elements, attributes.</b> A <b>tag</b> is the label in angle brackets. An <b>element</b> is the start tag + content + end tag together: <code>&lt;a href="/home"&gt;Home&lt;/a&gt;</code>. <code>href="/home"</code> is an <b>attribute</b> (extra settings written as name="value" inside the start tag).</p>
   <p><b>Nesting.</b> Elements go <i>inside</i> other elements like boxes inside boxes. The rule: <b>last opened, first closed</b>. <code>&lt;b&gt;&lt;i&gt;hi&lt;/i&gt;&lt;/b&gt;</code> is right, <code>&lt;b&gt;&lt;i&gt;hi&lt;/b&gt;&lt;/i&gt;</code> is wrong. (That is exactly a <b>stack</b> — you will watch one in the visualizer.)</p>
   <p><b>Void elements</b> have no content and no end tag: <code>&lt;br&gt; &lt;hr&gt; &lt;img&gt; &lt;input&gt; &lt;meta&gt; &lt;link&gt;</code>. Writing <code>&lt;br/&gt;</code> is allowed but the slash does nothing in HTML.</p>
-  <p><b>Block vs inline (first look).</b> <i>Block</i> elements (<code>div, p, h1, ul</code>) start on a new line and take the full width. <i>Inline</i> elements (<code>span, a, strong, img</code>) flow inside a line of text. Rule of thumb: inline elements must not contain block elements (an <code>&lt;a&gt;</code> may wrap a block in HTML5, but a <code>&lt;p&gt;</code> may never contain a <code>&lt;div&gt;</code>).</p>
+  <p><b>Block vs inline (first look).</b> <i>Block</i> elements (<code>div, p, h1, ul</code>) start on a new line and take the full width. <i>Inline</i> elements (<code>span, a, strong, img</code>) flow inside a line of text. Rule of thumb: put inline elements inside block elements, not the other way round. One exception: an <code>&lt;a&gt;</code> may wrap a block in HTML5. But a <code>&lt;p&gt;</code> may never contain a <code>&lt;div&gt;</code>.</p>
   <p><b>Text details.</b> Whitespace is collapsed: many spaces and newlines show as one space. To show a real <code>&lt;</code> write <code>&amp;lt;</code>; an ampersand is <code>&amp;amp;</code>; a non-breaking space is <code>&amp;nbsp;</code>. Always add <code>&lt;meta charset="utf-8"&gt;</code> as the very first thing in the head so emoji and accents are not garbled.</p>`,
   clues: [
     '"What does <code>&lt;!DOCTYPE html&gt;</code> do?" → standards mode vs quirks mode',
@@ -222,7 +222,7 @@ console.log(checkNesting('<ul><li>One<li>Two</ul>'));      // browsers fix this,
       ${H.table(['What you wrote', 'What the browser builds', 'Lesson'], [
         ['<code>&lt;p&gt;One&lt;p&gt;Two</code>', 'Two sibling paragraphs (the 2nd <code>p</code> closes the 1st)', 'End tag of <code>p</code> is optional but write it anyway'],
         ['<code>&lt;b&gt;&lt;i&gt;x&lt;/b&gt;&lt;/i&gt;</code>', 'Bold+italic text, with extra repair work', 'Mis-nesting is "fixed" with a complicated algorithm — avoid it'],
-        ['<code>&lt;p&gt;&lt;div&gt;Hi&lt;/div&gt;&lt;/p&gt;</code>', '<code>&lt;p&gt;&lt;/p&gt;&lt;div&gt;Hi&lt;/div&gt;&lt;/p&gt;</code> — an empty p, then a div, then a stray end tag becomes an <i>empty p</i> again', 'A paragraph cannot hold a div; you get surprise empty paragraphs']
+        ['<code>&lt;p&gt;&lt;div&gt;Hi&lt;/div&gt;&lt;/p&gt;</code>', '<code>&lt;p&gt;&lt;/p&gt;&lt;div&gt;Hi&lt;/div&gt;&lt;p&gt;&lt;/p&gt;</code> — an empty p, then the div, then the stray end tag becomes another <i>empty p</i>', 'A paragraph cannot hold a div; you get surprise empty paragraphs']
       ])}`
     },
     {
@@ -254,8 +254,8 @@ console.log(checkNesting('<ul><li>One<li>Two</ul>'));      // browsers fix this,
   <p><b>Things the tree builder does for you:</b> creates <code>html/head/body</code> if missing; closes <code>li</code>, <code>p</code>, <code>td</code> etc. when a sibling starts; inserts a <code>tbody</code> inside a <code>table</code> if you write <code>tr</code> directly; moves stray text out of a table ("foster parenting"); and applies the "adoption agency algorithm" to repair mis-nested formatting tags (<code>b, i, a</code>).</p>
   <p><b>Streaming.</b> The browser parses while bytes arrive. A <code>&lt;script&gt;</code> without <code>defer/async</code> pauses parsing (and a "preload scanner" peeks ahead to start downloading images/CSS). That is why where tags sit in the file changes page speed.</p>
   <p><b>Quirks, limited-quirks, standards mode.</b> The doctype is only there to pick the mode. In quirks mode the box model, table font inheritance and line heights follow old IE rules. Modern pages always use <code>&lt;!doctype html&gt;</code> — a short magic string that is the shortest doctype that triggers standards mode.</p>
-  <p><b>Encoding sniffing.</b> The browser looks at the HTTP <code>Content-Type</code> header first, then a BOM, then a <code>meta charset</code> found in the first 1024 bytes. Late or missing charset means mojibake ("Ã©" instead of "é").</p>
-  <p><b>Performance reality.</b> A deep or huge DOM (tens of thousands of nodes) makes every style recalculation and layout slower. Lighthouse warns above ~1,500 nodes or depth 32. Keep wrapper-<code>div</code> soup low.</p>
+  <p><b>Encoding sniffing.</b> The browser checks a BOM (byte order mark) at the start of the file first, then the HTTP <code>Content-Type</code> header, then a <code>meta charset</code> found in the first 1024 bytes. Late or missing charset means mojibake ("Ã©" instead of "é").</p>
+  <p><b>Performance reality.</b> A deep or huge DOM (tens of thousands of nodes) makes every style recalculation and layout slower. Lighthouse's DOM size audit warns above ~800 nodes and fails above ~1,400. Keep wrapper-<code>div</code> soup low.</p>
   <p><b>Interview edge cases:</b> "Why does <code>&lt;/br&gt;</code> act like <code>&lt;br&gt;</code>?" (spec quirk). "Is <code>&lt;html&gt;</code> optional?" (its tags are, the element never is). "Difference between the HTML source and the DOM?" — the DOM is what the parser produced <i>and</i> what scripts changed since; View Source shows the former, DevTools Elements shows the latter.</p>`,
   aiEra: `<p><b>🤖 What AI changes.</b> Assistants write full page skeletons in seconds, so typing boilerplate by hand is no longer the skill. What still matters is <b>reading</b> the output and knowing what is right.</p>
   <p><b>Use AI as a partner:</b> paste messy HTML and ask <code>List every parser error-recovery fix a browser would apply to this, and give me the DOM tree as an indented outline</code>. Compare with DevTools. Or ask: <code>Give me 5 broken HTML snippets for a nesting quiz, without the answers</code>, then check yourself with the visualizer above.</p>
@@ -516,7 +516,7 @@ console.log(auditHeadings([2, 4, 1, 1]));           // three problems` }
   aiEra: `<p><b>🤖 What AI changes.</b> AI tools generate <code>div</code>-heavy markup because most of the web they learned from is div-heavy. AI-based browsing agents and answer engines also read your <b>accessibility tree and semantic structure</b> to find the main content, buttons and forms. Good semantics now helps humans, search engines <i>and</i> agents. (Computer-use agents often click by role and name such as "button: Add to cart" — a clickable <code>div</code> is invisible to them.)</p>
   <p><b>Use AI as a partner:</b> <code>Rewrite this div soup using semantic HTML, and explain each tag choice in one line</code>; <code>Which landmarks would a screen reader announce on this page?</code>; <code>Review this markup for heading-level gaps</code>.</p>
   <p><b>Where AI goes wrong:</b> over-using <code>&lt;section&gt;</code> without headings; adding <code>role="button"</code> on a <code>&lt;button&gt;</code> (redundant); wrapping a <code>&lt;button&gt;</code> inside an <code>&lt;a&gt;</code> (invalid); using several <code>&lt;h1&gt;</code> for styling; <code>aria-label</code> everywhere instead of visible text.</p>
-  <p><b>What you must still own:</b> choosing the element by meaning, testing with only the keyboard (Tab, Enter, Space), and checking the Accessibility panel in DevTools. Tools like axe catch roughly a third of issues automatically; the rest needs human judgment.</p>`,
+  <p><b>What you must still own:</b> choosing the element by meaning, testing with only the keyboard (Tab, Enter, Space), and checking the Accessibility panel in DevTools. Tools like axe catch only part of the issues automatically (estimates run from about a third to over half); the rest needs human judgment.</p>`,
   problems: [{
     title: 'Turn Div Soup into a Semantic Page',
     level: 'Easy', tags: ['semantic', 'landmarks', 'accessibility'], companies: ['Flipkart', 'Wipro', 'Accenture'],
@@ -660,7 +660,7 @@ topics.push({
     <li><b>srcset + sizes</b> – give several files, let the browser pick a good one for the device (visualizer below).</li>
   </ul>
   <p><b>&lt;picture&gt;</b> chooses between <i>different</i> images or formats (<code>source type="image/avif"</code>, then webp, then the jpg fallback), or a different crop for phones (<b>art direction</b>, using <code>media</code>).</p>
-  <p><b>🟢 Audio &amp; video.</b> <code>&lt;video controls src="movie.mp4" poster="thumb.jpg"&gt;</code> and <code>&lt;audio controls&gt;</code>. Give several <code>&lt;source&gt;</code>s for format fallbacks and a <code>&lt;track kind="captions"&gt;</code> for subtitles. Autoplay is only allowed when the video is <code>muted</code>. Other embeds: <code>&lt;iframe title="..." src="..."&gt;</code> (always give a title) and <code>&lt;figure&gt;</code> + <code>&lt;figcaption&gt;</code> to attach a caption to any of them.</p>`,
+  <p><b>🟢 Audio &amp; video.</b> <code>&lt;video controls src="movie.mp4" poster="thumb.jpg"&gt;</code> and <code>&lt;audio controls&gt;</code>. Give several <code>&lt;source&gt;</code>s for format fallbacks and a <code>&lt;track kind="captions"&gt;</code> for subtitles. Browsers usually block autoplay unless the video is <code>muted</code>. Other embeds: <code>&lt;iframe title="..." src="..."&gt;</code> (always give a title) and <code>&lt;figure&gt;</code> + <code>&lt;figcaption&gt;</code> to attach a caption to any of them.</p>`,
   clues: [
     '"Difference between absolute, relative and root-relative URLs?" → resolve against the base URL',
     '"Why does the image jump / page shift when it loads?" → missing width/height (CLS)',
@@ -712,8 +712,8 @@ for (const href of links) {
     {
       title: 'Same page, three link styles — what breaks when you move the page?',
       html: `<p>Page lives at <code>/blog/2026/post.html</code> and links to the logo at <code>/img/logo.png</code>:</p>
-      ${H.table(['href you wrote', 'Resolves to (from /blog/2026/)', 'If the page moves to /news/post.html'], [
-        ['<code>../../img/logo.png</code>', '/img/logo.png ✅', '<span class="c-r">/../img/logo.png → wrong depth</span>'],
+      ${H.table(['href you wrote', 'Resolves to (from /blog/2026/)', 'If the page moves deeper, to /blog/2026/09/post.html'], [
+        ['<code>../../img/logo.png</code>', '/img/logo.png ✅', '<span class="c-r">/blog/img/logo.png → wrong folder</span>'],
         ['<code>/img/logo.png</code>', '/img/logo.png ✅', '<span class="c-g">still /img/logo.png ✅</span>'],
         ['<code>https://shop.com/img/logo.png</code>', 'same ✅', 'works, but hard-coded domain (bad for staging)']
       ])}<p>Root-relative is the best default for your own site; use <code>&lt;base href&gt;</code> only if you know exactly why.</p>`
@@ -978,7 +978,7 @@ form.addEventListener('submit', async (event) => {
     level: 'Medium', tags: ['forms', 'labels', 'fieldset', 'accessibility'], companies: ['Zoho', 'Freshworks', 'Paytm'],
     statement: `<p>Build a "Contact us" form that posts to <code>/contact</code>. Fields: name (required), email (required), phone (optional), a topic dropdown (Sales, Support, Other), a preferred contact method as radio buttons (Email or Phone, Email selected by default), a message textarea (required) and a checkbox "Send me updates". Add a submit button. Every control needs a real label, autofill-friendly <code>autocomplete</code>, the correct input types, and the radio group must be announced as a group.</p>`,
     constraints: `No ARIA needed. No placeholder-as-label. Buttons must have explicit types. Use method POST.`,
-    example: `<p>Selecting "Phone" and leaving "updates" unchecked submits: <code>name=Asha&amp;email=asha%40x.com&amp;topic=support&amp;method=phone&amp;message=Hi</code> — <code>${H.c('r', 'updates')}</code> is missing because unchecked boxes are not sent. <i>Why</i>: only checked checkboxes and the selected radio contribute pairs.</p>`,
+    example: `<p>Selecting "Phone" and leaving "updates" unchecked submits: <code>name=Asha&amp;email=asha%40x.com&amp;phone=&amp;topic=support&amp;method=phone&amp;message=Hi</code> — <code>${H.c('r', 'updates')}</code> is missing because unchecked boxes are not sent. <i>Why</i>: only checked checkboxes and the selected radio contribute pairs.</p>`,
     brute: { why: `<p>The quick version uses placeholders as labels, <code>type="text"</code> for everything, and unnamed radios. Screen readers announce "edit text, blank". Radios without a shared name can all be ticked, and nothing tells the user which question they belong to.</p>`, code: { lang: 'html', code: `<form>
   <input placeholder="Name">
   <input placeholder="Email">
@@ -1465,7 +1465,7 @@ console.log('warnings:', out.warnings);` }
       html: `${H.table(['Title', 'Verdict', 'Why'], [
         ['<code>Home</code>', '<span class="c-r">Bad</span>', 'Says nothing; same on every page'],
         ['<code>Chai Corner | Masala Chai | Best Chai | Buy Chai | Tea Online</code>', '<span class="c-r">Bad</span>', 'Keyword stuffing, too long'],
-        ['<code>Masala Chai Recipe in 10 Minutes | Chai Corner</code>', '<span class="c-g">Good</span>', 'Specific topic first, brand last, 47 chars']
+        ['<code>Masala Chai Recipe in 10 Minutes | Chai Corner</code>', '<span class="c-g">Good</span>', 'Specific topic first, brand last, 46 chars']
       ])}`
     },
     {
@@ -1544,7 +1544,7 @@ console.log('warnings:', out.warnings);` }
   <link rel="stylesheet" href="/css/main.css">
   <script src="/js/main.js" defer><\/script>
 </head>` },
-      complexity: `<p>No runtime cost beyond a few hundred bytes of HTML. The title is 54 characters and the description 125, both inside the recommended ranges. Using <code>defer</code> removes the parser-blocking download from the critical path.</p>`,
+      complexity: `<p>No runtime cost beyond a few hundred bytes of HTML. The title is 53 characters and the description 123, both inside the recommended ranges. Using <code>defer</code> removes the parser-blocking download from the critical path.</p>`,
       followUps: ['What would you add for an article in two languages?', 'How can you check what WhatsApp will show?']
     }
   }]

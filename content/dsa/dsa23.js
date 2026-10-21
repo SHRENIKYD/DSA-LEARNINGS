@@ -5322,7 +5322,7 @@ int numDupDigitsAtMostN(int n) {
     return count;
 }` }] } },
     mcq: { q: 'What extra state does this digit DP need compared with a "digit sum" DP?', options: ['A 10-bit mask of used digits, plus a started flag for leading zeros', 'Only the last digit', 'The digit sum mod 10', 'Nothing extra'], answer: 0, explain: 'Distinctness depends on which digits were already used (mask). Leading zeros must not mark 0 as used, so we track whether the number has started.' },
-    hints: [`<p><b>Aha:</b> complement counting: answer = n − (numbers in [1, n] with all distinct digits).</p>`, `<p>Digit DP state (pos, usedMask, tight, started). Skip a digit already in the mask once started. Memoise free and started states.</p>`, `<p>The DP counts 0 too (all-leading-zeros path) → subtract 1. Check: n = 20 → 20 distinct-digit numbers in [0, 20] minus 11 → 21 − 1 = 20 with 0 → distinct count in [1,20] = 19 → answer 1.</p>`],
+    hints: [`<p><b>Aha:</b> complement counting: answer = n − (numbers in [1, n] with all distinct digits).</p>`, `<p>Digit DP state (pos, usedMask, tight, started). Skip a digit already in the mask once started. Memoise free and started states.</p>`, `<p>The DP counts 0 too (all-leading-zeros path) → subtract 1. Check with n = 20: [0, 20] holds 21 numbers and only 11 repeats a digit, so 20 have distinct digits (0 included). Remove 0 to get 19 in [1, 20]. Answer = 20 − 19 = 1.</p>`],
     tests: { sig: "int -> int", fn: "numDupDigitsAtMostN", cases: [
         [[1],0],
         [[9],0],

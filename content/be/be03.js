@@ -929,11 +929,11 @@ SELECT o.id, o.customer_name, i.product, i.qty, i.qty * i.unit_price AS line
 FROM orders o JOIN order_items i ON i.order_id = o.id;` },
     { lang: 'text', title: 'Prisma: schema.prisma (schema-first)', code: `datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")      // read from the environment, never a literal URL with a password
+  url      = env("DATABASE_URL")      // read from the environment, never a literal URL with a password (Prisma 7 moves this URL to prisma.config.ts)
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client-js"   // Prisma 7 default is "prisma-client" with a required output path
 }
 
 enum OrderStatus {
@@ -1977,7 +1977,7 @@ print("delete:", delete_student(conn, b), delete_student(conn, b))` },
 
 practice.push({
   title: 'Fix the Broken PreparedStatement', level: 'Easy', tags: ['jdbc', 'prepared-statement', 'debugging'], companies: ['HCL', 'Tech Mahindra'],
-  statement: `<p>This method should rename a user. It has four bugs (two cause runtime exceptions, one silently misbehaves, one leaks). Find and fix them.</p>
+  statement: `<p>This method should rename a user. It has five bugs (two cause runtime exceptions, two silently misbehave, one leaks). Find and fix them.</p>
   <pre>boolean rename(Connection c, long id, String newName) throws SQLException {
     PreparedStatement ps = c.prepareStatement("UPDATE users SET name = '?' WHERE id = ?");
     ps.setString(0, newName);

@@ -389,7 +389,7 @@ print(rrf([["A", "B", "C"], ["C", "A", "D"]]))   # A and C rise to the top` } }
   problems: [{
     title: 'Design the Candidate Funnel and Latency Budget',
     level: 'Medium', tags: ['rerank', 'latency', 'design'], companies: ['Cohere', 'Amazon'],
-    statement: `<p>Your RAG answers must start streaming within 1.5 s. Embedding the query takes 30 ms, vector search 40 ms, a cross-encoder reranks one pair in about 8 ms on your GPU when batched at 32, and the LLM needs about 600 ms before the first token. Choose k for first stage, how many to rerank, how many to keep, and say what you do if recall is still low.</p>`,
+    statement: `<p>Your RAG answers must start streaming within 1.5 s. Embedding the query takes 30 ms, vector search 40 ms, a cross-encoder scores a batch of 32 pairs in about 80 ms on your GPU, and the LLM needs about 600 ms before the first token. Choose k for first stage, how many to rerank, how many to keep, and say what you do if recall is still low.</p>`,
     constraints: `Budget: 1500 ms to first token. Corpus: 2M chunks.`,
     example: `<p>30 + 40 + (30 candidates → 1 batch ≈ 80 ms) + 600 = ${H.c('g', '≈ 750 ms')}, comfortably under 1.5 s. Reranking 200 candidates (7 batches ≈ 560 ms) would total about 1.2 s: tight.</p>`,
     brute: { why: `<p>Rerank all top-200 and keep 10: latency creeps to the limit, and 10 chunks cost more LLM prompt tokens and more distractors than 4 to 5 good ones.</p>` },

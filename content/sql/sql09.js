@@ -388,7 +388,7 @@ SELECT sql FROM sqlite_master WHERE name = 'products_backup';`) }
     explain: `<p><b>UPDATE</b> = <code>UPDATE table SET col = new_value WHERE which_rows;</code>. <b>DELETE</b> = <code>DELETE FROM table WHERE which_rows;</code>. The WHERE clause works exactly like in a SELECT. No WHERE = <b>every row</b>.</p>
 <p><b>How an UPDATE really runs:</b></p>
 <ol><li>Find the target rows with WHERE (uses indexes just like a SELECT).</li>
-<li>For each target, compute every SET expression using the <b>old</b> values of that row — so <code>SET a = b, b = a</code> really swaps.</li>
+<li>For each target, compute every SET expression using the <b>old</b> values of that row — so <code>SET a = b, b = a</code> really swaps (SQLite, Postgres; MySQL is the exception, see the swap example below).</li>
 <li>Re-check every constraint on the new row. Any failure → the <i>entire</i> statement is undone.</li></ol>
 ${H.table(['Pattern', 'SQL shape', 'Why'], [
   ['Preview first', '<code>SELECT … WHERE X;</code> then <code>UPDATE … WHERE X;</code>', 'see exactly which rows will change'],
@@ -1075,7 +1075,7 @@ SELECT name, sql FROM sqlite_master WHERE type = 'view';`, 'Views are always fre
       }
     },
     examples: [
-      { title: 'View as a compatibility layer during a rename', html: `<p>You rename <code>customers</code> to <code>clients</code>, but 40 old reports still say <code>FROM customers</code>. Create a view with the old name pointing at the new table; migrate the reports gradually, then drop the view.</p>`, code: shop(`ALTER TABLE customers RENAME TO clients;
+      { title: 'View as a compatibility layer during a rename', html: `<p>You rename <code>customers</code> to <code>clients</code>, but 40 old reports still say <code>FROM customers</code>. Create a view in the old shape pointing at the new table (below it is called <code>customers_v</code>; in a real migration you would give it the old name <code>customers</code>), migrate the reports gradually, then drop the view.</p>`, code: shop(`ALTER TABLE customers RENAME TO clients;
 CREATE VIEW customers_v AS SELECT id, email, name, city, tier FROM clients;   -- old shape, new home
 SELECT * FROM customers_v WHERE tier = 'gold';`) },
       { title: 'SELECT * in a view is frozen at creation (Postgres/MySQL)', html: `<p>Postgres and MySQL expand <code>SELECT *</code> into an explicit column list when the view is created. A column added to the base table later does <b>not</b> appear in the view — and a sensitive column added later will not suddenly leak either. List columns explicitly so the intent is visible.</p>`, code: pg(`CREATE VIEW v AS SELECT * FROM employees;    -- stored as SELECT id, name, ... (expanded now)

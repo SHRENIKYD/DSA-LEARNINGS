@@ -585,7 +585,7 @@ topics.push({
   <li><code>@mcp.prompt()</code> - returns a message (or messages) template.</li>
   <li><code>mcp.run()</code> - starts the server (stdio by default; an HTTP transport can be selected).</li></ul>
   <h4>TypeScript: McpServer + zod</h4>
-  <p>Create <code>new McpServer({name, version})</code>, register with <code>server.tool(...)</code> / <code>registerTool(...)</code> using a <b>zod</b> schema for arguments, then connect a <code>StdioServerTransport</code>. Zod schemas are converted to JSON Schema for you. (Method names have shifted between SDK releases - check the SDK version you install.)</p>
+  <p>Create <code>new McpServer({name, version})</code>, register with <code>registerTool(...)</code> (the older <code>server.tool(...)</code> is deprecated) using a <b>zod</b> schema for arguments, then connect a <code>StdioServerTransport</code>. Zod schemas are converted to JSON Schema for you. (Method names have shifted between SDK releases - check the SDK version you install.)</p>
   <h4>What the tool's inputSchema looks like</h4>
   <p>Always <b>JSON Schema</b>: an <code>object</code> with <code>properties</code>, per-field <code>type</code>/<code>enum</code>/<code>description</code>, and a <code>required</code> list. Good descriptions on each field are the cheapest way to improve model accuracy.</p>
   <h4>Tool design rules</h4>

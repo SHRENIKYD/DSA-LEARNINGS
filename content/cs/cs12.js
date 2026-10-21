@@ -733,7 +733,7 @@ fast_retransmit([101, 201, 201, 201, 201])` }],
     },
     examples: [
       { title: 'RTO after the first sample', html: `<p>First RTT sample = 80 ms: SRTT = 80, RTTVAR = 40, RTO = 80 + 4 × 40 = <b>240 ms</b> (Linux would clamp at least 200 ms; the RFC at least 1 s).</p>` },
-      { title: 'Jitter inflates RTO', html: `<p>Samples 100, 100, 100 give RTTVAR → small, RTO close to 100 + a margin. If one sample is 400, |SRTT − R| = 300, RTTVAR jumps by 0.25 × 300 = 75, so RTO grows by about 4 × 56 ≈ 225 ms. This is how a single latency spike makes TCP patient.</p>` },
+      { title: 'Jitter inflates RTO', html: `<p>Samples 100, 100, 100 give RTTVAR → small, RTO close to 100 + a margin. If one sample is 400, |SRTT − R| = 300, RTTVAR jumps by about 0.25 × 300 = 75, so RTO grows by roughly 4 × 75 = 300 ms. This is how a single latency spike makes TCP patient.</p>` },
       { title: 'Why Karn\'s rule', html: `<p>You send seg A at t = 0, it times out, you resend at t = 300. ACK arrives at t = 320. Is RTT 320 or 20? Unknown (maybe the original arrived late). Using the wrong one would corrupt SRTT, so retransmitted segments are skipped, unless TCP timestamps give the answer.</p>` }
     ],
     deepDive: `<p><b>Why 3, not 1 or 2, dup ACKs?</b> Packets can be reordered in the network. One or two dup ACKs often come from mild reordering; three suggests a real loss. Modern Linux uses RACK-TLP (time-based loss detection) to be robust against reordering and to recover tail losses without waiting for RTO: if a segment sent later has been ACKed and the older one remained unacked longer than RTT + a reordering window, it is declared lost. <b>TLP</b> sends a probe after ~2 × SRTT so the last packet of a burst triggers an ACK or SACK.</p>

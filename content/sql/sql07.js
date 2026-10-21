@@ -558,7 +558,7 @@ ALTER TABLE people DROP COLUMN nickname;       -- ...then the drop works
 SELECT name FROM pragma_table_info('people');`) }
     ],
     deepDive: `<h4>What really happens on ALTER in big databases</h4>
-<p>Some changes are <b>metadata-only</b> (instant): adding a nullable column, adding a column with a constant DEFAULT (Postgres 11+, MySQL 8.0 <code>ALGORITHM=INSTANT</code>), renaming. Others <b>rewrite every row</b>: changing a column type, adding a column with a volatile default like <code>now()</code> (Postgres), or rebuilding in SQLite. A rewrite on a 500 GB table can take hours and may hold a lock that blocks writes — an outage.</p>
+<p>Some changes are <b>metadata-only</b> (instant): adding a nullable column, adding a column with a constant DEFAULT (Postgres 11+, MySQL 8.0 <code>ALGORITHM=INSTANT</code>), renaming. Others <b>rewrite every row</b>: changing a column type, adding a column with a volatile default like <code>clock_timestamp()</code> or <code>random()</code> (Postgres; <code>now()</code> is stable, so it does not force a rewrite), or rebuilding in SQLite. A rewrite on a 500 GB table can take hours and may hold a lock that blocks writes — an outage.</p>
 <h4>Locks: the hidden danger</h4>
 <p>In Postgres, almost every ALTER TABLE takes an <code>ACCESS EXCLUSIVE</code> lock, even briefly. If a long-running query is holding a weaker lock, the ALTER waits — and every new query queues <i>behind the ALTER</i>. Production rule: set <code>lock_timeout</code> (e.g. 2s) before DDL and retry. Add constraints in two steps: <code>ADD CONSTRAINT ... NOT VALID</code> (instant, checks only new rows) then <code>VALIDATE CONSTRAINT</code> (scans without blocking writes). Create indexes with <code>CREATE INDEX CONCURRENTLY</code>.</p>
 <h4>Expand → migrate → contract</h4>
@@ -1857,7 +1857,7 @@ SELECT name, quote(loyalty_points) AS points FROM customers;               -- Ev
 INSERT INTO customers (email, name) VALUES ('eve@mail.com', 'Eve');
 SELECT id, name, loyalty_points FROM customers ORDER BY id;`),
       complexity: `<p>O(1) metadata change in SQLite; the DEFAULT is stored in the schema, not written into old rows.</p>`,
-      followUps: ['Why can\'t SQLite add a CHECK to an existing column later?', 'Postgres: why is <code>DEFAULT now()</code> slower to add than <code>DEFAULT 0</code> on old versions?']
+      followUps: ['Why can\'t SQLite add a CHECK to an existing column later?', 'Postgres: why did <code>ADD COLUMN ... DEFAULT 0</code> rewrite the whole table before version 11, and which defaults (e.g. <code>random()</code>) still do today?']
     }
   });
 

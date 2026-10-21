@@ -29,17 +29,18 @@
   var $ = function (s) { return document.querySelector(s); };
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   var all = 0; L.tracks.forEach(function (t) { all += t.items.length; });
-  $('#vcount').textContent = all ? all.toLocaleString('en-US') + ' of ' + L.total.toLocaleString('en-US') + ' landmarks have a video so far. New ones arrive every day.' : 'Videos are being added. Check back soon.';
+  $('#vcount').textContent = all ? all.toLocaleString('en-US') + ' of ' + L.total.toLocaleString('en-US') + ' landmarks have a video. Coverage notes explain what each video teaches.' : 'Videos are being added. Check back soon.';
   function chips() {
     $('#vchips').innerHTML = [['all', 'All', all]].concat(L.tracks.map(function (t) { return [t.id, t.short, t.items.length]; })).map(function (c) {
       return '<button type="button" role="tab" class="vchip' + (c[0] === cur ? ' on' : '') + '" aria-selected="' + (c[0] === cur) + '" data-t="' + esc(c[0]) + '">' + esc(c[1]) + ' · ' + c[2] + '</button>';
     }).join('');
   }
   function item(t, v) {
-    var mins = v.secs ? Math.max(1, Math.round(v.secs / 60)) + ' min · ' : '';
-    return '<article class="vitem"><button type="button" class="vid-play vthumb" data-vid="' + esc(v.id) + '" aria-label="Play video: ' + esc(v.title) + '"><span class="vid-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg></span><b hidden>' + esc(v.title) + '</b></button>' +
+    var mins = LessonVideo.label(v);
+    return '<article class="vitem"><button type="button" class="vid-play vthumb" ' + LessonVideo.attrs(v) + ' aria-label="Play video: ' + esc(v.title) + '"><span class="vid-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg></span><b hidden>' + esc(v.title) + '</b></button>' +
       '<span class="kicker">Place ' + v.mn + ' · ' + esc(v.mt) + '</span><h3>' + esc(v.tt) + '</h3><p class="vmeta">' + esc(v.title) + ' · ' + esc(v.channel) + ' · ' + mins + 'YouTube</p>' +
-      '<a class="vlesson" href="' + esc(t.id) + '.html#' + esc(v.tid) + '">Visit the landmark ›</a></article>';
+      (v.note ? '<p class="vmeta">' + esc(v.note) + '</p>' : '') +
+      '<a class="vid-open" href="' + esc(LessonVideo.watchUrl(v)) + '" target="_blank" rel="noopener noreferrer">Open on YouTube</a> · <a class="vlesson" href="' + esc(t.id) + '.html#' + esc(v.tid) + '">Visit the landmark ›</a></article>';
   }
   function render() {
     var words = q.toLowerCase().split(/\s+/).filter(Boolean), h = '', n = 0;
@@ -58,7 +59,7 @@
     var b = e.target.closest('.vid-play'); if (!b) return;
     var id = b.getAttribute('data-vid'); if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return;
     var fr = document.createElement('div'); fr.className = 'vid-frame';
-    fr.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1&rel=0&playsinline=1" title="' + esc(b.querySelector('b').textContent) + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
+    fr.innerHTML = '<iframe src="' + LessonVideo.embedUrl(LessonVideo.fromButton(b)) + '" title="' + esc(b.querySelector('b').textContent) + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
     b.replaceWith(fr);
   });
   Journey.bar({ theme: true });

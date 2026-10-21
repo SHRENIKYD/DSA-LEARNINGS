@@ -214,7 +214,7 @@ demo(process.env.DEMO_PASSWORD || 'demo-only-password');`
           { type: 'table', label: 'users table (salted)', columns: ['user', 'salt', 'digest'], rows: [['alice', saltA, hA], ['bob', saltB, hB]], hl: { 0: 'ok', 1: 'ok' } }
         ] });
         frames.push({ narr: 'Fix #2: make every guess <b>expensive</b>. A password hash function repeats its work thousands of times (and argon2 also eats memory). Here is how many guesses per second one GPU can try (rough orders of magnitude).', parts: [
-          { type: 'bars', label: 'attacker guesses per second (log-ish scale, illustrative)', values: [100, 40, 3, 1], idxLabels: ['MD5', 'SHA-256', 'PBKDF2', 'argon2id'], texts: ['~10 billion', '~4 billion', '~300 thousand', '~few thousand'], hl: { 0: 'bad', 1: 'bad', 2: 'cur', 3: 'ok' } },
+          { type: 'bars', label: 'attacker guesses per second (log-ish scale, illustrative)', values: [100, 40, 3, 1], idxLabels: ['MD5', 'SHA-256', 'PBKDF2', 'argon2id'], texts: ['~100 billion', '~20 billion', '~15 thousand (600k rounds)', '~thousands or fewer'], hl: { 0: 'bad', 1: 'bad', 2: 'cur', 3: 'ok' } },
           { type: 'text', html: 'The honest user only hashes <b>once per login</b> (about 0.2 s). The attacker needs <b>billions</b> of tries, so the slowdown hits them 10<sup>9</sup> times harder.' }
         ] });
         frames.push({ narr: 'What actually lands in the database is a single self-describing string: algorithm, cost settings, salt and hash together.', parts: [
@@ -358,7 +358,7 @@ function logout(sid) { store.delete(sid); }          // instant, server-side rev
 const t0 = Date.parse('2026-01-01T09:00:00Z');
 const sid = login('user-42', t0);
 console.log('request after 5 min  ->', authenticate(sid, t0 + 5 * 60000));
-console.log('request after 25 min idle ->', authenticate(sid, t0 + 30 * 60000));
+console.log('request after 30 min idle ->', authenticate(sid, t0 + 30 * 60000));
 const sid2 = login('user-42', t0);
 logout(sid2);
 console.log('request after logout ->', authenticate(sid2, t0 + 1000));`
@@ -367,7 +367,7 @@ console.log('request after logout ->', authenticate(sid2, t0 + 1000));`
         lang: 'java', check: false, title: 'Spring Boot: session cookie hardening + Redis-backed sessions', code: `# application.yml  (needs spring-session-data-redis for the Redis store)
 spring:
   session:
-    store-type: redis
+    # no store-type needed: Boot picks Redis from the classpath
     timeout: 15m               # idle timeout
 server:
   servlet:
@@ -2178,7 +2178,7 @@ SELECT * FROM orders WHERE id = 124;      -- returns customer 9's order!</pre>
       }
     ],
     deepDive: `<p>🟣 <b>PEP / PDP / PAP / PIP.</b> The XACML vocabulary is useful in interviews: the <b>Policy Enforcement Point</b> (your controller or gateway filter) asks a <b>Policy Decision Point</b> (the engine) "may X do Y on Z?"; policies are written in the <b>Policy Administration Point</b>; the PDP fetches missing attributes from <b>Policy Information Points</b> (HR database, device posture). Engines you can name: <b>OPA/Rego</b>, <b>AWS Cedar</b> (also used by Amazon Verified Permissions), <b>Casbin</b>, <b>Cerbos</b>; for relationship graphs: <b>SpiceDB</b>, <b>OpenFGA</b>, <b>Ory Keto</b>.</p>
-      <p><b>List endpoints are harder than single checks.</b> "Show all documents I can see" cannot call the engine once per row. Options: push the filter into SQL (<code>WHERE tenant_id = ? AND (owner_id = ? OR id IN (shared_ids))</code>), ask the ReBAC system to <i>list</i> accessible objects (Zanzibar's LookupResources) then query the DB, or use row-level security. Pagination plus post-filtering leaks counts and breaks page sizes.</p>
+      <p><b>List endpoints are harder than single checks.</b> "Show all documents I can see" cannot call the engine once per row. Options: push the filter into SQL (<code>WHERE tenant_id = ? AND (owner_id = ? OR id IN (shared_ids))</code>), ask the ReBAC system to <i>list</i> accessible objects (SpiceDB calls this LookupResources, OpenFGA calls it ListObjects) then query the DB, or use row-level security. Pagination plus post-filtering leaks counts and breaks page sizes.</p>
       <p><b>Consistency matters.</b> Zanzibar introduced "zookies": a token that says "evaluate permissions at least as new as this write", solving the <i>new enemy problem</i> (removing someone from a group and then immediately sharing a document must not show it to them because of stale replicas). In small systems the same worry shows up as cached permissions in JWT claims: the revoke does not apply until expiry.</p>
       <p><b>Performance.</b> RBAC check is a set lookup (microseconds, cacheable per user). ABAC cost depends on attribute fetching, so cache attributes with short TTLs and keep policy evaluation pure (no I/O inside rules). Log every decision (who, what, which rule, result) for audit; for deny, log the failing rule to help support.</p>
       <p><b>Testing.</b> Treat authorization as a matrix test: for every endpoint × role (plus anonymous and cross-tenant), assert the expected status code. This catches regressions when a new endpoint is added without a check. Frameworks that protect all routes by default (Spring <code>anyRequest().authenticated()</code>) beat opt-in annotations.</p>`,

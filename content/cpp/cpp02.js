@@ -720,7 +720,7 @@ long long sumToLoop(int n) {           // O(1) stack
 }`
       },
       mcq: { q: 'How do you get x<sup>10</sup> from x<sup>5</sup> with one multiplication?', options: ['x<sup>5</sup> + x<sup>5</sup>', 'x<sup>5</sup> × x<sup>5</sup>', 'x<sup>5</sup> × x', 'You cannot'], answer: 1, explain: 'x^(2k) = x^k × x^k. Halving the exponent each time means only about log₂(exp) calls: 10¹⁸ needs ~60 calls.' },
-      hints: [`<p>Hint 1: x<sup>e</sup> = (x<sup>e/2</sup>)<sup>2</sup> when e is even, and x · (x<sup>e/2</sup>)<sup>2</sup> when e is odd (with integer division). Compute x<sup>e/2</sup> <b>once</b> and square it.</p>`, `<p>Hint 2: The base case is e = 0 → return 1 % mod (so mod = 1 gives 0). Each call halves e, so the recursion depth is about log₂ e ≤ 60 — no risk of stack overflow.</p>`, `<p>Hint 3: Take <code>% mod</code> after every multiplication. With mod ≤ 10<sup>9</sup>+7 each product is &lt; 10<sup>18</sup>·1.0…, which fits in <code>long long</code> (max ≈ 9.2 × 10<sup>18</sup>). Reduce <code>base %= mod</code> first.</p>`],
+      hints: [`<p>Hint 1: x<sup>e</sup> = (x<sup>e/2</sup>)<sup>2</sup> when e is even, and x · (x<sup>e/2</sup>)<sup>2</sup> when e is odd (with integer division). Compute x<sup>e/2</sup> <b>once</b> and square it.</p>`, `<p>Hint 2: The base case is e = 0 → return 1 % mod (so mod = 1 gives 0). Each call halves e, so the recursion depth is about log₂ e ≤ 60 — no risk of stack overflow.</p>`, `<p>Hint 3: Take <code>% mod</code> after every multiplication. With mod ≤ 10<sup>9</sup>+7, each product is below (10<sup>9</sup>+7)<sup>2</sup>, which is about 1.0 × 10<sup>18</sup>. That fits in <code>long long</code> (max ≈ 9.2 × 10<sup>18</sup>). Reduce <code>base %= mod</code> first.</p>`],
       tests: { sig: 'long long long -> long', fn: 'power', cases: [
         [[2,10,1000], 24],
         [[3,0,7], 1],
@@ -1888,7 +1888,7 @@ int main() {
          << isPalindrome("race a car") << " "                       // false
          << isPalindrome(" ") << "\n";                              // true
 }`,
-        dry: { head: ['i', 'j', 's[i]', 's[j]', 'action'], rows: [['0', '8', 'r', 'r', 'match → i=1, j=7'], ['1', '7', 'a', 'a', 'match → i=2, j=6'], ['2', '6', 'c', 'c', 'match → i=3, j=5'], ['3', '5', 'e', 'a', H.c('r', 'mismatch → return false')]] },
+        dry: { head: ['i', 'j', 's[i]', 's[j]', 'action'], rows: [['0', '9', 'r', 'r', 'match → i=1, j=8'], ['1', '8', 'a', 'a', 'match → i=2, j=7'], ['2', '7', 'c', 'c', 'match → i=3, j=6 is a space, so j moves to 5'], ['3', '5', 'e', 'a', H.c('r', 'mismatch → return false')]] },
         complexity: `<p>Time O(n): each index moves at most n times in total. Extra space O(1). (Dry run above is for "race a car".)</p>`,
         followUps: ['Valid Palindrome II: may you delete at most one character to make it a palindrome?', 'Return the longest palindromic prefix of the cleaned string.']
       }

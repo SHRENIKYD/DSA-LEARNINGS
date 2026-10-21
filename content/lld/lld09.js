@@ -8964,7 +8964,7 @@ int main() {
     title: 'Order Status Lifecycle Validator', level: 'Easy', tags: ['enum', 'transition table', 'EnumMap'], companies: ['Flipkart', 'Swiggy', 'Amazon'],
     statement: `<p>An e-commerce order moves through <b>PLACED → PACKED → SHIPPED → DELIVERED</b>. <b>CANCELLED</b> is allowed from PLACED or PACKED only. <b>RETURN_REQUESTED</b> is allowed from DELIVERED only within 7 days of delivery, then <b>RETURNED</b>. Implement <code>Order.moveTo(newStatus, today)</code> that rejects illegal transitions with a clear message and keeps a history. The rules must be readable in one place.</p>`,
     constraints: `Dates as <code>LocalDate</code>. Terminal states: CANCELLED, RETURNED. Support listing the allowed next statuses for the UI.`,
-    example: `<p>PLACED → PACKED ✓ → ${H.c('r', 'CANCELLED? allowed')} … or PACKED → SHIPPED ✓ → ${H.c('r', 'CANCELLED ✗ (already shipped)')} → DELIVERED on 1 Mar ✓ → RETURN_REQUESTED on 5 Mar ✓; on 10 Mar ✗ (window closed).</p>`,
+    example: `<p>PLACED → PACKED ✓ → CANCELLED ✓ (allowed from PACKED). But after PACKED → SHIPPED ✓, ${H.c('r', 'CANCELLED ✗ (already shipped)')}. Then SHIPPED → DELIVERED on 1 Mar ✓ → RETURN_REQUESTED on 5 Mar ✓; on 10 Mar ✗ (window closed).</p>`,
     brute: { why: `<p>A string status and <code>if (status == "PLACED" &amp;&amp; next == "PACKED") …</code> chains spread across controller, service and admin tools. The same rule is implemented three times, slightly differently, and the UI cannot ask "what can I do next?".</p>`, code: { lang: 'java', code: `class NaiveOrder {
     String status = "PLACED";
     boolean moveTo(String next) {

@@ -696,7 +696,7 @@ for row in diffs:
       { title: 'Silent bug: (n,) minus (n,1)', html: `<p>y_pred of shape (100,) and y_true of shape (100,1): subtraction does NOT error. It broadcasts to (100,100), computing 10,000 wrong differences, and your "loss" is garbage but looks valid. Always print shapes.</p>` },
       { title: 'Z-score properties', html: `<p>After standardising, every column has mean ≈ 0 and std ≈ 1. Compute the mean and std on the <b>training set only</b> and reuse them for validation/test data, otherwise information leaks from the test set.</p>` }
     ],
-    deepDive: `<p><b>🟣 How it works.</b> A NumPy array is a block of raw memory plus <b>strides</b> (how many bytes to step along each axis). Broadcasting sets the stride of a stretched axis to 0, so the same memory is re-read: no copy. <code>reshape</code>, transpose and basic slices return <b>views</b> that share memory; boolean masks and fancy indexing return <b>copies</b>. Modifying a view changes the original; a classic source of bugs.</p>
+    deepDive: `<p><b>🟣 How it works.</b> A NumPy array is a block of raw memory plus <b>strides</b> (how many bytes to step along each axis). Broadcasting sets the stride of a stretched axis to 0, so the same memory is re-read: no copy. Transpose and basic slices return <b>views</b> that share memory (<code>reshape</code> does too when it can); boolean masks and fancy indexing return <b>copies</b>. Modifying a view changes the original; a classic source of bugs.</p>
       <p><b>dtype matters.</b> Integer arrays do integer division surprises and overflow silently (int8 wraps at 127). float32 is half the memory of float64 and what GPUs prefer; float16/bfloat16 are common for LLMs. <b>Why it is fast:</b> a compiled C loop over contiguous memory with SIMD instructions, no Python object per number.</p>
       <p><b>std details.</b> NumPy <code>std</code> defaults to the population formula (ddof=0); pandas <code>std</code> defaults to the sample formula (ddof=1). The same data gives different numbers; a favourite interview trap. Guard against std=0 (constant column) to avoid dividing by zero. Min-max is sensitive to outliers; robust scaling uses median and IQR.</p>
       <p><b>Memory cost of accidental broadcast.</b> (100000,1) − (1,100000) allocates 10<sup>10</sup> numbers = 80 GB in float64. Large pairwise computations are done in chunks.</p>`,
@@ -942,7 +942,7 @@ print(sm([5, 3, 1]), sm([105, 103, 101]))` },
 
   practice.push(P({
     title: 'Matrix-Vector Product and Shape Tracking', level: 'Medium', tags: ['matmul', 'shapes'],
-    statement: `<p>A layer has weights W of shape (4,3), inputs X of shape (10,4) and a bias b of shape (3,). Write the expression and the shape after each step. Then compute W·x for the single input x=[1,0,2,1] using only the first two columns of W=[[1,0],[2,1],[0,3],[1,1]] (i.e. Wᵀ x).</p>`,
+    statement: `<p>A layer has weights W of shape (4,3), inputs X of shape (10,4) and a bias b of shape (3,). Write the expression and the shape after each step. Then compute Wᵀ·x for the single input x=[1,0,2,1] using a smaller weight matrix W of shape (4,2): W=[[1,0],[2,1],[0,3],[1,1]].</p>`,
     constraints: `Show shapes at each step`,
     example: `<p>X@W → (10,3); + b broadcasts (3,) → (10,3). Wᵀx with Wᵀ=[[1,2,0,1],[0,1,3,1]]: [1+0+0+1, 0+0+6+1] = ${H.c('g', '[2, 7]')}.</p>`,
     bruteWhy: `<p>Looping over each example and each output neuron is O(10·4·3) Python steps; one matmul does it in optimised native code.</p>`,

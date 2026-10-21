@@ -813,10 +813,10 @@ workflow.apply_async()` }
         level: 'Hard',
         tags: ['celery', 'redis', 'visibility timeout', 'idempotency'],
         companies: ['Stripe', 'Razorpay', 'Shopify'],
-        statement: `<p>Customers sometimes get <b>two</b> invoices. The invoice is created by this Celery task, scheduled at checkout with <code>generate_invoice.apply_async(args=[order_id], countdown=2 * 3600)</code> ("send it two hours after purchase, after the cancellation window"). The broker is Redis with default settings and the task has <code>acks_late=True</code>. Logs show the <b>same task id</b> started on worker A at 14:05 and on worker B at 15:05; both finished successfully.</p>
+        statement: `<p>Customers sometimes get <b>two</b> invoices. The invoice is created by this Celery task, scheduled at checkout with <code>generate_invoice.apply_async(args=[order_id], countdown=2 * 3600)</code> ("send it two hours after purchase, after the cancellation window"). The broker is Redis with default settings and the task has <code>acks_late=True</code>. Logs show the <b>same task id</b> started on worker A and on worker B within seconds of each other, around the scheduled time 14:05; both finished successfully.</p>
           <p>Explain the cause and fix it so that duplicates cannot create two invoices, even if the broker redelivers again in the future.</p>`,
         constraints: `<p>Keep at-least-once delivery (no invoice may be lost). Several worker pods. Postgres is available.</p>`,
-        example: `<p>Timeline: 12:05 checkout → message sent with ETA 14:05. Worker A reserves it at once (ETA tasks are held by a worker until due) → 13:05: the message is still unacked after <b>3,600 s</b> (Redis default <code>visibility_timeout</code>) → Redis restores it → worker B reserves it too → at 14:05 A runs it, at 15:05 B runs it again (its own 1 h later). ${H.c('r', 'Two invoices.')}</p>`,
+        example: `<p>Timeline: 12:05 checkout → message sent with ETA 14:05. Worker A reserves it at once (ETA tasks are held by a worker until due) → 13:05: the message is still unacked after <b>3,600 s</b> (Redis default <code>visibility_timeout</code>) → Redis restores it → worker B reserves it too → at 14:05 both A and B run it, because both copies carry the same ETA. ${H.c('r', 'Two invoices.')}</p>`,
         brute: {
           why: `<p>Turning off <code>acks_late</code> trades duplicates for lost invoices on crashes. Adding <code>if invoice_exists(order_id): return</code> before inserting is a check-then-act race: two workers can both see "no invoice" and both insert.</p>`,
           code: `@celery_app.task(acks_late=True)
@@ -832,7 +832,7 @@ def generate_invoice(order_id: int) -> None:
           explain: 'Config changes remove one cause; the database constraint makes the effect idempotent for every cause (redelivery, double enqueue, manual replay).'
         },
         hints: [
-          'Hint 1: the two runs are exactly one visibility_timeout apart. What does Redis do with a message that has been reserved but not acked for that long?',
+          'Hint 1: the second copy appeared exactly one visibility_timeout after the first was reserved. What does Redis do with a message that has been reserved but not acked for that long?',
           'Hint 2: ETA/countdown tasks are reserved by a worker immediately and held unacked until they are due. A 2 h countdown is longer than the default 1 h timeout.',
           'Hint 3: fix in layers: (1) do not use long countdowns on Redis/SQS (store <code>due_at</code> and let beat pick due rows) or raise the timeout; (2) make the effect idempotent with a UNIQUE key and <code>INSERT ... ON CONFLICT DO NOTHING RETURNING</code>; only the run that inserted sends the email.'
         ],
@@ -2398,7 +2398,7 @@ kill -HUP "$(cat /run/gunicorn.pid)"`
           ['0 s', 'pod marked Terminating; removed from Service endpoints (takes a few seconds to propagate)', 'still receiving some requests'],
           ['0 s', 'runs <code>preStop</code> hook (e.g. <code>sleep 5</code>)', 'keeps serving while load balancers catch up'],
           ['5 s', 'sends SIGTERM to PID 1', 'Gunicorn stops accepting; workers finish in-flight requests (<code>graceful_timeout</code>)'],
-          ['≤ 35 s', '-', 'lifespan shutdown: close DB pool, Redis, flush logs/metrics'],
+          ['5-30 s', '-', 'lifespan shutdown: close DB pool, Redis, flush logs/metrics'],
           ['30 s after Terminating', 'SIGKILL if still running (<code>terminationGracePeriodSeconds</code>)', H.c('r', 'anything unfinished dies')]
         ])}<p>Make <code>terminationGracePeriodSeconds</code> ≥ preStop + graceful_timeout + a margin. For Celery workers, set it longer than your longest task or rely on <code>acks_late</code> redelivery.</p>`
       },
@@ -2448,7 +2448,7 @@ def web_workers(cpus, mem_mb, worker_mb, reserve_mb, kind):
           q: 'An 8-CPU container runs FastAPI with Uvicorn workers, each 400 MB, with 16 GB of memory. Best starting worker count?',
           options: ['8', '17', '40', '1'],
           answer: 0,
-          explain: 'Async workers: about one per core = 8. Memory allows ~39, so CPU is the limit. 17 is the sync-worker rule.'
+          explain: 'Async workers: about one per core = 8. Memory allows ~40, so CPU is the limit. 17 is the sync-worker rule.'
         },
         hints: [
           'Hint 1: compute both limits separately, then take the minimum.',

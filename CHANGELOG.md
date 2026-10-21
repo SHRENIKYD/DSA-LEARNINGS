@@ -1,8 +1,24 @@
 # Changelog — website
 
-Versions follow [Semantic Versioning](https://semver.org): MAJOR for breaking changes to progress data or URLs, MINOR for new features or modules, PATCH for fixes.
+From 1.10.1 each website release, whether it brings fixes or features, raises the last number: 1.10.1, 1.10.2, … up to 1.10.100. The release after 1.10.100 is 1.11.0, and the same pattern repeats (1.11.1 … 1.11.100, then 1.12.0). MAJOR is still reserved for breaking changes to progress data or URLs.
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
+
+## [1.10.1] — 2026-10-21 · Content review
+
+Full release notes: [docs/RELEASE_REVIEW.md](docs/RELEASE_REVIEW.md).
+
+### Fixed
+- 584 corrections in 184 modules after a review of all 220 (188 modules changed in this release in total): 301 wrong facts, 54 outdated claims, 158 inconsistencies between text, examples and code, and 71 clarity rewrites.
+- Four solutions whose code was wrong: the awk minute extraction and systemd unit in CS 8, a lab step in Cloud & DevOps 1, and a Dockerfile in Cloud & DevOps 8 that would not build.
+- Two quiz explanations referred to options by number, which pointed at the wrong options after shuffling; they now use letters.
+- 34 claims the review could not confirm were checked against official documentation, release notes and source code, and corrected (52 edits in 30 modules), for example Spring Boot 3 session config, ingress-nginx retirement, AWS Database Savings Plans, FastAPI yield dependencies, OWASP 2025, Vite 8, Node 20 end of life, PyO3 `detach` and Zod 4.
+- Readiness checks and mixed checkpoints showed options in file order, so in some modules the first option was always correct. They now shuffle options, label them A, B, C and relabel explanations to match.
+- 79 of the 232 lesson videos covered a different topic from their lesson and were replaced; the other 153 were reviewed and kept.
+
+### Added
+- Lesson videos start and stop at the matching chapter where one exists, show a coverage note, and say whether they were selected for the lesson or suggested automatically.
+- The daily video search keeps reviewed choices, and `tools/video-test.js` (in CI as the `videos` job) validates every video mapping. Review details: [docs/VIDEO_REVIEW.md](docs/VIDEO_REVIEW.md).
 
 ## [1.10.0] — 2026-10-20 · Phase 3 of 3
 

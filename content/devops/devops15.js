@@ -658,7 +658,7 @@ providers:
   ] },
   "panels": [
     { "id": 1, "type": "stat", "title": "Error budget left (30d)", "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
-      "targets": [ { "expr": "1 - (service:http_errors:ratio_rate30d{service=\\"$service\\"} / 0.001)" } ],
+      "targets": [ { "expr": "1 - (avg_over_time(service:http_errors:ratio_rate5m{service=\\"$service\\"}[30d]) / 0.001)" } ],
       "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [
         { "color": "red", "value": null }, { "color": "orange", "value": 0.25 }, { "color": "green", "value": 0.5 } ] } } } },
     { "id": 2, "type": "timeseries", "title": "Traffic (requests/s)", "gridPos": { "x": 6, "y": 0, "w": 6, "h": 8 },
@@ -1164,7 +1164,7 @@ loki.write "local" {
         ['Cost', 'Cheap storage, small index', 'Faster full-text search, much bigger index and RAM'],
         ['Query', 'LogQL: <code>{service="checkout"} |= "timeout"</code>', 'KQL / Lucene / ES|QL in Kibana'],
         ['Cardinality rule', 'High-cardinality labels (request id, user id) are the same trap as in Prometheus', 'Mapping explosion: too many distinct field names slow the cluster'],
-        ['The "F"', 'Collector: Alloy (Promtail is deprecated)', 'Fluent Bit or Fluentd, then Elasticsearch, then Kibana']
+        ['The "F"', 'Collector: Alloy (Promtail reached end of life in March 2026)', 'Fluent Bit or Fluentd, then Elasticsearch, then Kibana']
       ])}`,
     clues: [
       '"A customer says order 4521 failed. Find what happened" → search by request id or trace id across services',
@@ -1811,7 +1811,7 @@ sum(rate(http_request_duration_seconds_count{service="checkout"}[5m]))
       { title: 'Situation: 30% of the monthly budget burned in an hour', html: `<p>A bad config push at 02:10 makes 21.6 percent of checkout requests fail. The SLO is 99.9 percent, so the budget ratio is 0.001 and the burn rate is 21.6 / 0.1 = <b>216</b>. In one hour that spends 216 / 720 = <b>30 percent</b> of the 30-day budget. The old alert ("error ratio over 5 percent for 15 minutes") fired at 02:27 and was acknowledged at 02:40. The burn-rate alert pair (1h and 5m both over 14.4x) fires within about <b>4 minutes</b>: the 1h window crosses 14.4x when 14.4 / 216 of an hour has passed. Rollback at 02:20 saves most of the budget. The lesson: pick alert thresholds from the budget, so you know in advance what each page costs.</p>` },
       { title: 'Numbers: budget remaining after a bad week', html: `<p>SLO 99.9 percent, 30 days, 12 million requests so far: the budget is 12,000,000 x 0.001 = <b>12,000</b> bad requests. An incident produced 9,000 errors. Remaining = (12,000 - 9,000) / 12,000 = <b>25 percent</b> of the budget, with three weeks to go. Many teams' error-budget policy now says: below 25 percent, freeze risky releases and spend the week on reliability work.</p>` },
       { title: 'Why the short window matters', html: `<p>An outage lasts from 10:00 to 10:20 and burns hard. By 11:00 the 1-hour window still shows a high burn (it remembers the outage), but the problem ended 40 minutes ago. An alert on the long window alone keeps paging for another hour. Requiring the 5-minute window too means the alert resolves about 5 minutes after the fix. The fast-burn pair is a classic way to avoid a page about a fire that is already out.</p>` },
-      { title: 'SLA, SLO and the buffer', html: `<p>A vendor promises customers 99.5 percent monthly (SLA, with credits). Internally the team targets 99.9 percent (SLO). The gap (0.4 percent, about 29 hours a month) is the warning space: the SLO budget turns red long before any contract money is owed. If SLO and SLA are equal, the first time you see the problem is also the first time you owe a refund.</p>` }
+      { title: 'SLA, SLO and the buffer', html: `<p>A vendor promises customers 99.5 percent monthly (SLA, with credits). Internally the team targets 99.9 percent (SLO). The gap (0.4 percent, about 2.9 hours a month) is the warning space: the SLO budget turns red long before any contract money is owed. If SLO and SLA are equal, the first time you see the problem is also the first time you owe a refund.</p>` }
     ],
     deepDive: `<p>🟣 <b>Choosing the SLI.</b> Measure close to the user: at the load balancer or in the client (real user monitoring), not only inside the app. Count what users value: "request succeeded and was faster than 300 ms" is better than "CPU is below 80 percent". Define <b>valid events</b> carefully: exclude health checks and, if you decide so, client errors (4xx) that are the caller's fault. Write the SLI definition down: it is a contract between engineers and product.</p>
       <p>🟣 <b>Windows.</b> A <b>rolling</b> 28 or 30-day window is easy to reason about; a calendar month resets the budget, which can encourage risky releases on the 1st. Prometheus handles a 30-day <code>increase()</code> expensively; recording rules at several windows (as above) and a long-retention store (Thanos, Mimir, VictoriaMetrics) are the usual answer. Note that default retention is 15 days, so a 30-day SLO needs longer retention or remote write.</p>

@@ -22,6 +22,7 @@
       <ul><li><b>system</b> - standing rules: who the model is, tone, limits, output format. Written by you, the developer. Stays the same for every user.</li>
       <li><b>user</b> - the actual request (and any data you paste in).</li>
       <li><b>assistant</b> - earlier model replies. You send them back so the model "remembers" the chat. You can also <i>write fake ones</i> to show examples.</li></ul>
+      <p>Some APIs put the system text first in the message list. Others take it as a separate field next to the list, as the JSON below does. Check your provider's docs.</p>
       <p>The API is <b>stateless</b>: every call you resend the full list, and you pay for every token in it again.</p>
       ${H.table(['role', 'who writes it', 'typical content'], [['system', 'you (developer)', 'rules, persona, format'], ['user', 'end user or your code', 'task + data'], ['assistant', 'model (or you, as examples)', 'previous answers']])}
       <p>A vague request like <code>write something about our refund policy</code> forces the model to guess. A strong prompt has four parts - <b>Role + Task + Context + Format</b>:</p>
@@ -824,7 +825,7 @@ print("regressions:", [i for i in r1 if r1[i] and not r2[i]] or "none")` },
           f.push({ narr: 'Case ' + (i + 1) + ': ' + (ok1 && ok2 ? 'both pass.' : (!ok1 && ok2 ? '<b>v2 fixes</b> what v1 got wrong.' : 'a failure to read by hand.')), parts: [{ type: 'table', label: 'Scoreboard', columns: ['input', 'expected', 'v1', 'v2'], rows: rows.slice(), hl: snap() }] });
         });
         f.push({ narr: 'Totals: v1 = <b>' + p1 + '/4</b>, v2 = <b>' + p2 + '/4</b>. v2 wins and has no regressions (nothing v1 passed is now failing).', parts: [{ type: 'table', label: 'Totals', columns: ['version', 'passed', 'score'], rows: [['v1', p1, Math.round(100 * p1 / 4) + '%'], ['v2', p2, Math.round(100 * p2 / 4) + '%']], hl: { 0: 'bad', 1: 'win' } }] });
-        f.push({ narr: 'Next: read the v1 failures. All were bug-sounding messages containing money words, so add a borderline example. Re-run, check no regressions, repeat.', parts: [{ type: 'text', html: '<b>Loop:</b> change one thing, re-run, compare, read failures.' }] });
+        f.push({ narr: 'Next: read the v1 failures. Both were bug reports that v1 labelled billing, so add a borderline example. Re-run, check no regressions, repeat.', parts: [{ type: 'text', html: '<b>Loop:</b> change one thing, re-run, compare, read failures.' }] });
         return f;
       }
     },
@@ -890,11 +891,11 @@ Return JSON: {"accuracy": n, "tone": n, "action": n, "reason": "..."}` } },
     bruteWhy: A('Counting raw strings splits equal answers: "42", "42.0" and "$42" become three separate answers with one vote each.'),
     q: 'What to do with an unparseable (None) sample?', opts: ['Count as a vote for None', 'Drop it from votes but log how often it happens', 'Pick it as winner'], ans: 1, qx: 'High None rates signal a prompt or parsing problem.',
     hints: ['Hint 1: define one canonical form for equal answers.', 'Hint 2: count with a Counter after normalising.', 'Hint 3: report confidence and handle ties.'],
-    approach: A('Normalise: lowercase, strip currency signs and commas, remove units, convert to float and print without trailing zeros. For number words either add a small word-to-number map or, better, change the prompt to demand digits only ("Answer: &lt;digits&gt;") so the problem disappears at the source. Drop None but log the share. Votes: "42" x3, "41" x1 (forty-two excluded or mapped to 4). Winner "42" with 3 of 5 usable = 60% confidence. If two answers tie, do not choose randomly: sample more or escalate. Keep the raw samples for debugging.') }));
+    approach: A('Normalise: lowercase, strip currency signs and commas, remove units, convert to float and print without trailing zeros. For number words either add a small word-to-number map or, better, change the prompt to demand digits only ("Answer: &lt;digits&gt;") so the problem disappears at the source. Drop None but log the share. Votes: "42" x3, "41" x1, and "forty-two" as its own answer x1 (if you map it to 42, the winner gets 4 of 5 = 80%). Without the mapping the winner "42" has 3 of 5 = 60% confidence. If two answers tie, do not choose randomly: sample more or escalate. Keep the raw samples for debugging.') }));
   practice.push(prob({ title: 'Choose N and temperature for voting', level: 'Medium', tags: ['self-consistency', 'cost'],
     statement: A('A feature costs 0.2 cents per call. Voting with N = 5 lifts accuracy from 78% to 88%; N = 9 gives 90%. Volume is 100,000 requests a day. What do you ship?'),
     exampleText: 'N=1: 0.2c; N=5: 1.0c; N=9: 1.8c per request.',
-    bruteWhy: A('Always using N = 9 spends 1.6 cents more per request for 2 more points; at 100k/day that is 1,600 dollars a day extra.'),
+    bruteWhy: A('Always using N = 9 costs 0.8 cents more per request than N = 5 for only 2 more points; at 100k/day that is 800 dollars a day extra.'),
     q: 'A cheaper way to get most of the gain?', opts: ['Adaptive voting: sample 3, add more only if they disagree', 'Raise max tokens', 'Use temperature 0'], ans: 0, qx: 'Most questions are easy; spend more only on the hard ones.',
     hints: ['Hint 1: compute the daily cost for each value of N.', 'Hint 2: value of a point of accuracy depends on cost of an error.', 'Hint 3: consider adaptive sampling and escalation.'],
     approach: A('Daily cost: N=1 is 200 dollars, N=5 is 1,000 dollars, N=9 is 1,800 dollars. Going from 1 to 5 buys 10 points for 800 dollars a day; going from 5 to 9 buys 2 points for 800 dollars a day, a poor deal unless errors are very expensive. Best design: adaptive voting. Sample 3 at temperature 0.7; if all agree (usually the easy majority of traffic) stop; otherwise sample 4 more and vote; if confidence is still below 60 percent, escalate to a stronger model or a human. This typically gets close to the N=5 accuracy at an average of about 2 samples. Confirm with the eval set by plotting accuracy vs average cost for each policy and pick the knee of the curve.') }));

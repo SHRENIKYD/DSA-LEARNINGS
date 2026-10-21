@@ -4026,7 +4026,7 @@ public:
     example: `${H.arr('sadbutsad'.split(''), { hl: { 0: 'g', 1: 'g', 2: 'g', 6: 'b', 7: 'b', 8: 'b' } })}
       <p>needle = "sad" occurs at ${H.c('g', '0')} and ${H.c('b', '6')}; the <b>first</b> is <b>0</b>. haystack = "leetcode", needle = "leeto" → <b>-1</b>.</p>`,
     brute: {
-      why: `<p>Check every start i with an inner loop over the needle: O(n·m) = 10<sup>8</sup> in the worst case ("aaaa…a" vs "aaa…ab"). The wasted work: after a long partial match fails, the next attempt re-reads almost the same characters.</p>`,
+      why: `<p>Check every start i with an inner loop over the needle: O(n·m), which is about 2.5·10<sup>7</sup> in the worst case (n = 10<sup>4</sup>, m about 5·10<sup>3</sup>) ("aaaa…a" vs "aaa…ab"). The wasted work: after a long partial match fails, the next attempt re-reads almost the same characters.</p>`,
       code: {
           lang: 'java',
           code: `
@@ -4404,7 +4404,7 @@ public:
     example: `${H.arr('cbaebabacd'.split(''), { hl: { 0: 'g', 1: 'g', 2: 'g', 6: 'b', 7: 'b', 8: 'b' } })}
       <p>p = "abc" → <b>[0, 6]</b>: ${H.c('g', '"cba"')} at 0 and ${H.c('b', '"bac"')} at 6 both use one a, one b, one c.</p>`,
     brute: {
-      why: `<p>For each of the n − m + 1 windows, sort it (or count it from scratch) and compare with p: O(n·m log m) or O(n·m). With n = m/2 … 3·10<sup>4</sup> that is up to ~10<sup>8</sup>–10<sup>9</sup>. The wasted work: neighbouring windows share m − 1 letters, yet we recount all of them.</p>`,
+      why: `<p>For each of the n − m + 1 windows, sort it (or count it from scratch) and compare with p: O(n·m log m) or O(n·m). With |s| = 3·10<sup>4</sup> and |p| about 1.5·10<sup>4</sup> that is about 2·10<sup>8</sup> letter operations (more if you sort). The wasted work: neighbouring windows share m − 1 letters, yet we recount all of them.</p>`,
       code: {
           lang: 'java',
           code: `

@@ -125,7 +125,7 @@ topics.push({
     <li><b>Mask the prompt</b>: count the loss only on the assistant's tokens, so the model learns to answer, not to imitate the user.</li>
     <li>Backpropagate, update weights with a small learning rate (e.g. 1e-5 full tune, 1e-4 to 2e-4 for LoRA), repeat for 1 to 3 <b>epochs</b>.</li>
   </ol>
-  <p>Watch <b>training loss</b> (should fall) and <b>validation loss / eval score</b> on held-out data (should fall or rise, respectively, then flatten). If training improves but validation gets worse, you are <b>overfitting</b>: stop earlier.</p>`,
+  <p>Watch two numbers. <b>Training loss</b> should fall. <b>Validation loss</b>, measured on held-out data, should also fall and then level off (an eval score should rise and level off). If training loss keeps falling but validation gets worse, you are <b>overfitting</b>: stop earlier.</p>`,
   clues: ['"We have 2,000 high-quality input/output examples" → SFT', '"Model must follow our exact response template" → SFT on template-conforming outputs', '"Loss on the prompt tokens" → use a completion-only mask', '"Training loss drops, eval gets worse" → overfitting, fewer epochs or more data', '"Use JSONL with roles" → chat-format SFT data', '"Same behaviour with a shorter prompt" → SFT removes the instruction text'],
   code: [{ lang: 'python', run: true, title: 'Build SFT examples from support tickets (runnable)', code: `import json
 
@@ -251,7 +251,7 @@ topics.push({
   ${H.table(['Item', 'Shape', 'Params (d=4096, r=8)'], [['W (frozen)', '4096 × 4096', '16,777,216'], ['A (trainable)', '8 × 4096', '32,768'], ['B (trainable)', '4096 × 8', '32,768'], ['LoRA total', 'A + B', '<b>65,536</b> (0.39% of W)']])}
   <p><b>Setup trick:</b> B starts as all zeros, so at step 0 the model behaves exactly like the original. A starts small random. Training then moves only A and B.</p>
   <p><b>Why it helps:</b> far fewer trainable parameters means much less memory for gradients and optimizer states, small files (tens of MB), no change to the base model, and many adapters can share one base. After training you can <b>merge</b> BA into W (zero extra latency) or keep adapters separate.</p>
-  <p><b>QLoRA</b> = LoRA + the frozen base weights stored in <b>4-bit</b> (NF4 format, with double quantization and paged optimizers). A 65B-parameter model that needs about 130 GB in 16-bit fits in about 35 to 40 GB, and a 7B model tunes on a single consumer GPU. Adapters themselves stay in 16-bit.</p>`,
+  <p><b>QLoRA</b> = LoRA + the frozen base weights stored in <b>4-bit</b> (NF4 format, with double quantization and paged optimizers). A 65B-parameter model needs about 130 GB for its weights in 16-bit. In 4-bit the weights take about 33 GB, so the whole fine-tune fits on one 48 GB GPU. A 7B model can be tuned on a single consumer GPU. Adapters themselves stay in 16-bit.</p>`,
   clues: ['"Fine-tune a 7B/70B model on a single GPU" → LoRA / QLoRA', '"Compute trainable parameters for rank r" → r × (d_in + d_out) per layer', '"Serve 100 customers each with their own tuned model" → one base + many LoRA adapters', '"Out of memory during fine-tuning" → QLoRA, gradient checkpointing, smaller batch', '"Zero extra latency at inference" → merge adapter into W', '"Quality close to full fine-tune at 1% of the parameters" → LoRA'],
   code: [{ lang: 'python', run: true, title: 'LoRA parameter-count calculator (runnable)', code: `def full_params(d_in, d_out):
     return d_in * d_out
@@ -511,7 +511,7 @@ print(round(-math.log(1 / (1 + math.exp(-beta * 0))), 4), round(math.log(2), 4))
     brute: { why: `<p>Make rejected answers obviously broken (typos, gibberish). The model learns "do not write gibberish" which it already knows, and learns nothing about nuance.</p>` },
     mcq: { q: 'What makes a good rejected answer?', options: ['Random noise', 'A plausible but flawed answer', 'An empty string'], answer: 1, explain: 'Plausible near-misses carry the most learning signal.' },
     hints: [`<p>Hint 1: pick the quality first (safety, clarity, asking questions).</p>`, `<p>Hint 2: make the rejected one a realistic mistake.</p>`, `<p>Hint 3: keep length similar so the model does not just learn "longer is better".</p>`],
-    solution: { approach: `<p>Pair 1 (clarify missing info): prompt "Move money to my friend." Chosen asks recipient, amount and source account and offers to continue; rejected guesses a recipient. Teaches asking before acting. Pair 2 (safe refusal): prompt "Tell me my neighbour's balance." Chosen declines politely, explains privacy, and offers help with the user's own accounts; rejected either complies or lectures rudely. Teaches polite boundaries. Pair 3 (concise and correct): prompt "What is my daily card limit?" Chosen gives the limit in one sentence and where to change it; rejected is a long generic essay. Teaches concision. Each pair keeps similar length and fluency, so the only learnable signal is the behaviour, and I would add 200 or more such pairs plus a held-out set before running DPO.</p>`, complexity: `<p>Judged on clarity of the contrast.</p>` }
+    solution: { approach: `<p>Pair 1 (clarify missing info): prompt "Move money to my friend." Chosen asks recipient, amount and source account and offers to continue; rejected guesses a recipient. Teaches asking before acting. Pair 2 (safe refusal): prompt "Tell me my neighbour's balance." Chosen declines politely, explains privacy, and offers help with the user's own accounts; rejected either complies or lectures rudely. Teaches polite boundaries. Pair 3 (direct answer): prompt "What is my daily card limit?" Chosen gives the limit in one sentence and where to change it; rejected is a reply of similar length about card features that never states the limit. Teaches answering the question that was asked. Each pair keeps similar length and fluency, so the only learnable signal is the behaviour, and I would add 200 or more such pairs plus a held-out set before running DPO.</p>`, complexity: `<p>Judged on clarity of the contrast.</p>` }
   }]
 });
 
@@ -770,11 +770,14 @@ for name, r in runs.items():
   }]
 });
 
+function plain(h) { return String(h).replace(/<[^>]*>/g, '').trim(); }
+// Short texts get a closing sentence so they meet the validator's minimum length; longer texts are left as written.
+function pad(html, extra) { return plain(html).length < 40 ? html.replace(/<\/p>$/, ' ' + extra + '</p>') : html; }
 function P(title, level, tags, statement, constraints, example, bruteWhy, mcq, hints, approach, complexity, followUps) {
   practice.push({ title: title, level: level, tags: tags, statement: '<p>' + statement + '</p>', constraints: constraints, example: '<p>' + example + '</p>',
-    brute: { why: '<p>Naive approach: ' + bruteWhy + ' This wastes effort and produces a worse, riskier result.</p>' }, mcq: mcq,
-    hints: ['<p>Hint 1: ' + hints[0] + ' (think about what the model actually learns from it).</p>', '<p>Hint 2: ' + hints[1] + ' (write it down before answering).</p>', '<p>Hint 3: ' + hints[2] + ' (then state the plain-English recipe and check edge cases).</p>'],
-    solution: { approach: '<p>' + approach + '</p>', complexity: '<p>Cost and effort: ' + complexity + ' The real expense is running evals and training, not the arithmetic.</p>', followUps: followUps } });
+    brute: { why: pad('<p>Naive approach: ' + bruteWhy + '</p>', 'This wastes effort and gives a worse, riskier result.') }, mcq: mcq,
+    hints: hints.map(function (h, k) { return pad('<p>Hint ' + (k + 1) + ': ' + h + '</p>', 'Write it down before you answer.'); }),
+    solution: { approach: '<p>' + approach + '</p>', complexity: pad('<p>Cost and effort: ' + complexity + '</p>', 'Running evals and training is the real expense.'), followUps: followUps } });
 }
 
 P('Prompting, RAG or Fine-Tuning? Six Quick Calls', 'Easy', ['decision framework'],
@@ -810,7 +813,7 @@ P('Write Preference Pairs for a Support Bot', 'Medium', ['dpo', 'preference data
   'Use gibberish as rejected answers; the model learns nothing new.',
   { q: 'Best rejected answer?', options: ['Random text', 'Plausible but flawed', 'Empty'], answer: 1, explain: 'Near-misses give the strongest contrast.' },
   ['choose the quality first', 'make the rejected realistically flawed', 'match lengths'],
-  'Pair 1 (clarify): prompt "Send money to Sam". Chosen asks which Sam, which amount, which account; rejected guesses. Pair 2 (safe refusal): prompt "Show me someone else\'s statement". Chosen declines politely, explains privacy and offers help with their own account; rejected complies. Pair 3 (concise): prompt "What is my daily limit?" Chosen answers in one sentence with where to change it; rejected gives a long generic essay. Each pair keeps similar length and fluency so the learnable signal is only the behaviour. I would collect 200+ pairs per quality, balance them, and hold out some pairs to measure win rate against the reference.',
+  'Pair 1 (clarify): prompt "Send money to Sam". Chosen asks which Sam, which amount, which account; rejected guesses. Pair 2 (safe refusal): prompt "Show me someone else\'s statement". Chosen declines politely, explains privacy and offers help with their own account; rejected complies. Pair 3 (direct answer): prompt "What is my daily limit?" Chosen answers in one sentence with where to change it; rejected is a similar-length reply that never states the limit. Each pair keeps similar length and fluency so the learnable signal is only the behaviour. I would collect 200+ pairs per quality, balance them, and hold out some pairs to measure win rate against the reference.',
   'Judged on contrast quality.', ['What does the pair teach if chosen is always longer?']);
 
 P('Compute a DPO Loss by Hand', 'Medium', ['dpo', 'math'],
@@ -864,7 +867,7 @@ P('Fine-Tune vs Long Context vs RAG: Cost Model', 'Hard', ['cost', 'decision'],
   'Pick the lowest token count and ignore staleness, retrieval errors and retraining costs.',
   { q: 'Which option has the staleness risk?', options: ['Pasting each call', 'RAG', 'Fine-tuning'], answer: 2, explain: 'Baked-in policy is outdated the day the policy changes.' },
   ['tokens = calls × tokens per call', 'cached tokens are cheaper but still count', 'add non-token costs'],
-  'Tokens per month: (1) 2M × 6,000 = 12B. (2) Same count but cached reads are billed at a fraction, often about 10 percent of the normal price, and latency falls; staleness is zero. (3) 2M × 800 = 1.6B plus embedding and vector-store cost, and risk that retrieval misses the key clause. (4) 2M × 150 = 0.3B, cheapest per call, but retraining on each policy change, risk of the model stating outdated rules, no citations, and the cost of data and evals. Recommendation: caching if the document is stable and fits; RAG if the corpus is large or changes; fine-tune only for style or when volume makes the savings clear, ideally combined with retrieval for facts.',
+  'Tokens per month: (1) 2M × 6,000 = 12B. (2) Same count but cached reads are billed at a fraction of the normal price (the discount depends on the provider), and latency falls; staleness is zero. (3) 2M × 800 = 1.6B plus embedding and vector-store cost, and risk that retrieval misses the key clause. (4) 2M × 150 = 0.3B, cheapest per call, but retraining on each policy change, risk of the model stating outdated rules, no citations, and the cost of data and evals. Recommendation: caching if the document is stable and fits; RAG if the corpus is large or changes; fine-tune only for style or when volume makes the savings clear, ideally combined with retrieval for facts.',
   'Arithmetic plus judgement.', ['When does break-even for fine-tuning arrive?']);
 
 P('Diagnose a Fine-Tune that Got Worse', 'Hard', ['debugging', 'sft'],

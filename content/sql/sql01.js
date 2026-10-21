@@ -1297,7 +1297,7 @@ ${H.table(['Type', 'Read it as', 'School example', 'How to build it in tables'],
 ${H.table(['student_id (FK)', 'course_id (FK)', 'grade'], [['1', 'CS101', 'A'], ['1', 'MA101', 'B'], ['2', 'MA101', 'A']])}
 <p>Its primary key is <code>(student_id, course_id)</code> — the same pair cannot be recorded twice. Facts that belong to the <b>pair</b> (grade, semester, quantity, role, hours) live here too; they belong to neither side alone.</p>
 <h4>Participation: optional vs mandatory</h4>
-<p>Cardinality says "how many at most"; <b>participation</b> says "at least zero or at least one". "Every order <i>must</i> have a customer" → FK is <code>NOT NULL</code> (mandatory). "A student <i>may</i> have an ID card" → the card table simply has no row for some students (optional). In ER diagrams this is the 0 or | next to the crow's foot: <code>|o—&lt;</code> means "zero or many".</p>`,
+<p>Cardinality says "how many at most"; <b>participation</b> says "at least zero or at least one". "Every order <i>must</i> have a customer" → FK is <code>NOT NULL</code> (mandatory). "A student <i>may</i> have an ID card" → the card table simply has no row for some students (optional). In ER diagrams, the symbol next to the line shows this: a circle (o) means zero is allowed, and a bar (|) means at least one is needed. So <code>o&lt;</code> reads "zero or many".</p>`,
     clues: [
       '"each X can have many Y, but each Y belongs to one X" → 1 : N → FK on Y',
       '"many-to-many" / "a student can enrol in many courses and a course has many students" → junction (bridge / associative) table',
@@ -1825,7 +1825,7 @@ ${H.table(['Kind of data', 'Standard / PostgreSQL / MySQL', 'SQLite', 'Tip'], [
   ['Unique ids', '<code>UUID</code>', 'TEXT or BLOB', 'UUIDv7 = time-ordered'],
   ['Semi-structured', '<code>JSON</code> / <code>JSONB</code>', 'TEXT + json_* functions', 'Do not hide relationships in JSON']
 ])}
-<h4>The five column constraints you need on day one</h4>
+<h4>The six column constraints you need on day one</h4>
 ${H.table(['Constraint', 'Rule it enforces', 'Rejects…'], [
   ['<code>NOT NULL</code>', 'a value is required', 'a student with no name'],
   ['<code>UNIQUE</code>', 'no two rows share this value (NULLs allowed)', 'two students with roll R01'],

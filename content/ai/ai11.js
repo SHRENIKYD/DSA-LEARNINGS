@@ -470,7 +470,7 @@ topics.push({
     level: 'Medium', tags: ['multi-agent', 'orchestrator'], companies: ['Anthropic', 'Perplexity'],
     statement: `<p>Users ask: "Which of 12 cloud regions is cheapest and safest for our EU workload?" Design an orchestrator-worker system. State the sub-tasks, what each worker receives and returns, how results are merged, and how failures are handled.</p>`,
     constraints: `Answer within 60 seconds; a global budget of 200k tokens.`,
-    example: `<p>Orchestrator makes 4 criteria workers (price, latency, compliance, outage history) x regions batched into 4 groups = 12 tasks max.</p>`,
+    example: `<p>The orchestrator starts 4 workers, one per criterion (price, latency, compliance, outage history). Each worker covers all 12 regions.</p>`,
     brute: { why: `<p>One agent visits all 12 regions sequentially: 12 x 20 s = 240 s, a huge transcript, and the later regions get less attention as context fills.</p>` },
     mcq: { q: 'What should a worker return to the orchestrator?', options: ['A short structured result plus sources', 'Its entire transcript', 'Nothing, it edits shared memory', 'Only a yes/no'], answer: 0, explain: 'Compact structured results keep the orchestrator context small and mergeable.' },
     hints: ['<p>Hint 1: which parts are independent of each other?</p>', '<p>Hint 2: define a result schema every worker must return.</p>', '<p>Hint 3: decide the merge rule, the retry rule, and what to say when a worker fails.</p>'],
@@ -649,7 +649,7 @@ topics.push({
   analogy: `<p>A <b>bank teller</b>: they can check your balance on their own, but a large withdrawal needs the manager's signature. Reading is cheap and reversible; moving money is not. The agent should know which side of that line each action sits on.</p>`,
   explain: `<p><b>Human-in-the-loop (HITL)</b> means the agent pauses at certain points and waits for a person to approve, edit or reject. It is the main safety tool, because model mistakes are guaranteed sometimes.</p>
   <p>Decide approval by two questions: <b>How bad if wrong?</b> (impact) and <b>Can we undo it?</b> (reversibility).</p>
-  ${H.table(['Action', 'Reversible?', 'Impact', 'Policy'], [['Search the knowledge base', 'n/a (read)', 'Low', '<span class="c-g">Auto</span>'], ['Draft an email', 'Yes (not sent)', 'Low', '<span class="c-g">Auto</span>'], ['Send email to customer', 'No', 'Medium', '<span class="c-y">Approve (or sample-review)</span>'], ['Refund under 50', 'Mostly', 'Low', '<span class="c-g">Auto + log</span>'], ['Refund over 500', 'Hard', 'High', '<span class="c-r">Human approves</span>'], ['Delete data / deploy to prod', 'No', 'Very high', '<span class="c-r">Always human</span>']])}
+  ${H.table(['Action', 'Reversible?', 'Impact', 'Policy'], [['Search the knowledge base', 'n/a (read)', 'Low', '<span class="c-g">Auto</span>'], ['Draft an email', 'Yes (not sent)', 'Low', '<span class="c-g">Auto</span>'], ['Send email to customer', 'No', 'Medium', '<span class="c-y">Approve (or sample-review)</span>'], ['Refund up to 50', 'Mostly', 'Low', '<span class="c-g">Auto + log</span>'], ['Refund over 50', 'Hard', 'Medium to high', '<span class="c-r">Human approves (over 500: blocked for the agent)</span>'], ['Delete data / deploy to prod', 'No', 'Very high', '<span class="c-r">Always human</span>']])}
   <p>An approval gate shows the human <b>exactly what will happen</b> (tool, arguments, why, expected effect), with buttons: approve, edit, reject (with reason). The rejection reason goes back to the agent as an observation. The agent must <b>actually wait</b>: the paused state is saved so a reply can come minutes or days later.</p>
   <p>Other HITL points: ask for clarification when the request is ambiguous; review the plan before a long run; escalate when the guard fires or confidence is low.</p>`,
   clues: ['"which actions should require approval?"', '"irreversible" or "destructive" operations', '"agent should ask before sending / paying / deleting"', '"approval fatigue" - too many prompts', '"audit trail" and "who authorised this?"', '"escalate to a human when unsure"'],
@@ -725,8 +725,10 @@ print("Pending for human review:", queue)` }],
 
 // ---------------- PRACTICE ----------------
 function P(title, level, tags, statement, constraints, example, bruteWhy, mcq, hints, approach, extra) {
-  hints = hints.map(function (h) { return h.length < 70 ? h.replace('</p>', ' Take a moment to think it through before reading on.</p>') : h; });
-  bruteWhy = bruteWhy.length < 70 ? bruteWhy.replace('</p>', ' It cannot be repeated or compared between versions.</p>') : bruteWhy;
+  // Only texts shorter than the validator minimum (40 characters of text) get a closing sentence.
+  function plain(h) { return String(h).replace(/<[^>]*>/g, '').trim(); }
+  hints = hints.map(function (h) { return plain(h).length < 40 ? h.replace('</p>', ' Think it through before reading on.</p>') : h; });
+  bruteWhy = plain(bruteWhy).length < 40 ? bruteWhy.replace('</p>', ' It cannot be repeated or compared between versions.</p>') : bruteWhy;
   var p = { title: title, level: level, tags: tags, companies: ['Anthropic', 'OpenAI', 'Google'], statement: statement, constraints: constraints, example: example, brute: { why: bruteWhy }, mcq: mcq, hints: hints, solution: { approach: approach, complexity: '<p>' + (extra && extra.cx || 'Dominated by model calls; keep steps few and bounded.') + '</p>', followUps: (extra && extra.fu) || ['What would you log to debug this later?'] } };
   if (extra && extra.code) p.solution.code = extra.code;
   return p;

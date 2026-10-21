@@ -68,7 +68,7 @@
         ['<code>dependencies</code>', 'Needed at <b>runtime</b> (ships to users)', '<code>"react": "^18.3.1"</code>'],
         ['<code>devDependencies</code>', 'Needed only to <b>build / test</b> (never shipped)', '<code>"vitest": "^2.0.0"</code>'],
         ['<code>peerDependencies</code>', '"You (the host app) must install this, I will share yours"', 'A React component library asking for <code>react</code>'],
-        ['<code>engines</code>', 'Which Node versions work', '<code>"node": "&gt;=20"</code>'],
+        ['<code>engines</code>', 'Which Node versions work', '<code>"node": "&gt;=22"</code>'],
         ['<code>type</code>', '<code>"module"</code> makes <code>.js</code> files ES modules', '<code>"type": "module"</code>'],
         ['<code>sideEffects</code>', 'Hint for bundlers: which files can be dropped if unused', '<code>false</code> (covered in the tree shaking topic)']
       ])}
@@ -120,7 +120,7 @@
     "vitest": "^2.0.5",
     "eslint": "^9.9.0"
   },
-  "engines": { "node": ">=20" }
+  "engines": { "node": ">=22" }
 }` },
       { lang: 'js', run: true, title: 'A tiny semver range matcher (runnable)', code: `// Supports ^ ~ >= > <= < = , x-ranges (1.x, 1.2.x), * and "||" (OR).
 function parseV(s) {
@@ -280,7 +280,7 @@ console.log('^0.0.3 =', caretBounds(0, 0, 3));` }
       },
       {
         title: 'Peer dependency warning, decoded',
-        html: `<p>You install <code>react-select</code> and see <i>"requires a peer of react@^18 but none is installed"</i>. A <b>peer dependency</b> is a library saying "I do not bring my own React; I will use <b>yours</b>". If it brought its own copy you would have <b>two Reacts</b> on the page and hooks would crash ("Invalid hook call"). Fix: install a React version that satisfies the peer range. npm 7+ installs peers automatically; pnpm warns so you stay in control.</p>`
+        html: `<p>You install <code>react-select</code> and see <i>"requires a peer of react@^18 but none is installed"</i>. A <b>peer dependency</b> is a library saying "I do not bring my own React; I will use <b>yours</b>". If it brought its own copy you would have <b>two Reacts</b> on the page and hooks would crash ("Invalid hook call"). Fix: install a React version that satisfies the peer range. npm 7+ and pnpm 8+ install missing peers automatically and still warn when versions conflict.</p>`
       }
     ],
     deepDive: `<p>🟣 <b>How resolution really works.</b> npm builds an <i>ideal tree</i>: for each dependency it asks the registry for the packument (the list of versions), picks the highest match for the range, then recurses. Two packages that need compatible ranges of the same library are <b>deduped</b> to one copy hoisted to the top of <code>node_modules</code>; incompatible ones get nested copies. That flat layout is why code can <code>import</code> packages it never declared ("phantom dependencies"). <b>pnpm</b> avoids this: <code>node_modules</code> holds only your declared deps as symlinks into <code>.pnpm/</code>, which hard-links files from a global store keyed by content hash.</p>
@@ -436,7 +436,7 @@ console.log(maxSatisfying(published, '^5.1.0'));  // null` },
       <p><b>The big three today:</b></p>
       ${H.table(['Tool', 'Core idea', 'Strength', 'Watch out'], [
         ['<b>webpack</b>', 'Everything is a module; loaders + plugins; its own runtime', 'Most mature, huge plugin ecosystem, module federation', 'Config is long; dev builds slow on big apps'],
-        ['<b>Vite</b>', 'Dev: serve native ES modules on demand (esbuild pre-bundles deps). Build: Rollup', 'Near-instant dev start and HMR, small config', 'Dev and prod use different engines (rare surprises)'],
+        ['<b>Vite</b>', 'Dev: serve native ES modules on demand (deps are pre-bundled). Build: Rolldown (Vite 8 and later; earlier versions used esbuild and Rollup)', 'Near-instant dev start and HMR, small config', 'Dev and prod use different engines (rare surprises)'],
         ['<b>esbuild</b>', 'Written in Go, extremely fast bundler + minifier', 'Speed (10-100x), great as a building block', 'Fewer plugins; limited code-splitting controls'],
         ['<b>Rollup / Rolldown / Rspack / Turbopack</b>', 'Rollup: library bundler with best tree shaking. Rolldown, Rspack, Turbopack: Rust rewrites', 'Speed with familiar APIs (Rspack mimics webpack)', 'Newer, check plugin support']
       ])}
@@ -1888,7 +1888,7 @@ afterAll(() => server.close());
 it('shows a loading state, then the users', async () => {
   render(<UserList />);
   expect(screen.getByText(/loading/i)).toBeInTheDocument();          // getBy: it is there right now
-  expect(await screen.findByRole('listitem', { name: 'Asha' })).toBeInTheDocument();   // findBy waits
+  expect(await screen.findByText('Asha')).toBeInTheDocument();   // findBy waits
   expect(screen.getAllByRole('listitem')).toHaveLength(2);
 });
 
@@ -2445,7 +2445,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: [20, 22]      # run the whole job on two Node versions
+        node: [22, 24]      # run the whole job on two Node versions
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -2684,7 +2684,7 @@ jobs:
         env:
           DEPLOY_TOKEN: \${{ secrets.DEPLOY_TOKEN }}` },
         complexity: `<p>Wall time = check + e2e + deploy in sequence, but inside each job the cache cuts install to seconds. Splitting lint, types and tests into parallel jobs would reduce <code>check</code> to its slowest part.</p>`,
-        followUps: ['Run lint, types and tests as parallel jobs and make build depend on all of them', 'Add a Node 20 and 22 matrix and shard Playwright across 4 machines']
+        followUps: ['Run lint, types and tests as parallel jobs and make build depend on all of them', 'Add a Node 22 and 24 matrix and shard Playwright across 4 machines']
       }
     }]
   });
@@ -3534,7 +3534,7 @@ console.log(affected(packages, ['pnpm-lock.yaml']));           // everything` },
   interview.push({ q: 'Why do we commit a lockfile, and what is the difference between <code>npm install</code> and <code>npm ci</code>?', level: 'B', a: `<p>package.json holds <i>ranges</i>; the lockfile records the <b>exact version, URL and integrity hash</b> of every package in the tree, direct and transitive. Committing it means every developer, CI run and production build installs the identical tree, so "works on my machine" bugs from silent upstream updates disappear, and tampering is detected by the hash. <code>npm install</code> may resolve new versions and rewrite the lockfile. <code>npm ci</code> deletes node_modules, installs strictly from the lockfile and fails if it disagrees with package.json. Use <code>npm ci</code> (or <code>pnpm install --frozen-lockfile</code>) in CI and deploys. Libraries usually still commit it for their own CI, but consumers ignore it.</p>`, followUps: ['How do you upgrade dependencies safely?', 'What is an integrity hash protecting against?'] });
   interview.push({ q: 'npm vs pnpm vs yarn: why might a team choose pnpm?', level: 'I', a: `<p>All three read package.json and produce a dependency tree. <b>pnpm</b> stores each package version once in a global content-addressable store and <b>hard-links</b> files into projects, so installs are fast and disk use is low, especially in monorepos. Its <code>node_modules</code> is <b>strict</b>: only declared dependencies are linked at the top, which prevents "phantom dependencies" (importing a package you never listed that happened to be hoisted). It has first-class workspaces (<code>workspace:*</code>) and a deterministic lockfile. Costs: occasional tools that assume the flat npm layout need configuration, and the team must learn a few new commands. npm is the zero-setup default; Yarn Berry offers Plug'n'Play and constraints.</p>`, followUps: ['What is a phantom dependency and why is it dangerous?', 'How do workspaces help a monorepo?'] });
   interview.push({ q: 'What does a bundler do, and why do we still need one in the era of native ES modules?', level: 'I', a: `<p>A bundler starts at an entry file, <b>resolves</b> each import to a file, <b>transforms</b> it (TypeScript, JSX, CSS, assets), builds the <b>module graph</b>, splits it into <b>chunks</b>, <b>optimises</b> (tree shaking, minification, hashing) and <b>emits</b> files. Browsers can load ES modules, but bare imports like <code>react</code> are not understood, JSX and TypeScript are not native, hundreds of small files cause request overhead and waterfalls, and production needs minified, tree-shaken, content-hashed, code-split output. In development, tools like Vite skip bundling for speed and serve modules on demand; for production they still bundle.</p>`, followUps: ['How does code splitting with import() work?', 'What do content hashes buy you?'] });
-  interview.push({ q: 'Compare webpack, Vite and esbuild. When would you choose each?', level: 'I', a: `<p><b>webpack</b> bundles everything, with loaders and plugins and a runtime; it is the most configurable (module federation, exotic assets, huge ecosystem) but slow to configure and to run on large apps. <b>Vite</b> serves native ES modules in development (esbuild pre-bundles dependencies) so start-up and HMR are near-instant, and uses Rollup (moving to Rolldown) for production with a small config; it is the default for new React/Vue/Svelte apps. <b>esbuild</b> is a Go bundler/minifier that is 10 to 100 times faster but with a smaller plugin and code-splitting feature set, so it is usually a building block (inside Vite, tsup) or used for libraries and scripts. Choose Vite for new apps, webpack/Rspack when you need federation or have a large webpack investment, esbuild for tooling and libraries.</p>`, followUps: ['What are Rspack and Turbopack?', 'Why can dev and production behave differently in Vite?'] });
+  interview.push({ q: 'Compare webpack, Vite and esbuild. When would you choose each?', level: 'I', a: `<p><b>webpack</b> bundles everything, with loaders and plugins and a runtime; it is the most configurable (module federation, exotic assets, huge ecosystem) but slow to configure and to run on large apps. <b>Vite</b> serves native ES modules in development (dependencies are pre-bundled) so start-up and HMR are near-instant, and uses Rolldown (Vite 8 and later; Rollup before that) for production with a small config; it is the default for new React/Vue/Svelte apps. <b>esbuild</b> is a Go bundler/minifier that is 10 to 100 times faster but with a smaller plugin and code-splitting feature set, so it is usually a building block (inside Vite, tsup) or used for libraries and scripts. Choose Vite for new apps, webpack/Rspack when you need federation or have a large webpack investment, esbuild for tooling and libraries.</p>`, followUps: ['What are Rspack and Turbopack?', 'Why can dev and production behave differently in Vite?'] });
   interview.push({ q: 'How would you reduce the JavaScript bundle size of a slow-loading React app?', level: 'I', a: `<p>Measure first with a bundle analyser to see what is big. Then: (1) <b>code-split</b> by route and by heavy features using <code>import()</code> and <code>React.lazy</code>; (2) <b>tree shake</b> by using ES-module builds (<code>lodash-es</code>), fixing barrel-file imports and checking <code>sideEffects</code>; (3) replace heavy libraries (moment → date-fns or Temporal/Intl, large icon sets → per-icon imports); (4) <b>lower the target</b> (modern syntax, fewer polyfills); (5) compress with Brotli and cache with content hashes; (6) lazy-load below-the-fold components and images; (7) set a <b>performance budget</b> in CI to stop regressions. Verify with Lighthouse and real-user metrics, not only bundle size.</p>`, followUps: ['How do you prevent regressions after the cleanup?', 'What is the trade-off of too many small chunks?'] });
   interview.push({ q: 'What is tree shaking, what makes it fail, and what is the <code>sideEffects</code> field?', level: 'A', a: `<p>Tree shaking removes <b>exports that nothing imports</b>, determined by analysing the static ES-module graph, then deleting them (the bundler marks them and the minifier removes the code). It fails or weakens when code is CommonJS (<code>require</code> is dynamic), when modules are transpiled to CommonJS before bundling (<code>modules: "commonjs"</code>), with <code>import * as</code> plus dynamic property access, with top-level code that has side effects or impure calls the bundler cannot prove safe (fix with <code>/*#__PURE__*/</code>), and with barrel files. The <code>sideEffects</code> field in a package.json tells the bundler that files are free of import-time effects (<code>false</code>) or lists the ones that have them (<code>["*.css"]</code>), so unused modules can be dropped entirely. Lying in that field removes code that mattered, such as CSS imports.</p>`, followUps: ['How would you debug why a library is not shaken?', 'What is the difference between tree shaking and minifier dead-code elimination?'] });
   interview.push({ q: 'Why use TypeScript in a frontend codebase, and what does it NOT protect you from?', level: 'I', a: `<p>TypeScript catches whole classes of errors at build time (wrong prop names, missing fields, possible <code>undefined</code>), documents component contracts, powers editor autocomplete and safe refactors, and makes large teams faster. Discriminated unions model UI states precisely. It does <b>not</b> protect you at runtime: types are erased, so JSON from the network, <code>localStorage</code>, URL params and third-party scripts can violate the types. Validate those boundaries (zod, valibot) and infer types from the schema. Also casts (<code>as</code>) and <code>any</code> disable checking, and bundlers do not type-check, so run <code>tsc --noEmit</code> in CI. Use <code>strict</code> mode from the start.</p>`, followUps: ['any vs unknown?', 'How would you migrate a large JS codebase gradually?'] });

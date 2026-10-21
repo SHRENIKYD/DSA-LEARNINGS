@@ -1142,7 +1142,7 @@ ${H.table(['Utilisation', 'Latency multiplier', '10 ms service becomes'], [['50%
 <p>That is why production systems aim to run busy components at roughly 50–70% utilisation, not 100%.</p>
 <p><b>Percentiles, not averages.</b> Sort all request latencies: <b>p50</b> (median) = half are faster; <b>p95</b> / <b>p99</b> = 95% / 99% are faster. The slowest 1% is the <b>tail</b>. Averages hide the tail: 99 requests at 10 ms and one at 2 s average 30 ms — a number no real user ever saw. Your heaviest users (big carts, many friends) often live in the tail.</p>
 <p><b>Latency numbers every designer should know</b> (orders of magnitude, 2020s hardware):</p>
-${H.table(['Operation', 'Approx. time'], [['L1 cache reference', '~1 ns'], ['Main memory (RAM) reference', '~100 ns'], ['Read 1 MB sequentially from RAM', '~5–10 µs'], ['Random read from NVMe SSD', '~20–100 µs'], ['Read 1 MB sequentially from NVMe SSD', '~0.3 ms'], ['Round trip inside one data center', '~0.5 ms'], ['Spinning-disk (HDD) seek', '~5–10 ms'], ['Round trip US East ↔ US West', '~60–70 ms'], ['Round trip India ↔ US East', '~200 ms']])}
+${H.table(['Operation', 'Approx. time'], [['L1 cache reference', '~1 ns'], ['Main memory (RAM) reference', '~100 ns'], ['Read 1 MB sequentially from RAM', '~50 µs'], ['Random read from NVMe SSD', '~20–100 µs'], ['Read 1 MB sequentially from NVMe SSD', '~0.3 ms'], ['Round trip inside one data center', '~0.5 ms'], ['Spinning-disk (HDD) seek', '~5–10 ms'], ['Round trip US East ↔ US West', '~60–70 ms'], ['Round trip India ↔ US East', '~200 ms']])}
 <p>Takeaways: memory is ~1000× faster than SSD random reads; one network hop inside a data center costs as much as thousands of RAM reads; crossing an ocean costs more than almost any computation you do per request.</p>`,
     clues: [
       '"p99 under 200 ms" → latency target on the tail; design for the slowest requests, not the average.',
@@ -1241,7 +1241,7 @@ for u in (0.5, 0.8, 0.9, 0.95, 0.99):
     }, {
       title: 'Latency numbers on a human scale',
       gen: function () {
-        var items = [['L1 cache', 1], ['RAM read', 100], ['1 MB from RAM', 7000], ['SSD random read', 50000], ['1 MB from SSD', 300000], ['DC round trip', 500000], ['HDD seek', 8000000], ['US East↔West', 65000000], ['India↔US East', 200000000]];
+        var items = [['L1 cache', 1], ['RAM read', 100], ['1 MB from RAM', 50000], ['SSD random read', 80000], ['1 MB from SSD', 300000], ['DC round trip', 500000], ['HDD seek', 8000000], ['US East↔West', 65000000], ['India↔US East', 200000000]];
         function human(ns) {
           var sec = ns;
           if (sec < 120) return sec + (sec === 1 ? ' second' : ' seconds');
@@ -1577,7 +1577,7 @@ print(f"budget = {budget:.1f} min, used = {used:.1f} min ({used / budget:.0%}), 
     statement: `<p>"Design a chat app for our company." Produce: clarifying questions, functional requirements, non-functional requirements with numbers, out-of-scope items, and two rough numbers (messages per second, storage per year). Then name the one NFR that most changes the architecture.</p>`,
     constraints: `<p>Company of 20,000 employees across 3 continents. Messages must be searchable. Assume each active user sends 40 messages/day.</p>`,
     example: `<p>20,000 × 40 = 800,000 messages/day ÷ 86,400 ≈ ${H.c('b', '~10 messages/s average')}, maybe ${H.c('y', '~50/s at peak')}. Why: peak is usually 3–5× average during working hours overlap.</p>`,
-    brute: { why: `<p><b>Naive design:</b> "Each client polls <code>GET /messages</code> every second." 20,000 clients × 1 request/s = 20,000 requests/s mostly returning nothing — 400× the real message rate — and up to 1 s delivery delay. Skipping requirements led straight to the wrong communication pattern.</p>` },
+    brute: { why: `<p><b>Naive design:</b> "Each client polls <code>GET /messages</code> every second." 20,000 clients × 1 request/s = 20,000 requests/s mostly returning nothing — about 400× the peak message rate — and up to 1 s delivery delay. Skipping requirements led straight to the wrong communication pattern.</p>` },
     mcq: { q: 'Which requirement most pushes you toward persistent connections (WebSockets)?', options: ['Messages are stored for 7 years', 'Messages should appear for recipients within ~1 second', 'Users can upload profile pictures', 'Data is encrypted at rest'], answer: 1, explain: 'Low-latency delivery to many idle clients is what makes push over persistent connections worth it versus polling.' },
     hints: [
       `<p>Hint 1: Ask about channels vs direct messages, group sizes, retention, search, file sharing, compliance (legal hold), and presence ("online" dots).</p>`,

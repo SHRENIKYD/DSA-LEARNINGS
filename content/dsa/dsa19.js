@@ -260,7 +260,7 @@ vector<vector<pair<int, int>>> buildWeighted(int n, const vector<vector<int>>& e
     },
     examples: [
       { title: 'Directed graph: in-degree and out-degree', html: `<p>Edges 0→1, 0→2, 2→1, 1→3. Out-lists: 0:[1,2], 1:[3], 2:[1], 3:[]. In-degree counts arrows arriving: ${H.arr([0, 2, 1, 1], { label: 'indeg[0..3]', hl: { 0: 'g' } })} Node 0 has in-degree 0 — nothing points to it, so it is a <b>source</b> (a course with no prerequisites). This single array is the heart of topological sort later.</p>` },
-      { title: 'Grid as an implicit graph', html: `<p>Grid <code>["110","010"]</code>: cell (0,0) neighbours are (1,0) [down] and (0,1) [right] — we test each of the 4 directions and skip any that fall outside the grid or are water.</p>${H.table(['dir', 'dr', 'dc', 'from (0,1) goes to', 'valid?'], [['up', '-1', '0', '(-1,1)', H.c('r', 'out of bounds')], ['down', '1', '0', '(1,1)', H.c('g', 'yes, land')], ['left', '0', '-1', '(0,0)', H.c('g', 'yes, land')], ['right', '0', '1', '(0,2)', H.c('r', 'water')]])}<p>No adjacency list is built — saves O(R·C) memory and time.</p>`, code: { code: `int[] dr = {-1, 1, 0, 0}, dc = {0, 0, -1, 1};
+      { title: 'Grid as an implicit graph', html: `<p>Grid <code>["110","010"]</code>: cell (0,1) has land neighbours (1,1) [down] and (0,0) [left] — we test each of the 4 directions and skip any that fall outside the grid or are water.</p>${H.table(['dir', 'dr', 'dc', 'from (0,1) goes to', 'valid?'], [['up', '-1', '0', '(-1,1)', H.c('r', 'out of bounds')], ['down', '1', '0', '(1,1)', H.c('g', 'yes, land')], ['left', '0', '-1', '(0,0)', H.c('g', 'yes, land')], ['right', '0', '1', '(0,2)', H.c('r', 'water')]])}<p>No adjacency list is built — saves O(R·C) memory and time.</p>`, code: { code: `int[] dr = {-1, 1, 0, 0}, dc = {0, 0, -1, 1};
 int R = 2, C = 3, r = 0, c = 1;
 for (int d = 0; d < 4; d++) {
     int nr = r + dr[d], nc = c + dc[d];
@@ -406,7 +406,7 @@ public:
 };` }],
         dry: { head: ['pair', 'score[1]', 'score[2]', 'score[3]'], rows: [['start', '0', '0', '0'], ['[1,3]', '-1', '0', '1'], ['[2,3]', '-1', '-1', H.c('g', '2 = n−1 → judge 3')]] },
         complexity: `<p>Time O(n + T), space O(n). No adjacency list needed — degrees are a summary of the graph.</p>`,
-        followUps: ['What if there can be several "celebrities" in a party and you may only ask knows(a, b)? (LC 277, two-pointer elimination in O(n) calls)', 'Return all people trusted by at least k others']
+        followUps: ['Find the celebrity (someone everyone knows who knows nobody) when you may only ask knows(a, b). (LC 277, two-pointer elimination in O(n) calls)', 'Return all people trusted by at least k others']
       }
     }]
   });
@@ -3519,7 +3519,7 @@ void demo() {
     cout << minSemesters(2, {{1, 2}, {2, 1}}) << "\\n";           // -1 (cycle)
 }` }] } },
       { title: 'Alien dictionary edge building', html: `<p>Sorted alien words ["wrt","wrf","er","ett","rftt"]. Compare neighbours, take the <b>first differing letter</b>: wrt/wrf → t→f, wrf/er → w→e, er/ett → r→t, ett/rftt → e→r. Topo sort gives ${H.c('g', 'w e r t f')}. Trap: "abc" before "ab" is invalid input (a longer word with the same prefix cannot come first) → return "".</p>` },
-      { title: 'Longest path in a DAG via topo order', html: `<p>Longest path is NP-hard in general graphs but easy in a DAG: process nodes in topological order and relax <code>best[v] = max(best[v], best[u] + 1)</code> for each edge u → v. The input order matters: by the time v is processed every predecessor u is final.</p>`, code: { code: `int longestPath(int n, int[][] edges) {
+      { title: 'Longest path in a DAG via topo order', html: `<p>Longest path is NP-hard in general graphs but easy in a DAG: process nodes in topological order and relax <code>best[v] = max(best[v], best[u] + 1)</code> for each edge u → v. The topological order is what makes it work: by the time v is processed every predecessor u is final.</p>`, code: { code: `int longestPath(int n, int[][] edges) {
     List<List<Integer>> g = new ArrayList<>();
     for (int i = 0; i < n; i++) g.add(new ArrayList<>());
     int[] indeg = new int[n], best = new int[n];          // best[v] = edges on the longest path ending at v

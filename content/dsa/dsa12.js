@@ -3684,7 +3684,7 @@ ListNode* build(const vector<int>& a) {
     aiEra: `<p><b>What AI changes:</b> an assistant writes a full linked-list class in seconds, so writing boilerplate is no longer the skill. The skill is <b>pointer reasoning</b>: in what order to rewrite links, which edge cases exist, and whether a list is even the right structure (often it is not — see the cache-miss discussion).</p>
 <p><b>Use AI as a partner:</b> ask <code>Give me 8 edge-case inputs for insertAt(pos, val) on a singly list, including empty list, pos = 0 and pos = size; don't write the code</code>, or <code>Draw the next/prev pointers as ASCII after each line of this DLL remove()</code>. Then run your own code against those cases.</p>
 <p><b>Where AI goes wrong:</b> it relinks in the wrong order (losing the rest of the chain), forgets to update <code>prev</code> or <code>tail</code> in a DLL, uses <code>list.get(i)</code> inside a loop on <code>LinkedList</code> (hidden O(N<sup>2</sup>)), or recommends <code>LinkedList</code> as a queue when <code>ArrayDeque</code> is faster.</p>
-<p><b>What you must still own:</b> drawing the boxes and arrows yourself, predicting the state after each line, and explaining why O(1) insert only holds when you already stand at the spot. In live interviews (still mostly AI-free in 2026) that is exactly what is graded.</p>`,
+<p><b>What you must still own:</b> drawing the boxes and arrows yourself, predicting the state after each line, and explaining why O(1) insert only holds when you already stand at the spot. In live whiteboard-style interviews, that is exactly what is graded.</p>`,
     problems: [{
       title: 'Delete Node in a Linked List (you only get the node)',
       level: 'Medium',
