@@ -166,9 +166,14 @@ var Learn = (function () {
     dlg.setAttribute('aria-labelledby', 'qdlgT');
     var h = '<form method="dialog" class="qdlg-in"><div class="qdlg-head"><div><span class="kicker">' + esc(opts.kicker || 'Readiness check') + '</span><h2 id="qdlgT">' + esc(opts.title) + '</h2></div><button class="btn ghost" value="cancel" type="submit" aria-label="Close">✕</button></div>' +
       '<p class="muted">' + esc(opts.intro || ('Answer ' + qs.length + ' questions. ' + Math.round(opts.pass * 100) + '% or more passes.')) + '</p><ol class="qlist">';
+    // Show options in a random order; each input keeps its original index, and explanations naming "option B" follow the shown letters.
+    var LET = 'ABCDEFGH', pos = [];
     qs.forEach(function (q, i) {
-      h += '<li><fieldset><legend>' + q.q + (q.from ? ' <small class="muted">(' + esc(q.from) + ')</small>' : '') + '</legend>' + q.options.map(function (o, k) {
-        return '<label class="qopt"><input type="radio" name="q' + i + '" value="' + k + '"> <span>' + o + '</span></label>';
+      var ord = q.options.map(function (_, k) { return k; });
+      for (var a = ord.length - 1; a > 0; a--) { var b = Math.floor(Math.random() * (a + 1)), t = ord[a]; ord[a] = ord[b]; ord[b] = t; }
+      pos[i] = []; ord.forEach(function (o, k) { pos[i][o] = k; });
+      h += '<li><fieldset><legend>' + q.q + (q.from ? ' <small class="muted">(' + esc(q.from) + ')</small>' : '') + '</legend>' + ord.map(function (o, k) {
+        return '<label class="qopt"><input type="radio" name="q' + i + '" value="' + o + '"> <span>' + LET[k] + '. ' + q.options[o] + '</span></label>';
       }).join('') + '<div class="qexp" hidden></div></fieldset></li>';
     });
     h += '</ol><div class="qdlg-foot"><p class="qres" role="status" aria-live="polite"></p><button class="btn primary lg" type="button" data-qsubmit>Check my answers</button><button class="btn lg" type="submit" value="done" data-qclose hidden>Close</button></div></form>';
@@ -183,7 +188,7 @@ var Learn = (function () {
         var fs = dlg.querySelectorAll('fieldset')[i], ex = fs.querySelector('.qexp');
         fs.classList.toggle('ok', !!ok); fs.classList.toggle('bad', !ok);
         ex.hidden = false;
-        ex.innerHTML = (ok ? '<b class="c-g">Correct.</b> ' : '<b class="c-r">Answer: ' + q.options[q.answer] + '.</b> ') + (q.explain || '');
+        ex.innerHTML = (ok ? '<b class="c-g">Correct.</b> ' : '<b class="c-r">Answer: ' + q.options[q.answer] + '.</b> ') + String(q.explain || '').replace(/\b([Oo]ptions?\s+)([A-H])\b/g, function (m, w, c) { var k = pos[i][c.charCodeAt(0) - 65]; return k === undefined ? m : w + LET[k]; });
         if (!ok && q.section) remember(q.section, q.mod, q.modTitle || q.mod);
       });
       var pct = right / qs.length, pass = pct >= opts.pass;

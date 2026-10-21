@@ -367,7 +367,7 @@ console.log('request after logout ->', authenticate(sid2, t0 + 1000));`
         lang: 'java', check: false, title: 'Spring Boot: session cookie hardening + Redis-backed sessions', code: `# application.yml  (needs spring-session-data-redis for the Redis store)
 spring:
   session:
-    store-type: redis
+    # no store-type needed: Boot picks Redis from the classpath
     timeout: 15m               # idle timeout
 server:
   servlet:

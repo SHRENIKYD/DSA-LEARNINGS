@@ -2259,7 +2259,7 @@ ${H.table(['', 'row store (InnoDB, Postgres)', 'column store (ClickHouse, DuckDB
 </ul>
 <p><b>Skipping data: zone maps.</b> Each block (Parquet row group/page, ClickHouse granule of 8192 rows, Snowflake micro-partition) stores <b>min/max</b> per column. <code>WHERE day = '2026-10-03'</code> skips every block whose min/max range excludes that day — often 99% of the table — without any B-tree.</p>
 <p><b>Vectorized execution.</b> Instead of pulling one row at a time through the operator tree (the classic "Volcano" iterator), the engine processes <b>vectors</b> of ~1,000–2,000 values per call with tight loops the CPU can SIMD-ize, and may operate <b>directly on compressed data</b> (sum an RLE run as value × count). <b>Late materialization</b>: filter on a few columns first, stitch full rows together only for survivors.</p>
-<p><b>Writes</b> are handled LSM-style: new rows land in a row-oriented <b>delta store</b> or small "parts", which background merges convert into big compressed column segments (ClickHouse MergeTree, Vertica WOS→ROS, SQL Server columnstore delta rowgroups, C-Store's WS→RS).</p>`,
+<p><b>Writes</b> are handled LSM-style: new rows land in a row-oriented <b>delta store</b> or small "parts", which background merges convert into big compressed column segments (ClickHouse MergeTree, older Vertica's WOS→ROS (WOS was removed in 10.0), SQL Server columnstore delta rowgroups, C-Store's WS→RS).</p>`,
     clues: [
       '"Dashboards over billions of rows, few columns per query" → column store / OLAP engine',
       '"Why is Parquet smaller than CSV?" → columnar layout + dictionary/RLE/bit-packing + Zstd',

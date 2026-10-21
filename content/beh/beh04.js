@@ -434,7 +434,7 @@ topics.push({
   <p><b>Checkpoint rule:</b> if you pass a checkpoint late, <i>cut something</i>, never rush everything. Example: at minute 20 and still no code -> say "I'll code the simpler version and mention the optimization verbally."</p>
   <p><b>Danger zones:</b></p>
   <ul><li><span class="c-r">Minute 14 and no approach agreed</span> -> propose brute force now.</li><li><span class="c-r">Minute 30 and code not finished</span> -> finish skeleton, write remaining as comments/pseudocode.</li><li><span class="c-r">Minute 36 and no testing</span> -> one dry run, nothing else.</li></ul>
-  <p>The runnable planner below builds a schedule for any round length, and tells you what to do when you are behind. Run it, then change the numbers.</p>`,
+  <p>The runnable planner below builds a schedule for any round length, and tells you what to do when you are behind. Run it, then change the numbers. The planner rounds each phase to whole minutes, so its printed schedule (3, 4, 8, 15, 8, 4, 3) differs by a minute or so from the table above.</p>`,
   clues: ['"We have 45 minutes" - plan backwards from the end, reserve test time', 'You have used 10 minutes and still ask questions - cut to assumptions', 'Interviewer says "we have 5 minutes left" - stop coding new features, test and state complexity', 'Follow-up question appears - you ran out of time; keep the base solution short', 'Two-problem rounds (25 min each) - halve every phase'],
   code: [{ lang: 'python', run: true, title: '45-minute time-budget planner (runnable)', code: `# A tiny planner: turns a total round length into a schedule with checkpoints.
 # Phase weights (percent of the WORKING time, after intro and Q&A are removed).

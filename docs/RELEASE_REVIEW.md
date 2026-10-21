@@ -1,6 +1,6 @@
 # Release notes: content review (website 1.10.1, app 1.11.1)
 
-After Phase 3 ([RELEASE_PHASE3.md](RELEASE_PHASE3.md)), every one of the 220 modules was reviewed end to end for wrong facts, outdated claims, inconsistencies between text, examples and code, and needlessly complicated explanations. Reviewers recomputed every number they touched and re-ran code outputs where possible.
+After Phase 3 ([RELEASE_PHASE3.md](RELEASE_PHASE3.md)), every one of the 220 modules was reviewed end to end for wrong facts, outdated claims, inconsistencies between text, examples and code, and needlessly complicated explanations. Reviewers recomputed every number they touched and re-ran code outputs where possible. The 78 claims they could not confirm were then checked against official documentation, release notes and source code.
 
 ## In numbers
 | Kind | Corrections |
@@ -9,11 +9,14 @@ After Phase 3 ([RELEASE_PHASE3.md](RELEASE_PHASE3.md)), every one of the 220 mod
 | Outdated claims | 54 |
 | Inconsistencies between text, examples and code | 158 |
 | Clarity rewrites | 71 |
-| **Total** | **584 in 184 modules** |
+| **Review total** | **584 in 184 modules** |
+| Open claims checked against sources and corrected | 34 claims, 52 edits in 30 modules |
+| **Modules changed in this release** | **188** |
 
 ## What did not change
 - Module ids, topic and problem order, problem counts, quiz answers and every test case are unchanged.
 - Solution code changed in four problems only, where the code itself was wrong: the awk minute extraction and the systemd unit in CS 8, a lab step in Cloud & DevOps 1, and a Dockerfile in Cloud & DevOps 8 that would not build.
+- Lesson code samples were updated where a library changed: the PyO3 example in Python 13 uses `py.detach`, the Zod example in Frontend 10 uses Zod 4's `error` option, the CodeQL steps in Cloud & DevOps 16 use `@v4`, and the burn-rate alert in Cloud & DevOps 18 now matches its own table.
 
 ## Highlights by track
 
@@ -95,15 +98,35 @@ After Phase 3 ([RELEASE_PHASE3.md](RELEASE_PHASE3.md)), every one of the 220 mod
 **Behavioral & Career**
 - Unsupported statistics removed and numbers corrected across all six modules (47 edits).
 
-## Not changed yet
-78 claims could not be confirmed and were left as they are: mostly version pins, retirement dates and renamed APIs (for example AWS provider v6, ingress-nginx retirement, Zod 4, PyO3 `detach`). They are checked against official documentation in the next patch release.
+## Open claims checked against sources
+Of the 78 claims the reviewers could not confirm:
+- **34 corrected.** Examples:
+  - Spring Boot 3 no longer accepts `spring.session.store-type`; it picks the session store from the classpath (Backend 1 and 5).
+  - The community ingress-nginx controller was retired in March 2026 (Backend 13).
+  - AWS has offered Database Savings Plans since December 2025, and Aurora Global Database supports up to 10 secondary Regions (Cloud & DevOps 5 and 17).
+  - FastAPI 0.118 moved the exit code of yield dependencies back to after the response, and 0.121 added `Depends(scope=...)` (Backend 17).
+  - OWASP Top 10:2025 folds SSRF into A01 Broken Access Control (Backend 15).
+  - Vite 8 builds with Rolldown; Node 20 reached end of life in April 2026, so the CI examples use Node 22 and 24 (Frontend 14).
+  - Lighthouse warns above about 800 DOM nodes and fails above about 1,400 (Frontend 2).
+  - Python 3.14 caches tuple hashes (Python 5); PyO3 renamed `allow_threads` to `detach` (Python 13).
+  - The kernel allows 500 overlayfs lower layers while Docker's overlay2 still caps at 128 (CS 9).
+  - Go 1.24 maps no longer grow incrementally; they are split into small tables (DSA 26).
+  - Layered retries multiply: 3 × 3 × 3 = 27 attempts per client, so 1,350,000, not 450,000 (System Design 12).
+  - Accord transactions first ship in the Cassandra 6.0 alpha builds (SQL 14); Vertica removed the WOS in 10.0 (SQL 13).
+- **34 confirmed correct as written**, for example C++26 `<stdckdint.h>`, `std::indirect` and the `memory_order_consume` deprecation, Java's HashMap treeify threshold, Kafka 4.0 KIP-848, and QUIC-LB still being an Internet-Draft.
+- **4 resolved by the quiz fix below** (answer positions in GenAI 5 and 9 and System Design 9, 10, 13, 15 and 16), and **1 was a tooling note** rather than lesson content.
+- **5 still open:** the AWS provider v6 upgrade of the Terraform lessons, current ansible-core and ansible-lint pins, when Spring Kafka commits offsets relative to a `@Transactional` commit, whether the pinned Bitnami Redis chart still pulls images, and padding helper text in GenAI 11–13. They need hands-on testing and are listed for the bug-fix phase.
 
-Quiz answer positions are uneven in many modules (in some, every correct answer is the first option). Learners are not affected: options are shuffled when a quiz is shown, and explanations refer to options by letter, which the engine relabels after the shuffle. Two explanations that referred to options by number were changed to letters.
+Many sources could only be read through search results, because most documentation hosts were unreachable from the build machine. Facts from GitHub source, package registries and local compiler or runtime runs were checked directly.
+
+## Readiness checks and checkpoints now shuffle options
+Module quizzes already showed options in a random order. Readiness checks and mixed checkpoints showed them in file order, and in some modules every correct answer is the first option, so a learner could pass by always picking the first answer. These dialogs now shuffle the options, label them A, B, C, and relabel any "option B" in an explanation to match. Scoring is unchanged. Two explanations that referred to options by number were changed to letters.
 
 ## Checks run for this release
-- `tools/ci-check.js` on all 184 changed modules: `validate --code` passes and every solution passes its tests in the languages its track requires. 0 failing.
+- `tools/ci-check.js` on all 188 changed modules: `validate --code` passes and every solution passes its tests in the languages its track requires. 0 failing.
 - `tools/paths-check.js --strict` passes for every route in every language.
 - The site and app builds pass, and the play, updater, icon, games and app navigation tests pass.
+- A browser test of the checkpoint dialog: across 12 runs the options appear in different orders, are labelled A to D, score correctly, and the explanation's option letters follow the shown order.
 
 ## Versions
 - Website **1.10.1**: see [CHANGELOG.md](../CHANGELOG.md).

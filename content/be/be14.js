@@ -702,7 +702,7 @@ public class PresignDemo {
 <p><b>Where AI goes wrong:</b> generated handlers often create the SDK client inside the handler (slow), swallow exceptions so failed messages vanish, forget the DLQ, or set visibility timeout lower than the function timeout. <b>You still own:</b> the failure semantics (retry, DLQ, idempotency), concurrency caps and the latency budget.</p>`,
     problems: [prob({
       title: 'Build an SQS + Lambda image pipeline', level: 'Medium', tags: ['sqs', 'lambda', 's3', 'serverless'], companies: ['Amazon', 'Shopify'],
-      statement: `<p>Users upload profile photos up to 10 MB. You must generate 3 thumbnail sizes within a minute, survive 5,000 uploads in a 2-minute burst, never lose an upload, and never overload the database that stores metadata. Design the pipeline, retry behaviour, and the presigned-upload flow.</p>`,
+      statement: `<p>Users upload profile photos up to 10 MB. You must generate 3 thumbnail sizes within a minute under normal load (a burst may take a few minutes to drain), survive 5,000 uploads in a 2-minute burst, never lose an upload, and never overload the database that stores metadata. Design the pipeline, retry behaviour, and the presigned-upload flow.</p>`,
       constraints: `Lambda timeout 60 s; metadata DB handles at most 100 concurrent connections.`,
       example: `<p>${H.c('b', 'Browser')} → presigned PUT → ${H.c('b', 'S3')} → event → ${H.c('g', 'SQS')} → ${H.c('g', 'Lambda (max concurrency 50)')} → thumbs in S3 + DynamoDB row.</p>`,
       brute: `The API receives the file, resizes inline, and writes to the DB: 10 MB bodies clog the web tier, one slow resize blocks a request thread, and a burst takes the service down or loses uploads on a crash.`,

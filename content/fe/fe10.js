@@ -1912,7 +1912,7 @@ import { z } from 'zod';
 // One schema = types + rules, reusable on the server
 const schema = z.object({
   email: z.string().min(1, 'Email is required').email('Enter a valid email'),
-  age: z.coerce.number({ invalid_type_error: 'Age is required' }).min(18, 'You must be 18 or older')
+  age: z.coerce.number({ error: 'Age is required' }).min(18, 'You must be 18 or older')
 });
 
 export function SignupForm({ onCreate }) {

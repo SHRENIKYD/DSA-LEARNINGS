@@ -658,7 +658,7 @@ providers:
   ] },
   "panels": [
     { "id": 1, "type": "stat", "title": "Error budget left (30d)", "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
-      "targets": [ { "expr": "1 - (service:http_errors:ratio_rate30d{service=\\"$service\\"} / 0.001)" } ],
+      "targets": [ { "expr": "1 - (avg_over_time(service:http_errors:ratio_rate5m{service=\\"$service\\"}[30d]) / 0.001)" } ],
       "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [
         { "color": "red", "value": null }, { "color": "orange", "value": 0.25 }, { "color": "green", "value": 0.5 } ] } } } },
     { "id": 2, "type": "timeseries", "title": "Traffic (requests/s)", "gridPos": { "x": 6, "y": 0, "w": 6, "h": 8 },

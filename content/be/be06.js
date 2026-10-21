@@ -968,7 +968,7 @@ class RecommendationConfig {
     ],
     code: [
       {
-        lang: 'java', check: false, title: 'Logging and timing aspect (Spring AOP)', code: `// build.gradle: implementation 'org.springframework.boot:spring-boot-starter-aop'
+        lang: 'java', check: false, title: 'Logging and timing aspect (Spring AOP)', code: `// build.gradle: implementation 'org.springframework.boot:spring-boot-starter-aop'   (Boot 4 renames it spring-boot-starter-aspectj)
 
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)

@@ -1188,7 +1188,7 @@ from:
     clues: [
       '"Only the API may talk to the database" → NetworkPolicy ingress on the db Pods from <code>podSelector app=api</code>, port 5432',
       '"Zero trust / default deny inside the cluster" → a default-deny policy per namespace, then explicit allows (plus DNS egress)',
-      '"I applied a NetworkPolicy and nothing changed" → the CNI does not enforce policies (kindnet, flannel without add-on); use Calico or Cilium',
+      '"I applied a NetworkPolicy and nothing changed" → the CNI does not enforce policies (older kindnet, flannel without add-on); use Calico or Cilium',
       '"After default-deny everything times out, even DNS" → missing egress rule for kube-dns on port 53 UDP and TCP',
       '"Allow traffic from the monitoring namespace" → <code>namespaceSelector</code> with <code>kubernetes.io/metadata.name</code>; watch AND versus OR',
       '"Restrict outbound internet" → egress policy with <code>ipBlock</code>, or an egress gateway/proxy for domain-based rules (Cilium FQDN policies)'

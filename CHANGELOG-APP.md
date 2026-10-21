@@ -7,7 +7,8 @@ Versions follow [Semantic Versioning](https://semver.org). The app's version is 
 Full release notes: [docs/RELEASE_REVIEW.md](docs/RELEASE_REVIEW.md).
 
 ### Fixed
-- Lessons include the website's content review: 584 corrections in 184 modules (wrong facts, outdated claims, inconsistencies and unclear explanations).
+- Lessons include the website's content review: 584 corrections in 184 modules (wrong facts, outdated claims, inconsistencies and unclear explanations), plus 34 claims checked against official sources and corrected.
+- Readiness checks and checkpoints now shuffle their options, so the first option is no longer always the right one.
 
 ## [1.11.0] — 2026-10-20 · Phase 3 of 3
 

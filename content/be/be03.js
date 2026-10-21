@@ -929,11 +929,11 @@ SELECT o.id, o.customer_name, i.product, i.qty, i.qty * i.unit_price AS line
 FROM orders o JOIN order_items i ON i.order_id = o.id;` },
     { lang: 'text', title: 'Prisma: schema.prisma (schema-first)', code: `datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")      // read from the environment, never a literal URL with a password
+  url      = env("DATABASE_URL")      // read from the environment, never a literal URL with a password (Prisma 7 moves this URL to prisma.config.ts)
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client-js"   // Prisma 7 default is "prisma-client" with a required output path
 }
 
 enum OrderStatus {

@@ -1228,7 +1228,7 @@ class TokenDemo {
       { lang: 'yaml', check: false, title: 'Spring Boot: keep sessions in Redis instead of server memory', code: `# application.yml  (needs spring-session-data-redis on the classpath)
 spring:
   session:
-    store-type: redis          # sessions live in Redis, so any app instance can read them
+    # no store-type needed: Boot picks Redis from the classpath, so sessions live in Redis and any app instance can read them
     timeout: 30m
   data:
     redis:

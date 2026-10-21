@@ -9,9 +9,11 @@ From 1.7.0 the website and the mobile app have separate versions. This file is t
 Full release notes: [docs/RELEASE_REVIEW.md](docs/RELEASE_REVIEW.md).
 
 ### Fixed
-- 584 corrections in 184 modules after a review of all 220: 301 wrong facts, 54 outdated claims, 158 inconsistencies between text, examples and code, and 71 clarity rewrites.
+- 584 corrections in 184 modules after a review of all 220 (188 modules changed in this release in total): 301 wrong facts, 54 outdated claims, 158 inconsistencies between text, examples and code, and 71 clarity rewrites.
 - Four solutions whose code was wrong: the awk minute extraction and systemd unit in CS 8, a lab step in Cloud & DevOps 1, and a Dockerfile in Cloud & DevOps 8 that would not build.
 - Two quiz explanations referred to options by number, which pointed at the wrong options after shuffling; they now use letters.
+- 34 claims the review could not confirm were checked against official documentation, release notes and source code, and corrected (52 edits in 30 modules), for example Spring Boot 3 session config, ingress-nginx retirement, AWS Database Savings Plans, FastAPI yield dependencies, OWASP 2025, Vite 8, Node 20 end of life, PyO3 `detach` and Zod 4.
+- Readiness checks and mixed checkpoints showed options in file order, so in some modules the first option was always correct. They now shuffle options, label them A, B, C and relabel explanations to match.
 
 ## [1.10.0] — 2026-10-20 · Phase 3 of 3
 

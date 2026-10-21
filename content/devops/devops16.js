@@ -1679,10 +1679,10 @@ jobs:
       security-events: write      # needed to upload results to the Security tab
     steps:
       - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: python
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
 # .github/dependabot.yml is shown in topic 4 (pip grouped, docker, github-actions, weekly).`, 'codeql.yml'),
     cx: `<p>CodeQL on a mid-size Python repository typically takes a few minutes; Dependabot runs on GitHub's side.</p>`,
     f: ['How do you gate on CodeQL? (Make the analyze job a required check and set code-scanning alert severity thresholds in branch protection.)', 'What if CodeQL does not support your language? (Use Semgrep or the language\'s native scanner as the SAST gate.)']

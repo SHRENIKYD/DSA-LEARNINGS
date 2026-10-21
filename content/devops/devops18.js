@@ -99,6 +99,8 @@ groups:
     rules:
       - record: checkout:error_ratio:rate5m
         expr: sum(rate(http_requests_total{job="checkout",code=~"5.."}[5m])) / sum(rate(http_requests_total{job="checkout"}[5m]))
+      - record: checkout:error_ratio:rate30m
+        expr: sum(rate(http_requests_total{job="checkout",code=~"5.."}[30m])) / sum(rate(http_requests_total{job="checkout"}[30m]))
       - record: checkout:error_ratio:rate1h
         expr: sum(rate(http_requests_total{job="checkout",code=~"5.."}[1h])) / sum(rate(http_requests_total{job="checkout"}[1h]))
       - record: checkout:error_ratio:rate6h
@@ -110,10 +112,10 @@ groups:
         annotations:
           summary: "Checkout burns 2% of the monthly error budget per hour"
           runbook_url: https://runbooks.example.com/checkout/fast-burn
-      - alert: CheckoutSlowBurn
-        expr: checkout:error_ratio:rate6h > (6 * 0.001) and checkout:error_ratio:rate5m > (6 * 0.001)
+      - alert: CheckoutMediumBurn
+        expr: checkout:error_ratio:rate6h > (6 * 0.001) and checkout:error_ratio:rate30m > (6 * 0.001)
         for: 15m
-        labels: { severity: ticket }
+        labels: { severity: page }
         annotations:
           summary: "Checkout is burning budget about 6x faster than allowed"
 `, 'YAML: multi-window burn-rate alerts'), TX(R`ERROR BUDGET POLICY - checkout service (v3, signed by VP Eng and VP Product)
