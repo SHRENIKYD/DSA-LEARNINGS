@@ -3,9 +3,9 @@ name: Content checks
 on:
   push:
     branches: [main, claude/dsa-math-study-portal-weghh9]
-    paths: ['content/**', 'src/paths.js', 'src/tracks.js', 'tools/**', 'vendor/sql-wasm*', '.github/workflows/checks.yml']
+    paths: ['content/**', 'src/paths.js', 'src/tracks.js', 'src/video.js', 'src/engine.js', 'src/videos.html', 'data/videos.json', 'data/video-review.json', 'tools/**', 'vendor/sql-wasm*', '.github/workflows/checks.yml']
   pull_request:
-    paths: ['content/**', 'src/paths.js', 'src/tracks.js', 'tools/**', 'vendor/sql-wasm*', '.github/workflows/checks.yml']
+    paths: ['content/**', 'src/paths.js', 'src/tracks.js', 'src/video.js', 'src/engine.js', 'src/videos.html', 'data/videos.json', 'data/video-review.json', 'tools/**', 'vendor/sql-wasm*', '.github/workflows/checks.yml']
   schedule:
     - cron: '17 3 * * 1'
   workflow_dispatch:
@@ -18,6 +18,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  videos:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate reviewed video mappings and playback helpers
+        run: node tools/video-test.js
+
   paths:
     runs-on: ubuntu-24.04
     steps:

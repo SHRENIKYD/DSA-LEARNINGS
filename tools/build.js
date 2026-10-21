@@ -96,6 +96,7 @@ const configJs = 'window.IM_CONFIG=' + JSON.stringify(authOn ? { supabaseUrl: sb
 for (const f of ASSETS) hash.update(rd('src/' + f));
 hash.update(configJs);
 try { hash.update(rd('data/videos.json')); } catch (e) { }
+hash.update(rd('src/video.js'));
 const V = hash.digest('hex').slice(0, 10);
 for (const f of ASSETS) fs.copyFileSync(path.join(root, 'src', f), path.join(out, 'assets', f));
 fs.writeFileSync(path.join(out, 'assets', 'config.js'), configJs);
@@ -106,14 +107,15 @@ fs.writeFileSync(path.join(out, 'assets', 'search-index.js'), 'window.SEARCH_IND
 let VIDS = {};
 try { VIDS = JSON.parse(rd('data/videos.json')).videos || {}; } catch (e) { }
 const vidJs = {};
-Object.keys(VIDS).forEach((k) => { const v = VIDS[k]; if (v && /^[A-Za-z0-9_-]{11}$/.test(v.id || '')) vidJs[k] = { id: v.id, title: String(v.title || '').slice(0, 140), channel: String(v.channel || '').slice(0, 80), secs: +v.secs || 0 }; });
-fs.writeFileSync(path.join(out, 'assets', 'videos.js'), 'window.IM_VIDEOS=' + JSON.stringify(vidJs).replace(/</g, '\\u003c') + ';');
+const video = require('../src/video.js');
+ALLT.forEach((topic) => { const v = video.publicEntry(VIDS[topic.tid], topic.tt); if (v) vidJs[topic.tid] = v; });
+fs.writeFileSync(path.join(out, 'assets', 'videos.js'), rd('src/video.js') + '\nwindow.IM_VIDEOS=' + JSON.stringify(vidJs).replace(/</g, '\\u003c') + ';');
 const lib = { total: ALLT.length, tracks: [] };
 for (const t of TRACKS) {
   const items = ALLT.filter((x) => x.tr === t.id && vidJs[x.tid]).map((x) => Object.assign({ mn: x.mn, mt: x.mt, tt: x.tt, tid: x.tid }, vidJs[x.tid]));
   if (items.length) lib.tracks.push({ id: t.id, short: t.short, title: t.title, items: items });
 }
-fs.writeFileSync(path.join(out, 'assets', 'video-library.js'), 'window.IM_VIDEO_LIB=' + JSON.stringify(lib).replace(/</g, '\\u003c') + ';');
+fs.writeFileSync(path.join(out, 'assets', 'video-library.js'), rd('src/video.js') + '\nwindow.IM_VIDEO_LIB=' + JSON.stringify(lib).replace(/</g, '\\u003c') + ';');
 
 const IC = (d) => '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + d + '</svg>';
 function jbar(o) {

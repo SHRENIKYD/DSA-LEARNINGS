@@ -48,6 +48,7 @@ function pick(cands, topicTitle) {
     if (!c.embeddable || c.privacy !== 'public' || c.live) return;
     if (c.secs < 180 || c.secs > 2700) return;
     const have = new Set(words(c.title)), overlap = want.length ? want.filter((w) => have.has(w)).length / want.length : 0;
+    if (want.length && overlap < 0.35) return;
     let s = Math.log10((c.views || 0) + 1) + Math.min(1.5, c.views ? (c.likes || 0) / c.views * 40 : 0) + overlap * 2 - rank * 0.25;
     if (TRUSTED.indexOf(c.channel) >= 0) s += 1.5;
     if (c.lang && !/^en/i.test(c.lang)) s -= 1.5;
@@ -74,6 +75,13 @@ async function details(ids) {
 }
 
 function load() { try { return JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch (e) { return { v: 1, videos: {} }; } }
+function availability(entry, meta, checkedAt) {
+  const usable = !!(meta && meta.embeddable && meta.privacy === 'public');
+  if (!entry.curated) return usable ? entry : null;
+  // Keep a curated choice even if removed/blocked, so the daily job cannot
+  // silently replace it with another loosely related recommendation.
+  return Object.assign({}, entry, { available: usable, availabilityCheckedAt: checkedAt });
+}
 function save(db) {
   const sorted = {}; Object.keys(db.videos).sort().forEach((k) => { sorted[k] = db.videos[k]; });
   fs.mkdirSync(path.dirname(FILE), { recursive: true });
@@ -86,14 +94,24 @@ async function main() {
   const db = load(), all = topics(), byId = {};
   all.forEach((t) => { byId[t.id] = t; });
   let removed = 0;
-  Object.keys(db.videos).forEach((k) => { const e = db.videos[k]; if (!byId[k] || e.t !== byId[k].title) { delete db.videos[k]; removed++; } });
+  Object.keys(db.videos).forEach((k) => {
+    const e = db.videos[k];
+    if (!byId[k] || e.t !== byId[k].title) {
+      if (e.curated) e.stale = true;
+      else { delete db.videos[k]; removed++; }
+    } else if (e.stale) delete e.stale;
+  });
 
   if (args.includes('--check')) {
     const ids = Object.keys(db.videos).filter((k) => db.videos[k].id);
     for (let i = 0; i < ids.length; i += 50) {
       const chunk = ids.slice(i, i + 50), live = {};
       (await details(chunk.map((k) => db.videos[k].id))).forEach((v) => { live[v.id] = v; });
-      chunk.forEach((k) => { const v = live[db.videos[k].id]; if (!v || !v.embeddable || v.privacy !== 'public') { delete db.videos[k]; removed++; } });
+      chunk.forEach((k) => {
+        const next = availability(db.videos[k], live[db.videos[k].id], new Date().toISOString());
+        if (next) db.videos[k] = next;
+        else { delete db.videos[k]; removed++; }
+      });
     }
     save(db);
     console.log('check: ' + ids.length + ' videos checked, ' + removed + ' removed');
@@ -116,9 +134,9 @@ async function main() {
     }
   }
   save(db);
-  const total = all.length, have = Object.keys(db.videos).filter((k) => db.videos[k].id).length;
+  const total = all.length, have = Object.keys(db.videos).filter((k) => db.videos[k].id && db.videos[k].available !== false && !db.videos[k].stale).length;
   console.log('search: ' + found + ' found, ' + none + ' with no good match, ' + removed + ' stale removed · ' + have + '/' + total + ' topics have a video, ' + all.filter((t) => !db.videos[t.id]).length + ' not searched yet');
 }
 
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
-module.exports = { pick, seconds, words, searchOrder, topics };
+module.exports = { pick, seconds, words, searchOrder, topics, availability };

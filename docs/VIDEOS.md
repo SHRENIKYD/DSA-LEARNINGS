@@ -11,7 +11,7 @@ Each lesson topic can show one YouTube video under "Watch it explained". Nothing
 
 It scores the rest by views, like ratio, how many words of the topic title appear in the video title, the search rank, a bonus for well-known teaching channels, and a penalty for non-English audio. The choice is saved in `data/videos.json`; the build turns it into `assets/videos.js`.
 
-When a topic's title changes, its video is searched again. `--check` removes videos that were deleted or can no longer be embedded, so those topics are searched again too.
+Reviewed choices carry `curated: true`, a review date and a coverage note. Discovery preserves these choices. A changed topic title marks a curated choice stale; an unavailable curated choice retains its ID for review. Both are hidden by the build until corrected. Unreviewed unavailable choices can be searched again.
 
 ## Setup (once)
 
@@ -22,10 +22,16 @@ When a topic's title changes, its video is searched again. `--check` removes vid
 
 ## Quota and schedule
 
-The free quota is 10,000 units a day and one topic search costs about 101 units, so each daily run searches 95 topics. All 1,474 topics are covered in about 16 days. After that the daily run only checks existing videos (a few units).
+The free quota is 10,000 units a day and one topic search costs about 101 units, so each daily run searches 95 topics. Coverage depends on available relevant results; automated search does not guarantee a suitable video for every topic. After that the daily run only checks existing videos (a few units).
 
 Each run that changes `data/videos.json` commits it to `main` and redeploys the website. The app picks up new videos with its next version.
 
 ## Fixing a bad pick
 
-Edit the topic's entry in `data/videos.json`: set `id` to the 11-character video id from the YouTube link (`watch?v=<id>`) and update `title`, `channel` and `secs`, or set `"id": null` to show no video for that topic. Keep `t` (the topic title) unchanged, or the entry is searched again.
+Edit the topic's entry in `data/videos.json`: set `id` to the 11-character video id from the YouTube link (`watch?v=<id>`) and update `title`, `channel` and `secs`, or set `"id": null` to show no video for that topic. Keep `t` aligned with the current topic title. Record the reason and evidence in `data/video-review.json` when changing a reviewed choice. Run `npm run test:videos`.
+
+## Reviewed playback
+
+`src/video.js` shares validation and URL generation across lesson pages and the Watchtower. Optional `start`/`end` timestamps select relevant chapters; external YouTube links retain the start time and are visible before playback. Coverage notes distinguish a focused introduction from a complete lesson. Unknown durations use `secs: 0`.
+
+See [the 232-video review](VIDEO_REVIEW.md) for scope and verification limits.

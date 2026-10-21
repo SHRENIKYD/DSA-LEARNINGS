@@ -13,7 +13,8 @@
     "version:sync": "node tools/version-sync.js",
     "test:updates": "node tools/update-test.js",
     "test:fun": "node tools/fun-test.js",
-    "test:app": "node tools/app-navigation-test.js"
+    "test:app": "node tools/app-navigation-test.js",
+    "test:videos": "node tools/video-test.js"
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "8.0.2",

@@ -514,10 +514,11 @@ var App = (function () {
   }
   function videoOf(id) { var v = (window.IM_VIDEOS || {})[id]; return v && /^[A-Za-z0-9_-]{11}$/.test(v.id) ? v : null; }
   function videoHtml(id, v) {
-    var mins = v.secs ? Math.max(1, Math.round(v.secs / 60)) + ' min · ' : '';
+    var mins = LessonVideo.label(v);
     return '<div class="box vid" id="' + id + '-vid"><span class="tag">From the watchtower · watch it explained</span>' +
-      '<button type="button" class="vid-play" data-vid="' + v.id + '" aria-label="Play video: ' + esc(v.title) + '"><span class="vid-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg></span><span class="vid-meta"><b>' + esc(v.title) + '</b><small>' + esc(v.channel) + ' · ' + mins + 'YouTube</small></span></button>' +
-      '<p class="vid-note">Plays from YouTube when you tap it. Picked automatically for this topic.</p></div>';
+      '<button type="button" class="vid-play" ' + LessonVideo.attrs(v) + ' aria-label="Play video: ' + esc(v.title) + '"><span class="vid-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg></span><span class="vid-meta"><b>' + esc(v.title) + '</b><small>' + esc(v.channel) + ' · ' + mins + 'YouTube</small></span></button>' +
+      '<p class="vid-note">' + (v.note ? esc(v.note) + ' ' : '') + 'Plays from YouTube when you tap it. ' + (v.curated ? 'Selected for this lesson.' : 'Suggested automatically; check the coverage against the lesson.') + '</p>' +
+      '<a class="vid-open" href="' + esc(LessonVideo.watchUrl(v)) + '" target="_blank" rel="noopener noreferrer">Open on YouTube</a></div>';
   }
   function topicHtml(m, t, i, lang) {
     var id = m.id + '-t' + i, vid = videoOf(id);
@@ -862,9 +863,8 @@ var App = (function () {
         var vb = t.closest('.vid-play'), vidId = vb.getAttribute('data-vid');
         if (!/^[A-Za-z0-9_-]{11}$/.test(vidId)) return;
         var fr = document.createElement('div'); fr.className = 'vid-frame';
-        fr.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + vidId + '?autoplay=1&rel=0&playsinline=1" title="' + esc(vb.querySelector('b').textContent) + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
-        var ln = document.createElement('a'); ln.className = 'vid-open'; ln.href = 'https://www.youtube.com/watch?v=' + vidId; ln.target = '_blank'; ln.rel = 'noopener'; ln.textContent = 'Open on YouTube';
-        vb.replaceWith(fr); fr.after(ln);
+        fr.innerHTML = '<iframe src="' + LessonVideo.embedUrl(LessonVideo.fromButton(vb)) + '" title="' + esc(vb.querySelector('b').textContent) + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
+        vb.replaceWith(fr);
       } else if (t.closest('[data-testout]')) {
         var tm = t.closest('[data-testout]').getAttribute('data-testout');
         Learn.readiness(tm, routeLang(), function () { var el2 = document.getElementById('prq-' + tm), mm2 = loaded(tm); if (el2 && mm2) el2.innerHTML = prereqHtml(mm2); });
