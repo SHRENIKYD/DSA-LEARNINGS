@@ -107,7 +107,7 @@ class LibraryController {
               2: '<code>/members</code> is the second top-level noun. The two are independent things.',
               3: '<code>/books/{isbn}</code> is one <b>item</b>. GET reads it, PUT replaces it, PATCH edits it, DELETE removes it.',
               5: '<code>/members/{id}</code> is one member. Same four methods, same meaning.',
-              7: 'Copies only exist <i>inside</i> a book, so they nest: <code>/books/{isbn}/copies</code>. That is depth 3, still fine.',
+              7: 'Copies only exist <i>inside</i> a book, so they nest: <code>/books/{isbn}/copies</code>. That is two levels of nesting (book, then copies), still fine.',
               8: 'Reviews of a book: another owned child collection.',
               11: '"Borrow a book" becomes <b>POST /members/{id}/loans</b>. The verb turned into a noun (a Loan record).',
               12: 'Reservations work the same way. We stop nesting here; a loan or reservation gets its own top-level URL once it has an id.'
@@ -644,7 +644,7 @@ ResponseEntity<BookDto> patch(@PathVariable String isbn,
     if (!etagOf(current).equals(etag)) {
         return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).build();   // 412: someone else edited it
     }
-    // Jackson merges the patch into a copy of the current state (null clears optional fields)
+    // A merge-patch library built on Jackson (java-json-tools json-patch) merges the patch into a copy of the current state (null clears optional fields)
     JsonNode merged = JsonMergePatch.fromJson(patch).apply(mapper.valueToTree(current));
     Book updated = mapper.treeToValue(merged, Book.class);
     validator.validate(updated);               // re-validate the RESULT, not the patch
@@ -1017,7 +1017,7 @@ Content-Type: application/problem+json
     deepDive: `<p>🟣 <b>Retries and codes are linked.</b> Clients, SDKs and gateways decide retry behaviour from the status code: retry 502/503/504 and 429 (after <code>Retry-After</code>), never retry 400/401/403/404/422 unchanged. A bug that returns 500 for a bad input makes clients hammer you with doomed retries; a bug that returns 400 for a transient outage makes them give up. Choosing the class correctly keeps load predictable.</p>
       <p><b>Monitoring.</b> SLOs usually count 5xx as errors and 4xx as the client's fault. If you return 500 for validation errors you burn your error budget on user typos. Conversely, a login endpoint returning 401 at a high rate may signal credential stuffing: alert on 4xx <i>patterns</i> too.</p>
       <p><b>Information leaks.</b> 401 vs 404 vs 403 reveals facts. Login should return the same message and status for "no such user" and "wrong password" (user enumeration). Private resources: use 404 for "not yours". Never put stack traces, SQL or internal hostnames in a 500 body; log them and return a correlation id (<code>traceId</code>) instead.</p>
-      <p><b>The 400 vs 422 debate.</b> RFC 9110 defines 422 as "understood the content type and syntax but could not process the instructions". Many APIs (GitHub, Stripe uses 400) differ. Pick one rule, put it in the API guide, and be consistent: consistency beats purity.</p>
+      <p><b>The 400 vs 422 debate.</b> RFC 9110 defines 422 as "understood the content type and syntax but could not process the instructions". Real APIs differ: GitHub uses 422 for validation errors, while Stripe uses 400. Pick one rule, put it in the API guide, and be consistent: consistency beats purity.</p>
       <p><b>Redirect nuances.</b> 301/302 may let clients change POST to GET; 307 and 308 preserve the method and body. Use 308 for a permanent move of an API route, 303 for "POST done, now GET the result at Location". Do not hide a 200 with <code>{"success": false}</code> inside: that breaks caches, retries, monitoring and every generic client.</p>
       <p><b>Headers that travel with codes.</b> 201 → <code>Location</code>; 401 → <code>WWW-Authenticate</code>; 405 → <code>Allow</code>; 429/503 → <code>Retry-After</code>; 304 → <code>ETag</code>, <code>Cache-Control</code>; 412/428 → the missing precondition; 3xx → <code>Location</code>.</p>`,
     aiEra: `<p>🤖 <b>What AI changes.</b> An LLM agent reads your status code and problem body to decide its next move. A precise <code>detail</code> ("field <code>age</code> must be 0 or more") lets an agent self-correct in one retry; a vague <code>{"error":"bad request"}</code> makes it loop. Error messages are now part of your API's <i>prompt surface</i>.</p>
@@ -1440,7 +1440,7 @@ Host: api.example.com
 
 HTTP/1.1 200 OK
 Deprecation: @1767225600
-Sunset: Sat, 31 Jan 2027 23:59:59 GMT
+Sunset: Sun, 31 Jan 2027 23:59:59 GMT
 Link: <https://api.example.com/docs/migrate-v1-to-v2>; rel="deprecation"; type="text/html",
       <https://api.example.com/v2/books/9780135957059>; rel="successor-version"
 Content-Type: application/json

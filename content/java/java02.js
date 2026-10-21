@@ -1104,7 +1104,7 @@ class MinMaxDemo {
 }`,
         alt: [{ lang: 'python', code: `def min_max(a):\n    mn = mx = a[0]\n    for v in a[1:]:\n        if v < mn: mn = v\n        elif v > mx: mx = v\n    return mn, mx          # Python returns a tuple\n\nprint(min_max([4, -2, 9, 0]))`, run: true }],
         dry: { head: ['i', 'a[i]', 'mn', 'mx'], rows: [['start', '4', '4', '4'], ['1', '-2', H.c('g', '-2'), '4'], ['2', '9', '-2', H.c('g', '9')], ['3', '0', '-2', '9']] },
-        complexity: `<p>O(n) time, O(1) extra space (the 2-element result). About 1.5n comparisons in the worst case thanks to the <code>else if</code>; the pairwise trick reduces it to ⌈3n/2⌉ − 2.</p>`,
+        complexity: `<p>O(n) time, O(1) extra space (the 2-element result). Up to about 2n comparisons in the worst case (an increasing array fails the min test and then passes the max test on every element); the pairwise trick reduces it to ⌈3n/2⌉ − 2.</p>`,
         followUps: ['Return a record <code>MinMax(int min, int max)</code> instead — why is it nicer for callers?', 'Implement the pairwise comparison trick (compare elements in pairs first).', 'Also return the indexes of min and max.']
       }
     }]
@@ -3158,7 +3158,7 @@ for (int t = 0; t &lt; 3; t++) bad += Integer.MAX_VALUE;
 System.out.println(bad);</code></pre>`,
     constraints: `Short.MAX_VALUE = 32767; Integer.MAX_VALUE = 2147483647`,
     example: `<p>Line 2: k goes 5 → 3 → 1 → ${H.c('g', '-1')}; the check <code>k &gt; 0</code> happens after each subtraction, so the loop stops only once k is −1.</p>`,
-    brute: { why: `<p>Intuition says "1 2 3 | i=3", "1", "3", "32768", "22" and "6442450941". Five of those six are wrong. Each line hides one rule: post-increment in a condition, do-while checks last, a stride loop counts its starting value, small-type overflow, compound assignment saving the old left value, and silent int overflow.</p>`, code: `
+    brute: { why: `<p>Intuition says "1 2 3 | i=3", "1", "3", "32768", "22" and "6442450941". All six are wrong. Each line hides one rule: post-increment in a condition, do-while checks last, a stride loop counts its starting value, small-type overflow, compound assignment saving the old left value, and silent int overflow.</p>`, code: `
 // When you can run code: print intermediate values to see each rule
 int bad = 0;
 for (int t = 0; t < 3; t++) {

@@ -1637,7 +1637,7 @@ cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is 
       <li>Use <code>relaxed</code> only for values nobody uses to decide whether <i>other</i> data is ready (pure counters, stats).</li>
       <li>For "flag says data is ready": <b>release</b> on the store, <b>acquire</b> on the load.</li>
       <li>If you're not sure, use a mutex. It does the right acquire/release for you.</li></ol>
-      <p><code>memory_order_consume</code> exists on paper, but every compiler treats it as acquire and C++26 deprecates it. Don't use it.</p>`,
+      <p><code>memory_order_consume</code> exists on paper, but every mainstream compiler treats it as acquire, and the committee has been moving to deprecate it. Don't use it.</p>`,
     clues: ['"what can this print?" with two threads and atomics → enumerate interleavings, then ask which reorderings the memory order allows', '"flag + data" / "publish an object to another thread" / "double-checked locking" → release store + acquire load', '"each thread sets its flag then checks the other\'s" (Dekker, Peterson) → needs seq_cst (store-buffering)', '"just a counter" / "statistics" / "only read after join" → relaxed is enough', '"works on x86, fails on ARM / Apple Silicon / Graviton" → missing acquire/release (x86-TSO hides it)', '"happens-before" / "synchronizes-with" / "visibility" → acquire-release pairing on the same atomic'],
     code: [R`
       #include <bits/stdc++.h>

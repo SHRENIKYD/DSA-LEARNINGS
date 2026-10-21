@@ -44,7 +44,7 @@ class PricingServiceTest {
 @WebMvcTest(OrderController.class)
 class OrderControllerTest {
     @Autowired MockMvc mvc;
-    @MockBean PlaceOrderUseCase placeOrder;
+    @MockBean PlaceOrderUseCase placeOrder;   // Boot 3.4+: use @MockitoBean (@MockBean is deprecated in 3.4 and removed in Boot 4)
 
     @Test
     void returns201WhenOrderIsAccepted() throws Exception {
@@ -137,7 +137,7 @@ class OrderJourneySmokeTest {
         ['User can sign up, pay and see a receipt in the browser', '<span class="c-y">E2E (one smoke test)</span>', 'Only the full path proves wiring and config']
       ])}` },
     { title: 'Ice-cream cone: how it happens and how to fix it', html: `<p>A team with no unit tests asks QA to automate everything through the browser. After a year they have 600 Selenium tests, 70 minutes of CI and 12% flaky runs. <b>Fix plan:</b> (1) freeze new E2E tests; (2) for every E2E, ask which rule it really checks and re-write that as a unit or integration test; (3) keep 5-10 E2E "golden path" smoke tests; (4) add contract tests where services meet; (5) track suite time and flaky rate on a dashboard.</p>` },
-    { title: 'A flaky test caused by the clock', html: `<p>Test: <code>assertEquals("Good morning", greeter.greet())</code>. It passes at 9 am and fails at 3 pm because the code calls <code>LocalTime.now()</code>. <b>Cure:</b> pass a <code>Clock</code> into the class. In production use <code>Clock.systemUTC()</code>; in the test use <code>Clock.fixed(...)</code>. Same idea for random numbers, UUIDs, and "current user". Anything non-deterministic must be an <i>input</i>.</p>`,
+    { title: 'A flaky test caused by the clock', html: `<p>Test: <code>assertEquals("Good morning", greeter.greet())</code>. It passes at 9 am and fails at 3 pm because the code calls <code>LocalTime.now()</code>. <b>Cure:</b> pass a <code>Clock</code> into the class. In production use <code>Clock.systemDefaultZone()</code> (a greeting depends on the local hour); in the test use <code>Clock.fixed(...)</code>. Same idea for random numbers, UUIDs, and "current user". Anything non-deterministic must be an <i>input</i>.</p>`,
       code: { lang: 'java', code: `class Greeter {
     private final Clock clock;
     Greeter(Clock clock) { this.clock = clock; }
@@ -2220,7 +2220,7 @@ practice.push({
   mcq: { q: 'What is a provider state?', options: ['An HTTP status code', 'A named precondition the provider sets up before replaying an interaction', 'A deployment environment', 'A database migration'], answer: 1, explain: 'It is the "given ..." part of the contract; the provider maps each name to set-up code so the replay is deterministic.' },
   hints: [
     `<p>Each interaction's "given" text maps to a <code>@State</code> method in the provider test.</p>`,
-    `<p>Mock the repository with <code>@MockBean</code> so you control what exists; the HTTP layer, serialization and filters remain real.</p>`,
+    `<p>Mock the repository with <code>@MockBean</code> (<code>@MockitoBean</code> on Spring Boot 3.4+) so you control what exists; the HTTP layer, serialization and filters remain real.</p>`,
     `<p>Read the broker URL and token from environment variables via the Pact annotations/properties, never from code.</p>`
   ],
   solution: {

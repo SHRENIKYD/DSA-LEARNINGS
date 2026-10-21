@@ -628,7 +628,7 @@ ZREVRANGEBYSCORE timeline:42 (1730000012345 -inf LIMIT 0 20   # next page older 
       ${H.table(['Quantity', 'Assumption', 'Result'], [
         ['Uploads', '100M photos/day', '≈ 1,150 uploads/s (peak ~3,500)'],
         ['Original size', '~2 MB each', '200 TB/day of originals'],
-        ['Renditions', '4 extra sizes ≈ +30% bytes', '≈ 260 TB/day ≈ 95 PB/year'],
+        ['Renditions', '4 extra sizes ≈ +19% bytes', '≈ 240 TB/day ≈ 88 PB/year'],
         ['Views', '10B/day × ~200 KB (a medium rendition)', '115K views/s, ≈ 23 GB/s of egress'],
         ['CDN offload', '95% cache hit', 'Origin only sees ~5% ≈ 1.2 GB/s'],
         ['Metadata', '100M posts × ~1 KB', '100 GB/day — tiny next to media']
@@ -1087,7 +1087,7 @@ seg_00002.m4s
           ${H.table(['Plan', 'Math', 'Wall-clock time'], [
             ['One machine, one rendition at a time', '2 h × 4 × 8 renditions = 64 core-hours', '64 hours'],
             ['Split into 60 chunks of 2 min × 8 renditions = 480 tasks, 480 cores', '64 core-hours ÷ 480', '≈ 8 minutes'],
-            ['Failure of 5 tasks', 'Re-run only 5 × (2 min × 4) = 40 core-minutes', '+1 minute']
+            ['Failure of 5 tasks', 'Re-run only 5 × (2 min × 4) = 40 core-minutes', '+8 minutes (one task, retried in parallel)']
           ])}
           <p>Chunk boundaries must be at keyframes (I-frames), and a "stitch" step with consistent timestamps avoids audible/visible glitches at the seams.</p>`
       },
@@ -1136,7 +1136,7 @@ seg_00002.m4s
         level: 'Medium', tags: ['transcoding', 'workflow', 'idempotency'], companies: ['Netflix', 'YouTube', 'Amazon Prime Video'],
         statement: `<p>Studios deliver a 2-hour 4K master. You must produce 8 renditions with audio and subtitle tracks and make it playable within <b>15 minutes</b>, using cheap preemptible machines that can vanish at any moment. Design the pipeline and explain how you handle failures, retries and partial results.</p>`,
         constraints: `Encoding speed ≈ 0.25× real-time per core per rendition. Up to 2,000 cores available. Workers may be preempted. Output must be bit-identical on retry for cache safety.`,
-        example: `<p>Plan: 120 chunks × 8 renditions = 960 tasks on 960 cores. A 2 h source is 8 core-hours per rendition ⇒ 64 core-hours total ÷ 960 cores ≈ 4 minutes of pure encode, plus overhead for split, packaging and upload ≈ 10 minutes. Three workers die mid-task: only those 3 tasks (1 minute each) rerun.</p>`,
+        example: `<p>Plan: 120 chunks × 8 renditions = 960 tasks on 960 cores. A 2 h source is 8 core-hours per rendition ⇒ 64 core-hours total ÷ 960 cores ≈ 4 minutes of pure encode, plus overhead for split, packaging and upload ≈ 10 minutes. Three workers die mid-task: only those 3 tasks (4 minutes of encode each) rerun.</p>`,
         brute: { why: `<p><b>Naive design:</b> one big server encodes the whole file rendition by rendition. 64 core-hours on one multi-core box takes many hours; if the machine dies at hour 5 everything restarts; one slow rendition blocks the rest; the CPU sits idle during uploads.</p>` },
         mcq: { q: 'Why are chunk boundaries aligned to keyframes?', options: ['It makes files smaller', 'Each chunk can be decoded and encoded independently, and players can switch quality at boundaries', 'Keyframes contain the audio', 'The CDN requires it'], answer: 1, explain: 'A keyframe (I-frame) is decodable without earlier frames. Cutting elsewhere would make chunks depend on neighbours, breaking parallelism and seamless quality switching.' },
         hints: [
@@ -1563,7 +1563,7 @@ public class Cdc {
     title: 'Chunk Size and Dedup Savings', level: 'Easy', tags: ['storage', 'chunking', 'estimation'], companies: ['Dropbox', 'Google'],
     statement: `<p>A drive stores 100 million files averaging 50 MB. A trace shows that 30% of all bytes are exact duplicates of other chunks and that users edit a file by changing about 2% of it. Compare 4 MB and 64 KB chunks for (a) metadata size, (b) bytes sent per edit of a 50 MB file, and (c) bytes saved by dedup.</p>`,
     constraints: `Each chunk record costs ~100 bytes. Assume edits touch one contiguous region.`,
-    example: `<p>Total data = 100M × 50 MB = 5 EB. With 4 MB chunks: 1.25×10<sup>12</sup> records ≈ 125 TB metadata. With 64 KB: 8×10<sup>13</sup> records ≈ 8 PB metadata. A 2% edit (1 MB) sends one 4 MB chunk (4 MB) or about 16 chunks of 64 KB (1 MB).</p>`,
+    example: `<p>Total data = 100M × 50 MB = 5 PB. With 4 MB chunks: 1.25×10<sup>9</sup> records ≈ 125 GB metadata. With 64 KB: 8×10<sup>10</sup> records ≈ 8 TB metadata. A 2% edit (1 MB) sends one 4 MB chunk (4 MB) or about 16 chunks of 64 KB (1 MB).</p>`,
     brute: { why: `<p><b>Naive design:</b> hash and store whole files. A one-line change re-uploads 50 MB, a duplicate of a single changed byte defeats dedup, and the same file stored by two users costs twice the space.</p>` },
     mcq: { q: 'What is the main drawback of very small chunks?', options: ['Worse dedup', 'Huge metadata and many requests', 'Slower edits', 'Weaker hashes'], answer: 1, explain: 'Smaller chunks dedupe and delta-sync more precisely but multiply the number of metadata rows, hash computations and network round trips.' },
     hints: [
@@ -1572,8 +1572,8 @@ public class Cdc {
       `<p>Hint 3: Dedup saves 30% of bytes only if chunks are fine-grained enough to match; mention that metadata cost can eat the benefit. Conclude with variable-size chunks around 4 MB.</p>`
     ],
     solution: {
-      approach: `<p><b>Numbers.</b> Data = 5 EB = 5×10<sup>9</sup> GB.</p>
-        ${H.table(['', '4 MB chunks', '64 KB chunks'], [['Chunk count', '5 EB ÷ 4 MB = 1.25×10<sup>12</sup>', '5 EB ÷ 64 KB = 7.8×10<sup>13</sup>'], ['Metadata (×100 B)', '≈ 125 TB', '≈ 7.8 PB'], ['Bytes per 1 MB edit', '4 MB (1 chunk)', '1 MB (16 chunks)'], ['Dedup savings', '30% of 5 EB ≈ 1.5 EB', 'possibly a bit higher than 30%, but cost 62× more metadata']])}
+      approach: `<p><b>Numbers.</b> Data = 5 PB = 5×10<sup>6</sup> GB.</p>
+        ${H.table(['', '4 MB chunks', '64 KB chunks'], [['Chunk count', '5 PB ÷ 4 MB = 1.25×10<sup>9</sup>', '5 PB ÷ 64 KB = 7.8×10<sup>10</sup>'], ['Metadata (×100 B)', '≈ 125 GB', '≈ 7.8 TB'], ['Bytes per 1 MB edit', '4 MB (1 chunk)', '1 MB (16 chunks)'], ['Dedup savings', '30% of 5 PB ≈ 1.5 PB', 'possibly a bit higher than 30%, but cost 62× more metadata']])}
         <p><b>Decision:</b> 4 MB (or content-defined chunks averaging ~4 MB) is the sweet spot: metadata fits in a sharded database, edits cost one small chunk, and dedup captures most duplicates. Use smaller chunks only for hot, frequently edited small files. Mention the 2-level scheme: split into big "blocks" for transfer and sub-chunks for dedup when needed.</p>`,
       complexity: `<p>Metadata scales as O(total bytes ÷ chunk size); transfer per edit scales as O(chunk size).</p>`
     }

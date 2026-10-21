@@ -703,7 +703,7 @@ ${H.table(['Feature', C('synchronized'), C('ReentrantLock')], [
   ['Lock spanning methods', 'no (block scoped)', 'yes (lock in one, unlock in another)'],
   ['Introspection', 'Thread.holdsLock', C('isLocked, getHoldCount, getQueueLength')]
 ])}
-<p>Rule: use ${C('synchronized')} for simple cases (less code, can't forget to unlock, JVM-optimized; since Java 21/24 it also works well with virtual threads — see topic 8). Reach for ReentrantLock when you need one of the extra features.</p>
+<p>Rule: use ${C('synchronized')} for simple cases (less code, can't forget to unlock, JVM-optimized; since Java 24 (JEP 491) it also works well with virtual threads — see topic 8). Reach for ReentrantLock when you need one of the extra features.</p>
 <h4>Condition = a named waiting room</h4>
 <p>${C('Condition c = lock.newCondition()')}; ${C('c.await()')} releases the lock and waits; ${C('c.signal()')} / ${C('signalAll()')} wakes waiters. A bounded buffer uses <b>two</b> conditions — ${C('notFull')} for producers, ${C('notEmpty')} for consumers — so a signal wakes only the right kind of thread. Always await in a <b>while loop</b> (spurious wakeups, and another thread may have grabbed the item first).</p>
 <h4>ReadWriteLock</h4>

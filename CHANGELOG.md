@@ -4,6 +4,15 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR for breaking ch
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.1] — 2026-10-21 · Content review
+
+Full release notes: [docs/RELEASE_REVIEW.md](docs/RELEASE_REVIEW.md).
+
+### Fixed
+- 584 corrections in 184 modules after a review of all 220: 301 wrong facts, 54 outdated claims, 158 inconsistencies between text, examples and code, and 71 clarity rewrites.
+- Four solutions whose code was wrong: the awk minute extraction and systemd unit in CS 8, a lab step in Cloud & DevOps 1, and a Dockerfile in Cloud & DevOps 8 that would not build.
+- Two quiz explanations referred to options by number, which pointed at the wrong options after shuffling; they now use letters.
+
 ## [1.10.0] — 2026-10-20 · Phase 3 of 3
 
 Full release notes: [docs/RELEASE_PHASE3.md](docs/RELEASE_PHASE3.md).

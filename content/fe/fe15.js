@@ -278,7 +278,7 @@ topics.push({
       <li><b>Remote</b>: an app that <b>exposes</b> some modules (e.g. <code>./CartDrawer</code>) through a small entry file, usually <code>remoteEntry.js</code>.</li>
       <li><b>Shared</b>: libraries both sides want to load only <i>once</i> (React, React DOM, router, design system).</li>
     </ul>
-    <p><b>🔵 Why "shared" matters.</b> If shell, cart, catalog and checkout each bundle their own React (about 140 KB gzipped for React + ReactDOM), users download it four times. Worse, <b>React breaks with two copies</b>: hooks refuse to work ("Invalid hook call") because the component was created by copy A but rendered by copy B. So React must be a <b>singleton</b>.</p>
+    <p><b>🔵 Why "shared" matters.</b> If shell, cart, catalog and checkout each bundle their own React (about 45 KB gzipped, roughly 140 KB minified, for React + ReactDOM), users download it four times. Worse, <b>React breaks with two copies</b>: hooks refuse to work ("Invalid hook call") because the component was created by copy A but rendered by copy B. So React must be a <b>singleton</b>.</p>
     <p>How the negotiation works at run time (simplified): each app, when it starts, <b>registers</b> the libraries it has (name + version) into a global <b>shared scope</b>. When anyone asks for <code>react</code> they get the <b>highest registered version that satisfies their <code>requiredVersion</code></b>. With <code>singleton: true</code> the system picks <i>one</i> version for everybody; if some app asked for a range that version does not satisfy, you get a console <b>warning</b> — or a hard <b>error</b> if <code>strictVersion: true</code>.</p>
     ${H.table(['Option', 'Plain meaning', 'Typical value for React'], [
       ['<code>singleton</code>', 'Only one copy on the page', '<span class="c-g">true</span>'],
@@ -1268,7 +1268,7 @@ const script = ['/api/cart', '/api/cart', 'offline', '/api/cart', 'online', '/ap
     },
     {
       title: 'The "my users are stuck on the old version" bug',
-      html: `<p>You deploy a fix, but users still see the bug. Three usual causes: (1) <code>sw.js</code> itself was served with <code>Cache-Control: max-age=31536000</code>, so the browser never sees the new worker (serve it with <code>no-cache</code>); (2) the new worker is <b>waiting</b> because a tab with the old one is still open; (3) you cache <code>index.html</code> cache-first, so the old HTML points at old JS. Fixes: network-first for HTML, versioned cache names, and an in-app "New version available - reload" prompt that calls <code>registration.waiting.postMessage({type: 'SKIP_WAITING'})</code>.</p>`,
+      html: `<p>You deploy a fix, but users still see the bug. Three usual causes: (1) <code>sw.js</code> was served with <code>Cache-Control: max-age=31536000</code>. Modern browsers skip the HTTP cache for the main worker file, but not for scripts it loads with <code>importScripts</code>, and older setups used the cached copy (serve both with <code>no-cache</code>); (2) the new worker is <b>waiting</b> because a tab with the old one is still open; (3) you cache <code>index.html</code> cache-first, so the old HTML points at old JS. Fixes: network-first for HTML, versioned cache names, and an in-app "New version available - reload" prompt that calls <code>registration.waiting.postMessage({type: 'SKIP_WAITING'})</code>.</p>`,
       code: { lang: 'js', title: 'Prompt-to-update flow', code: `// page side
 navigator.serviceWorker.register('/sw.js').then(reg => {
   reg.addEventListener('updatefound', () => {

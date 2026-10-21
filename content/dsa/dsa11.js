@@ -1771,7 +1771,7 @@ private:
       <p>And it is the <b>minimum</b>: the biggest disk must move at least once, and before that happens all other n − 1 disks must be sitting on the helper peg — which by itself takes Moves(n − 1).</p>`,
     clues: [
       '"Move all disks / rings / plates from one rod to another, <b>one at a time</b>, never larger on smaller".',
-      '"Find the <b>minimum number of moves</b>" → answer is 2<sup>n</sup> − 1 (use 64-bit math: <code>(1L &lt;&lt; n) - 1</code> in Java, <code>(1LL &lt;&lt; n) - 1</code> in C++, <code>2 ** n - 1</code> in Python, <code>2n ** BigInt(n) - 1n</code> in JavaScript once n in JavaScript once n &gt; 53)gt; 53).',
+      '"Find the <b>minimum number of moves</b>" → answer is 2<sup>n</sup> − 1 (use 64-bit math: <code>(1L &lt;&lt; n) - 1</code> in Java, <code>(1LL &lt;&lt; n) - 1</code> in C++, <code>2 ** n - 1</code> in Python, <code>2n ** BigInt(n) - 1n</code> in JavaScript once n &gt; 53).',
       '"<b>Print all the moves</b>" with N ≤ 16–20 → recursive 3-step plan; output size itself is 2<sup>n</sup> − 1.',
       'Any problem where "to do the big thing I first move everything above it out of the way" → same 3-step recursion.'
     ],
@@ -1891,7 +1891,7 @@ console.log(disks.join(' '));            // 1 2 1 3 1 2 1` },
       },
       {
         title: 'Counting moves for big n without printing',
-        html: `<p>"How many moves for n = 40?" Do not simulate — use the closed form <code>(1L &lt;&lt; n) - 1</code> = 1,099,511,627,775. For n ≥ 63 even a <code>long</code> overflows (2<sup>63</sup> − 1 is the max), so use <code>BigInteger.ONE.shiftLeft(n).subtract(BigInteger.ONE)</code> in Java (Python ints and JavaScript <code>BigInt</code> handle it directly; C++ needs <code>unsigned __int128</code> or a big-number library). Recognising "the output is exponential" tells you the interviewer wants the formula, not the list.</p>`
+        html: `<p>"How many moves for n = 40?" Do not simulate — use the closed form <code>(1L &lt;&lt; n) - 1</code> = 1,099,511,627,775. For n ≥ 64 the answer no longer fits in a <code>long</code> (the largest <code>long</code> is 2<sup>63</sup> − 1), so use <code>BigInteger.ONE.shiftLeft(n).subtract(BigInteger.ONE)</code> in Java (Python ints and JavaScript <code>BigInt</code> handle it directly; C++ needs <code>unsigned __int128</code> or a big-number library). Recognising "the output is exponential" tells you the interviewer wants the formula, not the list.</p>`
       }
     ],
     deepDive: `<h4>Proof that 2<sup>n</sup> − 1 is optimal</h4>
@@ -3411,7 +3411,7 @@ int main() {
       }
     ],
     deepDive: `<h4>Exact cost</h4>
-      <p>Nodes in the used[] tree: n!/n! + n!/(n−1)! + … + n!/0! ≈ e · n!. Each node loops over n indices → O(n · n!) total work, plus O(n) to copy each of the n! answers → still <b>O(n · n!)</b>. For n = 10: 3.6·10<sup>7</sup> answers × 10 ≈ 3.6·10<sup>8</sup> operations — the practical ceiling. n = 12 is already 4.8·10<sup>8</sup> answers: listing them is hopeless, so a question with n = 12+ wants counting or a formula.</p>
+      <p>Nodes in the used[] tree: n!/n! + n!/(n−1)! + … + n!/0! ≈ e · n!. Each node loops over n indices → O(n · n!) total work, plus O(n) to copy each of the n! answers → still <b>O(n · n!)</b>. For n = 10: 3.6·10<sup>6</sup> answers × 10 ≈ 3.6·10<sup>7</sup> operations — the practical ceiling. n = 12 is already 4.8·10<sup>8</sup> answers: listing them is hopeless, so a question with n = 12+ wants counting or a formula.</p>
       <h4>Proof of the duplicate-skip rule</h4>
       <p>Label the equal copies 1<sub>a</sub>, 1<sub>b</sub> (sorted). Each distinct permutation corresponds to exactly 2! labelled permutations. The condition "skip 1<sub>b</sub> if 1<sub>a</sub> is not used" forces 1<sub>a</sub> to appear before 1<sub>b</sub>, which selects exactly one labelled representative of each class. The variant <code>used[i−1]</code> (instead of <code>!used[i−1]</code>) also works — it forces the reverse order — but prunes much later, so <code>!used[i−1]</code> is faster.</p>
       <h4>Swap method and duplicates</h4>
@@ -4440,7 +4440,7 @@ int main() {
     examples: [
       {
         title: 'Why N = 2 and N = 3 have no solution',
-        html: `<p>N = 2: any two cells in different rows and columns are diagonal neighbours → attack. N = 3: the queen in row 0 at column 0 or 2 leaves only one cell in row 2 that is not attacked by it, which is attacked by every possible row-1 queen; the middle column 1 attacks all of row 1. The search returns an empty list — make sure your code handles that (no crash, no null).</p>`
+        html: `<p>N = 2: any two cells in different rows and columns are diagonal neighbours → attack. N = 3: put the row-0 queen in a corner (column 0 or 2, which are mirror images). Row 1 then has only one safe cell, and that cell attacks every cell left in row 2. Put the row-0 queen in the middle column instead and every cell of row 1 is attacked. The search returns an empty list — make sure your code handles that (no crash, no null).</p>`
       },
       {
         title: 'Trace for N = 4 (first solution)',
@@ -6022,7 +6022,7 @@ private:
     example: `${H.table(['row', 'string'], [['1', '0'], ['2', '01'], ['3', '0110'], ['4', '0110' + H.c('p', '1') + '001']])}
       <p>n = 4, k = 5 → ${H.c('p', '<b>1</b>')}. Why: each row is the previous row followed by its flipped copy (row 4 = 0110 + 1001). Position 5 is the first symbol of the flipped half, i.e. row 3's first symbol (0) flipped → 1.</p>`,
     brute: {
-      why: `<p>Build the rows as strings. Row n has 2<sup>n−1</sup> characters — for n = 30 that is 536 million chars (over 1 GB in Java). The waste: we build an entire row to read one character.</p>`,
+      why: `<p>Build the rows as strings. Row n has 2<sup>n−1</sup> characters — for n = 30 that is 536 million chars (roughly 0.5 GB or more in Java). The waste: we build an entire row to read one character.</p>`,
       code: {
           lang: 'java',
           code: `
@@ -7895,7 +7895,7 @@ vector<string> removeInvalidParentheses(string s) {
     hints: [
       `<p><b>Aha:</b> one pre-scan tells you exactly how many "(" (rmL) and ")" (rmR) to delete. Then backtrack choosing which ones — never delete more.</p>`,
       `<p>dfs(i, open, rmL, rmR, sb): for a bracket either delete it (if its quota &gt; 0) or keep it (")" only if open &gt; 0). Letters are always kept.</p>`,
-      `<p>Collect results in a Set (simplest). Optional upgrade — de-duplicate without a Set: when deleting, skip a bracket equal to the previous character if that previous one was kept at the same position (only delete the first of a run). Save at i == n when rmL == rmR == open == 0.</p>`
+      `<p>Collect results in a Set (simplest). Optional upgrade — de-duplicate without a Set: when deleting, do not delete a bracket that equals the previous character if that previous character was kept. This way you only ever delete the first brackets of a run of equal brackets. Save at i == n when rmL == rmR == open == 0.</p>`
     ],
     tests: { sig: 'string -> list<string>', fn: 'removeInvalidParentheses', cmp: "set", cases: [
       [["()())()"],["(())()","()()()"]],

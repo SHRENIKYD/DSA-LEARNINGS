@@ -1977,7 +1977,7 @@ print("delete:", delete_student(conn, b), delete_student(conn, b))` },
 
 practice.push({
   title: 'Fix the Broken PreparedStatement', level: 'Easy', tags: ['jdbc', 'prepared-statement', 'debugging'], companies: ['HCL', 'Tech Mahindra'],
-  statement: `<p>This method should rename a user. It has four bugs (two cause runtime exceptions, one silently misbehaves, one leaks). Find and fix them.</p>
+  statement: `<p>This method should rename a user. It has five bugs (two cause runtime exceptions, two silently misbehave, one leaks). Find and fix them.</p>
   <pre>boolean rename(Connection c, long id, String newName) throws SQLException {
     PreparedStatement ps = c.prepareStatement("UPDATE users SET name = '?' WHERE id = ?");
     ps.setString(0, newName);

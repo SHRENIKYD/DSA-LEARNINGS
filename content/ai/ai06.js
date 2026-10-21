@@ -367,7 +367,7 @@ def attention(q, k, v, causal=True):
     level: 'Medium', tags: ['attention', 'softmax'], companies: ['OpenAI', 'Google', 'Anthropic'],
     statement: `<p>A token's query gives raw dot-product scores <b>[4, 2, 0]</b> against three keys. The key size is d = 4. (a) Compute the attention weights. (b) The values are V = [10], [20], [30] (one number each). What is the output? (c) What changes if the third key is in the future and a causal mask is used?</p>`,
     constraints: `Use e<sup>0</sup> = 1, e<sup>1</sup> = 2.718, e<sup>2</sup> = 7.389. Round to 2 decimals.`,
-    example: `<p>Scale: [4,2,0] / &radic;4 = [2, 1, 0]. Softmax = [0.67, 0.24, 0.09]. Output = 0.67x10 + 0.24x20 + 0.09x30 = <b>14.2</b>.</p>`,
+    example: `<p>Scale: [4,2,0] / &radic;4 = [2, 1, 0]. Softmax = [0.67, 0.24, 0.09]. Output = 0.665x10 + 0.245x20 + 0.09x30 = <b>14.25</b>.</p>`,
     brute: { why: `<p>Forgetting to scale by &radic;d, or normalising by dividing by the sum of raw scores. Raw [4,2,0] would give [0.67, 0.33, 0] by luck here, but it breaks with negative scores and does not match the real model.</p>` },
     mcq: { q: 'After softmax, what must be true of one row of attention weights?', options: ['All values are between 0 and 1 and add up to 1', 'They add up to d', 'The largest is always exactly 1', 'They can be negative'], answer: 0, explain: 'Softmax outputs a probability distribution: non-negative and summing to 1.' },
     hints: [`<p>Divide every score by &radic;d first. &radic;4 = 2.</p>`, `<p>Softmax: e^score for each, divide by the total.</p>`, `<p>Scaled [2,1,0] -> [7.389, 2.718, 1] total 11.107 -> [0.665, 0.245, 0.090]. Then take the weighted sum of V. With a mask, the future score becomes minus infinity, its weight 0, and the other two re-normalise.</p>`],
@@ -782,7 +782,7 @@ topics.push({
   analogy: `<p>The context window is the model's <b>desk</b>. Only papers on the desk can be read; there is no filing cabinet behind it. Your prompt, the chat history, documents you pasted and even the answer being written all take up desk space. When the desk is full, something has to go in the bin (the oldest papers), or the work cannot start. A bigger desk is handy, but a huge pile is harder to find the right paper in, and every extra page costs money.</p>`,
   explain: `<p>The <b>context window</b> is the maximum number of tokens the model can handle in one request: <b>input and output together</b>. Common sizes in 2026 range from about 8k to 1M+ tokens (a 128k window holds roughly a 300-page book).</p>
   <p>The model has <b>no memory between calls</b>. A chat feels continuous only because the app re-sends the earlier messages every time. So tokens add up:</p>
-  ${H.table(['Turn', 'You send (tokens)', 'Model replies', 'Total sent this call'], [['1', '200', '300', '200'], ['2', '150', '300', '200 + 300 + 150 = 650'], ['3', '150', '300', '650 + 300 + 150 = 1,100'], ['10', '150', '300', '~4,400']])}
+  ${H.table(['Turn', 'You send (tokens)', 'Model replies', 'Total sent this call'], [['1', '200', '300', '200'], ['2', '150', '300', '200 + 300 + 150 = 650'], ['3', '150', '300', '650 + 300 + 150 = 1,100'], ['10', '150', '300', '200 + 9 x 450 = 4,250']])}
   <p>Cost grows with every turn because the whole history is re-read each time, so the total over a long chat grows roughly with the <b>square</b> of the number of turns.</p>
   <p><b>What happens when context overflows?</b> Depending on the app:</p>
   <ul>
@@ -1031,7 +1031,7 @@ print(response.content)`, check: false, title: 'Setting sampling parameters in a
       ${H.table(['Token', 'p', 'Running total', 'Decision'], [['A', '0.45', '0.45', '<span class="c-g">keep</span>'], ['B', '0.25', '0.70', '<span class="c-g">keep</span>'], ['C', '0.15', '0.85 (reaches 0.8)', '<span class="c-g">keep, then stop</span>'], ['D', '0.10', '-', '<span class="c-r">cut</span>'], ['E', '0.05', '-', '<span class="c-r">cut</span>']])}
       <p>Renormalise by 0.85: A 0.53, B 0.29, C 0.18. Note: the token that <i>crosses</i> p is kept.</p>` },
     { title: 'Why top-p adapts and top-k does not', html: `<p>Case 1: model is sure - "The capital of France is" -> Paris 0.97. Top-p 0.9 keeps just <b>one</b> word. Top-k 40 would still keep 40 candidates (39 of them junk).</p>
-      <p>Case 2: model is unsure - "My favourite colour is" -> 30 plausible colours each ~3%. Top-p 0.9 keeps ~28 words; top-k 5 would wrongly cut most reasonable ones.</p>
+      <p>Case 2: model is unsure - "My favourite colour is" -> 30 plausible colours each ~3%. Top-p 0.9 keeps about 30 words (30 x 3% = 90%); top-k 5 would wrongly cut most reasonable ones.</p>
       <p>That is why top-p (a probability budget) is the more popular filter.</p>` },
     { title: 'Temperature 0 vs 1 on a coding question', html: `${H.table(['Run', 'T = 0', 'T = 1.2'], [['1', 'SELECT SUM(amount) ...', 'SELECT SUM(amount) ...'], ['2', 'SELECT SUM(amount) ...', 'SELEKT sum of the price ...'], ['3', 'SELECT SUM(amount) ...', 'SELECT TOTAL(amount) ...']])}
       <p>For code, one wrong token can break everything, so lower temperature raises reliability. For a poem, the "boring" repeated answer at T = 0 is the problem.</p>` },

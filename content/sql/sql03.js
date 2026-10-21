@@ -901,7 +901,7 @@ FROM orders
 GROUP BY order_date, status
 ORDER BY order_date;` }
       },
-      mcq: { q: 'Which GROUP BY gives one row per month and status?', options: ['GROUP BY order_date, status', 'GROUP BY substr(order_date, 1, 7), status', 'GROUP BY status', 'GROUP BY month(order_date) — works in every database'], answer: 1, explain: 'substr(order_date,1,7) turns 2024-03-12 into 2024-03, so all March rows share one key; adding status splits each month by status. month() is MySQL-only and returns just the month number (mixing years!).' },
+      mcq: { q: 'Which GROUP BY gives one row per month and status?', options: ['GROUP BY order_date, status', 'GROUP BY substr(order_date, 1, 7), status', 'GROUP BY status', 'GROUP BY month(order_date) — works in every database'], answer: 1, explain: 'substr(order_date,1,7) turns 2024-03-12 into 2024-03, so all March rows share one key; adding status splits each month by status. month() does not exist in SQLite or PostgreSQL, and where it does exist it returns only the month number (mixing years!).' },
       hints: [
         `<p>Hint 1: The bucket key is a <b>combination</b>: (month, status). Both go into GROUP BY.</p>`,
         `<p>Hint 2: Month comes from an expression: <code>substr(order_date, 1, 7)</code> (or <code>strftime('%Y-%m', order_date)</code>). Keep the year — grouping by month number alone would merge Jan 2024 with Jan 2025.</p>`,
@@ -1847,7 +1847,7 @@ ORDER BY headcount DESC, dept;` },
     constraints: `<p>email may be NULL — a NULL is not a duplicate email.</p>`,
     example: `${H.table(['email'], [['<span class="c-r">ben@co.com</span>']])}<p>Ben and Lena share <code>ben@co.com</code> (a data-entry mistake). Ivan's NULL email forms a NULL group of size 1, so it is not reported.</p>`,
     brute: {
-      why: `<p>Plain <code>SELECT DISTINCT email</code> or <code>GROUP BY email</code> without HAVING returns <b>every</b> email (12 rows), duplicates or not — grouping removes the repeats instead of finding them. The duplicate test is about the <i>size of the group</i>, which needs HAVING.</p>`,
+      why: `<p>Plain <code>SELECT DISTINCT email</code> or <code>GROUP BY email</code> without HAVING returns <b>every</b> distinct email (11 rows, including one NULL), duplicates or not — grouping removes the repeats instead of finding them. The duplicate test is about the <i>size of the group</i>, which needs HAVING.</p>`,
       code: { lang: 'sql', db: 'company', code: `-- Returns all distinct emails, not the duplicated ones
 SELECT email
 FROM employees
@@ -2101,7 +2101,7 @@ ORDER BY actor_id, director_id;` },
     constraints: `<p>salary may be NULL; ties possible.</p>`,
     example: `${H.table(['SecondHighestSalary'], [['105000']])}<p>Highest is 120000 (Asha); next distinct is 105000 (Chen). For Marketing (only Ivan) → <span class="c-y">NULL</span>.</p>`,
     brute: {
-      why: `<p><code>ORDER BY salary DESC LIMIT 1 OFFSET 1</code> works on this data but has two bugs: with a tie at the top (two people at 120000) it returns 120000 again, and when there is no second salary it returns <b class="c-r">zero rows</b> instead of one NULL row — failing the requirement.</p>`,
+      why: `<p><code>ORDER BY salary DESC LIMIT 1 OFFSET 1</code> has two bugs: with a tie at the top (two people at 120000) it returns 120000 again, and when there is no second salary it returns <b class="c-r">zero rows</b> instead of one NULL row — failing the requirement.</p>`,
       code: { lang: 'sql', db: 'company', code: `SELECT salary AS SecondHighestSalary
 FROM employees
 WHERE dept = 'Marketing'
@@ -2540,7 +2540,7 @@ HAVING SUM(CASE WHEN o.order_date LIKE '2024-03%' THEN o.amount ELSE 0 END) >= 5
       a: `<p><code>SELECT MAX(salary) AS second FROM employees WHERE salary &lt; (SELECT MAX(salary) FROM employees);</code> It handles ties automatically (strictly below the top) and returns one NULL row when nothing qualifies, because an aggregate without GROUP BY always yields one row. <code>ORDER BY salary DESC LIMIT 1 OFFSET 1</code> fails on ties (needs DISTINCT) and returns zero rows when empty unless wrapped in a scalar subquery. For the Nth highest, use DENSE_RANK.</p>`,
       followUps: ['Generalise to the Nth highest per department.', 'What index makes this fast?'] },
     { q: 'Average of ratios vs ratio of averages/totals — which is right for a conversion rate?', level: 'A',
-      a: `<p>For an overall rate, use the <b>ratio of totals</b>: <code>SUM(signups) / SUM(visits)</code>. <code>AVG(signups / visits)</code> gives every day/campaign equal weight regardless of size, so a day with 2 visits and 1 signup (50%) counts as much as a day with 900 visits (10%) — giving 30% instead of the true ~10.1%. Averaging ratios is correct only when the metric is defined per item (e.g. LeetCode "query quality" = average of rating/position). This is Simpson's-paradox territory; always ask what the denominator population is.</p>`,
+      a: `<p>For an overall rate, use the <b>ratio of totals</b>: <code>SUM(signups) / SUM(visits)</code>. <code>AVG(signups / visits)</code> gives every day/campaign equal weight regardless of size, so a day with 2 visits and 1 signup (50%) counts as much as a day with 900 visits (10%) — giving 30% instead of the true ~10.1%. Averaging ratios is correct only when the metric is defined per item (e.g. LeetCode "query quality" = average of rating/position). Rates over groups of very different sizes can mislead (Simpson's paradox is the extreme case), so always ask what the denominator population is.</p>`,
       followUps: ['How would you compute a weighted average in SQL?', 'Give a case where averaging ratios is the right definition.'] },
     { q: 'How is GROUP BY executed internally, and how can indexes help?', level: 'A',
       a: `<p>Two strategies: <b>hash aggregation</b> (hash table key → accumulators, O(N), memory proportional to groups, spills to disk when too big) and <b>sort/stream aggregation</b> (sort by key or read an index in key order, then close a group when the key changes). An index on the grouping columns lets the engine skip the sort; an index on (dept, salary) can answer MAX(salary) per dept by reading one entry per group (loose index scan). Aggregates like SUM/COUNT/AVG are mergeable, so distributed engines compute partial aggregates per node and combine them; exact median and COUNT(DISTINCT) are not, hence approximate sketches.</p>`,

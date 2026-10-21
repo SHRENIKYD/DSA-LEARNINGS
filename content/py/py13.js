@@ -2483,7 +2483,7 @@ s1 = "".join(["py", "thon"])
 s2 = "python"
 print(a is b, c is d, s1 == s2)
 print(c == d)` } },
-      { title: 'Q13. Sort stability and key tricks', html: R`<p><code>sorted</code> is <b>stable</b>: items with equal keys keep their original order. So sorting by a secondary key first and then by the primary key gives a correct multi-key sort.</p><details><summary>Answer</summary><p><code>[('b', 1), ('d', 1), ('a', 2), ('c', 2)]</code> — within score 1, b stays before d.</p></details>`, code: { lang: 'python', run: true, code: R`
+      { title: 'Q13. Sort stability and key tricks', html: R`<p><code>sorted</code> is <b>stable</b>: items with equal keys keep their original order. So sorting by a secondary key first and then by the primary key gives a correct multi-key sort.</p><details><summary>Answer</summary><p>First line <code>[('b', 1), ('d', 1), ('a', 2), ('c', 2)]</code> (within score 1, b stays before d); second line <code>[('a', 2), ('c', 2), ('b', 1), ('d', 1)]</code> (score descending, then name).</p></details>`, code: { lang: 'python', run: true, code: R`
 rows = [("b", 1), ("a", 2), ("d", 1), ("c", 2)]
 print(sorted(rows, key=lambda r: r[1]))
 print(sorted(rows, key=lambda r: (-r[1], r[0])))` } },

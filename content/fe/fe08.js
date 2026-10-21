@@ -191,7 +191,7 @@ function Table2({ rows }) {
       }
     ],
     deepDive: `<h5>🟣 What JSX compiles to</h5>
-      <p>Modern toolchains use the "automatic runtime" (React 17+): <code>&lt;Card name="A" /&gt;</code> becomes <code>jsx(Card, { name: "A" })</code> imported from <code>react/jsx-runtime</code>. Older code shows <code>React.createElement(Card, { name: "A" })</code>. Both return an object roughly shaped <code>{ $$typeof: Symbol(react.element), type, key, ref, props }</code>. The <code>$$typeof</code> symbol is a security feature: JSON from a server cannot contain a Symbol, so an attacker cannot smuggle a fake element into your tree.</p>
+      <p>Modern toolchains use the "automatic runtime" (React 17+): <code>&lt;Card name="A" /&gt;</code> becomes <code>jsx(Card, { name: "A" })</code> imported from <code>react/jsx-runtime</code>. Older code shows <code>React.createElement(Card, { name: "A" })</code>. Both return an object roughly shaped <code>{ $$typeof: Symbol(react.element), type, key, ref, props }</code> (the symbol is named <code>react.transitional.element</code> in React 19). The <code>$$typeof</code> symbol is a security feature: JSON from a server cannot contain a Symbol, so an attacker cannot smuggle a fake element into your tree.</p>
       <h5>🟣 Elements are immutable and cheap</h5>
       <p>An element is a snapshot of what the UI should look like <i>at this moment</i>, like one frame of a film. You never mutate it, you return a new one next time. Creating thousands of small objects is very fast in modern JS engines; the expensive part would be touching the real DOM, which React minimises.</p>
       <h5>🟣 Component identity</h5>
@@ -3031,7 +3031,7 @@ console.log('tea x2 -> 0', summary(cart), JSON.stringify(cart));`, 'Plain JS mod
     title: 'Signup Form: One State Object and Password Match', level: 'Medium', tags: ['forms', 'controlled inputs', 'validation'], companies: ['Stripe', 'Paytm'],
     statement: `<p>Build <code>SignupForm</code> with fields name, email, password and confirm password. Use <b>one</b> state object and <b>one</b> change handler. Rules: name required; email valid; password at least 8 characters with at least one digit; confirm must match. Show each error only after the field was blurred or after a submit attempt. When valid and submitted, show "Welcome, &lt;name&gt;!" instead of the form.</p>`,
     constraints: `All inputs controlled with labels. Errors derived by a pure function <code>validate(values)</code>. Do not store errors in state. Submit uses <code>preventDefault</code>.`,
-    example: `${H.table(['Values', 'Errors'], [['name "", others empty', 'name: required; email: invalid; password: too short; confirm: must match'], ['password "abcdefg1", confirm "abcdefg2"', 'confirm: Passwords do not match'], ['all valid', '(none) → submit allowed']])}`,
+    example: `${H.table(['Values', 'Errors'], [['name "", others empty', 'name: required; email: invalid; password: too short (no confirm error: two empty strings match)'], ['password "abcdefg1", confirm "abcdefg2"', 'confirm: Passwords do not match'], ['all valid', '(none) → submit allowed']])}`,
     brute: { why: `<p>Write one <code>useState</code> and one handler per field (eight pieces of code), plus an <code>errors</code> state set inside each handler. Copy-paste mistakes appear (the confirm handler forgets to re-check when the password changes), so the "match" error becomes stale.</p>`, code: jsx(`function BadSignup() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');

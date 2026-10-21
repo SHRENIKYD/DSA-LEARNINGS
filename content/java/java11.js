@@ -3698,7 +3698,7 @@ class WriterPreferringRWLock {
     constraints: `1 ≤ n ≤ 6 (state space must be explored exhaustively).`,
     example: `<p>n = 1 → min ${H.c('r', '1')}, max ${H.c('g', '2')}. n = 2 → min ${H.c('r', '2')}, max ${H.c('g', '4')}. For every n ≥ 2 the minimum is 2 — not n, as most people guess.</p>`,
     brute: {
-      why: `<p>Enumerate every interleaving recursively without remembering states: the number of interleavings is C(6n, 3n) — about 2.7 million for n = 4 and 2.7 billion for n = 6. The same (pcA, pcB, registers, count) state is re-explored many times.</p>`,
+      why: `<p>Enumerate every interleaving recursively without remembering states: the number of interleavings is C(6n, 3n) — about 2.7 million for n = 4 and about 9 billion for n = 6. The same (pcA, pcB, registers, count) state is re-explored many times.</p>`,
       code: `
 class BruteInterleavings {
     static int n, min = Integer.MAX_VALUE, max = Integer.MIN_VALUE;

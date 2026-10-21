@@ -1539,7 +1539,7 @@ print(max_coins([1, 5]))                 # 10
       },
       {
         title: 'Minimum Score Triangulation of a polygon',
-        html: `<p>Vertex values [1, 3, 1, 4, 1, 5]. Any triangulation of polygon i..j has exactly one triangle using the edge (i, j); its third vertex k splits the polygon into i..k and k..j. <code>dp[i][j] = min(dp[i][k] + dp[k][j] + v[i]·v[k]·v[j])</code>. Answer ${H.c('g', '13')}. It is literally MCM in disguise (a chain of n−1 matrices ↔ triangulating an (n+1)-gon).</p>`
+        html: `<p>Vertex values [1, 3, 1, 4, 1, 5]. Any triangulation of polygon i..j has exactly one triangle using the edge (i, j); its third vertex k splits the polygon into i..k and k..j. <code>dp[i][j] = min(dp[i][k] + dp[k][j] + v[i]·v[k]·v[j])</code>. Answer ${H.c('g', '13')}. It is literally MCM in disguise (a chain of n matrices ↔ triangulating an (n+1)-gon).</p>`
       }
     ],
     deepDive: `<p><b>Order of filling.</b> Any order works as long as dp[i][k] and dp[k+1][j] are ready before dp[i][j]. “By length” is the safest. An equivalent trick: loop <code>i</code> from n down to 1 and <code>j</code> from i up to n — row i only needs rows below it and columns to its left.</p>
@@ -2747,7 +2747,7 @@ console.log(sell2);                   // 6` }, { lang: 'cpp', code: `int main() 
       }
     ],
     deepDive: `<p><b>Why “sell[k]” is the answer even when fewer trades are better.</b> A buy and sell on the same day cancels out (−p + p), so the dp can “waste” transactions for free; sell[j] is non-decreasing in j. Hence sell[k] = best with at most k trades.</p>
-      <p><b>Order of updates inside one day.</b> For k transactions, updating buy[j] then sell[j] in the same day lets a share be bought and sold on the same day — harmless (profit 0). For cooldown, though, using today’s <code>sold</code> inside today’s <code>rest</code> would let you buy the next day legally anyway — but using today’s <code>sold</code> inside today’s <b>hold</b> would break the cooldown. Always reason about which values must be “yesterday’s”.</p>
+      <p><b>Order of updates inside one day.</b> For k transactions, updating buy[j] then sell[j] in the same day lets a share be bought and sold on the same day — harmless (profit 0). For cooldown, though, using today’s <code>sold</code> inside today’s <code>rest</code> would let you buy tomorrow right after selling today, which <b>breaks</b> the cooldown. Rest must take yesterday’s <code>sold</code>. Always reason about which values must be “yesterday’s”.</p>
       <p><b>k ≥ N/2 shortcut.</b> With N prices there are at most ⌊N/2⌋ useful non-overlapping trades, so large k means unlimited — the greedy sum of rises, O(N). Without the shortcut, k = 10<sup>9</sup> would make O(N·k) impossible (and allocate a giant array).</p>
       <p><b>Even faster k-transactions.</b> An O(N log N) solution exists: find all valley/peak pairs with a stack, then pick the k largest profits with a heap (merging pairs when needed). A newer trick is “Aliens / WQS binary search”: add a penalty λ per transaction, solve the unlimited version with fee λ in O(N), and binary-search λ until exactly k trades are used — O(N log(max price)).</p>
       <p><b>General shape.</b> State-machine DP = DP over a timeline × a small finite automaton. The same template counts strings that avoid a pattern (states = KMP automaton states), handles “at most 2 consecutive absences” (attendance record), and appears in HMM/Viterbi decoding where states are hidden labels.</p>

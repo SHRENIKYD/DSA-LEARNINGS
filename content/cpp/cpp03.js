@@ -759,7 +759,7 @@ f(nullptr);  // #2 : nullptr is never an int</pre>
 <p>A local <code>int* w;</code> holds whatever bits were on the stack: a <b>wild</b> pointer. It is not null, so <code>if (w)</code> passes, and writing through it can silently overwrite another variable. Global and <code>static</code> pointers are zero-initialized to null automatically, but locals are not. <b>Rule: initialize every pointer when you declare it</b>, to a real address or to <code>nullptr</code>.</p>
 <h4>6. Common uses of null</h4>
 ${H.table(['situation', 'null means'], [['linked list <code>next</code>', 'end of the list'], ['tree <code>left</code>/<code>right</code>', 'no child'], ['search function result', 'not found'], ['optional parameter <code>const Options* opt</code>', '"use the defaults"'], ['after <code>delete p;</code> then <code>p = nullptr;</code>', 'this pointer no longer owns anything']])}
-<p>Also handy: <code>delete nullptr;</code> and <code>free(NULL)</code> are guaranteed to do nothing, so you never need to null-check before deleting.</p>`,
+<p>Also handy: <code>delete p;</code> when <code>p</code> is null, and <code>free(NULL)</code>, are guaranteed to do nothing, so you never need to null-check before deleting.</p>`,
     clues: [
       '"What is the difference between NULL, 0 and nullptr?" → type <code>std::nullptr_t</code>, overload resolution, templates',
       '"Return the node / element, or indicate not found" → return <code>nullptr</code> (or <code>std::optional</code> for values)',
@@ -1188,7 +1188,7 @@ ${H.table(['from → to', 'allowed?', 'why'], [
 <h4>5. const references</h4>
 <p><code>const T&amp;</code> is the reference version of "pointer to const": a read-only alias. There is no "const reference" in the other sense (<code>int&amp; const r</code> is an error), because references can never be re-seated anyway.</p>
 <h4>6. const and string literals</h4>
-<p>A string literal like <code>"hello"</code> has type <code>const char[6]</code>. So <code>const char* s = "hello";</code> is right and <code>char* s = "hello";</code> is an error in C++11 and later (it was only deprecated in C++03). Writing into a literal is UB because literals often live in read-only memory.</p>`,
+<p>A string literal like <code>"hello"</code> has type <code>const char[6]</code>. So <code>const char* s = "hello";</code> is right and <code>char* s = "hello";</code> is ill-formed in C++11 and later (some compilers only warn; it was deprecated in C++03). Writing into a literal is UB because literals often live in read-only memory.</p>`,
     clues: [
       '"Difference between <code>const int*</code>, <code>int const*</code> and <code>int* const</code>" → read right-to-left; const left of * protects the target',
       '"The function must not modify the array" → parameter <code>const T*</code> or <code>const T&amp;</code> / <code>std::span&lt;const T&gt;</code>',
@@ -1346,7 +1346,7 @@ int main() {
     const int* const* ok = pp;        // fine: the middle pointer is locked too
     return **ok - 1;                  // 0
 }` } },
-      { title: 'Bug hunt: modifying a string literal', html: `<p>This compiles in old C but is an error in C++11+: <code>char* s = "hello"; s[0] = 'J';</code>. Even when forced through with a cast, writing into a literal is UB and typically crashes because literals sit in a read-only section (<code>.rodata</code>). Fix: copy into a writable array or <code>std::string</code>.</p>`, code: { lang: 'cpp', code: `#include <iostream>
+      { title: 'Bug hunt: modifying a string literal', html: `<p>This compiles in old C but is ill-formed in C++11+ (some compilers only warn): <code>char* s = "hello"; s[0] = 'J';</code>. Even when forced through with a cast, writing into a literal is UB and typically crashes because literals sit in a read-only section (<code>.rodata</code>). Fix: copy into a writable array or <code>std::string</code>.</p>`, code: { lang: 'cpp', code: `#include <iostream>
 #include <string>
 int main() {
     // char* s = "hello";         // error in C++11+: literal is const char[6]

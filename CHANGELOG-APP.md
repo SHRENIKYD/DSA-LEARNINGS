@@ -2,6 +2,13 @@
 
 Versions follow [Semantic Versioning](https://semver.org). The app's version is `appVersion` in `package.json`; it sets the Android `versionName` and `versionCode` (`1.7.0` → `10700`) and, through `node tools/version-sync.js`, the iOS project. The Android workflow tags each new one as `app-vX.Y.Z` on `main`, publishes a GitHub Release with the APK and bundle, and uploads it to Google Play. Up to 1.6.1 the app and website shared one version; that history is in [CHANGELOG.md](CHANGELOG.md).
 
+## [1.11.1] — 2026-10-21 · Content review
+
+Full release notes: [docs/RELEASE_REVIEW.md](docs/RELEASE_REVIEW.md).
+
+### Fixed
+- Lessons include the website's content review: 584 corrections in 184 modules (wrong facts, outdated claims, inconsistencies and unclear explanations).
+
 ## [1.11.0] — 2026-10-20 · Phase 3 of 3
 
 Full release notes: [docs/RELEASE_PHASE3.md](docs/RELEASE_PHASE3.md).

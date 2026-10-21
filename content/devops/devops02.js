@@ -61,7 +61,7 @@
         ['<code>&#36;{VAR##*/}</code>', 'cut the longest match of <code>*/</code> from the front', 'db.sql.gz (like basename)'],
         ['<code>&#36;{VAR%/*}</code>', 'cut the shortest match of <code>/*</code> from the end', '/var/backups (like dirname)'],
         ['<code>&#36;{VAR%.gz}</code>', 'remove a suffix', '/var/backups/db.sql'],
-        ['<code>&#36;{#VAR}</code>', 'length in characters', '23'],
+        ['<code>&#36;{#VAR}</code>', 'length in characters', '22'],
         ['<code>&#36;{VAR/old/new}</code>', 'replace first match (<code>//</code> = all)', 'quick renames']
       ])}
       <p>🔵 <b>Arrays for lists.</b> A list of file names or command options belongs in an array: <code>opts=(-a --delete --exclude '*.tmp')</code>, then <code>rsync "&#36;{opts[@]}" src/ dst/</code>. The form <code>"&#36;{arr[@]}"</code> (quoted, with <code>@</code>) gives each item as one separate word, even if it has spaces. A string like <code>opts="-a --delete"</code> breaks as soon as one option has a space.</p>
@@ -649,11 +649,11 @@ main "$@"`],
           var startIdx = idx;
           for (var k = 1; k < w.length; k++) {
             var ch = w.charAt(k);
-            if (!(ch in spec)) { err = 'unknown option -' + ch; f.push({ narr: '<code>-' + H.esc(ch) + '</code> is not in the option string, so getopts sets <code>opt</code> to <code>?</code> and <code>OPTARG</code> to ' + H.esc(ch) + '. Our <code>\\?)</code> branch prints usage and exits 2. ' + H.c('r', 'A typo stops the script before it touches any server.'), parts: [{ type: 'array', label: '"$@"', values: words, hl: one(idx, 'bad'), start: 1 }, { type: 'vars', label: 'case branch', vals: { opt: '?', OPTARG: ch }, hl: { opt: 'bad' } }] }); break; }
+            if (!(ch in spec)) { err = 'unknown option -' + ch; f.push({ narr: '<code>-' + H.esc(ch) + '</code> is not in the option string, so getopts sets <code>opt</code> to <code>?</code> and <code>OPTARG</code> to ' + H.esc(ch) + '. Our <code>\\?)</code> branch prints usage and calls <code>die</code>, which exits 1. ' + H.c('r', 'A typo stops the script before it touches any server.'), parts: [{ type: 'array', label: '"$@"', values: words, hl: one(idx, 'bad'), start: 1 }, { type: 'vars', label: 'case branch', vals: { opt: '?', OPTARG: ch }, hl: { opt: 'bad' } }] }); break; }
             if (spec[ch]) {
               var val = w.slice(k + 1);
               if (!val) { idx++; val = words[idx]; }
-              if (val === undefined) { err = 'missing value'; f.push({ narr: '<code>-' + ch + '</code> needs a value, but the words ran out. getopts sets <code>opt</code> to <code>:</code>, and our <code>:)</code> branch prints "option -' + ch + ' needs a value" and exits 2.', parts: [{ type: 'array', label: '"$@"', values: words, hl: one(startIdx, 'bad'), start: 1 }, { type: 'vars', label: 'case branch', vals: { opt: ':', OPTARG: ch }, hl: { opt: 'bad' } }] }); break; }
+              if (val === undefined) { err = 'missing value'; f.push({ narr: '<code>-' + ch + '</code> needs a value, but the words ran out. getopts sets <code>opt</code> to <code>:</code>, and our <code>:)</code> branch prints "option -' + ch + ' needs a value" and exits 1.', parts: [{ type: 'array', label: '"$@"', values: words, hl: one(startIdx, 'bad'), start: 1 }, { type: 'vars', label: 'case branch', vals: { opt: ':', OPTARG: ch }, hl: { opt: 'bad' } }] }); break; }
               var name = ch === 'e' ? 'env' : 'version';
               vars[name] = val;
               var hl = {}; hl[startIdx] = 'cur'; if (idx !== startIdx) hl[idx] = 'ok';
@@ -744,7 +744,7 @@ bump_local;  echo "after bump_local:  $count"
 # after bump_global: 11
 # inside: 1
 # after bump_local:  11` },
-      { title: 'getopts in action: good input, a typo and a missing value', html: `<p>Running the skeleton from the code tab with three different command lines. Bad input fails fast with exit code ${H.c('r', '2')} and help text, before anything touches a server. Lines starting with a time are <code>log</code> output on stderr.</p>`, code: B`bash deploy.sh -e prod -v 1.4.2 -n web1 web2
+      { title: 'getopts in action: good input, a typo and a missing value', html: `<p>Running the skeleton from the code tab with three different command lines. Bad input fails fast with a non-zero exit code (${H.c('r', '1')} from <code>die</code>, ${H.c('r', '2')} for failed validation) and help text, before anything touches a server. Lines starting with a time are <code>log</code> output on stderr.</p>`, code: B`bash deploy.sh -e prod -v 1.4.2 -n web1 web2
 # 09:14:03 [deploy.sh] deploying 1.4.2 to 2 host(s) in prod
 # [dry-run] deploy 1.4.2 to web1
 # [dry-run] deploy 1.4.2 to web2

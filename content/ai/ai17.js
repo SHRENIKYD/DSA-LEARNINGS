@@ -226,14 +226,14 @@ topics.push({
   examples: [
     { title: 'Example 1 - "Add AI search to our docs"', html: `<p><b>User:</b> new engineers. <b>Problem:</b> they cannot find answers and interrupt seniors. <b>Options:</b> better navigation, a curated FAQ, AI search with citations. <b>Metric:</b> questions asked in chat per new hire; guardrail: wrong-answer reports. <b>Risk:</b> stale docs produce confident wrong answers. <b>Decision:</b> pilot AI search with citations on one team.</p>` },
     { title: 'Example 2 - System thinking: the retry storm', html: `<p>A service slows down. Clients time out and retry, tripling the load. The service slows more. Fix: exponential backoff with jitter, retry budgets, circuit breakers. This is a <i>feedback loop</i> - you only see it when you look at the whole system.</p>`, code: { lang: 'python', run: true, title: 'Retry storm toy model', code: `# Load grows when clients retry after timeouts; capacity stays fixed.
-capacity, base_load = 100, 80
+capacity, base_load = 100, 105      # normal load is just above capacity
 load = base_load
 for minute in range(1, 6):
     overload = max(0, load - capacity)
     retries = overload * 2          # each failed request is retried twice
     load = base_load + retries
     print("minute", minute, "load", load, "capacity", capacity)
-# With backoff + a retry budget the extra load is capped, so the system recovers.` } },
+# A small overload snowballs. With backoff + a retry budget the extra load is capped, so the system recovers.` } },
     { title: 'Example 3 - Metric with a guardrail', html: `<p>Feature: auto-reply drafts. Primary: median handle time. Guardrail: customer satisfaction and "reply edited by agent" rate. If handle time falls but satisfaction drops, you optimised the wrong thing.</p>` }
   ],
   deepDive: `<p><b>Second-order effects.</b> Ask "and then what?" three times. AI code assistants make code cheap to produce, so reviews, tests and ownership become the bottleneck - the constraint moves, it does not vanish (a classic "theory of constraints" idea).</p>
@@ -266,7 +266,7 @@ topics.push({
   analogy: `<p>Building AI features is like running a <b>restaurant kitchen</b>. Customers cannot see the kitchen, so they rely on rules: food safety inspections (regulation), keeping allergy lists private (privacy), knowing where ingredients came from (IP and licensing), and a named head chef who answers when someone gets sick (accountability). Good cooks follow these rules not only because inspectors exist, but because people will eat the food.</p>`,
   explain: `<p>Four themes matter for engineers. This is a conceptual overview, <b>not legal advice</b> - always involve your legal and security teams.</p>
   <p><b>1. Regulation by risk tier (EU AI Act, conceptual).</b> The EU AI Act takes a "more risk, more rules" approach. Roughly four levels:</p>
-  ${H.table(['Tier', 'Idea', 'Typical examples'], [['Unacceptable', 'Banned practices that threaten rights', 'Social scoring by authorities, certain manipulative systems'], ['High-risk', 'Allowed with strict duties: risk management, data quality, logging, documentation, human oversight', 'AI in hiring, credit, education, critical infrastructure'], ['Limited risk', 'Transparency duties: tell people they talk to AI or see AI-generated content', 'Chatbots, synthetic media'], ['Minimal risk', 'Mostly free use, voluntary good practice', 'Spam filters, game AI']])}
+  ${H.table(['Tier', 'Idea', 'Typical examples'], [['Unacceptable', 'Banned practices that threaten rights', 'Social scoring, certain manipulative systems'], ['High-risk', 'Allowed with strict duties: risk management, data quality, logging, documentation, human oversight', 'AI in hiring, credit, education, critical infrastructure'], ['Limited risk', 'Transparency duties: tell people they talk to AI or see AI-generated content', 'Chatbots, synthetic media'], ['Minimal risk', 'Mostly free use, voluntary good practice', 'Spam filters, game AI']])}
   <p>Rules phase in over several years and details are still being clarified, so check current guidance. Other regions (US states, UK, India, China and others) take different approaches; expect a patchwork.</p>
   <p><b>2. Privacy.</b> Do not paste customer data, secrets or personal data into tools your company has not approved. Principles: collect less (data minimisation), say why (purpose limitation), keep it safe, delete when done. Laws like GDPR give people rights over their data.</p>
   <p><b>3. IP and licensing.</b> Open questions: Can AI output be copyrighted? Did training use licensed data? Rules vary by country and are being tested in courts, so treat claims of certainty with caution. Practical habits: check your tool's terms and indemnity, run licence scanning on generated code, keep human authorship and review notes, never paste proprietary code into unapproved tools.</p>

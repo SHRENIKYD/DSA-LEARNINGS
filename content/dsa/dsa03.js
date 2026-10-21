@@ -314,7 +314,7 @@ map<long long, int> primeFactors(long long n) {
           ])}
           <p>Why 9? The factors are 1, 2, 3, 4, 6, 9, 12, 18, 36. Six pairs would give 10, but ${H.c('p', '6 × 6')} uses the same number twice, so it counts once.</p>`,
         brute: {
-          why: `<p>Test every i from 1 to N and count those with <code>N % i == 0</code>. For N = 10<sup>12</sup> that is 10<sup>12</sup> divisions — roughly 15+ minutes. The wasted work: every test above √N just rediscovers a partner we could have gotten for free from a small i.</p>`,
+          why: `<p>Test every i from 1 to N and count those with <code>N % i == 0</code>. For N = 10<sup>12</sup> that is 10<sup>12</sup> divisions — roughly 3 hours. The wasted work: every test above √N just rediscovers a partner we could have gotten for free from a small i.</p>`,
           code: { lang: 'java', code: `
             long countFactorsBrute(long n) {
                 long count = 0;
@@ -1776,7 +1776,7 @@ long long divMod(long long a, long long b) {          // prime modulus, b not di
     codeTitle: 'Safe modular helpers',
     examples: [
       {
-        title: 'A 20-digit number mod 7, one digit at a time',
+        title: 'A huge number mod 7, one digit at a time',
         html: `<p>"N is given as a string of up to 10<sup>5</sup> digits; return N % 7." You can't store N, but you can read it left to right like a cashier adding up: r = (r × 10 + digit) % m. For "1234": r = 1 → 12 % 7 = 5 → (5·10 + 3) % 7 = 53 % 7 = 4 → (4·10 + 4) % 7 = 44 % 7 = ${H.c('g', '2')}. Check: 1234 = 7 × 176 + 2 ✓. The multiply rule lets us reduce after every digit.</p>`,
         code: { lang: 'java', code: `
           int bigMod(String digits, int m) {
@@ -2291,7 +2291,7 @@ long long fib(long long n, long long m) {       // F(0) = 0, F(1) = 1
         constraints: `0 ≤ a ≤ 10<sup>9</sup>, 0 ≤ b ≤ 10<sup>18</sup>`,
         example: `<p><code>a = 3, b = 13</code> → <b>1594323</b></p>${H.bits(13, 4, { label: 'b', hl: { 0: 'g', 2: 'g', 3: 'g' } })}<p>13 = ${H.c('g', '8 + 4 + 1')} so 3<sup>13</sup> = 3<sup>8</sup> × 3<sup>4</sup> × 3<sup>1</sup> = 6561 × 81 × 3 = ${H.c('p', '1594323')} (smaller than the modulus, so it stays as is).<br><code>a = 2, b = 10</code> → 1024.</p>`,
         brute: {
-          why: `<p>Multiply result by a, b times. For b = 10<sup>18</sup> that is 10<sup>18</sup> multiplications — thousands of years. Wasted work: we recompute the same partial powers again and again instead of doubling what we already have.</p>`,
+          why: `<p>Multiply result by a, b times. For b = 10<sup>18</sup> that is 10<sup>18</sup> multiplications — about 300 years. Wasted work: we recompute the same partial powers again and again instead of doubling what we already have.</p>`,
           code: { lang: 'java', code: `
             long powerBrute(long a, long b) {
                 final long MOD = 1_000_000_007L;

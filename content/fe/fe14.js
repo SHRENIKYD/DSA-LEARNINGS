@@ -280,7 +280,7 @@ console.log('^0.0.3 =', caretBounds(0, 0, 3));` }
       },
       {
         title: 'Peer dependency warning, decoded',
-        html: `<p>You install <code>react-select</code> and see <i>"requires a peer of react@^18 but none is installed"</i>. A <b>peer dependency</b> is a library saying "I do not bring my own React; I will use <b>yours</b>". If it brought its own copy you would have <b>two Reacts</b> on the page and hooks would crash ("Invalid hook call"). Fix: install a React version that satisfies the peer range. npm 7+ installs peers automatically; pnpm warns so you stay in control.</p>`
+        html: `<p>You install <code>react-select</code> and see <i>"requires a peer of react@^18 but none is installed"</i>. A <b>peer dependency</b> is a library saying "I do not bring my own React; I will use <b>yours</b>". If it brought its own copy you would have <b>two Reacts</b> on the page and hooks would crash ("Invalid hook call"). Fix: install a React version that satisfies the peer range. npm 7+ and pnpm 8+ install missing peers automatically and still warn when versions conflict.</p>`
       }
     ],
     deepDive: `<p>🟣 <b>How resolution really works.</b> npm builds an <i>ideal tree</i>: for each dependency it asks the registry for the packument (the list of versions), picks the highest match for the range, then recurses. Two packages that need compatible ranges of the same library are <b>deduped</b> to one copy hoisted to the top of <code>node_modules</code>; incompatible ones get nested copies. That flat layout is why code can <code>import</code> packages it never declared ("phantom dependencies"). <b>pnpm</b> avoids this: <code>node_modules</code> holds only your declared deps as symlinks into <code>.pnpm/</code>, which hard-links files from a global store keyed by content hash.</p>
@@ -436,7 +436,7 @@ console.log(maxSatisfying(published, '^5.1.0'));  // null` },
       <p><b>The big three today:</b></p>
       ${H.table(['Tool', 'Core idea', 'Strength', 'Watch out'], [
         ['<b>webpack</b>', 'Everything is a module; loaders + plugins; its own runtime', 'Most mature, huge plugin ecosystem, module federation', 'Config is long; dev builds slow on big apps'],
-        ['<b>Vite</b>', 'Dev: serve native ES modules on demand (esbuild pre-bundles deps). Build: Rollup', 'Near-instant dev start and HMR, small config', 'Dev and prod use different engines (rare surprises)'],
+        ['<b>Vite</b>', 'Dev: serve native ES modules on demand (esbuild pre-bundles deps). Build: Rollup (newer Vite versions move this step to Rolldown)', 'Near-instant dev start and HMR, small config', 'Dev and prod use different engines (rare surprises)'],
         ['<b>esbuild</b>', 'Written in Go, extremely fast bundler + minifier', 'Speed (10-100x), great as a building block', 'Fewer plugins; limited code-splitting controls'],
         ['<b>Rollup / Rolldown / Rspack / Turbopack</b>', 'Rollup: library bundler with best tree shaking. Rolldown, Rspack, Turbopack: Rust rewrites', 'Speed with familiar APIs (Rspack mimics webpack)', 'Newer, check plugin support']
       ])}
@@ -1888,7 +1888,7 @@ afterAll(() => server.close());
 it('shows a loading state, then the users', async () => {
   render(<UserList />);
   expect(screen.getByText(/loading/i)).toBeInTheDocument();          // getBy: it is there right now
-  expect(await screen.findByRole('listitem', { name: 'Asha' })).toBeInTheDocument();   // findBy waits
+  expect(await screen.findByText('Asha')).toBeInTheDocument();   // findBy waits
   expect(screen.getAllByRole('listitem')).toHaveLength(2);
 });
 

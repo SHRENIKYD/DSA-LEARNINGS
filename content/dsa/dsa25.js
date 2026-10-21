@@ -1633,7 +1633,7 @@ public:
   // =====================================================================
   topics.push({
     title: 'Matrix Exponentiation: Fibonacci in O(log N) and Any Linear Recurrence',
-    analogy: `<p>Imagine a <b>recipe card</b> that turns today's state into tomorrow's: "tomorrow's number = today's + yesterday's". To know day 1,000,000,000,000 you could apply the card a trillion times… or notice that <b>"apply the card twice"</b> is itself a card, <b>"apply it 4 times"</b> is another card, then 8, 16, 32 times… Like folding paper: each fold <i>doubles</i> the thickness, so 40 folds already reach the Moon. With ~40 "doubled cards" you can jump straight to day 10<sup>12</sup>.</p>`,
+    analogy: `<p>Imagine a <b>recipe card</b> that turns today's state into tomorrow's: "tomorrow's number = today's + yesterday's". To know day 1,000,000,000,000 you could apply the card a trillion times… or notice that <b>"apply the card twice"</b> is itself a card, <b>"apply it 4 times"</b> is another card, then 8, 16, 32 times… Like folding paper: each fold <i>doubles</i> the thickness, so about 42 folds already reach the Moon. With ~40 "doubled cards" you can jump straight to day 10<sup>12</sup>.</p>`,
     explain: `<p><b>Step 1 — write the recurrence as "state × matrix".</b> Fibonacci: F(n+1) = F(n) + F(n−1). Keep the last two values as a column state:</p>
       ${H.table(['', 'state now', '', 'state next'], [['[[1, 1],', '[F(n)', '→', '[F(n) + F(n−1)] = [F(n+1)]'], [' [1, 0]]', ' F(n−1)]', '', '[F(n)]          = [F(n)]']])}
       <p>So <code>state(n) = T · state(n−1)</code> with <b>T = [[1,1],[1,0]]</b>, and therefore <code>state(n) = T<sup>n</sup> · state(0)</code>. In fact T<sup>n</sup> = [[F(n+1), F(n)], [F(n), F(n−1)]], so F(n) is simply the top-right entry.</p>
@@ -2493,7 +2493,7 @@ public:
         ['ways 2n people around a table shake hands without crossing arms', 'person 1\'s partner splits the table into two groups'],
         ['valid push/pop sequences of a stack with n pushes', 'push = "(", pop = ")"']
       ])}
-      <p><b>Growth:</b> C_n ≈ 4<sup>n</sup> / (n<sup>3/2</sup>·√π). C₁₉ ≈ 1.77·10<sup>9</sup> (just over int), C₃₅ ≈ 3.1·10<sup>18</sup> is the last one that fits in a signed 64-bit integer.</p>`,
+      <p><b>Growth:</b> C_n ≈ 4<sup>n</sup> / (n<sup>3/2</sup>·√π). C₁₉ ≈ 1.77·10<sup>9</sup> is the last one that fits in a 32-bit int (C₂₀ ≈ 6.6·10<sup>9</sup> does not), C₃₅ ≈ 3.1·10<sup>18</sup> is the last one that fits in a signed 64-bit integer.</p>`,
     clues: [
       '"Number of <b>structurally unique BSTs</b> / full binary trees with n nodes" → Catalan.',
       '"Count <b>valid parentheses</b> strings / valid stack push-pop orders / mountain ranges / Dyck paths" → Catalan.',

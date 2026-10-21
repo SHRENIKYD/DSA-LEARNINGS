@@ -1501,11 +1501,9 @@ print("3000 random range-adds / range-sums match brute force")` }],
             ['[0,1]', 'outside', 'return 0', '0'],
             ['[2,3]', 'partial', H.c('y', 'push IOU +3') + ': [2] 3→6, [3] 4→7', '0'],
             ['[2] / [3]', 'outside / inside', 'take 7', '7'],
-            ['[4,7]', 'partial', 'no IOU, go down', '7'],
-            ['[4,5]', 'fully inside', 'take 17 (IOU stays, never needed)', '24'],
-            ['[6,7]', 'fully inside', 'take 18', H.c('g', '42')]
+            ['[4,7]', 'fully inside', 'take 35 (its children, and the IOU on [4,5], are never opened)', H.c('g', '42')]
           ])}
-          <p>Note how [4,5] kept its IOU: the query never needed its children, so nobody paid it. That laziness is the whole trick.</p>`
+          <p>Note how [4,5] kept its IOU: the query never needed to look inside [4,7], so nobody paid it. That laziness is the whole trick.</p>`
       },
       {
         title: 'Two kinds of tags: "set to x" and "add v" together',
@@ -3202,8 +3200,8 @@ public:
       ${H.arr([4, 1, 7, 2, 9, 3, 6, 8, 5, 2], { label: 'a (N = 10, B = 3)', hl: { 0: 'b', 1: 'b', 2: 'b', 6: 'b', 7: 'b', 8: 'b' } })}
       ${H.table(['block', 'indices', 'elements', 'block sum'], [['b0', '0–2', '4 1 7', '12'], ['b1', '3–5', '2 9 3', '14'], ['b2', '6–8', '6 8 5', '19'], ['b3', '9', '2', '2']])}
       <p><b>Query [l, r]</b> = left partial block (walk elements) + full blocks in the middle (read summaries) + right partial block (walk elements). At most 2B elements + N/B summaries. <b>Point update</b> = fix the element + its block summary.</p>
-      <p>Sum of a[1..8]: left partial a[1], a[2] = 1 + 7; full block b1 = 14; right part (block b2 holds 8, so we walk it) 6 + 8 + 5 → total 8 + 14 + 19 = <b>41</b>.</p>
-      <p><b>Why √N?</b> Cost per query ≈ <code>2B + N/B</code>. If B is tiny there are too many blocks; if B is huge the partial walks are long. The sum <code>B + N/B</code> is smallest when <code>B = N/B</code>, i.e. <b>B = √N</b>, giving O(√N) per operation:</p>
+      <p>Sum of a[1..8]: left partial a[1], a[2] = 1 + 7; full block b1 = 14; right part: r = 8 lies in block b2, so we walk 6 + 8 + 5 = 19 → total 8 + 14 + 19 = <b>41</b>.</p>
+      <p><b>Why √N?</b> Cost per query is about <code>2B + N/B</code>. If B is tiny there are too many blocks; if B is huge the partial walks are long. Ignoring the constant 2, the sum <code>B + N/B</code> is smallest when <code>B = N/B</code>, i.e. <b>B = √N</b> (the exact best is √(N/2), which is no better in big-O). That gives O(√N) per operation:</p>
       ${H.table(['B', 'element walk ~2B', 'block reads N/B', 'total (N = 10<sup>6</sup>)'], [['10', '20', '100 000', H.c('r', '100 020')], ['1 000 (√N)', '2 000', '1 000', H.c('g', '3 000')], ['100 000', '200 000', '10', H.c('r', '200 010')]])}
       <p><b>Range updates</b> work like a mini-lazy: for a full block store a block-level tag (<code>blockAdd[b] += v</code>), for partial blocks touch the elements. Sum of a full block = <code>blockSum[b] + blockAdd[b]·B</code>.</p>
       <p><b>Why learn it when segment trees are O(log N)?</b> Because the block summary can be <i>anything</i>:</p>
@@ -7824,7 +7822,7 @@ public:
     hints: [
       `<p><b>Aha:</b> when one element enters or leaves, only its own term K²·s changes, by (2K ± 1)·s. O(1) add/remove + offline queries + static array = Mo's algorithm.</p>`,
       `<p>A plain count array <code>cnt</code> of size 10<sup>6</sup> + 1 (no hash map!) and a 64-bit <code>power</code>. Sort queries by (l / B, r) with odd-even trick, B ≈ N/√Q. Add: power += (2·cnt[x] + 1)·x; cnt[x]++. Remove: cnt[x]--; power −= (2·cnt[x] + 1)·x.</p>`,
-      `<p>Edge cases: 64-bit arithmetic in (2c + 1)·x, answers stored by original index, grow before shrink. ~(N + Q)√N ≈ 9·10<sup>7</sup> O(1) steps — fine with arrays and fast I/O.</p>`
+      `<p>Edge cases: 64-bit arithmetic in (2c + 1)·x, answers stored by original index, grow before shrink. ~(N + Q)√N ≈ 1.8·10<sup>8</sup> O(1) steps — fine with arrays and fast I/O.</p>`
     ],
     tests: { sig: 'int[] int[][] -> long[]', fn: 'powers', cases: [
       [[[1,2,1],[[0,1],[0,2]]],[3,6]],
@@ -7994,7 +7992,7 @@ public:
     { q: 'In lazy propagation, when must <code>push(node)</code> be called?', options: ['After every update at the root', 'Before recursing into the children of a partially covered node (in both updates and queries)', 'Only at leaves', 'Only during queries'], answer: 1, explain: 'Children may be stale while their parent holds an IOU. Anyone who looks inside a node must first hand the IOU down; forgetting it in queries is a classic bug.' },
     { q: 'A segment tree for range <b>minimum</b>: what should a node that does not overlap the query return?', options: ['0', '−1', '+∞ (the largest value, e.g. INT_MAX or Infinity)', 'the node\'s own value'], answer: 2, explain: 'It must be the identity of min, which never wins: min(x, +∞) = x. Returning 0 silently breaks every query on positive data.' },
     { q: 'Which is NOT a requirement of Mo\'s algorithm?', options: ['All queries known in advance', 'No updates to the array (basic version)', 'O(1)-ish add/remove of one element', 'The query answer must be mergeable from two halves'], answer: 3, explain: 'Mo\'s algorithm is exactly for answers that are NOT easily mergeable (distinct counts, pair counts). It needs offline queries, a static array and cheap add/remove.' },
-    { q: 'For sqrt decomposition with point updates and range sums, why is B ≈ √N the best block size?', options: ['Because √N is always an integer', 'Query cost ≈ 2B + N/B, which is smallest when B = N/B', 'It minimizes memory', 'Because the blocks then fit in the CPU cache'], answer: 1, explain: 'Partial blocks cost up to 2B, full blocks cost N/B. B + N/B is minimized at B = √N, giving O(√N) per query.' },
+    { q: 'For sqrt decomposition with point updates and range sums, why is B ≈ √N the best block size?', options: ['Because √N is always an integer', 'Query cost is about 2B + N/B, which is smallest (up to a constant factor) when B = N/B', 'It minimizes memory', 'Because the blocks then fit in the CPU cache'], answer: 1, explain: 'Partial blocks cost up to 2B, full blocks cost N/B. Up to a constant factor, this is smallest when B = N/B, so B = √N, giving O(√N) per query.' },
     { q: 'You need "add v to a[l..r]" and "what is a[k] now?" (no range sums). Lightest structure?', options: ['Lazy segment tree', 'One Fenwick tree over the difference array', 'Sparse table', 'Two Fenwick trees'], answer: 1, explain: 'A range add touches the difference array at two points; a[k] is a prefix sum of differences. One BIT does both in O(log N). Two BITs are needed only for range sums.' },
     { q: 'Which operation is idempotent and therefore works with the O(1) sparse-table query?', options: ['xor', 'product', 'gcd', 'sum of squares'], answer: 2, explain: 'gcd(x, x) = x, so counting an element twice does not change the result. xor, product and sums are not idempotent.' },
     { q: 'Mo\'s algorithm with N = Q = 10<sup>5</sup> and block size √N performs about how many pointer moves?', options: ['≈ 10<sup>5</sup>', '≈ 6·10<sup>7</sup>', '≈ 10<sup>10</sup>', '≈ 10<sup>15</sup>'], answer: 1, explain: 'Right pointer ≤ N per block × √N blocks ≈ 3.2·10<sup>7</sup>; left pointer ≤ √N per query × Q ≈ 3.2·10<sup>7</sup>. Total ≈ 6·10<sup>7</sup>, versus up to 10<sup>10</sup> for scanning every query.' }

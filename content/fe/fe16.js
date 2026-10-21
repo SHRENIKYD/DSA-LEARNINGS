@@ -885,7 +885,7 @@ topics.push({
       <li>Container: <code>role="region"</code> + <code>aria-roledescription="carousel"</code> + a label.</li>
       <li>Each slide: <code>role="group"</code> + <code>aria-roledescription="slide"</code> + <code>aria-label="3 of 6"</code>.</li>
       <li>Buttons are real <code>&lt;button&gt;</code> elements with names ("Previous slide").</li>
-      <li>Auto-play must have a visible <b>Pause</b> button and stop on hover/focus (WCAG 2.2.2). Never auto-play with <code>prefers-reduced-motion</code>.</li>
+      <li>Auto-play must have a visible <b>Pause</b> button (WCAG 2.2.2) and should also stop on hover/focus (APG advice). Never auto-play with <code>prefers-reduced-motion</code>.</li>
       <li>Off-screen slides should not be tabbable: use <code>inert</code> or <code>aria-hidden</code> + <code>tabindex="-1"</code> on their links.</li>
       <li>Announce changes politely only when the user triggered them (<code>aria-live="polite"</code>); keep it <code>off</code> during auto-play.</li>
     </ul>

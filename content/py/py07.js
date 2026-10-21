@@ -1443,7 +1443,7 @@ def gen():
 
 a, b = tee(gen())
 print(max(a), min(b))          # 5 1  (b was buffered while max consumed a)
-print(list(pairwise(gen())))   # pairwise uses the same trick internally` } }
+print(list(pairwise(gen())))   # the classic pairwise recipe is built on tee` } }
     ],
     deepDive: `<p>🟣 <b>Why itertools is fast.</b> Every tool is a C type implementing <code>tp_iternext</code> directly, so there is no Python frame per item. <code>sum(islice(...))</code>, <code>chain.from_iterable</code> or <code>accumulate</code> can be several times faster than the equivalent generator function. Combining <code>map</code>/<code>starmap</code> with built-in C functions (<code>operator.mul</code>, <code>str.upper</code>) keeps the whole loop in C.</p>
 <p><b>Semantics worth knowing:</b> <code>islice</code> on an iterator <i>consumes</i> the skipped items (it cannot jump). Negative indices are not allowed because the length is unknown. <code>zip</code> stops at the shortest input and has <code>strict=True</code> (3.10+) to raise on length mismatch; <code>zip_longest</code> pads. <code>accumulate</code> accepts any binary function and an <code>initial</code> value (3.8+). <code>batched</code> got <code>strict=True</code> in 3.13 to raise if the last batch is short. <code>groupby</code> calls <code>key</code> once per element and compares with <code>==</code>.</p>

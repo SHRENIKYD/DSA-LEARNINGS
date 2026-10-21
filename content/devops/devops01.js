@@ -582,10 +582,10 @@ echo 'id -nG | grep -qw webdev && umask 002' | sudo tee /etc/profile.d/webdev-um
 # 4. Pick up the new group: users re-login; nginx restarts
 sudo systemctl restart nginx
 # 5. Verify as each identity
-sudo -u raj touch /var/www/app/test-raj.html
+sudo -u raj sh -c 'umask 002; touch /var/www/app/test-raj.html'   # profile.d only runs for real logins, so set umask by hand
 sudo -u alice sh -c 'echo edit >> /var/www/app/test-raj.html'
 sudo -u www-data cat /var/www/app/test-raj.html
-ls -l /var/www/app/test-raj.html          # -rw-rw---- raj webdev`,
+ls -l /var/www/app/test-raj.html          # -rw-rw-r-- raj webdev`,
       cx: `<p>Setup takes minutes. Ongoing cost is zero: new team members are one <code>usermod -aG</code> away. Risk: low, others lose access they should not have had.</p>`,
       f: ['How would you do the same with default ACLs?', 'What changes if the team is 200 people on 50 servers?']
     })]
@@ -822,7 +822,7 @@ awk '$9 ~ /^5/' /tmp/access.log | wc -l                     # -> 3
 # 2. Top client IPs among the 5xx errors
 awk '$9 ~ /^5/ {print $1}' /tmp/access.log | sort | uniq -c | sort -rn | head -n 5
 
-# 3. Which paths fail most? (-o prints only the matched part)
+# 3. Which paths fail most? (field 7 is the path)
 awk '$9 >= 500 {print $7}' /tmp/access.log | sort | uniq -c | sort -rn
 
 # 4. Status code histogram
@@ -1202,7 +1202,7 @@ ssh web1` },
       { title: '"WARNING: UNPROTECTED PRIVATE KEY FILE!"', html: `<p>You downloaded the cloud provider's <code>.pem</code> key to your Downloads folder; it is mode 644. The client refuses to use a key others could read. Move it into <code>~/.ssh</code> and lock it down. On Windows (OpenSSH) fix it through file Properties → Security so only your user has access.</p>`, code: `mv ~/Downloads/mykey.pem ~/.ssh/
 chmod 600 ~/.ssh/mykey.pem
 ssh -i ~/.ssh/mykey.pem ec2-user@203.0.113.40` },
-      { title: 'Harden sshd on a new server', html: `<p>Once your key login works, turn off passwords and direct root login. Put settings in a drop-in file, <b>test the config</b>, reload, and <b>keep your current session open</b> while you test a new login in a second terminal - if you broke something you can still fix it.</p>`, code: `sudo tee /etc/ssh/sshd_config.d/60-hardening.conf > /dev/null <<'EOF'
+      { title: 'Harden sshd on a new server', html: `<p>Once your key login works, turn off passwords and direct root login. Put settings in a drop-in file. sshd uses the <b>first</b> value it finds and reads drop-ins in name order, so a low number like <code>00</code> wins over files such as <code>50-cloud-init.conf</code>. <b>Test the config</b>, reload, and <b>keep your current session open</b> while you test a new login in a second terminal - if you broke something you can still fix it.</p>`, code: `sudo tee /etc/ssh/sshd_config.d/00-hardening.conf > /dev/null <<'EOF'
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin no

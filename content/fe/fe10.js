@@ -1570,7 +1570,7 @@ topics.push({
   title: 'Optimistic Updates and Rollback',
   analogy: `<p>You hand a waiter your order and he says "<b>Great, coming up!</b>" before the kitchen has even confirmed it. Almost always the kitchen says yes, so you are never left staring at him waiting. Once in a while the kitchen says "we are out of fish". The waiter returns and says "sorry, I take that back" and you order something else. That is an <b>optimistic update</b>: <i>assume success, show it now, and undo (rollback) if the server says no</i>. The UI feels instant because you never wait for the network.</p>`,
   explain: `<p>🟢 <b>Why bother?</b> A "Like" button that waits 400 ms for the server feels broken. Users expect taps to react immediately. For actions that nearly always succeed (like, bookmark, check a to-do, reorder a list) you can update the screen first and fix it later if needed.</p>
-    <p>🔵 <b>The four-step recipe</b> (this is exactly React Query's <code>onMutate / onError / onSettled</code>):</p>
+    <p>🔵 <b>The five-step recipe</b> (this is exactly React Query's <code>onMutate / onError / onSettled</code>):</p>
     ${H.table(['Step', 'What you do', 'Why'], [
       ['<b>1. Snapshot</b>', 'Cancel in-flight refetches of that data, then save the current value', 'A late refetch must not overwrite your optimistic value; the snapshot is your undo button'],
       ['<b>2. Optimistic write</b>', 'Write the expected result into the cache/state immediately', 'The UI updates in ~0 ms'],
@@ -2413,7 +2413,7 @@ practice.push({
   statement: `<p>Build a Zustand cart store. State: <code>lines</code> as <code>{ [id]: { name, price, qty } }</code>. Actions: <code>add(product)</code>, <code>setQty(id, qty)</code> (removes at 0), <code>remove(id)</code>, <code>clear()</code>. Requirements: (1) persist <b>only</b> <code>lines</code> to localStorage under a versioned key, (2) the header badge must re-render only when the <b>item count</b> changes, (3) the "Add" button must never re-render because of cart changes, (4) a <code>CartSummary</code> needs both <code>count</code> and <code>total</code> in one hook call without an infinite loop or a re-render on every update.</p>`,
   constraints: `Zustand v4/v5 API. Derived values (count, total) are computed in selectors, not stored.`,
   example: `<p>Click "Add" on Shoe (50) twice and on Hat (20) once.</p>
-    ${H.table(['Component', 'Selector', 'Renders'], [['AddButton', '<code>s =&gt; s.add</code>', '<span class="c-g">1 (mount only)</span>'], ['CartBadge', '<code>s =&gt; count</code>', '3 (count changes 0→1→2→3)'], ['CartSummary', 'useShallow({count,total})', '3']])}`,
+    ${H.table(['Component', 'Selector', 'Renders'], [['AddButton', '<code>s =&gt; s.add</code>', '<span class="c-g">1 (mount only)</span>'], ['CartBadge', '<code>s =&gt; Object.keys(s.lines).length</code>', '3 including mount (distinct items go 0→1→2; the second Shoe click changes nothing)'], ['CartSummary', 'useShallow({count,total})', '4 including mount (quantity and total change on every click)']])}`,
   brute: {
     why: `<p>The naive version calls <code>const cart = useCartStore()</code> everywhere (no selector). Every component re-renders on every change, including buttons that only call <code>add</code>. The cart also vanishes on refresh.</p>`,
     code: {
@@ -2838,7 +2838,7 @@ practice.push({
   title: 'Memoized Selector (createSelector from Scratch)',
   level: 'Medium', tags: ['selectors', 'memoization', 'reselect', 'performance'], companies: ['Meta', 'Amazon', 'Booking.com'],
   statement: `<p>Implement <code>createSelector(inputSelectors, combiner)</code>. It must recompute only when the <b>results of the input selectors</b> change (compare each with <code>Object.is</code>), otherwise return the cached result (the exact same reference). Expose <code>selector.recomputations</code> to count recomputes. Use it to build <code>selectVisibleItems</code> from <code>items</code> and <code>query</code> and prove that changing an unrelated field (<code>theme</code>) does not recompute and returns the same array reference.</p>`,
-  constraints: `Cache size 1 is enough (like Reselect's default). The combiner must be pure.`,
+  constraints: `Cache size 1 is enough (the default of Reselect 4; Reselect 5 uses a larger weakMapMemoize cache). The combiner must be pure.`,
   example: `${H.table(['State change', 'recomputations', 'same array reference?'], [['first call', '1', '-'], ['theme: dark', '<span class="c-g">1</span>', '<span class="c-g">yes</span>'], ['query: "ha"', '<span class="c-y">2</span>', 'no (new result)'], ['theme: light', '<span class="c-g">2</span>', '<span class="c-g">yes</span>']])}`,
   brute: {
     why: `<p>An un-memoized selector that calls <code>filter</code> returns a <b>new array every time</b>. In <code>useSelector</code> that means "changed" after every dispatch, so the component re-renders on every unrelated update and any <code>useEffect</code> depending on it fires again.</p>`,

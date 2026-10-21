@@ -149,7 +149,7 @@ Accept: application/json
 
 HTTP/1.1 200 OK
 Content-Type: application/json; charset=utf-8
-Content-Length: 31
+Content-Length: 26
 
 {"message":"Hello, Asha!"}` } },
     { title: 'Changing the port the clean way', html: `<p>Hardcoding a port is a bug waiting for deployment day (cloud platforms inject the port). Read it from configuration, with a sensible default for your laptop. In Spring that is a property; in Node an environment variable.</p>`,
@@ -218,7 +218,7 @@ topics.push({
     ['<b>Body</b>', '<code>{"title":"Dune"}</code>', 'the data to create/change', '<code>@RequestBody</code>', '<code>req.body</code> (after <code>express.json()</code>)'],
     ['<b>Header</b>', '<code>Authorization: Bearer &lt;token&gt;</code>', 'metadata, auth, content type', '<code>@RequestHeader</code>', '<code>req.get("...")</code>']
   ])}
-  <p><b>Matching rules in plain words.</b> (1) The path must fit the pattern; <code>{id}</code>/<code>:id</code> matches one segment (no slashes). (2) The method must be the same. (3) Path fits but method does not → <span class="c-y">405 Method Not Allowed</span>. (4) Nothing fits → <span class="c-r">404 Not Found</span>. (5) In <b>Express the first matching route wins</b>, so order matters; <b>Spring picks the most specific</b> pattern, so <code>/books/search</code> beats <code>/books/{id}</code> regardless of order.</p>
+  <p><b>Matching rules in plain words.</b> (1) The path must fit the pattern; <code>{id}</code>/<code>:id</code> matches one segment (no slashes). (2) The method must be the same. (3) Path fits but method does not → <span class="c-y">405 Method Not Allowed</span> (Spring does this for you; plain Express answers 404 unless you add a 405 handler). (4) Nothing fits → <span class="c-r">404 Not Found</span>. (5) In <b>Express the first matching route wins</b>, so order matters; <b>Spring picks the most specific</b> pattern, so <code>/books/search</code> beats <code>/books/{id}</code> regardless of order.</p>
   <p><b>What a controller should do:</b> read the request, call <i>one</i> service method, choose the status code, return the body. <b>What it should not do:</b> loop over data, apply business rules, or touch a database. If your controller has an <code>if</code> about the business ("price over 100 needs approval") it belongs in the service.</p>
   <p><b>Naming rules for URLs:</b> use <b>plural nouns</b> (<code>/books</code>, not <code>/getBooks</code>); the HTTP method is the verb. Nest only when ownership is real: <code>/authors/7/books</code>.</p>`,
   clues: [
@@ -1145,7 +1145,7 @@ public ProblemDetail notFound(BookNotFoundException ex) {
       `<p>Hint 3: in the catch-all, log the exception (with a request id) and return only a generic message. Test each case with curl, especially the 500: force one with a temporary <code>throw new Error("boom")</code> and confirm the response has no stack.</p>`
     ],
     solution: {
-      approach: `<p><b>Design:</b> exceptions carry meaning, one handler maps meaning to HTTP. In <b>Spring</b>: create <code>BookNotFoundException</code> and <code>DuplicateIsbnException</code> (both <code>RuntimeException</code>), an <code>ErrorResponse</code> record, and a <code>@RestControllerAdvice</code> with handlers for those two, for <code>MethodArgumentNotValidException</code> (map <code>FieldError</code>s to details), for <code>HttpMessageNotReadableException</code> (400), and a catch-all <code>Exception</code> that logs with <code>log.error(msg, ex)</code> and returns 500 with the text "Something went wrong". Spring already answers 404 for unknown routes, but through the same advice you can customise it by enabling <code>spring.mvc.throw-exception-if-no-handler-found</code>.</p>
+      approach: `<p><b>Design:</b> exceptions carry meaning, one handler maps meaning to HTTP. In <b>Spring</b>: create <code>BookNotFoundException</code> and <code>DuplicateIsbnException</code> (both <code>RuntimeException</code>), an <code>ErrorResponse</code> record, and a <code>@RestControllerAdvice</code> with handlers for those two, for <code>MethodArgumentNotValidException</code> (map <code>FieldError</code>s to details), for <code>HttpMessageNotReadableException</code> (400), and a catch-all <code>Exception</code> that logs with <code>log.error(msg, ex)</code> and returns 500 with the text "Something went wrong". Spring already answers 404 for unknown routes. In Boot 3.2 and later an unknown route throws <code>NoResourceFoundException</code>, so you can shape that 404 in the same advice. Older versions needed <code>spring.mvc.throw-exception-if-no-handler-found=true</code> first.</p>
       <p>In <b>Express</b>: an <code>AppError(status, message, details)</code> class; routes registered; then a catch-all middleware calling <code>next(new AppError(404, ...))</code>; then the four-argument handler registered last. It maps <code>AppError</code> to its status, <code>err.type === 'entity.parse.failed'</code> to 400, everything else to 500 (logging the original). Express 5 forwards async errors automatically.</p>
       <p><b>Verification:</b> run the curl list above; for the 500 case confirm the body has no "at ..." lines and the server log has the stack. Also check <code>Content-Type: application/json</code> on every error, including the 404 for unknown routes.</p>`,
       code: { lang: 'js', check: false, code: `app.use('/api/books', booksRouter);
@@ -1493,7 +1493,7 @@ class JpaBookRepository implements BookRepository {     // next module: same met
     private final BookJpaDao dao;
     JpaBookRepository(BookJpaDao dao) { this.dao = dao; }
     public Optional<Book> findById(long id) { return dao.findById(id); }
-    public Optional<Book> findAll() { return Optional.empty(); }
+    public List<Book> findAll() { return dao.findAll(); }
 }` } },
     { title: 'Testing a service with a fake repository (no server)', html: `<p>The unit test builds the service with the in-memory repository and checks behaviour directly - no HTTP, no port, runs in a millisecond.</p>`,
       code: { lang: 'java', code: `class ServiceCheck {
@@ -1648,7 +1648,7 @@ curl -i -X PUT $BASE/999 -H "Content-Type: application/json" \\
 curl -i -X DELETE $BASE/1
 curl -i -X DELETE $BASE/1
 
-# 8. wrong method (405)
+# 8. wrong method: 405 on Spring (plain Express answers 404 unless you add a 405 handler)
 curl -i -X PATCH $BASE/1` },
     { lang: 'bash', title: 'A tiny smoke-test script that checks status codes automatically', check: false, code: `#!/usr/bin/env bash
 # usage: ./smoke.sh http://localhost:8080
@@ -1667,7 +1667,7 @@ expect "list"            200 $BASE
 expect "create"          201 -X POST $BASE -H "$JSON" -d '{"title":"Smoke","author":"Bot","year":2020}'
 expect "create invalid"  400 -X POST $BASE -H "$JSON" -d '{"title":""}'
 expect "get missing"     404 $BASE/999999
-expect "wrong method"    405 -X PATCH $BASE/1
+expect "wrong method"    405 -X PATCH $BASE/1   # Spring; use 404 for plain Express
 exit $fail` },
     { lang: 'java', title: 'Spring Boot - API test with MockMvc (no real server)', check: false, code: `@WebMvcTest(BookController.class)             // loads only the web layer
 class BookControllerTest {
@@ -1768,7 +1768,7 @@ test('unknown id is a 404', async () => {
       code: { lang: 'http', code: `HTTP/1.1 201 Created
 Location: /api/books/1
 Content-Type: application/json
-Content-Length: 70
+Content-Length: 60
 
 {"id":1,"title":"Dune","author":"Frank Herbert","year":1965}` } },
     { title: 'Postman: variables and a test script', html: `<p>In Postman set a collection variable <code>baseUrl</code> and use <code>{{baseUrl}}/api/books</code>. In the <b>Tests</b> tab of the create request, assert and also save the new id for later requests:</p>`,
@@ -1951,7 +1951,7 @@ practice.push({
   brute: { why: `<p>All routes in one file, with a global array, copy-pasted validation and <code>try/catch</code> in every handler. It runs, but adding a database means rewriting everything, errors have different shapes per endpoint, and nothing can be unit tested without HTTP.</p>` },
   mcq: { q: 'GET /api/todos?done=maybe should return…', options: ['400 Bad Request', '200 with all todos', '404 Not Found', '500'], answer: 0, explain: 'The parameter is present but not a valid boolean; this is a client input error, so 400 with a clear message.' },
   hints: [
-    `<p>Hint 1: copy the Books structure: <code>Todo</code> record, <code>TodoRepository</code> interface + in-memory implementation, <code>ItemService</code>, <code>TodoController</code>.</p>`,
+    `<p>Hint 1: copy the Books structure: <code>Todo</code> record, <code>TodoRepository</code> interface + in-memory implementation, <code>TodoService</code>, <code>TodoController</code>.</p>`,
     `<p>Hint 2: validation of the body is a DTO/validator job; validation of the <code>done</code> query value is also at the edge - parse "true"/"false" strictly and fail otherwise. "Not found" is a service decision.</p>`,
     `<p>Hint 3: the toggle endpoint reads the current todo, flips <code>done</code>, saves, returns 200. Make it atomic if you care about two simultaneous toggles (a lock or <code>compute</code> on the map entry).</p>`
   ],

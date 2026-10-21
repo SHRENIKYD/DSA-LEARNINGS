@@ -642,7 +642,7 @@ int findMinArrowShots(vector<vector<int>> points) {
       },
       {
         title: 'Ties and identical intervals',
-        html: `<p>Meetings (1,3) (2,3) (3,3)? A zero-length meeting (3,3) is allowed in some problems. Sorted by end, all end at 3. Book (1,3) → lastEnd 3. (2,3): 2 &lt; 3 skip. (3,3): 3 ≥ 3 book. Answer 2. The order among equal ends does not change the <i>count</i> (any one of them is a valid "earliest end"), which is why the proof does not care about tie-breaking — but it can change <i>which</i> meetings you report, so say so if the output is the list itself.</p>`
+        html: `<p>Meetings (1,3) (2,3) (3,3)? A zero-length meeting (3,3) is allowed in some problems. Sorted by end, all end at 3. Book (1,3) → lastEnd 3. (2,3): 2 &lt; 3 skip. (3,3): 3 ≥ 3 book. Answer 2. When every meeting has start &lt; end, the order among equal ends does not change the <i>count</i> (any one of them is a valid "earliest end"). It can change <i>which</i> meetings you report, so say so if the output is the list itself. A zero-length meeting such as (3,3) is the exception: if it came first it would block the others, so break ties by earlier start.</p>`
       }
     ],
     deepDive: `<h4>1. Full "greedy stays ahead" proof</h4>
@@ -2882,7 +2882,7 @@ public:
         ['4', '+3', '6', 'keep going', '3']
       ])}
       <p>Total gain = −2−2−2+3+3 = 0 ≥ 0 → answer <b>3</b>. Check by hand from station 3: tank 4−1 = 3 → +5−2 = 6 → +1−3 = 4 → +2−4 = 2 → +3−5 = 0. Never negative. ✔</p>
-      <p><b>Why do we never need to "wrap around" and re-check the stations before the final start?</b> Because the total is ≥ 0. The stretch from the final start to the end has tank ≥ 0, and everything before it was a sequence of failed stretches with negative sums — their total is at most the positive part we carry. In prefix-sum language: the right start is just after the point where the running sum of gains is <b>lowest</b>; from there every partial sum can only be ≥ that low point.</p>`,
+      <p><b>Why do we never need to "wrap around" and re-check the stations before the final start?</b> Because the total is ≥ 0. From the final start to the end of the array the tank never goes below 0. Everything before the final start was a series of failed stretches, and each of them lost fuel. Since the grand total is ≥ 0, the fuel you carry at the end of the array is at least as big as all those losses added together, so the wrap-around part never runs dry. In prefix-sum language: the right start is just after the point where the running sum of gains is <b>lowest</b>; from there every partial sum is at least that low point.</p>`,
     clues: [
       '"<b>Circular</b> route / circular array" + "start with an <b>empty tank</b>" + "return the starting index" → one-pass gas-station greedy.',
       '"Petrol pumps", "truck tour", "circular tour", "first petrol pump from which the truck can complete the circle" → same problem (GFG / HackerRank names).',
@@ -5525,7 +5525,7 @@ public:
     statement: `<p>Given a list of non-negative integers <code>nums</code>, arrange them so they form the <b>largest number</b> and return it as a string (the result may be huge).</p>`,
     constraints: `1 ≤ nums.length ≤ 100, 0 ≤ nums[i] ≤ 10<sup>9</sup>`,
     example: `${H.arr([3, 30, 34, 5, 9], { label: 'nums' })}
-      <p>Output ${H.c('g', '"9534330"')}. Note "3" goes before "30" because "330" &gt; "303" — plain string sorting would put "30" after "3" only by luck, and numeric sorting is simply wrong.</p>`,
+      <p>Output ${H.c('g', '"9534330"')}. Note "3" goes before "30" because "330" &gt; "303". A plain descending string sort ranks "30" above "3", which is wrong, and a numeric sort is wrong too.</p>`,
     brute: {
       why: `<p>Try all N! orders, build each string, keep the largest (all have the same length, so string comparison = numeric comparison). 100! orders is impossible. The waste: the best relative order of any two numbers can be decided by looking at just those two.</p>`,
       code: { lang: 'java', code: `

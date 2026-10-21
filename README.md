@@ -75,7 +75,7 @@ A website-only change does not need an app version bump, and the reverse. Up to 
 | `tools/paths-check.js` | Checks prerequisites, routes, language coverage and schedules (`--strict` for release) |
 | `src/paths.js`, `src/learn.js`, `src/route.html` | Route data (prerequisites, routes, projects, schedules), mastery and review logic, and the route page |
 | `docs/LANGUAGE_AUTHORING.md` | How to add tests and the four language versions to a module |
-| `docs/STUDY_PATHS_PLAN.md`, `docs/RELEASE_PHASE1.md`, `docs/RELEASE_PHASE2.md`, `docs/RELEASE_PHASE3.md` | The three-phase plan and the release notes for each phase |
+| `docs/STUDY_PATHS_PLAN.md`, `docs/RELEASE_PHASE1.md`, `docs/RELEASE_PHASE2.md`, `docs/RELEASE_PHASE3.md`, `docs/RELEASE_REVIEW.md` | The three-phase plan, the release notes for each phase, and the content review of all 220 modules |
 | `docs/AUTHORING.md` | How to write a module |
 | `vendor/` | sql.js (MIT) for the in-browser SQL runner, supabase-js 2.117.2 (MIT) for accounts |
 | `src/journey.js` | Journey layer: regions, zones, destinations, stamp rules and the SVG stamp artwork, top bar, Passport page |

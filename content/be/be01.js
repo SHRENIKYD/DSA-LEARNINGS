@@ -1036,7 +1036,7 @@ print("exact money:", Decimal("0.10") + Decimal("0.20"))` }
         ['Change <code>total</code> from number to string', '<span class="c-r">no</span>', 'Type changes break parsers'],
         ['Remove a field', '<span class="c-r">no</span>', 'Needs a new API version first']
       ])}` },
-      { title: 'Example 4 — Common JSON mistakes (and the error you get)', html: `<ul><li><code>{'name': 'Asha'}</code> — single quotes are invalid; parsers throw.</li><li><code>{"qty": 2,}</code> — trailing comma; invalid.</li><li><code>{"price": 19.99}</code> in Java <code>double</code> then summed → 59.97000000000001; use integer minor units or <code>BigDecimal</code>.</li><li>Sending <code>"createdAt": "14/03/26"</code> — ambiguous (day/month?) and locale-dependent; use ISO 8601.</li><li>Missing <code>Content-Type: application/json</code> → 415 or the body is ignored.</li></ul>` }
+      { title: 'Example 4 — Common JSON mistakes (and the error you get)', html: `<ul><li><code>{'name': 'Asha'}</code> — single quotes are invalid; parsers throw.</li><li><code>{"qty": 2,}</code> — trailing comma; invalid.</li><li><code>{"price": 0.1}</code> and <code>{"price": 0.2}</code> read into a Java <code>double</code> and added give 0.30000000000000004; use integer minor units or <code>BigDecimal</code>.</li><li>Sending <code>"createdAt": "14/03/26"</code> — ambiguous (day/month?) and locale-dependent; use ISO 8601.</li><li>Missing <code>Content-Type: application/json</code> → 415 or the body is ignored.</li></ul>` }
     ],
     deepDive: `<p>🟣 <b>Number semantics.</b> JSON itself puts no limit on number size or precision, but implementations do: JavaScript uses IEEE-754 doubles (exact integers up to 2<sup>53</sup> − 1 = 9,007,199,254,740,991), Java's Jackson maps to <code>int</code>/<code>long</code>/<code>double</code> depending on the target type. Twitter famously added <code>id_str</code> alongside <code>id</code> for this reason. Use strings for big ids and decimal strings (<code>"19.99"</code>) or minor units for money.</p>
 <p><b>Streaming vs tree parsing.</b> <code>mapper.readValue</code> builds the whole object in memory — fine for kilobytes, dangerous for 500 MB uploads. For big payloads use streaming parsers (Jackson <code>JsonParser</code>) or newline-delimited JSON (NDJSON/JSON Lines), where each line is one record and can be processed as it arrives. Also cap request body size so one client can't exhaust your heap.</p>
@@ -1498,7 +1498,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;                                          # nginx 1.25.1+ (older: "listen 443 ssl http2;")
     server_name shop.example.com;
 
     ssl_certificate     /etc/ssl/shop/fullchain.pem;   # TLS ends here; the app speaks plain http
@@ -1890,7 +1891,7 @@ class Router {
       `<p>Hint 3: Domain widens the cookie's reach, which is usually unwanted; omit it. A cross-site widget needs SameSite=None (which requires Secure) plus extra CSRF protection.</p>`
     ],
     solution: {
-      approach: `<p><b>Header:</b> <code>Set-Cookie: sid=&lt;random id&gt;; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=1800</code>.</p><ul><li><b>HttpOnly</b> — scripts cannot read it, so an XSS bug can't simply steal the session.</li><li><b>Secure</b> — sent only over https, so a coffee-shop sniffer never sees it.</li><li><b>SameSite=Lax</b> — not sent on cross-site POSTs/subresource requests, which blocks most CSRF while still working when users click a link to your site. (<b>Strict</b> is safer but logs users out of the "feel" of arriving from email links.)</li><li><b>Path=/</b> — whole site; <b>no Domain</b> attribute — the cookie stays host-only and doesn't leak to sibling subdomains.</li><li><b>Max-Age</b> — bounds the lifetime; re-issue on activity for a sliding window.</li></ul><p><b>Cross-site widget:</b> it needs <code>SameSite=None; Secure</code> (third-party contexts), and then you must add real CSRF tokens and keep the cookie as narrow as possible. Also rotate the session id on login (session fixation) and delete it on logout.</p>`,
+      approach: `<p><b>Header:</b> <code>Set-Cookie: sid=&lt;random id&gt;; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=1800</code>.</p><ul><li><b>HttpOnly</b> — scripts cannot read it, so an XSS bug can't simply steal the session.</li><li><b>Secure</b> — sent only over https, so a coffee-shop sniffer never sees it.</li><li><b>SameSite=Lax</b> — not sent on cross-site POSTs/subresource requests, which blocks most CSRF while still working when users click a link to your site. (<b>Strict</b> is safer, but the browser does not send the cookie when the user arrives from a link on another site, such as an email. They look logged out on that first page.)</li><li><b>Path=/</b> — whole site; <b>no Domain</b> attribute — the cookie stays host-only and doesn't leak to sibling subdomains.</li><li><b>Max-Age</b> — bounds the lifetime; re-issue on activity for a sliding window.</li></ul><p><b>Cross-site widget:</b> it needs <code>SameSite=None; Secure</code> (third-party contexts), and then you must add real CSRF tokens and keep the cookie as narrow as possible. Also rotate the session id on login (session fixation) and delete it on logout.</p>`,
       complexity: `<p>No code. These attributes are free to add and remove whole attack classes.</p>`
     }
   });

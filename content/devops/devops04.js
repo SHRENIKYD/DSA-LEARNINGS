@@ -1,7 +1,7 @@
 (function () {
   var topics = [], practice = [], quiz = [], interview = [];
   var R = String.raw; // raw template: backslashes in shell code stay exactly as typed
-  var LAB = 'A throwaway local repo on your own machine, WSL or a container (<code>mkdir lab &amp;&amp; cd lab &amp;&amp; git init</code>). Git 2.30 or newer. No GitHub or GitLab account needed; hosted steps are marked optional.';
+  var LAB = 'A throwaway local repo on your own machine, WSL or a container (<code>mkdir lab &amp;&amp; cd lab &amp;&amp; git init</code>). Git 2.35 or newer (needed for <code>merge.conflictStyle zdiff3</code>). No GitHub or GitLab account needed; hosted steps are marked optional.';
   // Compact problem builder: every problem has the same shape; all code is bash.
   function P(o) {
     var p = {

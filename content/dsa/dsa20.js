@@ -1074,7 +1074,7 @@ print("walls to break:", min_walls(grid))   # 2
       { title: 'Why not just BFS?', html: `<p>Plain BFS treats every edge as 1. On A–C (0), C–B (0), A–B (1), BFS says B = 1, but the true answer is ${H.c('g', '0')} (A → C → B is free). 0-1 BFS fixes this by pushing 0-cost discoveries to the front.</p>` }
     ],
     deepDive: `<p><b>Invariant proof.</b> Claim: the deque's distances are non-decreasing from front to back and differ by at most 1. Initially true (one item). Popping the front (value d) leaves values in {d, d + 1}. A 0-edge adds d to the front, a 1-edge adds d + 1 to the back — the claim survives. So every pop returns a minimum tentative distance, which is exactly the property Dijkstra needs; correctness follows from Dijkstra's proof.</p>
-      <p><b>Repeated nodes.</b> A node can sit in the deque more than once (pushed to the back with d + 1, later to the front with d). Either skip stale pops (compare with dist or keep a done flag), or simply re-process — re-processing cannot change anything, but skipping saves time. Each node is pushed at most twice per incoming edge improvement; total O(V + E).</p>
+      <p><b>Repeated nodes.</b> A node can sit in the deque more than once (pushed to the back with d + 1, later to the front with d). Either skip stale pops (compare with dist or keep a done flag), or simply re-process — re-processing cannot change anything, but skipping saves time. Each node is pushed at most twice (first with d + 1, then possibly once more with d), so the total work is O(V + E).</p>
       <p><b>Dial's algorithm</b> generalises this: if weights are small integers 0..C, keep C + 1 buckets (circular array of lists) instead of a heap. Total O(V·C + E). Network routers and some game path-finders use bucket queues for this reason.</p>
       <p><b>Alternative for grids:</b> "BFS by layers + flood fill" — from all cells at cost k, DFS through every free move to collect the whole cost-k region, then step once to cost k + 1. Same complexity, sometimes simpler to explain.</p>
       <p><b>Pitfall:</b> using a normal BFS <code>visited</code> array marked at push time. A node first discovered through a 1-edge must still be improvable later through a 0-edge; mark it only when popped (or compare distances).</p>`,
@@ -5380,7 +5380,7 @@ class Solution {
         return 0;
     }
 }`,
-      dry: { head: ['round', 'dist [0,1,2]'], rows: [['start', '[0, 0, 0]'], ['1', '[−3, −1, −3]'], ['2', '[−9, −4, −6]'], ['check', 'still relaxes → <span class="c-r">1</span>']] },
+      dry: { head: ['round', 'dist [0,1,2]'], rows: [['start', '[0, 0, 0]'], ['1', '[−6, −1, −3]'], ['2', '[−12, −7, −9]'], ['check', 'still relaxes → <span class="c-r">1</span>']] },
       alt: [{ lang: 'python', code: `class Solution:
     def is_negative_weight_cycle(self, n, edges):
         dist = [0] * n                       # all 0 = a virtual source linked to every vertex
@@ -6609,7 +6609,7 @@ public:
 
   practice.push({
     title: 'Shortest Path in a Weighted DAG (GfG)', level: 'Medium', tags: ['dag', 'topological sort', 'shortest path'], companies: ['Amazon', 'Flipkart'],
-    statement: `<p>Given a directed acyclic graph with V vertices and edges <code>[u, v, w]</code> (weights may be negative), return the shortest distance from vertex 0 to every vertex, or -1 for unreachable ones.</p>`,
+    statement: `<p>Given a directed acyclic graph with V vertices and edges <code>[u, v, w]</code> (weights are non-negative here, but the method also works with negative ones), return the shortest distance from vertex 0 to every vertex, or -1 for unreachable ones.</p>`,
     constraints: `1 ≤ V ≤ 100, 1 ≤ E ≤ min(V(V−1)/2, 4000), 0 ≤ w ≤ 100 (the same method also works for negative weights).`,
     example: `<p>V = 6, edges = [[0,1,2],[0,4,1],[4,5,4],[4,2,2],[1,2,3],[2,3,6],[5,3,1]] → ${H.c('g', '[0, 2, 3, 6, 1, 5]')}</p><p>3 is cheaper via 0→4→5→3 = 1 + 4 + 1 = ${H.c('g', '6')} than via 2 (3 + 6 = 9).</p>`,
     brute: { why: `<p>Bellman-Ford: V − 1 rounds over all edges, O(V · E). Correct, but it ignores the gift of a DAG: if you process nodes in topological order, every edge needs to be relaxed only <b>once</b>.</p>`, code: { lang: 'java', code: `

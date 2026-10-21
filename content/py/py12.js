@@ -313,7 +313,7 @@ def is_small(x):
 print(seconds_per_day.__code__.co_consts)   # 86400 already there
 print(is_small.__code__.co_consts)          # a frozenset constant
 ` } },
-      { title: 'Swapping without a tuple', html: R`<p><code>a, b = b, a</code> looks like it builds a tuple and unpacks it. Since 3.11 the compiler is smarter: for two or three names it just loads both values and stores them in reverse order (in 3.13: <code>LOAD_FAST_LOAD_FAST (b, a)</code> then <code>STORE_FAST_STORE_FAST (b, a)</code>), so no tuple object is ever allocated. Lesson: <b>idiomatic code is often the fast code</b>, because the compiler is tuned for idioms.</p>
+      { title: 'Swapping without a tuple', html: R`<p><code>a, b = b, a</code> looks like it builds a tuple and unpacks it. The compiler is smarter (and has been for many years): for two or three names it just loads both values and stores them in reverse order (in 3.13: <code>LOAD_FAST_LOAD_FAST (b, a)</code> then <code>STORE_FAST_STORE_FAST (b, a)</code>), so no tuple object is ever allocated. Lesson: <b>idiomatic code is often the fast code</b>, because the compiler is tuned for idioms.</p>
         ${H.arr(['b', 'a'], { label: 'stack after loads', hl: { 1: 'g' } })}`, code: { lang: 'python', run: true, code: R`import dis
 
 def swap(a, b):
@@ -5602,7 +5602,7 @@ except TypeError as e:
     q: `How does <code>obj.method</code> turn a plain function stored on the class into a bound method?`,
     options: [`The compiler rewrites every method call`, `Functions are non-data descriptors: <code>func.__get__(obj, type(obj))</code> returns a bound method`, `The class stores a bound method per instance`, `<code>__getattr__</code> on <code>object</code> wraps it`],
     answer: 1,
-    explain: `<code>function</code> implements <code>__get__</code> only, so it is a non-data descriptor. Accessed through an instance it returns a <code>method</code> object that remembers <code>self</code>; through the class it returns the function itself. (CPython 3.7+ also has <code>LOAD_ATTR</code> method fast paths that avoid allocating the bound method for <code>obj.m()</code> calls.)`
+    explain: `<code>function</code> implements <code>__get__</code> only, so it is a non-data descriptor. Accessed through an instance it returns a <code>method</code> object that remembers <code>self</code>; through the class it returns the function itself. (For <code>obj.m()</code> calls CPython also skips allocating the bound method: <code>LOAD_METHOD</code> since 3.7, merged into <code>LOAD_ATTR</code> in 3.12.)`
   });
   quiz.push({
     q: `For <code>class P(Base, metaclass=Meta): ...</code>, what is the correct order of events?`,

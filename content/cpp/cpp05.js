@@ -3530,7 +3530,7 @@ dtor a</pre>
     mcq: { q: 'Why must <code>reset(p)</code> store the new pointer <b>before</b> deleting the old one?', options: ['If deleting the old object somehow reaches this UniquePtr again (e.g. via its destructor), it must already see a consistent state', 'Because delete is slow', 'To avoid a compiler warning', 'It does not matter'], answer: 0, explain: 'The standard specifies: old = ptr; ptr = p; if (old) deleter(old). Deleting first would leave a dangling pointer visible during the old object\'s destructor (and breaks self-reset patterns).' },
     hints: [
       `<p>Hint 1: members: <code>T* p_</code> and <code>[[no_unique_address]] D d_</code>. Delete the copy constructor and copy assignment.</p>`,
-      `<p>Hint 2: move ctor: <code>p_(std::exchange(o.p_, nullptr))</code>. Move assign: <code>reset(o.release())</code> — automatically self-move safe? Check it: release() nulls o first, then reset deletes our old pointer; for self-move old == new pointer… handle that case.</p>`,
+      `<p>Hint 2: move ctor: <code>p_(std::exchange(o.p_, nullptr))</code>. Move assign: <code>reset(o.release())</code>. Check self-move (<code>x = std::move(x)</code>): <code>release()</code> sets the pointer to null and returns it, then <code>reset</code> stores it back and deletes nothing. So this form is already safe. An <code>if (this != &amp;o)</code> guard is optional and only makes the intent clear.</p>`,
       `<p>Hint 3: converting constructor <code>template &lt;class U&gt; requires std::is_convertible_v&lt;U*, T*&gt; UniquePtr(UniquePtr&lt;U&gt;&amp;&amp; o)</code>; give it access via a friend declaration or use <code>o.release()</code>.</p>`
     ],
     tests: { sig: 'int int -> long[]', fn: 'up',
