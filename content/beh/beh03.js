@@ -10,7 +10,7 @@ function bp(title, level, tags, prompt, weak, weakWhy, strong, rubric, hints, mc
     example: '<p><b>Weak opening:</b> ' + weak + '</p><p>' + H.c('r', weakWhy) + '</p>',
     brute: { why: '<p>' + weak + '</p><p>' + H.c('r', 'Why it fails: ') + weakWhy + '</p>', code: { lang: 'text', code: weak, check: false } },
     mcq: mcq,
-    hints: hints.map(function (h, i) { return h + ' Keep it real, specific and in your own words (use "I" for what you did).'; }),
+    hints: hints,
     solution: {
       approach: strong + '<h5>Rubric (what the interviewer scores)</h5><ul>' + rubric.map(function (r) { return '<li>' + r + '</li>'; }).join('') + '</ul>',
       complexity: '<p>Length: about 2 minutes. Split roughly: Situation 15%, Task 10%, Action 50%, Result 20%, Learning 5%.</p>',
@@ -81,7 +81,7 @@ topics.push({
     'Uses rank, no listening, no skeptic, no numbers.',
     '<p><b>S:</b> Three teams shipped to one platform and kept breaking each other, about 9 rollbacks a month. <b>T:</b> I owned none of those teams, but I wanted fewer rollbacks. <b>A:</b> I interviewed six engineers to learn their pain, drafted a one-page checklist, and piloted it with two friendly teams for a week. The Ops lead worried about extra on-call work, so I added an automatic rollback step he asked for. I shared pilot numbers with the PM. <b>R:</b> Rollbacks fell to 3 a month, the Director made it standard, and two teams asked to co-own it. <b>L:</b> People support what they helped shape.</p>',
     ['Names a real skeptic and what you did about them', 'Starts with listening, not telling', 'Small pilot and a number', 'Credit shared, scope clear (I vs we)'],
-    ['Hint 1: pick a story where you had no power to order anyone.', 'Hint 2: include one person who resisted and how you learned their real worry.', 'Hint 3: end with a number and what continued after you.'],
+    ['Hint 1: Pick a story where you had no power to order anyone, so influence is the only tool you used.', 'Hint 2: include one person who resisted and how you learned their real worry.', 'Hint 3: End with a number such as rollbacks per month, and say what continued after you moved on.'],
     { q: 'Best first step when you need buy-in from a team you do not manage?', options: ['Escalate to your manager', 'Ask what hurts them today', 'Send a company-wide email', 'Wait for a mandate'], answer: 1, explain: 'Listening first finds shared pain and builds allies.' })]
 });
 
@@ -148,7 +148,7 @@ topics.push({
     'No consent from the owner, no result, risky solo heroics.',
     '<p><b>S:</b> Sales relied on a nightly report that failed about twice a week; the data team was swamped. <b>T:</b> It was not my system, but I did not want sales to start the day blind. <b>A:</b> I read the logs, found a timeout, and messaged the data team lead with my finding. With their agreement I opened a small PR raising the timeout and adding a retry, then an alert. <b>R:</b> Zero failures in the next three months; sales saved about 20 minutes a day. <b>L:</b> I wrote a short runbook so anyone can handle the next failure.</p>',
     ['Cares about outcome, not job title', 'Tells and involves the real owner', 'Lasting prevention (alert, test, doc)', 'Measured result'],
-    ['Hint 1: pick a problem people complained about but nobody fixed.', 'Hint 2: show how you involved the owner.', 'Hint 3: close with prevention.'],
+    ['Hint 1: pick a problem people complained about but nobody fixed.', 'Hint 2: Show how you involved the real owner, by asking permission or handing the fix over for review.', 'Hint 3: Close with prevention: what you changed so the problem does not return for the next person.'],
     { q: 'Which is the strongest sign of ownership?', options: ['Working all night alone', 'Fixing the root cause and preventing a repeat', 'Filing a ticket quickly', 'Doing exactly your task list'], answer: 1, explain: 'Owners remove the problem class, not just the symptom.' })]
 });
 
@@ -209,7 +209,7 @@ topics.push({
     'Passive, slow, and no sign of judgment.',
     '<p><b>S:</b> The PM asked me to "make search better" with a six-week window and no details. <b>T:</b> I needed a useful first release without a full spec. <b>A:</b> I listed unknowns, pulled 2,000 recent queries, and learned that 18% returned nothing. I wrote my assumption that typos were the cause and shared it with the PM for correction. A one-day prototype with typo tolerance dropped zero-result queries to 7%. I proposed a reversible v1 and a checkpoint in two weeks. <b>R:</b> We shipped on time, click-through rose 9%, and the PM adopted my assumptions doc for later features. <b>L:</b> Write assumptions down and test the riskiest first.</p>',
     ['Names unknowns and writes assumptions', 'Cheap experiment, not endless analysis', 'Reversible decision with a checkpoint', 'Communicates assumptions to stakeholders'],
-    ['Hint 1: choose a story with real vagueness.', 'Hint 2: show the loop - unknowns, assumptions, test, decide.', 'Hint 3: give a number and a lesson.'],
+    ['Hint 1: Choose a story with real vagueness, where nobody could tell you what done looked like.', 'Hint 2: Show the loop: name the unknowns, state assumptions, test the riskiest one, then decide.', 'Hint 3: Give a number for the outcome and one lesson about how you handle ambiguity now.'],
     { q: 'When a decision is easy to undo you should usually:', options: ['Wait for full data', 'Decide fast with partial info', 'Ask for a committee', 'Skip communicating'], answer: 1, explain: 'Reversible decisions favour speed.' })]
 });
 
@@ -314,7 +314,7 @@ print("Script: 'I can do the CSV export by Friday if we pause the tour. Which ma
     'A bare no with no reason, no option, no impact.',
     '<p><b>S:</b> Sales asked for a custom report for one prospect, about three weeks of work, while we were finishing a feature used by 4,000 customers. <b>T:</b> Protect the roadmap without hurting the deal. <b>A:</b> I wrote down the effort and what would slip, met the sales lead, and said I understood the deal was important. I offered a two-day CSV export covering 80% of what the prospect needed, and a date for a proper report if the deal closed. <b>R:</b> Sales accepted, the prospect signed, the feature shipped on time, and the full report was scheduled next quarter. <b>L:</b> Say no to the task, offer a yes to the need.</p>',
     ['Understands the stakeholder\'s goal', 'Shows the trade-off with facts', 'Offers an alternative', 'Relationship intact afterwards'],
-    ['Hint 1: pick a no that was right, not a no that was lazy.', 'Hint 2: include the alternative you offered.', 'Hint 3: say how the relationship was after.'],
+    ['Hint 1: Pick a no that was right for the product or customer, not a no that was just lazy.', 'Hint 2: Include the alternative you offered, such as a smaller scope, a later date or another route.', 'Hint 3: Say how the relationship with the stakeholder was afterwards, and what they did next.'],
     { q: 'A good "no" includes:', options: ['An apology only', 'The trade-off and an alternative', 'Silence', 'Blaming your manager'], answer: 1, explain: 'Trade-off plus an option keeps trust.' })]
 });
 
@@ -374,7 +374,7 @@ topics.push({
     'Effort without insight; no root cause; no measurable effect.',
     '<p><b>S:</b> A small business customer could not find their invoices and had written three times. <b>T:</b> Help them now and stop it happening to others. <b>A:</b> I called them, shared my screen, and saw they could not find the download button. I sent that day\'s invoices by hand, then moved the button and added a short label. I emailed them when it shipped. <b>R:</b> Invoice tickets fell 60% over two months, and the customer renewed for three years. <b>L:</b> Watch how people actually use the product.</p>',
     ['Real customer need discovered', 'Action cost something extra', 'Fixed root cause for many customers', 'Measured result and closed the loop'],
-    ['Hint 1: pick a real person with a real problem.', 'Hint 2: show what you learned by watching or asking.', 'Hint 3: say how many others benefited.'],
+    ['Hint 1: Pick a real person with a real problem, and name what they were stuck on.', 'Hint 2: Show what you learned by watching or asking them, before you decided what to build or fix.', 'Hint 3: Say how many other customers benefited from your fix, not only the first one.'],
     { q: 'Customer obsession means:', options: ['Always saying yes', 'Working backwards from the customer need', 'Following the process strictly', 'Maximizing short-term metrics'], answer: 1, explain: 'Start from the need and work backwards.' })]
 });
 
@@ -508,7 +508,7 @@ print("Principles with no story yet:", gaps)
     'Reckless, not calculated; no data, no safety net, no reasoning.',
     '<p><b>S:</b> Our launch was in ten days but a new payment library was untested at scale. <b>T:</b> Decide whether to adopt it or keep the slower old one. <b>A:</b> I listed the risks, load-tested it for two days, and found it handled our peak with 30% less latency. I put it behind a feature flag with a one-click rollback and rolled out to 5% first. I told my manager the plan and the stop conditions. <b>R:</b> Launch hit its date, checkout time fell 25%, and we never needed the rollback. <b>L:</b> A calculated risk is a reversible bet with a data check and an exit.</p>',
     ['Risk is real but bounded', 'Evidence before the decision', 'Safety net (flag, rollback, stop rule)', 'Honest about what could have gone wrong'],
-    ['Hint 1: choose a bet with a real downside.', 'Hint 2: show the data you collected.', 'Hint 3: name the exit plan.'],
+    ['Hint 1: Choose a bet with a real downside, so the risk is genuine and not a sure thing.', 'Hint 2: Show the data you collected, such as a small test, that made the risk calculated.', 'Hint 3: Name the exit plan: the signal that would make you stop and how you would undo it.'],
     { q: 'Best way to map a story to principles?', options: ['By the project topic', 'By the actions you took', 'By the company name', 'Randomly'], answer: 1, explain: 'Principles are shown by actions, not by subject matter.' })]
 });
 
@@ -518,79 +518,79 @@ practice.push(bp('Made a customer\'s day', 'Easy', ['customer'], 'Tell me about 
   '"They shouted at me, so I gave them a refund to calm them down."', 'Refund only; no listening, no learning, no prevention.',
   '<p><b>S:</b> A customer, Mr. Okafor, lost two days of orders after a sync bug. <b>T:</b> Restore his data and his trust. <b>A:</b> I called within the hour, listened without defending, restored the orders from backups, and checked each one with him. I traced the bug to one edge case and added a fix and a test. I followed up a week later. <b>R:</b> He stayed a customer, wrote a positive review, and the bug never returned for 800 other accounts. <b>L:</b> Fix the person first, then the cause.</p>',
   ['Listens first', 'Fixes cause for others', 'Follow-up call', 'Has a number or clear outcome'],
-  ['Hint 1: stay with one real person.', 'Hint 2: what did you learn by listening?', 'Hint 3: how did you stop it for others?'],
+  ['Hint 1: Stay with one real, named customer and describe their problem, not a general group.', 'Hint 2: Say what you learned by listening before you offered any fix or refund.', 'Hint 3: Explain how you stopped the same problem for other customers, such as a fix and a test.'],
   mq('Best opening in an unhappy-customer story?', ['Defend the product', 'Listen and restate the problem', 'Offer a discount', 'Escalate'], 1, 'Listening shows respect and finds the real problem.')));
 practice.push(bp('Took on work outside your role', 'Easy', ['ownership'], 'Tell me about a time you did something that was not your job.',
   '"Nobody else wanted to, so I did it. It was a lot of work."', 'No why, no result, sounds like a complaint.',
   '<p><b>S:</b> Our team had no onboarding guide, and new hires needed two weeks to ship. <b>T:</b> Nobody owned it, but I remembered my own slow start. <b>A:</b> I asked three recent hires what confused them, wrote a 6-page guide with a setup script, and asked my manager to review it. I made it a living page and put a reminder in each sprint to update it. <b>R:</b> Time to first PR fell from 10 days to 4, and two teams copied the guide. <b>L:</b> Small docs and scripts have a huge multiplier.</p>',
   ['Saw a gap', 'Asked users (new hires)', 'Kept it alive', 'Result measured'],
-  ['Hint 1: say why nobody owned it.', 'Hint 2: how did you check you were solving the right thing?', 'Hint 3: how will it last?'],
+  ['Hint 1: Say why nobody owned the work, so it is a gap and not a complaint about your team.', 'Hint 2: Explain how you checked with the people affected that you were solving the right thing.', 'Hint 3: Say how the result will last, such as a handover, documentation or an owner who took it on.'],
   mq('Strongest ending for an ownership story?', ['I worked very hard', 'A lasting mechanism and a metric', 'My manager thanked me', 'I got a promotion'], 1, 'Owners leave behind mechanisms and measurable results.')));
 practice.push(bp('Simplified a process', 'Easy', ['simplify', 'bias for action'], 'Tell me about a time you made something simpler.',
   '"I cleaned up a script. It looked better afterwards."', 'No before/after, no impact, vague.',
   '<p><b>S:</b> Weekly reporting took four people three hours, copying numbers across spreadsheets. <b>T:</b> Cut the effort without losing accuracy. <b>A:</b> I mapped each step, found 70% was copying, and wrote a script that pulled the data and built the report; the team kept a manual check on two key numbers. I demoed to the team and trained a teammate to maintain it. <b>R:</b> The job fell from 12 person-hours to 1, errors dropped to zero in six months. <b>L:</b> Map the steps before automating.</p>',
   ['Before/after numbers', 'Kept quality check', 'Shared ownership of the tool', 'Clear why-this-approach'],
-  ['Hint 1: pick a boring but costly process.', 'Hint 2: give before and after numbers.', 'Hint 3: say who maintains it now.'],
+  ['Hint 1: Pick a boring but costly process, such as a manual step repeated every week.', 'Hint 2: Give before and after numbers, like minutes per run or steps removed.', 'Hint 3: Say who maintains the simpler version now, so the gain does not disappear.'],
   mq('What makes a simplification story strong?', ['Fancy tools', 'Before/after numbers', 'Long explanation', 'A new framework'], 1, 'Numbers show the real value.')));
 practice.push(bp('Influenced a senior person', 'Medium', ['influence'], 'Tell me about a time you changed the mind of someone more senior than you.',
   '"I explained why I was right and eventually he gave in."', 'Win-lose framing; no evidence, no empathy.',
   '<p><b>S:</b> Senior engineer Priya wanted to keep a homegrown logging tool that cost us hours each incident. <b>T:</b> Get her to consider switching without a fight. <b>A:</b> I asked what she valued (full control and low cost), then replayed a past incident in both tools and timed it: 40 minutes vs 9. I offered to do the migration for one service first and keep her tool as a fallback. <b>R:</b> She chose to migrate all services and presented it herself. Incident time fell 55%. <b>L:</b> Let the evidence persuade and respect what they care about.</p>',
   ['Understands their goals', 'Evidence, not opinion', 'Low-risk first step', 'Gives credit'],
-  ['Hint 1: show respect for their view.', 'Hint 2: use a demo or number.', 'Hint 3: make it easy to say yes.'],
+  ['Hint 1: Show respect for their view by stating what was right about their position first.', 'Hint 2: Use a demo or a number instead of opinion to show why your option was better.', 'Hint 3: Make it easy for them to say yes, for example with a small pilot they can stop.'],
   mq('To persuade a senior engineer, first:', ['Escalate', 'Learn what they value', 'Send a long email', 'Wait'], 1, 'Understanding their goals shapes a persuasive case.')));
 practice.push(bp('Unclear requirements, tight deadline', 'Medium', ['ambiguity'], 'Tell me about a time you had to build something with unclear requirements.',
   '"I guessed what they wanted and built it. They changed their mind later."', 'No checking, no communication, wasted work.',
   '<p><b>S:</b> A partner team needed an "export feature" in three weeks with no details. <b>T:</b> Ship something useful, avoid rework. <b>A:</b> I met two partner users, listed six unknowns, wrote assumptions (file type, size, frequency), and shared them in a one-page doc. A 2-day prototype of the CSV export confirmed the main one; the rest we marked as later. I set a checkpoint after week one. <b>R:</b> We shipped on day 17 and only one assumption changed. <b>L:</b> Assumptions on paper are cheap to fix.</p>',
   ['Unknowns named', 'Assumptions shared', 'Cheap experiment', 'Checkpoint'],
-  ['Hint 1: who did you ask?', 'Hint 2: which guess was riskiest?', 'Hint 3: what changed after the checkpoint?'],
+  ['Hint 1: Say who you asked for clarity, and what you asked them, before building anything.', 'Hint 2: Name the riskiest guess you made and how you tested it early.', 'Hint 3: Say what changed after the checkpoint with the stakeholder, and how you adapted.'],
   mq('Best response to a vague requirement?', ['Wait for clarity', 'Write assumptions and test the riskiest', 'Build everything', 'Refuse'], 1, 'Assumptions plus tests produce progress and learning.')));
 practice.push(bp('Competing deadlines', 'Medium', ['prioritization'], 'Tell me about a time you had several urgent deadlines at once.',
   '"I worked long hours and got everything done somehow."', 'No choices shown, burnout risk, not repeatable.',
   '<p><b>S:</b> In one week I had a customer bug fix, a security patch due Friday, and a demo for a VP. <b>T:</b> Decide order and tell people. <b>A:</b> I ranked by customer impact and real dates: the bug (hurting customers now) first, the security patch (hard deadline) second, the demo third and trimmed. I messaged the VP\'s assistant that the demo would show two features not four, and asked a teammate to review my patch early. <b>R:</b> All three landed; the VP liked the focused demo; no customers affected. <b>L:</b> Say what you are cutting before it surprises anyone.</p>',
   ['Clear criteria', 'Communicated trade-off', 'Got help', 'Honest cut'],
-  ['Hint 1: list the criteria you used.', 'Hint 2: what did you cut?', 'Hint 3: who did you tell?'],
+  ['Hint 1: List the criteria you used to rank the deadlines, such as customer impact and cost of delay.', 'Hint 2: Say what you chose to cut or delay, since prioritising means dropping something.', 'Hint 3: Say who you told about the trade-off, and when, so nobody was surprised.'],
   mq('What do interviewers listen for in prioritization?', ['Hours worked', 'Criteria and communication', 'Calendar tools', 'Luck'], 1, 'Criteria and communication show judgment.')));
 practice.push(bp('Said no to scope creep', 'Medium', ['prioritization', 'stakeholders'], 'Tell me about a time you pushed back on scope.',
   '"I said it was impossible and walked away."', 'Blocks without options.',
   '<p><b>S:</b> Two weeks before launch, the PM asked to add three new reports. <b>T:</b> Protect the date and quality while still helping. <b>A:</b> I estimated each report (2, 4, and 8 days) and showed the launch would slip by a week. I offered: ship the 2-day report now, put the others in a fast follow, or move the date. The PM chose the first and a follow-up in two weeks. <b>R:</b> Launch on time with zero severity-1 bugs, and the follow-up shipped as promised. <b>L:</b> Options beat objections.</p>',
   ['Estimates shown', 'Options not ultimatums', 'Stakeholder decides with facts', 'Kept the promise'],
-  ['Hint 1: show effort numbers.', 'Hint 2: give three options.', 'Hint 3: keep the follow-up promise.'],
+  ['Hint 1: Show effort numbers for the extra request, such as days of work, so the no is based on facts.', 'Hint 2: Give three options, such as do it later, do a smaller version, or swap it for other work.', 'Hint 3: Keep the follow-up promise you made, and say how you showed it to the stakeholder.'],
   mq('Best way to push back on scope?', ['Refuse', 'Show cost and offer options', 'Quietly do it', 'Ignore it'], 1, 'Facts and options turn conflict into a decision.')));
 practice.push(bp('Decision with incomplete data', 'Medium', ['ambiguity', 'judgment'], 'Tell me about a time you made an important decision without all the data.',
   '"I went with my gut. It worked."', 'No reasoning, no safety net.',
   '<p><b>S:</b> Our traffic was growing and the database was near its limit, with a vendor upgrade decision due in two days. <b>T:</b> Choose between buying a bigger plan or sharding. <b>A:</b> I looked at the 90-day trend, asked a teammate for a second opinion, and judged the bigger plan reversible (monthly contract) while sharding was not. I chose the bigger plan and set an alert at 70% to revisit. <b>R:</b> The bigger plan bought us four months, then we sharded with real data. <b>L:</b> Prefer reversible choices when data is thin.</p>',
   ['Reversibility reasoning', 'Second opinion', 'Checkpoint or alert', 'Honest about uncertainty'],
-  ['Hint 1: say what you did not know.', 'Hint 2: why was the option reversible?', 'Hint 3: what was the trigger to revisit?'],
+  ['Hint 1: Say exactly what you did not know and why you could not wait to find out.', 'Hint 2: Explain why the option was reversible, or how you limited the damage if you were wrong.', 'Hint 3: Name the trigger that told you to revisit the decision, such as a metric or a date.'],
   mq('A decision that is easy to undo should be:', ['Delayed', 'Made faster with partial info', 'Ignored', 'Voted on'], 1, 'Cheap-to-reverse choices reward speed.')));
 practice.push(bp('Disagreed with leadership, then committed', 'Hard', ['backbone', 'trust'], 'Tell me about a time you disagreed with your manager\'s boss and what happened.',
   '"I thought they were wrong, but I said nothing and did what they said."', 'No backbone shown; silent compliance.',
   '<p><b>S:</b> A director wanted to rewrite our service from scratch in six months. <b>T:</b> Voice my concern with evidence and respect. <b>A:</b> I asked my manager how to raise it, then wrote a short doc comparing a rewrite to an incremental plan, with a risk list and two similar past projects that ran over. I presented it once, asked questions, and offered to be wrong. The director kept the rewrite but added a staged migration. I committed: I built the first stage carefully and tracked agreed milestones. <b>R:</b> Stage one shipped on time; the director later credited the staging for avoiding a late surprise. <b>L:</b> Disagree clearly, decide together, then commit fully.</p>',
   ['Evidence-based disagreement', 'Respectful channel', 'Full commitment afterwards', 'No sulking or sabotage'],
-  ['Hint 1: show how you raised it.', 'Hint 2: what did you do after the decision?', 'Hint 3: do not need to have won.'],
+  ['Hint 1: Show how you raised the disagreement, with whom, and what evidence you brought.', 'Hint 2: Say what you did after the decision was made, to help it work in practice.', 'Hint 3: You do not need to have won; show that you committed fully and kept the relationship.'],
   mq('After the decision goes against you, you should:', ['Quietly resist', 'Commit and support it', 'Keep arguing', 'Leave'], 1, 'Disagree first, then commit fully.')));
 practice.push(bp('Led a cross-team initiative', 'Hard', ['influence', 'scope'], 'Tell me about the largest cross-team effort you led without formal authority.',
   '"I organized a lot of meetings and kept everyone updated."', 'Process without outcome; no ownership of results.',
   '<p><b>S:</b> Four teams each built their own auth code, causing security gaps and duplicated work. <b>T:</b> Create one shared library with agreement from all four. <b>A:</b> I interviewed the leads for their needs and fears, drafted a design with an explicit opt-out path, and recruited one engineer from each team as owners. I ran a 3-week pilot with the friendliest team and published results monthly. The most resistant lead got a veto on one design point. <b>R:</b> All four teams migrated in two quarters, audit findings fell by 80%, and the library got a permanent owner. <b>L:</b> Share ownership and make adoption easy.</p>',
   ['Multi-team scope', 'Skeptic engaged', 'Mechanism that outlasts you', 'Measured outcome'],
-  ['Hint 1: name the skeptic.', 'Hint 2: how did you share ownership?', 'Hint 3: what keeps it alive after you?'],
+  ['Hint 1: Name the main skeptic by role and say what they were worried about.', 'Hint 2: Explain how you shared ownership with the other teams so it was not only your project.', 'Hint 3: Say what keeps the result alive after you leave, such as an owner, a process or a dashboard.'],
   mq('Strongest sign of cross-team influence?', ['Many meetings', 'Teams adopting it and keeping it alive', 'A long doc', 'Big title'], 1, 'Adoption and lasting ownership show real influence.')));
 practice.push(bp('Changed course after being wrong', 'Hard', ['judgment', 'trust'], 'Tell me about a time you realised you had prioritized the wrong thing.',
   '"I was not really wrong; the requirements changed."', 'Defensive, no learning.',
   '<p><b>S:</b> I spent a month on a faster reporting engine because I assumed customers hated slow reports. <b>T:</b> Reassess when usage looked flat. <b>A:</b> I checked usage and talked to ten customers; the real complaint was confusing filters, not speed. I told my manager the same day, stopped the work with 20% left, and shifted to a filter redesign. I wrote down what I should have tested first. <b>R:</b> Filter redesign cut support tickets by 35%; I now test the assumption before large builds. <b>L:</b> Be quick to admit and cheap to pivot.</p>',
   ['Honest admission', 'Quick pivot', 'Told stakeholders early', 'Concrete learning'],
-  ['Hint 1: own the mistake in the first sentence.', 'Hint 2: how fast did you act?', 'Hint 3: what changed in your habits?'],
+  ['Hint 1: Own the mistake in the first sentence, before any context about requirements or others.', 'Hint 2: Say how fast you acted once you saw you were wrong, and who you told first.', 'Hint 3: Say what changed in your habits, such as a check you now do before choosing priorities.'],
   mq('When you discover you were wrong you should:', ['Hide it', 'Say so early and pivot', 'Blame the spec', 'Finish anyway'], 1, 'Early honesty protects trust and saves time.')));
 practice.push(bp('Customer need vs business metric', 'Hard', ['customer', 'integrity'], 'Tell me about a time you chose the customer over a short-term business goal.',
   '"I did what my manager said because the number mattered more."', 'Ignores customer; no judgment shown.',
   '<p><b>S:</b> A promotion boosted sign-ups, but the terms were confusing and older users were being charged unexpectedly. <b>T:</b> Protect customers without sinking the target. <b>A:</b> I showed complaint data and refund rates to my manager and product lead, proposed clearer terms and an auto-reminder before charge, and estimated a 5% sign-up dip. They agreed after reading three real customer emails. <b>R:</b> Sign-ups dipped 5% for a week, refunds fell 50%, and net revenue was higher in the quarter. <b>L:</b> Long-term trust beats short-term lift, and data helps you say it.</p>',
   ['Customer harm identified with data', 'Trade-off quantified', 'Constructive proposal', 'Long-term result'],
-  ['Hint 1: quantify the short-term cost.', 'Hint 2: use real customer evidence.', 'Hint 3: show the longer-term win.'],
+  ['Hint 1: Quantify the short-term cost of choosing the customer, such as revenue or a missed target.', 'Hint 2: Use real customer evidence, like tickets, calls or churn, not just your opinion.', 'Hint 3: Show the longer-term win, such as retention or trust, and how you told your manager.'],
   mq('When customer trust and a metric conflict, strong candidates:', ['Pick the metric', 'Quantify both and propose a path', 'Stay silent', 'Resign'], 1, 'Data and a proposal turn it into a business argument.')));
 practice.push(bp('Owned a failure that was not only yours', 'Hard', ['ownership', 'trust'], 'Tell me about a failure where several people were involved.',
   '"The failure was mostly the other team\'s fault; I did my part."', 'Blame shifting, no ownership.',
   '<p><b>S:</b> A launch missed its date after integration bugs surfaced late; two teams had assumed the other would test. <b>T:</b> Recover and fix how we work. <b>A:</b> I said in the retro that I had not asked for an integration test date, which was my part. I proposed a shared checklist and a joint test day two weeks before every launch, and volunteered to run the first. I wrote a blameless summary and sent it to both teams. <b>R:</b> The next three launches had no late integration bugs. <b>L:</b> Own your slice first; fix the system, not the person.</p>',
   ['Owns own share first', 'Blameless tone', 'Systemic fix', 'Result across launches'],
-  ['Hint 1: start with your part.', 'Hint 2: no names of blame.', 'Hint 3: fix the process.'],
+  ['Hint 1: Start with your own part in the failure, stated plainly before you mention anyone else.', 'Hint 2: Do not name anyone as the cause; describe what happened to the work, not who was at fault.', 'Hint 3: Finish by fixing the process, such as a checklist or handoff step that prevents a repeat.'],
   mq('Best tone for shared failure?', ['Blame the other team', 'Own your part, fix the system', 'Say nothing', 'Blame the spec'], 1, 'Ownership plus system fixes builds trust.')));
 
 // ---------- QUIZ ----------

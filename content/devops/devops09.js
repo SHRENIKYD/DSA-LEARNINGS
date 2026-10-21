@@ -182,7 +182,7 @@ tofu init -upgrade
 tofu plan            # expect: No changes. Your infrastructure matches the configuration.`) }
     ],
     deepDive: `<p>🟣 <b>What happens inside one <code>plan</code>.</b> (1) Parse every <code>.tf</code> file in the directory (file names do not matter; Terraform merges them; <code>main.tf</code>, <code>variables.tf</code>, <code>outputs.tf</code>, <code>versions.tf</code> are just convention). (2) Build a <b>dependency graph</b> from references. (3) <b>Refresh</b>: ask each provider to read the real object for every resource in state. (4) For each resource the provider computes a <b>diff</b> between config and the refreshed state, and decides update vs replace using its schema (attributes marked <i>ForceNew</i>). (5) Values unknown until apply (a new instance's ID) show as <code>(known after apply)</code>.</p>
-      <p><b>Version constraints.</b> <code>= 5.40.0</code> exact; <code>&gt;= 5.0, &lt; 6.0</code> a range; <code>~&gt; 5.40</code> means "5.40 or newer but below 6.0"; <code>~&gt; 5.40.0</code> means "5.40.x only". Libraries (reusable modules) should use wide ranges; root configurations pin tightly and rely on the lock file for exact versions. <code>terraform init -upgrade</code> picks the newest version allowed by the constraints and rewrites the lock file - do that on purpose, in its own pull request. For CI runners on another OS, record checksums for every platform: <code>terraform providers lock -platform=linux_amd64 -platform=darwin_arm64</code>.</p>
+      <p><b>Version constraints.</b> <code>= 5.40.0</code> exact; <code>&gt;= 5.0, &lt; 6.0</code> a range; <code>~&gt; 5.40</code> means "5.40 or newer but below 6.0"; <code>~&gt; 5.40.0</code> means "5.40.x only". Libraries (reusable modules) should use wide ranges; root configurations pin tightly and rely on the lock file for exact versions. <code>terraform init -upgrade</code> picks the newest version allowed by the constraints and rewrites the lock file - do that on purpose, in its own pull request. For CI runners on another OS, record checksums for every platform: <code>terraform providers lock -platform=linux_amd64 -platform=darwin_arm64</code>. The AWS provider is on <b>6.x</b> (6.0 added a <code>region</code> argument to most resources, so one provider configuration can manage several Regions, and removed several deprecated arguments); upgrade from the latest 5.x first and read the provider's version 6 upgrade guide.</p>
       <p><b>Where it does not fit.</b> Terraform manages the <i>lifecycle</i> of infrastructure objects. It is weak at things that change minute by minute (autoscaling counts, container image tags deployed many times a day) and at configuring inside a server (packages, files: that is Ansible or a baked image, next module). And "declarative" has edges: provisioners (<code>local-exec</code>, <code>remote-exec</code>) run imperative scripts and are a last resort, because Terraform cannot plan or undo what they did.</p>
       <p><b>Other IaC tools you will meet:</b> AWS CloudFormation / CDK, Azure Bicep, Pulumi (real programming languages, same plan/apply idea), Crossplane (Kubernetes-style). The concepts here - desired state, plan, state, drift - carry over to all of them.</p>`,
     aiEra: `<p>🤖 <b>What AI changes:</b> assistants write decent HCL quickly: "an S3 bucket with versioning, encryption and blocked public access" becomes four correct-looking resources in seconds, and they explain an unfamiliar plan line well. Agents can now run <code>plan</code> themselves and summarise it.</p>
@@ -346,13 +346,13 @@ resource "docker_container" "web" {
 
 output "url" {
   value = "http://localhost:@{var.host_port}"
-}`, 'Docker lab: nginx container managed by Terraform'), hcl(C`# aws/providers.tf - AWS provider v5 with NO credentials in code.
+}`, 'Docker lab: nginx container managed by Terraform'), hcl(C`# aws/providers.tf - AWS provider v6 with NO credentials in code.
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"                 # >= 5.0, < 6.0
+      version = "~> 6.0"                 # >= 6.0, < 7.0
     }
   }
 }
@@ -404,8 +404,8 @@ resource "aws_instance" "web" {
 }
 
 output "account_id" { value = data.aws_caller_identity.me.account_id }
-output "instance_id" { value = aws_instance.web.id }`, 'AWS provider v5: region, default_tags, alias, data sources')],
-    codeTitle: ['Docker lab: nginx container managed by Terraform', 'AWS provider v5: region, default_tags, alias, data sources'],
+output "instance_id" { value = aws_instance.web.id }`, 'AWS provider v6: region, default_tags, alias, data sources')],
+    codeTitle: ['Docker lab: nginx container managed by Terraform', 'AWS provider v6: region, default_tags, alias, data sources'],
     viz: [{
       title: 'Dependency graph: which resources Terraform creates together',
       input: 'vpc: | subnet:vpc | sg:vpc | instance:subnet,sg | eip:instance | bucket:',
@@ -488,7 +488,7 @@ terraform destroy -auto-approve`) },
     deepDive: `<p>🟣 <b>How providers work.</b> A provider is a separate binary; Terraform talks to it over gRPC. Each provider publishes a <b>schema</b>: every resource type, its arguments, which are required, which are computed and which force replacement. <code>validate</code> checks your code against that schema; <code>plan</code> asks the provider to compute the diff (<i>PlanResourceChange</i>), and <code>apply</code> asks it to make it happen (<i>ApplyResourceChange</i>). That is why the same Terraform core can manage AWS, a Docker daemon or a PagerDuty schedule.</p>
       <p><b>Provider addresses and mirrors.</b> <code>source = "hashicorp/aws"</code> is short for <code>registry.terraform.io/hashicorp/aws</code> (OpenTofu: <code>registry.opentofu.org/hashicorp/aws</code>). In air-gapped companies, a <code>provider_installation</code> block in the CLI config points to an internal mirror, and <code>TF_PLUGIN_CACHE_DIR</code> avoids downloading the 600 MB AWS provider into every project.</p>
       <p><b>Graph details.</b> <code>terraform graph | dot -Tsvg &gt; graph.svg</code> draws the real graph. Data sources are read during plan when their inputs are known, or deferred to apply (<code>&lt;=</code> in the plan) when they depend on something not yet created. <code>depends_on</code> on a data source forces that deferral every time and causes noisy plans - avoid it. Provider configuration can only use values known at plan time, so do not configure a provider from a resource created in the same run (for example a Kubernetes provider from a cluster created in the same apply); split into two configurations or stages.</p>
-      <p><b>Credential chain order (AWS provider v5):</b> provider arguments (do not), environment variables (<code>AWS_ACCESS_KEY_ID</code> etc., set by CI or <code>aws configure export-credentials</code>), shared config/credentials files with <code>profile</code> / <code>AWS_PROFILE</code> (SSO, <code>credential_process</code>, <code>role_arn</code> chains), then container credentials (ECS/EKS) and EC2 instance metadata. An <code>assume_role { role_arn = ... }</code> block in the provider lets one pipeline identity deploy into many accounts.</p>`,
+      <p><b>Credential chain order (AWS provider v5 and v6):</b> provider arguments (do not), environment variables (<code>AWS_ACCESS_KEY_ID</code> etc., set by CI or <code>aws configure export-credentials</code>), shared config/credentials files with <code>profile</code> / <code>AWS_PROFILE</code> (SSO, <code>credential_process</code>, <code>role_arn</code> chains), then container credentials (ECS/EKS) and EC2 instance metadata. An <code>assume_role { role_arn = ... }</code> block in the provider lets one pipeline identity deploy into many accounts.</p>`,
     aiEra: `<p>🤖 <b>What AI changes:</b> "write me Terraform for X" is now a first draft in seconds, and assistants are good at explaining a provider error like <code>UnauthorizedOperation</code> or <code>InvalidParameterCombination</code>, or at producing the <code>depends_on</code> you forgot. MCP servers for the Terraform registry let an agent look up the <i>current</i> schema of a resource instead of guessing.</p>
       <p><b>Where it goes wrong:</b> models love to "fix" authentication by putting <code>access_key</code> into the provider block, hardcode AMI IDs from another region, and add <code>depends_on</code> everywhere, which slows plans and hides real design problems. <b>How to work with it:</b> ask for references instead of <code>depends_on</code>, ask for data sources instead of literal IDs, and check every resource type against the provider docs for the version in your lock file. <b>What you still own:</b> credentials hygiene and the decision of what Terraform should manage versus only read.</p>`,
     problems: [P({
@@ -758,8 +758,8 @@ echo '[for n in ["a","b"] : upper(n)]' | terraform console`) },
     ],
     deepDive: `<p>🟣 <b>count and for_each rules.</b> Both must be known at <b>plan</b> time: <code>for_each = toset(aws_instance.x[*].id)</code> fails with "Invalid for_each argument" when the IDs are not created yet. Use keys you choose (names from variables), not IDs computed by the cloud. <code>for_each</code> accepts a map or a set of strings (convert lists with <code>toset()</code>); inside, <code>each.key</code> and <code>each.value</code>. You cannot use both on one resource. For modules, <code>count</code> and <code>for_each</code> work the same way (<code>module.vpc["eu"]</code>).</p>
       <p><b>Types.</b> <code>string</code>, <code>number</code>, <code>bool</code>, <code>list(T)</code>, <code>set(T)</code>, <code>map(T)</code>, <code>object({...})</code>, <code>tuple([...])</code>, and <code>any</code> (avoid). <code>optional(type, default)</code> inside objects (Terraform 1.3+) keeps callers short. Terraform converts types where it safely can ("5" → 5), which hides bugs; tight types plus validation catch them early.</p>
-      <p><b>Sensitive values in depth.</b> Sensitivity propagates: anything computed from a sensitive value is sensitive too. Providers mark some attributes sensitive themselves (<code>aws_db_instance.password</code>). None of this encrypts anything. Newer releases add better tools: <b>ephemeral</b> variables and resources (Terraform 1.10+, OpenTofu 1.11+) whose values are never written to state or plan, and <b>write-only arguments</b> (Terraform 1.11+, for example <code>password_wo</code> on <code>aws_db_instance</code> in recent AWS provider 5.x releases) that are sent to the API but not stored. For RDS, the simplest answer is <code>manage_master_user_password = true</code>: AWS creates the password in Secrets Manager and Terraform only ever sees its ARN.</p>
-      <p><b>dynamic block pitfalls.</b> The iterator is named after the block (<code>ports.value</code>), or set <code>iterator = p</code>. Dynamic blocks cannot generate <code>lifecycle</code> or <code>provisioner</code> blocks. Overusing them makes plans hard to read; for security group rules the AWS provider v5 recommends separate <code>aws_vpc_security_group_ingress_rule</code> resources with <code>for_each</code> instead of inline blocks.</p>`,
+      <p><b>Sensitive values in depth.</b> Sensitivity propagates: anything computed from a sensitive value is sensitive too. Providers mark some attributes sensitive themselves (<code>aws_db_instance.password</code>). None of this encrypts anything. Newer releases add better tools: <b>ephemeral</b> variables and resources (Terraform 1.10+, OpenTofu 1.11+) whose values are never written to state or plan, and <b>write-only arguments</b> (Terraform 1.11+, for example <code>password_wo</code> on <code>aws_db_instance</code> in AWS provider 5.x and 6.x) that are sent to the API but not stored. For RDS, the simplest answer is <code>manage_master_user_password = true</code>: AWS creates the password in Secrets Manager and Terraform only ever sees its ARN.</p>
+      <p><b>dynamic block pitfalls.</b> The iterator is named after the block (<code>ports.value</code>), or set <code>iterator = p</code>. Dynamic blocks cannot generate <code>lifecycle</code> or <code>provisioner</code> blocks. Overusing them makes plans hard to read; for security group rules the AWS provider (v5 and v6) recommends separate <code>aws_vpc_security_group_ingress_rule</code> resources with <code>for_each</code> instead of inline blocks.</p>`,
     aiEra: `<p>🤖 <b>What AI changes:</b> assistants are excellent at boilerplate here - writing typed variable blocks with descriptions and validations from a short spec, converting a <code>count</code> resource to <code>for_each</code> and generating the matching <code>moved</code> blocks, or writing a tricky <code>for</code> expression.</p>
       <p><b>Where it goes wrong:</b> they often reach for <code>count</code> by habit, use <code>nonsensitive()</code> to silence an error, put real-looking secrets into example <code>.tfvars</code> files, and forget that <code>for_each</code> keys must be known at plan time. <b>How to work with it:</b> ask explicitly for <code>for_each</code> with stable keys, verify every expression in <code>terraform console</code>, and grep generated code for <code>nonsensitive</code>, <code>password =</code> and literal keys before committing. <b>What you still own:</b> choosing identities (keys) that will stay stable for years, and where secrets live.</p>`,
     problems: [P({
@@ -874,7 +874,7 @@ terraform state list | grep docker_container.web   # web["a"] web["b"] web["c"]`
 terraform {
   required_version = ">= 1.10.0"
   required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.0" }
+    aws = { source = "hashicorp/aws", version = "~> 6.0" }
   }
 }
 
@@ -1037,7 +1037,7 @@ terraform plan                                # expect No changes, or only the i
       hcl: C`terraform {
   required_version = ">= 1.10.0"
   required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.0" }
+    aws = { source = "hashicorp/aws", version = "~> 6.0" }
   }
   backend "s3" {
     bucket       = "example-tfstate-123456789012-euw1"
@@ -1115,7 +1115,7 @@ terraform plan -lock-timeout=5m`,
         ['10.20.0.0/20', '4', '/24', '16', '10.20.3.0/24'],
         ['192.168.0.0/24', '2', '/26 (64)', '4', '192.168.0.192/26']
       ])}
-      <p>🔵 <b>Security groups in AWS provider v5.</b> Prefer one <code>aws_security_group</code> plus separate <code>aws_vpc_security_group_ingress_rule</code> / <code>egress_rule</code> resources (one rule each). Inline <code>ingress { }</code> blocks still work, but mixing both styles on one group makes Terraform fight itself, and separate rules give cleaner plans and avoid cycles between groups that reference each other.</p>
+      <p>🔵 <b>Security groups in AWS provider v5 and v6.</b> Prefer one <code>aws_security_group</code> plus separate <code>aws_vpc_security_group_ingress_rule</code> / <code>egress_rule</code> resources (one rule each). Inline <code>ingress { }</code> blocks still work, but mixing both styles on one group makes Terraform fight itself, and separate rules give cleaner plans and avoid cycles between groups that reference each other.</p>
       <p>🔵 <b>The lifecycle block</b> changes how Terraform handles a resource:</p>
       ${H.table(['Setting', 'Effect', 'Use it for'], [
         ['<code>create_before_destroy = true</code>', 'build the replacement first, then delete the old one', 'launch templates, certificates, anything in use (needs unique names, e.g. <code>name_prefix</code>)'],
@@ -1132,7 +1132,7 @@ terraform plan -lock-timeout=5m`,
       '"two security groups reference each other: Cycle error" → separate <code>aws_vpc_security_group_ingress_rule</code> resources',
       '"surprise $33 on the lab bill" → a NAT gateway left running; make it optional and destroy after the lab'
     ],
-    code: [hcl(C`# network/main.tf - the two-tier VPC from Cloud & DevOps 6, as code (AWS provider v5).
+    code: [hcl(C`# network/main.tf - the two-tier VPC from Cloud & DevOps 6, as code (AWS provider v6).
 # Free: VPC, subnets, IGW, route tables, SGs. Not free: the optional NAT gateway.
 variable "name" {
   type    = string
@@ -1289,7 +1289,7 @@ output "vpc_id" { value = aws_vpc.main.id }
 output "public_subnet_ids" { value = [for s in aws_subnet.public : s.id] }
 output "private_subnet_ids" { value = [for s in aws_subnet.private : s.id] }
 output "web_sg_id" { value = aws_security_group.web.id }
-output "db_sg_id" { value = aws_security_group.db.id }`, 'network/security.tf: security groups with v5 rule resources, and outputs'), sh(C`#!/usr/bin/env bash
+output "db_sg_id" { value = aws_security_group.db.id }`, 'network/security.tf: security groups with separate rule resources, and outputs'), sh(C`#!/usr/bin/env bash
 set -euo pipefail
 export AWS_PROFILE=lab
 cd network
@@ -1301,7 +1301,7 @@ aws ec2 describe-subnets --filters "Name=vpc-id,Values=$(terraform output -raw v
   --query 'Subnets[].[AvailabilityZone,CidrBlock,MapPublicIpOnLaunch]' --output table
 terraform destroy                        # read the destroy plan, type yes
 rm -f tfplan`, 'Lab run: apply, inspect with the AWS CLI, destroy')],
-    codeTitle: ['network/main.tf: VPC, subnets by AZ with cidrsubnet, routes, optional NAT', 'network/security.tf: security groups with v5 rule resources, and outputs', 'Lab run: apply, inspect with the AWS CLI, destroy'],
+    codeTitle: ['network/main.tf: VPC, subnets by AZ with cidrsubnet, routes, optional NAT', 'network/security.tf: security groups with separate rule resources, and outputs', 'Lab run: apply, inspect with the AWS CLI, destroy'],
     viz: [{
       title: 'cidrsubnet: carving a VPC into equal subnets, bit by bit',
       input: '10.0.0.0/16 newbits=8 count=4',
@@ -1542,7 +1542,7 @@ output "security_group_id" {
 terraform {
   required_version = ">= 1.10.0"
   required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.0" }
+    aws = { source = "hashicorp/aws", version = "~> 6.0" }
   }
   backend "s3" {
     bucket       = "example-tfstate-staging-111111111111"
@@ -1665,7 +1665,7 @@ run "plan_only_checks" {
 terraform {
   required_version = ">= 1.10.0"
   required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.0" }
+    aws = { source = "hashicorp/aws", version = "~> 6.0" }
   }
   backend "s3" {
     bucket       = "example-tfstate-prod-222222222222"
@@ -3048,7 +3048,7 @@ done`,
     id: 'devops09',
     title: 'Infrastructure as Code with Terraform',
     lang: 'bash',
-    langExplain: `<p>Terraform code in this module is <b>HCL</b> (HashiCorp Configuration Language). The site cannot compile HCL, so those snippets are shown as plain text and were checked by reading against <b>Terraform 1.6+</b> (1.10+ where S3 native locking is used) and the <b>AWS provider v5</b>; everything also works with <b>OpenTofu</b> by typing <code>tofu</code> instead of <code>terraform</code>. Commands are <b>Bash</b>, the CI workflow is YAML, policies are Rego, and the problems that are pure logic (plan diffs, apply order, count vs for_each addresses, cidrsubnet, version constraints, policy rules) include a tested <b>Python</b> version. Labs start with providers that need no cloud account (<code>random</code>, <code>local</code>, <code>terraform_data</code>, Docker); AWS parts use SSO profiles, placeholder account ID <code>123456789012</code>, cost notes and <code>terraform destroy</code>.</p>`,
+    langExplain: `<p>Terraform code in this module is <b>HCL</b> (HashiCorp Configuration Language). The site cannot compile HCL, so those snippets are shown as plain text and were checked by reading against <b>Terraform 1.6+</b> (1.10+ where S3 native locking is used) and the <b>AWS provider v6</b>; everything also works with <b>OpenTofu</b> by typing <code>tofu</code> instead of <code>terraform</code>. Commands are <b>Bash</b>, the CI workflow is YAML, policies are Rego, and the problems that are pure logic (plan diffs, apply order, count vs for_each addresses, cidrsubnet, version constraints, policy rules) include a tested <b>Python</b> version. Labs start with providers that need no cloud account (<code>random</code>, <code>local</code>, <code>terraform_data</code>, Docker); AWS parts use SSO profiles, placeholder account ID <code>123456789012</code>, cost notes and <code>terraform destroy</code>.</p>`,
     intro: `<p>Clicking in a cloud console does not scale: nobody can review it, repeat it in another region, or say who changed what. <b>Terraform</b> (and its open-source fork <b>OpenTofu</b>) lets you describe infrastructure as code, preview every change with a <b>plan</b>, and apply it the same way every time. This module takes you from your first <code>random_pet</code> to running Terraform safely for a team.</p>
       <p>You will learn <b>declarative infrastructure</b> and the init/plan/apply loop; <b>providers, resources, data sources</b> and the dependency graph, practising on Docker before AWS; <b>variables, locals, outputs</b>, <code>count</code> vs <code>for_each</code>, dynamic blocks and sensitive values; <b>state</b>, the S3 backend with native locking and why state holds secrets; building the <b>VPC from Cloud &amp; DevOps 6</b> as code with <code>cidrsubnet</code> and lifecycle rules; <b>modules and environments</b>, workspaces vs separate states, promotion from staging to prod; <b>moved and import</b> blocks, state surgery and <b>drift</b>; and <b>policy as code</b> with tflint, checkov, trivy, OPA/conftest and Sentinel in a CI pipeline. Every topic starts from a real incident: two engineers applying at once, a rename that almost deleted a database, a count index shift deleting the wrong server, a password leaked through state.</p>`,
     goals: [

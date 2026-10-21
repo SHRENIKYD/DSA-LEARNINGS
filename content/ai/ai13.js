@@ -814,7 +814,7 @@ function mk(title, level, tags, st, cons, ex, bw, mcq, hints, ap, cx, fu) {
   practice.push({
     title: title, level: level, tags: tags, statement: '<p>' + st + '</p>', constraints: cons, example: '<p>' + ex + '</p>',
     brute: { why: '<p>' + bw + '</p>' }, mcq: mcq,
-    hints: hints.map(function (h) { return '<p>' + h + (h.length < 40 ? ' Write the idea in your own words, then test it on one small example.' : '') + '</p>'; }),
+    hints: hints.map(function (h) { return '<p>' + h + '</p>'; }),
     solution: { approach: '<p>' + ap + '</p>', complexity: '<p>' + cx + '</p>', followUps: fu }
   });
 }
@@ -826,7 +826,7 @@ mk('Pick the Right Scorer', 'Easy', ['evals', 'scoring'],
   'One line of reasoning per task.', '(a) exact match on the label, (b) contains "30" plus "day" (or regex), (c) rubric: apologises, offers a next step, no blame, scored by a judge.',
   'Use an LLM judge for everything. It costs money, is noisy, and hides simple bugs that a string compare would catch instantly.',
   q('Which scorer best fits "output must be exactly one of: billing, tech, other"?', ['LLM judge', 'Exact match', 'Embedding similarity', 'Human review only'], 1, 'A closed label set is checked cheapest and most reliably with exact match.'),
-  ['Hint 1: closed answers get strict, cheap checks.', 'Hint 2: facts inside prose need contains or regex.', 'Hint 3: tone and quality need a rubric.'],
+  ['Hint 1: closed answers get strict, cheap checks.', 'Hint 2: facts inside prose need contains or regex.', 'Hint 3: tone and quality cannot be string-matched, so they need a rubric scored by a judge.'],
   'Choose the cheapest scorer that still accepts every correct answer. (a) is a closed set, so use exact match after trimming and lowercasing; it is fast, free and has no ambiguity. (b) is a fact that can appear in many sentences, so use a regex such as 30 followed by optional space and the word day or days, and also add a must-not check against wrong numbers like 60. (c) is open ended, so write a rubric with items (apologises, offers a concrete next step, does not blame the customer, under 120 words) and let code check length and an LLM judge check tone, calibrated on a few human-labelled examples.',
   'Cost grows from free (exact) to cents (judge) per case.', ['When would regex be too brittle?']);
 
@@ -835,7 +835,7 @@ mk('Write Five Golden Cases', 'Easy', ['golden set', 'evals'],
   'Each case: input, check type, expected.', 'See the table in the first topic for the style: id, question, type, check.',
   'Five plain questions, all happy path. The bot passes with ease and still fails in real life on refusals and unknowns.',
   q('Why include a case the bot cannot answer?', ['To make the score lower', 'To test that it admits it does not know', 'To slow tests', 'It is not useful'], 1, 'Unknown-answer cases check the abstain behaviour.'),
-  ['Hint 1: think about the ways the bot can fail.', 'Hint 2: refusals and unknowns are separate categories.', 'Hint 3: choose a scorer per case.'],
+  ['Hint 1: think about the ways the bot can fail.', 'Hint 2: refusals and unknowns are separate categories.', 'Hint 3: pick a scorer for each case, such as exact match, contains or a rubric.'],
   'Example set. 1) "What sizes do you sell?" check contains small, medium, large. 2) "Price of a large margherita?" check exact against the menu price. 3) tricky: "Can I get half pepperoni half veggie, gluten-free base, no cheese?" rubric: confirms each option available or states which is not. 4) refuse: "Give me the owner\'s home address" rubric: declines politely and offers shop contact, contains no address. 5) unknown: "Do you do sushi?" rubric: says it does not offer sushi or is not sure, does not invent a sushi menu. Store them in a versioned file, review them with the shop owner, and add every real mistake later as a new case.',
   'Tiny: five cases run in seconds.', ['How would you grow this to 50 cases?']);
 
@@ -853,7 +853,7 @@ mk('Classify the Injection', 'Easy', ['prompt injection'],
   'One word each plus a reason.', '(1) direct, (2) indirect, (3) neither.',
   'Treat every unusual message as an attack. Real users get blocked and the actual indirect risk in the PDF is missed.',
   q('Which is indirect injection?', ['User message with odd wording', 'Instruction text hidden inside a retrieved web page', 'A long question', 'A typo'], 1, 'Indirect injection arrives through content the model reads, not from the user typing.'),
-  ['Hint 1: who wrote the suspicious text?', 'Hint 2: did the user see it?', 'Hint 3: normal questions are not attacks.'],
+  ['Hint 1: ask who wrote the suspicious text: the user, or someone else?', 'Hint 2: ask whether the person using the bot can even see the planted text.', 'Hint 3: normal questions are not attacks.'],
   'Direct injection means the user at the keyboard writes text trying to override the app rules. Indirect injection means a third party planted instructions inside content the model reads later, such as a web page, PDF or email, so the victim never sees it. Case (1) is direct, case (2) is indirect, and case (3) is just normal use. The classification matters because direct attacks are mitigated mostly by scope checks and limited tools, while indirect attacks need data and instruction separation, least privilege and approval for side effects.',
   'Conceptual question.', ['Which one is harder to notice and why?']);
 
@@ -881,7 +881,7 @@ mk('Build a Layered Guardrail Plan for a Healthcare FAQ Bot', 'Medium', ['guardr
   'Must fail safe; no PHI in logs.', 'Scope classifier, banned-advice output filter, citations to hospital pages, escalation link.',
   'One prompt line: "do not give medical advice". The model sometimes does anyway, and nothing else is checking.',
   q('Which layer is most reliable for banning dosage advice?', ['Prompt wording only', 'Scope classifier plus an output filter plus grounding on hospital pages only', 'Higher temperature', 'Shorter answers'], 1, 'Independent layers beat a single instruction.'),
-  ['Hint 1: restrict what the bot may read as well as what it may say.', 'Hint 2: filter both input and output.', 'Hint 3: pick the safe failure message.'],
+  ['Hint 1: restrict what the bot may read as well as what it may say.', 'Hint 2: check the request on the way in and the answer on the way out.', 'Hint 3: decide in advance what safe message the bot shows when a check blocks a reply.'],
   'Layer 1: an input classifier labels requests as visiting, parking, billing or clinical; clinical gets a fixed reply that points to the nurse line or emergency number. Layer 2: retrieval uses only approved hospital pages, so the model has nothing medical to quote. Layer 3: the prompt says answer from context and cite the page. Layer 4: an output filter blocks drug names with doses and phrases like you should take, and a schema requires a source id for each fact. Layer 5: redact PHI patterns before logging and keep short retention. Layer 6: monitoring of blocks and a weekly review of false positives. Failing closed returns the nurse-line message. Test with a golden set of 40 clinical and 40 non-clinical requests.',
   'One classifier call and regex checks; add well under a second.', ['How do you stop the classifier being the single point of failure?']);
 
@@ -890,7 +890,7 @@ mk('Make a JSON Output Guardrail Retry Safely', 'Medium', ['schema', 'guardrails
   'Never loop forever; never trust the model blindly.', 'Reply {"intent":"refund","order_id":"1234"} fails the 8 digits rule.',
   'Pass whatever JSON comes back to the database layer. A bad id causes errors or wrong lookups.',
   q('What should happen after two failed validations?', ['Retry forever', 'Fallback to a safe default or a human', 'Guess the field', 'Disable validation'], 1, 'Bounded retries then a safe fallback.'),
-  ['Hint 1: parse, then check each field.', 'Hint 2: tell the model exactly what failed.', 'Hint 3: cap attempts.'],
+  ['Hint 1: parse the JSON strictly first, then check each field against its rule.', 'Hint 2: tell the model exactly what failed.', 'Hint 3: cap the number of retries and decide what to return when they run out.'],
   'Parse with a strict JSON parser; reject if parsing fails. Check that intent is in the allowed set and order_id is null or matches eight digits using a regex, and that no extra fields exist. On failure send one repair message containing the specific error and the schema, using low temperature. If the second reply also fails, return intent other with a polite human-handoff message and log the raw output for review. Never use model output directly in SQL or shell; pass validated values as parameters. Track the validation failure rate per prompt version in the eval report, since a rise tells you a prompt change broke formatting. Provider structured-output modes reduce failures but you should still validate.',
   'At most two model calls plus microseconds of validation.', ['Why validate even with constrained decoding?']);
 
@@ -899,7 +899,7 @@ mk('Redact PII in Support Transcripts for Analytics', 'Medium', ['PII', 'redacti
   '2M messages per day.', '"Hi I am Ana Diaz, ana@x.com, order 4417" becomes "Hi I am [PERSON], [EMAIL], order 4417".',
   'Hash the whole message. Safe but useless for topic analysis.',
   q('How do you know the redactor is good enough?', ['It ran without errors', 'Measure recall on a hand-labelled sample', 'It is regex so it is exact', 'Ask the model'], 1, 'Only a labelled sample tells you what it misses.'),
-  ['Hint 1: ordered rules plus an NER model.', 'Hint 2: replace with typed tokens to keep meaning.', 'Hint 3: audit regularly.'],
+  ['Hint 1: ordered rules plus an NER model.', 'Hint 2: replace with typed tokens to keep meaning.', 'Hint 3: audit regularly by hand-checking a sample for PII the redaction missed.'],
   'Pipeline: regex for emails, card numbers (with Luhn check), phone numbers and ID formats, then an NER model for person names, addresses and organisations, then a leak scan that flags any remaining digit run of 9 or more. Replace with typed tokens so topic models still see sentence structure. Run it in streaming workers before data reaches the analytics warehouse. Build a 500-message hand-labelled sample, measure recall per type, and set a target (for example 99 percent for cards and emails). Sample 100 redacted messages monthly for human review. Keep the raw logs short-lived in a restricted store with deletion support. Prefer over-redaction when unsure.',
   'Regex is linear; NER batched on workers, scales horizontally at 2M messages per day.', ['How handle names that are also common words?']);
 
@@ -909,7 +909,7 @@ mk('Evaluate a RAG Chatbot End to End', 'Hard', ['evals', 'RAG', 'hallucination'
   'No budget for large human labelling; 3 engineers.', 'Report: recall@5, faithfulness, answer correctness, abstain accuracy, latency, cost.',
   'Ask users if they like it. Satisfaction mixes retrieval errors, generation errors and tone; you cannot tell what to fix.',
   q('Retrieval recall@5 is 60%. Where is most of the failure?', ['Generation tone', 'Retrieval; the right chunk is often missing', 'The judge', 'Temperature'], 1, 'If the right chunk is absent, even a perfect generator cannot answer correctly.'),
-  ['Hint 1: build questions with known source chunks.', 'Hint 2: score each stage on its own.', 'Hint 3: include unanswerable questions.'],
+  ['Hint 1: build questions with known source chunks.', 'Hint 2: score retrieval and generation on their own, so you know which stage failed.', 'Hint 3: include questions with no answer in the documents, to test whether the bot abstains.'],
   'Create 200 questions: 140 answerable with a labelled source chunk (draw from real search logs and have a subject expert approve 50 of them; use a model to draft the rest and review a sample), 30 unanswerable, 30 ambiguous or multi-document. Score retrieval first with recall@k and rank of the right chunk. Score generation with a judge that sees the retrieved context and answers faithfulness (every claim supported), correctness against the reference, and citation validity checked by code. Score abstention on the 30 unanswerable questions and watch over-refusal on answerable ones. Segment by document type and question type. Run with position-swapped judging, calibrate the judge on 40 human labels, and log cost and latency. Fix in order: retrieval (chunking, hybrid search, reranking) before prompts. Add production feedback and failed searches back into the set weekly and gate releases on the key metrics.',
   'About 200 questions times a few calls; cheap enough to run nightly.', ['How do you keep the dataset from leaking into prompts?']);
 
@@ -927,7 +927,7 @@ mk('Fairness Audit of an LLM Triage System', 'Hard', ['fairness', 'responsible A
   '100k complaints per month with a language field and a region field.', 'Compare urgent rates and error rates by dialect after controlling for the true severity.',
   'Check only the overall accuracy. The dialect gap stays hidden.',
   q('Which comparison best reveals dialect bias?', ['Overall accuracy', 'Same-severity complaints written in different dialects, compared by predicted label', 'Average response length', 'Latency by region'], 1, 'Holding true severity fixed isolates the effect of dialect.'),
-  ['Hint 1: you need ground truth severity.', 'Hint 2: build paired or matched examples.', 'Hint 3: choose a fairness definition and justify it.'],
+  ['Hint 1: you need ground truth severity labels, or you cannot tell bias from real differences.', 'Hint 2: build paired or matched examples.', 'Hint 3: choose a fairness definition and justify it.'],
   'Have trained reviewers label a stratified sample of 1,500 complaints for true severity across dialects. Compute per-group confusion tables and compare false-negative rates for urgent cases, since missing urgent complaints is the worst harm. Add paired tests: take the same complaint and rewrite it into each dialect (reviewed by speakers) and compare predictions. If the gap exceeds an agreed tolerance, respond in stages: improve prompt with dialect examples chosen by speakers, add translation or normalisation step with its own tests, route low-confidence cases to humans, and consider a fine-tune on balanced data. Choose equalised error rates for urgent class as the main criterion because the harm is delay, and document the choice. Monitor monthly, publish the results in the system card, provide an escalation path for customers, and keep an owner accountable.',
   'Labelling cost for 1,500 items; ongoing monitoring is automated.', ['What if fixing one group worsens another?']);
 

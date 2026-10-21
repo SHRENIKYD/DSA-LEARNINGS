@@ -576,8 +576,6 @@ traceroute example.com           # each router hop (TTL trick, ICMP)` }],
 });
 
 function P(title, level, tags, statement, constraints, example, brokenWhy, mcq, hints, approach, dry, complexity, followUps) {
-  hints = hints.map(function (h) { return h.length < 120 ? h.replace('</p>', ' Think about which layer and which header is involved before you answer.</p>') : h; });
-  if (complexity.length < 60) complexity = complexity.replace('</p>', ' It is a reasoning or lookup task, so cost is tiny and constant for a single question.</p>');
   return { title: title, level: level, tags: tags, statement: statement, constraints: constraints, example: example,
     brute: { why: brokenWhy }, mcq: mcq, hints: hints,
     solution: { approach: approach, dry: dry, complexity: complexity, followUps: followUps } };
@@ -589,10 +587,10 @@ practice.push(P('Name the PDU at each layer', 'Easy', ['pdu', 'terms'],
   `<p>${H.c('g', 'Data → Segment → Packet → Frame → Bits')}.</p>`,
   `<p>Calling everything "a packet" hides which header is meant, and fails the follow-up question.</p>`,
   { q: 'A TCP header plus its data is called a…', options: ['Frame', 'Packet', 'Segment', 'Bit'], answer: 2, explain: 'TCP data units are segments (UDP: datagrams).' },
-  [`<p>Each layer has its own noun.</p>`, `<p>L4 segment, L3 packet, L2 frame.</p>`, `<p>A frame contains a packet, which contains a segment. In casual talk "packet" is used for all, but precise interviews want the layer names.</p>`],
+  [`<p>Each layer has its own name for its data unit, so list them from top to bottom.</p>`, `<p>Transport is a segment, network is a packet, data link is a frame; which one wraps which?</p>`, `<p>A frame contains a packet, which contains a segment. In casual talk "packet" is used for all, but precise interviews want the layer names.</p>`],
   `<p>Application: data or message. Transport: segment (TCP) or datagram (UDP). Network: packet (IP datagram). Data Link: frame (Ethernet). Physical: bits. A packet is not a frame: the frame is the packet plus an Ethernet header and trailer, and it only exists on a single link; the packet survives end to end. Casual use of "packet" for any of them is common, but when someone asks about headers they want the layer-specific name.</p>`,
   { head: ['Layer', 'PDU', 'Example header'], rows: [['L4', 'Segment', 'TCP'], ['L3', 'Packet', 'IP'], ['L2', 'Frame', 'Ethernet']] },
-  `<p>Recall.</p>`, ['What is a datagram?', 'What is a jumbo frame?']));
+  `<p>Recall only: five layer names, no calculation, constant effort.</p>`, ['What is a datagram?', 'What is a jumbo frame?']));
 
 practice.push(P('Hub or switch? Which layer?', 'Easy', ['devices'],
   `<p>You have a 4-port hub and a 4-port switch. Four PCs A, B, C, D are connected. A sends to C. Who receives the frame in each case, and at which layer does each device work?</p>`,
@@ -600,7 +598,7 @@ practice.push(P('Hub or switch? Which layer?', 'Easy', ['devices'],
   `<p>Hub (L1): ${H.c('r', 'B, C, D all get it')}. Switch (L2): ${H.c('g', 'only C')}.</p>`,
   `<p>Saying "both deliver it to C" misses wasted bandwidth, collisions and eavesdropping on a hub.</p>`,
   { q: 'A hub is a…', options: ['L1 repeater', 'L2 bridge', 'L3 router', 'L4 proxy'], answer: 0, explain: 'It repeats bits without reading anything.' },
-  [`<p>Which device reads addresses?</p>`, `<p>Hub reads nothing.</p>`, `<p>Hub floods to all ports at L1 (one collision domain). Switch looks up the MAC and sends to one port at L2.</p>`],
+  [`<p>Which of the two devices reads addresses at all, and which just repeats signals?</p>`, `<p>A hub reads no addresses at all; it copies the signal to every other port.</p>`, `<p>Hub floods to all ports at L1 (one collision domain). Switch looks up the MAC and sends to one port at L2.</p>`],
   `<p>The hub is a layer 1 device: it electrically repeats the incoming signal out of every other port. B, C and D all see the frame and B and D discard it by MAC check; all four share a single collision domain and half-duplex capacity. The switch works at layer 2: it reads the destination MAC, finds it in its table (port of C) and forwards only there. Each port is a separate collision domain and links run full duplex, so A to C and B to D can happen at the same time. Neither device splits the broadcast domain.</p>`,
   { head: ['Device', 'Layer', 'C gets it', 'B and D get it'], rows: [['Hub', 'L1', 'yes', 'yes (ignored)'], ['Switch', 'L2', 'yes', 'no']] },
   `<p>Hub: O(ports) copies. Switch: O(1) lookup.</p>`, ['What if the switch has not learned C yet?', 'Why did hubs disappear?']));
@@ -611,10 +609,10 @@ practice.push(P('Which port numbers: SSH, HTTPS, DNS?', 'Easy', ['ports'],
   `<p>SSH ${H.c('g', '22')}, HTTPS ${H.c('g', '443')}, DNS ${H.c('g', '53')}.</p>`,
   `<p>Guessing ports with no reason is fragile; the reason (clients must find services without asking) is the real answer.</p>`,
   { q: 'Why do clients use random source ports?', options: ['Security only', 'So many connections to one server port stay unique', 'Faster', 'Required by IP'], answer: 1, explain: 'The 5-tuple needs a unique piece per connection.' },
-  [`<p>Who needs to find whom?</p>`, `<p>The client must know the server port in advance; the server learns the client port from the packet.</p>`, `<p>22 SSH TCP, 443 HTTPS TCP, 53 DNS UDP/TCP.</p>`],
+  [`<p>Who needs to find whom: the client must locate the server before any packet is sent.</p>`, `<p>The client must know the server port in advance; the server learns the client port from the packet.</p>`, `<p>22 SSH TCP, 443 HTTPS TCP, 53 DNS UDP/TCP.</p>`],
   `<p>SSH uses TCP 22, HTTPS uses TCP 443 (and UDP 443 for HTTP/3), DNS uses port 53 with UDP for normal short queries and TCP for large answers or zone transfers. Servers listen on fixed, agreed ports so clients know where to knock without asking anyone. Clients get an ephemeral source port chosen by the OS for each connection, which makes every (src IP, src port, dst IP, dst port, protocol) tuple unique, so one server port can serve many clients and the replies can find the right program.</p>`,
   { head: ['Service', 'Port', 'Proto'], rows: [['SSH', '22', 'TCP'], ['HTTPS', '443', 'TCP'], ['DNS', '53', 'UDP/TCP']] },
-  `<p>Recall.</p>`, ['Which port range is ephemeral?', 'What does "connection refused" mean?']));
+  `<p>Recall only: three port numbers and one rule, constant effort.</p>`, ['Which port range is ephemeral?', 'What does "connection refused" mean?']));
 
 practice.push(P('MAC or IP: who uses which?', 'Easy', ['mac', 'ip'],
   `<p>For each question say MAC or IP: (a) finds the next device on this Wi-Fi, (b) stays the same from Mumbai to New York, (c) is hierarchical, (d) can be changed by DHCP.</p>`,
@@ -622,10 +620,10 @@ practice.push(P('MAC or IP: who uses which?', 'Easy', ['mac', 'ip'],
   `<p>(a) ${H.c('b', 'MAC')} (b) ${H.c('g', 'IP')} (c) ${H.c('g', 'IP')} (d) ${H.c('g', 'IP')}.</p>`,
   `<p>Mixing them up is the most common beginner mistake. Remember: MAC = hop, IP = journey.</p>`,
   { q: 'Which is rewritten at every router?', options: ['IP address', 'MAC address', 'TCP port', 'HTTP URL'], answer: 1, explain: 'New frame, new MACs on each link.' },
-  [`<p>Think local vs end-to-end.</p>`, `<p>Which one has a network part?</p>`, `<p>MAC: flat, local, hardware. IP: hierarchical, routable, assigned.</p>`],
+  [`<p>Think local versus end-to-end: which address is rewritten at every hop?</p>`, `<p>Which of the two addresses has a network part that routers can summarise?</p>`, `<p>MAC: flat, local, hardware. IP: hierarchical, routable, assigned.</p>`],
   `<p>(a) MAC: on the local link, frames need the next hop's hardware address. (b) IP: source and destination IPs normally stay the same along the whole path (unless NAT). (c) IP: a network prefix plus host part lets routers aggregate whole networks into one route. (d) IP: DHCP leases IP addresses; a MAC comes from the vendor (though phones randomise it). So MAC means which device on this link, IP means which host in the world.</p>`,
   { head: ['Property', 'MAC', 'IP'], rows: [['Scope', 'link', 'internet'], ['Changes per hop', 'yes', 'no']] },
-  `<p>Recall.</p>`, ['What does ARP do?', 'Can two devices have the same MAC?']));
+  `<p>Recall only: one fact about each address type, constant effort.</p>`, ['What does ARP do?', 'Can two devices have the same MAC?']));
 
 practice.push(P('Header overhead for a 1000-byte payload (+ MSS split)', 'Medium', ['math', 'mtu'],
   `<p>An app sends 3000 bytes over TCP/IPv4/Ethernet with MTU 1500. How many segments, how many frame bytes in total and what efficiency?</p>`,
@@ -633,7 +631,7 @@ practice.push(P('Header overhead for a 1000-byte payload (+ MSS split)', 'Medium
   `<p>MSS = 1500 − 40 = ${H.c('g', '1460')}. 3000 = 1460 + 1460 + 80 → ${H.c('g', '3 segments')}.</p>`,
   `<p>Forgetting to split gives 1058-style math for a 3000-byte frame, which would never fit on Ethernet.</p>`,
   { q: 'MSS for MTU 1500 over IPv4 + TCP (no options)?', options: ['1500', '1480', '1460', '1440'], answer: 2, explain: '1500 − 20 − 20 = 1460.' },
-  [`<p>Find the biggest TCP payload per frame.</p>`, `<p>MSS = MTU − IP − TCP.</p>`, `<p>segments = ceil(3000/1460) = 3. Total = 3000 + 3 × 58. Efficiency = 3000 / total.</p>`],
+  [`<p>Find the biggest TCP payload that fits in one frame at MTU 1500.</p>`, `<p>MSS = MTU minus the IP header minus the TCP header, then split 3000 bytes by it.</p>`, `<p>segments = ceil(3000/1460) = 3. Total = 3000 + 3 × 58. Efficiency = 3000 / total.</p>`],
   `<p>The MTU of 1500 limits the IP packet, so the largest TCP payload is 1500 − 20 − 20 = 1460 bytes. 3000 bytes need ceil(3000 / 1460) = 3 segments (1460, 1460, 80). Each adds 20 TCP + 20 IP + 14 Ethernet header + 4 FCS = 58 bytes. Total bytes in frames = 3000 + 3 × 58 = 3174. Efficiency = 3000 / 3174 = 94.5%. Counting preamble and inter-frame gap (20 more bytes per frame) the wire carries 3234 byte-times, giving 92.8%.</p>`,
   { head: ['Segment', 'Payload', 'Frame size'], rows: [['1', '1460', '1518'], ['2', '1460', '1518'], ['3', '80', '138']] },
   `<p>O(size / MSS) segments.</p>`, ['Effect of a VPN adding 50 bytes?', 'What are jumbo frames?']));
@@ -655,10 +653,10 @@ practice.push(P('Trace a MAC/IP pair across two routers', 'Medium', ['routing', 
   `<p>${H.c('g', '3 Ethernet headers')} (one per link); IP: only ${H.c('y', 'TTL')} and checksum change.</p>`,
   `<p>Answering "IP changes at each router" confuses it with the MAC.</p>`,
   { q: 'TTL after crossing 2 routers starting at 64?', options: ['64', '63', '62', '61'], answer: 2, explain: 'Each router decrements by 1.' },
-  [`<p>One frame per link.</p>`, `<p>Each router adds a new Ethernet header.</p>`, `<p>3 links → 3 frames; TTL 64 → 63 → 62; checksum recomputed; addresses same.</p>`],
+  [`<p>A frame lives on only one link, so count the links on the path first.</p>`, `<p>Each router strips the old Ethernet header and builds a new one for the next link.</p>`, `<p>3 links → 3 frames; TTL 64 → 63 → 62; checksum recomputed; addresses same.</p>`],
   `<p>A frame exists only on one link, so there are three: H1 to R1, R1 to R2 and R2 to H2. Each has different source and destination MACs. The IP header is only touched by routers to decrement the TTL (and recompute the header checksum), so after two routers TTL has dropped by 2, but source and destination IP are the same end to end. Without NAT the TCP header is untouched; the ports are the same at both ends.</p>`,
   { head: ['Link', 'Frame', 'TTL'], rows: [['H1→R1', 'new', '64'], ['R1→R2', 'new', '63'], ['R2→H2', 'new', '62']] },
-  `<p>O(hops).</p>`, ['What does traceroute exploit?', 'What if TTL reaches 0?']));
+  `<p>O(hops): one new Ethernet frame per link and one TTL decrement per router.</p>`, ['What does traceroute exploit?', 'What if TTL reaches 0?']));
 
 practice.push(P('Layered troubleshooting: "I cannot open a website"', 'Medium', ['troubleshooting'],
   `<p>A laptop shows "site can't be reached". Give a bottom-up checklist (one check per layer) that finds the fault fast, with a command for each.</p>`,
@@ -666,10 +664,10 @@ practice.push(P('Layered troubleshooting: "I cannot open a website"', 'Medium', 
   `<p>L1 link up → L2 ARP/gateway → L3 ping IP → L7 DNS → L4 port → L7 HTTP.</p>`,
   `<p>Randomly reinstalling the browser skips the layer logic and wastes time.</p>`,
   { q: 'Ping 8.8.8.8 works but ping google.com fails. Likely layer?', options: ['L1', 'L2', 'DNS (L7)', 'L3 routing'], answer: 2, explain: 'IP works, so name resolution is broken.' },
-  [`<p>Start at the cable/Wi-Fi.</p>`, `<p>Ping an IP before a name.</p>`, `<p>ip link; ip neigh / ping gateway; ping 8.8.8.8; dig name; nc -zv host 443; curl -v.</p>`],
+  [`<p>Start at the bottom: is the cable plugged in or the Wi-Fi connected?</p>`, `<p>Ping a raw IP address before a name, so DNS problems are separated from routing problems.</p>`, `<p>ip link; ip neigh / ping gateway; ping 8.8.8.8; dig name; nc -zv host 443; curl -v.</p>`],
   `<p>L1: is the interface up and linked (ip link, Wi-Fi icon)? L2: do we have an IP and does the gateway answer ARP (ip addr, ip neigh, ping gateway)? L3: can we reach the Internet by IP (ping 8.8.8.8, traceroute)? L7 DNS: does dig example.com return an address? L4: can we open the port (nc -zv example.com 443)? L7 HTTP/TLS: curl -v shows certificate or HTTP errors. The first check that fails names the layer and what to fix, e.g. ping IP ok and dig fails means fix the resolver, not the cable.</p>`,
   { head: ['Check', 'Command', 'If it fails'], rows: [['L1', 'ip link', 'cable/Wi-Fi'], ['L3', 'ping 8.8.8.8', 'routing/ISP'], ['DNS', 'dig', 'resolver']] },
-  `<p>O(layers) checks.</p>`, ['What if only HTTPS fails?', 'How to prove it is MTU related?']));
+  `<p>O(layers) checks: at most one test per layer, stopping at the first that fails.</p>`, ['What if only HTTPS fails?', 'How to prove it is MTU related?']));
 
 practice.push(P('Why does a switch table flush or get poisoned?', 'Medium', ['switch', 'security'],
   `<p>Explain what happens to a switch if an attacker sends thousands of frames with random source MACs, and how to defend.</p>`,
@@ -677,7 +675,7 @@ practice.push(P('Why does a switch table flush or get poisoned?', 'Medium', ['sw
   `<p>Table fills → unknown-destination ${H.c('r', 'flooding')} → attacker sniffs.</p>`,
   `<p>Ignoring the table limit leads to the claim "switches are always private", which is untrue under MAC flooding.</p>`,
   { q: 'Best defence against MAC flooding?', options: ['Bigger cables', 'Port security (limit MACs per port)', 'Use a hub', 'Disable ARP'], answer: 1, explain: 'It caps learned addresses per port.' },
-  [`<p>The table is finite.</p>`, `<p>When it is full, new MACs are not learned.</p>`, `<p>Then replies to unknown MACs flood. Fix: port security, 802.1X, storm control.</p>`],
+  [`<p>The switch MAC table is finite, so think about what happens when it is full.</p>`, `<p>When it is full, new MACs are not learned.</p>`, `<p>Then replies to unknown MACs flood. Fix: port security, 802.1X, storm control.</p>`],
   `<p>A switch learns the source MAC of every frame, but its CAM table has a fixed size. If an attacker generates frames with thousands of fake source MACs, the table fills and legitimate hosts are evicted or cannot be learned. Frames to unknown destinations are then flooded out of every port, so the switch acts like a hub and the attacker can capture other users' traffic. Defences: port security (limit and pin MACs per port, shut down or restrict on violation), 802.1X authentication, dynamic ARP inspection, and monitoring MAC move/flood alarms.</p>`,
   { head: ['Stage', 'Table', 'Behaviour'], rows: [['Normal', 'few MACs', 'unicast'], ['Attack', 'full', 'flood = hub-like']] },
   `<p>Table memory is bounded; flooding costs O(ports) per frame.</p>`, ['What is ARP spoofing?', 'What does aging do?']));
@@ -688,10 +686,10 @@ practice.push(P('Collision and broadcast domains of a mixed office', 'Hard', ['d
   `<p>Broadcast: ${H.c('g', '2')}. Collision: S1 side 4 links + hub side ${H.c('y', '1 (hub + router port)')} = ${H.c('g', '5')}.</p>`,
   `<p>Counting "devices" instead of links or ports gives wrong numbers.</p>`,
   { q: 'How many collision domains does a switch with 8 connected devices have?', options: ['1', '2', '8', '16'], answer: 2, explain: 'One per port (link).' },
-  [`<p>Broadcast domains: count router ports (and VLANs).</p>`, `<p>Switch: one collision domain per cable.</p>`, `<p>Hub plus all the cables attached to it, including the one to the router, is one collision domain.</p>`],
+  [`<p>Broadcast domains: count router ports (and VLANs).</p>`, `<p>A switch gives one collision domain per cable, so count the switch links.</p>`, `<p>Hub plus all the cables attached to it, including the one to the router, is one collision domain.</p>`],
   `<p>Broadcast domains: the router blocks broadcasts, so each router port starts a new domain: 2. The switch and hub just extend their respective domains. Collision domains: S1 is full duplex with its own domain on each link: 3 PC links + 1 link to the router = 4. The hub repeats everything out of all ports, so the two PCs, the hub and its link to the router port share a single collision domain = 1. Total = 5. If the hub were replaced by a switch, every link would be its own collision domain: 4 + 3 = 7, still 2 broadcast domains.</p>`,
   { head: ['Segment', 'Collision domains', 'Broadcast domains'], rows: [['Router-S1 side', '4', '1'], ['Router-hub side', '1', '1'], ['Total', '5', '2']] },
-  `<p>O(links).</p>`, ['What changes with a VLAN split on S1?', 'Does a half-duplex link need CSMA/CD?']));
+  `<p>O(links): count the cables and devices once to find each domain.</p>`, ['What changes with a VLAN split on S1?', 'Does a half-duplex link need CSMA/CD?']));
 
 practice.push(P('Why both MAC and IP? Design argument', 'Hard', ['design', 'addressing'],
   `<p>A junior says "we should drop IP and route by MAC to simplify networking". Argue why that fails at Internet scale and what ARP is for.</p>`,
@@ -699,7 +697,7 @@ practice.push(P('Why both MAC and IP? Design argument', 'Hard', ['design', 'addr
   `<p>MAC = flat ${H.c('r', 'no aggregation')}; IP = ${H.c('g', 'hierarchy')}.</p>`,
   `<p>"Because the standard says so" is not an engineering answer.</p>`,
   { q: 'Why can routers keep small tables with IP?', options: ['IPs are shorter', 'Prefix aggregation', 'MACs are secret', 'Routers cache nothing'], answer: 1, explain: 'One prefix covers many hosts.' },
-  [`<p>Think about table size.</p>`, `<p>A device moves: what happens to its MAC and IP?</p>`, `<p>Reasons: aggregation, mobility/location, different link technologies, security & policy by network.</p>`],
+  [`<p>Think about table size: how many entries would a router need to hold one per device?</p>`, `<p>A device moves: what happens to its MAC and IP?</p>`, `<p>Reasons: aggregation, mobility/location, different link technologies, security & policy by network.</p>`],
   `<p>First, aggregation: MACs are assigned by vendors with no relation to location, so a router would need one entry per device on Earth (billions), whereas IP prefixes let one entry such as 10.0.2.0/24 cover hundreds of hosts and ISPs summarise whole regions; BGP can work with about a million prefixes. Second, mobility and ownership: a laptop keeps its MAC but gets a new IP in a new network; the IP says where it is attached now. Third, link independence: the physical link layer differs (Ethernet, Wi-Fi, LTE, PPP) and each needs its own hop-by-hop address, while IP gives one uniform end-to-end address. Fourth, broadcast: MAC-only flooding would not scale. ARP exists to bridge the two for the final hop: it asks the local broadcast domain who owns an IP and caches the MAC.</p>`,
   { head: ['Property', 'MAC-only', 'IP + MAC'], rows: [['Table size', 'billions', 'prefixes'], ['Mobility', 'broken', 'new IP']] },
   `<p>Routing table O(prefixes) instead of O(hosts).</p>`, ['How does IPv6 do neighbour discovery?', 'What is proxy ARP?']));
@@ -710,10 +708,10 @@ practice.push(P('Compute efficiency for tiny vs large packets', 'Hard', ['math',
   `<p>1-byte: frame padded to ${H.c('r', '64 B')} → 1.6%. 1460 B: 1518 B → ${H.c('g', '96.2%')}.</p>`,
   `<p>Ignoring the 64-byte minimum gives 1/59 = 1.7%, close but wrong; the interviewer wants the padding detail.</p>`,
   { q: 'Which trick joins small writes into bigger segments?', options: ['Nagle algorithm', 'ARP', 'NAT', 'CRC'], answer: 0, explain: 'Nagle delays tiny sends so they combine.' },
-  [`<p>Compute frame sizes first.</p>`, `<p>1 + 40 + 18 = 59 is under 64, so pad.</p>`, `<p>Efficiency = payload / 64 and payload / 1518.</p>`],
+  [`<p>Compute the full frame size for each case first: payload plus all headers and FCS.</p>`, `<p>1 + 40 + 18 = 59 is under the 64-byte minimum frame, so the frame gets padded to 64.</p>`, `<p>Efficiency = payload / 64 and payload / 1518.</p>`],
   `<p>Keystroke: 1 + 20 + 20 + 14 + 4 = 59 bytes, below the 64-byte Ethernet minimum, so the NIC pads to 64: efficiency = 1/64 = 1.6%. Full segment: 1460 + 58 = 1518 bytes, efficiency = 1460/1518 = 96.2%. The lesson: headers are a fixed cost, so small messages are dominated by overhead. Fixes: batch writes, Nagle's algorithm (disable with TCP_NODELAY when latency matters), HTTP/2 multiplexing, larger MTU (jumbo frames), and compressing headers. Real-time systems accept the overhead in exchange for latency.</p>`,
   { head: ['Case', 'Payload', 'Frame', 'Efficiency'], rows: [['keystroke', '1', '64 (padded)', '1.6%'], ['bulk', '1460', '1518', '96.2%']] },
-  `<p>O(1).</p>`, ['What does TCP_NODELAY do?', 'Why do voice calls use small packets anyway?']));
+  `<p>O(1): two fixed divisions, payload over frame size, independent of data volume.</p>`, ['What does TCP_NODELAY do?', 'Why do voice calls use small packets anyway?']));
 
 practice.push(P('Design the layer map for a new protocol', 'Hard', ['design', 'layers'],
   `<p>A team builds a video-call app that sends media over UDP with its own retransmission and encryption. Place each concern in an OSI layer, and explain what the OS stack, the app and the network devices each handle. Why is it OK that QUIC "breaks" the layers?</p>`,
@@ -721,7 +719,7 @@ practice.push(P('Design the layer map for a new protocol', 'Hard', ['design', 'l
   `<p>Media framing L7, crypto ~L6, reliability ${H.c('b', 'in the app over UDP (L4 service)')}.</p>`,
   `<p>Saying "UDP is unreliable so it cannot be used" misses how apps rebuild just the reliability they need.</p>`,
   { q: 'QUIC runs on top of…', options: ['TCP', 'UDP', 'ICMP', 'Ethernet only'], answer: 1, explain: 'QUIC is built on UDP in user space.' },
-  [`<p>Which service does UDP give you? Which does it not?</p>`, `<p>Who can update faster: kernel or app?</p>`, `<p>Write each concern with the layer and who implements it (kernel, library, app).</p>`],
+  [`<p>Which service does UDP give you? Which does it not?</p>`, `<p>Who can ship updates faster: the kernel or an application library?</p>`, `<p>Write each concern with the layer and who implements it (kernel, library, app).</p>`],
   `<p>Network devices only handle L1–L3 (and NAT/firewalls peek at L4). The OS provides UDP (L4: ports, checksum, no reliability) and IP (L3). The app (or a library like QUIC/WebRTC) implements on top: reliability and ordering only for what needs it (retransmit key frames, skip stale audio), congestion control, encryption (DTLS/QUIC TLS 1.3, roughly L6), session setup and media framing (L5–L7). Putting these in user space lets the team ship improvements without waiting for OS updates and avoids head-of-line blocking of TCP. Layers are an organising idea, not a law: a layer is allowed to be re-implemented above if it is the right trade-off, as long as the interfaces below (UDP/IP) are respected and the middleboxes can still pass the packets.</p>`,
   { head: ['Concern', 'Layer', 'Who'], rows: [['Ports, checksum', 'L4', 'OS (UDP)'], ['Reliability', 'L4-ish', 'app/QUIC'], ['Encryption', 'L6', 'library'], ['Media format', 'L7', 'app']] },
   `<p>Design reasoning, no complexity.</p>`, ['Why does UDP need port numbers?', 'How do NATs treat UDP flows?']));
@@ -735,7 +733,7 @@ practice.push(P('Debug: can ping gateway, cannot reach the Internet', 'Hard', ['
   [`<p>Gateway ping proves L1–L3 on the local link.</p>`, `<p>Next suspects: missing default route, router NAT, ISP, firewall.</p>`, `<p>Evidence: ip route, traceroute 8.8.8.8, ping from the router, tcpdump on both sides.</p>`],
   `<p>Pinging the gateway proves the cable, ARP and local IP are fine, so the fault is beyond the local link. Candidate causes: (1) no or wrong default route on the host (ip route show, expect default via 192.168.1.1); (2) the router lacks its upstream route or WAN link is down (check router status, ping its WAN IP); (3) NAT or firewall rule on the router blocks outbound traffic (counters, tcpdump on the WAN interface to see if packets leave); (4) the ISP or upstream is down (traceroute stops at the first hop after the router); (5) MTU or ICMP filtering problems (small pings work, big ones hang); (6) DNS is not the cause because we ping an IP. Collect evidence in order and change one thing at a time.</p>`,
   { head: ['Test', 'Result', 'Meaning'], rows: [['ping gateway', 'ok', 'L1-L3 local ok'], ['ping 8.8.8.8', 'fail', 'route/NAT/ISP'], ['traceroute', 'stops at hop 1', 'router/WAN']] },
-  `<p>O(layers).</p>`, ['What if only large packets fail?', 'What does a TTL exceeded message mean?']));
+  `<p>O(layers): one pass through the layers, one piece of evidence per layer.</p>`, ['What if only large packets fail?', 'What does a TTL exceeded message mean?']));
 
 quiz.push({ q: 'Which OSI layer is responsible for MAC addresses?', options: ['Network', 'Data Link', 'Transport', 'Physical'], answer: 1, explain: 'Layer 2 (Data Link) uses MAC addresses.' });
 quiz.push({ q: 'A router mainly makes decisions using…', options: ['MAC address', 'IP address', 'TCP flags', 'HTTP cookies'], answer: 1, explain: 'Routers are layer 3 and route by destination IP.' });

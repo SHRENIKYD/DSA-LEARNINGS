@@ -1000,7 +1000,7 @@ print(old_p == d0 ^ old_d ^ d2, new_p == d0 ^ new_d ^ d2)` } },
     example: `<p>Capacity (5−1)×6 = <b>24 TB</b>. P = 1010 ⊕ 0011 ⊕ 0110 ⊕ 1001 = <b>0110</b>. Rebuild D1 = 1010 ⊕ 0110 ⊕ 1001 ⊕ 0110 = <b>0011</b> ✓.</p>`,
     brute: { why: `<p>Keeping a full copy of everything (RAID 1 on 5 disks) would give only 6 TB usable. Parity gives 24 TB for the same hardware at the cost of rebuild work and the small-write penalty.</p>` },
     mcq: { q: 'During a RAID 5 rebuild a second disk fails. What happens?', options: ['Data on the array is lost (beyond parity)', 'Parity auto-heals', 'Only the newest files lost', 'Nothing, RAID 5 tolerates 2 failures'], answer: 0, explain: 'One parity block can solve for only one missing block per stripe; two missing blocks are unsolvable.' },
-    hints: [`<p>Hint 1: usable = (n − 1) × disk size.</p>`, `<p>Hint 2: XOR is its own inverse: XOR everything that survives, parity included.</p>`, `<p>Hint 3: align the 4-bit values in columns and XOR column by column (count the 1s: odd → 1).</p>`],
+    hints: [`<p>Hint 1: one disk of parity is spread over the array, so usable = (n − 1) × disk size.</p>`, `<p>Hint 2: XOR is its own inverse: XOR everything that survives, parity included.</p>`, `<p>Hint 3: align the 4-bit values in columns and XOR column by column (count the 1s: odd → 1).</p>`],
     solution: {
       approach: `<p>(a) Five disks, one disk's worth of parity spread across all of them: (5−1)×6 TB = 24 TB. (b) When the stripe was written, the four data blocks were D0=1010, D1=0011, D2=0110, D3=1001, so P = 1010 ⊕ 0011 ⊕ 0110 ⊕ 1001: 1010 ⊕ 0011 = 1001; 1001 ⊕ 0110 = 1111; 1111 ⊕ 1001 = 0110, so P = 0110. After disk 1 dies, D1 = D0 ⊕ D2 ⊕ D3 ⊕ P = 1010 ⊕ 0110 ⊕ 1001 ⊕ 0110 = 0011, exactly the lost block. (c) While rebuilding, the array has zero redundancy: any second failure, or an unrecoverable read error on a surviving disk, loses data for the affected stripes. With 6 TB disks the rebuild reads 24 TB, so a URE is a realistic risk; use RAID 6, hot spares and backups.</p>`,
       dry: { head: ['Step', 'Operation', 'Binary result'], rows: [['P when written', '1010 ⊕ 0011', '1001'], ['', '1001 ⊕ 0110', '1111'], ['', '1111 ⊕ 1001', '0110 = P'], ['rebuild D1', '1010 ⊕ 0110 ⊕ 1001 ⊕ 0110', '0011 = D1']] },
@@ -1434,7 +1434,7 @@ int main() { return sendWholeFile(1, "/etc/hostname") ? 0 : 1; }   // fd 1 = std
     example: `${H.table(['Design', 'DMA copies', 'CPU copies', 'Mode switches'], [['read + write', '2', '2', '4'], ['sendfile', '2', '0', '2']])}`,
     brute: { why: `<p>read + write: disk → (DMA) page cache → (CPU) user buf → (CPU) socket buffer → (DMA) NIC. The two CPU copies consume memory bandwidth and CPU cycles and pollute CPU caches for data the app never inspects.</p>` },
     mcq: { q: 'What does DMA remove from the data path?', options: ['The CPU moving bytes between device and RAM', 'All kernel buffers', 'All interrupts', 'The need for a file system'], answer: 0, explain: 'The device writes RAM directly; interrupts and buffers still exist.' },
-    hints: [`<p>Hint 1: draw boxes disk, page cache, user buffer, socket buffer, NIC.</p>`, `<p>Hint 2: label each arrow DMA or CPU.</p>`, `<p>Hint 3: each syscall = 2 mode switches (enter + exit).</p>`],
+    hints: [`<p>Hint 1: draw boxes disk, page cache, user buffer, socket buffer, NIC.</p>`, `<p>Hint 2: label each arrow between the boxes as a DMA copy or a CPU copy.</p>`, `<p>Hint 3: each syscall = 2 mode switches (enter + exit).</p>`],
     solution: {
       approach: `<p>read+write path: (1) DMA disk → page cache, (2) CPU copy page cache → user buffer in read(), (3) CPU copy user buffer → socket buffer in write(), (4) DMA socket buffer → NIC. That is 2 DMA and 2 CPU copies, and 4 mode switches (two syscalls × enter/exit). sendfile path: (1) DMA disk → page cache, (2) DMA page cache → NIC using scatter-gather (only descriptors, not bytes, are appended to the socket), so 2 DMA copies, 0 CPU copies and 2 mode switches. sendfile is faster because it saves two CPU copies (memory bandwidth, cache pollution) and two mode switches, and the app never touches the data. It cannot be used when the app must transform the data (TLS in userspace, compression); kernel TLS (kTLS) restores it for HTTPS.</p>`,
       dry: { head: ['Step', 'read + write', 'sendfile'], rows: [['disk → page cache', 'DMA', 'DMA'], ['page cache → user buf', 'CPU copy', '—'], ['user buf → socket buf', 'CPU copy', '— (descriptors only)'], ['socket → NIC', 'DMA', 'DMA gather'], ['mode switches', '4', '2']] },
@@ -1491,22 +1491,24 @@ function PR(o) {
     brute: { why: o.brute },
     mcq: o.mcq,
     hints: o.hints,
-    solution: { approach: o.approach, dry: o.dry, complexity: o.complexity || `<p>Constant-time arithmetic or a single pass over the request list.</p>`, followUps: o.followUps }
+    solution: { approach: o.approach, dry: o.dry, complexity: o.complexity, followUps: o.followUps }
   });
 }
 
 // ---------------- EASY ----------------
 PR({ title: 'Max File Size, Single Indirect Only', level: 'Easy', tags: ['inode', 'math'], companies: ['TCS', 'Infosys'],
+  complexity: `<p>O(1): K = B/P, then one multiplication and one addition for 10 + K blocks.</p>`,
   statement: `<p>An inode has <b>10 direct</b> pointers and <b>one single-indirect</b> pointer. Block size is <b>1 KB</b>, pointer size <b>4 bytes</b>. What is the maximum file size?</p>`,
   example: `<p>K = 1024/4 = 256. Direct 10 KB + single 256 KB = <b>266 KB</b>.</p>`,
   brute: `<p>Multiplying 11 pointers by 1 KB gives 11 KB. That forgets that the indirect pointer leads to a block of 256 more pointers.</p>`,
   mcq: { q: 'What decides the number of pointers per indirect block?', options: ['block size / pointer size', 'pointer size / block size', 'number of direct pointers', 'file size'], answer: 0, explain: 'One block of B bytes holds B/P pointers of P bytes.' },
-  hints: [`<p>Hint 1: compute K = B/P.</p>`, `<p>Hint 2: direct blocks give 10 × 1 KB.</p>`, `<p>Hint 3: add the single-indirect reach K × 1 KB.</p>`],
+  hints: [`<p>Hint 1: compute K = B/P, the number of pointers that fit in one indirect block.</p>`, `<p>Hint 2: the 10 direct pointers each reach one 1 KB block, so they give 10 × 1 KB.</p>`, `<p>Hint 3: add the single-indirect reach K × 1 KB.</p>`],
   approach: `<p>Pointers per indirect block K = 1024 B / 4 B = 256. Direct part: 10 blocks × 1 KB = 10 KB. Single indirect: the one pointer leads to a block of 256 pointers, so 256 data blocks × 1 KB = 256 KB. Total maximum = 10 KB + 256 KB = <b>266 KB</b> (266 data blocks plus one index block of overhead). Reading a byte beyond 10 KB needs one extra disk read for the pointer block.</p>`,
   dry: { head: ['Part', 'Blocks', 'Size'], rows: [['direct', '10', '10 KB'], ['single', '256', '256 KB'], ['total', '266', '266 KB']] },
   followUps: ['Add a double-indirect pointer: new max?'] });
 
 PR({ title: 'Delete the Original: Hard vs Soft', level: 'Easy', tags: ['links'], companies: ['Amazon'],
+  complexity: `<p>O(1): rm removes one directory entry and decrements the inode link count; no data blocks are touched.</p>`,
   statement: `<p>Commands run in order: <code>echo hi &gt; a</code>, <code>ln a h</code>, <code>ln -s a s</code>, <code>rm a</code>. What do <code>cat h</code> and <code>cat s</code> print? What is the link count of the inode afterwards? What if you now create a new file <code>a</code> containing "new" and run <code>cat s</code>?</p>`,
   example: `<p><code>cat h</code> → <span class="c-g">hi</span>. <code>cat s</code> → <span class="c-r">No such file or directory</span>. Link count 1. After recreating a: <code>cat s</code> → new.</p>`,
   brute: `<p>Saying "both links keep working because the data still exists" ignores that a symlink stores only the path "a", not the inode.</p>`,
@@ -1516,25 +1518,28 @@ PR({ title: 'Delete the Original: Hard vs Soft', level: 'Easy', tags: ['links'],
   dry: { head: ['Command', 'Names → inode', 'Inode link count'], rows: [['echo hi > a', 'a → 7', '1'], ['ln a h', 'a, h → 7', '2'], ['ln -s a s', 's → 9 (text "a")', '2'], ['rm a', 'h → 7; s dangling', '1']] } });
 
 PR({ title: 'FCFS Head Movement', level: 'Easy', tags: ['disk scheduling'], companies: ['Wipro', 'Cognizant'],
+  complexity: `<p>O(n): one absolute difference per request, so 7 subtractions here.</p>`,
   statement: `<p>Head at cylinder <b>50</b>, disk 0 to 199. Requests in arrival order: <b>82, 170, 43, 140, 24, 16, 190</b>. Total head movement with FCFS?</p>`,
   example: `<p>32 + 88 + 127 + 97 + 116 + 8 + 174 = <b>642</b>.</p>`,
   brute: `<p>Sorting requests first is a different algorithm. FCFS must follow arrival order, which is what creates the long zig-zags.</p>`,
   mcq: { q: 'FCFS disk scheduling is…', options: ['Fair but can have long total seek', 'Optimal in total seek', 'Starvation-prone', 'Elevator based'], answer: 0, explain: 'Serving in arrival order is fair and simple but ignores head position.' },
-  hints: [`<p>Hint 1: start at the head position 50.</p>`, `<p>Hint 2: add |next − current| for each request in order.</p>`, `<p>Hint 3: double-check the big jumps 190→... and 170→43.</p>`],
+  hints: [`<p>Hint 1: start at the head position 50 and keep a running total as you go.</p>`, `<p>Hint 2: add |next − current| for each request in order.</p>`, `<p>Hint 3: double-check the big jumps 190→... and 170→43.</p>`],
   approach: `<p>FCFS processes requests exactly in the given order, so we sum absolute differences along 50 → 82 → 170 → 43 → 140 → 24 → 16 → 190. The moves are |82−50| = 32, |170−82| = 88, |43−170| = 127, |140−43| = 97, |24−140| = 116, |16−24| = 8, |190−16| = 174. Adding them: 32 + 88 = 120, + 127 = 247, + 97 = 344, + 116 = 460, + 8 = 468, + 174 = 642 cylinders. The average per request is 642/7 ≈ 91.7 cylinders, which is poor because the head keeps swinging across the disk.</p>`,
   dry: { head: ['From → To', 'Distance', 'Running total'], rows: [['50 → 82', '32', '32'], ['82 → 170', '88', '120'], ['170 → 43', '127', '247'], ['43 → 140', '97', '344'], ['140 → 24', '116', '460'], ['24 → 16', '8', '468'], ['16 → 190', '174', '642']] } });
 
 PR({ title: 'RAID Capacity Table', level: 'Easy', tags: ['RAID'], companies: ['HPE', 'Dell'],
+  complexity: `<p>O(1) per level: one capacity formula each, such as (n − 1) × disk size for RAID 5.</p>`,
   statement: `<p>You have six 4 TB disks. Give usable capacity and the number of disk failures survived (worst case) for RAID 0, RAID 5, RAID 6 and RAID 10.</p>`,
   example: `${H.table(['Level', 'Usable', 'Survives'], [['0', '24 TB', '0'], ['5', '20 TB', '1'], ['6', '16 TB', '2'], ['10', '12 TB', '1 (guaranteed)']])}`,
   brute: `<p>Assuming every level loses the same fraction (say, always half) ignores that parity RAID loses only 1 or 2 disks of space and mirroring loses half.</p>`,
   mcq: { q: 'Which level has the lowest usable capacity with 6 disks?', options: ['RAID 0', 'RAID 5', 'RAID 6', 'RAID 10'], answer: 3, explain: 'RAID 10 gives n/2 = 3 disks = 12 TB, less than RAID 5 (20) and RAID 6 (16).' },
-  hints: [`<p>Hint 1: RAID 0 uses all n disks.</p>`, `<p>Hint 2: parity costs 1 (RAID 5) or 2 (RAID 6) disks of space.</p>`, `<p>Hint 3: mirroring halves capacity.</p>`],
+  hints: [`<p>Hint 1: RAID 0 stripes with no redundancy, so it uses all n disks.</p>`, `<p>Hint 2: parity costs 1 (RAID 5) or 2 (RAID 6) disks of space.</p>`, `<p>Hint 3: mirroring stores every block twice, so RAID 10 halves the capacity.</p>`],
   approach: `<p>RAID 0 stripes with no redundancy: 6 × 4 = 24 TB, survives 0 failures. RAID 5 gives up one disk's worth for rotating parity: (6−1) × 4 = 20 TB, survives 1. RAID 6 gives up two disks: (6−2) × 4 = 16 TB, survives any 2. RAID 10 pairs the disks into 3 mirrors and stripes across them: 3 × 4 = 12 TB; it is guaranteed to survive one failure, and up to three if each failure hits a different mirror pair, but two failures in the same pair lose the array. Choose RAID 10 for random-write performance, RAID 6 for large archives and RAID 5 only for small, quick-rebuild sets.</p>`,
   dry: { head: ['Level', 'Formula', 'Usable', 'Worst-case failures'], rows: [['0', 'n × S', '24 TB', '0'], ['5', '(n−1) × S', '20 TB', '1'], ['6', '(n−2) × S', '16 TB', '2'], ['10', '(n/2) × S', '12 TB', '1']] } });
 
 // ---------------- MEDIUM ----------------
 PR({ title: 'SSTF, SCAN and LOOK on One Queue', level: 'Medium', tags: ['disk scheduling'], companies: ['Oracle', 'Samsung'],
+  complexity: `<p>SSTF O(n²) if you re-pick the nearest request each step; SCAN and LOOK O(n log n) to sort once, then one sweep.</p>`,
   statement: `<p>Head at <b>50</b> moving up, disk 0 to 199, queue <b>82, 170, 43, 140, 24, 16, 190</b>. Find the service order and total movement for SSTF, SCAN and LOOK.</p>`,
   example: `<p>SSTF order 43 24 16 82 140 170 190 = <b>208</b>. SCAN: 82 140 170 190 (199) 43 24 16 = <b>332</b>. LOOK = <b>314</b>.</p>`,
   brute: `<p>Computing only FCFS (642) wastes the chance to cut movement: the head crosses the disk four times for no reason.</p>`,
@@ -1544,6 +1549,7 @@ PR({ title: 'SSTF, SCAN and LOOK on One Queue', level: 'Medium', tags: ['disk sc
   dry: { head: ['Algorithm', 'Order', 'Total'], rows: [['SSTF', '43 24 16 82 140 170 190', '208'], ['SCAN', '82 140 170 190 → 199 → 43 24 16', '332'], ['LOOK', '82 140 170 190 → 43 24 16', '314']] } });
 
 PR({ title: 'Reads to Reach Block 100', level: 'Medium', tags: ['allocation', 'inode'], companies: ['Microsoft'],
+  complexity: `<p>O(levels): at most one pointer-block read per indirect level, plus the data block itself.</p>`,
   statement: `<p>Count the disk reads needed to read data block number 100 of a file (blocks numbered from 0) under (a) contiguous, (b) linked (pointer inside each block), (c) FAT with the table cached in RAM, (d) Unix inode with 12 direct pointers and 1024-entry indirect blocks. Assume the inode/directory entry is already in memory and nothing else is cached.</p>`,
   example: `<p>(a) 1, (b) 101, (c) 1, (d) 2 (single-indirect block + data block).</p>`,
   brute: `<p>Assuming all methods cost 1 read ignores the pointer-chasing of linked allocation and the extra indirect-block read in inodes.</p>`,
@@ -1553,15 +1559,17 @@ PR({ title: 'Reads to Reach Block 100', level: 'Medium', tags: ['allocation', 'i
   dry: { head: ['Method', 'Walk cost', 'Disk reads'], rows: [['contiguous', 'arithmetic', '1'], ['linked', '100 pointer blocks', '101'], ['FAT (cached)', '100 RAM lookups', '1'], ['inode', 'indirect block', '2']] } });
 
 PR({ title: 'Bitmap and Index Overhead', level: 'Medium', tags: ['bitmap', 'math'], companies: ['VMware'],
+  complexity: `<p>O(1) arithmetic: blocks = size / block size, then bitmap bytes = blocks / 8.</p>`,
   statement: `<p>A 2 TB file system uses 4 KB blocks. (a) Size of the free-space bitmap. (b) With a free-list that stores a 4-byte block number for every free block on an empty disk, how large is it? (c) Which is better and when?</p>`,
   example: `<p>Blocks = 2<sup>41</sup>/2<sup>12</sup> = 2<sup>29</sup>. Bitmap = 2<sup>29</sup> bits = <b>64 MB</b>. Free-list = 2<sup>29</sup> × 4 B = <b>2 GB</b>.</p>`,
   brute: `<p>Keeping one inode-like record per free block (tens of bytes each) would cost tens of GB and make allocation slow.</p>`,
   mcq: { q: 'A bitmap uses how many bits per block?', options: ['1', '8', '32', '64'], answer: 0, explain: 'One bit marks used or free.' },
-  hints: [`<p>Hint 1: blocks = size / block size.</p>`, `<p>Hint 2: bitmap bytes = blocks / 8.</p>`, `<p>Hint 3: free list size scales with the number of free blocks.</p>`],
+  hints: [`<p>Hint 1: number of blocks = file system size / block size (use powers of two).</p>`, `<p>Hint 2: the bitmap holds one bit per block, so bytes = blocks / 8.</p>`, `<p>Hint 3: free list size scales with the number of free blocks.</p>`],
   approach: `<p>2 TB = 2<sup>41</sup> bytes; 4 KB = 2<sup>12</sup>; so blocks = 2<sup>29</sup> = 536,870,912. Bitmap: one bit per block = 2<sup>29</sup> bits = 2<sup>26</sup> bytes = 64 MB regardless of how full the disk is. Free-list of 4-byte numbers on an empty disk: 2<sup>29</sup> × 4 = 2<sup>31</sup> bytes = 2 GB, which shrinks as the disk fills. The bitmap is a fixed 64 MB (cacheable per block group), supports finding runs of contiguous free blocks quickly, and is better unless the disk is almost full, where the free-list gets smaller; modern systems use per-group bitmaps or B-tree extents of free space.</p>`,
   dry: { head: ['Item', 'Value'], rows: [['blocks', '2^29'], ['bitmap', '2^29 bits = 64 MB'], ['free list (empty disk)', '2^29 × 4 B = 2 GB']] } });
 
 PR({ title: 'Choose a Journaling Mode', level: 'Medium', tags: ['journaling'], companies: ['Red Hat'],
+  complexity: `<p>No algorithm: the cost is write volume, since data journaling writes file data twice and the other modes journal only metadata.</p>`,
   statement: `<p>For each workload choose ext4 <code>journal</code>, <code>ordered</code> or <code>writeback</code> and justify: (1) a build farm with disposable output, (2) a mail spool where users must never see another user's old data in new files, (3) a small config store where file contents must match after a crash.</p>`,
   example: `<p>(1) writeback, (2) ordered, (3) journal (or ordered plus fsync with the atomic-rename recipe).</p>`,
   brute: `<p>"Always use full data journal" doubles every data write and slows a build farm by up to 2× for no real benefit.</p>`,
@@ -1571,16 +1579,18 @@ PR({ title: 'Choose a Journaling Mode', level: 'Medium', tags: ['journaling'], c
   dry: { head: ['Workload', 'Mode', 'Reason'], rows: [['build farm', 'writeback', 'fastest, output disposable'], ['mail spool', 'ordered', 'no stale-data exposure'], ['config store', 'journal / atomic rename', 'data and metadata consistent']] } });
 
 PR({ title: 'RAID 5 Small Write', level: 'Medium', tags: ['RAID', 'parity'], companies: ['NetApp'],
+  complexity: `<p>4 disk I/Os per small write (2 reads, 2 writes), independent of the number of disks.</p>`,
   statement: `<p>In a 5-disk RAID 5, an application overwrites one 4 KB block. Count the disk I/Os, give the new parity formula, and compare with RAID 10 and RAID 6. Numbers: old data 3, new data 7, old parity 5.</p>`,
   example: `<p>New parity = 5 ⊕ 3 ⊕ 7 = <b>1</b>. RAID 5: 2 reads + 2 writes = 4 I/Os.</p>`,
   brute: `<p>Reading all four other data blocks to recompute parity needs 4 reads + 2 writes = 6 I/Os and ties up every disk.</p>`,
   mcq: { q: 'RAID 6 small-write cost is…', options: ['2 I/Os', '4 I/Os', '6 I/Os', '8 I/Os'], answer: 2, explain: 'Read old data, P, Q (3) then write new data, P, Q (3).' },
-  hints: [`<p>Hint 1: parity changes only by the difference between old and new data.</p>`, `<p>Hint 2: new P = old P ⊕ old D ⊕ new D.</p>`, `<p>Hint 3: count reads and writes separately.</p>`],
+  hints: [`<p>Hint 1: parity changes only by the difference between old and new data.</p>`, `<p>Hint 2: new parity P' = old P ⊕ old D ⊕ new D, using only the three known values.</p>`, `<p>Hint 3: count reads and writes separately.</p>`],
   approach: `<p>Read-modify-write: read the old data block (1) and the old parity block (2); compute P' = P ⊕ D ⊕ D' = 5 ⊕ 3 ⊕ 7. In binary 101 ⊕ 011 = 110; 110 ⊕ 111 = 001, so P' = 1. Then write the new data (3) and new parity (4): four I/Os for one logical write, on only two of the five disks. RAID 6 needs six I/Os because P and Q must both be updated; RAID 10 needs just two writes (one per mirror); RAID 1 also two. Full-stripe writes avoid the reads, so sequential workloads and log-structured designs hide the penalty.</p>`,
   dry: { head: ['Step', 'I/O', 'Value'], rows: [['1', 'read old D', '3'], ['2', 'read old P', '5'], ['3', 'compute P\' = 5 ^ 3 ^ 7', '1'], ['4', 'write new D, new P', '7, 1']] } });
 
 // ---------------- HARD ----------------
 PR({ title: 'Locate Byte Offset 3,000,000,000', level: 'Hard', tags: ['inode', 'math'], companies: ['Google', 'Apple'],
+  complexity: `<p>O(levels): one division per level to pick the pointer index, then at most 3 pointer-block reads.</p>`,
   statement: `<p>4 KB blocks, 4-byte pointers, 12 direct + single/double/triple indirect. For byte offset <b>3,000,000,000</b> find: the logical block number, the pointer level, the slot index in each pointer block, the offset inside the data block, and the number of cold disk reads.</p>`,
   example: `<p>Block 732,421 → double indirect; L1 slot 714, L2 slot 249; offset in block 3,584; 3 reads (L1 block, L2 block, data).</p>`,
   brute: `<p>Dividing by 4 KB and assuming a flat array of 732,421 pointers ignores the fixed 15-pointer inode: only 12 + a few indirect roots exist.</p>`,
@@ -1590,6 +1600,7 @@ PR({ title: 'Locate Byte Offset 3,000,000,000', level: 'Hard', tags: ['inode', '
   dry: { head: ['Step', 'Value', 'Test'], rows: [['b = 3e9 / 4096', '732,421', '≥ 12'], ['b − 12', '732,409', '≥ 1024'], ['− 1024', '731,385', '< 1024² → double'], ['L1 slot', '714', '731,385 / 1024'], ['L2 slot', '249', '731,385 mod 1024']] } });
 
 PR({ title: 'Durable Config Update After a Crash', level: 'Hard', tags: ['fsync', 'journaling', 'design'], companies: ['Google', 'Stripe'],
+  complexity: `<p>Cost is flush latency, not data size: two fsync calls (file and directory) per update of the 10 KB file.</p>`,
   statement: `<p>A service rewrites <code>/etc/app/config.json</code> (10 KB) on every admin change. Power can fail at any moment. Design the update procedure so that after any crash the file is either entirely the old version or entirely the new one, and list what each crash point leaves. Explain why <code>write</code> + <code>close</code> is not enough.</p>`,
   example: `<p>Recipe: write <code>config.json.tmp</code> in the same directory, <code>fsync</code> it, <code>rename</code> over the target, <code>fsync</code> the directory.</p>`,
   brute: `<p>Opening config.json with O_TRUNC and writing in place: a crash after truncate leaves an empty file, and a crash mid-write leaves a mix of old and new bytes. Even without a crash, close() does not flush.</p>`,
@@ -1600,6 +1611,7 @@ PR({ title: 'Durable Config Update After a Crash', level: 'Hard', tags: ['fsync'
   followUps: ['How would you keep a backup of the previous version?', 'What changes on a copy-on-write file system?'] });
 
 PR({ title: 'RAID 5 Rebuild Time and URE Risk', level: 'Hard', tags: ['RAID', 'reliability'], companies: ['Dell EMC', 'Pure Storage'],
+  complexity: `<p>O(capacity): rebuild reads every surviving disk once, so time = disk size / disk speed and bits read = 4 × 8 TB.</p>`,
   statement: `<p>A RAID 5 array has five 8 TB disks. One fails and is replaced. Each disk streams at 150 MB/s. Disk spec: one unrecoverable read error (URE) per 10<sup>14</sup> bits. Estimate (a) rebuild time, (b) the expected number of UREs during rebuild and the probability of at least one, (c) what you would change.</p>`,
   example: `<p>(a) ≈ 14.8 hours, (b) 32 TB read = 2.56 × 10<sup>14</sup> bits → expected 2.56 UREs → P ≈ 92%, (c) RAID 6, enterprise disks, smaller arrays or erasure coding.</p>`,
   brute: `<p>"Disks are reliable, so a rebuild just works" ignores that all four survivors must be read completely and that one bad sector with no parity left means data loss for that stripe.</p>`,
@@ -1610,6 +1622,7 @@ PR({ title: 'RAID 5 Rebuild Time and URE Risk', level: 'Hard', tags: ['RAID', 'r
   followUps: ['How does scrubbing change the risk?', 'How does 10+4 erasure coding compare in overhead to RAID 6?'] });
 
 PR({ title: 'Head Moving Down: All Six Algorithms', level: 'Hard', tags: ['disk scheduling', 'math'], companies: ['Samsung', 'Qualcomm'],
+  complexity: `<p>O(n) per algorithm for the totals, plus O(n log n) to sort the queue for SCAN, C-SCAN, LOOK and C-LOOK.</p>`,
   statement: `<p>Disk cylinders 0 to 199. The head is at <b>100</b> and is currently moving <b>toward 0</b>. Queue: <b>23, 89, 132, 42, 187, 10, 150</b>. Compute total movement for FCFS, SSTF, SCAN, C-SCAN, LOOK and C-LOOK (count return jumps). Which is best, and what is surprising about SSTF vs SCAN?</p>`,
   example: `${H.table(['Algorithm', 'Total'], [['FCFS', '738'], ['SSTF', '286'], ['SCAN', '287'], ['C-SCAN', '366'], ['LOOK', '267'], ['C-LOOK', '322']])}`,
   brute: `<p>Reusing the "moving up" formulas flips the answer: a head moving down first serves 89, 42, 23, 10 before touching 132, 150, 187, which changes every sweep total.</p>`,
@@ -1620,17 +1633,6 @@ PR({ title: 'Head Moving Down: All Six Algorithms', level: 'Hard', tags: ['disk 
   followUps: ['Compute the average seek per request for each', 'What changes if the jump is not counted?'] });
 
 // =====================================================================
-// pad any very short hint so every hint carries enough guidance
-function padHints(list) {
-  list.forEach(function (p) {
-    p.hints = p.hints.map(function (h) {
-      return h.replace(/<[^>]*>/g, '').length < 45 ? h.replace('</p>', ' Write each number down as you go.</p>') : h;
-    });
-  });
-}
-padHints(practice);
-topics.forEach(function (t) { padHints(t.problems || []); });
-
 registerModule({
   id: 'cs07',
   title: 'File Systems, I/O & Storage',

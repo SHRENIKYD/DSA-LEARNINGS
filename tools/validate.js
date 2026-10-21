@@ -284,7 +284,11 @@ function codeCheck() {
       for (let i = 0; i < tries.length; i++) {
         const f = path.join(tmp, 'c' + k + '_' + i + '.cpp');
         fs.writeFileSync(f, tries[i]);
-        const r = spawnSync('g++', ['-std=c++20', '-fsyntax-only', '-w', '-include', hdr, f], { encoding: 'utf8', timeout: 60000 });
+        // A busy machine can stall g++; retry a timed-out compile once and say so if it times out again.
+        const gxx = () => spawnSync('g++', ['-std=c++20', '-fsyntax-only', '-w', '-include', hdr, f], { encoding: 'utf8', timeout: 180000 });
+        let r = gxx();
+        if (r.error && r.error.code === 'ETIMEDOUT') r = gxx();
+        if (r.error && r.error.code === 'ETIMEDOUT') { msg = 'g++ timed out twice (180 s each); the machine is overloaded, re-run this module'; break; }
         if (r.status === 0) { ok++; return; }
         if (i === 0) msg = r.stderr;
       }

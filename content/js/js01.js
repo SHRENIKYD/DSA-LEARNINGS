@@ -2155,7 +2155,7 @@ for (const y of [1900, 2000, 2023, 2024, 2100]) {
 ` },
       dry: { head: ['year', '%4', '%100', '%400', 'result'], rows: [['2024', '0 ✓', '24 ✓(≠0)', '—', H.c('g', 'true')], ['1900', '0 ✓', '0 ✗', '300 ✗', H.c('r', 'false')], ['2000', '0 ✓', '0 ✗', '0 ✓', H.c('g', 'true')], ['2023', '3 ✗', '—', '23 ✗', H.c('r', 'false')]] },
       complexity: `<p>O(1) time and O(1) space — at most three modulo checks, no matter how large the year.</p>`,
-      followUps: ['Count leap years between two years in O(1) using floor division.', 'Why might <code>isLeapViaDate</code> be slower and what edge cases does Date have before 1970?']
+      followUps: ['Count leap years between two years in O(1) using floor division.', 'Why might <code>isLeapViaDate</code> be slower, and why does it answer false for every year past 275,760 (the limit of a JavaScript Date)?']
     }
   });
 

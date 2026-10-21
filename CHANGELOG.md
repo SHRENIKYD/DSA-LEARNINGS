@@ -4,6 +4,24 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.2] — 2026-10-21 · Cleanup and test gaps
+
+### Changed
+- Generic filler that some modules appended to short hints and complexity notes ("Take a moment to reason it through…", "Try it on paper first…", "Verify the numbers with a real measurement.") is gone. About 520 hints, complexity notes and explanations in 16 modules (GenAI 3, 11, 12, 13, 15, 16; Backend 12, 14, 16; Behavioral 1–3; CS 2, 7, 10, 12) were rewritten as specific hints for their problems.
+- C++ 9–13: 85 problems that were tested with a single run of the demo program are now tested function by function with 7–31 cases each. The 16 that stay single-run are "predict the output" programs, concurrency litmus tests and compile-time demonstrations.
+
+### Fixed
+- Cloud & DevOps 9 and 18 target AWS provider 6 (checked with `terraform validate` on provider 6.69); the capstone uses version 21 of the EKS module.
+- Cloud & DevOps 10 pins ansible-core 2.21 and ansible-lint 26; all 30 playbooks pass `--syntax-check`, and four lint findings in the lesson playbooks are fixed.
+- Cloud & DevOps 14: the pinned Bitnami Redis chart pulls an image that no longer exists; the lesson now uses a chart based on the official Redis image and explains why.
+- Backend 9: the Spring Kafka example explains correctly when the offset is committed relative to the database transaction, and uses `ON CONFLICT DO NOTHING` instead of catching a duplicate-key error inside the transaction.
+- JavaScript 1: a follow-up question now names the real limit of the Date-based leap-year check (years past 275,760).
+
+### Tests and tools
+- Solutions that also teach a second version of the method (for example an idiomatic one-liner next to the loop) now test that version too, with `tests.also` in `tools/solution-check.js` (15 versions in 9 modules).
+- The Java 11 Fair Ticket Lock test is lighter and stricter: it checks that no two threads are ever inside the lock at once, so it no longer times out under load.
+- `tools/validate.js` retries a C++ snippet compile that timed out and reports a timeout as a timeout, instead of a failure with no message.
+
 ## [1.10.1] — 2026-10-21 · Content review
 
 Full release notes: [docs/RELEASE_REVIEW.md](docs/RELEASE_REVIEW.md).

@@ -271,11 +271,11 @@ class MHA(nn.Module):
     example: `<p>Attention 4 × 2048² = ${H.c('g', '16.78M')}; MLP 8 × 2048² = ${H.c('g', '33.55M')}; layer = ${H.c('b', '50.3M')}; 24 layers = ${H.c('b', '1.21B')}.</p>`,
     brute: { why: `<p>Guessing "d × heads × layers" mixes up counts and ignores that every projection is a full d×d matrix.</p>` },
     mcq: { q: 'What is d_head?', options: ['d_model / number of heads = 128', 'number of heads × 2', 'd_model × heads'], answer: 0, explain: 'The model width is split evenly across heads.' },
-    hints: [`<p>Hint 1: four d×d matrices in attention.</p>`, `<p>Hint 2: MLP up d×4d plus down 4d×d.</p>`, `<p>Hint 3: add them: 4d² + 8d² = 12d², then multiply by layers.</p>`],
+    hints: [`<p>Hint 1: attention has four projection matrices (Wq, Wk, Wv, Wo), each d×d.</p>`, `<p>Hint 2: the MLP has an up matrix d×4d and a down matrix 4d×d, so count both.</p>`, `<p>Hint 3: add them: 4d² + 8d² = 12d², then multiply by layers.</p>`],
     solution: {
       approach: `<p>d² = 4,194,304. Attention = 4d² = 16,777,216. MLP = d·4d + 4d·d = 8d² = 33,554,432. Layer = 12d² = 50,331,648 ≈ 50.3M. Over 24 layers: 1,207,959,552 ≈ 1.21B. Heads do not change the count because splitting d into heads just reshapes the same matrices.</p>`,
       code: { lang: 'python', run: true, code: `d, L = 2048, 24\nlayer = 4 * d * d + 8 * d * d\nprint(layer, 'per layer;', layer * L, 'for', L, 'layers')` },
-      complexity: `<p>O(1) arithmetic.</p>`
+      complexity: `<p>O(1): a few multiplications, independent of any sequence length.</p>`
     }
   }, {
     title: 'Do more heads cost more?',
@@ -285,7 +285,7 @@ class MHA(nn.Module):
     example: `<p>d = 4096: 32 heads × 128 or 64 heads × 64 — same parameter count ${H.c('g', '4d²')}.</p>`,
     brute: { why: `<p>"Heads multiply everything": wrong, because d_head shrinks as heads grow.</p>` },
     mcq: { q: 'Doubling heads with d_model fixed changes parameters by…', options: ['nothing', 'x2', 'x4'], answer: 0, explain: 'Projection matrices stay d×d; only the reshape changes.' },
-    hints: [`<p>Hint 1: d_head = d/h.</p>`, `<p>Hint 2: matmul FLOPs depend on d, not on h.</p>`, `<p>Hint 3: the real cost is score memory h·n² and tiny d_head hurting GPU efficiency.</p>`],
+    hints: [`<p>Hint 1: with d fixed, each head gets d_head = d/h, so more heads means narrower heads.</p>`, `<p>Hint 2: matmul FLOPs depend on d, not on h.</p>`, `<p>Hint 3: the real cost is score memory h·n² and tiny d_head hurting GPU efficiency.</p>`],
     solution: {
       approach: `<p>Parameters and projection FLOPs stay the same because each head becomes narrower (d_head = d/h). The attention-score work per layer is h × n² × d_head = n²·d, also unchanged. What does grow: the number of n×n score tables (h of them) if you materialise them, and kernel efficiency can drop when d_head gets very small (below 64). Quality gains saturate. With GQA (4 KV heads instead of 32) the K and V projections shrink by 8×, parameters fall slightly, and the KV cache shrinks 8×, which speeds up decoding and allows longer contexts, with small quality loss. So the PM is wrong on cost, and the more interesting lever for cost is the number of KV heads.</p>`,
       complexity: `<p>FLOPs for scores/values: O(n²·d) regardless of h.</p>`
@@ -515,7 +515,7 @@ for t, x in enumerate(tokens):
     solution: {
       approach: `<p>(a) 2 × 32 × 32 × 128 = 262,144 values per token; × 2 bytes = 524,288 B (0.5 MiB). (b) × 8192 = 4,294,967,296 B = 4 GiB. (c) 40 × 10<sup>9</sup> B / 2<sup>30</sup> = 37.25 GiB; 37.25 / 4 = 9.3 → 9 sequences. With GQA (8 KV heads) each sequence is 1 GiB so 37 would fit. This is why serving stacks care about GQA and KV quantization.</p>`,
       code: { lang: 'python', run: true, code: `per_tok = 2 * 32 * 32 * 128 * 2\nseq = per_tok * 8192\nprint(per_tok, seq / 2**30, int(40e9 // seq))` },
-      complexity: `<p>O(1) arithmetic.</p>`
+      complexity: `<p>O(1): a few multiplications and one division.</p>`
     }
   }, {
     title: 'Why is token 500 not 500x slower than token 1?',
@@ -633,7 +633,7 @@ model = AutoModelForCausalLM.from_pretrained('some-7b-model', quantization_confi
     example: `<p>int8: absmax 1.0 → scale 0.007874; codes ${H.c('g', '[64, −127, 32, 13]')}; restored [0.504, −1.000, 0.252, 0.102]; max error ${H.c('b', '0.004')}. int4: scale 0.1429; codes [4, −7, 2, 1]; max error ${H.c('r', '0.071')}.</p>`,
     brute: { why: `<p>Rounding every weight to 1 decimal place is not quantization: it saves no memory because you still store full floats.</p>` },
     mcq: { q: 'What bounds the rounding error of one weight?', options: ['scale / 2', 'absmax', '127'], answer: 0, explain: 'Nearest mark is at most half a mark away.' },
-    hints: [`<p>Hint 1: scale = absmax / qmax.</p>`, `<p>Hint 2: q = round(w / scale); restore with q × scale.</p>`, `<p>Hint 3: error = |w − q×scale|, max over weights; theoretical bound scale/2.</p>`],
+    hints: [`<p>Hint 1: find the largest absolute weight, then scale = absmax / qmax.</p>`, `<p>Hint 2: q = round(w / scale); restore with q × scale.</p>`, `<p>Hint 3: error = |w − q×scale|, max over weights; theoretical bound scale/2.</p>`],
     solution: {
       approach: `<p>int8: absmax = 1.0, scale = 1/127 = 0.007874. Codes: 0.5/0.007874 = 63.5 → 64 (half-up), −1.0 → −127, 0.25 → 31.75 → 32, 0.1 → 12.7 → 13. Restored: 0.504, −1.000, 0.252, 0.102. Errors: 0.004, 0, 0.002, 0.002; the bound is scale/2 = 0.0039 (the 0.004 comes from half-up rounding of 63.5). int4: scale = 1/7 = 0.1429. Codes: 3.5 → 4, −7, 1.75 → 2, 0.7 → 1. Restored 0.571, −1.0, 0.286, 0.143; errors 0.071, 0, 0.036, 0.043; bound 0.071. Conclusion: int4 error is about 18× bigger, matching the ratio 127/7.</p>`,
       code: { lang: 'python', run: true, code: `w = [0.5, -1.0, 0.25, 0.1]\nfor bits in (8, 4):\n    qm = 2 ** (bits - 1) - 1\n    s = max(abs(x) for x in w) / qm\n    q = [int(x / s + 0.5) if x >= 0 else -int(-x / s + 0.5) for x in w]\n    back = [v * s for v in q]\n    print(bits, q, [round(b, 3) for b in back], round(max(abs(a - b) for a, b in zip(w, back)), 4))` },
@@ -730,11 +730,11 @@ print('GPU-days for 7B @ 140B tokens:', round(flops(7e9, 140e9) / gpu_flops / 86
     example: `<p>FLOPs = 128 × 3×10<sup>14</sup> × 2.592×10<sup>6</sup> s = ${H.c('g', '≈ 1.0 × 10²³')}; N ≈ ${H.c('b', '29B')}, D ≈ ${H.c('b', '0.58T')}.</p>`,
     brute: { why: `<p>"Biggest model that fits in memory" ignores that the model would see too few tokens to use its capacity.</p>` },
     mcq: { q: 'If compute is multiplied by 4, compute-optimal N changes by…', options: ['×2', '×4', '×16'], answer: 0, explain: 'N = √(C/120), so 4× compute → 2× N and 2× D.' },
-    hints: [`<p>Hint 1: seconds in 30 days = 2,592,000.</p>`, `<p>Hint 2: N = √(C/120).</p>`, `<p>Hint 3: think about serving cost for a billion queries a day.</p>`],
+    hints: [`<p>Hint 1: 30 days is 30 × 86,400 = 2,592,000 seconds; multiply by GPUs × FLOP/s.</p>`, `<p>Hint 2: with C = 6ND and D = 20N, C = 120N², so N = √(C/120).</p>`, `<p>Hint 3: think about serving cost for a billion queries a day.</p>`],
     solution: {
       approach: `<p>(a) C = 128 × 3×10<sup>14</sup> × 2.592×10<sup>6</sup> = 9.95×10<sup>22</sup> ≈ 10<sup>23</sup> FLOPs. (b) N = √(9.95×10<sup>22</sup>/120) = √(8.29×10<sup>20</sup>) ≈ 2.88×10<sup>10</sup> ≈ 29B parameters; D = 20N ≈ 5.8×10<sup>11</sup> = 0.58T tokens. (c) With 10<sup>9</sup> queries a day, inference cost will dwarf the one-off training cost, so a smaller model (say 7–8B) trained on several trillion tokens (over-trained) can reach similar quality and cost ~4× less per query. I would choose the smaller, over-trained model, possibly with distillation from a bigger one. Also check data availability: 0.58T tokens is easy, but 5T+ needs a strong data pipeline.</p>`,
       code: { lang: 'python', run: true, code: `import math\nC = 128 * 3e14 * 30 * 86400\nN = math.sqrt(C / 120)\nprint('%.2e FLOPs  N=%.1fB  D=%.2fT' % (C, N / 1e9, 20 * N / 1e12))` },
-      complexity: `<p>O(1) arithmetic.</p>`
+      complexity: `<p>O(1): a handful of multiplications and one square root.</p>`
     }
   }]
 });
@@ -853,11 +853,11 @@ class MoE(nn.Module):
     example: `<p>Experts: 16 × 8 × 0.5B = ${H.c('g', '64B')}; total = ${H.c('b', '66B')}; active = 2B + 16 × 2 × 0.5B = ${H.c('b', '18B')}; fraction ${H.c('y', '27%')}.</p>`,
     brute: { why: `<p>Saying "8 experts × 0.5B = 4B per layer is all active" misses that only 2 of the 8 run.</p>` },
     mcq: { q: 'For a fixed total size, what usually costs more memory than a dense model with the same ACTIVE parameters?', options: ['An MoE, because all experts must be stored', 'Neither, they are equal', 'The dense model'], answer: 0, explain: 'Active parameters set compute, total parameters set memory.' },
-    hints: [`<p>Hint 1: total = shared + layers × experts × size.</p>`, `<p>Hint 2: active = shared + layers × k × size.</p>`, `<p>Hint 3: fraction = active / total.</p>`],
+    hints: [`<p>Hint 1: total = shared + layers × experts × size.</p>`, `<p>Hint 2: active = shared + layers × k × size.</p>`, `<p>Hint 3: the fraction active is active parameters divided by total parameters.</p>`],
     solution: {
       approach: `<p>Total = 2B + 16 × 8 × 0.5B = 2 + 64 = 66B. Active = 2B + 16 × 2 × 0.5B = 2 + 16 = 18B. Fraction = 18/66 ≈ 27%. Per-token compute is about that of an 18B dense model but you need memory for 66B (132 GB in fp16, 33 GB at 4-bit). Training FLOPs use active parameters: 6 × 18B per token.</p>`,
       code: { lang: 'python', run: true, code: `shared, L, E, k, ex = 2.0, 16, 8, 2, 0.5\ntotal = shared + L * E * ex\nactive = shared + L * k * ex\nprint(total, active, round(active / total, 3))` },
-      complexity: `<p>O(1).</p>`
+      complexity: `<p>O(1): two sums of products, then one division.</p>`
     }
   }, {
     title: 'Why does the router collapse?',
@@ -867,7 +867,7 @@ class MoE(nn.Module):
     example: `<p>Expert A gets more tokens → learns faster → router scores for A rise → ${H.c('r', 'even more tokens go to A')}. Others starve.</p>`,
     brute: { why: `<p>"Just train longer" does not help: starved experts never receive gradient, so the loop gets stronger.</p>` },
     mcq: { q: 'What does an auxiliary load-balancing loss do?', options: ['penalises uneven token distribution across experts', 'shrinks the router', 'increases k'], answer: 0, explain: 'It pushes the router to spread tokens evenly.' },
-    hints: [`<p>Hint 1: rich-get-richer dynamics.</p>`, `<p>Hint 2: add a term that is minimal when tokens/probability are uniform across experts.</p>`, `<p>Hint 3: also consider capacity limits, noise, and bias adjustments.</p>`],
+    hints: [`<p>Hint 1: think rich-get-richer: what happens to an expert that gets more tokens early on?</p>`, `<p>Hint 2: add a term that is minimal when tokens/probability are uniform across experts.</p>`, `<p>Hint 3: also consider capacity limits, noise, and bias adjustments.</p>`],
     solution: {
       approach: `<p>Cause: a positive feedback loop. Experts that receive more tokens get more gradient, improve faster, so the router (trained to send tokens where loss is lowest) sends them even more; unpopular experts get little or no gradient and stay bad. Fixes: (1) auxiliary balance loss: E · Σ f<sub>i</sub>·P<sub>i</sub>, where f<sub>i</sub> is the fraction of tokens sent to expert i and P<sub>i</sub> its mean router probability, minimised when load is uniform; (2) capacity factor so an expert accepts at most C × (tokens/E) tokens per batch, with overflow dropped or re-routed; (3) router noise or jitter during training to explore; (4) bias-based balancing (DeepSeek): add a per-expert bias to the selection score and nudge it down for overloaded and up for underused experts, with no gradient interference; (5) router z-loss to keep logits small and stable; (6) shared experts that handle common knowledge, so routed experts can specialise; (7) initialise the router near uniform and use higher precision for it. Monitor per-expert load histograms during training to detect collapse early.</p>`,
       complexity: `<p>Balance loss costs O(tokens × E) per layer.</p>`
@@ -1027,7 +1027,7 @@ print('full softmax  :', round(ref, 6), '(identical: FlashAttention is exact)')`
     example: `<p>(a) all j ≤ i → ${H.c('g', '21 pairs')}. (b) j in [i−2, i] → rows allow 1,2,3,3,3,3 = ${H.c('b', '15 pairs')}.</p>`,
     brute: { why: `<p>Using the full causal mask for long inputs costs n²/2 pairs; for n = 128k that is 8.6 billion per head per layer.</p>` },
     mcq: { q: 'In sliding window attention with window w, token i attends to…', options: ['tokens i−w+1 … i', 'tokens i … i+w', 'only the first w tokens'], answer: 0, explain: 'The last w tokens including itself; nothing in the future.' },
-    hints: [`<p>Hint 1: causal means j ≤ i.</p>`, `<p>Hint 2: window w means also i − j &lt; w.</p>`, `<p>Hint 3: count row by row: min(i, w).</p>`],
+    hints: [`<p>Hint 1: causal means token i may attend only to positions j with j ≤ i.</p>`, `<p>Hint 2: window w means also i − j &lt; w.</p>`, `<p>Hint 3: count row by row: row i allows min(i, w) positions, then add the rows up.</p>`],
     solution: {
       approach: `<p>Causal: row i allows j = 1..i, i.e. counts 1,2,3,4,5,6 = 21. Window w = 3: row i allows j = max(1, i−2)..i, so counts 1,2,3,3,3,3 = 15. In general windowed pairs = w(w+1)/2 + (n−w)·w for n ≥ w = 6 + 9 = 15. The saving grows with n: for n = 100, w = 3 the windowed count is 297 vs 5050. Use the visualiser above to see the band shape.</p>`,
       code: { lang: 'python', run: true, code: `n, w = 6, 3\nfor i in range(1, n + 1):\n    print(i, ''.join('X' if (j <= i and i - j < w) else '.' for j in range(1, n + 1)))\nprint(sum(min(i, w) for i in range(1, n + 1)))` },
@@ -1062,47 +1062,47 @@ P('Two-token attention by hand', 'Easy', ['attention', 'softmax'],
   `<p>Scores for b: [0, 4] / 1.414 = [0, 2.828]. exp = [1, 16.92]; weights ${H.c('g', '[0.056, 0.944]')}; output ${H.c('g', '[0.056, 1.888]')}.</p>`,
   `<p>Skipping the √d scale gives scores [0, 4] and weights [0.018, 0.982], over-sharp.</p>`,
   { q: 'Do attention weights for one query sum to…', options: ['1', 'd', 'n'], answer: 0, explain: 'Softmax normalises each row.' },
-  [`<p>Hint 1: b·a = 0 and b·b = 4.</p>`, `<p>Hint 2: divide by √2 then softmax.</p>`, `<p>Hint 3: output = 0.056·[1,0] + 0.944·[0,2].</p>`],
+  [`<p>Hint 1: token b is the query, so its scores are b·a = 0 and b·b = 4 before scaling.</p>`, `<p>Hint 2: divide the scores by √d = √2, then softmax them to get the weights.</p>`, `<p>Hint 3: output = 0.056·[1,0] + 0.944·[0,2].</p>`],
   `<p>Scores: b·a = 0, b·b = 4. Scale by 1/√2: [0, 2.828]. Softmax: exp(0) = 1, exp(2.828) = 16.92, sum 17.92, so weights [0.0558, 0.9442]. Output = 0.0558·[1, 0] + 0.9442·[0, 2] = [0.056, 1.888]. Token b mostly copies itself because its own key matches its query best; this is a typical early-layer pattern.</p>`,
   `import math\nX = [[1, 0], [0, 2]]\nq = X[1]\ns = [sum(a * b for a, b in zip(q, k)) / math.sqrt(2) for k in X]\ne = [math.exp(v) for v in s]\nw = [v / sum(e) for v in e]\nprint([round(v, 3) for v in w], [round(sum(w[j] * X[j][c] for j in range(2)), 3) for c in range(2)])`,
-  `<p>O(n²·d).</p>`);
+  `<p>O(n²·d) for n tokens of width d; here n = 2 and d = 2, so a few operations.</p>`);
 
 P('Parameters in a LLaMA-style layer', 'Easy', ['parameters', 'GQA', 'SwiGLU'],
   `<p>d = 4096, 32 query heads, 8 KV heads, d<sub>head</sub> = 128, SwiGLU MLP with hidden 14336 (three matrices), no biases. Count parameters of one layer.</p>`,
   `<p>Wq 16.8M + Wo 16.8M + Wk 4.2M + Wv 4.2M = ${H.c('g', '41.9M')}; MLP 3 × 4096 × 14336 = ${H.c('b', '176.2M')}; layer ${H.c('y', '218.1M')}.</p>`,
   `<p>Assuming 4d² + 8d² = 201M overlooks GQA (smaller K/V) and the real MLP width.</p>`,
   { q: 'GQA shrinks which matrices?', options: ['Wk and Wv', 'Wq and Wo', 'the MLP'], answer: 0, explain: 'Fewer KV heads means narrower K and V projections.' },
-  [`<p>Hint 1: Wq and Wo are d×d.</p>`, `<p>Hint 2: Wk and Wv are d × (kv_heads × d_head) = 4096 × 1024.</p>`, `<p>Hint 3: add the 3-matrix MLP.</p>`],
+  [`<p>Hint 1: Wq and Wo are both d×d, because all 32 query heads are kept.</p>`, `<p>Hint 2: Wk and Wv are d × (kv_heads × d_head) = 4096 × 1024.</p>`, `<p>Hint 3: add the SwiGLU MLP, which has three d×hidden matrices, to the attention total.</p>`],
   `<p>Attention: Wq = 4096 × 4096 = 16,777,216; Wo = same; Wk = Wv = 4096 × 1024 = 4,194,304 each. Attention total = 41,943,040. MLP: gate, up and down each 4096 × 14336 = 58,720,256, total 176,160,768. Layer = 218,103,808 ≈ 218M. Times 32 layers = 6.98B; plus embeddings (32000×4096×2 = 262M, or larger vocab) gives LLaMA-3-8B-like sizes. Note the MLP is ~80% of the layer, which is why MoE targets the FFN.</p>`,
   `d, kv, dh, hid = 4096, 8, 128, 14336\nattn = 2 * d * d + 2 * d * kv * dh\nmlp = 3 * d * hid\nprint(attn, mlp, attn + mlp)`,
-  `<p>O(1).</p>`);
+  `<p>O(1): a few products and one sum for the layer.</p>`);
 
 P('KV cache for a 13B model at 4k context', 'Easy', ['kv cache', 'memory'],
   `<p>LLaMA-2-13B style: 40 layers, 40 KV heads, d<sub>head</sub> = 128, fp16. Compute KV cache for one 4,096-token sequence.</p>`,
   `<p>Per token ${H.c('g', '800 KiB')}; 4,096 tokens = ${H.c('b', '3.125 GiB')}.</p>`,
   `<p>Using 13B × 2 bytes (the weight size) confuses the fixed weights with the growing cache.</p>`,
   { q: 'Which grows with sequence length?', options: ['KV cache', 'weights', 'vocabulary'], answer: 0, explain: 'Cache holds one K and V per token.' },
-  [`<p>Hint 1: 2 × layers × heads × d_head per token.</p>`, `<p>Hint 2: × 2 bytes.</p>`, `<p>Hint 3: × 4096 tokens.</p>`],
+  [`<p>Hint 1: 2 × layers × heads × d_head per token.</p>`, `<p>Hint 2: each cached number is fp16, so multiply the element count by 2 bytes.</p>`, `<p>Hint 3: the cache grows per token, so multiply the per-token bytes by 4096 tokens.</p>`],
   `<p>Elements per token = 2 × 40 × 40 × 128 = 409,600; × 2 bytes = 819,200 B = 800 KiB. For 4,096 tokens: 3,355,443,200 B = 3.125 GiB. With weights at 26 GB fp16 one user needs ~29 GB; on a 40 GB GPU only about 4 concurrent 4k users fit, which is why serving engines use paging and GQA.</p>`,
   `per = 2 * 40 * 40 * 128 * 2\nprint(per, per * 4096 / 2**30)`,
-  `<p>O(1).</p>`);
+  `<p>O(1) arithmetic; the cache itself grows linearly with context length.</p>`);
 
 P('Weight memory by precision', 'Easy', ['quantization', 'memory'],
   `<p>How much memory do the weights of a 70B model need in fp16, int8 and int4? Which fits on a single 80 GB GPU (ignore KV cache)?</p>`,
   `<p>fp16 ${H.c('r', '140 GB')}, int8 ${H.c('y', '70 GB')}, int4 ${H.c('g', '35 GB')}.</p>`,
   `<p>Loading fp16 weights on one 80 GB GPU fails with out-of-memory at load time.</p>`,
   { q: 'Bytes per parameter in int4?', options: ['0.5', '2', '4'], answer: 0, explain: 'Four bits is half a byte.' },
-  [`<p>Hint 1: memory = params × bytes.</p>`, `<p>Hint 2: fp16 = 2, int8 = 1, int4 = 0.5 bytes.</p>`, `<p>Hint 3: leave room for KV cache and activations.</p>`],
+  [`<p>Hint 1: memory = number of parameters × bytes per parameter.</p>`, `<p>Hint 2: fp16 = 2, int8 = 1, int4 = 0.5 bytes.</p>`, `<p>Hint 3: leave room for KV cache and activations.</p>`],
   `<p>70×10<sup>9</sup> × 2 B = 140 GB; × 1 B = 70 GB; × 0.5 B = 35 GB (plus about 5-10% for scales). Only int4 leaves useful room (about 40 GB) on one 80 GB GPU for the KV cache. int8 at 70 GB technically fits but leaves almost nothing for context and batching; fp16 needs at least two 80 GB GPUs (tensor parallel). Trade-off: int4 loses a little quality, so evaluate on your task.</p>`,
   `for name, b in (('fp16', 2), ('int8', 1), ('int4', 0.5)):\n    print(name, 70e9 * b / 1e9, 'GB')`,
-  `<p>O(1).</p>`);
+  `<p>O(1): one multiplication for each precision.</p>`);
 
 P('Combine padding and causal masks', 'Medium', ['masking', 'batching'],
   `<p>A batch has a sequence of 4 real tokens padded to length 6 ([t1 t2 t3 t4 PAD PAD]). Which cells of the 6×6 attention score table must be masked for a decoder-only model? How do you stop PAD rows from producing NaN?</p>`,
   `<p>Masked: all j &gt; i (future) ${H.c('r', 'and')} all columns j ≥ 4 (PAD keys). Rows 4 and 5 (PAD queries) are ignored in the loss.</p>`,
   `<p>Only a causal mask: real tokens never look right so they are safe, but with left padding, or a bidirectional encoder, real tokens would attend to PAD garbage.</p>`,
   { q: 'Mask values are added to scores…', options: ['before softmax', 'after softmax', 'to V'], answer: 0, explain: '-∞ before softmax gives weight 0 after.' },
-  [`<p>Hint 1: causal = upper triangle.</p>`, `<p>Hint 2: padding = columns of PAD tokens.</p>`, `<p>Hint 3: a row that is entirely masked gives softmax of all -∞ = NaN; use a large finite negative or ensure each row has one allowed cell.</p>`],
+  [`<p>Hint 1: the causal mask hides the upper triangle, every cell with j greater than i.</p>`, `<p>Hint 2: padding = columns of PAD tokens.</p>`, `<p>Hint 3: a row that is entirely masked gives softmax of all -∞ = NaN; use a large finite negative or ensure each row has one allowed cell.</p>`],
   `<p>Final mask = causal OR padding-key mask. Allowed cells (row i, col j): j ≤ i and j &lt; 4. So rows 0..3 are the usual lower triangle on the 4 real tokens; rows 4 and 5 (PAD queries) may see columns 0..3 only (they are still garbage and excluded from the loss). If a row were fully masked (e.g. left padding with the first query), softmax over all -∞ yields 0/0 = NaN, so frameworks use the dtype minimum (about -3.4e38 or -1e9) instead of true -∞ or force the diagonal to be allowed. Also remember document masks when sequences from different documents are packed in one row.</p>`,
   `NEG = -1e9\nn, real = 6, 4\nfor i in range(n):\n    print(''.join('X' if (j <= i and j < real) else '.' for j in range(n)))`,
   `<p>O(n²) mask, applied in fused kernels without materialising it.</p>`);
@@ -1112,50 +1112,50 @@ P('Sinusoidal encoding at position 2', 'Medium', ['positional encoding', 'sinuso
   `<p>Pair 0 freq 1: (sin 2, cos 2) = (0.909, −0.416). Pair 1 freq 0.01: (sin 0.02, cos 0.02) = (0.020, 1.000).</p>`,
   `<p>Using the raw integer position as a feature makes the number unbounded and hard for a network to use.</p>`,
   { q: 'Which pair rotates fastest with position?', options: ['pair 0 (i = 0)', 'the last pair', 'all equally'], answer: 0, explain: 'Frequency = 1/10000^(2i/d) is largest at i = 0.' },
-  [`<p>Hint 1: for i = 0 the divisor is 1.</p>`, `<p>Hint 2: for i = 1, the divisor is 10000^(2/4) = 100.</p>`, `<p>Hint 3: slow frequencies change little between neighbours.</p>`],
+  [`<p>Hint 1: for pair i = 0 the divisor is 10000^0 = 1, so the angle is just the position.</p>`, `<p>Hint 2: for i = 1, the divisor is 10000^(2/4) = 100.</p>`, `<p>Hint 3: slow frequencies change little between neighbours.</p>`],
   `<p>i = 0: divisor 10000<sup>0</sup> = 1, so (sin 2, cos 2) = (0.9093, -0.4161). i = 1: divisor 10000<sup>0.5</sup> = 100, angle 0.02, so (sin 0.02, cos 0.02) = (0.0200, 0.9998). PE(2) = [0.909, -0.416, 0.020, 1.000]. Slow pairs have tiny frequencies, so the angle barely moves between adjacent positions (like an hour hand), which lets them disambiguate far-apart positions while fast pairs tell neighbours apart.</p>`,
   `import math\nd, pos = 4, 2\nv = []\nfor i in range(d // 2):\n    a = pos / 10000 ** (2 * i / d)\n    v += [math.sin(a), math.cos(a)]\nprint([round(x, 4) for x in v])`,
-  `<p>O(d) per position.</p>`);
+  `<p>O(d) per position: one sin and one cos for each of the d/2 pairs.</p>`);
 
 P('Decode speed ceiling from memory bandwidth', 'Medium', ['decode', 'memory-bound', 'estimation'],
   `<p>A 70B model in fp16 is split over 8 GPUs (tensor parallel), each with 3.35 TB/s HBM. Estimate the maximum tokens/s for a single stream, ignoring communication. What changes with int4 weights?</p>`,
   `<p>Bytes per token 140 GB / aggregate 26.8 TB/s = ${H.c('g', '5.2 ms')} → ${H.c('b', '≈190 tok/s')}. int4: ${H.c('g', '≈760 tok/s')}.</p>`,
   `<p>Dividing FLOPs by TFLOPs gives ~0.3 ms and a wildly optimistic 3000 tok/s: decode is limited by memory, not math.</p>`,
   { q: 'Decode at batch 1 is limited by…', options: ['memory bandwidth', 'tensor-core FLOPs', 'tokenizer speed'], answer: 0, explain: 'About 1 FLOP per byte read, far below the GPU ratio.' },
-  [`<p>Hint 1: each token reads every weight once.</p>`, `<p>Hint 2: time = bytes / bandwidth.</p>`, `<p>Hint 3: communication and KV reads lower the real number by 30-50%.</p>`],
+  [`<p>Hint 1: each token reads every weight once.</p>`, `<p>Hint 2: time per token = bytes read / aggregate memory bandwidth across the 8 GPUs.</p>`, `<p>Hint 3: communication and KV reads lower the real number by 30-50%.</p>`],
   `<p>Bytes read per generated token ≈ all weights = 70×10<sup>9</sup> × 2 = 140 GB. Aggregate bandwidth with 8 GPUs = 8 × 3.35 = 26.8 TB/s. Time per token = 140 / 26800 s = 5.2 ms, so about 190 tokens/s upper bound. With int4 weights (35 GB) the bound is ~4× higher, about 760 tok/s, because fewer bytes are read. In practice the all-reduce after each layer, KV cache reads and kernel overheads cut this by 30-50%. Batching multiplies total throughput (shared weight reads) but not single-stream speed.</p>`,
   `w = 70e9 * 2\nbw = 8 * 3.35e12\nprint(w / bw * 1000, 'ms ->', bw / w, 'tok/s')\nprint('int4:', bw / (70e9 * 0.5), 'tok/s')`,
-  `<p>O(1).</p>`);
+  `<p>O(1): bytes divided by bandwidth, then the inverse for tokens per second.</p>`);
 
 P('Training time for a 7B model on 1T tokens', 'Medium', ['scaling laws', 'compute'],
   `<p>You train a 7B model on 1T tokens using 64 GPUs sustaining 4×10<sup>14</sup> FLOP/s each. How many days? How many tokens/param is that, and is it Chinchilla-optimal?</p>`,
   `<p>C = 6·7e9·1e12 = ${H.c('g', '4.2×10²²')}; days ≈ ${H.c('b', '19')}; ${H.c('y', '143 tokens/param')} (7× Chinchilla).</p>`,
   `<p>Guessing "a few days" or "a year" without the 6ND estimate gives no basis for planning a budget.</p>`,
   { q: 'FLOPs per parameter per token in training is about…', options: ['6', '2', '12'], answer: 0, explain: '2 forward + 4 backward.' },
-  [`<p>Hint 1: C = 6·N·D.</p>`, `<p>Hint 2: throughput = 64 × 4e14.</p>`, `<p>Hint 3: divide, then convert seconds to days.</p>`],
+  [`<p>Hint 1: training FLOPs are about C = 6·N·D for N parameters and D tokens.</p>`, `<p>Hint 2: cluster throughput is 64 GPUs × 4e14 FLOP/s, the speed that divides C.</p>`, `<p>Hint 3: divide, then convert seconds to days.</p>`],
   `<p>C = 6 × 7×10<sup>9</sup> × 10<sup>12</sup> = 4.2×10<sup>22</sup> FLOPs. Cluster throughput = 64 × 4×10<sup>14</sup> = 2.56×10<sup>16</sup> FLOP/s. Time = 1.64×10<sup>6</sup> s = 19 days. Tokens per parameter = 1000B/7B = 143, about 7× the Chinchilla-optimal 20. That is deliberate over-training: the compute-optimal 7B would use 140B tokens, but extra data gives a better model of the same size, which is cheaper to serve. Add ~10-20% for restarts and evaluation.</p>`,
   `C = 6 * 7e9 * 1e12\nprint(C, C / (64 * 4e14) / 86400, 'days')`,
-  `<p>O(1).</p>`);
+  `<p>O(1): one product for C, one for throughput, one division.</p>`);
 
 P('Size an MoE model', 'Medium', ['MoE', 'memory', 'compute'],
   `<p>A MoE has 20B shared parameters and 256 routed experts totalling 640B parameters; each token uses top-8 experts (plus the shared part). Compute total and active parameters, the fp8 weight memory, and the 6ND training cost per token.</p>`,
   `<p>Total ${H.c('b', '660B')}; active = 20 + 8/256 × 640 = ${H.c('g', '40B')}; fp8 memory ${H.c('y', '660 GB')}; training ${H.c('g', '2.4×10¹¹ FLOPs/token')}.</p>`,
   `<p>Treating 660B as the compute-relevant size overestimates cost by 16×.</p>`,
   { q: 'Training FLOPs per token for an MoE use…', options: ['active parameters', 'total parameters', 'experts only'], answer: 0, explain: 'Only active parameters multiply the token.' },
-  [`<p>Hint 1: total = shared + all experts.</p>`, `<p>Hint 2: active = shared + (k/E) × expert params.</p>`, `<p>Hint 3: FLOPs per token = 6 × active; memory = total × bytes.</p>`],
+  [`<p>Hint 1: total parameters = shared parameters + all routed expert parameters.</p>`, `<p>Hint 2: active = shared + (k/E) × expert params.</p>`, `<p>Hint 3: FLOPs per token = 6 × active; memory = total × bytes.</p>`],
   `<p>Total = 20B + 640B = 660B. Active = 20B + (8/256) × 640B = 20 + 20 = 40B. Weight memory at fp8 (1 byte) = 660 GB, which needs at least 9 GPUs of 80 GB just for weights, so serve across 16 GPUs with expert parallelism. Training cost per token = 6 × 40B = 2.4×10<sup>11</sup> FLOPs, the same as a 40B dense model, which is the MoE advantage. Serving cost is dominated by memory capacity and the all-to-all communication, not FLOPs.</p>`,
   `shared, routed, E, k = 20, 640, 256, 8\nprint(shared + routed, shared + k / E * routed, 6 * (shared + k / E * routed) * 1e9)`,
-  `<p>O(1).</p>`);
+  `<p>O(1): a few sums and products on the given sizes.</p>`);
 
 P('Attention vs MLP FLOPs: when does n dominate?', 'Hard', ['complexity', 'attention', 'FLOPs'],
   `<p>Per token per layer, projections + MLP cost about 24·d² FLOPs, while the score and value mixing part costs about 4·n·d FLOPs (n = context length). At what n are they equal? Evaluate for d = 4096 and say what it implies for long contexts.</p>`,
   `<p>24d² = 4nd → n = 6d = ${H.c('g', '24,576')} tokens for d = 4096.</p>`,
   `<p>Saying "attention is always the bottleneck because it is O(n²)" ignores that for n below ~6d the big matmuls dominate.</p>`,
   { q: 'For n much smaller than 6d, FLOPs are mostly spent in…', options: ['projections and MLP', 'QKᵀ scores', 'softmax'], answer: 0, explain: 'The 24d² term dominates.' },
-  [`<p>Hint 1: set the two costs equal.</p>`, `<p>Hint 2: cancel one d.</p>`, `<p>Hint 3: compare to typical context lengths.</p>`],
+  [`<p>Hint 1: set the two costs equal, 24·d² = 4·n·d, and solve for n.</p>`, `<p>Hint 2: cancel one factor of d from both sides, leaving n in terms of d.</p>`, `<p>Hint 3: compare to typical context lengths.</p>`],
   `<p>Projections: Wq, Wk, Wv, Wo = 4d² multiply-adds, MLP = 8d² multiply-adds, so 12d² MACs = 24d² FLOPs per token. Attention for one new token against n cached keys: QKᵀ costs n·d MACs and the weights times V costs n·d MACs, 2nd MACs = 4nd FLOPs. Equal when 24d² = 4nd, so n = 6d. For d = 4096, n ≈ 24.6k. Below that the dense matmuls dominate; above it attention dominates and grows linearly per token (quadratically for the whole sequence). Implication: at 4k-8k context, optimising attention (FlashAttention) matters mostly for memory, while at 128k the attention FLOPs and KV reads dominate, motivating window layers, GQA/MLA and sparse methods.</p>`,
   `d = 4096\nprint('crossover n =', 6 * d)\nfor n in (4096, 24576, 131072):\n    print(n, 'attention share =', round(4 * n * d / (4 * n * d + 24 * d * d), 2))`,
-  `<p>O(1).</p>`);
+  `<p>O(1): one equation solved for n, then one substitution of d = 4096.</p>`);
 
 P('Derive why RoPE gives relative positions', 'Hard', ['RoPE', 'proof'],
   `<p>Show in a few lines that the RoPE score between a query at position m and a key at position n depends only on m − n. State which property of rotation matrices you use and what breaks if you apply RoPE to V.</p>`,
@@ -1165,7 +1165,7 @@ P('Derive why RoPE gives relative positions', 'Hard', ['RoPE', 'proof'],
   [`<p>Hint 1: write the dot product as qᵀ R(mθ)ᵀ R(nθ) k.</p>`, `<p>Hint 2: rotation matrices are orthogonal: Rᵀ = R⁻¹ = R(−angle).</p>`, `<p>Hint 3: V is what gets averaged and output; rotating it would corrupt content.</p>`],
   `<p>Let R(α) be the 2×2 rotation by α. Rotated query q' = R(mθ)q, rotated key k' = R(nθ)k. Then q'·k' = q'ᵀk' = qᵀ R(mθ)ᵀ R(nθ) k. Since a rotation's transpose is its inverse, R(mθ)ᵀ = R(−mθ), and rotations compose by adding angles, so R(−mθ)R(nθ) = R((n−m)θ). Therefore the score is qᵀ R((n−m)θ) k, a function of the content (q, k) and only the offset n − m. Applied to every 2D pair with its own θ<sub>i</sub> the argument holds for the whole vector (a block-diagonal rotation). RoPE is applied to Q and K because only their dot product needs position; V is mixed linearly into the output and rotating it would add a position-dependent twist to the content being passed forward (relative information is not preserved after the weighted sum). Consequence: attention can learn "attend to the token 3 positions back" independent of absolute location, and extrapolating needs the angles to stay in a familiar range, hence scaling methods.</p>`,
   `import math\ndef R(a): return [[math.cos(a), -math.sin(a)], [math.sin(a), math.cos(a)]]\ndef rot(v, a):\n    m = R(a)\n    return [m[0][0] * v[0] + m[0][1] * v[1], m[1][0] * v[0] + m[1][1] * v[1]]\nq, k, th = [0.6, 0.8], [1.0, 0.3], 0.4\nfor m, n in [(5, 3), (50, 48), (1000, 998)]:\n    a, b = rot(q, m * th), rot(k, n * th)\n    print(m, n, round(a[0] * b[0] + a[1] * b[1], 6))`,
-  `<p>O(d) per vector.</p>`);
+  `<p>O(d) per vector: d/2 independent 2D rotations, each a few multiplications.</p>`);
 
 P('Capacity plan: serving a 70B GQA model at 32k context', 'Hard', ['serving', 'kv cache', 'capacity planning'],
   `<p>Model: 70B, 80 layers, 8 KV heads, d<sub>head</sub> = 128. Node: 8 × 80 GB GPUs (640 GB). Weights fp16. Estimate KV per token, KV per 32k-token user, and how many concurrent users fit (reserve 10% for activations). How do fp8 weights and fp8 KV change it?</p>`,
@@ -1191,7 +1191,7 @@ quiz.push(
   { q: 'Why is the attention score divided by √d<sub>k</sub>?', options: ['Dot products grow with dimension and would saturate softmax', 'To make the weights add up to 1', 'To save memory', 'To apply the causal mask'], answer: 0, explain: 'Variance of q·k is d, so scaling by √d keeps logits near unit spread and gradients alive.' },
   { q: 'What does the causal mask do?', options: ['Sets scores for future tokens to −∞ before softmax', 'Removes padding tokens only', 'Multiplies V by 0', 'Normalises each column'], answer: 0, explain: 'exp(−∞) = 0, so no weight goes to later tokens.' },
   { q: 'Which dimension is softmax applied over in attention?', options: ['Each row (over the keys for one query)', 'Each column', 'The whole matrix', 'Over heads'], answer: 0, explain: 'Each query needs a distribution over keys.' },
-  { q: 'With d_model = 4096 and 32 heads, d_head is…', options: ['128', '32', '4096', '256'], answer: 0, explain: '4096/32 = 128.' },
+  { q: 'With d_model = 4096 and 32 heads, d_head is…', options: ['128', '32', '4096', '256'], answer: 0, explain: 'd_head = d_model / heads = 4096 / 32 = 128.' },
   { q: 'A standard transformer layer has about how many parameters (d = model width)?', options: ['12d²', '4d', 'd³', '2d²'], answer: 0, explain: '4d² attention + 8d² MLP.' },
   { q: 'RoPE is applied to…', options: ['Queries and keys', 'Values', 'The token embeddings added once at the input', 'Only the last layer'], answer: 0, explain: 'The dot product of rotated Q and K depends on relative offset.' },
   { q: 'What is stored in the KV cache?', options: ['K and V of past tokens in every layer', 'Past queries', 'The attention weight matrix', 'Token embeddings only'], answer: 0, explain: 'Queries of old tokens are never reused.' },
@@ -1200,7 +1200,7 @@ quiz.push(
   { q: 'Symmetric int8 quantization uses scale = ?', options: ['absmax / 127', 'absmax × 127', 'mean / 255', '1 / 127'], answer: 0, explain: 'The largest weight maps to code 127.' },
   { q: 'Maximum rounding error of one weight in uniform quantization is…', options: ['scale / 2', 'scale × 2', 'absmax', '127'], answer: 0, explain: 'The nearest level is at most half a step away.' },
   { q: 'One huge outlier weight in a group of 64 mostly causes…', options: ['A large scale that squashes the small weights', 'A faster model', 'Overflow of the KV cache', 'Nothing'], answer: 0, explain: 'Scale is set by absmax, so small values lose resolution.' },
-  { q: 'Chinchilla compute-optimal training uses roughly…', options: ['20 tokens per parameter', '2 tokens per parameter', '2000 tokens per parameter', 'the same tokens for all sizes'], answer: 0, explain: 'D ≈ 20N.' },
+  { q: 'Chinchilla compute-optimal training uses roughly…', options: ['20 tokens per parameter', '2 tokens per parameter', '2000 tokens per parameter', 'the same tokens for all sizes'], answer: 0, explain: 'Chinchilla found tokens D ≈ 20 × parameters N for compute-optimal training.' },
   { q: 'Training FLOPs are approximately…', options: ['6 · N · D', 'N + D', 'N² · D', '2 · N'], answer: 0, explain: '2 forward + 4 backward FLOPs per parameter per token.' },
   { q: 'In a top-2 MoE with 8 experts, per token…', options: ['2 experts compute and gates come from a softmax over their 2 logits', 'All 8 experts compute', 'The router is trained separately', 'One expert is chosen at random'], answer: 0, explain: 'Sparse activation is the whole point.' },
   { q: 'Mixtral 8x7B total vs active parameters are about…', options: ['46.7B vs 12.9B', '56B vs 56B', '7B vs 7B', '12.9B vs 46.7B'], answer: 0, explain: 'Attention is shared, and only 2 of 8 experts are active.' },
@@ -1225,14 +1225,6 @@ interview.push(
 );
 
 function plain(h) { return String(h).replace(/<[^>]*>/g, '').trim(); }
-// Only very short texts get a closing sentence (the validator needs a minimum length); longer texts are left alone.
-function padProblem(p) {
-  p.hints = p.hints.map(function (h) { return plain(h).length < 40 ? h.replace(/<\/p>$/, ' Try it with small numbers on paper first.</p>') : h; });
-  if (p.solution && p.solution.complexity && plain(p.solution.complexity).length < 20) p.solution.complexity = p.solution.complexity.replace(/<\/p>$/, ' Only simple arithmetic is needed here.</p>');
-}
-topics.forEach(function (t) { (t.problems || []).forEach(padProblem); });
-practice.forEach(padProblem);
-quiz.forEach(function (q) { if (plain(q.explain).length < 20) q.explain = q.explain + ' Revisit the matching topic above if this was unclear.'; });
 
 registerModule({
   id: 'ai15',

@@ -1880,7 +1880,7 @@ bool containsDuplicate(const vector<int>& a) {
           `<p>Option A: <b>sort</b> the array (O(N log N)); equal values become neighbours → check A[i] == A[i−1]. Option B: a hash set of seen values (<code>HashSet</code> / <code>set</code> / <code>Set</code> / <code>unordered_set</code>). In Java <code>add()</code> returns <code>false</code> if the value was already there (C++: <code>insert(x).second</code>); in Python and JS check membership first → O(N) average.</p>`,
           `<p>Traps: sorting changes the input order (copy it if the caller needs it); the hash set uses O(N) extra memory — the classic time-vs-space trade-off; N = 1 → always false. Recipe: seen = empty set; for each x: if !seen.add(x) return true; return false.</p>`
         ],
-        tests: { sig: 'int[] -> bool', fn: 'containsDuplicate', cases: [
+        tests: { sig: 'int[] -> bool', fn: 'containsDuplicate', also: { cpp: ['containsDuplicateBySorting'] }, cases: [
           [[[3, 1, 4, 1, 5]], true], [[[7, 2, 9]], false], [[[1]], false], [[[5, 5]], true],
           [[[-1000000000, 1000000000, 0]], false], [[[0, -1, -1]], true],
           [[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]], false], [[[2, 1, 3, 4, 5, 6, 7, 8, 9, 2]], true]
