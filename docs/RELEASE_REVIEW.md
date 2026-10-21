@@ -122,10 +122,21 @@ Many sources could only be read through search results, because most documentati
 ## Readiness checks and checkpoints now shuffle options
 Module quizzes already showed options in a random order. Readiness checks and mixed checkpoints showed them in file order, and in some modules every correct answer is the first option, so a learner could pass by always picking the first answer. These dialogs now shuffle the options, label them A, B, C, and relabel any "option B" in an explanation to match. Scoring is unchanged. Two explanations that referred to options by number were changed to letters.
 
+## Lesson videos reviewed
+All 232 lesson videos (203 in DSA, 29 in Java) were checked against the topics they are attached to:
+- **79 replaced** where the video covered something else, for example a general graph traversal for Tarjan's SCC, Ford–Fulkerson for Dinic, or an interview-pattern survey for language syntax. **153 kept.** The 39 topics that had no video still have none.
+- **Chapters:** where a video has chapters, it now starts and stops at the part that matches the lesson, both in the embedded player and in "Open on YouTube".
+- **Coverage notes:** each video shows a short note on what it covers and what the lesson adds, and says whether it was selected for the lesson or suggested automatically.
+- **Curated choices are kept:** the daily video search no longer replaces a reviewed video. A topic whose title changes marks its video as stale instead.
+- **Checks:** `tools/video-test.js` (also `npm run test:videos`, and a new `videos` job in CI) validates every mapping against the syllabus, the review records, safe URLs and chapter ranges.
+
+Full playback, transcripts and regional availability were not checked for every video, and availability can change. Details are in [VIDEO_REVIEW.md](VIDEO_REVIEW.md), and the review record is `data/video-review.json`.
+
 ## Checks run for this release
 - `tools/ci-check.js` on all 188 changed modules: `validate --code` passes and every solution passes its tests in the languages its track requires. 0 failing.
 - `tools/paths-check.js --strict` passes for every route in every language.
 - The site and app builds pass, and the play, updater, icon, games and app navigation tests pass.
+- `tools/video-test.js` passes: 232 mappings, review records, chapter URLs, safe fallbacks and curated-link retention.
 - A browser test of the checkpoint dialog: across 12 runs the options appear in different orders, are labelled A to D, score correctly, and the explanation's option letters follow the shown order.
 
 ## Versions

@@ -14,6 +14,11 @@ Full release notes: [docs/RELEASE_REVIEW.md](docs/RELEASE_REVIEW.md).
 - Two quiz explanations referred to options by number, which pointed at the wrong options after shuffling; they now use letters.
 - 34 claims the review could not confirm were checked against official documentation, release notes and source code, and corrected (52 edits in 30 modules), for example Spring Boot 3 session config, ingress-nginx retirement, AWS Database Savings Plans, FastAPI yield dependencies, OWASP 2025, Vite 8, Node 20 end of life, PyO3 `detach` and Zod 4.
 - Readiness checks and mixed checkpoints showed options in file order, so in some modules the first option was always correct. They now shuffle options, label them A, B, C and relabel explanations to match.
+- 79 of the 232 lesson videos covered a different topic from their lesson and were replaced; the other 153 were reviewed and kept.
+
+### Added
+- Lesson videos start and stop at the matching chapter where one exists, show a coverage note, and say whether they were selected for the lesson or suggested automatically.
+- The daily video search keeps reviewed choices, and `tools/video-test.js` (in CI as the `videos` job) validates every video mapping. Review details: [docs/VIDEO_REVIEW.md](docs/VIDEO_REVIEW.md).
 
 ## [1.10.0] — 2026-10-20 · Phase 3 of 3
 
