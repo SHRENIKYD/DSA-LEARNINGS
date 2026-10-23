@@ -32,7 +32,7 @@ function run(cmd, args, input) {
   return cp.spawnSync(full[0], full[1], { input, encoding: 'utf8' });
 }
 function psql(sql, extra) {
-  return run(bin('psql'), ['-h', sock, '-d', 'postgres', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-t', '-A', ...(extra || [])], sql);
+  return run(bin('psql'), ['-h', sock, '-U', 'postgres', '-d', 'postgres', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-t', '-A', ...(extra || [])], sql);
 }
 function stop() { run(bin('pg_ctl'), ['-D', data, '-m', 'immediate', 'stop']); try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {} }
 
