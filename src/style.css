@@ -174,7 +174,8 @@ details.sol{border-color:var(--g)}
 .mptr{font-size:11px;color:var(--accent-fg);font-style:normal;font-weight:600}
 .mchip{border:1.5px solid var(--border2);border-radius:7px;padding:2px 8px;background:var(--panel);margin:0 2px}
 .mchip.c-g{border-color:var(--g);background:var(--g-bg)}.mchip.c-r{border-color:var(--r);background:var(--r-bg)}.mchip.c-b{border-color:var(--b);background:var(--b-bg)}.mchip.c-y{border-color:var(--y);background:var(--y-bg)}.mchip.c-p{border-color:var(--p);background:var(--p-bg)}
-.cx{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:8px 0;font-size:15px}
+.cx{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:8px 0;font-size:15px}
+.cx>*{min-width:0;overflow-wrap:anywhere}
 
 /* ---------- visualizer ---------- */
 .viz{border:1px solid var(--border2);border-radius:16px;margin:20px 0;overflow:hidden;background:var(--code-bg)}
@@ -699,6 +700,7 @@ svg.stamp.off .st-fill{opacity:0}
 .lang-explain b{display:inline;font-family:inherit}
 .lang-more{margin:10px 0 0}
 .pq{white-space:nowrap}
+@media (max-width:480px){.pq{white-space:normal}}
 .pq.ok{color:var(--green)}
 .pq-l{font-weight:700}
 .pq-miss{margin-top:8px;padding:10px 12px;border-radius:12px;background:var(--y-bg);border:1px solid var(--y);font-size:14.5px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}

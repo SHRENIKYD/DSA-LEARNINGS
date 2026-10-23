@@ -74,7 +74,14 @@ Not collected: location, contacts, photos/videos, audio, files, calendar, financ
 
 ### Store listing
 
-Copy the text from `store/listing.md`. Upload `store/play-icon-512.png`, `store/feature-graphic-1024x500.png` and 4–6 images from `store/screenshots/`.
+The icon, feature graphic and phone screenshots are uploaded by the **Play listing** workflow (`.github/workflows/play-listing.yml`):
+
+1. One-time setup: in Play Console → Users and permissions, give the service account in `PLAY_SERVICE_ACCOUNT_JSON` the **Manage store presence** permission for this app.
+2. Actions → **Play listing** → Run workflow. It regenerates the icon and feature graphic (`tools/make-icons.js`) and fresh screenshots of the current app (`tools/build-app.js`, `tools/store-screens.js`), keeps them as the `play-listing-graphics` artifact, and checks them against Play's limits.
+3. **Dry run** is on by default and uploads nothing: download the artifact and look at the images. Run again with dry run off to upload. The upload replaces the icon, the feature graphic and every phone screenshot in one edit; if anything fails, the edit is discarded and the live listing is unchanged.
+4. Tick **text** to also update the title and short and full descriptions from `store/listing.md` (check that file is up to date first). **language** is the listing language, `en-US` by default.
+
+Google reviews listing changes before they appear. To run the same steps locally: `node tools/play-listing.js --dry-run` (add `--text`, `--lang xx-YY`; set `PLAY_SERVICE_ACCOUNT_JSON` and drop `--dry-run` to upload).
 
 ## 6. First upload (must be manual)
 
@@ -99,4 +106,4 @@ New personal developer accounts must run a **closed test** with at least **12 te
 
 - Google sign-in in the app uses the system browser with Supabase, so it does not depend on the signing key's SHA-1; nothing to add in Google Cloud.
 - `versionCode` comes from `appVersion` in `package.json` (`1.7.0` → `10700`). Every Play upload needs a higher version, so bump `appVersion` for each app release. A website-only change (only `version` bumped) builds the app but does not upload it, because its `app-vX.Y.Z` tag already exists.
-- `node tools/make-icons.js` regenerates the icon, splash screens and store graphics from `store/icon.svg`; `node tools/build-app.js && node tools/store-screens.js` regenerates the screenshots. Both need Playwright with Chromium.
+- `node tools/make-icons.js` regenerates the app icons, splash screens and store graphics from `store/app-icon-master.png` (needs ImageMagick); `node tools/build-app.js && node tools/store-screens.js` regenerates the screenshots (needs Playwright with Chromium). The Play listing workflow runs both.

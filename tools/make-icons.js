@@ -7,7 +7,7 @@ const root = path.join(__dirname, '..');
 const master = path.join(root, 'store/app-icon-master.png');
 function write(file, args) {
   const out = path.join(root, file); fs.mkdirSync(path.dirname(out), { recursive: true });
-  execFileSync('convert', [...args, '-colors', '128', '-strip', out], { stdio: 'inherit' });
+  execFileSync('convert', [...args, '-colors', '128', '-depth', '8', '-strip', out], { stdio: 'inherit' });
 }
 function icon(file, size) { write(file, [master, '-resize', size + 'x' + size, '-alpha', 'off']); }
 const res = 'android/app/src/main/res/';
