@@ -1,0 +1,65 @@
+name: Database backup
+
+on:
+  schedule:
+    - cron: '23 4 * * 0'   # Sundays 04:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check secrets
+        id: check
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$DB_URL" ]; then
+            echo "::notice::SUPABASE_DB_URL is not set, so no backup was made. See docs/DATABASE.md to enable backups."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$PASS" ]; then
+            echo "::error::BACKUP_PASSPHRASE is not set. Backups must be encrypted, so the job stops here. See docs/DATABASE.md."
+            exit 1
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+      - name: Install PostgreSQL client
+        if: steps.check.outputs.run == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - name: Dump, compress and encrypt
+        if: steps.check.outputs.run == 'true'
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          mkdir out
+          pg_dump --schema=public --no-owner --no-privileges "$DB_URL" \
+            | gzip -9 \
+            | openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:PASS \
+            > "out/backup-$(date -u +%Y%m%d).sql.gz.enc"
+          ls -l out
+      - name: Delete error reports older than 90 days
+        if: steps.check.outputs.run == 'true'
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -q -c "delete from public.client_errors where created_at < now() - interval '90 days'"
+      - name: Upload encrypted backup
+        if: steps.check.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup
+          path: out/
+          retention-days: 30
+          if-no-files-found: error

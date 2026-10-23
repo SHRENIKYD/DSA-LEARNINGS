@@ -83,10 +83,16 @@ var Auth = (function () {
     });
   }
 
+  // Sign-out removes progress from this device, so first send anything not yet saved; if that fails, keep everything and stay signed in.
   function signOut() {
     if (!client) return Promise.resolve();
-    var flush = timer ? push() : Promise.resolve();
-    return flush.then(function () { return client.auth.signOut(); }).then(function () {
+    var st = lsGet('imastery.sync', {}) || {};
+    var flush = (timer || (user && st.user === user.id && st.dirty)) ? push() : Promise.resolve();
+    return flush.then(function () {
+      var after = lsGet('imastery.sync', {}) || {};
+      if (user && after.user === user.id && after.dirty) throw new Error('Your latest progress is not saved yet. Connect to the internet and try again, so it is not lost.');
+      return client.auth.signOut();
+    }).then(function () {
       try { ['imastery.sync', 'imastery.done', 'imastery.last'].forEach(function (k) { localStorage.removeItem(k); }); } catch (e) { }
     });
   }
@@ -134,7 +140,7 @@ var Auth = (function () {
         '<button class="btn ghost acct-out" type="button">Sign out</button></div>';
       var img = el.querySelector('.acct-av img');
       if (img) img.addEventListener('error', function () { if (img.parentNode) img.parentNode.textContent = (user.email || '?').charAt(0).toUpperCase(); });
-      el.querySelector('.acct-out').addEventListener('click', function () { signOut().then(function () { location.reload(); }); });
+      el.querySelector('.acct-out').addEventListener('click', function () { signOut().then(function () { location.reload(); }, function (e) { alert(e.message); }); });
     };
     listeners.push(function (k) { if (k === 'user' || k === 'status') draw(); });
     draw();

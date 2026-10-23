@@ -96,6 +96,8 @@ Play Console → Testing → **Internal testing** → Create new release → kee
 
 5. Optional repository **Variable** `PLAY_TRACK`: the track CI uploads to — `internal` (default), `alpha` (closed testing), `beta` (open testing) or `production`.
 
+6. Optional staged rollout: set `PLAY_RELEASE_STATUS` = `inProgress` and `PLAY_USER_FRACTION` = `0.1` to release to 10% of users (any value between 0 and 1, exclusive). `PLAY_USER_FRACTION` is ignored for any other status. To stop a bad rollout, halt it in Play Console (Release → the track → Halt rollout), then ship a fixed, higher version. A re-run of the workflow after a partial failure is safe: if Play says the version code was already uploaded, the job only warns.
+
 From then on, every new app version (`appVersion`) merged to `main` is built, signed, tagged, released on GitHub and uploaded to that track automatically. With Managed publishing on, approved changes still wait for **Publish changes** in Play Console; turn it off for fully automatic releases. You promote it to closed testing or production in Play Console.
 
 ## 8. Get production access

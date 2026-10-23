@@ -156,7 +156,7 @@ details.sol{border-color:var(--g)}
 .code-head .btn{min-height:30px;padding:2px 10px;font-size:12px}
 .code pre{margin:0;padding:14px 16px;overflow-x:auto;font-size:13.3px;line-height:1.65;tab-size:4}
 .tk-kw{color:var(--kw);font-weight:500}.tk-str{color:var(--str)}.tk-num{color:var(--num)}.tk-com{color:var(--com);font-style:italic}.tk-typ{color:var(--typ)}.tk-fn{color:var(--fn)}
-.tbl-wrap{overflow-x:auto;margin:10px 0}
+.tbl-wrap{overflow-x:auto;max-width:100%;min-width:0;margin:10px 0}
 .tbl{border-collapse:collapse;font-size:14px;min-width:50%}
 .tbl th,.tbl td{border:1px solid var(--border);padding:6px 11px;text-align:left;vertical-align:top}
 .tbl th{background:var(--raised);font-weight:600;font-size:12.5px;font-family:var(--f-mono);color:var(--muted)}
@@ -801,3 +801,6 @@ svg.cp-ic{width:34px;height:34px;color:var(--gold)}
 .rp-x.ok{border-color:var(--green)}
 .pr-time{margin:10px 0;font-size:14.5px}
 .pr-time .on{color:var(--gold);font-weight:700}
+
+/* Long inline code (not code blocks) may wrap so it never widens the page on phones. */
+:not(pre)>code{overflow-wrap:anywhere}

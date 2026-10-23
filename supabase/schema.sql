@@ -1,5 +1,5 @@
--- Interview Mastery: per-user progress.
--- Run once in the Supabase dashboard: SQL Editor → New query → paste → Run.
+-- Interview Mastery: full database schema (all of supabase/migrations/ in one file).
+-- Run once in the Supabase dashboard: SQL Editor → New query → paste → Run. Safe to re-run.
 
 create table if not exists public.progress (
   user_id    uuid primary key references auth.users (id) on delete cascade,
@@ -55,3 +55,46 @@ $$;
 
 revoke all on function public.delete_my_account() from public, anon;
 grant execute on function public.delete_my_account() to authenticated;
+
+-- ---- 0002_client_errors.sql ----
+
+create table if not exists public.client_errors (
+  id         bigserial primary key,
+  created_at timestamptz not null default now(),
+  app        text,
+  version    text,
+  page       text,
+  message    text,
+  stack      text,
+  ua         text
+);
+
+alter table public.client_errors enable row level security;
+
+drop policy if exists "client_errors: insert only" on public.client_errors;
+create policy "client_errors: insert only" on public.client_errors
+  for insert to anon, authenticated
+  with check (
+    app in ('web', 'android')
+    and char_length(coalesce(message, '')) <= 500
+    and char_length(coalesce(stack, '')) <= 4000
+    and char_length(coalesce(page, '')) <= 200
+    and char_length(coalesce(ua, '')) <= 300
+    and char_length(coalesce(version, '')) <= 50
+  );
+
+revoke all on public.client_errors from anon, authenticated;
+grant insert on public.client_errors to anon, authenticated;
+revoke all on sequence public.client_errors_id_seq from anon, authenticated;
+grant usage on sequence public.client_errors_id_seq to anon, authenticated;
+
+-- ---- 0003_progress_size_limit.sql ----
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'progress_size_limit' and conrelid = 'public.progress'::regclass) then
+    alter table public.progress add constraint progress_size_limit
+      check (octet_length(done::text) <= 262144 and octet_length(coalesce(last::text, '')) <= 262144) not valid;
+  end if;
+end $$;
+
+revoke all on public.progress from anon;

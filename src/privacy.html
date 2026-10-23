@@ -22,7 +22,7 @@
     <ul>
       <li>You can use everything without an account. Then your progress stays on your device.</li>
       <li>If you create an account, we store your email address and your learning progress so it syncs between devices.</li>
-      <li>No ads, no analytics or tracking tools, and we never sell or share your data for advertising.</li>
+      <li>No ads and no analytics or tracking tools. The only thing sent automatically is an anonymous crash report (see Error reports below). We never sell or share your data for advertising.</li>
       <li>You can delete your account and its data at any time, in the app or on the web.</li>
     </ul>
 
@@ -40,7 +40,17 @@
       <li><b>Read aloud</b> uses your device's own text-to-speech engine. Lesson text is spoken on your device; nothing is recorded, and the app never uses the microphone.</li>
     </ul>
     <h3>What we do not collect</h3>
-    <p>No location, contacts, photos, microphone, camera, advertising ID, or usage analytics.</p>
+    <p>No location, contacts, photos, microphone, camera, advertising ID, or usage analytics (only the anonymous error reports described below).</p>
+
+    <h2 id="errors">Error reports</h2>
+    <p>When the website or app hits an unexpected error, it sends a short anonymous report so we can fix the crash.</p>
+    <ul>
+      <li><b>What is sent:</b> the app (web or android), the version, the page, the error message, the technical stack trace, and your browser or device description (user agent). Email-like text and anything after a "?" in a link is removed before sending, and the fields are length-limited.</li>
+      <li><b>What is not sent:</b> no account ID, no email address, no cookies. We do not store your IP address; our database provider may see it as part of normal network traffic.</li>
+      <li><b>Where:</b> our Supabase database. Only we can read it.</li>
+      <li><b>How long:</b> reports older than 90 days are deleted by a weekly cleanup, so none is kept longer than about 97 days.</li>
+      <li><b>Opt out:</b> nothing is sent if the setting <code>imastery.noErrors</code> is set to <code>1</code> in your browser's local storage (in the browser console: <code>localStorage.setItem('imastery.noErrors','1')</code>). No reports are sent when accounts and Supabase are not configured or when you are offline.</li>
+    </ul>
 
     <h2>Why we use it</h2>
     <p>Only to run the service: to sign you in, sync and show your progress, and keep your account secure. We do not use your data for advertising or profiling.</p>
