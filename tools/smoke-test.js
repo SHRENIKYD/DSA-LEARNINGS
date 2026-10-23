@@ -15,6 +15,7 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
 // Known issue: wide .tbl tables push module pages ~4px past 360px (src/style.css). Set to 0 once fixed.
 const OVERFLOW_TOLERANCE_PX = Number(process.env.SMOKE_OVERFLOW_PX || 0);
 const fails = [];
+let allowFailed = null;
 const fail = (msg) => { fails.push(msg); console.error('FAIL: ' + msg); };
 
 const server = http.createServer((req, res) => {
@@ -44,6 +45,7 @@ const server = http.createServer((req, res) => {
     page.on('pageerror', (e) => err('page error: ' + e.message));
     page.on('console', (m) => {
       if (m.type() !== 'error') return;
+      if (allowFailed && /Failed to load resource/.test(m.text()) && (!m.location().url || allowFailed.test(m.location().url))) return; // forced failure in check 4
       const u = m.location().url || '';
       if (u && (!u.startsWith(origin) || /\/favicon\.ico$/.test(u))) return; // external hosts (fonts, YouTube, Supabase) are offline in CI
       if (!u && /ERR_(TUNNEL|NAME_NOT_RESOLVED|INTERNET_DISCONNECTED|CONNECTION|PROXY)/.test(m.text())) return;
@@ -92,6 +94,39 @@ const server = http.createServer((req, res) => {
       const ok = await page.waitForSelector('#' + mod + '-t0', { timeout: 5000 }).then(() => true, () => false);
       if (!ok) err('module ' + mod + ' did not render its first topic (#' + mod + '-t0)');
       else if (t === tracks[0]) { await wide('module page ' + mod); await checkLinks(t + '.html'); }
+    }
+    // 4. lazy module files: skeleton while the fetch is slow, gone after render; a failed fetch offers Retry that works
+    if (width === 1280) {
+      // own context without the service worker, so page.route sees the module requests
+      const lctx = await browser.newContext({ viewport: { width, height: 800 }, serviceWorkers: 'block' });
+      const lp = await lctx.newPage();
+      lp.on('pageerror', (e) => err('page error: ' + e.message));
+      cur = 'lazy dsa.html';
+      await lp.goto(base + 'dsa.html', { waitUntil: 'load' });
+      let mode = 'slow';
+      const lazy = /\/assets\/m\/dsa03\.[0-9a-f]+\.js$/;
+      await lp.route(lazy, async (r) => { if (mode === 'fail') return r.abort(); await new Promise((ok) => setTimeout(ok, 800)); return r.continue(); });
+      await lp.evaluate(() => { location.hash = 'dsa03'; });
+      const sk = await lp.waitForSelector('#main .skel', { timeout: 3000 }).then(() => true, () => false);
+      if (!sk) err('no skeleton while module dsa03 was loading');
+      else {
+        const st = await lp.evaluate(() => [document.getElementById('main').getAttribute('aria-busy'), (document.querySelector('#main .sr-only') || {}).textContent]);
+        if (st[0] !== 'true' || st[1] !== 'Loading lesson…') err('skeleton is missing aria-busy or its hidden loading text: ' + st);
+      }
+      if (!(await lp.waitForSelector('#dsa03-t0', { timeout: 8000 }).then(() => true, () => false))) err('dsa03 did not render after a slow fetch');
+      if (await lp.evaluate(() => !!document.querySelector('#main .skel') || document.getElementById('main').hasAttribute('aria-busy'))) err('skeleton or aria-busy left after render');
+      mode = 'fail'; allowFailed = /\/assets\/m\/dsa04\./;
+      await lp.route(/\/assets\/m\/dsa04\.[0-9a-f]+\.js$/, (r) => (mode === 'fail' ? r.abort() : r.continue()));
+      await lp.evaluate(() => { location.hash = 'dsa04'; });
+      if (!(await lp.waitForSelector('#modRetry', { timeout: 5000 }).then(() => true, () => false))) err('no Retry button after a failed module fetch');
+      else {
+        if (await lp.evaluate(() => !!document.querySelector('#main .skel'))) err('skeleton left after a failed fetch');
+        mode = 'ok';
+        allowFailed = null;
+        await lp.click('#modRetry');
+        if (!(await lp.waitForSelector('#dsa04-t0', { timeout: 8000 }).then(() => true, () => false))) err('Retry did not load dsa04');
+      }
+      await lctx.close();
     }
     await ctx.close();
   }

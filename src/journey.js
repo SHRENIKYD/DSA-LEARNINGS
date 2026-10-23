@@ -302,3 +302,25 @@ var Journey = (function () {
   return { stampCollectionHtml: stampCollectionHtml, atlasHtml: atlasHtml, mountAtlas: mountAtlas, ICON: ICON, REGIONS: REGIONS, ZONES: ZONES, ZCOLOR: ZCOLOR, ROLES: ROLES, STAMPS: STAMPS, regionOf: regionOf, icon: icon, mods: mods, stats: stats, stampsOf: stampsOf, stampSvg: stampSvg, bar: bar, themeIcon: themeIcon, passport: passport, dest: dest, setDest: function (id) { set('imastery.dest', id); }, pct: pct, esc: esc };
 })();
 
+
+/* Keyboard access for scrollable regions (code blocks, visualizer stages, wide tables): any such region
+   that overflows becomes focusable so keyboard users can scroll it with the arrow keys (WCAG 2.1.1). */
+(function () {
+  var SEL = 'pre, .viz-stage, .tbl-wrap, .tblwrap, .mtable';
+  var queued = false;
+  function fix() {
+    queued = false;
+    var els = document.querySelectorAll(SEL);
+    for (var i = 0; i < els.length; i++) {
+      var e = els[i];
+      if (e.hasAttribute('tabindex')) continue;
+      if (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1) e.setAttribute('tabindex', '0');
+    }
+  }
+  function queue() { if (!queued) { queued = true; (window.requestAnimationFrame || setTimeout)(fix, 50); } }
+  if (typeof MutationObserver !== 'undefined') {
+    var start = function () { new MutationObserver(queue).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class'] }); queue(); };
+    if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+  }
+  if (typeof window.addEventListener === 'function') window.addEventListener('resize', queue);
+})();

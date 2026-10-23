@@ -83,6 +83,39 @@ var Auth = (function () {
     });
   }
 
+  // "Download my data": everything we hold about this person. Signed in: the server copy is fetched fresh; the local copy is always included.
+  // If the server cannot be reached the local data is still returned, with a note in server.error.
+  function exportData() {
+    var out = {
+      app: 'Interview Mastery', version: String(window.IM_VERSION || cfg.version || ''), exportedAt: new Date().toISOString(),
+      account: user ? { id: user.id, email: user.email || null } : null,
+      local: { done: lsGet('imastery.done', {}) || {}, last: lsGet('imastery.last', null), play: lsGet('imastery.play', null) },
+      server: null
+    };
+    if (!user || !client) return Promise.resolve(out);
+    var uid = user.id;
+    return client.from('progress').select('done,last').eq('user_id', uid).maybeSingle().then(function (res) {
+      if (res.error) out.server = { error: 'Could not read your saved progress from the server: ' + (res.error.message || 'unknown error') + '. Only the data on this device is included.' };
+      else out.server = { found: !!res.data, user_id: uid, done: (res.data && res.data.done) || {}, last: res.data ? res.data.last : null };
+      return out;
+    }, function () {
+      out.server = { error: 'Could not reach the server. Only the data on this device is included.' };
+      return out;
+    });
+  }
+  function exportName() { return 'interview-mastery-data-' + new Date().toISOString().slice(0, 10) + '.json'; }
+  // Browsers get a file download. The Android WebView ignores blob downloads (no DownloadListener), so the app gets the text to show and copy instead.
+  function downloadData(onText) {
+    return exportData().then(function (data) {
+      var text = JSON.stringify(data, null, 2), name = exportName(), C = window.Capacitor;
+      if (C && C.isNativePlatform && C.isNativePlatform()) { onText(text, name); return data; }
+      var url = URL.createObjectURL(new Blob([text], { type: 'application/json' })), a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      return data;
+    });
+  }
+
   // Sign-out removes progress from this device, so first send anything not yet saved; if that fails, keep everything and stay signed in.
   function signOut() {
     if (!client) return Promise.resolve();
@@ -147,7 +180,7 @@ var Auth = (function () {
   }
 
   return {
-    enabled: enabled, client: client, init: init, pull: pull, push: push, changed: changed, reset: reset, signOut: signOut, deleteAccount: deleteAccount, mountAccount: mountAccount,
+    enabled: enabled, client: client, init: init, pull: pull, push: push, changed: changed, reset: reset, signOut: signOut, deleteAccount: deleteAccount, exportData: exportData, downloadData: downloadData, mountAccount: mountAccount,
     user: function () { return user; }, status: function () { return status; },
     on: function (fn) { listeners.push(fn); }
   };

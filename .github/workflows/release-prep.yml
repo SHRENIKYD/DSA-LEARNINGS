@@ -1,0 +1,58 @@
+# Manual: bumps versions, drafts changelog entries and opens a release pull request.
+# Merging that pull request publishes (pages.yml / android.yml react to the new version).
+name: Release prep
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'What to release'
+        type: choice
+        options: [auto, web, app]
+        default: auto
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Bump versions and draft changelog
+        env:
+          TARGET: ${{ inputs.target }}
+          RELEASE_NOTES_FILE: ${{ runner.temp }}/notes.md
+        run: |
+          flags=""
+          [ "$TARGET" = "web" ] && flags="--web"
+          [ "$TARGET" = "app" ] && flags="--app"
+          node tools/release.js $flags
+          if git diff --quiet; then echo "Nothing to release."; exit 0; fi
+          web=$(node -p "require('./package.json').version")
+          app=$(node -p "require('./package.json').appVersion")
+          echo "WEB=$web" >> "$GITHUB_ENV"
+          echo "APP=$app" >> "$GITHUB_ENV"
+          echo "CHANGED=1" >> "$GITHUB_ENV"
+      - name: Commit, push and open the pull request
+        if: env.CHANGED == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOTES: ${{ runner.temp }}/notes.md
+        run: |
+          branch="release/web-${WEB}-app-${APP}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add -A
+          git commit -m "Release website ${WEB} / app ${APP}"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "Release website ${WEB} / app ${APP}" --body-file "$NOTES"

@@ -217,6 +217,41 @@ test('accounts off (no config): nothing is called', async () => {
   assert.strictEqual(t.calls.filter(c => c.op !== 'signOut').length, 0);
 });
 
+test('export as a guest contains local data only, no account and no server call', async () => {
+  const t = setup({ local: { 'imastery.done': J({ a: 1 }), 'imastery.last': J('a') } });
+  await t.Auth.init();
+  const d = await t.Auth.exportData();
+  assert.strictEqual(d.account, null);
+  assert.strictEqual(d.server, null);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(d.local.done)), { a: 1 });
+  assert.strictEqual(d.local.last, 'a');
+  assert.ok(/^\d{4}-\d\d-\d\dT/.test(d.exportedAt));
+  assert.strictEqual(t.calls.length, 0);
+});
+
+test('export when signed in has the account id and the server row, fetched fresh', async () => {
+  const t = setup({ session: sess('u1'), row: { done: { s1: 1 }, last: 'srv' }, local: { 'imastery.done': J({ s1: 1 }), 'imastery.sync': J({ user: 'u1', dirty: false }) } });
+  await t.Auth.init();
+  t.state.row = { done: { s1: 1, later: 1 }, last: 'newer' }; // changed on another device after sign-in
+  const d = await t.Auth.exportData();
+  const P = o => JSON.parse(JSON.stringify(o)); // vm objects have another realm's prototypes
+  assert.deepStrictEqual(P(d.account), { id: 'u1', email: 'u1@x.com' });
+  assert.deepStrictEqual(P(d.server), { found: true, user_id: 'u1', done: t.state.row.done, last: 'newer' });
+  assert.deepStrictEqual(P(d.local.done), { s1: 1 });
+});
+
+test('export when the server cannot be reached still returns local data with an error note', async () => {
+  for (const mode of ['throwNet', 'fail']) {
+    const t = setup({ session: sess('u1'), row: { done: {}, last: null }, local: { 'imastery.done': J({ l: 1 }) } });
+    await t.Auth.init();
+    t.state[mode] = true;
+    const d = await t.Auth.exportData();
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(d.local.done)), { l: 1 });
+    assert.strictEqual(d.account.id, 'u1');
+    assert.ok(d.server && /Only the data on this device/.test(d.server.error), mode);
+  }
+});
+
 // Known issue probes: print findings, do not fail the run.
 const findings = [];
 test('sign out after a failed push retries it before clearing', async () => {

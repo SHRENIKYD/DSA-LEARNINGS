@@ -4,6 +4,23 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.4] — 2026-10-23 · Faster pages, offline use and hardening (phases B and C)
+
+### Added
+- Install the site as an app and use it offline: a service worker keeps the pages you have opened, and an offline page explains the rest. On iPhone and iPad, Safari → Share → Add to Home Screen (see `docs/IOS.md`).
+- "Download my data" on the account page and in the privacy policy: a JSON file with your account details, your saved progress on the server and the progress on this device.
+- Skeleton placeholders while a lesson loads, with a Retry button if it cannot be fetched.
+- Automated accessibility checks (axe, WCAG 2.1 AA) on key pages in both themes; see `docs/ACCESSIBILITY.md`.
+- `npm run release` bumps both versions and drafts the changelog entries.
+
+### Changed
+- Track pages load each module only when you open it, and files are minified with content hashes: opening the DSA track now downloads about 263 KB instead of 3.6 MB (gzip).
+- Better colour contrast in both themes, and scrollable code blocks, visualizers and tables can be reached with the keyboard.
+- Supply chain: every GitHub Action is pinned to an exact commit, Dependabot proposes weekly updates, and a weekly `npm audit` runs.
+
+### Fixed
+- The hourly uptime check failed after its checks passed, because it could not tell which repository to report to.
+
 ## [1.10.3] — 2026-10-23 · Production readiness, phase A
 
 ### Added

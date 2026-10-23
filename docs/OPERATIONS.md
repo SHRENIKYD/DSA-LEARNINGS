@@ -19,6 +19,15 @@ One page: how the project fits together, how a release happens, how to roll back
 3. Website: if `version` in `package.json` is new, `pages.yml` deploys the site and tags `web-vX.Y.Z`.
 4. App: if `appVersion` in `package.json` is new, `android.yml` builds the signed bundle, tags `app-vX.Y.Z`, creates the GitHub Release and uploads to the Play track in `PLAY_TRACK` (default internal, status default draft). Promote or publish in Play Console as needed.
 
+## Cutting a release
+
+1. In GitHub open Actions, then Release prep, then Run workflow. Leave "auto" (it picks website, app or both from what changed since the last release) or choose web or app.
+2. The workflow bumps `version` / `appVersion`, syncs iOS, adds a draft entry to `CHANGELOG.md` and/or `CHANGELOG-APP.md`, and opens a pull request "Release website X / app Y" on branch `release/...`.
+3. Review the pull request: replace each "TODO title" and tidy the draft notes (they come from commit subjects).
+4. Merge it. The merge publishes: `pages.yml` deploys the site and `android.yml` builds and uploads the app, as described above.
+
+To try it locally: `node tools/release.js --dry-run` prints the plan and changes nothing. Bump arithmetic is tested by `node tools/release-test.js`.
+
 ## Versioning rule
 
 - Website: patch .1 to .100, then the next minor (1.10.100 is followed by 1.11.0). See the header of `CHANGELOG.md`.
@@ -66,3 +75,10 @@ First checks:
 2. Home page, module page or `assets/videos.js` failing: open the site yourself, check githubstatus.com, then look at the last `pages.yml` run in Actions. If a recent deploy broke it, roll back as above.
 3. Supabase auth health failing: check the Supabase dashboard (project paused? status page?). The study site works without it; only sign-in and sync are affected.
 4. One failed check that passes on the next hour is usually a blip; the issue closes by itself.
+
+## Supply chain
+
+- Dependabot (`.github/dependabot.yml`) opens weekly grouped PRs for npm, GitHub Actions and Gradle (`/android`). It also bumps the pinned action SHAs.
+- All third-party actions in workflows are pinned to full commit SHAs with the version in a trailing comment.
+- `audit.yml` runs `npm audit --omit=dev --audit-level=high` on PRs, weekly and on demand.
+- Owner action: enable Settings > Code security > Secret scanning and Push protection (cannot be set from a file).

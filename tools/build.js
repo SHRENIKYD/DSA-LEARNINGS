@@ -23,8 +23,82 @@ const TRACKS = base.TRACKS;
 const strip = (s) => String(s || '').replace(/<[^>]*>/g, '');
 const asList = (x) => (x === undefined || x === null ? [] : Array.isArray(x) ? x : [x]);
 
+// ---------- dependency-free minifiers ----------
+// JS: drops comments and indentation and the spaces between tokens that do not need them. Strings, template
+// literals and regex literals are copied byte for byte, and line breaks between tokens are kept (so automatic
+// semicolon insertion behaves exactly as before). Anything that does not parse afterwards falls back to the source.
+const ID = /[\w$\\\u0080-\uffff]/;
+const RE_KW = new Set(['return', 'typeof', 'case', 'do', 'else', 'in', 'of', 'new', 'delete', 'void', 'throw', 'instanceof', 'yield', 'await']);
+function minifyJs(src) {
+  let out = '', p = '', i = 0, sp = false, nl = false, last = null, lastWord = '';
+  const n = src.length;
+  const strEnd = (j) => { const q = src[j++]; while (j < n && src[j] !== q) { if (src[j] === '\\') j++; else if (src[j] === '\n') throw new Error('unterminated string'); j++; } return j + 1; };
+  const tplEnd = (j) => { j++; while (j < n) { const c = src[j]; if (c === '\\') j += 2; else if (c === '`') return j + 1; else if (c === '$' && src[j + 1] === '{') j = exprEnd(j + 2); else j++; } throw new Error('unterminated template'); };
+  const exprEnd = (j) => {
+    let d = 0;
+    while (j < n) {
+      const c = src[j];
+      if (c === '"' || c === "'") j = strEnd(j);
+      else if (c === '`') j = tplEnd(j);
+      else if (c === '/' && src[j + 1] === '/') { while (j < n && src[j] !== '\n') j++; }
+      else if (c === '/' && src[j + 1] === '*') { const e = src.indexOf('*/', j + 2); if (e < 0) throw new Error('unterminated comment'); j = e + 2; }
+      else if (c === '{') { d++; j++; } else if (c === '}') { if (!d) return j + 1; d--; j++; } else j++;
+    }
+    throw new Error('unterminated ${');
+  };
+  const reEnd = (j) => { j++; let cls = false; while (j < n) { const c = src[j]; if (c === '\\') j++; else if (c === '\n') throw new Error('unterminated regex'); else if (cls) { if (c === ']') cls = false; } else if (c === '[') cls = true; else if (c === '/') break; j++; } j++; while (j < n && /[a-z]/i.test(src[j])) j++; return j; };
+  while (i < n) {
+    const c = src[i];
+    if (c === '\n' || c === '\r' || c === '\u2028' || c === '\u2029') { nl = true; i++; continue; }
+    if (c === ' ' || c === '\t' || c === '\f' || c === '\v' || c === '\u00a0' || c === '\ufeff') { sp = true; i++; continue; }
+    if (c === '/' && src[i + 1] === '/') { while (i < n && src[i] !== '\n') i++; continue; }
+    if (c === '/' && src[i + 1] === '*') { const e = src.indexOf('*/', i + 2); if (e < 0) throw new Error('unterminated comment'); if (src.slice(i, e).includes('\n')) nl = true; else sp = true; i = e + 2; continue; }
+    if (out && nl) out += '\n';
+    else if (out && sp && ((ID.test(p) && ID.test(c)) || ('+-'.includes(p) && '+-'.includes(c)) || (p === '/' && c === '/') || (/[0-9]/.test(p) && c === '.'))) out += ' ';
+    sp = nl = false;
+    let j;
+    if (c === '"' || c === "'") { j = strEnd(i); last = 'v'; }
+    else if (c === '`') { j = tplEnd(i); last = 'v'; }
+    else if (c === '/' && (last === null || (last === 'p' && !')]}'.includes(p)) || (last === 'w' && RE_KW.has(lastWord)))) { j = reEnd(i); last = 'v'; }
+    else if (ID.test(c) || (c === '.' && /[0-9]/.test(src[i + 1] || ''))) {
+      j = i + 1;
+      if (/[0-9.]/.test(c)) { while (j < n && (/[\w$.]/.test(src[j]) || ('+-'.includes(src[j]) && /[eE]/.test(src[j - 1]) && !/^0[xX]/.test(src.slice(i, j))))) j++; last = 'v'; }
+      else { while (j < n && ID.test(src[j])) j++; last = 'w'; lastWord = src.slice(i, j); }
+    } else { j = i + 1; last = 'p'; }
+    out += src.slice(i, j);
+    p = src[j - 1];
+    i = j;
+  }
+  return out + '\n';
+}
+// CSS: drops comments and collapses whitespace; strings are copied as they are.
+function minifyCss(src) {
+  let out = '', p = '', i = 0, sp = false;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '/' && src[i + 1] === '*') { const e = src.indexOf('*/', i + 2); i = e < 0 ? src.length : e + 2; sp = true; continue; }
+    if (/\s/.test(c)) { sp = true; i++; continue; }
+    if (sp && out && !'{};,>'.includes(p) && !'{};,>!'.includes(c)) out += ' ';
+    sp = false;
+    if (c === '"' || c === "'") { let j = i + 1; while (j < src.length && src[j] !== c) { if (src[j] === '\\') j++; j++; } out += src.slice(i, j + 1); p = c; i = j + 1; continue; }
+    if (c === '}' && p === ';') out = out.slice(0, -1);
+    out += c; p = c; i++;
+  }
+  return out + '\n';
+}
+const minStats = { js: [0, 0], css: [0, 0], fallback: [] };
+function minJs(src, name, check) {
+  let min;
+  try { min = minifyJs(src); new vm.Script(min, { filename: name }); if (check && !check(min)) throw new Error('output differs'); }
+  catch (e) { minStats.fallback.push(name + ' (' + e.message + ')'); min = src; }
+  minStats.js[0] += Buffer.byteLength(src); minStats.js[1] += Buffer.byteLength(min);
+  return min;
+}
+function minCss(src) { const min = minifyCss(src); minStats.css[0] += Buffer.byteLength(src); minStats.css[1] += Buffer.byteLength(min); return min; }
+const shortHash = (s) => crypto.createHash('sha1').update(s).digest('hex').slice(0, 10);
+
 fs.rmSync(out, { recursive: true, force: true });
-fs.mkdirSync(path.join(out, 'assets'), { recursive: true });
+fs.mkdirSync(path.join(out, 'assets', 'm'), { recursive: true });
 fs.cpSync(path.join(root, 'vendor'), path.join(out, 'vendor'), { recursive: true });
 
 const hash = crypto.createHash('sha1');
@@ -34,13 +108,27 @@ const problems = [];
 const _warn = console.warn;
 console.warn = (...a) => { problems.push(a.join(' ')); _warn(...a); };
 const ALLT = [];
+// The small per-track index the track page loads up front: what the dashboard, sidebar, progress, search and
+// zone checkpoints need, plus the file that holds the full module.
+// Zone checkpoint questions live in their own per-track file, fetched when a checkpoint starts.
+const okQ = (q) => q && q.options && q.options.length > 1;
+function moduleStub(m, file) {
+  const pr = (p) => ({ title: p.title, level: p.level, tags: p.tags });
+  return {
+    id: m.id, title: m.title, intro: strip(m.intro).slice(0, 300), src: file,
+    topics: m.topics.map((tp) => ({ title: tp.title, clues: [strip(asList(tp.clues).join(' ')).slice(0, 300)], analogy: strip(tp.analogy).slice(0, 200), problems: asList(tp.problems).concat(asList(tp.problem)).map(pr) })),
+    practice: (m.practice || []).map(pr),
+    quiz: (m.quiz || []).map(() => 0), qn: (m.quiz || []).filter(okQ).length,
+    interview: (m.interview || []).map((q) => ({ q: q.q }))
+  };
+}
 const MODS = {};
 const PMETA = {}, CHECKS = {};
 const LBIT = { java: 1, python: 2, py: 2, js: 4, ts: 4, javascript: 4, typescript: 4, cpp: 8, 'c++': 8 };
 
 for (const t of TRACKS) {
   const dir = path.join(root, 'content', t.id);
-  const scripts = [];
+  const scripts = [], quizzes = {};
   for (const pm of t.modules) {
     const f = path.join(dir, pm.id + '.js');
     if (!fs.existsSync(f)) continue;
@@ -53,9 +141,13 @@ for (const t of TRACKS) {
     const m = ctx.MODULES[0];
     if (!m || m.id !== pm.id) { console.warn('SKIP ' + pm.id + ': registerModule id mismatch'); warnings++; continue; }
     hash.update(src);
-    fs.mkdirSync(path.join(out, 'content', t.id), { recursive: true });
-    fs.writeFileSync(path.join(out, 'content', t.id, pm.id + '.js'), src);
-    scripts.push('<script src="content/' + t.id + '/' + pm.id + '.js?v=@@V@@"></script>');
+    // Each module is its own content-hashed file, fetched when the learner opens it (src/engine.js).
+    const want = JSON.stringify(m);
+    const min = minJs(src, f, (code) => { const c2 = context(); vm.runInContext(code, c2, { filename: f }); return JSON.stringify(c2.MODULES[0]) === want; });
+    const file = 'assets/m/' + pm.id + '.' + shortHash(min) + '.js';
+    fs.writeFileSync(path.join(out, file), min);
+    scripts.push(moduleStub(m, file));
+    quizzes[pm.id] = (m.quiz || []).filter(okQ).map((q) => ({ q: q.q, options: q.options, answer: q.answer, explain: q.explain }));
     const href = t.id + '.html#';
     {
       const def = m.lang || t.lang, probs = [];
@@ -90,7 +182,12 @@ for (const t of TRACKS) {
     });
     (m.interview || []).forEach((q) => SI.entries.push({ t: strip(q.q), c: t.short + ' · Interview Q', h: href + pm.id + '-iv', s: '' }));
   }
-  t._scripts = scripts;
+  const qz = 'window.IM_QUIZ=' + JSON.stringify(quizzes).replace(/</g, '\\u003c') + ';\n';
+  const qFile = 'assets/m/' + t.id + '-quiz.' + shortHash(qz) + '.js';
+  fs.writeFileSync(path.join(out, qFile), qz);
+  const idx = 'window.IM_QUIZSRC=' + JSON.stringify(qFile) + ';window.IM_MINDEX=' + JSON.stringify(scripts).replace(/</g, '\\u003c') + ';\n';
+  t._index = 'assets/m/' + t.id + '-index.' + shortHash(idx) + '.js';
+  fs.writeFileSync(path.join(out, t._index), idx);
 }
 
 const ASSETS = ['helpers.js', 'tracks.js', 'paths.js', 'learn.js', 'engine.js', 'errors.js', 'auth.js', 'login.js', 'journey.js', 'style.css'];
@@ -103,7 +200,7 @@ hash.update(configJs);
 try { hash.update(rd('data/videos.json')); } catch (e) { }
 hash.update(rd('src/video.js'));
 const V = hash.digest('hex').slice(0, 10);
-for (const f of ASSETS) fs.copyFileSync(path.join(root, 'src', f), path.join(out, 'assets', f));
+for (const f of ASSETS) fs.writeFileSync(path.join(out, 'assets', f), f.endsWith('.css') ? minCss(rd('src/' + f)) : minJs(rd('src/' + f), 'src/' + f));
 fs.writeFileSync(path.join(out, 'assets', 'config.js'), configJs);
 fs.writeFileSync(path.join(out, 'assets', 'progress-map.js'), 'window.IM_MODS=' + JSON.stringify(MODS) + ';');
 fs.writeFileSync(path.join(out, 'assets', 'paths-data.js'), 'window.IM_PATHMETA=' + JSON.stringify(PMETA).replace(/</g, '\\u003c') + ';');
@@ -114,13 +211,14 @@ try { VIDS = JSON.parse(rd('data/videos.json')).videos || {}; } catch (e) { }
 const vidJs = {};
 const video = require('../src/video.js');
 ALLT.forEach((topic) => { const v = video.publicEntry(VIDS[topic.tid], topic.tt); if (v) vidJs[topic.tid] = v; });
-fs.writeFileSync(path.join(out, 'assets', 'videos.js'), rd('src/video.js') + '\nwindow.IM_VIDEOS=' + JSON.stringify(vidJs).replace(/</g, '\\u003c') + ';');
+const videoJs = minJs(rd('src/video.js'), 'src/video.js');
+fs.writeFileSync(path.join(out, 'assets', 'videos.js'), videoJs + '\nwindow.IM_VIDEOS=' + JSON.stringify(vidJs).replace(/</g, '\\u003c') + ';');
 const lib = { total: ALLT.length, tracks: [] };
 for (const t of TRACKS) {
   const items = ALLT.filter((x) => x.tr === t.id && vidJs[x.tid]).map((x) => Object.assign({ mn: x.mn, mt: x.mt, tt: x.tt, tid: x.tid }, vidJs[x.tid]));
   if (items.length) lib.tracks.push({ id: t.id, short: t.short, title: t.title, items: items });
 }
-fs.writeFileSync(path.join(out, 'assets', 'video-library.js'), rd('src/video.js') + '\nwindow.IM_VIDEO_LIB=' + JSON.stringify(lib).replace(/</g, '\\u003c') + ';');
+fs.writeFileSync(path.join(out, 'assets', 'video-library.js'), videoJs + '\nwindow.IM_VIDEO_LIB=' + JSON.stringify(lib).replace(/</g, '\\u003c') + ';');
 
 const IC = (d) => '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + d + '</svg>';
 function jbar(o) {
@@ -139,7 +237,7 @@ const page = (f, o) => rd(f).replace('@@JBAR@@', () => jbar(o || {})).replace(/@
 const tpl = rd('src/track.html');
 for (const t of TRACKS) {
   const html = tpl.replace('@@JBAR@@', () => jbar({ menu: true })).replace(/@@TITLE@@/g, H(t.title)).replace(/@@DESC@@/g, H(t.desc)).replace(/@@ICON@@/g, H(t.icon)).replace(/@@ID@@/g, t.id)
-    .replace('@@MODULES@@', () => t._scripts.join('\n')).replace(/@@V@@/g, V);
+    .replace('@@MODULES@@', () => '<script src="' + t._index + '"></script>').replace(/@@V@@/g, V);
   fs.writeFileSync(path.join(out, t.id + '.html'), html);
 }
 fs.writeFileSync(path.join(out, 'index.html'), page('src/index.html', { search: true }));
@@ -156,6 +254,8 @@ fs.writeFileSync(path.join(out, '.nojekyll'), '');
 function H(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
 const live = Object.keys(SI.modules).length, planned = TRACKS.reduce((a, t) => a + t.modules.length, 0);
+const pct = (a) => (a[0] ? Math.round(100 - a[1] / a[0] * 100) : 0) + '%';
+console.log('minified: JS ' + (minStats.js[0] / 1048576).toFixed(1) + ' MB -> ' + (minStats.js[1] / 1048576).toFixed(1) + ' MB (-' + pct(minStats.js) + '), CSS -' + pct(minStats.css) + (minStats.fallback.length ? ', copied unminified: ' + minStats.fallback.join('; ') : ''));
 console.log('built v' + VERSION + ' ' + out + ' — ' + live + '/' + planned + ' modules live, ' + SI.problems + ' problems, ' + SI.viz + ' visualizers, ' + Object.keys(vidJs).length + ' videos, accounts ' + (authOn ? 'ON' : 'OFF (set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY)') + (warnings ? ', ' + warnings + ' warning(s)' : ''));
 if (STRICT && warnings) {
   console.error('STRICT build failed: ' + warnings + ' module(s) skipped or warning(s):');
