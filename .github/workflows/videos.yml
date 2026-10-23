@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
   actions: write
 
 concurrency:
@@ -36,7 +37,8 @@ jobs:
           node tools/find-videos.js --max "$MAX"
       - name: Check the catalog before saving it
         run: node tools/video-test.js
-      - name: Save and redeploy the website
+      # main requires a pull request, so the update goes through one: push a branch, open a PR, merge it, redeploy.
+      - name: Save through a pull request and redeploy the website
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -44,6 +46,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/videos.json
           if git diff --cached --quiet; then echo "No video changes"; exit 0; fi
+          branch="bot/videos-$(date -u +%Y%m%d-%H%M)"
+          git switch -c "$branch"
           git commit -m "Update lesson videos"
-          git push origin HEAD:main
+          git push origin "$branch"
+          url=$(gh pr create --base main --head "$branch" --title "Update lesson videos ($(date -u +%Y-%m-%d))" \
+            --body "Daily lesson-video update from the Lesson videos workflow. The catalog passed tools/video-test.js before this PR was opened.")
+          gh pr merge "$url" --merge --delete-branch
           gh workflow run pages.yml --ref main

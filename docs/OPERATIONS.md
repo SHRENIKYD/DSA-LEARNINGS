@@ -8,7 +8,7 @@ One page: how the project fits together, how a release happens, how to roll back
 - **Checks.** `checks.yml` validates and tests changed modules on pull requests and runs a full check weekly.
 - **App.** `node tools/build-app.js` builds `app-www/`; Capacitor wraps it as an Android app. `android.yml` runs the tests, builds a debug APK (workflow artifact only) and a signed `.aab`, tags `app-vX.Y.Z`, publishes a GitHub Release with the `.aab`, and uploads it to Google Play.
 - **Supabase.** Accounts and progress sync (`src/auth.js`, `supabase/schema.sql`), plus the `client_errors` table that receives browser and app error reports. The builds contain only the URL and the publishable key.
-- **Video bot.** `videos.yml` runs daily, searches YouTube for lesson videos, saves the catalog (`data/videos.json`) and redeploys the site.
+- **Video bot.** `videos.yml` runs daily, searches YouTube for lesson videos, checks the catalog with `tools/video-test.js`, then saves `data/videos.json` through a pull request that it opens and merges itself (main requires PRs) and redeploys the site. It needs Settings → Actions → General → "Read and write permissions" and "Allow GitHub Actions to create and approve pull requests".
 - **Play listing.** `play-listing.yml` is started by hand; it regenerates store graphics and can upload them and the listing text to Google Play.
 - **Uptime.** `uptime.yml` checks the live site (and Supabase, if configured) every hour and opens a GitHub issue labelled `outage` when something fails.
 
