@@ -261,12 +261,20 @@
     var set = [['sound', 'Sound effects'], ['haptics', 'Haptics'], ['bit', 'Show Bit, the mascot'], ['motion', 'Confetti and motion']];
     h += '<div class="list"><label class="set" for="set-theme">Light theme<input type="checkbox" class="tog" id="set-theme"' + (theme() === 'light' ? ' checked' : '') + '></label>' + set.map(function (s) { return '<label class="set" for="set-' + s[0] + '">' + s[1] + '<input type="checkbox" class="tog" id="set-' + s[0] + '" data-set="' + s[0] + '"' + (play.settings[s[0]] ? ' checked' : '') + '></label>'; }).join('') + '</div>';
     if (Reader.available()) h += '<div class="list"><div class="set">Read aloud<span class="muted">Tap 🔊 on any lesson or game</span></div><div class="set">Reading speed<span class="muted">' + (play.settings.tts.rate || 1) + '× · change it in the player</span></div></div>';
-    h += '<div class="list"><div class="set">Interview Mastery v' + esc(window.IM_VERSION || '') + '<span class="muted">' + S.totals.doneItems + ' / ' + S.totals.items + ' items done</span></div>' + '<a class="set" href="privacy.html">Privacy policy<span class="muted">›</span></a>' + (u ? '<button class="set" type="button" id="signOut">Sign out</button><a class="set danger" href="#delete">Delete account<span class="muted">›</span></a>' : '') + '</div>';
+    h += '<div class="list"><div class="set">Interview Mastery v' + esc(window.IM_VERSION || '') + '<span class="muted">' + S.totals.doneItems + ' / ' + S.totals.items + ' items done</span></div>' + '<a class="set" href="privacy.html">Privacy policy<span class="muted">›</span></a><button class="set" type="button" id="dlData">Download my data<span class="muted">JSON</span></button><div id="dlOut" class="sm muted" role="status" aria-live="polite"></div>' + (u ? '<button class="set" type="button" id="signOut">Sign out</button><a class="set danger" href="#delete">Delete account<span class="muted">›</span></a>' : '') + '</div>';
     h += '<div class="list"><button class="set" type="button" id="checkUpdates">Check for updates<span class="muted">↗</span></button><p class="sm muted" id="updateStatus" role="status" aria-live="polite"></p></div>';
     h += '<div class="list"><a class="set" href="#progress">Your progress ›</a><a class="set" href="#passport">Stamp passport ›</a><a class="set" href="#welcome">Meet Bit & replay the introduction ›</a></div>';
     page('me', h);
     Array.prototype.forEach.call(document.querySelectorAll('[data-set]'), function (c) { c.addEventListener('change', function () { play.settings[c.dataset.set] = c.checked; save(); if (c.dataset.set === 'motion') document.documentElement.classList.toggle('calm', !c.checked); if (c.dataset.set === 'sound') { Sound.enable(c.checked); Sound.play('correct'); } if (c.checked && c.dataset.set === 'haptics') buzz(15); }); });
     $('#set-theme').addEventListener('change', function () { setTheme(this.checked ? 'light' : 'dark'); Sound.play('tap'); });
+    $('#dlData').addEventListener('click', function () {
+      var out = $('#dlOut'); out.textContent = 'Preparing your data…';
+      Auth.downloadData(function (text, name) {
+        out.innerHTML = '<textarea id="dlText" style="width:100%;box-sizing:border-box;font:12px/1.4 monospace" readonly rows="8" aria-label="Your data as JSON"></textarea><button class="set" type="button" id="dlCopy">Copy to clipboard</button><span class="muted">Paste it into a file named ' + esc(name) + '</span>';
+        $('#dlText').value = text;
+        $('#dlCopy').addEventListener('click', function () { var t = $('#dlText'); t.focus(); t.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) { } this.firstChild.nodeValue = ok ? 'Copied' : 'Select the text above and copy it'; });
+      }).then(function (d) { if (d.server && d.server.error && !$('#dlText')) out.textContent = d.server.error; else if (!$('#dlText')) out.textContent = 'Your data was downloaded.'; }, function () { out.textContent = 'Could not prepare your data.'; });
+    });
     var so = $('#signOut'); if (so) so.addEventListener('click', function () { so.disabled = true; Auth.signOut().then(function () { play = Play.emptyState(); play.settings = { haptics: true, bit: true, motion: true }; save(); location.hash = '#home'; location.reload(); }, function (e) { so.disabled = false; alert(e.message); }); });
   }
 

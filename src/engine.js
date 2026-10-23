@@ -1,5 +1,7 @@
 var MODULES = [];
-function registerModule(m) { MODULES.push(m); }
+// Track pages load a small index (window.IM_MINDEX) first; each module file arrives when the learner opens it
+// and registers itself here, taking its index entry's place.
+function registerModule(m) { if (typeof App !== 'undefined' && App.loadedModule(m)) return; MODULES.push(m); }
 
 var App = (function () {
   var esc = H.esc;
@@ -135,7 +137,7 @@ var App = (function () {
       var runnable = (s.lang === 'sql' && s.db !== undefined) || ((s.lang === 'js' || s.lang === 'javascript' || s.lang === 'python' || s.lang === 'py') && s.run);
       h += '<div class="cpane" data-pane="' + i + '"' + (i ? ' hidden' : '') + '><div class="code-head"><span>' + esc(s.title || (LANGS[s.lang] || LANGS.text).name) + '</span><span class="code-btns">' +
         (runnable ? '<button class="btn run" type="button" data-lang="' + s.lang + '" data-snip="' + k + '">' + ICONS.play + 'Run</button><button class="btn edit" type="button">Edit</button>' : '') +
-        '<button class="btn copy" type="button">Copy</button></span></div><pre><code>' + highlight(code, s.lang) + '</code></pre>' + (runnable ? '<div class="run-out" hidden></div>' : '') + '</div>';
+        '<button class="btn copy" type="button">Copy</button></span></div><pre tabindex="0"><code>' + highlight(code, s.lang) + '</code></pre>' + (runnable ? '<div class="run-out" hidden></div>' : '') + '</div>';
     });
     return h + '</div>';
   }
@@ -637,12 +639,13 @@ var App = (function () {
   }
   function zoneQuestions(lv) {
     var qs = [];
-    MODULES.forEach(function (m) { if (m.level !== lv) return; (m.quiz || []).forEach(function (q, i) { if (q && q.options && q.options.length > 1) qs.push({ q: q.q, options: q.options, answer: q.answer, explain: q.explain, section: m.id + '-quiz', mod: m.id, modTitle: stripTags(m.title) }); }); });
+    MODULES.forEach(function (m) { if (m.level !== lv) return; (m.src ? (window.IM_QUIZ || {})[m.id] || [] : m.quiz || []).forEach(function (q, i) { if (q && q.options && q.options.length > 1) qs.push({ q: q.q, options: q.options, answer: q.answer, explain: q.explain, section: m.id + '-quiz', mod: m.id, modTitle: stripTags(m.title) }); }); });
     return qs;
   }
   function checkpointCard(lv) {
     if (!window.Learn) return '';
-    var n = zoneQuestions(lv).length;
+    var n = 0;
+    MODULES.forEach(function (m) { if (m.level === lv) n += m.src ? m.qn || 0 : (m.quiz || []).filter(function (q) { return q && q.options && q.options.length > 1; }).length; });
     if (n < 6) return '';
     var ok = !!DONE['@cp:' + TRACK.id + '-' + lv];
     return '<div class="place guard cp' + (ok ? ' on' : '') + '">' + Journey.icon('key', 'cp-ic') + '<b>' + esc(ZN[lv]) + ' checkpoint</b><span>' + (ok ? 'Passed. Modules here can count as mastered.' : 'Twelve mixed questions from this zone, no topic labels. 80% passes.') + '</span><button class="btn sm" type="button" data-checkpoint="' + lv + '">' + (ok ? 'Retake' : 'Take the checkpoint') + '</button></div>';
@@ -759,6 +762,7 @@ var App = (function () {
     }
     var mid = hs.split('-')[0], m = loaded(mid);
     if (!m) { location.hash = ''; return; }
+    if (m.src) { fetchModule(m); return; }
     var tix = 0, tm = /-t(\d+)/.exec(hs);
     if (tm) tix = +tm[1];
     store.set('imastery.last', { track: TRACK.id, trackTitle: TRACK.title, id: m.id, num: m.num, title: stripTags(m.title), topic: tix, topics: m.topics.length, topicTitle: stripTags((m.topics[tix] || {}).title), hash: hs });
@@ -869,8 +873,17 @@ var App = (function () {
         var tm = t.closest('[data-testout]').getAttribute('data-testout');
         Learn.readiness(tm, routeLang(), function () { var el2 = document.getElementById('prq-' + tm), mm2 = loaded(tm); if (el2 && mm2) el2.innerHTML = prereqHtml(mm2); });
       } else if (t.closest('[data-checkpoint]')) {
-        var lvk = t.closest('[data-checkpoint]').getAttribute('data-checkpoint');
-        Learn.checkpoint(TRACK.id, lvk, ZN[lvk], zoneQuestions(lvk), function () { DONE = store.get('imastery.done', {}) || {}; if (!current) { $('#main').innerHTML = trackDashHtml(); } updateProgress(); });
+        var lvk = t.closest('[data-checkpoint]').getAttribute('data-checkpoint'), cpb = t.closest('[data-checkpoint]');
+        var startCp = function () { Learn.checkpoint(TRACK.id, lvk, ZN[lvk], zoneQuestions(lvk), function () { DONE = store.get('imastery.done', {}) || {}; if (!current) { $('#main').innerHTML = trackDashHtml(); } updateProgress(); }); };
+        if (window.IM_QUIZ || !window.IM_QUIZSRC) startCp();
+        else {
+          var qs = document.createElement('script'), was = cpb.textContent;
+          cpb.disabled = true; cpb.textContent = 'Loading…';
+          qs.src = window.IM_QUIZSRC;
+          qs.onload = function () { cpb.disabled = false; cpb.textContent = was; startCp(); };
+          qs.onerror = function () { cpb.disabled = false; cpb.textContent = 'Could not load. Try again'; if (qs.parentNode) qs.parentNode.removeChild(qs); };
+          document.body.appendChild(qs);
+        }
       } else if (t.closest('.opt')) {
         var b = t.closest('.opt'), mb2 = b.closest('.mcq'), ans = +mb2.getAttribute('data-ans'), pick = +b.getAttribute('data-opt');
         if (pick !== ans && window.Learn && TRACK) { var sec = mb2.closest('section[id]'); if (sec) Learn.remember(sec.id, current ? current.id : sec.id.split('-')[0], (current ? stripTags(current.title) : '') + (/-quiz$/.test(sec.id) ? ' · riddle gate' : '')); }
@@ -928,12 +941,54 @@ var App = (function () {
     ends.forEach(function (s) { endObs.observe(s); });
   }
 
+  /* ---------- lazy module files ---------- */
+  var pending = {};
+  function placeOf(pm, m) { m.num = pm.num; m.level = pm.level; if (!m.title) m.title = pm.title; }
+  function loadedModule(m) {
+    if (!TRACK) return false;
+    for (var i = 0; i < MODULES.length; i++) if (MODULES[i].id === m.id && MODULES[i].src) {
+      var pm = TRACK.modules.filter(function (x) { return x.id === m.id; })[0];
+      placeOf(pm, m); MODULES[i] = m; buildIndex();
+      return true;
+    }
+    return false;
+  }
+  function fetchModule(m) {
+    var main = $('#main');
+    if (current !== m) {
+      current = null;
+      main.innerHTML = '<div class="crumb"><a href="index.html">World map</a><span>›</span><a href="#">' + esc(TRACK.title) + '</a><span>›</span><span>Place ' + m.num + '</span></div><h1>' + m.title + '</h1><div class="skel" aria-hidden="true"><i class="sk-h"></i><i class="sk-l"></i><i class="sk-l"></i><i class="sk-l s"></i><i class="sk-card"></i><i class="sk-l"></i><i class="sk-l s"></i></div><p class="sr-only" role="status">Loading lesson…</p>';
+      main.setAttribute('aria-busy', 'true');
+    }
+    if (pending[m.id]) return;
+    var s = document.createElement('script');
+    pending[m.id] = s;
+    s.src = m.src;
+    s.onload = function () {
+      delete pending[m.id];
+      main.removeAttribute('aria-busy');
+      if (loaded(m.id) === m) { s.onerror(); return; }
+      if (decodeURIComponent(location.hash.slice(1)).split('-')[0] === m.id) route();
+      else updateProgress();
+    };
+    s.onerror = function () {
+      delete pending[m.id];
+      main.removeAttribute('aria-busy');
+      if (s.parentNode) s.parentNode.removeChild(s);
+      if (decodeURIComponent(location.hash.slice(1)).split('-')[0] !== m.id) return;
+      main.innerHTML = '<div class="crumb"><a href="index.html">World map</a><span>›</span><a href="#">' + esc(TRACK.title) + '</a></div><h1>' + m.title + '</h1><p role="alert">This place could not be loaded. Check your connection, then try again.</p><button class="btn primary" type="button" id="modRetry">Retry</button>';
+      $('#modRetry').addEventListener('click', route);
+    };
+    document.body.appendChild(s);
+  }
+
   function track(id) {
     TRACK = TRACKS.filter(function (t) { return t.id === id; })[0];
     var order = {};
     TRACK.modules.forEach(function (pm, i) { order[pm.id] = i; });
+    if (window.IM_MINDEX) MODULES = MODULES.concat(window.IM_MINDEX.filter(function (x) { return !MODULES.some(function (m) { return m.id === x.id; }); }));
     MODULES = MODULES.filter(function (m) { return order[m.id] !== undefined; });
-    MODULES.forEach(function (m) { var pm = TRACK.modules[order[m.id]]; m.num = pm.num; m.level = pm.level; if (!m.title) m.title = pm.title; });
+    MODULES.forEach(function (m) { placeOf(TRACK.modules[order[m.id]], m); });
     MODULES.sort(function (a, b) { return order[a.id] - order[b.id]; });
     document.title = TRACK.title + ' — Interview Mastery';
     var ln = $('#landName'); if (ln) { var R = region(TRACK.id); ln.textContent = R.name + ' · ' + TRACK.modules.length + ' places'; }
@@ -1057,6 +1112,6 @@ var App = (function () {
     Auth.init();
   }
 
-  return { track: track, home: home, renderPart: renderPart, highlight: highlight, dedent: dedent, PART: PART, items: items };
+  return { track: track, loadedModule: loadedModule, home: home, renderPart: renderPart, highlight: highlight, dedent: dedent, PART: PART, items: items };
 })();
 

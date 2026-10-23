@@ -104,6 +104,19 @@ From then on, every new app version (`appVersion`) merged to `main` is built, si
 
 New personal developer accounts must run a **closed test** with at least **12 testers opted in for 14 days in a row** before applying for production. Testing → Closed testing → create a track, promote the internal release to it, invite at least 12 testers, keep them opted in for 14 days, then use **Apply for production** on the Dashboard.
 
+## Release-build hardening and pre-launch report
+
+**R8 (code shrinking).** Release builds use `minifyEnabled true` and `shrinkResources true` with `proguard-android-optimize.txt`. `android/app/proguard-rules.pro` keeps Capacitor classes, `@PluginMethod` / `@JavascriptInterface` methods and the plugin packages (app, browser, text-to-speech) because the WebView bridge finds them by reflection. If a release build misbehaves but debug works, suspect a missing keep rule first. Line numbers are kept so Play crash reports stay readable; upload the mapping file (`android/app/build/outputs/mapping/release/mapping.txt`, also inside the `.aab`) if Play Console asks for deobfuscation.
+
+**Backups: `allowBackup="false"`.** Learner progress is in WebView localStorage, and the Supabase session token (`sb-...-auth-token`, `persistSession: true`) is stored in the same localStorage, so the two cannot be backed up separately. Backing it all up would copy a signed-in session to a new device. We chose safety: no backup. Trade-off: signed-in learners lose nothing, because progress syncs to their account and they simply sign in again on a new phone. Guest (signed-out) progress is not restored after a reinstall or phone change. If that matters later, revisit by moving the session out of localStorage, then add `dataExtractionRules` and `fullBackupContent` XML files that include only the progress keys.
+
+**Pre-launch report.** Play Console runs it automatically on every upload to an internal, closed or open track (a few hours; a robot opens the app on real devices). Read it at Release → Testing → Pre-launch report (pick the build). Check:
+- Stability: any crash or ANR, and the device it happened on. A crash only in release builds usually means a missing R8 keep rule.
+- Accessibility: touch targets that are too small, low text contrast, missing labels.
+- Security: flagged libraries or unsafe settings.
+- Performance and screenshots: blank screens, a stuck splash, or the sign-in redirect failing.
+Fix any crash before promoting to closed testing or production.
+
 ## Notes
 
 - Google sign-in in the app uses the system browser with Supabase, so it does not depend on the signing key's SHA-1; nothing to add in Google Cloud.

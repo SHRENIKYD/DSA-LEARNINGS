@@ -57,7 +57,7 @@ jobs:
         run: psql "$DB_URL" -v ON_ERROR_STOP=1 -q -c "delete from public.client_errors where created_at < now() - interval '90 days'"
       - name: Upload encrypted backup
         if: steps.check.outputs.run == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: db-backup
           path: out/

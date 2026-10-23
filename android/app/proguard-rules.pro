@@ -19,3 +19,26 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# --- Release (R8) rules ---
+# Keep line numbers so Play Console crash stack traces are readable.
+-keepattributes SourceFile,LineNumberTable,*Annotation*,InnerClasses,EnclosingMethod,Signature
+-renamesourcefileattribute SourceFile
+
+# Capacitor finds plugins and @PluginMethod / @JavascriptInterface methods by reflection.
+-keep class com.getcapacitor.** { *; }
+-keep @com.getcapacitor.annotation.CapacitorPlugin public class * { *; }
+-keepclassmembers class * {
+    @com.getcapacitor.PluginMethod public *;
+    @com.getcapacitor.annotation.PermissionCallback *;
+    @com.getcapacitor.annotation.ActivityCallback *;
+}
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-dontwarn com.getcapacitor.**
+
+# Plugins in use: @capacitor/app, @capacitor/browser, @capacitor-community/text-to-speech
+-keep class com.capacitorjs.plugins.** { *; }
+-keep class com.getcapacitor.community.** { *; }
+-keep class io.github.shrenikyd.interviewmastery.** { *; }

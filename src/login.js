@@ -73,6 +73,29 @@
     return;
   }
 
+  // Download my data (guests get the copy on this device; signed-in people also get the server copy).
+  var dl = document.createElement('div');
+  dl.className = 'auth-dl';
+  dl.innerHTML = '<button class="btn ghost auth-link" type="button" id="dlData">Download my data</button><div id="dlMsg" class="auth-msg" role="status" hidden></div><textarea id="dlText" class="auth-dltext" readonly rows="8" hidden aria-label="Your data as JSON"></textarea><button class="btn auth-link" type="button" id="dlCopy" hidden>Copy to clipboard</button>';
+  $('authDelete').parentNode.insertBefore(dl, $('authDelete'));
+  $('dlData').addEventListener('click', function () {
+    var b = this;
+    b.disabled = true; msg($('dlMsg'), 'Preparing your data…');
+    Auth.downloadData(function (text, name) {
+      $('dlText').value = text; show($('dlText'), true); show($('dlCopy'), true); $('dlText').dataset.name = name;
+    }).then(function (d) {
+      b.disabled = false;
+      msg($('dlMsg'), d.server && d.server.error ? d.server.error : (NATIVE ? 'Copy your data below and save it where you like.' : 'Your data was downloaded.'));
+    }, function () { b.disabled = false; msg($('dlMsg'), 'Could not prepare your data.'); });
+  });
+  $('dlCopy').addEventListener('click', function () {
+    var t = $('dlText');
+    t.focus(); t.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { }
+    msg($('dlMsg'), ok ? 'Copied. Paste it into a file named ' + (t.dataset.name || 'interview-mastery-data.json') + '.' : 'Select the text above and copy it.');
+  });
+
   $('tabIn').addEventListener('click', function () { setMode('in'); });
   $('tabUp').addEventListener('click', function () { setMode('up'); });
   $('authSignOut').addEventListener('click', function () { Auth.signOut().then(function () { location.href = 'login.html'; }, function (e) { alert(e.message); }); });
