@@ -2212,13 +2212,15 @@ public class PaymentConsumer {
     private final JdbcTemplate jdbc;
     PaymentConsumer(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
-    @KafkaListener(topics = "payments.requested", groupId = "ledger")
+    @KafkaListener(topics = "payments.requested", groupId = "ledger",
+                   containerFactory = "manualAckFactory")   // AckMode.MANUAL, not MANUAL_IMMEDIATE
     @Transactional                                   // dedup row + balance change commit together
     public void on(PaymentRequested msg, Acknowledgment ack) {
-        try {
-            // PRIMARY KEY (message_id): the 2nd insert of the same id throws
-            jdbc.update("INSERT INTO processed_messages(message_id) VALUES (?)", msg.messageId());
-        } catch (DuplicateKeyException dup) {
+        // ON CONFLICT DO NOTHING instead of catching a unique-key error: in PostgreSQL a failed
+        // statement aborts the whole transaction, so a later COMMIT would silently become a ROLLBACK
+        int claimed = jdbc.update(
+            "INSERT INTO processed_messages(message_id) VALUES (?) ON CONFLICT DO NOTHING", msg.messageId());
+        if (claimed == 0) {
             ack.acknowledge();                       // already done earlier: just move on
             return;
         }
@@ -2226,7 +2228,9 @@ public class PaymentConsumer {
             "UPDATE accounts SET balance = balance - ? WHERE id = ? AND balance >= ?",
             msg.amountCents(), msg.accountId(), msg.amountCents());
         if (rows == 0) throw new InsufficientFundsException(msg.accountId());  // rolls back the dedup row too
-        ack.acknowledge();                           // ack only after the DB work is committed (end of method)
+        ack.acknowledge();   // MANUAL only queues the ack; the container commits the offset after this method
+                             // returns, i.e. after the @Transactional proxy has committed the DB transaction.
+                             // MANUAL_IMMEDIATE would commit the offset right here, BEFORE the DB commit.
     }
 }`
     }

@@ -1305,7 +1305,7 @@ def first_non_repeating(arr):
         `<p><b>Hint 2:</b> Only lowercase letters → a single <code>int[26]</code> is enough. Add for s, subtract for t.</p>`,
         `<p><b>Hint 3 (recipe):</b> if lengths differ return false. For i in 0..n−1: cnt[s[i]−'a']++, cnt[t[i]−'a']−−. Finally return true only if all 26 counts are 0. Unicode follow-up → use a HashMap over code points.</p>`
       ],
-      tests: { sig: 'string string -> bool', fn: 'isAnagram', cases: [
+      tests: { sig: 'string string -> bool', fn: 'isAnagram', also: { java: ['isAnagramUnicode'] }, cases: [
   [['anagram', 'nagaram'], true],
   [['rat', 'car'], false],
   [['a', 'a'], true],

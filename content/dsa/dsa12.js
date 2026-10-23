@@ -1723,7 +1723,7 @@ ListNode reverseList(ListNode head) {
         `<p>Three pointers: <code>prev</code> (head of reversed part, starts null), <code>curr</code> (node being flipped), <code>next</code> (saved rest of the list). No extra structure needed.</p>`,
         `<p>Traps: return <code>prev</code>, not <code>head</code> (head is now the tail); empty list → loop never runs, prev = null is correct; in recursion don't forget <code>head.next = null</code> or you create a 2-node cycle. Recipe: prev = null, curr = head; while curr: next = curr.next; curr.next = prev; prev = curr; curr = next; return prev.</p>`
       ],
-      tests: { sig: 'ListNode -> ListNode', fn: 'reverseList', cases: [
+      tests: { sig: 'ListNode -> ListNode', fn: 'reverseList', also: { java: ['reverseListRecursive'] }, cases: [
         [[[1, 2, 3, 4, 5]], [5, 4, 3, 2, 1]],
         [[[]], []],
         [[[1]], [1]],

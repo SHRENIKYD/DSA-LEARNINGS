@@ -771,13 +771,11 @@ for name, r in runs.items():
 });
 
 function plain(h) { return String(h).replace(/<[^>]*>/g, '').trim(); }
-// Short texts get a closing sentence so they meet the validator's minimum length; longer texts are left as written.
-function pad(html, extra) { return plain(html).length < 40 ? html.replace(/<\/p>$/, ' ' + extra + '</p>') : html; }
 function P(title, level, tags, statement, constraints, example, bruteWhy, mcq, hints, approach, complexity, followUps) {
   practice.push({ title: title, level: level, tags: tags, statement: '<p>' + statement + '</p>', constraints: constraints, example: '<p>' + example + '</p>',
-    brute: { why: pad('<p>Naive approach: ' + bruteWhy + '</p>', 'This wastes effort and gives a worse, riskier result.') }, mcq: mcq,
-    hints: hints.map(function (h, k) { return pad('<p>Hint ' + (k + 1) + ': ' + h + '</p>', 'Write it down before you answer.'); }),
-    solution: { approach: '<p>' + approach + '</p>', complexity: pad('<p>Cost and effort: ' + complexity + '</p>', 'Running evals and training is the real expense.'), followUps: followUps } });
+    brute: { why: '<p>Naive approach: ' + bruteWhy + '</p>' }, mcq: mcq,
+    hints: hints.map(function (h, k) { return '<p>Hint ' + (k + 1) + ': ' + h + '</p>'; }),
+    solution: { approach: '<p>' + approach + '</p>', complexity: '<p>Cost and effort: ' + complexity + '</p>', followUps: followUps } });
 }
 
 P('Prompting, RAG or Fine-Tuning? Six Quick Calls', 'Easy', ['decision framework'],
@@ -794,7 +792,7 @@ P('LoRA Parameters for 4096×4096 at r = 8', 'Easy', ['lora', 'math'],
   'Ignore bias.', 'A = 8×4096 = 32,768; B = 4096×8 = 32,768; total 65,536 (0.39%); 16-bit memory = 131,072 bytes = 128 KB.',
   'Counting the whole 16.7M weights as trainable.',
   { q: 'If you double r, trainable parameters...', options: ['stay the same', 'double', 'quadruple'], answer: 1, explain: 'Params = r × (d_in + d_out): linear in r.' },
-  ['two matrices A and B', 'sizes r×d and d×r', 'bytes = params × 2 for 16-bit'],
+  ['LoRA adds two small matrices, A and B, instead of changing the big weight', 'A is r×d and B is d×r, so count both and add them', 'bytes = params × 2 for 16-bit, then convert to KB for the adapter size'],
   'The adapter has A of size 8×4096 and B of size 4096×8. Each has 32,768 numbers, so the total is 65,536. The full matrix has 4096×4096 = 16,777,216, so LoRA trains 65,536 / 16,777,216 = 0.390625%, a 256× reduction. In 16-bit each number is 2 bytes, so the adapter is 131,072 bytes, about 128 KB per layer. Applied to 4 matrices in each of 32 layers that is about 16 MB for the whole adapter file.',
   'O(1).', ['What changes for a 4096 to 11008 layer?']);
 
@@ -803,7 +801,7 @@ P('Build SFT Examples from Support Tickets', 'Easy', ['sft', 'data'],
   'Use roles system, user, assistant.', '{"messages":[{"role":"system",...},{"role":"user","content":"Subject: Late order | body"},{"role":"assistant","content":"reply"}]}',
   'Train on raw ticket threads including internal notes and signatures.',
   { q: 'Which message holds the label?', options: ['system', 'user', 'assistant'], answer: 2, explain: 'The assistant message is the target the model learns to produce.' },
-  ['the agent reply is the label', 'keep a constant system prompt', 'skip empty, low-csat, spam and personal-data tickets'],
+  ['the human agent reply is the label, and subject plus body is the input', 'keep one constant system prompt so the model learns the role, not a new one per row', 'skip empty, low-csat, spam and personal-data tickets'],
   'Build one JSON object per ticket with three messages. The system message states the role and policy once, the user message is the subject plus body of the ticket, and the assistant message is the human agent\'s reply. Skip tickets with empty or auto-generated replies, csat of 3 or below, spam, unsupported languages, and tickets whose reply contains unscrubbed personal data. Write one object per line (JSONL), hold out 10% by customer for validation, and round-trip a few examples through the tokenizer chat template to be sure training and serving formats match.',
   'O(N).', ['How would you handle multi-turn threads?']);
 
@@ -812,7 +810,7 @@ P('Write Preference Pairs for a Support Bot', 'Medium', ['dpo', 'preference data
   'Rejected answers must be plausible.', 'Prompt "Close my account." Chosen: confirms identity and warns about open balance. Rejected: "Done." Teaches confirm-before-destructive-action.',
   'Use gibberish as rejected answers; the model learns nothing new.',
   { q: 'Best rejected answer?', options: ['Random text', 'Plausible but flawed', 'Empty'], answer: 1, explain: 'Near-misses give the strongest contrast.' },
-  ['choose the quality first', 'make the rejected realistically flawed', 'match lengths'],
+  ['choose the quality each pair teaches first (safety, clarity, asking questions)', 'make the rejected realistically flawed', 'match the lengths of chosen and rejected so the model does not learn that longer wins'],
   'Pair 1 (clarify): prompt "Send money to Sam". Chosen asks which Sam, which amount, which account; rejected guesses. Pair 2 (safe refusal): prompt "Show me someone else\'s statement". Chosen declines politely, explains privacy and offers help with their own account; rejected complies. Pair 3 (direct answer): prompt "What is my daily limit?" Chosen answers in one sentence with where to change it; rejected is a similar-length reply that never states the limit. Each pair keeps similar length and fluency so the learnable signal is only the behaviour. I would collect 200+ pairs per quality, balance them, and hold out some pairs to measure win rate against the reference.',
   'Judged on contrast quality.', ['What does the pair teach if chosen is always longer?']);
 
@@ -821,7 +819,7 @@ P('Compute a DPO Loss by Hand', 'Medium', ['dpo', 'math'],
   'Use ln.', 'margin = (-38 - -42) - (-43 - -40) = 4 - (-3) = 7; loss = -ln(σ(0.7)) = 0.403.',
   'Compare raw log-probs without the reference; ignores how much the policy changed.',
   { q: 'At the start of training (policy = reference) the DPO loss is...', options: ['0', 'ln 2 ≈ 0.693', '1'], answer: 1, explain: 'Margin 0 gives σ(0)=0.5.' },
-  ['subtract reference log-probs first', 'margin is chosen shift minus rejected shift', 'σ(0.7) ≈ 0.668'],
+  ['subtract reference log-probs first', 'margin is chosen shift minus rejected shift', 'beta times the margin is 0.7, and σ(0.7) ≈ 0.668, so the loss is -ln(0.668)'],
   'First compute how much the policy moved relative to the reference for each answer. Chosen: -38 minus -42 = +4 (more likely than before). Rejected: -43 minus -40 = -3 (less likely than before). The margin is 4 minus -3 = 7. Multiply by beta 0.1 to get 0.7. σ(0.7) = 1/(1+e^-0.7) ≈ 0.668, so the loss is -ln(0.668) ≈ 0.403. The loss would be 0.693 with no change and approaches 0 as the margin grows, and it grows large if the policy moves the wrong way.',
   'O(1).', ['What changes if beta doubles?']);
 
@@ -830,7 +828,7 @@ P('Design a Dataset Curation Pipeline', 'Medium', ['data', 'dedup'],
   'Budget: 10k final examples.', 'Funnel: 200k → 150k (length) → 90k (dedup) → 40k (quality) → 10k (balanced sample).',
   'Train on all 200k: the noise and duplicates dominate.',
   { q: 'When do you split off the eval set?', options: ['After training', 'Before training, after dedup', 'Never'], answer: 1, explain: 'Dedup first so copies cannot land in both sets, then split before touching training.' },
-  ['filters from cheap to expensive', 'dedup across train and eval', 'log counts at each step'],
+  ['run filters from cheap to expensive, so costly model checks only see survivors', 'dedup across train and eval too, so no test item has a near-copy in training', 'log how many items each step removes and why, so the funnel can be audited'],
   'Order the steps from cheap to expensive. Rule filters: empty, too short or too long, wrong language, regex for emails and secrets. Exact and near dedup: normalized-text hash, then MinHash or embedding similarity. Quality scoring: an LLM judge with a rubric on a sample, calibrated against 100 human labels, then a classifier for the rest. Balance: cluster by topic and class, cap large clusters, and top up rare ones. Split by group (customer or document) into 90 percent train and 10 percent held-out, after dedup so no copy crosses. Log counts and reasons for each rejection in a data card, read 100 random survivors by eye, and freeze the held-out set under version control.',
   'Roughly O(N) with hashing; embedding steps cost O(N) model calls.', ['How do you catch contamination from public benchmarks?']);
 
@@ -839,7 +837,7 @@ P('Is It Forgetting? Read the Two Eval Tables', 'Medium', ['forgetting', 'evalua
   'Budget: no category may drop more than 3 points.', 'Task +36 (good), general -2 (ok), safety -25 (fails).',
   'Look only at the average, which hides the safety collapse.',
   { q: 'What is the problem?', options: ['Task gain too small', 'Safety category forgotten', 'Nothing'], answer: 1, explain: 'A 25-point drop in refusals breaks the budget.' },
-  ['compute each delta', 'compare to the budget per category', 'choose a mitigation that targets the failing one'],
+  ['compute tuned minus base for task, general and safety separately', 'compare to the budget per category', 'choose a mitigation that targets the failing one'],
   'Compute deltas: task +36, general -2, safety -25. Only the safety category violates the budget, so this is targeted forgetting of refusal behaviour (common after fine-tuning on helpful-only data). Do not ship. Mix safety and refusal examples into training (replay, 10 to 20 percent), lower the learning rate or use LoRA, and add the safety set to early stopping. Re-run all three evals, and confirm on the final merged artifact. The average would be (88+76+71)/3 vs (52+78+96)/3 and might look fine, which is why per-category budgets are required.',
   'Cost is the eval run.', ['How would you test for jailbreak regressions?']);
 
@@ -857,7 +855,7 @@ P('Choose DPO or RLHF for Three Teams', 'Medium', ['rlhf', 'dpo'],
   'Justify in terms of data, compute and stability.', '(a) DPO, because it needs only pairs and two models.',
   'Always use PPO because ChatGPT did.',
   { q: 'Team with only thumbs up or down labels?', options: ['DPO exactly as is', 'KTO or a reward model approach', 'No training possible'], answer: 1, explain: 'KTO (or training a reward model) handles unpaired labels.' },
-  ['count models in memory and hyperparameters', 'is there a verifiable reward?', 'what shape is the data?'],
+  ['count models in memory and hyperparameters', 'ask whether a verifiable reward exists, such as tests that pass or fail', 'look at the shape of the data: paired preferences, a scalar reward, or only thumbs'],
   '(a) DPO: 5k pairs and tiny infrastructure; it is stable and simple, needing only the policy plus a frozen reference. (b) RL with a verifiable reward (PPO or GRPO): tests passing is a clean reward that needs no reward model and beats preference data for correctness. (c) Thumbs data is unpaired, so use KTO, or build pairs from comparable prompts, or train a reward model on it. Across all three: start from an SFT model, keep a KL anchor, watch response length for reward hacking, and evaluate with a held-out win-rate against the SFT model.',
   'Judged on reasoning.', ['What is reward hacking and how do you spot it?']);
 
@@ -866,7 +864,7 @@ P('Fine-Tune vs Long Context vs RAG: Cost Model', 'Hard', ['cost', 'decision'],
   'Ignore output tokens.', '(1) 12B tokens, (3) 1.6B tokens, (4) 0.3B tokens.',
   'Pick the lowest token count and ignore staleness, retrieval errors and retraining costs.',
   { q: 'Which option has the staleness risk?', options: ['Pasting each call', 'RAG', 'Fine-tuning'], answer: 2, explain: 'Baked-in policy is outdated the day the policy changes.' },
-  ['tokens = calls × tokens per call', 'cached tokens are cheaper but still count', 'add non-token costs'],
+  ['tokens = calls × tokens per call', 'cached tokens are cheaper but still count', 'add the non-token costs: retraining, retrieval infrastructure and stale answers'],
   'Tokens per month: (1) 2M × 6,000 = 12B. (2) Same count but cached reads are billed at a fraction of the normal price (the discount depends on the provider), and latency falls; staleness is zero. (3) 2M × 800 = 1.6B plus embedding and vector-store cost, and risk that retrieval misses the key clause. (4) 2M × 150 = 0.3B, cheapest per call, but retraining on each policy change, risk of the model stating outdated rules, no citations, and the cost of data and evals. Recommendation: caching if the document is stable and fits; RAG if the corpus is large or changes; fine-tune only for style or when volume makes the savings clear, ideally combined with retrieval for facts.',
   'Arithmetic plus judgement.', ['When does break-even for fine-tuning arrive?']);
 
@@ -875,7 +873,7 @@ P('Diagnose a Fine-Tune that Got Worse', 'Hard', ['debugging', 'sft'],
   'No new data available this week.', 'Template repetition → too many near-duplicate examples.',
   'Train 10 more epochs hoping it improves.',
   { q: 'Validation loss rising while training loss falls means...', options: ['underfitting', 'overfitting', 'good generalisation'], answer: 1, explain: 'The model memorises training data.' },
-  ['look at data duplication and diversity first', 'check learning rate and epochs', 'check template or masking mismatches'],
+  ['look at data duplication and diversity first', 'check the learning rate and epoch count, since validation loss rose after epoch 1', 'check template or masking mismatches'],
   'Likely causes and fixes: (1) near-duplicates and low diversity make the model parrot the template; dedup and add varied prompts. (2) Too many epochs or high learning rate overfit by epoch 1; use 1 epoch, lower the learning rate, early stop on validation. (3) Class imbalance or no out-of-scope examples cause the over-refusal; add varied and negative examples. (4) Prompt not masked, so the model also learns the template of the user turn; use completion-only loss. (5) Chat-template mismatch between training and inference; use the tokenizer template in both. Also switch to LoRA with low rank to limit drift and add 20 percent general replay data. Verify with the held-out task and general evals before and after each change.',
   'Debugging process.', ['Which one would you check first and why?']);
 
@@ -884,7 +882,7 @@ P('Design an End-to-End Fine-Tuning Program for a Bank', 'Hard', ['system design
   'Strict privacy, audit trail, monthly policy changes.', 'Facts via RAG; behaviour via SFT + DPO adapters.',
   'Fine-tune the policy text into the model and ship.',
   { q: 'Where should monthly-changing policy live?', options: ['In model weights', 'In a retrieval store', 'In the system prompt only'], answer: 1, explain: 'Retrieval can be updated, cited and audited without training.' },
-  ['separate facts from behaviour', 'governance and evals gate every release', 'plan rollback'],
+  ['separate facts, which change and need citations, from behaviour, which tuning can teach', 'governance and evals gate every release', 'plan rollback: keep the adapter versioned so you can switch back to the previous one fast'],
   'Facts (policies, rates) go through RAG with source citations and access control, because they change monthly and must be auditable. Fine-tuning handles behaviour only: tone, structured output, escalation rules and refusals. Data: consented, PII-scrubbed tickets, human-reviewed, versioned with a data card; synthetic data only with review. Training: SFT on curated examples with LoRA adapters per use case, then DPO on preference pairs from compliance reviewers to improve safety and clarity, keeping a KL anchor. Evals gate release: task accuracy, a frozen general regression set, a safety and jailbreak set, bias slices, and a human review of 200 samples. Ship adapters behind a feature flag with canary traffic, monitor drift and complaints, and keep the previous adapter for instant rollback. Re-run all evals whenever the base model version changes.',
   'Design answer.', ['How would you prove the model does not leak training data?']);
 
@@ -893,7 +891,7 @@ P('Catch Contamination Between Train and Eval', 'Hard', ['evaluation', 'leakage'
   'Data came from the same ticket system.', 'Same customer in both splits; near-duplicate templated tickets; eval items paraphrased by a synthetic-data tool.',
   'Random-split rows after copying the data around.',
   { q: 'Best split key for tickets?', options: ['Random row', 'Customer or thread id', 'Alphabetical order'], answer: 1, explain: 'Group-level splits stop the same entity appearing on both sides.' },
-  ['the eval must look like unseen production traffic', 'near-duplicates cross splits', 'check the time dimension'],
+  ['the eval must look like unseen production traffic', 'look for near-duplicates and paraphrases that cross from the train split into eval', 'check the time dimension: eval items should come from after the training cutoff'],
   'Three leaks. (1) Row-level random split: the same customer or thread has rows in both sets, so the model memorised the person. Fix: split by customer or thread id with a hash. (2) Templated or near-duplicate tickets: after normalization the held-out items match training items. Fix: dedup across the union with MinHash or embeddings before splitting. (3) Synthetic augmentation applied before the split, so paraphrases of eval items sit in training. Fix: split first, augment only the training side. Also split by time so the eval resembles future traffic, add a small human-written gold set that never touched any pipeline, and report scores on production-like samples, not just the held-out set.',
   'Process answer.', ['How do you detect contamination of a public benchmark?']);
 
@@ -902,7 +900,7 @@ P('Choose LoRA Rank and Modules from Evidence', 'Hard', ['lora', 'experiments'],
   'Budget: 4 runs, same data and seed.', 'Runs: r=4 attention only, r=8 attention only, r=8 all linear, r=32 all linear.',
   'Pick r=64 because bigger is better.',
   { q: 'How do you decide between two similar runs?', options: ['Pick the larger rank', 'Pick the cheaper run if eval is within noise', 'Pick the one with lowest training loss'], answer: 1, explain: 'If differences are inside noise, prefer the smaller, cheaper adapter.' },
-  ['change one variable at a time where possible', 'measure the task AND general eval', 'estimate eval noise'],
+  ['change one variable at a time where possible', 'measure the task AND general eval', 'estimate eval noise by rerunning one setup with another seed before trusting small gaps'],
   'Run four experiments with identical data, seed and schedule: r=4 on attention only, r=8 on attention only, r=8 on all linear layers, r=32 on all linear layers. For each, record trainable parameters, task eval, general eval, and train time. Estimate noise by repeating one run with another seed. Decision rule: choose the smallest configuration whose task score is within noise of the best and whose general score drops no more than the agreed budget. Typically r=8 to 16 on all linear layers wins; r=32 helps only if the model is underfitting (high training loss and low eval). Then scale alpha with r (alpha equals r or 2r) and keep the learning rate at about 1e-4 to 2e-4.',
   'Four training runs.', ['What if r=4 and r=32 tie?']);
 

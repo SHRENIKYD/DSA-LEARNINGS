@@ -1,7 +1,7 @@
 (function () {
   var topics = [], practice = [], quiz = [], interview = [];
   var R = String.raw; // raw template: backslashes, Jinja braces and shell code stay exactly as typed
-  var LAB = '<p>Everything runs on your own machine, no cloud account. Install once: <code>pipx install ansible-core</code> (or <code>python3 -m pip install --user ansible-core</code>); check with <code>ansible --version</code> (2.15 or newer). Managed hosts are either <b>localhost</b> (<code>ansible_connection=local</code>) or throwaway <b>containers</b> reached with the <code>community.docker.docker</code> connection (<code>ansible-galaxy collection install community.docker</code>; Podman users can use <code>community.podman.podman</code> or SSH). Lab files live under <code>/tmp</code> or a scratch folder. Every password, token and key shown is a placeholder.</p>';
+  var LAB = '<p>Everything runs on your own machine, no cloud account. Install once: <code>pipx install ansible-core</code> (or <code>python3 -m pip install --user ansible-core</code>); check with <code>ansible --version</code> (2.20 or newer; the playbooks here were syntax-checked on ansible-core 2.20 and 2.21, which need Python 3.12 to 3.14 on the control machine). Managed hosts are either <b>localhost</b> (<code>ansible_connection=local</code>) or throwaway <b>containers</b> reached with the <code>community.docker.docker</code> connection (<code>ansible-galaxy collection install community.docker</code>; Podman users can use <code>community.podman.podman</code> or SSH). Lab files live under <code>/tmp</code> or a scratch folder. Every password, token and key shown is a placeholder.</p>';
   var PYC = '<p>Python 3, standard library only. This is a small model of the real Ansible rule: good enough to reason with, simpler than the real engine.</p>';
   var SKIP = { skip: 'configuration code, verified by reading' };
   // INI inventories and Jinja2 templates have no checker in tools/validate.js, so they use lang 'text' with check: false (same convention as devops08 Dockerfiles).
@@ -1036,7 +1036,7 @@ galaxy_info:
   author: you
   description: Deploys the app behind nginx
   license: MIT
-  min_ansible_version: "2.15"
+  min_ansible_version: "2.20"
   platforms:
     - name: Debian
       versions: [bookworm]
@@ -1048,7 +1048,7 @@ dependencies:
       Y(`# requirements.yml - everything the project needs from outside, pinned
 collections:
   - name: community.general
-    version: ">=8.0.0,<10.0.0"
+    version: ">=13.0.0,<14.0.0"
   - name: community.docker
     version: ">=3.4.0"
   - name: ansible.posix
@@ -1248,7 +1248,7 @@ db_password: "{{ vault_db_password }}"      # the value lives in the encrypted v
   become: true
   tasks:
     - name: Set the application database password
-      community.mysql.mysql_user:
+      ansible.mysql.mysql_user:
         name: "{{ db_user }}"
         password: "{{ db_password }}"
         priv: "appdb.*:ALL"
@@ -1294,7 +1294,7 @@ git secrets --scan || gitleaks detect --no-banner   # either scanner, run in CI 
     deepDive: `<p>🟣 <b>What vault does.</b> It derives a key from your password with PBKDF2 (10,000 iterations of HMAC-SHA256 plus a random salt), then encrypts with AES-256 in CTR mode and authenticates with an HMAC. The header is <code>$ANSIBLE_VAULT;1.1;AES256</code>, or <code>$ANSIBLE_VAULT;1.2;AES256;label</code> when you use a vault ID, and it is followed by hex. Because the key comes from a password, <b>a weak vault password is the weak point</b>: use a long random passphrase from a password manager. Encrypting a whole file hides variable <i>names</i> too (bad for review and grep); <code>encrypt_string</code> and the vars/vault split keep names visible.</p>
       <p>🟣 <b>Diffs and merges.</b> An encrypted file changes completely when re-encrypted (new random salt), so Git diffs are useless and merges conflict. Edit rarely, keep vault files small, one per environment, and review changes through <code>ansible-vault view</code>. Some teams add a Git <code>textconv</code> filter to show decrypted diffs locally.</p>
       <p>🟣 <b>no_log details.</b> <code>no_log</code> replaces the result with a "censored" message, so <code>register</code> still holds the data for later tasks, but it hides failure details too. Loops can leak through the <code>item</code> label: use <code>loop_control: {label: "{{ item.name }}"}</code> so the printed loop item does not include secret fields. Callback plugins and logging to file (<code>log_path</code>) record what is printed, so no_log protects those as well; <code>ANSIBLE_DEBUG</code> can still show module internals, so never use it in production.</p>
-      <p>🟣 <b>Beyond static vault.</b> For dynamic secrets use lookups: <code>community.hashi_vault.hashi_vault</code>, <code>amazon.aws.aws_secret</code> (which uses the controller's AWS identity, so no stored key), Azure Key Vault, CyberArk. Secrets arrive at run time, are short-lived, and every read is audited. Also scan for leaks continuously (gitleaks, trufflehog, GitHub secret scanning with push protection), and tell people the policy: any secret that reached Git is rotated.</p>`,
+      <p>🟣 <b>Beyond static vault.</b> For dynamic secrets use lookups: <code>community.hashi_vault.hashi_vault</code>, <code>amazon.aws.secretsmanager_secret</code> (which uses the controller's AWS identity, so no stored key), Azure Key Vault, CyberArk. Secrets arrive at run time, are short-lived, and every read is audited. Also scan for leaks continuously (gitleaks, trufflehog, GitHub secret scanning with push protection), and tell people the policy: any secret that reached Git is rotated.</p>`,
     aiEra: `<p>🤖 <b>What AI changes.</b> Assistants help structure vars/vault files, write the <code>vault-id</code> commands and review playbooks for missing <code>no_log</code>. AI scanners also find secrets in repos and logs faster than a human.</p>
       <p><b>The big new risk:</b> pasting configuration into a chat or an AI coding tool can send secrets to a third party. Never paste vault passwords, decrypted vault files, tokens or private keys into a prompt. Redact first (replace values with <code>&lt;placeholder&gt;</code>), and use company-approved tools only. Agentic tools that read your repo may read a plaintext <code>.vault_pass</code> in the working folder, so keep it outside.</p>
       <p><b>Where AI goes wrong:</b> it writes example playbooks with <code>password: "SuperSecret123"</code> inline, puts <code>ansible_password</code> in inventory, forgets <code>no_log</code>, or suggests committing the vault password file "for convenience". Treat any literal secret in generated code as a bug and replace it with a vaulted variable.</p>`,
@@ -1336,7 +1336,7 @@ git add group_vars && git commit -m "vault db password (value rotated; see ticke
 gitleaks detect --no-banner`),
       alt: [Y(`# in every task that uses the secret
 - name: Set the application database password
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: "{{ db_user }}"
     password: "{{ db_password }}"
     state: present
@@ -1385,6 +1385,7 @@ gitleaks detect --no-banner`),
       tags: [deploy]
 
     - name: Change the config, check it, roll back on failure
+      tags: [deploy, config]
       block:
         - name: Deploy the config (keep a backup of the old one)
           ansible.builtin.template:
@@ -1423,7 +1424,6 @@ gitleaks detect --no-banner`),
         - name: Stop the rollout - this host failed the smoke test
           ansible.builtin.fail:
             msg: "New config failed on {{ inventory_hostname }}; rolled back and aborting"
-      tags: [deploy, config]
 
     - name: Put the host back into the load balancer
       ansible.builtin.command: "/usr/local/bin/lb-ctl enable {{ inventory_hostname }}"
@@ -1850,7 +1850,8 @@ ansible db -i inventory.ini -b -m ansible.builtin.apt -a "name=htop state=presen
     - name: Write the config
       ansible.builtin.copy:
         dest: /tmp/lab/nginx.conf
-        content: "listen {{ nginx_port }};"`, 'fixed.yml'),
+        content: "listen {{ nginx_port }};"
+        mode: "0644"`, 'fixed.yml'),
     alt: [SH(R`ansible-playbook -i inventory.ini fixed.yml --syntax-check   # parse only, no connection
 ansible-lint fixed.yml                                       # style and risk rules
 ansible-playbook -i inventory.ini fixed.yml --check --diff   # dry run`, 'Catch it early')],
@@ -2035,7 +2036,7 @@ ansible-playbook -i inventories/prod site.yml --vault-id "prod@$VP_FILE"`),
 db_user: app
 db_password: "{{ vault_db_password }}"`, 'vars.yml'),
       Y(`- name: Use the secret without logging it
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: "{{ db_user }}"
     password: "{{ db_password }}"
     state: present
@@ -2266,7 +2267,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: python3 -m pip install ansible-core==2.17.* ansible-lint==24.*
+      - run: python3 -m pip install ansible-core==2.21.* ansible-lint==26.*
       - run: ansible-galaxy collection install -r requirements.yml
       - run: ansible-playbook -i inventories/staging site.yml --syntax-check
       - run: ansible-lint site.yml roles/
@@ -2276,7 +2277,7 @@ jobs:
     needs: lint
     steps:
       - uses: actions/checkout@v4
-      - run: python3 -m pip install ansible-core==2.17.* molecule molecule-plugins[docker]
+      - run: python3 -m pip install ansible-core==2.21.* molecule molecule-plugins[docker]
       - run: molecule test            # create, converge, idempotence (changed=0), verify, destroy
         working-directory: roles/nginx
 
@@ -2287,7 +2288,7 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
-      - run: python3 -m pip install ansible-core==2.17.*
+      - run: python3 -m pip install ansible-core==2.21.*
       - run: ansible-galaxy collection install -r requirements.yml
       - name: Dry run with diff
         env:
@@ -2307,7 +2308,7 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
-      - run: python3 -m pip install ansible-core==2.17.*
+      - run: python3 -m pip install ansible-core==2.21.*
       - run: ansible-galaxy collection install -r requirements.yml
       - name: Apply to staging
         env:
@@ -2327,7 +2328,7 @@ jobs:
     environment: production        # protected environment: requires a manual approval
     steps:
       - uses: actions/checkout@v4
-      - run: python3 -m pip install ansible-core==2.17.*
+      - run: python3 -m pip install ansible-core==2.21.*
       - run: ansible-galaxy collection install -r requirements.yml
       - name: Apply to production, rolling
         env:

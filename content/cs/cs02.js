@@ -8,11 +8,11 @@ function P(title, level, tags, statement, example, bruteWhy, mcq, hints, approac
     example: example,
     brute: { why: bruteWhy },
     mcq: mcq,
-    hints: hints.map(function (h) { return h.length < 120 ? h.replace(/<\/p>$/, ' Work it out on paper before reading the next hint.</p>') : h; }),
-    solution: { approach: approach, complexity: complexity + '<p>Most of the value here is the reasoning, not the arithmetic.</p>', followUps: followUps || [] }
+    hints: hints,
+    solution: { approach: approach, complexity: complexity, followUps: followUps || [] }
   };
 }
-function Q(q, options, answer, explain) { return { q: q, options: options, answer: answer, explain: explain + ' Re-check the process model if this surprised you.' }; }
+function Q(q, options, answer, explain) { return { q: q, options: options, answer: answer, explain: explain }; }
 function I(q, level, a, followUps) { return { q: q, level: level, a: a, followUps: followUps }; }
 
 /* ===================== TOPIC 1: program vs process, memory layout ===================== */
@@ -700,9 +700,9 @@ for w, log in workers.items():
       `<p>1:1 &rarr; 3 progress; N:1 &rarr; 0; M:N (naive) &rarr; depends on placement: if the blocked thread shares its kernel thread, those on it freeze.</p>`,
       `<p>Saying "threads are independent so all others proceed" is only true when each has its own kernel thread.</p>`,
       { q: 'In N:1, a blocking system call by one user thread:', options: ['Blocks only that thread', 'Blocks the whole process', 'Is impossible', 'Starts a new kernel thread'], answer: 1, explain: 'The only kernel thread sleeps.' },
-      ['<p>Hint 1: what does the kernel see?</p>', '<p>Hint 2: count the kernel threads.</p>', '<p>Hint 3: for M:N, think about which user threads share the blocked kernel thread.</p>'],
+      ['<p>Hint 1: what does the kernel see: how many schedulable entities does the process have?</p>', '<p>Hint 2: count the kernel threads; a blocking system call puts only a kernel thread to sleep.</p>', '<p>Hint 3: for M:N, think about which user threads share the blocked kernel thread.</p>'],
       `<p>In a 1:1 model every user thread has its own kernel thread, so only the one calling <code>read()</code> sleeps; the other three keep running on their own cores, so 3 make progress. In N:1 there is a single kernel thread. The kernel puts it to sleep, and since all four user threads live on it, none of them can run, so 0 progress even though three of them are ready. In M:N with two kernel threads and a naive runtime, the blocked thread takes its kernel thread to sleep: any user threads queued on that kernel thread also stall, while the ones on the other kernel thread continue. A blocking-aware runtime (non-blocking I/O + epoll, or handing off the kernel thread) would let all three continue. This is why Go and Tokio avoid blocking system calls on their worker threads.</p>`,
-      `<p>Conceptual.</p>`)
+      `<p>Constant time: the answer comes from counting kernel threads, not from running an algorithm.</p>`)
   ]
 });
 /* ===================== TOPIC 6: context switching ===================== */
@@ -801,7 +801,7 @@ print("with 30 us effective cost and 100 us slice:", round(overhead(100, 30), 1)
       { q: 'Shorter time slices usually give:', options: ['Lower latency but more overhead', 'Higher throughput always', 'No change', 'Fewer context switches'], answer: 0, explain: 'More frequent switches: responsive but more overhead.' },
       ['<p>Hint 1: per core, one switch happens every slice.</p>', '<p>Hint 2: overhead = switch / (slice + switch).</p>', '<p>Hint 3: mention that the cache refill penalty could multiply the cost.</p>'],
       `<p>On each core, the CPU alternates: run for one time slice, then spend one switch cost. Overhead fraction is switch / (slice + switch). With a 2 ms slice and 4 µs switch that is 4 / 2004, about 0.2%, negligible. Shrinking the slice to 100 µs gives 4 / 104, about 3.8%. If each switch also causes 20 µs of cache and TLB refill, effective cost is 24 µs and the 100 µs slice loses 24 / 124, about 19%. The eight cores and the 64 threads do not change the fraction, since each core is independent; having 64 threads on 8 cores just means each runs a queue of 8. The trade-off: shorter slices improve response time for interactive tasks but waste CPU; CPU-bound batch jobs prefer long slices.</p>`,
-      `<p>O(1) arithmetic.</p>`)
+      `<p>O(1) arithmetic: two divisions, one per slice length, independent of the 64 threads and 8 cores.</p>`)
   ]
 });
 
@@ -973,7 +973,7 @@ void on_child(int) {
       { q: 'Which IPC needs no kernel copy of the payload after setup?', options: ['Pipe', 'Message queue', 'Shared memory', 'Signal'], answer: 2, explain: 'Both processes map the same pages.' },
       ['<p>Hint 1: classify by direction, data size, and locality.</p>', '<p>Hint 2: huge, frequent data = shared memory; tiny notifications = signals.</p>', '<p>Hint 3: across machines only sockets (or something built on them) work.</p>'],
       `<p>(a) A pipe (or the stdout of the forwarder piped into the compressor) is ideal: a one-way ordered byte stream with automatic backpressure, so a slow compressor makes the forwarder wait instead of using unbounded memory. (b) 8 MB x 60 = 480 MB/s; copying through a pipe or socket wastes CPU and memory bandwidth, so use shared memory (e.g. a ring of frame buffers) with a semaphore or eventfd to signal "frame ready" and "frame consumed"; remember to synchronise to avoid reading half-written frames. (c) A signal such as SIGHUP is the Unix convention for reload; the daemon's handler sets a flag and the main loop re-reads the config. (d) Processes on different machines cannot share memory or pipes, so use TCP sockets, typically wrapped by HTTP/gRPC with timeouts and retries. The theme: match the mechanism to direction, size, locality and failure semantics.</p>`,
-      `<p>Conceptual.</p>`)
+      `<p>No algorithm: one mechanism is chosen per communication need, so the decision is constant time.</p>`)
   ]
 });
 /* ===================== PRACTICE ===================== */
@@ -986,43 +986,43 @@ practice.push(P('Program or Process?', 'Easy', ['basics'],
   Q('A program becomes a process when:', ['It is compiled', 'It is saved to disk', 'The OS loads it and starts executing it', 'It is installed'], 2, 'A process is a program in execution.'),
   H3('one file on disk, how many running instances?', 'what does each instance own privately?', 'the read-only code may be shared physically'),
   `<p>There is one program: the executable file on disk. Each double-click makes the OS create a new process: it allocates a PCB and a PID, builds a fresh virtual address space (text mapped from the file, new data, heap and stack), opens stdin/out/err and queues the process as ready. So two processes exist. Their globals, heap and stack are separate, so changing the score in one window cannot affect the other. To save RAM the kernel maps the same physical pages for the read-only code in both, which is why running two copies costs less than twice the memory. They also have separate PIDs, so you can kill one without the other.</p>`,
-  `<p>Conceptual.</p>`));
+  `<p>O(1): the answer is a fixed count of programs and processes, whatever the program size.</p>`));
 
 practice.push(P('Order the States', 'Easy', ['process states'],
   `<p>Put these events in a valid order for a process that is created, reads a file, uses the CPU, and exits: <i>dispatch, admit, io_done, io_wait, exit, dispatch</i>.</p>`,
   `<p>${H.c('g', 'admit, dispatch, io_wait, io_done, dispatch, exit')}.</p>`,
   `<p>Placing io_done directly before exit forgets that the process must be dispatched again.</p>`,
   Q('Which transition is NOT allowed?', ['ready to running', 'running to waiting', 'waiting to running', 'running to ready'], 2, 'A waiting process must pass through ready.'),
-  H3('start at new', 'a process can only exit while running', 'after I/O finishes it is ready, not running'),
+  H3('every process starts in the new state; which event moves it out of new?', 'a process can only exit while running', 'after I/O finishes it is ready, not running'),
   `<p>New process: admit moves new to ready. Dispatch moves it to running. It calls read, so io_wait moves it to waiting. When the disk finishes, io_done moves it to ready (never straight to running). Dispatch again moves it to running, where it computes and finally calls exit which moves it to terminated. The sequence is therefore admit, dispatch, io_wait, io_done, dispatch, exit. You can test your answer against the state machine simulator in the topic: any illegal step is reported.</p>`,
-  `<p>Conceptual.</p>`));
+  `<p>O(1): a fixed path through a five-state machine using six events.</p>`));
 
 practice.push(P('fork Return Values', 'Easy', ['fork'],
   `<p>What does <code>fork()</code> return to the parent, to the child, and on failure? Write a two-line check that prints "child" only in the child.</p>`,
   `<p>Parent: child's PID (&gt;0). Child: 0. Failure: -1 in the parent, no child created.</p><pre>if (fork() == 0) printf("child\\n");</pre>`,
   `<p>Comparing to getpid() or assuming only the parent runs after fork shows a misunderstanding of the "returns twice" idea.</p>`,
   Q('fork() returns 0 in:', ['the parent', 'the child', 'both', 'neither'], 1, 'Child gets 0 so it can tell it is the child.'),
-  H3('the two processes must be able to tell themselves apart', 'the parent needs the child pid for waitpid', 'handle -1'),
+  H3('the two processes must be able to tell themselves apart', 'the parent needs the child pid for waitpid', 'fork can also fail and return -1 with no child created, so check for it first.'),
   `<p>fork() returns twice, once in each process, with different values so the code can branch. In the parent the return value is the PID of the new child, which the parent needs for <code>waitpid</code> or <code>kill</code>. In the child it is 0 (the child can still learn its own PID with getpid and its parent's with getppid). If the kernel cannot create a process (limit reached, out of memory) it returns -1 in the parent and sets errno; no child exists, so always check for it. The guard <code>if (fork() == 0)</code> is therefore true only in the child.</p>`,
-  `<p>O(1).</p>`));
+  `<p>O(1) to branch on the return value; the fork call itself is a single system call.</p>`));
 
 practice.push(P('Spot the Zombie', 'Easy', ['zombie', 'wait'],
   `<p><code>ps</code> shows a process with state Z and name <code>&lt;defunct&gt;</code>. What is it, why does <code>kill -9</code> not remove it, and how do you really get rid of it?</p>`,
   `<p>A terminated child whose parent has not called wait(). Fix the parent (call waitpid / handle SIGCHLD) or kill the parent so PID 1 adopts and reaps it.</p>`,
   `<p>Repeating kill -9 on the zombie does nothing: it is already dead, only its PCB entry remains.</p>`,
   Q('A zombie process still holds:', ['its memory and CPU', 'only its PCB entry and exit status', 'open sockets', 'a running thread'], 1, 'All other resources are freed.'),
-  H3('who reads the exit status?', 'it is already dead', 'think about adoption by init'),
+  H3('who reads the exit status of a finished child, and has that happened yet?', 'the process is already dead, so there is nothing left for a signal to kill.', 'if the parent exits, think about who adopts the orphan and reaps it (init).'),
   `<p>A zombie is a process that has finished running (it called exit) but whose parent has not yet collected its exit status with wait or waitpid. The kernel keeps a small PCB entry (PID, status, usage) so the parent can still read how the child ended. It uses no CPU or RAM beyond that, but it occupies a PID slot, and thousands can exhaust the PID table. kill -9 has no effect because the process is already dead; there is nothing left to kill. The fix is in the parent: call waitpid (blocking or in a SIGCHLD handler with WNOHANG), or set SIGCHLD to SIG_IGN. If the parent is buggy, killing the parent re-parents the zombie to init (PID 1 or a subreaper) which reaps it immediately.</p>`,
-  `<p>O(1).</p>`));
+  `<p>O(1) to reap one zombie with a single waitpid call; until then it wastes one PID slot.</p>`));
 
 practice.push(P('fork() && fork() Count', 'Medium', ['fork', 'process tree'],
   `<p>How many processes in total, and how many "Y" lines, for <code>if (fork() &amp;&amp; fork()) {} printf("Y\\n");</code>?</p>`,
   `<p>${H.c('g', '3 processes, 3 lines')}. Original forks; child (0) short-circuits; parent (nonzero) forks again.</p>`,
   `<p>Assuming both forks always run gives 4. Short-circuit means the child of the first fork never evaluates the second.</p>`,
-  Q('In A && B, B is evaluated when:', ['A is false', 'A is true', 'always', 'never'], 1, 'Short-circuit AND.'),
-  H3('which process sees 0 from the first fork?', '0 is false so && stops', 'only the original process runs the second fork'),
+  Q('In A && B, B is evaluated when:', ['A is false', 'A is true', 'always', 'never'], 1, 'Short-circuit AND: B runs only when A is true (non-zero).'),
+  H3('which process sees 0 from the first fork?', 'fork returns 0 in the child, 0 is false, so the && stops before the second fork.', 'only the original process runs the second fork'),
   `<p>Start with process P. The first fork creates child C1. In C1 the call returns 0, which is false, so the &amp;&amp; short-circuits and C1 skips the second fork and goes straight to printf. In P the return value is C1's PID, which is true, so P evaluates the second fork and creates C2. Total processes: P, C1, C2 = 3, and each prints once, so 3 lines. Contrast with <code>fork(); fork();</code> which gives 4. For <code>fork() || fork()</code>: the child (0) goes on to fork again, the parent short-circuits: also 3 processes. Drawing the tree and marking the return value at each node avoids mistakes.</p>`,
-  `<p>O(forks).</p>`));
+  `<p>O(forks): each fork that runs adds one process, so the count follows the number of forks executed.</p>`));
 
 practice.push(P('Predict the Buffered Output', 'Medium', ['fork', 'stdio'],
   `<p>Predict the output when stdout is a pipe: <code>printf("A"); fork(); printf("B");</code> then each process exits normally.</p>`,
@@ -1031,23 +1031,23 @@ practice.push(P('Predict the Buffered Output', 'Medium', ['fork', 'stdio'],
   Q('fflush(stdout) before fork() prevents:', ['zombies', 'duplicated buffered output', 'orphans', 'deadlock'], 1, 'The buffer is empty when copied.'),
   H3('is anything flushed before fork?', 'buffers live in user memory, which fork copies', 'each process flushes its own copy at exit'),
   `<p>printf("A") only copies "A" into stdout's user-space buffer; there is no newline, so even line-buffered terminals do not flush. fork() duplicates the whole address space, including that buffer, so the child also holds "A" pending. Both then add "B". At exit each process flushes its buffer, giving AB from the parent and AB from the child. Each process writes its "AB" in one piece, so the pipe shows ABAB. If we call fflush(stdout) right before fork, the "A" is written once and both buffers are empty, producing A then B twice: ABB. This is the classic reason to flush before fork and to use _exit in children after a failed exec.</p>`,
-  `<p>O(1).</p>`));
+  `<p>O(1) extra work: one buffered write of a few bytes per process at exit.</p>`));
 
 practice.push(P('Fix the Server Zombies', 'Medium', ['zombie', 'servers'],
   `<p>A TCP server forks a child per connection and never waits. After a day <code>ps</code> shows 40,000 defunct processes. Give two fixes and compare them.</p>`,
   `<p>Fix A: SIGCHLD handler looping <code>waitpid(-1, 0, WNOHANG)</code>. Fix B: <code>signal(SIGCHLD, SIG_IGN)</code> (kernel auto-reaps). Alternative: double fork or a thread/process pool.</p>`,
   `<p>Calling blocking wait() in the accept loop stops the server from accepting new connections while a child runs.</p>`,
   Q('Why loop with WNOHANG in a SIGCHLD handler?', ['signals may merge so one signal can mean several dead children', 'to sleep', 'to create children', 'to kill children'], 0, 'Standard signals are not queued.'),
-  H3('who should collect the exit status?', 'blocking wait in the main loop is a bad idea', 'signals can coalesce'),
+  H3('who should collect the exit status?', 'blocking wait in the main loop is a bad idea', 'several SIGCHLDs can arrive as one signal, so a handler must loop over waitpid.'),
   `<p>Each finished child stays a zombie until the parent reaps it. Fix A: install a SIGCHLD handler (via sigaction with SA_RESTART) that loops <code>while (waitpid(-1, nullptr, WNOHANG) &gt; 0) {}</code>; the loop is needed because several SIGCHLDs arriving together can be delivered as one. Fix B: tell the kernel you do not care about exit codes with SIG_IGN or SA_NOCLDWAIT for SIGCHLD; children are then reaped automatically (you lose the exit status). Fix C: use a fixed pool of worker processes or threads (pre-fork model, or a thread pool) which avoids per-connection fork cost altogether. Calling blocking wait() before accept would serialise the server, so avoid that. Also keep the handler async-signal-safe and preserve errno.</p>`,
-  `<p>O(1) per child.</p>`));
+  `<p>O(1) per child: one waitpid call reaps one finished child.</p>`));
 
 practice.push(P('Threads Sharing a Counter', 'Medium', ['threads', 'race'],
   `<p>Four threads each do <code>counter++</code> 100,000 times on a shared <code>int</code> without a lock. Why is the final value below 400,000? Give two fixes.</p>`,
   `<p>${H.c('r', 'counter++ is load, add, store')}: interleavings lose updates (see the runnable simulation). Fixes: <code>std::mutex</code> or <code>std::atomic&lt;int&gt;</code>.</p>`,
   `<p>Locking around the whole loop is correct but serialises the threads; atomics or per-thread partial sums scale better.</p>`,
   Q('Best scalable fix for a shared counter?', ['Global mutex per increment', 'Per-thread local sums combined at the end', 'sleep()', 'Volatile'], 1, 'No sharing in the hot loop.'),
-  H3('is ++ one machine instruction?', 'two threads can both load the same old value', 'avoid sharing in the hot path'),
+  H3('is counter++ one machine instruction, or several separate steps?', 'two threads can both load the same old value', 'avoid sharing in the hot path, for example give each thread its own local count.'),
   `<p>The increment compiles to three steps: load the variable into a register, add 1, store it back. If thread A and B both load 7, both add 1 and both store 8, one increment is lost. This is a data race, which in C++ is also undefined behaviour. Fix 1: protect with a mutex (lock_guard around the increment); correct but every increment pays lock cost and contention. Fix 2: <code>std::atomic&lt;int&gt;</code> with fetch_add, a single atomic hardware instruction. Fix 3 (fastest): each thread counts in its own local variable (private stack), and adds its total once at the end under a lock or with one atomic add. Reduction of shared writes also avoids cache-line ping-pong between cores.</p>`,
   `<p>Time O(N) work; correctness is the point.</p>`));
 
@@ -1058,7 +1058,7 @@ practice.push(P('Design Browser Isolation', 'Medium', ['threads vs processes', '
   Q('Main reason for a process per tab?', ['Isolation and crash containment', 'Less memory', 'Faster startup', 'Simpler code'], 0, 'OS-enforced memory separation.'),
   H3('what is the security boundary the OS enforces?', 'what must be shared inside one page?', 'what is the memory cost of more processes?'),
   `<p>Web pages run untrusted code. A memory-safety bug in the JavaScript engine or renderer lets an attacker read or write memory in that address space. If all tabs were threads of one process, that would expose passwords and sessions from every other tab. Separate processes use separate page tables, so the OS prevents cross-reads even after an exploit, and a crash only closes one tab. Inside one renderer, the DOM, JS heap and layout data are tightly interlinked and mutated constantly, so cooperating threads (main, compositor, raster, worker threads) sharing memory is efficient; splitting it into processes would force serialising data over IPC. Site isolation puts cross-origin iframes into other processes to defend against Spectre-style leaks, trading higher RAM use. So processes for trust boundaries, threads for tightly coupled work.</p>`,
-  `<p>Design reasoning.</p>`, ['What is the memory price of site isolation?']));
+  `<p>Design reasoning, no algorithm: the real cost is memory per extra process, not running time.</p>`, ['What is the memory price of site isolation?']));
 
 practice.push(P('Context Switch Budget', 'Medium', ['context switch', 'estimation'],
   `<p>A service handles 50,000 requests/s with a thread-per-request model; each request blocks twice (DB and cache) causing 4 switches per request. At 5 µs per switch on 16 cores, what share of total CPU goes to switching? What design change would cut it?</p>`,
@@ -1067,14 +1067,14 @@ practice.push(P('Context Switch Budget', 'Medium', ['context switch', 'estimatio
   Q('200,000 switches/s at 5 us each costs:', ['0.1 core', '1 core', '10 cores', '100 cores'], 1, '200,000 x 5us = 1 s per second.'),
   H3('switches per second times cost per switch', 'divide by total CPU seconds per second (16)', 'think about async/event-loop designs'),
   `<p>Total switches per second: 50,000 requests x 4 = 200,000. Time spent: 200,000 x 5 µs = 1,000,000 µs = 1 second of CPU every second, i.e. one full core. The machine offers 16 core-seconds per second, so 1/16 = 6.25% of capacity goes to switching, before counting cache and TLB refill, which could double or triple it. To reduce: use non-blocking I/O with an event loop or virtual threads/coroutines so a "wait" is a user-space switch instead of a kernel one; batch DB calls to reduce blocks per request; avoid oversubscribing threads versus cores; pin hot threads. Measure first with vmstat cs and perf stat context-switches before redesigning.</p>`,
-  `<p>O(1) arithmetic.</p>`));
+  `<p>O(1) arithmetic: multiply rate, switches and cost, then divide by the core count.</p>`));
 
 practice.push(P('Pipeline Without Deadlock', 'Hard', ['pipe', 'dup2', 'shell'],
   `<p>Implement <code>ls | wc -l</code> yourself with fork, pipe, dup2 and exec. List every file descriptor that must be closed in each process and say what hangs if one is left open.</p>`,
   `<p>Parent creates pipe; child1 dup2(write end, 1); child2 dup2(read end, 0); each closes both original ends; parent closes both and waits for both.</p>`,
   `<p>Forgetting to close the parent's copy of the write end means wc never sees EOF and hangs forever.</p>`,
   Q('wc hangs waiting for input. Likely cause:', ['a write end of the pipe is still open somewhere', 'the pipe is empty forever by design', 'ls crashed', 'SIGPIPE'], 0, 'EOF only arrives when ALL write ends are closed.'),
-  H3('EOF needs every write end closed', 'dup2 duplicates; the original fd still exists', 'close in parent too'),
+  H3('EOF needs every write end closed', 'dup2 duplicates; the original fd still exists', 'the parent also holds both pipe ends, so it must close them or wc never sees EOF.'),
   `<p>Recipe: <code>pipe(fd)</code>; fork child 1: <code>dup2(fd[1], 1); close(fd[0]); close(fd[1]); execlp("ls","ls",nullptr);</code>. Fork child 2: <code>dup2(fd[0], 0); close(fd[0]); close(fd[1]); execlp("wc","wc","-l",nullptr);</code>. Parent: <code>close(fd[0]); close(fd[1]); waitpid</code> both children. Why every close matters: a reader receives EOF only when every write end of the pipe, in all processes, is closed. After dup2 the child has two descriptors for the same write end (fd[1] and 1), so it must close fd[1]; the parent also holds one from the pipe() call and must close it too. If wc's own process still held fd[1] open it would be waiting for itself. A forgotten read end has a different failure: the writer will not get SIGPIPE if some process keeps a read end open, so it blocks forever once the buffer fills. Finally waitpid for both so neither becomes a zombie.</p>`,
   `<p>O(1) syscalls; data streams through the kernel buffer.</p>`));
 
@@ -1083,7 +1083,7 @@ practice.push(P('Fork Tree with Conditions', 'Hard', ['fork', 'process tree'],
   `<p>Child continues, parent breaks: chain of 4 processes (each child continues the loop, parent stops). Child breaks, parent continues: parent makes 3 children: 4 processes.</p>`,
   `<p>Applying the 2<sup>n</sup> rule blindly gives 8; it applies only when every process forks every iteration.</p>`,
   Q('Parent loops, child breaks, 5 iterations: total processes?', ['6', '10', '32', '5'], 0, 'One parent plus 5 children.'),
-  H3('the 2^n rule needs everyone to keep forking', 'mark who exits the loop at each step', 'draw the tree for i=0,1,2'),
+  H3('the 2^n rule needs everyone to keep forking', 'mark who exits the loop at each step', 'draw the tree for i=0,1,2 and mark who breaks and who continues at each step.'),
   `<p>Case 1 (child continues, parent breaks): iteration 0: P forks C1; P (nonzero) breaks out of the loop. C1 (zero) continues to i=1 and forks C2, then its parent role breaks; C2 continues to i=2 and forks C3 who continues out of the loop after i=2. The tree is a chain P, C1, C2, C3: 4 processes. Case 2 (child breaks, parent continues): P forks C1 at each of three iterations; each child leaves the loop immediately, so only P keeps forking: P plus 3 children = 4 processes. Both give n+1 processes, linear, because only one process in each iteration forks. Exponential growth needs every process to fork every round. Sketching the tree and marking which branch continues is the reliable method for any such puzzle.</p>`,
   `<p>Linear: n+1 processes.</p>`));
 
@@ -1100,8 +1100,8 @@ practice.push(P('Why Is Load High but CPU Idle?', 'Hard', ['process states', 'de
   `<p>A server shows load average 40 on 8 cores but CPU is 90% idle. Explain with process states, list the commands you would run, and name likely causes.</p>`,
   `<p>Load counts tasks in R and D (uninterruptible) states. Many tasks stuck in D (I/O: slow disk, NFS, locks) raise load without using CPU.</p>`,
   `<p>Assuming high load always means busy CPU leads to adding cores, which does nothing here.</p>`,
-  Q('Linux load average counts tasks that are:', ['only running', 'runnable plus in uninterruptible sleep', 'only sleeping', 'zombies'], 1, 'R and D states.'),
-  H3('what do R and D mean in ps?', 'idle CPU means the tasks are not computing', 'look at wchan and iostat'),
+  Q('Linux load average counts tasks that are:', ['only running', 'runnable plus in uninterruptible sleep', 'only sleeping', 'zombies'], 1, 'Load counts runnable (R) plus uninterruptible-sleep (D) tasks.'),
+  H3('what do the R and D state letters mean in ps, and which of them count toward load?', 'idle CPU means the tasks are not computing', 'look at the wchan column in ps and at iostat to see what the D tasks wait on.'),
   `<p>Linux load average is the average number of tasks that are runnable (R) or in uninterruptible sleep (D). With the CPU 90% idle, the load must come from D-state tasks: they are blocked in the kernel waiting for I/O that cannot be interrupted, for example a slow or failing disk, an unresponsive NFS or network storage mount, or heavy swapping. Investigation: <code>ps -eo pid,stat,wchan:30,cmd | awk '$2 ~ /D/'</code> to list the D tasks and what they wait on; <code>iostat -x 1</code> for device latency and utilisation; <code>vmstat 1</code> (b column = blocked, wa = I/O wait, si/so swap); <code>dmesg</code> for I/O errors or hung task warnings; <code>cat /proc/&lt;pid&gt;/stack</code> or <code>perf</code>/<code>bpftrace</code> to see kernel stacks; check mounts with <code>mount</code> and <code>nfsstat</code>. Fix the storage problem; adding CPU would not help, and kill -9 cannot remove D-state tasks until the I/O returns.</p>`,
   `<p>Diagnosis, not algorithmic.</p>`));
 
@@ -1110,7 +1110,7 @@ practice.push(P('Design a Million-Connection Server', 'Hard', ['threads', 'desig
   `<p>Thread-per-connection: 1M x 8 MB virtual stacks plus kernel structures is infeasible. Event loop (epoll) or M:N tasks: small per-connection state, few OS threads, one loop per core.</p>`,
   `<p>Process-per-connection costs even more memory and context switches than threads.</p>`,
   Q('Best fit for 1M idle connections?', ['Process per connection', 'Thread per connection', 'Event loop / M:N tasks per core', 'One blocking thread'], 2, 'Idle connections should cost bytes, not stacks.'),
-  H3('what does an idle connection need to cost?', 'estimate stack memory per thread', 'workers = number of cores'),
+  H3('what does an idle connection need to cost?', 'estimate stack memory per thread', 'use about one event-loop worker per core, each multiplexing many sockets with epoll.'),
   `<p>Thread per connection: each OS thread reserves a stack (default 8 MB of address space, with at least tens of KB really touched) plus kernel task structures, so 1M threads need tens of GB of RAM, hit PID and thread limits, and every wakeup is a kernel context switch with cache damage. Process per connection is worse (page tables, PCB, copy of runtime). The scalable design is event-driven: one thread (or a few) per core, each running an epoll or io_uring loop that handles thousands of sockets with small per-connection state (a few KB: buffers and a state machine), or M:N user-level tasks (goroutines, Tokio, virtual threads) that look like blocking code but cost ~2-8 KB. Context switches become cheap user-space switches. Trade-offs: CPU-heavy handlers must be moved to worker pools or they stall the loop; isolation is weaker, so use several worker processes (like Nginx) to contain crashes and use all cores. Also tune file descriptor limits and kernel socket memory.</p>`,
   `<p>Memory per connection a few KB; O(1) per event.</p>`, ['What breaks at the kernel level (fd limits, conntrack)?']));
 
@@ -1119,7 +1119,7 @@ quiz.push(Q('Which segment holds local variables of a function?', ['Heap', 'Stac
 quiz.push(Q('A process in the waiting state is waiting for:', ['the CPU', 'an event such as I/O completion', 'its parent to exit', 'a PID'], 1, 'Waiting/blocked means waiting for an event, not the CPU.'));
 quiz.push(Q('What does fork() return in the child?', ['The parent PID', '0', '-1', 'The child PID'], 1, 'The child sees 0; the parent sees the child PID.'));
 quiz.push(Q('exec() creates a new process.', ['True', 'False: it replaces the current process image', 'True only for threads'], 1, 'Same PID, new program. fork creates processes.'));
-quiz.push(Q('How many processes exist after three consecutive unconditional fork() calls (counting the original)?', ['3', '6', '8', '9'], 2, '2^3 = 8.'));
+quiz.push(Q('How many processes exist after three consecutive unconditional fork() calls (counting the original)?', ['3', '6', '8', '9'], 2, 'Each fork doubles the count: 2^3 = 8 processes, counting the original.'));
 quiz.push(Q('A zombie process is:', ['running with no parent', 'terminated but not yet reaped by its parent', 'a stopped process', 'a thread without a stack'], 1, 'Its PCB entry stays until the parent calls wait.'));
 quiz.push(Q('Threads of the same process do NOT share:', ['Heap', 'Open files', 'Stack', 'Global variables'], 2, 'Each thread has its own stack and registers.'));
 quiz.push(Q('In a many-to-one model, a blocking system call by one user thread:', ['blocks only that thread', 'blocks the whole process', 'is ignored', 'creates a kernel thread'], 1, 'There is only one kernel thread.'));

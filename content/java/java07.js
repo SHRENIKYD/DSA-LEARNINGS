@@ -558,7 +558,7 @@ System.out.println(dq);                       // [5, 4, 3, 2, 1]`
         `<p>Hint 2: Use a <b>write pointer</b> <code>w</code>: scan with <code>r</code>; when <code>list.get(r)</code> is odd, <code>list.set(w++, value)</code>. At the end, delete the leftover tail in one shot with <code>list.subList(w, size).clear()</code>. Or simply call <code>list.removeIf(x -&gt; x % 2 == 0)</code>, which does exactly this internally.</p>`,
         `<p>Hint 3: Edge cases: all even (w stays 0 → whole list cleared), none even (w == size → nothing cleared), negative numbers (<code>-3 % 2 == -1</code>, so test <code>% 2 == 0</code>, not <code>== 1</code>).</p>`
       ],
-      tests: { sig: 'list<int> -> void', fn: 'removeEvens', mutate: 0, cases: [
+      tests: { sig: 'list<int> -> void', fn: 'removeEvens', also: { java: ['removeEvensIdiomatic'] }, mutate: 0, cases: [
         [[[4,7,2,9,6,3]],[7,9,3]],
         [[[1]],[1]],
         [[[2]],[]],
@@ -783,7 +783,7 @@ System.out.println(new TreeSet<>(List.of(10, 9, 100, 2)));           // [2, 9, 1
         `<p>Hint 2: Either keep a <code>HashSet&lt;String&gt; seen</code> next to the result list (<code>if (seen.add(id)) result.add(id);</code>), or let a <code>LinkedHashSet</code> do both jobs at once.</p>`,
         `<p>Hint 3: Re-adding an existing element to a LinkedHashSet does not move it, so first-seen order is preserved automatically. Empty input → empty list. Recipe: <code>return new ArrayList&lt;&gt;(new LinkedHashSet&lt;&gt;(ids));</code></p>`
       ],
-      tests: { sig: 'list<string> -> list<string>', fn: 'dedupe', cases: [
+      tests: { sig: 'list<string> -> list<string>', fn: 'dedupe', also: { java: ['dedupeExplicit', 'dedupeStream'] }, cases: [
         [[["u7","u2","u7","u9","u2"]],["u7","u2","u9"]],
         [[[]],[]],
         [[["a"]],["a"]],

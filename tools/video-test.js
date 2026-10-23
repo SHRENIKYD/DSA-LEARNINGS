@@ -10,6 +10,7 @@ const db = JSON.parse(fs.readFileSync(path.join(root, 'data/videos.json'), 'utf8
 const review = JSON.parse(fs.readFileSync(path.join(root, 'data/video-review.json'), 'utf8'));
 const topics = new Map(discovery.topics().map((t) => [t.id, t.title]));
 let have = 0, curated = 0;
+const unavailable = [];
 for (const [id, e] of Object.entries(db.videos)) {
   assert(topics.has(id), 'Unknown topic: ' + id);
   assert.equal(e.t, topics.get(id), 'Stale topic mapping: ' + id);
@@ -20,7 +21,9 @@ for (const [id, e] of Object.entries(db.videos)) {
   if (e.start !== undefined) assert(Number.isSafeInteger(e.start) && e.start >= 0);
   if (e.end !== undefined) assert(Number.isSafeInteger(e.end) && e.end > (e.start || 0));
   if (e.curated) { assert(e.note && /^\d{4}-\d{2}-\d{2}$/.test(e.reviewedAt)); curated++; }
-  assert(V.publicEntry(e, topics.get(id)), 'Unexpectedly hidden video: ' + id);
+  // A video YouTube reports as unavailable stays in the catalog for review but must be hidden (docs/VIDEOS.md).
+  if (e.available === false) { assert.equal(V.publicEntry(e, topics.get(id)), null, 'Unavailable video still shown: ' + id); unavailable.push(id); continue; }
+  else assert(V.publicEntry(e, topics.get(id)), 'Unexpectedly hidden video: ' + id);
   have++;
 }
 for (const e of review.entries) {
@@ -59,9 +62,9 @@ if (process.argv[2]) {
   vm.runInNewContext(fs.readFileSync(path.join(out, 'assets/videos.js'), 'utf8'), ctx);
   const built = ctx.window.IM_VIDEOS;
   assert.equal(Object.keys(built).length, have, 'Build lost a populated topic');
-  for (const [id, e] of Object.entries(db.videos)) if (e.id) {
+  for (const [id, e] of Object.entries(db.videos)) if (e.id && e.available !== false) {
     assert.equal(built[id].id, e.id);
-    assert.equal(built[id].note, e.note);
+    assert.equal(built[id].note, e.note || '');
     assert.equal(built[id].start, e.start || 0);
     assert.equal(built[id].end, e.end || 0);
   }
@@ -70,4 +73,5 @@ if (process.argv[2]) {
   assert.equal(libCtx.window.IM_VIDEO_LIB.tracks.reduce((n, t) => n + t.items.length, 0), have);
   assert(libCtx.window.LessonVideo, 'Watchtower must have the same playback helper');
 }
+if (unavailable.length) console.log('Review needed: ' + unavailable.length + ' video(s) no longer available on YouTube and hidden until replaced: ' + unavailable.join(', '));
 console.log('PASS: ' + have + ' video mappings (' + curated + ' curated), topic titles, review records, chapter URLs, safe fallbacks and curated-link retention' + (process.argv[2] ? '; built web/app catalogs match' : ''));

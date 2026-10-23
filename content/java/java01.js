@@ -1205,7 +1205,7 @@ static int toByteBrute(int x) {
 }` },
       mcq: { q: 'What does <code>(x &lt;&lt; 24) &gt;&gt; 24</code> do?', options: ['Always returns 0', 'Moves the low byte to the top, then arithmetic-shifts back, copying its sign bit', 'Same as x &amp; 0xFF', 'Overflows and throws'], answer: 1, explain: '<code>&lt;&lt; 24</code> puts bit 7 into the sign position; <code>&gt;&gt;</code> (signed shift) brings it back while copying that sign — exactly sign extension of the low byte.' },
       hints: [R`<p>Hint 1: <code>x &amp; 0xFF</code> gives the low 8 bits as a number 0..255.</p>`, R`<p>Hint 2: if that number is ≥ 128 the byte's sign bit is set, so its signed value is <code>n − 256</code>.</p>`, R`<p>Hint 3: a branch-free version: shift left 24 so bit 7 lands on bit 31, then signed-shift right 24 (sign extension). Test with 127, 128, 255, 256, −1, MIN_VALUE.</p>`],
-      tests: { sig: 'int -> int', fn: 'toByte', cases: [
+      tests: { sig: 'int -> int', fn: 'toByte', also: { java: ['toByteShift'] }, cases: [
         [[300],44],
         [[200],-56],
         [[-1],-1],

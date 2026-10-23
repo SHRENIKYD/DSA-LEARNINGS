@@ -2386,7 +2386,7 @@ public:
       `<p>Hint 2: <code>std::unordered_set&lt;int&gt;</code>; <code>auto [it, inserted] = seen.insert(x); if (!inserted) return true;</code></p>`,
       `<p>Hint 3: <code>reserve(n)</code> to avoid rehashing. Alternative with O(1) extra memory: sort a copy and compare neighbours (O(n log n)). One-liner: compare <code>unordered_set(nums.begin(), nums.end()).size()</code> with n.</p>`
     ],
-    tests: { sig: 'int[] -> bool', fn: 'containsDuplicate', cases: [
+    tests: { sig: 'int[] -> bool', fn: 'containsDuplicate', also: { cpp: ['containsDuplicateSort'] }, cases: [
       [[[1,2,3,1]], true],
       [[[1,2,3,4]], false],
       [[[1]], false],

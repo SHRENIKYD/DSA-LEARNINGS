@@ -7,9 +7,9 @@
       statement: o.s, constraints: o.c || 'Pure numbers and reasoning. Show your working step by step.',
       example: o.ex,
       brute: { why: o.b },
-      mcq: { q: o.q, options: o.o, answer: o.a, explain: o.e + ' Check this against the worked solution below.' },
-      hints: o.h.map(function (x) { return x.replace(/<\/p>$/, ' Try it on paper first, then compare with the full solution.</p>'); }),
-      solution: { approach: o.ap, complexity: o.cx || '<p>Hand calculation: a handful of steps. In an interview, say each formula out loud before plugging numbers in.</p>', followUps: o.f }
+      mcq: { q: o.q, options: o.o, answer: o.a, explain: o.e },
+      hints: o.h,
+      solution: { approach: o.ap, complexity: o.cx, followUps: o.f }
     };
     if (o.d) p.solution.dry = o.d;
     if (o.code) p.solution.code = o.code;
@@ -115,6 +115,7 @@ int main() {
       <p><b>What you must still own:</b> the question "what is worse, a late packet or a lost one?", and explaining who provides reliability when TCP is not used.</p>`,
     problems: [mk({
       t: 'Pick the Transport for Six Apps', l: 'Easy', tags: ['tcp vs udp', 'fundamentals'], co: ['Amazon', 'Cisco'],
+    cx: '<p>No algorithm: six independent decisions, each weighing the app\'s need for reliability against its latency tolerance.</p>',
       s: `<p>For each app choose TCP or UDP and give one reason: (1) DNS lookup, (2) Zoom video call, (3) online banking transfer, (4) multiplayer shooter position updates, (5) software update download, (6) HTTP/3 web page.</p>`,
       ex: `<p>DNS lookup → ${H.c('y', 'UDP')}: one small question, one small answer, retry is cheap.</p>`,
       b: `<p>"Always TCP, it is safer." This pays handshake cost for DNS and stalls games and calls behind one lost packet (head-of-line blocking).</p>`,
@@ -219,11 +220,12 @@ conversation(4294967290, 7, [20])` }],
       <p><b>What you must still own:</b> the rule "ack = seq + len (+1 for SYN/FIN)". You will be asked to do it on a whiteboard with no tool.</p>`,
     problems: [mk({
       t: 'Fill the Seq and Ack Numbers', l: 'Easy', tags: ['seq/ack', 'handshake'], co: ['Cisco', 'Juniper', 'Google'],
+    cx: '<p>O(segments): one addition per segment (ack = seq + len), plus one extra number for the SYN and one for the FIN.</p>',
       s: `<p>Client ISN = 1000, server ISN = 5000. After the 3-way handshake, the client sends three segments of 100, 100 and 50 bytes. The server ACKs each. Then the client sends FIN. Fill in seq/ack for every message and the final ACK to the FIN.</p>`,
       ex: `${H.table(['#', 'From', 'seq', 'ack'], [['1', 'C SYN', '1000', '-'], ['2', 'S SYN+ACK', '5000', '1001'], ['3', 'C ACK', '1001', '5001']])}<p>Start of the answer: the SYN used number 1000, so the next is 1001.</p>`,
       b: `<p>Guessing ack = "the last seq received". That is off by one: ACK is always the <i>next</i> byte expected.</p>`,
       q: 'Server receives seq=1101, len=100. What ack does it send?', o: ['1100', '1101', '1201', '1200'], a: 2, e: 'Next expected byte = 1101 + 100 = 1201.',
-      h: [`<p>Hint 1: SYN consumes one sequence number.</p>`, `<p>Hint 2: ack = seq + len for data.</p>`, `<p>Hint 3: FIN consumes one number too, so the ACK to FIN is seq + 1.</p>`],
+      h: [`<p>Hint 1: SYN consumes one sequence number.</p>`, `<p>Hint 2: for data the ack is the next expected byte, ack = seq + len.</p>`, `<p>Hint 3: FIN consumes one number too, so the ACK to FIN is seq + 1.</p>`],
       ap: `<p>Handshake: SYN seq=1000; SYN+ACK seq=5000 ack=1001; ACK seq=1001 ack=5001. Data: seg1 seq=1001 len=100 → server ack=1101; seg2 seq=1101 len=100 → ack=1201; seg3 seq=1201 len=50 → ack=1251. The server's own seq stays 5001 because it sent no data. FIN: client seq=1251, ack=5001; server ACK has ack=1252 (FIN used number 1251). Rule: next = seq + len, add 1 for SYN or FIN.</p>`,
       d: { head: ['#', 'Segment', 'seq', 'ack', 'len'], rows: [['1', 'C SYN', '1000', '-', '0'], ['2', 'S SYN+ACK', '5000', '1001', '0'], ['3', 'C ACK', '1001', '5001', '0'], ['4', 'C data1', '1001', '5001', '100'], ['5', 'S ACK', '5001', '1101', '0'], ['6', 'C data2', '1101', '5001', '100'], ['7', 'S ACK', '5001', '1201', '0'], ['8', 'C data3', '1201', '5001', '50'], ['9', 'S ACK', '5001', '1251', '0'], ['10', 'C FIN', '1251', '5001', '0'], ['11', 'S ACK', '5001', '1252', '0']] },
       f: ['What if the server ACKs only after segments 2 and 3?', 'What if segment 2 is lost: which ack does the server send after segment 3 arrives?']
@@ -370,6 +372,7 @@ int main() {
       <p><b>What you must still own:</b> drawing the diagram from memory and attaching the right owner to each state (kernel vs application).</p>`,
     problems: [mk({
       t: 'Name the State on Each Side', l: 'Medium', tags: ['state machine', 'teardown'], co: ['Cisco', 'Arista', 'Amazon'],
+    cx: '<p>O(messages): one state transition per segment through a fixed, short teardown sequence.</p>',
       s: `<p>Client and server are ESTABLISHED. The client app calls <code>close()</code>. After exactly the first two teardown messages (FIN, then ACK) what state is each side in? Then the server app calls <code>close()</code>; list every message and both states until both are CLOSED. Which side holds the socket for 2·MSL?</p>`,
       ex: `${H.table(['After msg', 'Client', 'Server'], [['FIN', 'FIN_WAIT_1', 'ESTABLISHED'], ['ACK', 'FIN_WAIT_2', 'CLOSE_WAIT']])}`,
       b: `<p>Memorising the names as a list. Without the logic "who sent FIN, who got the ACK", you mix up CLOSE_WAIT and LAST_ACK.</p>`,
@@ -495,11 +498,12 @@ int main() {
       <p><b>What you must still own:</b> separating flow control (receiver) from congestion control (network), and doing window/RTT maths quickly.</p>`,
     problems: [mk({
       t: 'Sliding Window with a Shrinking rwnd', l: 'Medium', tags: ['sliding window', 'flow control'], co: ['Google', 'Cisco'],
+    cx: '<p>O(segments): each of the 8 segments is sent once and ACKed once, checking in-flight against the window at each event.</p>',
       s: `<p>A sender has 8 segments of 1000 bytes. The receiver advertises rwnd = 4000 bytes initially. Each segment is ACKed individually and the sender sends as soon as it is allowed. After the <b>3rd</b> ACK, the receiver advertises rwnd = 2000. Build the table of events: which segments are sent, how many are in flight, until everything is acked. Also find the effective throughput if RTT is 40 ms and the window stays at 4000 bytes.</p>`,
       ex: `<p>Start: window 4 segments. Send s1, s2, s3, s4 → in flight = 4 → stop.</p>`,
       b: `<p>Sending all 8 at once ignores rwnd and overflows the receiver, which drops the excess (wasted bandwidth and extra retransmissions).</p>`,
       q: 'In flight = 4 segments, window = 4. An ACK for s1 arrives (window unchanged). What next?', o: ['Wait for all ACKs', 'Send s5', 'Send s5 and s6', 'Retransmit s1'], a: 1, e: 'One segment left the window, so exactly one new segment may enter.',
-      h: [`<p>Hint 1: in flight ≤ window, always.</p>`, `<p>Hint 2: the left edge moves with each ACK, the right edge = left + window.</p>`, `<p>Hint 3: when the window shrinks, you simply send nothing until in flight drops below the new window (never "unsend").</p>`],
+      h: [`<p>Hint 1: the bytes in flight must never exceed the current window, always.</p>`, `<p>Hint 2: the left edge moves with each ACK, the right edge = left + window.</p>`, `<p>Hint 3: when the window shrinks, you simply send nothing until in flight drops below the new window (never "unsend").</p>`],
       ap: `<p>Initial window 4. Send s1-s4 (in flight 4). ACK s1: in flight 3, send s5 (4). ACK s2: send s6 (4). ACK s3 carries rwnd=2000, so window 2: in flight is 3 (s4,s5,s6) which exceeds 2, so send nothing. ACK s4: in flight 2 (s5,s6) = window, nothing. ACK s5: in flight 1, send s7 (2). ACK s6: in flight 1, send s8 (2). ACK s7, ACK s8: done. Throughput with window 4000 B and RTT 40 ms is 4000 / 0.04 = 100,000 B/s = 800 kbps. After shrinking to 2000 B, 400 kbps. The shrink halves the speed even if the network is empty.</p>`,
       d: { head: ['Event', 'Window (seg)', 'In flight', 'Action'], rows: [['start', '4', '0', 'send s1-s4'], ['ACK s1', '4', '3', 'send s5'], ['ACK s2', '4', '3', 'send s6'], ['ACK s3 (rwnd=2000)', '2', '3', 'none (over window)'], ['ACK s4', '2', '2', 'none'], ['ACK s5', '2', '1', 'send s7'], ['ACK s6', '2', '1', 'send s8'], ['ACK s7, s8', '2', '0', 'done']] },
       f: ['What if rwnd drops to 0?', 'What if the ACKs are cumulative every 2 segments?']
@@ -615,6 +619,7 @@ for p in (0.01, 0.0001):
       <p><b>What you must still own:</b> the two loss reactions and the arithmetic. Interviews love "compute cwnd at RTT 12".</p>`,
     problems: [mk({
       t: 'cwnd per RTT Through a Loss', l: 'Medium', tags: ['congestion control', 'AIMD', 'numeric'], co: ['Cisco', 'Amazon', 'Google', 'Juniper'],
+    cx: '<p>O(RTTs): one cwnd update per round trip, doubling in slow start and adding 1 MSS per RTT afterwards.</p>',
       s: `<p>Reno-style TCP, units of MSS, initial cwnd = 1, ssthresh = 16. Each RTT you send one cwnd of data. Compute cwnd (at the start of each RTT) for RTT 1..13 in two scenarios. <b>(A)</b> three duplicate ACKs during RTT 8. <b>(B)</b> a timeout during RTT 8. Give the new ssthresh in each.</p>`,
       ex: `<p>RTT 1..8 (same for both): ${H.c('g', '1, 2, 4, 8, 16, 17, 18, 19')}. Slow start until 16 = ssthresh, then +1 per RTT.</p>`,
       b: `<p>Doubling forever: 1, 2, 4 ... 128. Ignores ssthresh and loss; in reality packets are dropped as soon as router queues overflow.</p>`,
@@ -746,6 +751,7 @@ fast_retransmit([101, 201, 201, 201, 201])` }],
       <p><b>What you must still own:</b> choosing timeouts and retries in your own application layer without causing retry storms (jittered exponential backoff, budgets).</p>`,
     problems: [mk({
       t: 'RTO From RTT Samples', l: 'Medium', tags: ['RTO', 'Jacobson/Karels', 'numeric'], co: ['Cisco', 'Arista', 'Google'],
+    cx: '<p>O(samples): one SRTT and RTTVAR update per sample, each a few arithmetic operations.</p>',
       s: `<p>Use α = 1/8, β = 1/4, RTO = SRTT + 4·RTTVAR. First RTT sample is 100 ms, then 140 ms, then 60 ms. Compute SRTT, RTTVAR and RTO after each sample. Then the RTO fires once with no ACK: what is the new RTO after backoff? Finally, say whether you may use an RTT sample from a retransmitted segment.</p>`,
       ex: `<p>After sample 1: SRTT = 100, RTTVAR = 50, RTO = 100 + 4×50 = ${H.c('g', '300 ms')}.</p>`,
       b: `<p>A fixed timeout like 1 second: far too long for a 5 ms data-centre link and too short for satellite links with 600 ms RTT.</p>`,
@@ -756,6 +762,7 @@ fast_retransmit([101, 201, 201, 201, 201])` }],
       f: ['Why does Linux clamp RTO at 200 ms?', 'What changes with TCP timestamps?']
     }), mk({
       t: 'Three Duplicate ACKs: Trace the Recovery', l: 'Medium', tags: ['fast retransmit', 'dup ack'], co: ['Amazon', 'Cisco'],
+    cx: '<p>O(1) work per ACK; fast retransmit recovers in about one RTT instead of waiting for a full RTO.</p>',
       s: `<p>Sender sends 6 segments of 100 bytes, first byte number 1. Segment 3 is lost; the rest arrive. List every ACK the receiver sends, say when the sender retransmits, and give the ACK after the retransmission arrives.</p>`,
       ex: `${H.table(['seg', 'bytes', 'ack sent'], [['1', '1-100', '101'], ['2', '101-200', '201']])}`,
       b: `<p>Waiting for the RTO (say 300 ms on a 20 ms RTT path) wastes 15 RTTs of idle line.</p>`,
@@ -847,11 +854,12 @@ for t in (10, 30, 60, 90, 120):
       <p><b>What you must still own:</b> understanding <i>why</i> the state exists so you can say when it's harmless and when it's the symptom of a missing connection pool.</p>`,
     problems: [mk({
       t: 'Thousands of TIME_WAIT Sockets', l: 'Medium', tags: ['TIME_WAIT', 'port exhaustion', 'debugging'], co: ['Amazon', 'Cloudflare', 'Uber'],
+    cx: '<p>O(1) arithmetic: closes per second × 60 s for the count, and 28,232 ports / 60 s for the client limit.</p>',
       s: `<p>A web server shows <code>ss -s</code> with 240,000 TIME_WAIT sockets, and the team panics. (a) Is it a problem on the server? (b) How many closes per second does that imply (TIME_WAIT = 60 s)? (c) A load-test client machine hammers one server IP:port with new connections and fails with "Cannot assign requested address" at about 500 requests/s. Why that number? (d) Give three fixes.</p>`,
       ex: `<p>240,000 / 60 s = ${H.c('g', '4,000 connections closed per second')} by whichever side closed first.</p>`,
       b: `<p>"Just set tcp_tw_recycle and tcp_fin_timeout=1." The first is removed from Linux and broke NATed users; the second does not affect TIME_WAIT at all.</p>`,
       q: 'Where can too many TIME_WAIT sockets actually cause an outage?', o: ['On a server listening on port 443', 'On a client making many new connections to one destination', 'On a switch', 'In UDP applications'], a: 1, e: 'The client runs out of ephemeral source ports; the server only stores small records.',
-      h: [`<p>Hint 1: count = rate × 60 s.</p>`, `<p>Hint 2: ports per destination = 32768..60999 = 28,232.</p>`, `<p>Hint 3: 28,232 / 60 ≈ 470/s; fix = reuse connections.</p>`],
+      h: [`<p>Hint 1: sockets in TIME_WAIT = closes per second × 60 s lifetime.</p>`, `<p>Hint 2: ports per destination = 32768..60999 = 28,232.</p>`, `<p>Hint 3: 28,232 / 60 ≈ 470/s; fix = reuse connections.</p>`],
       ap: `<p>(a) On the server side the entries are cheap (a few hundred bytes each, no file descriptor, the listening port is shared), so 240k is usually harmless; check memory and <code>tcp_max_tw_buckets</code>. It is a hint that the server closes connections itself (no keep-alive, short idle timeout, HTTP/1.0 style). (b) 240,000 / 60 = 4,000 closes per second. (c) A client's 4-tuple is (srcIP, srcPort, dstIP, dstPort). With one destination only the source port varies: 28,232 ports, each blocked 60 s after close, so a sustainable rate ≈ 28,232/60 ≈ 470 new connections per second, matching the 500/s failure. (d) Fix 1: keep-alive/connection pool or HTTP/2 so fewer connections are needed. Fix 2: widen <code>ip_local_port_range</code> and add destination IPs or source IPs to multiply 4-tuples. Fix 3: enable <code>tcp_tw_reuse</code> (client side, with timestamps) or let the other side close first. Never use SO_LINGER=0 or tw_recycle as the default answer.</p>`,
       d: { head: ['Quantity', 'Formula', 'Value'], rows: [['TIME_WAIT sockets', 'rate × 60', '240,000'], ['implied close rate', '240,000 / 60', '4,000/s'], ['client ports', '60999 − 32768 + 1', '28,232'], ['max sustained new conns to one dst', '28,232 / 60', '≈ 470/s']] },
       f: ['What changes with 4 backend IPs?', 'Does SO_REUSEADDR fix this?']
@@ -985,6 +993,7 @@ void send_corked(int fd, const char* a, size_t al, const char* b, size_t bl) {
       <p><b>What you must still own:</b> spotting the "write-write-read" smell in code review and explaining why 40 ms (the delayed-ACK timer) is the telltale number.</p>`,
     problems: [mk({
       t: 'Why Is Every Request 40 ms Slow?', l: 'Hard', tags: ['Nagle', 'delayed ACK', 'latency'], co: ['Google', 'Meta', 'Amazon'],
+    cx: '<p>No algorithm: each request pays one delayed-ACK timer of about 40 ms because Nagle holds the second small write.</p>',
       s: `<p>A microservice client sends a 4-byte length header, then a 100-byte payload using two separate <code>write()</code> calls, and then reads a reply. LAN RTT is 0.4 ms but every call takes about 40.5 ms. (a) Explain exactly what happens on the wire, (b) list three fixes in order of preference, (c) give the request time after fixing, (d) say if the fix changes anything for bulk transfers.</p>`,
       ex: `${H.table(['t', 'event'], [['0', 'header sent'], ['0', 'payload held by Nagle'], ['0.2', 'server delays ACK'], ['40.2', 'ACK sent'], ['40.4', 'payload released']])}`,
       b: `<p>"Switch the transport to UDP" or "buy a faster network". The wire is idle; the delay is two timers waiting on each other.</p>`,
@@ -1093,11 +1102,12 @@ print("spoofed source valid?", False, "(it never sees the SYN+ACK, so it cannot 
       <p><b>What you must still own:</b> a clear mental model of what resource is exhausted (queue slots, CPU, bandwidth, file descriptors) because the right fix follows from it.</p>`,
     problems: [mk({
       t: 'Explain SYN Flood and SYN Cookies', l: 'Hard', tags: ['security', 'SYN flood', 'SYN cookies'], co: ['Cloudflare', 'Akamai', 'Cisco'],
+    cx: '<p>O(1) arithmetic for the queue fill time; a SYN cookie costs one hash per SYN and no per-connection memory.</p>',
       s: `<p>Your HTTPS server has a SYN queue of 128 slots and half-open entries live 60 s. An attacker sends 1,000 spoofed SYN/s. (a) How long until the queue is full? (b) What is the minimum attack rate that keeps it full? (c) Why can't you simply block the attacker's IP? (d) Describe exactly how SYN cookies let the server survive, step by step, including what the server stores. (e) Name two costs of SYN cookies.</p>`,
       ex: `<p>Queue full after 128 / 1000 = ${H.c('r', '0.128 s')}. After that, every legit SYN is dropped.</p>`,
       b: `<p>"Increase the queue to a million slots." The attacker sends more; memory is wasted on ghosts; each entry still lives 60 s.</p>`,
       q: 'What does the server store when it answers a SYN with a SYN cookie?', o: ['The client IP and port in a hash table', 'Nothing: state is encoded in the sequence number', 'A copy of the client SYN packet', 'A TLS session ticket'], a: 1, e: 'Stateless: validation happens by recomputing the hash from the returning ACK.',
-      h: [`<p>Hint 1: time to fill = queue / rate.</p>`, `<p>Hint 2: steady-state occupancy = rate × lifetime, so the minimal rate = queue / lifetime.</p>`, `<p>Hint 3: the cookie is the ISN: hash(secret, 4-tuple, time) + MSS index. The returning ACK must be cookie + 1.</p>`],
+      h: [`<p>Hint 1: time to fill the queue = queue size / SYNs per second.</p>`, `<p>Hint 2: steady-state occupancy = rate × lifetime, so the minimal rate = queue / lifetime.</p>`, `<p>Hint 3: the cookie is the ISN: hash(secret, 4-tuple, time) + MSS index. The returning ACK must be cookie + 1.</p>`],
       ap: `<p>(a) 128 / 1000 = 0.128 s. (b) Entries live 60 s, so the attacker needs 128 / 60 ≈ 2.1, i.e. about 3 SYN/s to keep the queue full: a trivial cost, which is why SYN floods are so cheap. (c) Source addresses are forged and random, so there is no single IP to block, and blocking spoofed addresses would block innocent victims whose IPs were forged. (d) When the queue overflows, the server computes ISN = hash(secret key, client IP, client port, server IP, server port, coarse timestamp) combined with a small MSS index, sends SYN+ACK with that value and stores nothing. A real client replies ACK with ack = ISN + 1. The server recomputes the hash from the 4-tuple and the time window; if it matches, the connection is valid and is created now with the MSS decoded from the cookie. A spoofing attacker never receives the SYN+ACK and cannot produce a valid ACK (24-bit hash, secret key). (e) Costs: TCP options such as window scaling and SACK may be lost or squeezed (unless timestamps carry them) so throughput suffers; and the server cannot retransmit a lost SYN+ACK because it kept no record. Hence cookies are enabled only when the queue overflows. Complement with edge filtering, upstream scrubbing and rate limits.</p>`,
       d: { head: ['Step', 'Server stores', 'Notes'], rows: [['Flood arrives, queue < full', 'half-open entries', 'normal path'], ['Queue full', 'switch to cookies', 'log "Sending cookies"'], ['Send SYN+ACK', 'nothing', 'seq = cookie'], ['Valid ACK returns (ack = cookie+1)', 'create connection now', 'recompute hash'], ['Spoofed SYNs', 'nothing', 'never answered']] },
       f: ['How does QUIC solve the same issue?', 'What if the attacker sends valid-looking ACK floods?']
@@ -1106,75 +1116,83 @@ print("spoofed source valid?", False, "(it never sees the SYN+ACK, so it cannot 
   // ---------------- PRACTICE ----------------
   practice.push(mk({
     t: 'Read the Headers: Payload Sizes', l: 'Easy', tags: ['headers', 'UDP', 'TCP'], co: ['Cisco'],
+    cx: '<p>O(1): two subtractions and one multiplication.</p>',
     s: `<p>(a) A UDP datagram has Length = 508. How many payload bytes? (b) A TCP segment has Data offset = 8 and the IP packet Total Length = 1500 (IPv4, no IP options). How many TCP payload bytes? What do the extra header bytes usually carry?</p>`,
     ex: `<p>UDP header is always 8 bytes. TCP header = Data offset × 4 bytes.</p>`,
     b: `<p>Assuming TCP headers are always 20 bytes gives 1460, which is wrong whenever options (timestamps) are present.</p>`,
     q: 'Data offset = 5 means a TCP header of…', o: ['5 bytes', '20 bytes', '50 bytes', '40 bytes'], a: 1, e: 'The field counts 4-byte words: 5 × 4 = 20.',
-    h: [`<p>UDP Length includes its own header.</p>`, `<p>TCP header bytes = offset × 4.</p>`, `<p>Payload = IP total − IP header (20) − TCP header.</p>`],
+    h: [`<p>The UDP Length field counts the 8-byte header plus the data, so subtract the header.</p>`, `<p>The TCP header length in bytes is the Data offset value multiplied by 4.</p>`, `<p>Payload = IP total − IP header (20) − TCP header.</p>`],
     ap: `<p>(a) 508 − 8 = 500 bytes of payload. (b) TCP header = 8 × 4 = 32 bytes, so payload = 1500 − 20 (IP) − 32 (TCP) = 1448 bytes. The extra 12 bytes beyond the base 20 are options, typically TCP timestamps (10 bytes + 2 padding/NOPs), which is why 1448 is the common real-world MSS on Linux links with MTU 1500.</p>`,
     d: { head: ['Part', 'Bytes'], rows: [['IP header', '20'], ['TCP header (8 × 4)', '32'], ['Payload', '1500 − 52 = 1448']] }
   }));
   practice.push(mk({
     t: 'Throughput from Window and RTT', l: 'Easy', tags: ['throughput', 'window'], co: ['Amazon', 'Cisco'],
+    cx: '<p>O(1): one division (window / RTT) and one multiplication for the bandwidth-delay product.</p>',
     s: `<p>A TCP connection has an effective window of 128 KB (131,072 bytes) and RTT = 80 ms on a 1 Gbps link with no loss. What is the maximum throughput in Mbps? What limits it? What window would fill the link?</p>`,
     ex: `<p>Rule: throughput ≈ window / RTT.</p>`,
     b: `<p>"1 Gbps link, so 1 Gbps throughput": ignores that the sender must stop and wait after each window.</p>`,
     q: 'Which change raises throughput on this link?', o: ['A bigger window (buffers + window scaling)', 'A faster CPU', 'Using UDP checksums', 'A smaller MSS'], a: 0, e: 'Throughput is window / RTT, and the window is the limit here.',
-    h: [`<p>Convert bytes to bits.</p>`, `<p>131,072 B / 0.08 s.</p>`, `<p>Needed window = bandwidth × RTT.</p>`],
+    h: [`<p>Convert bytes to bits (multiply by 8) before quoting the answer in Mbps.</p>`, `<p>One window of 131,072 B is sent per RTT, so throughput = 131,072 B / 0.08 s.</p>`, `<p>To fill the link the window must equal the bandwidth-delay product: bandwidth × RTT.</p>`],
     ap: `<p>Throughput = 131,072 B / 0.08 s = 1,638,400 B/s = 13.1 Mbps (about 1.3% of the link). The window (not the network) is the bottleneck: after sending 128 KB the sender must wait for the first ACK, a full RTT. To fill 1 Gbps with an 80 ms RTT the window must equal the BDP: 125,000,000 B/s × 0.08 s = 10,000,000 B (10 MB), which needs window scaling and buffers of at least that size.</p>`,
     d: { head: ['Step', 'Value'], rows: [['window', '131,072 B'], ['÷ RTT', '/ 0.08 s = 1,638,400 B/s'], ['× 8', '13.1 Mbps'], ['BDP', '125e6 × 0.08 = 10 MB']] }
   }));
   practice.push(mk({
     t: 'Why Not a Two-Way Handshake?', l: 'Easy', tags: ['handshake', 'concepts'], co: ['Microsoft', 'Amazon'],
+    cx: '<p>No calculation: a protocol argument over three messages, constant effort.</p>',
     s: `<p>Explain why TCP uses three messages to open a connection and not two. Include what each message carries and what could go wrong with only two.</p>`,
     ex: `<p>Client ISN x, server ISN y.</p>`,
     b: `<p>"Because that's how the RFC says so." That is not a reason.</p>`,
     q: 'What does the third message prove?', o: ['The client received the server ISN, so both directions work and both ISNs are agreed', 'The data is encrypted', 'The server has a free port', 'The window size is fixed'], a: 0, e: 'ACK of y+1 confirms the server\'s ISN reached the client.',
-    h: [`<p>Each side needs its ISN acknowledged.</p>`, `<p>With two messages the server cannot know its SYN+ACK arrived.</p>`, `<p>Think about delayed duplicate SYNs from old connections.</p>`],
+    h: [`<p>Each side picks its own initial sequence number and needs it acknowledged.</p>`, `<p>With two messages the server cannot know its SYN+ACK arrived.</p>`, `<p>Think about delayed duplicate SYNs from old connections.</p>`],
     ap: `<p>TCP is full-duplex, so each direction has its own sequence space that must be synchronized: the client announces ISN x (SYN), the server announces ISN y and acknowledges x+1 (SYN+ACK), and the client acknowledges y+1 (ACK). Two messages would leave the server with no proof that the client received y: it would think the connection was open and allocate resources while the client might never have heard it. Worse, a delayed duplicate SYN from an old, dead connection would make the server open a connection nobody wants; with the third message, the real client would answer such a stray SYN+ACK with RST (since it sent no SYN), so the server discards it. Also it proves the client address is reachable (anti-spoofing).</p>`
   }));
   practice.push(mk({
     t: 'Seq and Ack with ISN 7000', l: 'Easy', tags: ['seq/ack'], co: ['Cisco', 'Juniper'],
+    cx: '<p>O(segments): one addition per segment, 7 segments in the trace.</p>',
     s: `<p>Client ISN = 7000, server ISN = 90000. Handshake, then client sends two segments of 250 bytes each. Write every segment (flags, seq, ack, len).</p>`,
     ex: `<p>SYN seq=7000 → SYN+ACK seq=90000 ack=7001 → ACK seq=7001 ack=90001.</p>`,
     b: `<p>Forgetting that SYN consumes a sequence number gives ack=7000.</p>`,
-    q: 'Server gets seq=7251, len=250. Its ack is…', o: ['7250', '7251', '7500', '7501'], a: 3, e: '7251 + 250 = 7501.',
-    h: [`<p>First data byte is 7001.</p>`, `<p>ack = seq + len.</p>`, `<p>Server seq stays 90001 (no data sent).</p>`],
+    q: 'Server gets seq=7251, len=250. Its ack is…', o: ['7250', '7251', '7500', '7501'], a: 3, e: 'The next expected byte is 7251 + 250 = 7501.',
+    h: [`<p>The SYN uses up number 7000, so the first data byte is numbered 7001.</p>`, `<p>The server acks the next byte it expects: ack = seq + len of the segment.</p>`, `<p>The server sends no data, so its seq stays 90001 in every later segment.</p>`],
     ap: `<p>1) C→S SYN seq=7000. 2) S→C SYN+ACK seq=90000 ack=7001. 3) C→S ACK seq=7001 ack=90001. 4) C→S data seq=7001 ack=90001 len=250. 5) S→C ACK seq=90001 ack=7251. 6) C→S data seq=7251 ack=90001 len=250. 7) S→C ACK seq=90001 ack=7501. If the server delays ACKs and acks both segments at once, the single ACK is ack=7501.</p>`,
     d: { head: ['#', 'Dir', 'seq', 'ack', 'len'], rows: [['1', 'C SYN', '7000', '-', '0'], ['2', 'S SYN+ACK', '90000', '7001', '0'], ['3', 'C ACK', '7001', '90001', '0'], ['4', 'C data', '7001', '90001', '250'], ['5', 'S ACK', '90001', '7251', '0'], ['6', 'C data', '7251', '90001', '250'], ['7', 'S ACK', '90001', '7501', '0']] }
   }));
   practice.push(mk({
     t: 'Window Scale for a 10 Gbps Link', l: 'Medium', tags: ['BDP', 'window scale'], co: ['Google', 'Cloudflare'],
+    cx: '<p>O(1) arithmetic: the BDP product, then one log2 to find the smallest shift.</p>',
     s: `<p>A 10 Gbps path has RTT 80 ms. (a) What is the BDP? (b) The plain TCP window field is 16 bits. What throughput results without scaling? (c) What is the minimal window-scale shift count to cover the BDP? (d) What is the largest possible window?</p>`,
     ex: `<p>BDP = bandwidth (bytes/s) × RTT.</p>`,
     b: `<p>Opening 100 parallel connections "to fill the link" instead of fixing the window works but wastes sockets and is unfair to others.</p>`,
     q: 'The window scale option is negotiated…', o: ['In every data segment', 'Only in the SYN and SYN+ACK', 'After 10 segments', 'In the FIN'], a: 1, e: 'Both ends must agree during the handshake; it can\'t be added later.',
-    h: [`<p>10 Gbps = 1.25e9 B/s.</p>`, `<p>Window max = 65,535 × 2<sup>shift</sup>.</p>`, `<p>Shift max is 14.</p>`],
+    h: [`<p>10 Gbps = 1.25e9 B/s, so BDP = 1.25e9 B/s times the 0.08 s RTT.</p>`, `<p>The scaled window maximum is 65,535 × 2<sup>shift</sup>; find the smallest shift covering the BDP.</p>`, `<p>The largest shift value TCP allows is 14, which gives the largest possible window.</p>`],
     ap: `<p>(a) 1.25e9 B/s × 0.08 s = 100,000,000 bytes (100 MB). (b) Without scaling: 65,535 B / 0.08 s = 819,187 B/s = 6.55 Mbps, about 0.07% of the link. (c) Need 65,535 × 2^n ≥ 1e8, so 2^n ≥ 1,526, n = 11 (2^11 = 2048 gives a 134 MB max window; n = 10 gives only 67 MB). (d) Maximum is shift 14: 65,535 × 16,384 ≈ 1,073,725,440 bytes (about 1 GiB). Also send and receive buffers must be at least the BDP, and cwnd must grow that big, so congestion control (CUBIC/BBR) needs a loss-free run of many RTTs to get there.</p>`,
     d: { head: ['Shift', 'Max window', 'Enough for 100 MB?'], rows: [['0', '65 KB', 'no'], ['10', '67 MB', 'no'], ['11', '134 MB', '<span class="c-g">yes</span>'], ['14', '1.07 GB', 'yes (max)']] }
   }));
   practice.push(mk({
     t: 'Throughput Under Loss (Mathis)', l: 'Medium', tags: ['congestion', 'throughput'], co: ['Google', 'Netflix'],
+    cx: '<p>O(1): the Mathis formula evaluated twice, once per loss rate.</p>',
     s: `<p>Using throughput ≈ (MSS / RTT) × 1.22 / √p, compute the Reno-style throughput for MSS = 1460 B, RTT = 100 ms with loss rate p = 1% and again p = 0.01%. What does it say about long-RTT, lossy paths?</p>`,
     ex: `<p>MSS/RTT = 14,600 B/s = 116,800 bit/s.</p>`,
     b: `<p>"Throughput = link rate": ignores that loss repeatedly halves the window.</p>`,
     q: 'Loss rate falls 100x. Throughput rises about…', o: ['100x', '10x', '2x', '1x'], a: 1, e: 'Throughput ∝ 1/√p, so 100x less loss gives 10x more.',
-    h: [`<p>√0.01 = 0.1, √0.0001 = 0.01.</p>`, `<p>1.22 / 0.1 = 12.2.</p>`, `<p>Multiply by 8 for bits.</p>`],
+    h: [`<p>Square roots first: √0.01 = 0.1 and √0.0001 = 0.01.</p>`, `<p>For p = 1% the loss factor is 1.22 / 0.1 = 12.2; multiply it by MSS/RTT.</p>`, `<p>MSS is in bytes, so multiply by 8 to get bits per second.</p>`],
     ap: `<p>For p = 1%: factor 1.22/0.1 = 12.2; 116,800 bit/s × 12.2 ≈ 1.42 Mbps. For p = 0.01%: factor 1.22/0.01 = 122; 116,800 × 122 ≈ 14.2 Mbps. Throughput scales as 1/√p and 1/RTT, so a 100 ms path with only 1% loss cannot exceed about 1.4 Mbps regardless of link speed. This is why Wi-Fi/mobile loss that is not congestion hurts so much, why CDNs put servers near users (shorter RTT), and why BBR (which does not treat each loss as a halving signal) can do much better on such paths.</p>`,
     d: { head: ['p', '1.22/√p', 'Throughput'], rows: [['1%', '12.2', '≈ 1.42 Mbps'], ['0.01%', '122', '≈ 14.2 Mbps']] }
   }));
   practice.push(mk({
     t: 'Debug: CLOSE_WAIT Pile-Up', l: 'Medium', tags: ['CLOSE_WAIT', 'debugging'], co: ['Amazon', 'Uber'],
+    cx: '<p>Diagnosis, not algorithmic: one ss or lsof listing plus a review of every code path that should call close().</p>',
     s: `<p>A Java service's <code>ss -tan</code> shows 15,000 sockets in CLOSE_WAIT and climbing; it eventually fails with "Too many open files". Explain what CLOSE_WAIT means, why no timeout clears it, how you find the leak, and what the fix looks like.</p>`,
     ex: `<p>CLOSE_WAIT = peer sent FIN, our kernel ACKed it, our app has not called close().</p>`,
     b: `<p>Raise the file descriptor limit and restart nightly. It hides the bug until the next limit.</p>`,
     q: 'Which state would the PEER of these sockets be in?', o: ['LISTEN', 'FIN_WAIT_2 (then TIME_WAIT after we close)', 'SYN_SENT', 'CLOSING'], a: 1, e: 'The peer closed first and awaits our FIN in FIN_WAIT_2.',
-    h: [`<p>Whose job is it to leave CLOSE_WAIT?</p>`, `<p>Use <code>ss -tanp</code> or <code>lsof -p PID</code> to see which remote and which thread.</p>`, `<p>Look for exception paths that skip close().</p>`],
+    h: [`<p>Whose job is it to leave CLOSE_WAIT: the kernel, or the application calling close()?</p>`, `<p>Use <code>ss -tanp</code> or <code>lsof -p PID</code> to see which remote and which thread.</p>`, `<p>Look for exception paths that skip close().</p>`],
     ap: `<p>CLOSE_WAIT means the remote end already closed its half (we got FIN, kernel sent ACK) and the local application has not yet called close() on the descriptor. The TCP state machine waits indefinitely for the application, so no timer clears it; the descriptors leak until the process hits the file limit. Diagnose: <code>ss -tanp state close-wait</code> to see the owning process and the remote peers (often one downstream dependency such as a DB or HTTP backend), then take a thread dump or heap dump to find the objects holding the sockets (unclosed HTTP response bodies, connections never returned to the pool, error paths that skip finally). Fix: use try-with-resources or finally to always close, consume and close response bodies, set client timeouts, and configure the pool's max lifetime and validation. Add an alert on the CLOSE_WAIT count and the fd usage ratio.</p>`,
     d: { head: ['Step', 'Observation', 'Action'], rows: [['1', 'CLOSE_WAIT count rises', 'ss -tanp state close-wait'], ['2', 'Same remote peer', 'inspect that client code'], ['3', 'fd count near ulimit', 'lsof -p PID | wc -l'], ['4', 'Missing close on error path', 'try-with-resources / finally']] }
   }));
   practice.push(mk({
     t: 'How Many RTTs to Download 100 KB?', l: 'Medium', tags: ['slow start', 'latency'], co: ['Google', 'Meta'],
+    cx: '<p>O(log segments) round trips: slow start doubles the segments sent each RTT, so 7 RTTs with IW 1 and 4 with IW 10.</p>',
     s: `<p>A server sends a 100 KB file (100 segments of 1 KB) on a fresh TCP connection, no loss, ample bandwidth, rwnd large. Count RTTs after the handshake with (a) initial cwnd = 1 and (b) initial cwnd = 10. Add the handshake RTT for the total time to the last byte (ignore transmission time).</p>`,
     ex: `<p>Segments sent per RTT in slow start: IW, 2·IW, 4·IW ...</p>`,
     b: `<p>"100 KB at 1 Gbps takes 0.8 ms": bandwidth is not the constraint; round trips are.</p>`,
@@ -1185,45 +1203,50 @@ print("spoofed source valid?", False, "(it never sees the SYN+ACK, so it cannot 
   }));
   practice.push(mk({
     t: 'The Last ACK Is Lost', l: 'Medium', tags: ['TIME_WAIT', 'teardown'], co: ['Cisco', 'Arista'],
+    cx: '<p>No algorithm: a fixed sequence of about four segments and two timers (FIN retransmit and 2·MSL).</p>',
     s: `<p>During a normal close, the active closer's final ACK is lost on the network. Walk through what happens on both sides, naming states, and explain how this justifies TIME_WAIT. What would happen if the active closer had moved straight to CLOSED?</p>`,
     ex: `<p>Passive side is in LAST_ACK, waiting for the ACK of its FIN.</p>`,
     b: `<p>"Nothing, the connection is already over": the passive side is still waiting and will retransmit.</p>`,
     q: 'The passive closer, still in LAST_ACK, does what when its FIN is unacknowledged?', o: ['Closes immediately', 'Retransmits the FIN after its RTO', 'Sends RST', 'Waits forever silently'], a: 1, e: 'It retransmits FIN until ACKed or retries run out.',
-    h: [`<p>Who needs the final ACK?</p>`, `<p>What does the active side do when it sees a repeated FIN in TIME_WAIT?</p>`, `<p>What does a CLOSED socket answer to a stray FIN?</p>`],
+    h: [`<p>Who needs the final ACK, and what does that side do when it does not arrive?</p>`, `<p>What does the active side do when it sees a repeated FIN in TIME_WAIT?</p>`, `<p>What does a CLOSED socket answer to a stray FIN?</p>`],
     ap: `<p>State before: active closer (A) is in TIME_WAIT after sending its final ACK; passive closer (P) is in LAST_ACK. The ACK is lost, so P never sees it. P's retransmission timer fires and it resends FIN. Because A is still in TIME_WAIT, it recognises the FIN, sends the ACK again and restarts the 2·MSL timer. P receives it and moves to CLOSED; A later expires to CLOSED. If A had gone straight to CLOSED, it would respond to the retransmitted FIN with RST (no such connection). P would then see an error ("connection reset") instead of a clean close, and could mistake a fully successful exchange for a failure. That is the first reason for 2·MSL (one MSL for the lost ACK's lifetime plus one MSL for the FIN to return). The second reason is to let stale packets from this 4-tuple die before it's reused.</p>`,
     d: { head: ['Step', 'A (active)', 'P (passive)'], rows: [['final ACK sent (lost)', 'TIME_WAIT', 'LAST_ACK'], ['P timer fires, resend FIN', 'TIME_WAIT', 'LAST_ACK'], ['A re-ACKs, restarts 2·MSL', 'TIME_WAIT', 'CLOSED'], ['2·MSL later', 'CLOSED', 'CLOSED']] }
   }));
   practice.push(mk({
     t: 'Slow Downloads on Lossy Wi-Fi', l: 'Hard', tags: ['congestion', 'diagnosis', 'design'], co: ['Google', 'Netflix', 'Meta'],
+    cx: '<p>O(1) arithmetic with the Mathis formula; the mitigations are qualitative design choices.</p>',
     s: `<p>Users on café Wi-Fi report 2 Mbps downloads although speed tests show 100 Mbps link capacity. Packet loss is about 2% (radio errors, not congestion) and RTT 60 ms. (a) Estimate the Reno/CUBIC-style throughput with the Mathis formula. (b) Explain why. (c) Give at least four mitigations at different layers.</p>`,
     ex: `<p>MSS/RTT = 1460 / 0.06 ≈ 24,333 B/s.</p>`,
     b: `<p>"Blame the Wi-Fi and tell users to move closer." True but no engineering answer.</p>`,
     q: 'Why does random radio loss hurt loss-based TCP so much?', o: ['TCP treats each loss as congestion and halves cwnd', 'Radio packets are larger', 'ACKs are slower', 'MSS shrinks'], a: 0, e: 'Loss-based congestion control cannot tell corruption from congestion.',
-    h: [`<p>1.22/√0.02 ≈ 8.63.</p>`, `<p>Multiply by 8 for bits.</p>`, `<p>Think link layer, transport and application.</p>`],
+    h: [`<p>With p = 2% the loss factor is 1.22/√0.02 ≈ 8.63; multiply it by MSS/RTT.</p>`, `<p>MSS is in bytes, so multiply by 8 to get bits per second.</p>`, `<p>Think link layer, transport and application.</p>`],
     ap: `<p>(a) 24,333 B/s × (1.22 / 0.1414) ≈ 24,333 × 8.63 ≈ 210,000 B/s ≈ 1.7 Mbps, matching the observed ~2 Mbps. (b) Every loss event is read as "network congestion", so the sender halves cwnd and climbs back only +1 MSS per RTT; with 2% loss it never gets large, while the radio link is mostly idle. (c) Mitigations: transport: BBR (model-based, less sensitive to random loss) or a delay-based/ECN-aware algorithm; QUIC/HTTP/3 whose loss recovery is cleaner and has per-stream independence; SACK/RACK-TLP enabled for faster recovery. Link layer: Wi-Fi retransmissions and rate adaptation, better channel, 5 GHz, fewer clients. Application: parallelise with a few connections or HTTP/2 range requests, use adaptive bitrate for video, resumable downloads, smaller payloads and compression. Infrastructure: CDN edge closer to users (lower RTT improves throughput linearly), split-TCP proxies/PEPs for the wireless hop. Measure first with <code>ss -ti</code> (retrans, cwnd) and a capture.</p>`,
     d: { head: ['Quantity', 'Value'], rows: [['MSS/RTT', '24,333 B/s'], ['1.22/√0.02', '8.63'], ['Throughput', '≈ 210 KB/s ≈ 1.7 Mbps']] }
   }));
   practice.push(mk({
     t: 'Design Transport for a Multiplayer Game', l: 'Hard', tags: ['UDP', 'design', 'reliability'], co: ['Riot', 'Epic', 'Roblox'],
+    cx: '<p>Design reasoning: 60 unreliable packets per second per player; the reliable channel only costs per critical event.</p>',
     s: `<p>Design the network transport for a 60 Hz multiplayer shooter. Position updates must be fast; "player bought an item" and "match ended" must never be lost. Which protocol(s), what goes on which channel, and how do you add reliability where needed?</p>`,
     ex: `<p>Two kinds of messages: ephemeral state (position) and critical events (purchase, kill).</p>`,
     b: `<p>"Everything over TCP": one lost packet blocks all later position updates (head-of-line blocking), causing visible lag spikes.</p>`,
     q: 'Why not send positions over TCP?', o: ['A lost packet delays newer packets behind it', 'TCP cannot carry small messages', 'TCP has no checksum', 'TCP uses more ports'], a: 0, e: 'Retransmitting an outdated position wastes time and blocks fresh data.',
-    h: [`<p>Newer state supersedes older state.</p>`, `<p>Add sequence numbers and ACKs in your own header on UDP.</p>`, `<p>Consider QUIC datagrams / WebRTC data channels.</p>`],
+    h: [`<p>A newer position update makes any older one useless, so lost updates need no resend.</p>`, `<p>Add sequence numbers and ACKs in your own header on UDP.</p>`, `<p>Consider QUIC datagrams / WebRTC data channels.</p>`],
     ap: `<p>Use UDP for the realtime channel. Put a small header on each packet: sequence number, last-received remote sequence, and a bitfield of the previous 32 acks (as in Gaffer On Games' reliable UDP design). State snapshots/inputs are sent unreliably at 60 Hz and the receiver simply uses the newest; lost ones are never resent, but the next packet may carry delta-compressed state relative to the last acknowledged snapshot. Critical events go on a reliable channel implemented over the same UDP socket: tag messages with IDs, resend until acked (with RTO-like timer), deduplicate and order them per channel; or put them on a separate TCP/QUIC stream. Add congestion awareness (rate limit, adapt snapshot rate), client-side prediction and server reconciliation, interpolation buffers (~100 ms), encryption and token-based handshake to stop spoofing/amplification, and keep datagrams under ~1200 bytes to avoid fragmentation. Alternative: QUIC (unreliable datagrams extension plus reliable streams) or WebRTC data channels with configurable reliability for browser clients. This is the same pattern as RTP + RTCP or ENet/Steam Sockets.</p>`
   }));
   practice.push(mk({
     t: 'Page Load Latency: DNS + TCP + TLS + HTTP', l: 'Hard', tags: ['latency', 'handshake', 'HTTP3'], co: ['Google', 'Cloudflare', 'Meta'],
+    cx: '<p>O(1): add round trips, giving 5, 4, 3, 2 and 1 RTTs for the five cases.</p>',
     s: `<p>RTT to everything is 50 ms (simplify: DNS resolver also 50 ms away, nothing cached). Compute time to first byte for (a) HTTPS over TCP + TLS 1.2, (b) TCP + TLS 1.3, (c) HTTP/3 (QUIC), (d) HTTP/3 with 0-RTT resumption, (e) reusing an already open connection.</p>`,
     ex: `<p>Count round trips, multiply by 50 ms.</p>`,
     b: `<p>Optimising server compute from 5 ms to 3 ms while three of the four RTTs remain.</p>`,
     q: 'What does QUIC save versus TCP+TLS 1.3?', o: ['One round trip, because transport and crypto handshakes are combined', 'All round trips', 'The DNS lookup', 'Nothing'], a: 0, e: 'TCP needs 1 RTT before TLS starts; QUIC merges them.',
-    h: [`<p>DNS = 1 RTT here.</p>`, `<p>TCP handshake = 1 RTT; TLS 1.2 = 2 RTT; TLS 1.3 = 1 RTT.</p>`, `<p>Request + first response byte = 1 RTT.</p>`],
+    h: [`<p>Count each step in round trips: the DNS lookup costs 1 RTT here.</p>`, `<p>TCP handshake = 1 RTT; TLS 1.2 = 2 RTT; TLS 1.3 = 1 RTT.</p>`, `<p>The HTTP request plus the first response byte costs one more RTT at the end.</p>`],
     ap: `<p>(a) DNS 1 + TCP 1 + TLS 1.2 2 + HTTP 1 = 5 RTTs = 250 ms. (b) TLS 1.3 saves one: 1 + 1 + 1 + 1 = 4 RTTs = 200 ms. (c) HTTP/3: DNS 1 + QUIC handshake (transport + TLS 1.3 together) 1 + HTTP 1 = 3 RTTs = 150 ms. (d) With 0-RTT on a resumed session the client sends the request in its first flight: DNS 1 + HTTP 1 = 2 RTTs = 100 ms (note: 0-RTT data is replayable, so only idempotent requests). (e) Already-open connection: only the request/response: 1 RTT = 50 ms. This is why connection reuse, HTTP/2 and 3, CDNs near users, DNS caching and preconnect hints are the real performance levers; server compute is usually minor compared with 3-5 round trips.</p>`,
     d: { head: ['Case', 'DNS', 'TCP', 'TLS', 'HTTP', 'Total'], rows: [['TCP + TLS1.2', '1', '1', '2', '1', '5 RTT = 250 ms'], ['TCP + TLS1.3', '1', '1', '1', '1', '4 RTT = 200 ms'], ['QUIC', '1', '-', '1 (combined)', '1', '3 RTT = 150 ms'], ['QUIC 0-RTT', '1', '-', '0', '1', '2 RTT = 100 ms'], ['warm connection', '0', '0', '0', '1', '1 RTT = 50 ms']] }
   }));
   practice.push(mk({
     t: 'Clients Time Out but the Server CPU Is Idle', l: 'Hard', tags: ['accept queue', 'SYN queue', 'diagnosis'], co: ['Amazon', 'Cloudflare', 'Stripe'],
+    cx: '<p>Diagnosis, not algorithmic: a handful of ss and nstat commands, one per suspected queue.</p>',
     s: `<p>Intermittently, clients get connect timeouts to your service during traffic spikes; CPU and network are low, no errors in app logs. Find the likely causes in the TCP layer, how to confirm each with commands, and how to fix them.</p>`,
     ex: `<p>Two queues sit between the network and your <code>accept()</code> loop: SYN queue and accept queue.</p>`,
     b: `<p>"Add more CPU / more instances" does nothing if the listen queue overflows because the accept loop is single-threaded or blocked.</p>`,

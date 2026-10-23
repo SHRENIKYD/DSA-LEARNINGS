@@ -145,7 +145,7 @@ function pr(o) {
     example: '<p><b>Listen for:</b> ' + o.listen + '</p>',
     brute: { why: '<p><b>Weak answer:</b> ' + o.weak + '</p><p><b>Why it fails:</b> ' + o.why + '</p>' },
     mcq: o.mcq,
-    hints: o.hints.map(function (h) { return h.length < 70 ? h + ' Keep it short, specific and honest, and say it aloud once to test it.' : h; }),
+    hints: o.hints,
     solution: {
       approach: '<p>' + o.strong + '</p>',
       complexity: '<p>Aim for about ' + (o.secs || 100) + ' seconds (' + Math.round((o.secs || 100) * 2.5) + ' words). Score it on the 4-part rubric: situation clarity, personal action, measurable result, reflection.</p>',
@@ -214,7 +214,7 @@ topics.push(build({
     weak: 'I did my degree, joined a company, worked on many projects, and now I want a new challenge.',
     why: 'No role, no numbers, no reason, and "new challenge" fits every company.',
     strong: 'I am a backend engineer with four years of experience, on the payments team at Fernwood Labs, where I own the refund service handling about 40,000 refunds a day. Before that I worked at a small startup on mobile APIs, which taught me to ship fast, and I moved to payments because I wanted correctness to matter more than speed. Last year I redesigned our refund retry logic using an event queue, and failed refunds dropped from 3.1 percent to 0.4 percent. Now I want to work on payments for many merchants, which is exactly what your platform team does. The retry redesign had interesting ordering trade-offs, so I would be happy to go deeper on it.',
-    hints: ['Hint 1: Three blocks only: present, past, future.', 'Hint 2: Put one metric in the middle block and one company-specific reason in the last.', 'Hint 3: Write five bullets, time yourself at 150 words per minute, and end on a hook sentence.'],
+    hints: ['Hint 1: Use exactly three blocks, present, past and future, and cut everything else, including school and early jobs.', 'Hint 2: Put one metric in the middle block and one company-specific reason in the last.', 'Hint 3: Write five bullets, time yourself at 150 words per minute, and end on a hook sentence.'],
     mcq: { q: 'What is the best ending for "tell me about yourself"?', options: ['"So yeah, that is me."', 'A link to this role plus a hook to a story you can tell', 'A list of your hobbies', 'Asking them to read your resume'], answer: 1, explain: 'A link to the role shows fit; a hook steers the next question to your strongest ground.' },
     follow: ['Make a 30-second version for a busy recruiter.', 'What do you drop when the role is more front-end?'], secs: 85
   })]
@@ -279,7 +279,7 @@ topics.push(build({
     weak: 'My teammate was lazy and wrote messy code, so I told our manager and she fixed it.',
     why: 'Blames, skips the direct talk, no measurable result, and lacks reflection.',
     strong: 'At Fernwood Labs, my teammate Marcus and I were stuck in a week of back-and-forth code reviews, ten days before a release. I wanted a shared standard without damaging our relationship. I noticed I was irritated, so I waited a day and asked Marcus for 20 minutes in private. I listened first and learned he felt my comments were nit-picks that blocked him, while I worried about missing tests. We agreed our shared goal was a safe release on the 12th. I proposed labelling comments as must-fix or optional, and he added tests for payment paths. I wrote the rule in our team doc. Review time dropped from 3.2 days to 1.1 days, we shipped on time, and Marcus later asked me to review his design doc. I learned most conflicts are two worries, so I now ask what someone is worried about before I argue.',
-    hints: ['Hint 1: Pick a medium conflict where the other person had a fair point.', 'Hint 2: Show the order: pause, private talk, listen, shared goal, specific change.', 'Hint 3: End with a number AND a changed habit of yours.'],
+    hints: ['Hint 1: Pick a medium conflict where the other person had a fair point.', 'Hint 2: Show the order: pause, private talk, listen, shared goal, specific change.', 'Hint 3: End with a number such as review time before and after, plus one habit you changed in your own review comments.'],
     mcq: { q: 'Which is the best FIRST action when a teammate keeps rejecting your pull requests?', options: ['Complain in the team channel', 'Tell the manager immediately', 'Ask for a private chat and listen to their concern', 'Stop asking for reviews'], answer: 2, explain: 'Direct, private, curious is the pattern interviewers want. Escalation comes later if talking fails.' },
     follow: ['What if the manager had to be involved?', 'What would you change in your own approach?'], secs: 105
   })]
@@ -343,7 +343,7 @@ topics.push(build({
     weak: 'My manager chose a bad plan. I said so in the meeting. Later it failed and I told him I was right.',
     why: 'Public, no data, no alternative, no commitment, and "I told you so" damages trust.',
     strong: 'At Brightcart my manager Dana decided to launch coupons in two weeks without load testing, for a sales event. I owned the coupon service and feared checkout would stall. I did not argue in the meeting. I ran a two-hour staging test and found p95 latency rose from 120 ms to 900 ms at five times traffic. I booked 15 minutes with Dana, showed the graph, and proposed caching the rules plus a 200 ms timeout for two extra days. She kept the date but agreed to the timeout. I said I still disagreed on the risk but would commit, and I added alerts and a rollback switch. On sale day traffic hit 4x, the timeout fired for 0.6 percent of calls, and checkout stayed up. I learned to bring data and a cheaper alternative, and to commit fully.',
-    hints: ['Hint 1: Choose a disagreement with real stakes: customer, cost, risk or time.', 'Hint 2: Show you went in private with data and an alternative.', 'Hint 3: Say the commit sentence out loud and what you did to make the decision succeed.'],
+    hints: ['Hint 1: Choose a disagreement with real stakes: customer, cost, risk or time.', 'Hint 2: Show you took it to your manager in private, with test data and a cheaper alternative, instead of arguing in the meeting.', 'Hint 3: Say the commit sentence out loud and what you did to make the decision succeed.'],
     mcq: { q: 'After your manager makes a final decision you disagree with, what should you do?', options: ['Slow-walk it to prove a point', 'Commit fully and add safeguards, keep an eye on the facts', 'Go to the director', 'Say "I told you so" if it fails'], answer: 1, explain: 'Disagree and commit means full effort after the decision. Escalation is only for serious harm.' },
     follow: ['What if the decision was unethical?', 'How do you disagree in a public meeting?'], secs: 110
   })]
@@ -408,7 +408,7 @@ topics.push(build({
     weak: 'My biggest failure is that I am a perfectionist. Once a project was late because the requirements changed.',
     why: 'Humble-brag plus blame, no event, no cost, no lesson.',
     strong: 'Two years ago at Fernwood Labs I deployed a database migration on a Friday without running it on a copy of production data. I was responsible for the release. The migration locked the orders table for 11 minutes. I told my manager and the on-call channel straight away, rolled back in 14 minutes, and gave support a clear status. The next day I wrote a blameless review and admitted I had skipped the dry run to save time. I added a staging dry-run step to the deploy checklist, a no-schema-change-after-2pm-Friday rule, and a script to estimate lock time. About 300 orders were delayed and all were reprocessed that evening. Since then 25 migrations have shipped without lock incidents. I learned that feeling confident is not a test.',
-    hints: ['Hint 1: Choose a real mistake you caused, not luck or a teammate.', 'Hint 2: Spend a quarter of the time on the mistake and three quarters on fix and prevention.', 'Hint 3: The lesson must be a system or habit you can show, like a checklist.'],
+    hints: ['Hint 1: Choose a real mistake you personally caused, with a measurable cost, not bad luck or a teammate\'s error.', 'Hint 2: Spend a quarter of the time on the mistake and three quarters on fix and prevention.', 'Hint 3: The lesson must be a system or habit you can show, like a checklist.'],
     mcq: { q: 'Which lesson sounds strongest?', options: ['"I will try harder next time."', '"Communication is important."', '"I added a deploy check that blocks schema changes without a dry run."', '"It was not really my fault."'], answer: 2, explain: 'A system change that prevents repeats beats any promise to be more careful.' },
     follow: ['What if the failure was a teammate\'s?', 'Give a second failure from a different area.'], secs: 105
   })]
@@ -472,7 +472,7 @@ topics.push(build({
     weak: 'My manager said I was too harsh. I thought it was unfair, but I tried to be nicer.',
     why: 'Defensive, vague change, no proof of improvement.',
     strong: 'In my annual review at Fernwood Labs, my manager Priya told me my code review comments were blunt and two junior engineers had stopped asking me for reviews. I wanted to keep quality high but make my feedback usable. My first reaction was to defend myself, but I paused and asked her for two examples. Reading them, I could see she was right: I wrote this is wrong without a reason. I made three changes: I added a short why to every comment, started with one good thing, and marked comments must-fix or optional. After a month I asked both juniors and Priya if reviews were more useful. Both juniors went back to requesting my reviews, review rounds per pull request fell from 3.1 to 2.0, and Priya noted it at mid-year. I learned that being right is not the same as being useful.',
-    hints: ['Hint 1: Pick feedback that was true and about a behaviour.', 'Hint 2: Show the first reaction honestly, then the pause and the clarifying ask.', 'Hint 3: Close the loop: say who you went back to and what they said.'],
+    hints: ['Hint 1: Pick feedback that was true and about a specific behaviour, like how your comments read, not about who you are.', 'Hint 2: Show the first reaction honestly, then the pause and the clarifying ask.', 'Hint 3: Close the loop: say who you went back to a month later and what they said about the change.'],
     mcq: { q: 'What shows an interviewer you are coachable?', options: ['Saying you never get criticism', 'Arguing your side first', 'Asking for examples, changing a behaviour, and checking back', 'Saying you take feedback very well'], answer: 2, explain: 'Specific actions and loop-closing prove coachability; claims do not.' },
     follow: ['What feedback did you disagree with?', 'How do you ask for feedback?'], secs: 100
   })]
@@ -537,7 +537,7 @@ topics.push(build({
     weak: 'My teammate was slow, so we all finished his work. We delivered on time.',
     why: 'Judgemental, all "we", took over the work, no growth for anyone.',
     strong: 'At Brightcart a new teammate, Leo, was assigned a notification feature, and after two weeks his pull request was still blocked and he had gone quiet in standups. As his buddy, I wanted him to ship without me doing it for him, with six days left. I messaged him privately and offered to pair for an hour, saying I had been stuck there too. I found he was struggling with our event system, not the feature, so I drew the flow, wrote a half-page guide, and let him drive the keyboard. Then I stepped back, checked in ten minutes each morning, and made sure he presented the demo. Leo shipped a day early, his next pull request needed one review round instead of five, and he later taught the guide to a new hire. I learned that quiet usually means stuck.',
-    hints: ['Hint 1: Start with what you noticed, not with a judgement.', 'Hint 2: Show the help was the right size: pair, guide, fade out.', 'Hint 3: Give the teammate the credit and end with a habit.'],
+    hints: ['Hint 1: Start with what you noticed, such as a quiet standup or a blocked pull request, not with a judgement of them.', 'Hint 2: Show the help was the right size: pair once, leave a short guide, then step back and check in lightly.', 'Hint 3: Give the teammate the credit for shipping, and end with a habit you now use when someone goes quiet.'],
     mcq: { q: 'Your teammate is behind. What is the best move?', options: ['Finish his work and say nothing', 'Tell others he is slow', 'Ask privately, find the real gap, help in a right-sized way, then step back', 'Wait until the manager notices'], answer: 2, explain: 'Coaching builds independence; taking over and gossip do not.' },
     follow: ['What if he refuses help?', 'How did you balance your own work?'], secs: 100
   })]
@@ -604,7 +604,7 @@ topics.push(build({
     weak: 'We worked extra hours and finished the work. It was good teamwork.',
     why: 'Zero "I", zero metric, no task, no lesson, and only a few seconds long.',
     strong: 'At Brightcart a new teammate, Leo, was stuck and his pull request was blocked with six days left. As his buddy, my job was to help him ship without doing it for him. I asked him privately to pair, I drew the event flow, I wrote a half-page guide, and I let him drive the keyboard. As a result Leo shipped a day early and his next review dropped from five rounds to one. I learned that quiet usually means stuck, and now I write down onboarding gaps right after I help. Self-score: situation 5, my actions 5, result 4, reflection 5, total 19 of 20. Next improvement: add a second number, such as hours saved for the next new hire.',
-    hints: ['Hint 1: Count your "I" and "we" words honestly.', 'Hint 2: Score each rubric line, then fix only the lowest one.', 'Hint 3: Time yourself: 225 to 300 words is about 90 to 120 seconds.'],
+    hints: ['Hint 1: Count your \'I\' and \'we\' words honestly; if \'we\' wins, rewrite the actions in \'I\' language.', 'Hint 2: Score each of the four rubric lines from 0 to 5, then fix only the lowest-scoring one.', 'Hint 3: Time yourself: 225 to 300 words is about 90 to 120 seconds, so trim or add detail to land in that range.'],
     mcq: { q: 'At 150 words per minute, about how long is a 300-word answer?', options: ['60 seconds', '120 seconds', '180 seconds', '300 seconds'], answer: 1, explain: '300 words / 150 words per minute = 2 minutes = 120 seconds.' },
     follow: ['Which rubric line is usually weakest for you?', 'How would you test the answer with a human?'], secs: 100
   })]
@@ -619,7 +619,7 @@ practice.push(pr({
   weak: 'I am a software engineer and I have worked on many technologies and I am looking for new opportunities.',
   why: 'No scale, no result, no reason for this company.',
   strong: 'I am a backend engineer with four years of experience, now on the payments team at Fernwood Labs, where I own a refund service that handles about 40,000 refunds a day. Last year I cut failed refunds from 3.1 percent to 0.4 percent by redesigning retries. I am looking for a role with more design ownership on a larger platform, which is why your merchant payments team caught my eye.',
-  hints: ['Hint 1: Role, years, one number.', 'Hint 2: One link to the target company.', 'Hint 3: 75 words is about 30 seconds.'],
+  hints: ['Hint 1: One sentence only: your role, your years of experience and a single number that shows impact.', 'Hint 2: Add one clause linking your next step to what the target company builds, so the recruiter sees the fit.', 'Hint 3: At about 150 words a minute, 30 seconds is roughly 75 words, so cut anything beyond that.'],
   mcq: MC('How many words fit in 30 seconds at 150 wpm?', ['About 25', 'About 75', 'About 150', 'About 300'], 1, '150 wpm is 2.5 words per second, so 30 seconds is 75 words.'),
   follow: ['Now stretch it to 90 seconds.'], secs: 30
 }));
@@ -630,7 +630,7 @@ practice.push(pr({
   weak: 'My manager does not listen and the pay is bad and the work is boring.',
   why: 'All push and blame. Future managers imagine you saying it about them.',
   strong: 'I have learned a lot at Fernwood Labs, especially about payments correctness, and I am proud of the refund redesign. I have reached the point where the next level of scope I want, designing services across teams, is not available on the current roadmap. Your platform team has that scope, with merchants at much larger scale. So I am leaving for something I want, not away from something I dislike. I have told my manager and I will make sure the handover is clean.',
-  hints: ['Hint 1: Pull, not push.', 'Hint 2: Thank the old place honestly.', 'Hint 3: Tie the pull to the new role.'],
+  hints: ['Hint 1: Frame it as a pull toward something you want, never a push away from your manager or team.', 'Hint 2: Thank the current team honestly with one specific thing you learned or built there.', 'Hint 3: Tie the pull to the new role by naming the scope or problem it offers that your current one does not.'],
   mcq: MC('Which reason is safest to give?', ['My boss is terrible', 'I want larger scope that your team offers', 'The pay is bad', 'I was bored'], 1, 'A pull toward growth fits the new role and blames nobody.'),
   follow: ['What if you were laid off?'], secs: 60
 }));
@@ -641,7 +641,7 @@ practice.push(pr({
   weak: 'Our team worked very well together on a big project and we all helped each other.',
   why: 'No specifics, no personal role, no outcome.',
   strong: 'Our four-person team at Brightcart had five days to launch a gift-card feature. I noticed we kept losing time in unplanned discussions, so I proposed a daily 15-minute sync with a written list of blockers. I also took on the tedious integration tests nobody wanted. We launched on day four with zero severe bugs, and the sync stayed as a team habit. I learned that a small routine is often the best help you can give a team.',
-  hints: ['Hint 1: One thing you did for the group.', 'Hint 2: Pick the dull task you took.', 'Hint 3: Give a number for the result.'],
+  hints: ['Hint 1: Name one thing you did for the group, not just the team result, so your own part is clear.', 'Hint 2: Pick the dull task you took on that nobody wanted, because it shows you put the team first.', 'Hint 3: End with a number for the result, such as days to launch or bugs found, and one lesson.'],
   mcq: MC('In a team story, what must you make clear?', ['What the team did', 'What you personally did', 'How friendly everyone was', 'How long it took'], 1, 'Interviewers hire you, so your own actions are the evidence.'),
   follow: ['What was hardest about the team?'], secs: 80
 }));
@@ -652,7 +652,7 @@ practice.push(pr({
   weak: 'I am a perfectionist and I work too hard.',
   why: 'A humble-brag that tells them nothing.',
   strong: 'I used to wait too long before asking for help. Two years ago I lost three days on a build problem a teammate could have solved in ten minutes. Since then I use a 30-minute rule: if I am stuck for half an hour, I write down what I tried and ask. Last quarter this saved me about a day on a deployment issue. It is still a habit I have to watch when I am busy, so I ask my buddy to nudge me.',
-  hints: ['Hint 1: Choose a real but non-critical weakness.', 'Hint 2: Give one example with a cost.', 'Hint 3: Show a rule you built.'],
+  hints: ['Hint 1: Choose a real but non-critical weakness, not a strength in disguise like \'I work too hard\'.', 'Hint 2: Give one real example with a cost, such as time lost or a delayed task, to prove the weakness was real.', 'Hint 3: Show a rule or habit you built to manage it, and admit it still needs watching.'],
   mcq: MC('Which weakness answer is strongest?', ['I care too much', 'I wait too long to ask for help, so I use a 30-minute rule', 'I have no weaknesses', 'I am bad at coding'], 1, 'It is real, small, and has a system as the fix.'),
   follow: ['How do you know the habit is working?'], secs: 60
 }));
@@ -663,7 +663,7 @@ practice.push(pr({
   weak: 'He was lazy so I reported him to the manager and he was removed.',
   why: 'Judgement, skipped conversation, no learning.',
   strong: 'On a four-person project at Brightcart, Omar missed two deadlines in a row, putting our release at risk. I wanted the work delivered and Omar treated fairly. I asked him for a private coffee and said I had noticed the delays and wanted to help. He told me he was handling a family emergency. I told my lead only that Omar needed a lighter load, not why. We split his tasks into smaller pieces and I took two of them. We shipped on time and Omar delivered the rest. A month later he thanked me. I learned to ask what is going on before deciding what is wrong.',
-  hints: ['Hint 1: Start from curiosity, not blame.', 'Hint 2: Protect privacy.', 'Hint 3: Show a structured plan with sizes.'],
+  hints: ['Hint 1: Start from curiosity and ask what is going on before you decide the teammate is the problem.', 'Hint 2: Protect privacy: tell your lead what support is needed, not the personal reason behind it.', 'Hint 3: Show a structured plan with sizes: smaller tasks, who took which, and how the work was split.'],
   mcq: MC('First step with a teammate who keeps missing deadlines?', ['Report them', 'Ask privately what is going on', 'Do their work silently', 'Ignore it'], 1, 'Understanding the cause comes before any escalation.'),
   follow: ['What if the problem had continued?'], secs: 105
 }));
@@ -674,7 +674,7 @@ practice.push(pr({
   weak: 'My lead wanted microservices and I thought it was dumb, so I told him so and we used a monolith.',
   why: 'Insulting, no data, no criteria, and winning is the story.',
   strong: 'At Fernwood Labs, my tech lead Sam wanted to split our small search feature into three microservices. I worried about the extra operational work for a team of four. I asked Sam for a design review slot and brought a one-page comparison: three services meant three deploy pipelines and about 6 extra hours of maintenance a week by our estimate. I proposed a modular monolith with clean boundaries that we could split later. Sam added one criterion I had missed: independent scaling of indexing. We agreed on a monolith with the indexer as a separate worker. Deploy time stayed at 8 minutes, and the split was easy 6 months later. I learned to ask what criteria matter before I propose a solution.',
-  hints: ['Hint 1: Use shared criteria like cost, risk, speed.', 'Hint 2: Show the lead added something good.', 'Hint 3: End with a result and a lesson.'],
+  hints: ['Hint 1: Use shared criteria like cost, risk and speed so the debate is about the design, not about people.', 'Hint 2: Show the lead added a good point you had missed, which proves you listened and were not just arguing.', 'Hint 3: End with a result you can measure and a lesson about how to challenge a design.'],
   mcq: MC('Best way to settle a design disagreement?', ['Vote loudly', 'Write down shared criteria and compare options against them', 'Escalate immediately', 'Give up'], 1, 'Criteria move the argument from people to trade-offs.'),
   follow: ['What if your lead had insisted on microservices?'], secs: 115
 }));
@@ -685,7 +685,7 @@ practice.push(pr({
   weak: 'The deadline was unrealistic and others did not deliver, so we were late.',
   why: 'Blames others and has no ownership or learning.',
   strong: 'At Brightcart I estimated a reporting feature at three weeks, but halfway through I found the data export was far messier than I had assumed. I knew on day eight that I would be about a week late. I told my manager that same day with three options: cut the PDF export, add one engineer, or move the date by a week. We cut the PDF export and shipped the core report on time, with the PDF one week later. Afterwards I started adding a two-day spike to any estimate that touches an unfamiliar data source. My last four estimates were all within two days.',
-  hints: ['Hint 1: Tell them when you noticed.', 'Hint 2: Offer options, not excuses.', 'Hint 3: Prevention should be an estimating habit.'],
+  hints: ['Hint 1: Tell them exactly when you noticed the slip, ideally well before the deadline, and who you told.', 'Hint 2: Offer the manager two or three options with trade-offs, such as cut scope, add help or move the date.', 'Hint 3: Prevention should be an estimating habit you can show, such as a spike for an unfamiliar data source.'],
   mcq: MC('When you see a deadline will slip, you should...', ['Wait and hope', 'Warn early with options', 'Work secretly overnight and say nothing', 'Blame the plan'], 1, 'Early warning with options keeps trust.'),
   follow: ['How do you estimate now?'], secs: 100
 }));
@@ -696,7 +696,7 @@ practice.push(pr({
   weak: 'He criticised my design in front of everyone and I got upset, but I let it go.',
   why: 'No action, no learning, and "let it go" hides the real story.',
   strong: 'In a design review at Fernwood Labs, a senior engineer, Nadia, said in front of ten people that my caching plan ignored cache invalidation. It stung, but I took a breath, said "good catch, can you say more?" and wrote down her points. That afternoon I thanked her privately and asked for 20 minutes. She was right: I had no plan for stale data. I added a time-to-live and an invalidation event, and sent the revised design the next morning. The design shipped with no stale-data bugs in the first quarter. I also told Nadia I would prefer to hear such points a day earlier, and she agreed to comment on drafts. I learned to separate the sting from the substance.',
-  hints: ['Hint 1: Show a calm immediate reaction.', 'Hint 2: Follow up in private.', 'Hint 3: Ask for earlier feedback politely.'],
+  hints: ['Hint 1: Show a calm immediate reaction: what you actually said in the room, not what you felt or regretted.', 'Hint 2: Follow up in private the same day: thank the person and ask for the details you missed.', 'Hint 3: Ask politely for earlier feedback next time, for example comments on drafts before the review.'],
   mcq: MC('What is a good immediate response to sharp public feedback?', ['Argue back', 'Say thanks, ask a clarifying question, take notes', 'Leave the meeting', 'Stay silent and sulk'], 1, 'Staying curious in the moment lets you evaluate it later.'),
   follow: ['What if the feedback was unfair?'], secs: 110
 }));
@@ -707,7 +707,7 @@ practice.push(pr({
   weak: 'The other team would not prioritise my request, so I escalated to the director.',
   why: 'Escalation as the first move and no empathy for their priorities.',
   strong: 'My team at Brightcart needed an API change from the identity team, who kept pushing it back. Instead of escalating, I asked their lead, Rosa, what her team was measured on. She told me they were focused on a security audit in 3 weeks. I offered to write the change myself under her team review, and to add tests for the audit area as a thank-you. She agreed. The change merged in 4 days instead of the 6 weeks they had quoted, and the audit tests helped them pass. I learned to find the other side\'s goal first and bring something that helps them too.',
-  hints: ['Hint 1: Ask what the other team is measured on.', 'Hint 2: Offer value in both directions.', 'Hint 3: Escalation is a last step.'],
+  hints: ['Hint 1: Ask what the other team is measured on before asking for anything, so you learn their priorities.', 'Hint 2: Offer value in both directions: something that helps their goal as well as your own request.', 'Hint 3: Escalation is a last step; show what you tried first and how the relationship stayed good.'],
   mcq: MC('When you need something from another team, first...', ['Escalate to a director', 'Learn their priorities and offer help', 'Wait', 'Do it quietly yourself'], 1, 'Aligning with their goals makes the yes easy.'),
   follow: ['What if Rosa had said no?'], secs: 110
 }));
@@ -718,7 +718,7 @@ practice.push(pr({
   weak: 'My manager chose the wrong vendor and it failed. I had warned him, so it was his fault.',
   why: 'Gloating, blame and no contribution to the fix.',
   strong: 'At Fernwood Labs, my manager Priya chose a third-party email vendor for a launch; I preferred our in-house sender because the vendor had a low sending limit. I raised it with a comparison of limits, Priya weighed the cost and still chose the vendor, and I committed. Two weeks after launch, the vendor throttled us and 8 percent of password-reset emails were delayed by up to 20 minutes. I did not say I told you so. I wrote a fallback that switched to our in-house sender when the queue passed 500, and shipped it in a day. Delays fell to under 1 minute. In the retrospective I owned that my first message could have shown the numbers more clearly. I learned that commitment includes helping repair the decision.',
-  hints: ['Hint 1: Never gloat.', 'Hint 2: Show your fix, quickly.', 'Hint 3: Reflect on how you raised the concern.'],
+  hints: ['Hint 1: Never gloat; show how you committed to the decision once it was made, in words and in work.', 'Hint 2: Show your fix and how quickly you shipped it, since the story is about helping, not being right.', 'Hint 3: Reflect on how you raised the concern the first time and what you would present more clearly now.'],
   mcq: MC('The decision you opposed fails. What do you do?', ['Say I told you so', 'Help fix it and review how you voiced the concern', 'Ask to take over', 'Stay quiet'], 1, 'Adaptation without blame builds the most trust.'),
   follow: ['Would you push harder next time?'], secs: 115
 }));
@@ -729,7 +729,7 @@ practice.push(pr({
   weak: 'There was a bug in production but it was caused by a rushed deadline. We fixed it fast.',
   why: 'Shifts blame to the deadline, hides cost, no systemic fix.',
   strong: 'At Brightcart, I changed our discount rounding logic and merged it with a test only for the happy path. For six hours, some customers were charged up to 2 percent too much; about 1,900 orders were affected. A support agent spotted it first, which told me my alerts were weak. I owned it in the incident channel, rolled back in 25 minutes once confirmed, and refunded every affected order by the next day. In the blameless review I named my gap: I did not test boundary values. I added property-based tests for money code, a rule that any change to pricing needs a second reviewer, and an alert comparing charged versus expected totals. In the following year there were zero pricing incidents. I learned that money code deserves its own test bar.',
-  hints: ['Hint 1: State the cost honestly with numbers.', 'Hint 2: Show detection weakness, not just the bug.', 'Hint 3: Give three layers of prevention.'],
+  hints: ['Hint 1: State the cost honestly with numbers: how many customers or orders, how long, and how much money.', 'Hint 2: Show the detection weakness too, such as who spotted it first, not just the bug itself.', 'Hint 3: Give three layers of prevention: tests, a review rule and monitoring, and say what each one stops.'],
   mcq: MC('What makes a failure story senior-level?', ['A dramatic outage', 'Systemic fixes and honest root cause', 'Blaming the process', 'A tiny bug'], 1, 'Seniors fix the system that let the failure through.'),
   follow: ['How did you rebuild trust?'], secs: 120
 }));
@@ -740,7 +740,7 @@ practice.push(pr({
   weak: 'I told a coworker his code was bad and he got angry, so I stopped giving feedback.',
   why: 'Vague feedback, gave up, and no repair.',
   strong: 'At Fernwood Labs, I told a peer, Jonas, in a message that his pull requests lacked tests, and he replied angrily that I was nit-picking. I realised my message was blunt and public. I called him the next day, said "I think I put that badly; I want to help us avoid weekend pages", and shared a specific example: last month a missing test caused a 40-minute outage. He admitted he had been under pressure. We agreed on a two-line test checklist and I offered to pair on the first two. His next five pull requests had tests, and incident count from his area dropped to zero for the quarter. I learned to give feedback privately, with a specific example and an offer to help.',
-  hints: ['Hint 1: Own your part of the bad reaction.', 'Hint 2: Use situation, behaviour, impact.', 'Hint 3: Offer help, not only criticism.'],
+  hints: ['Hint 1: Own your part of the bad reaction: say how your wording or timing made the feedback land badly.', 'Hint 2: Use situation, behaviour, impact in the repair talk, with one concrete example instead of a general complaint.', 'Hint 3: Offer help, not only criticism, such as pairing on the first changes or agreeing a shared checklist.'],
   mcq: MC('Best structure for hard feedback?', ['Vague hint', 'Situation, behaviour, impact, then ask their view', 'Public call-out', 'Email the manager'], 1, 'SBI keeps it factual and open to dialogue.'),
   follow: ['What if he had continued to react badly?'], secs: 115
 }));
@@ -751,7 +751,7 @@ practice.push(pr({
   weak: 'I was laid off and it was very hard and I could not find anything for a while, so I am just looking for any job.',
   why: 'Apologetic, desperate tone, no direction, no evidence of growth.',
   strong: 'I am a backend engineer with five years of experience, most recently on a logistics platform at Orchard Cloud, where I led the move of our routing service to an event-driven design that cut delivery-estimate errors by 35 percent. In March my team was affected by a company-wide layoff of 20 percent of staff. Since then I have used the time well: I completed a distributed-systems course, contributed two fixes to an open-source queue library, and built a small project that processes 5,000 events a second. I want to return to a team that works on large event-driven systems, which is exactly what your logistics platform does. I would be happy to go deeper on the routing migration.',
-  hints: ['Hint 1: State the layoff in one calm sentence.', 'Hint 2: Show what you did since.', 'Hint 3: Go back to the future and fit.'],
+  hints: ['Hint 1: State the layoff in one calm sentence, with the scale, and do not apologise for it.', 'Hint 2: Show what you did since then with evidence, like a course, a contribution or a built project.', 'Hint 3: Go back to the future and fit: link your direction to what this company builds, then stop.'],
   mcq: MC('How should you describe a layoff?', ['Apologise at length', 'One calm factual sentence, then move to what you did and want', 'Blame the company', 'Skip it'], 1, 'Layoffs are common; confident, brief and forward-looking works best.'),
   follow: ['Why did it take five months?'], secs: 100
 }));

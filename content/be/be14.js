@@ -29,8 +29,8 @@
       statement: o.statement, constraints: o.constraints, example: o.example,
       brute: { why: o.brute },
       mcq: o.mcq,
-      hints: o.hints.map(function (h) { var t = h.replace(/<[^>]*>/g, ''); return t.length < 40 ? h.replace('</p>', ' Take a moment to reason about it before reading further.</p>') : h; }),
-      solution: { approach: o.approach, code: o.code, alt: o.alt, complexity: (o.complexity.replace(/<[^>]*>/g, '').length < 20 ? o.complexity.replace('</p>', ' (design question, no algorithm).</p>') : o.complexity), followUps: o.followUps }
+      hints: o.hints,
+      solution: { approach: o.approach, code: o.code, alt: o.alt, complexity: o.complexity, followUps: o.followUps }
     };
   }
 
@@ -986,7 +986,7 @@ console.log('Savings Plan what-if saves about $' + (steady * 0.35).toFixed(2) + 
     example: `<p>(a) ${H.c('g', 'Security group')} referencing the app SG. (b) ${H.c('r', 'NACL deny')}.</p>`,
     brute: `Using NACLs for everything: you must hand-write ephemeral port return rules in both directions, which is easy to get wrong and breaks connections silently.`,
     mcq: mc('Which firewall can explicitly DENY?', ['Security group', 'NACL', 'Both', 'Neither'], 1, 'Security groups only allow; NACLs have allow and deny rules.'),
-    hints: H3('Which one remembers connections?', 'Only one of them supports deny rules.', '(a) SG, (b) NACL, (c) SG (stateful), (d) NACL applies at the subnet.'),
+    hints: H3('Which one remembers connections, so that reply traffic is allowed back automatically?', 'Only one of the two supports explicit deny rules, which you need to block an abusive range.', '(a) SG, (b) NACL, (c) SG (stateful), (d) NACL applies at the subnet.'),
     approach: `<p>(a) Security group on the DB, source = the app security group, port 5432; referencing groups instead of IPs survives auto scaling. (b) NACL deny rule with a low rule number, because security groups cannot deny. (c) Replies are automatic with security groups because they are stateful and track the connection; a NACL is stateless and needs an explicit outbound rule for ephemeral ports 1024-65535. (d) A NACL attaches to the subnet and filters all traffic crossing its boundary, so it is a coarse second layer. Default practice: rely on security groups for fine-grained allow rules and add NACL denies only for blocklists or compliance.</p>`,
     complexity: `<p>Not applicable; evaluation order: NACL first at the subnet, then the security group.</p>`
   }));
@@ -997,9 +997,9 @@ console.log('Savings Plan what-if saves about $' + (steady * 0.35).toFixed(2) + 
     example: `<p>(1) ${H.c('g', 'S3')}, (2) ${H.c('g', 'SQS')}, (3) ${H.c('g', 'RDS/Aurora')}, (4) ${H.c('g', 'Lambda')}, (5) ${H.c('g', 'SNS')}.</p>`,
     brute: `Using EC2 plus a self-managed database for everything: you now patch, back up, scale and fail over every piece yourself.`,
     mcq: mc('Which service delivers one message to ALL subscribers?', ['SQS', 'SNS', 'S3', 'RDS'], 1, 'SNS is publish/subscribe fan-out; SQS gives each message to one consumer.'),
-    hints: H3('Think data shape: file, row, message, event.', 'Queue = one consumer; topic = many.', 'Lambda is the glue for short event-driven code.'),
+    hints: H3('Think data shape: file, row, message, event.', 'A queue hands each message to one consumer; a topic delivers it to many subscribers.', 'Lambda is the glue for short event-driven code.'),
     approach: `<p>Videos are large binary objects, so S3 (cheap, durable, with lifecycle tiers). Buffering a high job rate for slow workers is exactly what a queue is for: SQS decouples producer speed from consumer speed and holds the backlog. Orders with joins and transactions need a relational engine: RDS or Aurora, Multi-AZ. A short function reacting to an object upload is Lambda with an S3 event trigger. Telling several independent systems about one event is fan-out: publish to an SNS topic with each system subscribing through its own SQS queue so they fail and scale independently. Choose managed services so the team operates less.</p>`,
-    complexity: `<p>Not applicable.</p>`
+    complexity: `<p>Not an algorithm; a mapping decision with no cost to compute.</p>`
   }));
   practice.push(prob({
     title: 'Run the IAM evaluation by hand', level: 'Easy', tags: ['iam', 'policy-evaluation'], companies: ['Amazon', 'Google'],
@@ -1008,7 +1008,7 @@ console.log('Savings Plan what-if saves about $' + (steady * 0.35).toFixed(2) + 
     example: `<p>(1) ${H.c('g', 'allowed')} (2) ${H.c('r', 'explicit deny')} (3) ${H.c('g', 'allowed')} (4) ${H.c('r', 'implicit deny')}.</p>`,
     brute: `Reading statements top to bottom and trusting the first match, like a firewall: IAM ignores order. Any matching Deny anywhere wins.`,
     mcq: mc('Policy allows s3:* and another denies s3:DeleteObject. Delete result?', ['Allowed', 'Denied', 'Depends on order', 'Needs MFA'], 1, 'An explicit deny always overrides any allow.'),
-    hints: H3('Start from "everything is denied".', 'Look for a matching Deny first.', 'Then look for any matching Allow; otherwise it stays denied.'),
+    hints: H3('Start from the default that everything is denied unless a statement allows it.', 'Look for a matching explicit Deny first, because it overrides every Allow.', 'Then look for any matching Allow; otherwise it stays denied.'),
     approach: `<p>Start at implicit deny. (1) GetObject on logs: no Deny matches (the deny names DeleteObject only), Allow s3:* on * matches, result allowed. (2) DeleteObject on logs: Policy B's explicit Deny matches, evaluation stops, denied even though Policy A allows it. (3) DeleteObject on photos: the Deny is scoped to bucket logs, so it does not match; Policy A allows, so allowed. (4) ec2:StartInstances: no statement matches the action, so the implicit deny stands. The evaluator in this module encodes the same three steps and prints the trace.</p>`,
     complexity: `<p>Linear in the number of statements.</p>`
   }));
@@ -1031,7 +1031,7 @@ console.log('Savings Plan what-if saves about $' + (steady * 0.35).toFixed(2) + 
     example: `<p>prod ${H.c('b', '10.0.0.0/16')}, staging ${H.c('b', '10.1.0.0/16')}; /20 subnets = ${H.c('g', '4,091')} usable.</p>`,
     brute: `Both VPCs use 10.0.0.0/16: peering is impossible because the routes would overlap, and you must renumber later at great pain.`,
     mcq: mc('How many usable addresses in a /24 subnet on AWS?', ['256', '254', '251', '250'], 2, '256 minus the 5 AWS reserves is 251.'),
-    hints: H3('Overlap kills peering and VPN.', 'A /16 split into /20s gives 16 subnets.', 'Reserve unused blocks for future tiers and a third region.'),
+    hints: H3('Overlapping address ranges make VPC peering and VPN connections impossible, so keep them distinct.', 'Splitting a /16 into /20 blocks gives 16 subnets of 4,096 addresses each.', 'Reserve unused blocks for future tiers and a third region.'),
     approach: `<p>Pick distinct /16 blocks from the 10.0.0.0/8 space, avoiding 192.168.0.0/16: prod 10.0.0.0/16, staging 10.1.0.0/16, leaving 10.2+ for dev and other regions. Within a /16 carve /20 subnets (4,096 addresses, 4,091 usable): AZ-a/b/c public 10.0.0.0/20, 10.0.16.0/20, 10.0.32.0/20; app 10.0.48.0/20, 10.0.64.0/20, 10.0.80.0/20; data 10.0.96.0/20, 10.0.112.0/20, 10.0.128.0/20; the remaining blocks stay unallocated for future tiers. Public and data tiers may be smaller (/24) because they hold few addresses, which leaves even more room. Document the plan in IaC, verify no overlap with the CIDR calculator, and remember peering is not transitive and needs routes in both route tables.</p>`,
     complexity: `<p>Address arithmetic: 2^(32-prefix) minus 5.</p>`
   }));
@@ -1042,7 +1042,7 @@ console.log('Savings Plan what-if saves about $' + (steady * 0.35).toFixed(2) + 
     example: `<p>Before: ${H.c('r', 'PK=2026-03-01 (one hot key)')}. After: ${H.c('g', 'PK=2026-03-01#0..15')}.</p>`,
     brute: `Increase provisioned capacity: capacity is spread across partitions, but one key lives in one partition, so adding money does not remove the cap.`,
     mcq: mc('Why is a date as partition key bad for a write-heavy log?', ['Dates are strings', 'All current writes hit one key/partition', 'Dates cannot be sorted', 'It disables TTL'], 1, 'All of today\'s writes share a key, so one partition takes the whole load.'),
-    hints: H3('All writes today share one key.', 'Spread one logical key over N physical keys.', 'Reads then query all N shards in parallel and merge.'),
+    hints: H3('All writes on a given day share one partition key value, so they hit one partition.', 'Spread one logical key over N physical keys.', 'Reads then query all N shards in parallel and merge.'),
     approach: `<p>The date key has one value per day, so every write in that day targets a single partition limited to about 1,000 writes per second, leaving the rest of the table idle while requests are throttled. Use write sharding: PK = date#shard where shard is a random or hash-based number from 0 to 15, giving 16 keys at roughly 500 writes per second each. Put a high-cardinality part in the sort key, for example timestamp#clickId, so items remain ordered per shard. Reading all clicks for a day issues 16 Queries in parallel and merges them by timestamp; the application hides this. If clicks are mostly analysed in aggregate, better still is to write to Kinesis or Firehose and S3 and query with Athena, using DynamoDB only for lookups. Verify with CloudWatch contributor insights or throttle metrics. Pick the shard count from peak writes divided by a safe 500 per key.</p>`,
     complexity: `<p>Reads cost N queries instead of 1; writes scale linearly with the shard count.</p>`
   }));
@@ -1053,7 +1053,7 @@ console.log('Savings Plan what-if saves about $' + (steady * 0.35).toFixed(2) + 
     example: `<p>${H.c('b', 'OrderPlaced')} → SNS topic → 3 SQS queues → 3 consumers (+ DLQ each).</p>`,
     brute: `Order service calls the three APIs synchronously: any slow or failing call slows or fails the customer's checkout.`,
     mcq: mc('Why put an SQS queue between SNS and each consumer?', ['SNS cannot reach Lambda', 'To buffer, retry, and isolate each consumer', 'To make it FIFO', 'To encrypt messages'], 1, 'The queue stores messages while a consumer is down and lets each consumer scale and retry on its own.'),
-    hints: H3('Publish once, deliver many.', 'Each consumer gets its own queue.', 'Add DLQs, idempotency keys and a filter policy.'),
+    hints: H3('Publish the event once to a topic and let the topic deliver a copy to every subscriber.', 'Give each consumer its own queue, so a slow or down consumer only backs up its own queue.', 'Add DLQs, idempotency keys and a filter policy.'),
     approach: `<p>The order service writes the order and publishes one OrderPlaced event to an SNS topic (ideally via the outbox pattern, so the event is not lost if the publish fails after the database commit). Three SQS queues subscribe to the topic, one per consumer, with filter policies so each only receives the events it needs. When email is down its queue simply grows (messages kept up to 14 days) and drains when it recovers, while inventory and billing continue. Each queue has a redrive policy to a DLQ after several attempts and an alarm on DLQ depth and oldest message age. Because delivery is at-least-once, consumers dedupe by event id using a conditional write in DynamoDB or a unique constraint. Visibility timeout exceeds the processing time. The checkout request only waits for the database commit, so latency and availability are decoupled from the downstream systems.</p>`,
     complexity: `<p>Publish is O(subscribers) for AWS; each consumer processes independently.</p>`
   }));
@@ -1075,7 +1075,7 @@ console.log('Savings Plan what-if saves about $' + (steady * 0.35).toFixed(2) + 
     example: `<p>Route table lacks ${H.c('r', '0.0.0.0/0 → nat-xxxx')}; the NAT is in a ${H.c('r', 'private')} subnet.</p>`,
     brute: `Give the instances public IPs and open security groups to the world: it "works" but exposes them to the internet.`,
     mcq: mc('Where must a NAT gateway be placed?', ['Private subnet', 'Public subnet', 'Any subnet', 'Outside the VPC'], 1, 'The NAT needs a route to the internet gateway, so it lives in a public subnet.'),
-    hints: H3('Follow the packet: subnet route, NAT, IGW.', 'Check both route tables.', 'Then check security group egress, NACL ephemeral ports and DNS.'),
+    hints: H3('Follow the packet: subnet route, NAT, IGW.', 'Check both route tables: the private subnet\'s and the one in the NAT gateway\'s public subnet.', 'Then check security group egress, NACL ephemeral ports and DNS.'),
     approach: `<p>Trace the outbound packet. Step 1: the private subnet route table must contain 0.0.0.0/0 pointing to a NAT gateway. Step 2: that NAT gateway must sit in a public subnet whose route table sends 0.0.0.0/0 to the internet gateway, and it needs an Elastic IP. Step 3: the instance security group egress must allow the destination port (default allows all). Step 4: the subnet NACLs must allow outbound traffic and the inbound ephemeral return ports 1024-65535. Step 5: DNS resolution must be enabled on the VPC. Use VPC Reachability Analyzer and Flow Logs to find the rejected hop. For AWS service traffic, add gateway endpoints for S3 and DynamoDB so the NAT is not needed at all. A multi-AZ design needs one NAT per AZ with each private subnet routing to its own AZ's NAT.</p>`,
     complexity: `<p>Debugging is a linear walk of the path.</p>`
   }));
@@ -1086,9 +1086,9 @@ console.log('Savings Plan what-if saves about $' + (steady * 0.35).toFixed(2) + 
     example: `<p>${H.c('g', 'sqs:ReceiveMessage, DeleteMessage, GetQueueAttributes')} on the queue ARN; ${H.c('g', 'dynamodb:PutItem')} on the table ARN.</p>`,
     brute: `Attach AdministratorAccess so deployments stop failing: any bug or compromised dependency can then touch the entire account.`,
     mcq: mc('Which principal goes in the trust policy of a Lambda execution role?', ['lambda.amazonaws.com', 'The developer user', 'ec2.amazonaws.com', '*'], 0, 'The Lambda service assumes the role when it runs your function.'),
-    hints: H3('List every API call the code makes.', 'One ARN per resource, no wildcards.', 'Logs need CreateLogStream and PutLogEvents on its own log group.'),
+    hints: H3('List every AWS API call the function code makes and grant only those actions.', 'Scope each permission to one specific resource ARN and avoid wildcards on the resource.', 'Logs need CreateLogStream and PutLogEvents on its own log group.'),
     approach: `<p>Trust policy: Principal Service lambda.amazonaws.com with action sts:AssumeRole. Permissions: (1) sqs:ReceiveMessage, sqs:DeleteMessage and sqs:GetQueueAttributes on arn:aws:sqs:us-east-1:123456789012:thumbs (the event source mapping needs exactly these). (2) dynamodb:PutItem, and dynamodb:UpdateItem only if the code updates, on arn:aws:dynamodb:us-east-1:123456789012:table/Thumbs. (3) logs:CreateLogStream and logs:PutLogEvents on the function's own log group ARN. Left out: any dynamodb:Scan, Delete or table administration; sqs:SendMessage; s3 access unless it is used; iam:PassRole; wildcard resources. Add a condition such as aws:SourceAccount where supported. Check with IAM Access Analyzer policy validation and generate a policy from CloudTrail after a test run to see what is truly used, then remove extras.</p>`,
-    complexity: `<p>Not applicable.</p>`
+    complexity: `<p>Not an algorithm; the policy size is set by the few actions and resources listed.</p>`
   }));
 
   practice.push(prob({
@@ -1120,7 +1120,7 @@ console.log('Savings Plan what-if saves about $' + (steady * 0.35).toFixed(2) + 
     example: `<p>Checkout → ${H.c('y', 'warm standby')}. Catalog → ${H.c('g', 'pilot light / backups')}. Analytics → ${H.c('g', 'rebuild from S3')}.</p>`,
     brute: `One blanket strategy for all components: either you overpay for analytics, or checkout misses the 15 minute target.`,
     mcq: mc('Which setting keeps checkout RPO near one minute across regions?', ['Nightly snapshots', 'Continuous cross-region replication (Aurora Global or Global Tables)', 'Weekly export', 'Multi-AZ only'], 1, 'Only continuous asynchronous replication with seconds of lag meets a 1-minute RPO across regions.'),
-    hints: H3('Tier by component, not by company.', 'RPO is a replication question; RTO is an automation question.', 'Name what you will test and how you will measure real RTO.'),
+    hints: H3('Tier the plan by component, since checkout needs a stricter target than analytics does.', 'RPO is a replication question; RTO is an automation question.', 'Name what you will test and how you will measure real RTO.'),
     approach: `<p>Tier 1, checkout and orders (RTO 15 min, RPO 1 min): warm standby in us-west-2. Aurora Global Database (typically sub-second lag) or DynamoDB global tables; a scaled-down but running copy of the ALB, services and cache; queues and config replicated by IaC and stored in both regions. Failover is a runbook automated as a script/Step Functions workflow: promote the secondary cluster, scale the Auto Scaling Group to full size (pre-warmed baseline cuts time), then flip Route 53 or Global Accelerator; health-check-driven but with human approval to avoid split brain from a false alarm. Reconcile in-flight orders using idempotency keys. Tier 2, catalog (RTO 4 h, RPO 1 h): pilot light. Cross-region read replica or hourly snapshot copy and S3 replication for images; compute templates ready, scaled to zero. Tier 3, analytics (RTO 3 days): backup and restore, data already lands in S3 with cross-region replication, rebuild the warehouse from IaC. Relative cost: tier 1 about 1.5-2x its single-region cost (idle capacity, replication, transfer), tier 2 about 1.1-1.3x, tier 3 about 1.02x; overall maybe 1.3x of the platform for meeting the targets, far less than full active-active at 2x+. Quarterly game day: fail over a test slice, measure actual RTO and RPO, fix the gaps, then fail back; verify backups by restoring them; monitor replication lag with an alarm at 30 seconds.</p>`,
     complexity: `<p>Cost scales with the idle capacity kept in the second region.</p>`
   }));

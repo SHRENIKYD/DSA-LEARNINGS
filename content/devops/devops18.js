@@ -1121,7 +1121,7 @@ jobs:
 `, 'YAML: GitHub Actions pipeline (OIDC for AWS)'), HC(R`# AWS variant (optional, costs money). FIRST apply only the budget, THEN the rest.
 terraform {
   required_version = ">= 1.6"
-  required_providers { aws = { source = "hashicorp/aws", version = "~> 5.0" } }
+  required_providers { aws = { source = "hashicorp/aws", version = "~> 6.0" } }
   backend "s3" {}                      # bucket/key/region passed with -backend-config; never hardcode
 }
 
@@ -1173,12 +1173,12 @@ module "vpc" {
 
 # 3) Cluster (EKS module trimmed): managed node group of 2 small nodes.
 module "eks" {
-  source          = "terraform-aws-modules/eks/aws"
-  version         = "~> 20.0"
-  cluster_name    = "capstone"
-  cluster_version = "1.31"
-  vpc_id          = module.vpc.vpc_id
-  subnet_ids      = module.vpc.private_subnets
+  source             = "terraform-aws-modules/eks/aws"
+  version            = "~> 21.0"                # 20.x caps the AWS provider below 6.0
+  name               = "capstone"
+  kubernetes_version = "1.31"
+  vpc_id             = module.vpc.vpc_id
+  subnet_ids         = module.vpc.private_subnets
   eks_managed_node_groups = {
     default = { instance_types = ["t3.medium"], min_size = 2, max_size = 3, desired_size = 2 }
   }
@@ -1767,7 +1767,7 @@ resource "aws_db_instance" "db" {
   publicly_accessible = true  skip_final_snapshot = true }
 resource "aws_security_group" "all" {
   ingress { from_port = 0 to_port = 65535 protocol = "tcp" cidr_blocks = ["0.0.0.0/0"] } }
-module "eks" { source = "terraform-aws-modules/eks/aws" cluster_name = "cap" }
+module "eks" { source = "terraform-aws-modules/eks/aws" name = "cap" }
 # state kept in ./terraform.tfstate, committed to git. No budget, no tags.</pre>`,
     c: `<ul><li>The credentials above are fake examples; treat them as real for the review.</li></ul>`,
     ex: `<p>A complete answer groups findings by severity and gives the replacement pattern for each.</p>`,

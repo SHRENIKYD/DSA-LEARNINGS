@@ -1,0 +1,67 @@
+name: Play listing
+
+# Regenerates the store graphics from the current app and uploads the icon, feature graphic and phone
+# screenshots (and, if asked, the listing text from store/listing.md) to Google Play. Started by hand.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: build and check the graphics, upload nothing'
+        type: boolean
+        default: true
+      text:
+        description: 'Also update title and descriptions from store/listing.md'
+        type: boolean
+        default: false
+      language:
+        description: 'Store listing language'
+        type: string
+        default: en-US
+
+permissions:
+  contents: read
+
+concurrency:
+  group: play-listing
+  cancel-in-progress: false
+
+jobs:
+  listing:
+    runs-on: ubuntu-24.04
+    environment: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install image and browser tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q imagemagick fonts-dejavu-core
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Icon and feature graphic
+        run: node tools/make-icons.js
+      - name: Screenshots of the current app
+        run: |
+          node tools/build-app.js
+          node tools/store-screens.js
+      - name: Keep the graphics for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: play-listing-graphics
+          path: |
+            store/play-icon-512.png
+            store/feature-graphic-1024x500.png
+            store/screenshots/
+      - name: Upload to Google Play
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          LANG_CODE: ${{ inputs.language }}
+        run: |
+          flags="--lang ${LANG_CODE}"
+          if [ "${{ inputs.text }}" = "true" ]; then flags="$flags --text"; fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then flags="$flags --dry-run"; fi
+          node tools/play-listing.js $flags

@@ -656,6 +656,24 @@ problems.forEach((pr, idx) => {
       bad++;
       console.log('FAIL #' + idx + ' ' + pr.id + ' [' + lang + '] ' + pr.p.title + '\n  ' + (res.err || res.fails.slice(0, 4).join('\n  ')).split('\n').join('\n  '));
     } else if (!QUIET && !REPORT) console.log('ok   #' + idx + ' ' + pr.id + ' [' + lang + '] ' + n + ' cases');
+    // tests.also: other versions of the method that the solution teaches (e.g. an idiomatic one-liner next to the loop)
+    // run the same cases. A list applies to every language; { java: [...], python: [...] } names them per language.
+    const also = Array.isArray(T.also) ? T.also : asList(T.also && T.also[lang]);
+    also.forEach((name) => {
+      checked++;
+      const T2 = Object.assign({}, T, { fn: name, names: Object.assign({}, T.names, { [lang]: name }) });
+      // The other version may sit in the main code or in a same-language alternative block.
+      const has = (c) => typeof c === 'string' && new RegExp('\\b' + name + '\\s*\\(').test(c);
+      const altCode = asList((pr.p.solution || {}).alt).filter((a) => a && typeof a === 'object' && ((l) => NORM[l] || l)(a.lang || pr.p.lang || pr.lang) === lang).map((a) => dedent(a.code)).find(has);
+      let r2;
+      // A Java alternative written as a bare method is shown that way on the site; wrap it in a class to run it.
+      const wrap = (c) => (c && lang === 'java' && !/\b(class|record|interface|enum)\s+\w/.test(c) ? 'class Solution {\n' + c + '\n}' : c);
+      try { r2 = runLang(lang, pr, wrap(altCode) || I[lang], T2); } catch (e) { r2 = { err: 'harness: ' + e.message }; }
+      if (r2.err || r2.fails.length) {
+        bad++;
+        console.log('FAIL #' + idx + ' ' + pr.id + ' [' + lang + ':' + name + '] ' + pr.p.title + '\n  ' + (r2.err || r2.fails.slice(0, 4).join('\n  ')).split('\n').join('\n  '));
+      } else if (!QUIET && !REPORT) console.log('ok   #' + idx + ' ' + pr.id + ' [' + lang + ':' + name + '] ' + n + ' cases');
+    });
   });
 });
 if (!KEEP) fs.rmSync(tmp, { recursive: true, force: true }); else console.log('kept ' + tmp);

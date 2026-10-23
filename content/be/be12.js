@@ -1298,8 +1298,8 @@ List<Item> recs = Decorators.ofSupplier(() -> recsClient.fetch(userId))   // tim
   function P(o) {
     return {
       title: o.t, level: o.l, tags: o.tags, companies: o.co, statement: o.s, constraints: o.c, example: o.e,
-      brute: { why: o.b }, mcq: { q: o.q[0], options: o.q[1], answer: o.q[2], explain: o.q[3] }, hints: o.h.map(function (x) { return x.replace(/<\/p>$/, '') .length < 55 ? x + '<p>Take a moment to reason it through before opening the next hint.</p>' : x; }),
-      solution: { approach: o.a, code: o.code, complexity: o.x + '<p>Verify the numbers with a real measurement.</p>', followUps: o.f }
+      brute: { why: o.b }, mcq: { q: o.q[0], options: o.q[1], answer: o.q[2], explain: o.q[3] }, hints: o.h,
+      solution: { approach: o.a, code: o.code, complexity: o.x, followUps: o.f }
     };
   }
   practice.push(P({ t: 'Concurrency from Little\'s Law', l: 'Easy', tags: ['little\'s law'], co: ['Google'],
@@ -1308,7 +1308,7 @@ List<Item> recs = Decorators.ofSupplier(() -> recsClient.fetch(userId))   // tim
     e: `<p>L = 250 × 0.08 = <b>20</b>. After slowdown L = 250 × 0.4 = <b>100</b>: five times more concurrency needed.</p>`,
     b: `<p>Guess "about 250 threads, one per request per second". Wrong by an order of magnitude and ignores latency; the law connects rate, time and concurrency.</p>`,
     q: ['If latency rises 5x at the same arrival rate, in-flight requests…', ['rise 5x', 'stay the same', 'fall 5x', 'depend only on CPU'], 0, 'L = λ × W, so W × 5 means L × 5.'],
-    h: [`<p>L = λ × W.</p>`, `<p>Convert ms to seconds first.</p>`, `<p>Slow dependencies silently multiply the slots you need - which is how pools get exhausted.</p>`],
+    h: [`<p>Little's law links the three numbers: in-flight L = arrival rate λ × average time W.</p>`, `<p>Convert the milliseconds to seconds before multiplying, so 80 ms becomes 0.08 s.</p>`, `<p>Slow dependencies silently multiply the slots you need - which is how pools get exhausted.</p>`],
     a: `<p>Little's law says the average number in the system equals arrival rate times average time in system. With 250 req/s and 0.08 s, L = 20, so a pool of at least 20 slots (plus headroom, say 30) covers normal times. When the average time grows to 0.4 s, L = 100: if the pool still has 30 slots, 70 requests are always waiting, the queue grows without bound at the same arrival rate, and latency grows further (feedback loop). This is why a slow downstream looks like a thread-pool problem, and why timeouts and bulkheads matter.</p>`,
     x: `<p>Constant-time arithmetic.</p>`, f: ['How does variance in latency change the sizing?'] }));
   practice.push(P({ t: 'Percentile Calculator', l: 'Easy', tags: ['percentiles', 'java'], co: ['Datadog'],
@@ -1317,7 +1317,7 @@ List<Item> recs = Decorators.ofSupplier(() -> recsClient.fetch(userId))   // tim
     e: `<p>Values 1..100: p50 = <b>50</b>, p95 = <b>95</b>, p99 = <b>99</b> (rank = ceil(p/100 × n)).</p>`,
     b: `<p>Take the average, or use index <code>(int)(p * n)</code> which is off by one and can run out of bounds for p=100.</p>`,
     q: ['Nearest-rank p95 for n = 200 is which sorted position (1-based)?', ['190', '195', '200', '19'], 0, 'ceil(0.95 × 200) = 190.'],
-    h: [`<p>Sort ascending.</p>`, `<p>rank = ceil(p/100 × n); answer = sorted[rank − 1].</p>`, `<p>Clamp rank to [1, n]. Use a copy so the caller's array is not reordered.</p>`],
+    h: [`<p>Sort a copy of the latencies from smallest to largest so the rank positions mean something.</p>`, `<p>Nearest-rank formula: rank = ceil(p/100 × n), then the answer is sorted[rank − 1] (ranks start at 1).</p>`, `<p>Clamp rank to [1, n]. Use a copy so the caller's array is not reordered.</p>`],
     a: `<p>Copy and sort the array (O(n log n)), compute rank = ceil(p / 100 × n) with doubles, clamp to at least 1 and at most n, and return the element at rank − 1. For streaming data at scale use a histogram or sketch instead of sorting everything, which also allows merging results from many servers.</p>`,
     code: `import java.util.*;
 class Pct {
@@ -1341,7 +1341,7 @@ class Pct {
     e: `<p>Fix <b>String.format</b> (55% self time). A tall narrow tower is just deep call nesting - not a problem unless it is wide.</p>`,
     b: `<p>Start with the database because "databases are slow" - without looking, you optimise a 25% frame and miss the 55% one.</p>`,
     q: ['In a flame graph, the width of a box shows…', ['share of samples (time)', 'call depth', 'memory used', 'time order of calls'], 0, 'x-axis is not time order; it is aggregated sample share.'],
-    h: [`<p>Look for the widest box with nothing on top.</p>`, `<p>Self time = width minus children widths.</p>`, `<p>After the fix, re-profile; the next hot frame appears.</p>`],
+    h: [`<p>Look for the widest box that has nothing stacked on top of it; that is where time is actually spent.</p>`, `<p>A frame's own (self) time is its width minus the combined widths of the boxes above it.</p>`, `<p>After the fix, re-profile; the next hot frame appears.</p>`],
     a: `<p>String.format has no children and covers 55% of samples, so it is the largest self-time frame. Common fixes are caching a precomputed template, using string concatenation or StringBuilder in the hot path, or removing the formatting from per-request logging. Removing it entirely would make the service about 2.2x faster at best (Amdahl). The deep narrow tower is framework nesting. After the change, take a fresh profile to confirm the improvement and find the next target.</p>`,
     x: `<p>Not an algorithm; gain bounded by 55%.</p>`, f: ['How do you tell CPU time from waiting time?'] }));
   practice.push(P({ t: 'Pick the Rejection Policy', l: 'Easy', tags: ['thread pool'], co: ['Oracle'],
@@ -1350,7 +1350,7 @@ class Pct {
     e: `<p>(a) CallerRuns - the reader slows to the pool's speed. (b) Abort + 503/429 - fail visibly. (c) DiscardOldest.</p>`,
     b: `<p>Use the default for everything or an unbounded queue so nothing is ever rejected - memory grows and latency explodes.</p>`,
     q: ['Which policy slows the producer automatically?', ['CallerRunsPolicy', 'DiscardPolicy', 'AbortPolicy', 'None'], 0, 'The submitting thread executes the task, so it cannot submit more meanwhile.'],
-    h: [`<p>Who calls execute()?</p>`, `<p>Can the work be lost?</p>`, `<p>Never use CallerRuns on an event-loop thread.</p>`],
+    h: [`<p>Ask which thread calls execute() in each case, and what happens if that thread is slowed down.</p>`, `<p>For each case ask whether losing a task silently is acceptable, or whether the caller must be told.</p>`, `<p>One trap: CallerRunsPolicy must never run on an event-loop thread, because it would block every other request.</p>`],
     a: `<p>(a) The batch loader is a single internal producer that may safely be slowed down, so CallerRunsPolicy gives free backpressure and loses nothing. (b) For a user-facing payment request, the caller must learn the system is full, so AbortPolicy, translated to HTTP 503 or 429 with Retry-After, is correct; silently discarding a payment is unacceptable and running it on the request thread could exceed latency budgets. (c) Sensor data: stale readings are worthless, so DiscardOldestPolicy keeps the freshest values. In every case the queue itself stays bounded.</p>`,
     x: `<p>Design decision, O(1) per submit.</p>`, f: ['Why is CallerRuns dangerous in Netty?'] }));
 
@@ -1360,7 +1360,7 @@ class Pct {
     e: `<p>16 × 0.75 × (1 + 9) = <b>120</b> threads. Throughput = 120 / 0.05 s = 2,400 req/s. CPU check: 2,400 × 5 ms = 12 cores = 75%. Dependency cap: 100 / 0.045 ≈ <b>2,222</b> req/s is the real ceiling.</p>`,
     b: `<p>Use "cores + 1 = 17" (CPU-bound formula) for I/O work: only 17/0.05 = 340 req/s, using only about 11% of the CPU (5 ms x 340 req/s = 1.7 of 16 cores).</p>`,
     q: ['The HTTP client allows 100 concurrent calls but the pool has 120 threads. The ceiling is set by…', ['the 100-call limit', 'the 120 threads', 'CPU only', 'the sum'], 0, 'The scarcest resource limits throughput.'],
-    h: [`<p>Wait/compute = 9.</p>`, `<p>Check both CPU and downstream limits.</p>`, `<p>Take the minimum of the ceilings.</p>`],
+    h: [`<p>Wait time is 45 ms and compute time is 5 ms, so the wait/compute ratio is 9.</p>`, `<p>Compute one throughput ceiling from the CPUs and a second from the 100-call HTTP limit.</p>`, `<p>The real maximum throughput is the lower of the two ceilings, and threads beyond that add nothing.</p>`],
     a: `<p>The I/O formula gives 16 × 0.75 × 10 = 120 threads. Each request occupies a thread for 50 ms, so 120 threads sustain 2,400 req/s, and 2,400 × 5 ms = 12 core-seconds per second, which is 75% of 16 cores as intended. The downstream HTTP limit matters only during the 45 ms wait: 100 / 0.045 ≈ 2,222 req/s, which is lower, so the effective ceiling is about 2,200 req/s and the extra threads past ~111 are useless. Put a Semaphore of 100 around the call so excess requests fail fast or queue briefly rather than pile up inside the client. Validate with a load test, since averages hide variance.</p>`,
     x: `<p>Arithmetic; verify empirically.</p>`, f: ['How do you pick a different pool for each dependency?'] }));
   practice.push(P({ t: 'Parallel Fan-out with Timeouts', l: 'Medium', tags: ['completablefuture'], co: ['Amazon'],
@@ -1369,7 +1369,7 @@ class Pct {
     e: `<p>Total ≈ <b>150 ms</b> (max of 60, 90, and the capped 150) instead of 550 ms.</p>`,
     b: `<p>Call sequentially with blocking <code>get()</code>: 550 ms, and one hang freezes the page.</p>`,
     q: ['Which method gives a fallback value after a timeout?', ['completeOnTimeout', 'orTimeout', 'allOf', 'join'], 0, 'orTimeout fails with TimeoutException; completeOnTimeout completes with a default.'],
-    h: [`<p>supplyAsync on an executor you control.</p>`, `<p>completeOnTimeout(value, time, unit).</p>`, `<p>allOf(...).join() then read each result.</p>`],
+    h: [`<p>Start each call with supplyAsync on an executor you create, not the shared common pool.</p>`, `<p>For the optional call, completeOnTimeout(fallback, 150, MILLISECONDS) supplies a value if it is late.</p>`, `<p>Combine the three futures with allOf(...).join(), then read each result from its own future.</p>`],
     a: `<p>Create a bounded executor, start the three calls with supplyAsync, attach completeOnTimeout to the optional one, combine with allOf and join. Latency equals the slowest required call or the timeout cap of the optional one. Because the stuck optional call still occupies a thread after the fallback, bound the executor and consider cancelling the future or using an HTTP-level timeout so the thread is released. Record a metric whenever the fallback is used.</p>`,
     code: `import java.util.concurrent.*;
 class Fan {
@@ -1392,7 +1392,7 @@ class Fan {
     e: `<p>First 5 allowed, 6th denied; at 500 ms +1 token → allowed; at 1000 ms +1 → allowed; 1500 ms +1 → allowed.</p>`,
     b: `<p>Count requests per fixed 1-second window: allows 2x bursts at window edges and cannot represent steady refill.</p>`,
     q: ['Token bucket vs fixed window: main benefit?', ['Allows controlled bursts, smooth average rate', 'Uses less memory than anything', 'Never rejects', 'Needs no clock'], 0, 'Bucket size bounds burst; refill rate bounds average.'],
-    h: [`<p>Store tokens and last timestamp.</p>`, `<p>On each call: tokens = min(cap, tokens + elapsed × rate).</p>`, `<p>If tokens ≥ 1 take one and allow; else deny.</p>`],
+    h: [`<p>Keep just two values per client: the current token count and the time of the last refill.</p>`, `<p>On each call: tokens = min(cap, tokens + elapsed × rate).</p>`, `<p>After refilling, if tokens ≥ 1 subtract one and allow the request; otherwise deny it.</p>`],
     a: `<p>Keep two numbers: tokens (float) and the last refill time. On every request add elapsed seconds times the rate, cap at capacity, then check if at least one token is available and subtract it. No timers needed, so it is O(1) time and memory per client. In a distributed setting do the same arithmetic atomically in Redis with a Lua script keyed by client id. Return remaining tokens and Retry-After in the response headers.</p>`,
     code: { lang: 'js', run: true, code: `class Bucket {
   constructor(cap, rate) { this.cap = cap; this.rate = rate; this.tokens = cap; this.t = 0; }
@@ -1412,7 +1412,7 @@ const b = new Bucket(5, 2);
     e: `<p>Open-model ramp 50 → 200 → 1000 req/s, thresholds in k6, soak at 200 for 1 h, spike 200 → 1000 in 30 s.</p>`,
     b: `<p>Run 100 virtual users in a loop against one product id on a laptop. Results are cache hits, closed-loop and limited by the laptop.</p>`,
     q: ['Why use an arrival-rate (open) model?', ['It does not slow down when the server does, exposing queues', 'It is easier to write', 'It uses less CPU', 'It avoids thresholds'], 0, 'Closed loops hide overload (coordinated omission).'],
-    h: [`<p>Smoke → load → stress → spike → soak.</p>`, `<p>Realistic data distribution, warm-up, separate load generator.</p>`, `<p>Thresholds on p95/p99 and error rate; watch CPU, GC, pool waits, DB.</p>`],
+    h: [`<p>Plan the test types in order: smoke, load, stress, spike, then soak, each with its own goal.</p>`, `<p>Realistic data distribution, warm-up, separate load generator.</p>`, `<p>Thresholds on p95/p99 and error rate; watch CPU, GC, pool waits, DB.</p>`],
     a: `<p>Plan: (1) smoke test with 2 users to validate the script and auth (tokens from a secret store or env vars, never in the script). (2) Load test at expected 200 req/s for 20 minutes and compare to the baseline. (3) Stress ramp using an arrival-rate executor from 200 to 1,000+ req/s to find the knee and see how failure looks. (4) Spike from 200 to 1,000 in 30 s to test autoscaling and recovery. (5) Soak at 200 req/s for several hours for leaks. Because staging is half of production size, extrapolate carefully, never linearly, and confirm with a limited production test using synthetic accounts if allowed. Use realistic data (many users, products, Zipf-like hot keys), think time, warm-up, and generator on separate hosts. Thresholds: p95 &lt; 400 ms, p99 &lt; 1 s, errors &lt; 0.5%, with abortOnFail. Observe server CPU, GC pauses, thread and connection pool wait, DB CPU/locks/slow queries, queue depth, and autoscaler behaviour. Report with graphs, bottleneck found, fix, and retest.</p>`,
     x: `<p>Process task; cost is environment time.</p>`, f: ['How would you test third-party payment calls?'] }));
   practice.push(P({ t: 'Compare Platform and Virtual Threads', l: 'Medium', tags: ['virtual threads'], co: ['Oracle', 'Netflix'],
@@ -1421,7 +1421,7 @@ const b = new Bucket(5, 2);
     e: `<p>Fixed pool: 10,000 / 100 = 100 waves × 200 ms = <b>20 s</b>. Virtual: all wait together ≈ <b>0.3 s</b>.</p>`,
     b: `<p>Raise the platform pool to 10,000 threads: ~10 GB of stack reservation and heavy scheduling cost.</p>`,
     q: ['Virtual threads will NOT speed up…', ['CPU-bound computation', 'blocking HTTP calls', 'sleep()', 'JDBC waits (with care)'], 0, 'CPU work is limited by cores, not by waiting.'],
-    h: [`<p>Waves = tasks / threads.</p>`, `<p>Virtual threads release the carrier when blocked.</p>`, `<p>Caveats: pinning with synchronized, downstream limits, ThreadLocals.</p>`],
+    h: [`<p>With a fixed pool the tasks run in waves: number of waves = tasks / threads, each lasting 200 ms.</p>`, `<p>A virtual thread releases its carrier thread while blocked, so all 10,000 waits can overlap.</p>`, `<p>Caveats: pinning with synchronized, downstream limits, ThreadLocals.</p>`],
     a: `<p>With 100 platform threads the 10,000 tasks run in 100 waves of 200 ms, about 20 s. Virtual threads, one per task, wait concurrently, so the whole batch finishes in roughly 200 ms plus scheduling overhead (~0.3 s), using maybe tens of MB of heap instead of gigabytes. They do not help with CPU-bound work, do not raise the capacity of a database or API that only accepts N concurrent calls (use a Semaphore to cap), and can be pinned by synchronized blocks that do blocking I/O on Java 21. Do not pool them. Keep timeouts and measure with JFR for pinning events.</p>`,
     code: `import java.util.concurrent.*;
 class Cmp {
@@ -1446,7 +1446,7 @@ class Cmp {
     e: `<p>Max pods ≈ (200 − 20 reserved) / 10 = <b>18</b>. Scale on in-flight requests per pod or p95, plus a scheduled pre-scale at 8:50.</p>`,
     b: `<p>HPA on CPU at 70%: CPU never rises, no scale-out happens while latency explodes.</p>`,
     q: ['Best scaling signal for an I/O-bound service?', ['Concurrent requests per pod or queue depth', 'CPU only', 'Disk usage', 'Memory only'], 0, 'CPU stays low while threads are all blocked.'],
-    h: [`<p>CPU is the wrong signal here.</p>`, `<p>Startup lag means reactive scaling is late: pre-scale.</p>`, `<p>Cap max replicas by the DB connection budget.</p>`],
+    h: [`<p>CPU is the wrong signal here, because the service is I/O-bound and sits at only 25% CPU at its limit.</p>`, `<p>Startup lag means reactive scaling is late: pre-scale.</p>`, `<p>Cap the maximum replicas by what the database connection budget can support, not just by cost.</p>`],
     a: `<p>Use an autoscaler (HPA with custom metrics or KEDA) on in-flight requests per pod (target ~60-70% of the measured per-pod limit) or on p95 latency / queue lag, not CPU. Because pods need 60 s and traffic doubles in 2 minutes, add scheduled scaling at 8:50 to the expected peak count (KEDA cron), keep minReplicas high enough to absorb a 2x jump, and use a fast scale-up policy (100% per 30 s) with slow scale-down (5 min stabilisation). Set maxReplicas from the connection budget: 18 pods × 10 = 180 connections under 200, or add PgBouncer to raise the cap. Protect the app during the ramp with a concurrency limit and load shedding so late scaling degrades gracefully. Add readiness probes with warm-up, PodDisruptionBudgets, multi-zone spread. What can still go wrong: the DB becomes the bottleneck, image pulls are slow, a node pool is full (cluster autoscaler delay), metric lag, and flapping from short windows. Test with a spike load test.</p>`,
     x: `<p>Design exercise; verify with a spike test.</p>`, f: ['How would you scale the database tier?'] }));
   practice.push(P({ t: 'Metastable Retry Storm', l: 'Hard', tags: ['backpressure', 'retries', 'incident'], co: ['Amazon'],
@@ -1455,7 +1455,7 @@ class Cmp {
     e: `<p>Three immediate retries can quadruple the offered load (80% → up to 320%), the unbounded queue holds abandoned requests, and work on dead requests keeps the server saturated.</p>`,
     b: `<p>"It's a DB issue, restart the pods" - restarts clear the queue but the same design collapses next time.</p>`,
     q: ['What prevents retries from amplifying overload?', ['Retry budget, backoff with jitter, circuit breaker', 'More retries', 'Longer queues', 'Bigger timeouts'], 0, 'They cap extra load and give the server room to recover.'],
-    h: [`<p>Compute offered load including retries.</p>`, `<p>What happens to requests whose client already gave up?</p>`, `<p>Bounded queues, deadlines, shedding, jitter.</p>`],
+    h: [`<p>Compute the offered load including retries: every failed call comes back as extra requests.</p>`, `<p>What happens to requests whose client already gave up?</p>`, `<p>The fixes combine bounded queues, request deadlines, load shedding and jittered, limited retries.</p>`],
     a: `<p>During the blip requests time out; each client retries 3 times immediately, so offered load becomes up to 4x. The server was at 80% before, so it is now far over capacity. The unbounded queue fills with requests whose clients have already timed out (30 s), but the server still processes them, so goodput is near zero while CPU is 100%. Even when the DB recovers, the backlog and the retries keep the load above capacity: a metastable failure that persists after the trigger is gone. Design fixes: client retry budgets (retries limited to ~10% of traffic), exponential backoff with full jitter, circuit breakers, and respecting Retry-After; server-side bounded queues, deadline propagation so expired requests are dropped unprocessed, adaptive concurrency limits that shed excess early with 503, LIFO or newest-first under overload, shorter timeouts, and capacity headroom (not running at 80%). Operationally add dashboards for queue delay and a runbook to shed or disable non-critical traffic, and test with fault injection.</p>`,
     x: `<p>Systems reasoning; no code complexity.</p>`, f: ['How do deadlines propagate across services?'] }));
   practice.push(P({ t: 'Benchmark a Lock vs Atomic Counter', l: 'Hard', tags: ['profiling', 'concurrency'], co: ['Jane Street'],
@@ -1464,7 +1464,7 @@ class Cmp {
     e: `<p>Typical order fastest→slowest: LongAdder, AtomicLong, synchronized.</p>`,
     b: `<p>Time a single run once with System.currentTimeMillis and trust it: JIT warm-up and noise dominate.</p>`,
     q: ['Why is LongAdder faster under contention?', ['It spreads updates across several cells', 'It uses a bigger lock', 'It skips memory', 'It is single-threaded'], 0, 'Contended updates go to different cells and are summed on read.'],
-    h: [`<p>Join all threads before stopping the clock.</p>`, `<p>Warm up with a few repetitions.</p>`, `<p>Contention creates cache-line ping-pong or lock waits; profiles show time in monitor enter or CAS retry loops.</p>`],
+    h: [`<p>Join all four threads before stopping the clock, or you only time how fast they were started.</p>`, `<p>Run a few warm-up repetitions first so JIT compilation does not distort the measured times.</p>`, `<p>Contention creates cache-line ping-pong or lock waits; profiles show time in monitor enter or CAS retry loops.</p>`],
     a: `<p>Each variant starts 4 threads that increment 1,000,000 times, join them, and measure with System.nanoTime after a warm-up round. synchronized forces threads to queue on a monitor (and may inflate to an OS-level mutex), AtomicLong uses a CAS retry loop where all threads fight over one cache line, and LongAdder keeps per-thread cells that are summed on read, so it scales best for write-heavy counters. In a profile of the synchronized version a wall-clock flame graph shows wide frames in Object.wait / monitor enter; in AtomicLong CPU time sits in the increment loop with cache misses. For real conclusions use JMH, vary thread counts, and check correctness (final sums must equal 4,000,000).</p>`,
     code: `import java.util.concurrent.atomic.*;
 class CounterBench {
@@ -1500,14 +1500,14 @@ class CounterBench {
     q: ['The first step of capacity planning is…', ['Measure current limits with a stress test', 'Buy 10x hardware', 'Rewrite in another language', 'Add caching everywhere'], 0, 'You need the baseline knee and bottleneck before extrapolating.'],
     h: [`<p>Stress test to find the knee and what saturates first.</p>`, `<p>Check every shared dependency and its connection budget.</p>`, `<p>Add degradation and a release gate based on a 3,000 req/s load test with thresholds.</p>`],
     a: `<p>Step 1: baseline. Run a stress test on a production-like environment to find the knee (say 600 req/s on 20 pods) and which resource saturates first; collect flame graphs for the hottest code. Step 2: model needs. 10x of 300 is 3,000 req/s; at 65% utilisation of capacity that implies capacity of about 4,600 req/s, or roughly 150 pods at the measured per-pod rate, unless efficiency work reduces it. Step 3: shared bottlenecks. DB: connections and CPU (30% today scales to 300% - impossible), so plan read replicas, caching of hot reads, query and index fixes, PgBouncer, maybe sharding; Redis: cluster mode; third parties: rate-limit increases or queueing. Step 4: cheaper wins first: profile and remove hot spots, cache, batch, async the non-critical paths, CDN for static data. Step 5: elasticity: autoscaling on in-flight requests, scheduled pre-scale for campaign start, headroom for one zone loss. Step 6: protection: concurrency limits, priority shedding, feature flags for degradation. Step 7: gate: a load test at 1.3x the forecast (3,900 req/s) with thresholds p95 &lt; 300 ms, errors &lt; 0.5%, a soak of several hours, a spike test, and a game day. Track cost per request. Re-measure every sprint as code changes.</p>`,
-    x: `<p>Planning exercise.</p>`, f: ['What if the forecast is wrong by 2x?'] }));
+    x: `<p>Planning exercise; cost is load-test and environment time.</p>`, f: ['What if the forecast is wrong by 2x?'] }));
   practice.push(P({ t: 'Fix Event-Loop Blocking', l: 'Hard', tags: ['async', 'node'], co: ['PayPal'],
     s: `<p>A Node API occasionally freezes for 800 ms, health checks fail and pods restart. A profile shows a synchronous function doing a CPU-heavy hash plus JSON.parse of a 20 MB body. Explain how to prove it and fix it without rewriting the service.</p>`,
     c: `Single Node process per pod; traffic is mixed.`,
     e: `<p>Event-loop lag metric spikes to 800 ms; during the lag all other requests wait.</p>`,
     b: `<p>Add more pods and a longer health-check timeout. The freezes continue and the health check now hides real user pain.</p>`,
     q: ['Best fix for CPU-heavy work in a Node request?', ['Move it to worker threads or a separate service', 'Wrap it in async function', 'Use setTimeout 0', 'Increase memory'], 0, 'async does not move work off the event-loop thread; workers do.'],
-    h: [`<p>Measure event-loop delay (perf_hooks monitorEventLoopDelay).</p>`, `<p>CPU profile shows the sync function at the top.</p>`, `<p>Use worker_threads pool, stream parsing, limit body size.</p>`],
+    h: [`<p>Measure event-loop delay (perf_hooks monitorEventLoopDelay).</p>`, `<p>A CPU profile will show the synchronous hash and parse function as one wide frame at the top.</p>`, `<p>Use worker_threads pool, stream parsing, limit body size.</p>`],
     a: `<p>Prove it by exporting an event-loop delay histogram (perf_hooks.monitorEventLoopDelay) and correlating p99 spikes with the request that carries the big body; a CPU profile (node --cpu-prof or clinic flame) shows the hash and JSON.parse as one wide frame. Fixes: limit the maximum body size and reject early with 413; stream-parse large JSON instead of JSON.parse; move hashing to a worker_threads pool (e.g. piscina) with a bounded queue so overload is rejected rather than queued; use async hashing APIs that run in the libuv pool where they exist (and size UV_THREADPOOL_SIZE); or hand heavy jobs to a queue and a separate worker service and return 202. Keep health checks cheap and separate from real work. Add alerts on event-loop lag p99 above 100 ms and load-test the fix with a mix that includes big bodies.</p>`,
     code: { lang: 'js', run: true, code: `// Measure event-loop lag: a timer that should fire every 10 ms reports how late it was.
 let last = Date.now(), worst = 0, n = 0;
@@ -1523,9 +1523,9 @@ setTimeout(() => { const s = Date.now(); while (Date.now() - s < 120) {} }, 40);
     e: `<p>C slow → B's threads block → B saturated → A's calls time out and retry → A's threads blocked → the whole site is down.</p>`,
     b: `<p>Increase thread counts and timeouts so requests can finish eventually. The queue and thread demand grow and the failure spreads faster.</p>`,
     q: ['Which control best isolates C\'s slowness from the rest of B?', ['Bulkhead + timeout + circuit breaker for C', 'More threads', 'Longer timeout', 'Retries'], 0, 'Limit the damage C can do and fail fast with a fallback.'],
-    h: [`<p>Use Little's law: C slow → L multiplies.</p>`, `<p>Timeouts must shrink going down the chain.</p>`, `<p>Add breaker, bulkhead, retry budget, shedding.</p>`],
+    h: [`<p>Use Little's law: when C gets slow, the in-flight count L in B and A multiplies.</p>`, `<p>Timeouts must get shorter at each hop down the chain, so a deep call cannot outlast the caller waiting on it.</p>`, `<p>Add a circuit breaker, bulkheads, a retry budget and load shedding at each layer.</p>`],
     a: `<p>T+0: C goes from 50 ms to 5 s. By Little's law, B needs 100x more concurrent slots for calls into C; at its normal rate B's 200 threads are all blocked within seconds. T+1 min: B cannot answer anything, even endpoints that do not use C. A's calls to B hit the 30 s timeout, A retries 3 times so the load on B quadruples, and A's 200 threads are also blocked. The whole site and the health checks fail, the load balancer ejects pods, the remaining ones get even more traffic. Controls: (1) per-call timeouts that shrink down the chain (A 2 s, B 1 s, C-call 500 ms); (2) bulkhead limiting concurrent calls to C so B keeps threads for other work; (3) circuit breaker around C returning a fallback or error fast; (4) retry budget with jitter, retries only on idempotent safe errors; (5) load shedding / concurrency limits at B and A returning 503 quickly; (6) health checks separate from dependency health; (7) caching and degraded responses; (8) alerts on dependency latency and a runbook to disable the C-backed feature via flag; (9) chaos tests that inject C latency.</p>`,
-    x: `<p>Systems reasoning.</p>`, f: ['How do you pick timeouts for each hop?'] }));
+    x: `<p>Systems reasoning; no code complexity, only latency and concurrency arithmetic.</p>`, f: ['How do you pick timeouts for each hop?'] }));
 
   /* ================= QUIZ ================= */
   function Q(q, o, a, e) { quiz.push({ q: q, options: o, answer: a, explain: e }); }

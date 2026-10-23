@@ -239,7 +239,7 @@ print([1, 2] == [1, 2], [1, 2] is [1, 2])   # True False` } }
       hints: [`<p>Hint 1: The rules are exceptions-of-exceptions. In a ladder, the <b>most specific</b> rule (÷400) must be tested first.</p>`, `<p>Hint 2: Or express it as one boolean: "÷4 and not ÷100, or ÷400". <code>and</code> binds tighter than <code>or</code>.</p>`, `<p>Hint 3: Test 1900, 2000, 2024, 2023 and 4. Recipe: if y%400==0 → True; elif y%100==0 → False; else → y%4==0.</p>`],
       tests: {
         sig: 'int -> bool',
-        fn: 'isLeap',
+        fn: 'isLeap', also: { python: ['is_leap_one_line'] },
         cases: [
           [[2024], true],
           [[1900], false],
@@ -2083,7 +2083,7 @@ print(repr(reverse_words('one')))` },
     hints: [`<p>Hint 1: You know what the full range should add up to.</p>`, `<p>Hint 2: <code>n * (n + 1) // 2 - sum(nums)</code> — use <code>//</code> to stay an int.</p>`, `<p>Hint 3: Alternatives: a set difference <code>set(range(n+1)) - set(nums)</code> (O(n) memory) or XOR of all indexes and values.</p>`],
     tests: {
       sig: 'int[] -> int',
-      fn: 'missing',
+      fn: 'missing', also: { python: ['missing_set'] },
       cases: [
         [[[3, 0, 1]], 2],
         [[[9, 6, 4, 2, 3, 5, 7, 0, 1]], 8],

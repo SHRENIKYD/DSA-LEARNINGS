@@ -3,9 +3,6 @@
 
   // helper: build a problem with less boilerplate
   function P(o) {
-    function pad(h) { return h.replace(/<\/p>$/, ' Work it through on a tiny example first.</p>'); }
-    o.hints = o.hints.map(function (h) { return h.replace(/<[^>]+>/g, '').length < 40 ? pad(h) : h; });
-    if (o.complexity.replace(/<[^>]+>/g, '').length < 20) o.complexity = o.complexity.replace(/<\/p>$/, ' (k, d, N as defined in the statement).</p>').replace(/\.\s*\(k/, ' (k');
     var brute = { why: o.bruteWhy };
     if (o.bruteCode) brute.code = o.bruteCode;
     var sol = { approach: o.approach, complexity: o.complexity, followUps: o.followUps || [] };
@@ -148,7 +145,7 @@ print(u, "length =", math.sqrt(sum(x * x for x in u)))` } },
         example: `<p>query=[1,0], docs=[[0,1],[2,0.1],[-1,0]] → ${H.c('g', 'index 1')} (cosines 0, 0.998, −1).</p>`,
         bruteWhy: `<p>Computing the norm of the query again for every document wastes work; also comparing raw dot products picks the longest vector, not the closest in direction.</p>`,
         mcq: { q: 'Why not just pick the largest dot product?', options: ['It favours long vectors regardless of direction', 'It is always negative', 'It cannot be computed', 'It needs sorting'], answer: 0, explain: 'A long vector gives a big dot product even if it points a different way. Cosine divides the lengths out.' },
-        hints: [`<p>Cosine = dot / (norm × norm).</p>`, `<p>Compute the query norm once, outside the loop.</p>`, `<p>Skip division when a norm is 0 (score 0). Track best score and index in one pass.</p>`],
+        hints: [`<p>Cosine similarity is the dot product divided by the product of the two vector lengths.</p>`, `<p>Compute the query norm once, outside the loop.</p>`, `<p>Skip division when a norm is 0 (score 0). Track best score and index in one pass.</p>`],
         approach: `<p>One pass over the documents. Precompute the query norm. For each document compute the dot product and its own norm, divide, and keep the best score and its index. Zero-length vectors score 0 so nothing divides by zero. Time O(N·d), space O(1).</p>`,
         code: { lang: 'python', run: true, code: `import math
 
@@ -290,13 +287,13 @@ print("BA =", mm(B, A))` } },
         example: `<p>C[0][0]=2×1+0×0+1×4=${H.c('g', '6')}; C[0][1]=2×2+0×1+1×0=${H.c('g', '4')}; C[1][0]=1+0+8=${H.c('g', '9')}; C[1][1]=2+3+0=${H.c('g', '5')}. C=[[6,4],[9,5]].</p>`,
         bruteWhy: `<p>Not really a brute-force issue: the common mistake is multiplying cell by cell (element-wise) instead of row-by-column.</p>`,
         mcq: { q: 'Which expression gives C[1][0]?', options: ['row 1 of A dotted with column 0 of B', 'A[1][0]×B[1][0]', 'column 1 of A dotted with row 0 of B', 'sum of all of A'], answer: 0, explain: 'Cell (i,j) uses row i of A and column j of B.' },
-        hints: [`<p>Write the shapes: (2×3)(3×2) → 2×2.</p>`, `<p>Each answer cell is a dot product of length 3.</p>`, `<p>Raise an error if len(A[0]) != len(B).</p>`],
+        hints: [`<p>Write the shapes first: (2×3) times (3×2) leaves a 2×2 result, so there are four cells to fill.</p>`, `<p>Each answer cell is a dot product of length 3.</p>`, `<p>Raise an error before multiplying if len(A[0]) != len(B), because the inner sizes must match.</p>`],
         approach: `<p>Check that A's column count equals B's row count, allocate an m×p zero matrix, and for each (i,j) sum A[i][k]*B[k][j] over k. For the given matrices the result is [[6,4],[9,5]]. The element-wise product would be a different, wrong operation (and impossible here as shapes differ).</p>`,
         code: { lang: 'python', run: true, code: `A = [[2, 0, 1], [1, 3, 2]]
 B = [[1, 2], [0, 1], [4, 0]]
 C = [[sum(A[i][k] * B[k][j] for k in range(3)) for j in range(2)] for i in range(2)]
 print(C)` },
-        complexity: `<p>O(m·n·p).</p>`
+        complexity: `<p>O(m·n·p) for an m×n matrix times an n×p matrix.</p>`
       })
     ]
   });
@@ -425,12 +422,12 @@ print(x.mean(), x.std())` }
         example: `<p>Spam score = 0.3×0.5×0.4 = 0.06. Ham score = 0.7×0.1×0.2 = 0.014. P(spam) = 0.06/0.074 = ${H.c('g', '0.811')}.</p>`,
         bruteWhy: `<p>Computing the full joint distribution of all word combinations explodes exponentially; independence reduces it to a product.</p>`,
         mcq: { q: 'What do you divide by at the end?', options: ['spam score + ham score', 'the prior', 'number of words', '1'], answer: 0, explain: 'The evidence P(words) is the sum of both class scores, which makes the posteriors add to 1.' },
-        hints: [`<p>Score each class = prior × product of word likelihoods.</p>`, `<p>Normalise by the total of the scores.</p>`, `<p>Use logs for many words; add smoothing for unseen ones.</p>`],
+        hints: [`<p>Score each class = prior × product of word likelihoods.</p>`, `<p>Divide the spam score by (spam score + ham score) so the two answers add up to 1.</p>`, `<p>Use logs for many words; add smoothing for unseen ones.</p>`],
         approach: `<p>Compute an unnormalised score for each class by multiplying its prior with the likelihood of every observed word, assuming the words are independent given the class. Then divide the spam score by the sum of both scores. This gives 0.06 / 0.074 ≈ 0.811. For long emails sum logs instead of multiplying to avoid underflow.</p>`,
         code: { lang: 'python', run: true, code: `spam = 0.3 * 0.5 * 0.4
 ham = 0.7 * 0.1 * 0.2
 print(round(spam / (spam + ham), 3))` },
-        complexity: `<p>O(number of words).</p>`
+        complexity: `<p>O(number of words) per class, one multiplication each.</p>`
       })
     ]
   });
@@ -556,7 +553,7 @@ print("log-sum-exp =", round(lse, 4))` } }
         example: `<p>T=1: e=[2.718, 7.389], sum 10.107 → [${H.c('g', '0.269')}, ${H.c('g', '0.731')}]. T=0.5: scaled [2,4] → e=[7.389, 54.598], sum 61.987 → [0.119, 0.881].</p>`,
         bruteWhy: `<p>Forgetting to divide by T first, or dividing the final probabilities by T (which breaks the sum-to-1).</p>`,
         mcq: { q: 'Lower temperature makes the output…', options: ['more peaked on the top choice', 'more uniform', 'negative', 'unchanged'], answer: 0, explain: 'Dividing logits by a small T widens the gaps, so the leader dominates.' },
-        hints: [`<p>Divide logits by T first.</p>`, `<p>Subtract the max, exponentiate, divide by the sum.</p>`, `<p>Check the answer sums to 1.</p>`],
+        hints: [`<p>Divide every logit by T before you exponentiate, not after.</p>`, `<p>Subtract the max, exponentiate, divide by the sum.</p>`, `<p>Check your answer: the two probabilities must add up to 1, and the larger logit gets the larger share.</p>`],
         approach: `<p>Scale logits by 1/T, subtract the maximum for stability, exponentiate and divide by the total. At T=1 the gap is 1 so the ratio is e = 2.718, giving 0.269/0.731. At T=0.5 the gap becomes 2 so the ratio is e<sup>2</sup> = 7.389, giving 0.119/0.881. Lower temperature increases the leader's share.</p>`,
         code: { lang: 'python', run: true, code: `import math
 def sm(z, T):
@@ -564,7 +561,7 @@ def sm(z, T):
     e = [math.exp(x - m) for x in s]
     return [round(x / sum(e), 3) for x in e]
 print(sm([1, 2], 1), sm([1, 2], 0.5))` },
-        complexity: `<p>O(k) for k classes.</p>`
+        complexity: `<p>O(k) time for k classes: one exponential each plus one sum.</p>`
       })
     ]
   });
@@ -857,7 +854,7 @@ print(round(sum(pune) / len(pune), 1))` } },
         example: `<p>[("a",10),("b",4),("a",20)] → ${H.c('g', '{"a": 15.0, "b": 4.0}')}</p>`,
         bruteWhy: `<p>For each distinct category scanning all rows again is O(N·K). A dict of running totals does it in one pass.</p>`,
         mcq: { q: 'What do you store per key to get the mean in one pass?', options: ['(sum, count)', 'only the last value', 'a sorted list', 'nothing'], answer: 0, explain: 'Keep a running sum and count, divide at the end.' },
-        hints: [`<p>One dictionary keyed by category.</p>`, `<p>Store [total, count] per key.</p>`, `<p>Divide only after the loop. Mention empty input.</p>`],
+        hints: [`<p>Use one dictionary keyed by category so each row is handled once.</p>`, `<p>Store a running [total, count] pair per key instead of every amount.</p>`, `<p>Divide only after the loop. Mention empty input.</p>`],
         approach: `<p>Walk the rows once, keeping a dict mapping category to a [total, count] pair. After the loop divide total by count for each key and round. This is the split-apply-combine pattern done manually: the dict is the split, the division is the apply, and the output dict is the combine. Time O(N), space O(K) for K categories, much better than rescanning for each category.</p>`,
         code: { lang: 'python', run: true, code: `def avg_by(rows):
     acc = {}
@@ -881,11 +878,11 @@ print(avg_by([("a", 10), ("b", 4), ("a", 20)]))` },
     example: `<p>3×1 + (−1)×4 + 2×(−2) = 3 − 4 − 4 = ${H.c('r', '−5')}. Negative, so they point somewhat opposite.</p>`,
     bruteWhy: `<p>No heavy brute force here; the slip is adding the vectors instead of multiplying slot by slot.</p>`,
     mcq: { q: 'A negative dot product means…', options: ['the angle is more than 90°', 'a bug', 'the vectors are equal', 'zero length'], answer: 0, explain: 'dot = |a||b|cos θ; negative cosine means θ > 90°.' },
-    hints: [`<p>Multiply matching slots.</p>`, `<p>Add the three products.</p>`, `<p>Sign tells direction agreement.</p>`],
+    hints: [`<p>Multiply the numbers in the same position of a and b, one pair at a time.</p>`, `<p>Add the three products you just got into a single number.</p>`, `<p>The sign of the sum tells you whether the vectors mostly agree (positive) or disagree (negative).</p>`],
     approach: `<p>Multiply slot by slot: 3×1=3, (−1)×4=−4, 2×(−2)=−4. Sum = −5. Because the sum is negative the cosine is negative, so the angle is above 90 degrees: the vectors disagree more than they agree. The magnitude alone does not say how similar they are; divide by the lengths to get cosine: |a|=√14, |b|=√21, so cos ≈ −0.29.</p>`,
     code: { lang: 'python', run: true, code: `a, b = [3, -1, 2], [1, 4, -2]
 print(sum(x * y for x, y in zip(a, b)))` },
-    complexity: `<p>O(d).</p>`
+    complexity: `<p>O(d) for vectors of length d: one multiply and one add per slot.</p>`
   }));
   practice.push(P({
     title: 'Cosine Similarity of Two Sentences', level: 'Easy', tags: ['cosine', 'bag-of-words'],
@@ -894,7 +891,7 @@ print(sum(x * y for x, y in zip(a, b)))` },
     example: `<p>Vocab [the, cat, sat, ran]: v1=[1,1,1,0], v2=[1,1,0,1]. dot=2, norms √3 each → cos = 2/3 = ${H.c('g', '0.667')}.</p>`,
     bruteWhy: `<p>Comparing words pairwise in nested loops works but is slower and does not generalise to a vector formula.</p>`,
     mcq: { q: 'What goes in each vector slot?', options: ['count of that vocabulary word', 'the word length', 'the sentence length', 'a random number'], answer: 0, explain: 'One slot per vocabulary word holds how many times it appears.' },
-    hints: [`<p>Build the vocabulary from both sentences.</p>`, `<p>Count words with a dict.</p>`, `<p>Then dot / (norm × norm).</p>`],
+    hints: [`<p>Build the vocabulary from both sentences.</p>`, `<p>Turn each sentence into a count vector, one slot per vocabulary word, using a dict or list.count.</p>`, `<p>With both vectors built, apply cosine = dot / (norm of a × norm of b).</p>`],
     approach: `<p>Collect the sorted union of words as the vocabulary. For each sentence build a count vector with one slot per vocabulary word. Then apply cosine = dot / (|a||b|). For the example, the vectors share 2 words out of 3 each, so the result is 2/3. This bag-of-words approach ignores order but is the stepping stone to learned embeddings.</p>`,
     code: { lang: 'python', run: true, code: `import math
 def vec(s, vocab):
@@ -914,14 +911,14 @@ print(vocab, a, b, round(dot / (math.sqrt(sum(x*x for x in a)) * math.sqrt(sum(x
     example: `<p>(1/6)(10) + (2/6)(3) + (3/6)(−2) = 1.667 + 1 − 1 = ${H.c('g', '+1.667')}.</p>`,
     bruteWhy: `<p>Simulating a million rolls gives an approximate answer; the formula gives it exactly instantly.</p>`,
     mcq: { q: 'Expected value is…', options: ['sum of outcome × probability', 'the most likely outcome', 'the largest outcome', 'the median'], answer: 0, explain: 'It is the probability-weighted average.' },
-    hints: [`<p>List each outcome's payoff.</p>`, `<p>Multiply each payoff by its probability.</p>`, `<p>Add. A positive EV means a favourable game.</p>`],
+    hints: [`<p>List what each die face pays, grouping faces with the same payoff together.</p>`, `<p>Multiply each payoff by its probability.</p>`, `<p>Add. A positive EV means a favourable game.</p>`],
     approach: `<p>Group the six faces by payoff: face 6 pays 10 with probability 1/6, faces 4 and 5 pay 3 with probability 2/6, faces 1-3 pay −2 with probability 3/6. Multiply and add: 10/6 + 6/6 − 6/6 = 1.667. You gain about ₹1.67 per play on average, even though any single play can lose money. A simulation of many plays should converge to this number.</p>`,
     code: { lang: 'python', run: true, code: `import random
 random.seed(3)
 pay = {1: -2, 2: -2, 3: -2, 4: 3, 5: 3, 6: 10}
 print("exact:", round(sum(v / 6 for v in pay.values()), 3))
 print("simulated:", round(sum(pay[random.randint(1, 6)] for _ in range(100000)) / 100000, 3))` },
-    complexity: `<p>O(outcomes).</p>`
+    complexity: `<p>O(outcomes): one multiply and add per distinct payoff.</p>`
   }));
   practice.push(P({
     title: 'Softmax Sanity Check', level: 'Easy', tags: ['softmax'],
@@ -930,14 +927,14 @@ print("simulated:", round(sum(pay[random.randint(1, 6)] for _ in range(100000)) 
     example: `<p>They are ${H.c('g', 'identical')}: adding 100 to every logit cancels in the ratio.</p>`,
     bruteWhy: `<p>Computing e<sup>105</sup> directly is huge (about 10<sup>45</sup>) and risks overflow in smaller number types.</p>`,
     mcq: { q: 'Adding a constant to all logits…', options: ['does not change softmax', 'doubles the top probability', 'makes them sum to 2', 'makes them negative'], answer: 0, explain: 'The factor e^c appears top and bottom and cancels.' },
-    hints: [`<p>Write e^(z+c) = e^z × e^c.</p>`, `<p>The e^c factors cancel in numerator and denominator.</p>`, `<p>That is exactly why subtracting the max is safe.</p>`],
+    hints: [`<p>Write e^(z+c) as e^z × e^c and ask what happens to the shared factor e^c.</p>`, `<p>The e^c factors cancel in numerator and denominator.</p>`, `<p>That is exactly why subtracting the max is safe.</p>`],
     approach: `<p>Because e<sup>z+c</sup> = e<sup>z</sup>·e<sup>c</sup>, the common factor e<sup>c</sup> divides out of numerator and denominator, so softmax is shift-invariant. Both inputs give the same probabilities (about 0.867, 0.117, 0.016). This invariance is the reason implementations subtract the maximum logit: it keeps numbers small without altering the answer.</p>`,
     code: { lang: 'python', run: true, code: `import math
 def sm(z):
     m = max(z); e = [math.exp(x - m) for x in z]; s = sum(e)
     return [round(x / s, 3) for x in e]
 print(sm([5, 3, 1]), sm([105, 103, 101]))` },
-    complexity: `<p>O(k).</p>`
+    complexity: `<p>O(k) for k logits, and no exponentials are needed to answer.</p>`
   }));
 
   practice.push(P({
@@ -947,7 +944,7 @@ print(sm([5, 3, 1]), sm([105, 103, 101]))` },
     example: `<p>X@W → (10,3); + b broadcasts (3,) → (10,3). Wᵀx with Wᵀ=[[1,2,0,1],[0,1,3,1]]: [1+0+0+1, 0+0+6+1] = ${H.c('g', '[2, 7]')}.</p>`,
     bruteWhy: `<p>Looping over each example and each output neuron is O(10·4·3) Python steps; one matmul does it in optimised native code.</p>`,
     mcq: { q: 'Shape of X @ W with X (10,4) and W (4,3)?', options: ['(10, 3)', '(4, 4)', '(3, 10)', 'error'], answer: 0, explain: 'Inner 4 = 4 cancels; outer sizes remain.' },
-    hints: [`<p>Inner dimensions must match, then drop them.</p>`, `<p>Bias (3,) aligns with the last axis, so it broadcasts over the 10 rows.</p>`, `<p>For Wᵀx, rows of Wᵀ are columns of W.</p>`],
+    hints: [`<p>Inner dimensions must match, then drop them.</p>`, `<p>Bias (3,) aligns with the last axis, so it broadcasts over the 10 rows.</p>`, `<p>For Wᵀx, each row of Wᵀ is a column of W, so dot x with W's columns one by one.</p>`],
     approach: `<p>X (10,4) times W (4,3): the inner 4s match and the result is (10,3), one row of 3 outputs per example. Adding bias b of shape (3,) right-aligns with the last axis and broadcasts over the 10 rows, giving (10,3) again. For the small computation, each output equals the dot product of x with a column of W: column 0 is [1,2,0,1] giving 1+0+0+1=2, and column 1 is [0,1,3,1] giving 0+0+6+1=7. So the result is [2,7].</p>`,
     code: { lang: 'python', run: true, code: `W = [[1, 0], [2, 1], [0, 3], [1, 1]]
 x = [1, 0, 2, 1]
@@ -963,7 +960,7 @@ print(out)` },
     bruteWhy: `<p>Naive <code>math.exp(1000)</code> raises OverflowError (or returns inf in NumPy) and the result is NaN.</p>`,
     bruteCode: `import math\ndef naive(z):\n    e = [math.exp(x) for x in z]\n    return [x / sum(e) for x in e]`,
     mcq: { q: 'Where do you apply T?', options: ['divide logits by T before exponentiating', 'divide probabilities by T', 'multiply the sum by T', 'add T to the max'], answer: 0, explain: 'Temperature rescales logits; dividing probabilities would break the sum.' },
-    hints: [`<p>Scale then subtract max.</p>`, `<p>Compute the sum once, not inside the list comprehension (that would be O(k²)).</p>`, `<p>Validate T first; keep the result float.</p>`],
+    hints: [`<p>Divide the logits by T first, then subtract the maximum before calling exp.</p>`, `<p>Compute the sum once, not inside the list comprehension (that would be O(k²)).</p>`, `<p>Validate T first; keep the result float.</p>`],
     approach: `<p>Validate that T is positive. Divide each logit by T, find the maximum and subtract it, exponentiate (largest term becomes exactly 1 so no overflow), compute the total once, and divide. Terms that underflow to 0 for very negative inputs are harmless. Make sure the sum is computed once outside the comprehension, otherwise the function silently becomes quadratic.</p>`,
     code: { lang: 'python', run: true, code: `import math
 def softmax(z, T=1.0):
@@ -986,7 +983,7 @@ print(softmax([-1000, 0]))` },
     example: `<p>[150,160,170,180,190] → ${H.c('g', '[-1.414,-0.707,0,0.707,1.414]')}. [5,5,5] → [0,0,0].</p>`,
     bruteWhy: `<p>Recomputing the mean inside the std loop for each element is O(N²); compute stats once.</p>`,
     mcq: { q: 'Which data should supply the mean and std for the test set?', options: ['the training set', 'the test set itself', 'both combined', 'a random sample'], answer: 0, explain: 'Using test statistics leaks information and is unavailable at prediction time.' },
-    hints: [`<p>Two passes: mean, then variance.</p>`, `<p>Guard std == 0.</p>`, `<p>Return (mean, std) so the same numbers can be reused on new data.</p>`],
+    hints: [`<p>Make two passes: the first for the mean, the second for the variance around it.</p>`, `<p>Guard the case std == 0 (all values equal) so you return zeros, not a division error.</p>`, `<p>Return (mean, std) so the same numbers can be reused on new data.</p>`],
     approach: `<p>Compute the mean in one pass and the population variance in a second pass, take the square root, and if std is 0 return zeros. Return the fitted mean and std alongside the result, because test data and live predictions must be scaled with the training set's numbers, never with their own. Fitting on the full data before splitting is a leakage bug that inflates scores.</p>`,
     code: { lang: 'python', run: true, code: `import math
 def fit(x):
@@ -999,7 +996,7 @@ m, s = fit([150, 160, 170, 180, 190])
 print([round(v, 3) for v in transform([150, 160, 170, 180, 190], m, s)])
 print(transform([5, 5, 5], *fit([5, 5, 5])))
 print(round(transform([200], m, s)[0], 3))   # a new test value uses the TRAIN stats` },
-    complexity: `<p>O(N).</p>`
+    complexity: `<p>O(N) time for N values: two passes, then one to transform.</p>`
   }));
   practice.push(P({
     title: 'Spam Filter Posterior with Smoothing', level: 'Medium', tags: ['bayes', 'naive bayes'],
@@ -1033,7 +1030,7 @@ print(round(pa, 3))` },
     example: `<p>[[1,0],[0,1],[1,1]] → diagonal 1s; cos(v0,v2)=cos(v1,v2)=${H.c('g', '0.707')}; cos(v0,v1)=0.</p>`,
     bruteWhy: `<p>Recomputing both norms for each of N² pairs is wasteful; normalise each vector once.</p>`,
     mcq: { q: 'After normalising rows to length 1, similarities equal…', options: ['U @ U.T', 'U + U.T', 'U * U', 'U.sum()'], answer: 0, explain: 'Entry (i,j) is the dot of unit rows i and j: the cosine.' },
-    hints: [`<p>Normalise each row once.</p>`, `<p>The Gram matrix U Uᵀ holds all dot products.</p>`, `<p>The result is symmetric with ones on the diagonal.</p>`],
+    hints: [`<p>Divide each row by its own norm once, up front, rather than inside the pair loop.</p>`, `<p>The Gram matrix U Uᵀ holds all dot products.</p>`, `<p>The result is symmetric with ones on the diagonal.</p>`],
     approach: `<p>Divide each vector by its norm to make unit rows U (skip zero vectors). Then the similarity matrix is U times U-transpose, because entry (i,j) is the dot product of two unit vectors, which is their cosine. This reduces O(N²) norm computations to N, leaving N² dot products which a BLAS matmul executes very fast. The result is symmetric with ones on the diagonal.</p>`,
     code: { lang: 'python', run: true, code: `import math
 V = [[1, 0], [0, 1], [1, 1]]
@@ -1044,7 +1041,7 @@ for v in V:
 S = [[round(sum(a * b for a, b in zip(u, w)), 3) for w in U] for u in U]
 for row in S:
     print(row)` },
-    complexity: `<p>O(N²·d).</p>`
+    complexity: `<p>O(N²·d) time for N vectors of dimension d, O(N²) space for the result.</p>`
   }));
   practice.push(P({
     title: 'Top Earner per Department', level: 'Medium', tags: ['groupby', 'pandas'],
@@ -1053,7 +1050,7 @@ for row in S:
     example: `<p>[("Asha","Eng",90),("Ben","Eng",70),("Chen","Ops",50)] → ${H.c('g', '{"Eng": "Asha", "Ops": "Chen"}')}</p>`,
     bruteWhy: `<p>Sorting all rows and then scanning per department is O(N log N); a single pass tracking the best per key is O(N).</p>`,
     mcq: { q: 'Single pass state per key?', options: ['best (salary, name) so far', 'the full list of rows', 'only the count', 'a sorted copy'], answer: 0, explain: 'Compare each row with the current best for its dept.' },
-    hints: [`<p>Dict from dept to current best.</p>`, `<p>Replace only if strictly greater (keeps first on ties).</p>`, `<p>pandas: <code>df.loc[df.groupby("dept")["salary"].idxmax()]</code>.</p>`],
+    hints: [`<p>Keep a dict from department to the best (salary, name) seen so far.</p>`, `<p>Replace only if strictly greater (keeps first on ties).</p>`, `<p>pandas: <code>df.loc[df.groupby("dept")["salary"].idxmax()]</code>.</p>`],
     approach: `<p>Keep one dict mapping department to the best (salary, name) seen so far. For each row compare with the stored best and replace it only when the new salary is strictly greater, which keeps the first row on ties. After one pass output names. In pandas, groupby plus idxmax gives the index of the best row per group, and .loc selects those rows. Time is O(N) versus O(N log N) for sort-based approaches.</p>`,
     code: { lang: 'python', run: true, code: `rows = [("Asha", "Eng", 90), ("Ben", "Eng", 70), ("Chen", "Ops", 50), ("Dev", "Ops", 60)]
 best = {}
@@ -1062,7 +1059,7 @@ for name, dept, sal in rows:
         best[dept] = (sal, name)
 print({d: v[1] for d, v in best.items()})` },
     alt: undefined,
-    complexity: `<p>O(N).</p>`
+    complexity: `<p>O(N) time for N rows, O(D) space for D departments.</p>`
   }));
 
   practice.push(P({
@@ -1098,7 +1095,7 @@ def sqdist(X, C):
     example: `<p>Errors fall roughly like 1.708/√n: n=10 → 0.54, n=10000 → ${H.c('g', '0.017')} typical.</p>`,
     bruteWhy: `<p>Looking at a single run proves nothing; the error is itself random, so average several trials.</p>`,
     mcq: { q: 'Standard error of a mean scales as…', options: ['σ/√n', 'σ/n', 'σ·n', 'σ²'], answer: 0, explain: 'Four times the data halves the error.' },
-    hints: [`<p>The std of one roll is 1.708.</p>`, `<p>Std of the mean = std / √n.</p>`, `<p>Repeat each n many times and average the absolute error.</p>`],
+    hints: [`<p>The standard deviation of a single fair-die roll is about 1.708.</p>`, `<p>The standard deviation of the mean of n rolls is that value divided by √n.</p>`, `<p>Repeat each n many times and average the absolute error.</p>`],
     approach: `<p>For each n run many independent trials, compute the sample mean of n rolls, and average |mean − 3.5| across trials. Theory says the standard deviation of the sample mean is σ/√n with σ ≈ 1.708, so the typical error is about 1.708/√n times 0.8 for the average absolute error. Hence n=100 gives 0.17 and n=10000 gives 0.017: 100 times more data buys only 10 times less error. That diminishing return explains why evaluation sets and A/B tests need sizeable samples.</p>`,
     code: { lang: 'python', run: true, code: `import random, math
 random.seed(11)
@@ -1108,7 +1105,7 @@ for n in (10, 100, 1000, 10000):
         mean = sum(random.randint(1, 6) for _ in range(n)) / n
         errs.append(abs(mean - 3.5))
     print(n, round(sum(errs) / len(errs), 4), "theory ~", round(0.8 * 1.708 / math.sqrt(n), 4))` },
-    complexity: `<p>O(trials × Σn).</p>`
+    complexity: `<p>O(trials × Σn): every trial rolls n dice for each n tested.</p>`
   }));
   practice.push(P({
     title: 'Pure-Python Group-By Engine with Multiple Aggregates', level: 'Hard', tags: ['groupby', 'design'],
@@ -1117,7 +1114,7 @@ for n in (10, 100, 1000, 10000):
     example: `<p>keys=["dept"], aggs={"total": ("salary","sum"), "n": ("salary","count")} → ${H.c('g', '[{"dept":"Eng","total":240,"n":3}, ...]')}.</p>`,
     bruteWhy: `<p>Filtering the whole list once per distinct key is O(N·K).</p>`,
     mcq: { q: 'What should the dict key be for multi-column grouping?', options: ['a tuple of the key values', 'a list of the key values', 'a string of the first key', 'the row index'], answer: 0, explain: 'Tuples are hashable; lists are not.' },
-    hints: [`<p>Key = tuple(row[k] for k in keys).</p>`, `<p>Collect values per output column per group, reduce at the end.</p>`, `<p>Sort groups; handle empty input and unknown function names with a clear error.</p>`],
+    hints: [`<p>Build each group key as tuple(row[k] for k in keys) so it can be a dict key.</p>`, `<p>Collect values per output column per group, reduce at the end.</p>`, `<p>Sort groups; handle empty input and unknown function names with a clear error.</p>`],
     approach: `<p>One pass builds a dict from the tuple of key values to a list of rows (or to per-aggregate value lists). A function table maps names such as sum, count, mean, max and min to Python callables, and unknown names raise a clear error. After the pass, loop over the groups in sorted key order and apply each aggregate to its column values, producing one output dict per group that contains the key columns and aggregate outputs. Time O(N + G log G) for G groups.</p>`,
     code: { lang: 'python', run: true, code: `FUNCS = {"sum": sum, "count": len, "max": max, "min": min,
          "mean": lambda v: sum(v) / len(v)}
@@ -1150,7 +1147,7 @@ for rec in group_agg(rows, ["dept"], {"total": ("salary", "sum"), "avg": ("salar
     example: `<p>Split 80/20 first, fit median and mean/std on the ${H.c('g', 'train part only')}, apply them to both.</p>`,
     bruteWhy: `<p>Weak: "fill NaNs with the dataset mean, standardise everything, then split". The statistics include test rows, so the test score is optimistically biased.</p>`,
     mcq: { q: 'When should the train/test split happen?', options: ['before computing fill values and scaling stats', 'after scaling', 'after encoding labels', 'it does not matter'], answer: 0, explain: 'Anything learned from data must be learned from the training part only.' },
-    hints: [`<p>Split first, with a fixed seed.</p>`, `<p>Fit imputer and scaler on train, apply to test.</p>`, `<p>Handle categories unseen in train; save the fitted parameters for production.</p>`],
+    hints: [`<p>Split into train and test first, with a fixed random seed, before any statistic is computed.</p>`, `<p>Fit imputer and scaler on train, apply to test.</p>`, `<p>Handle categories unseen in train; save the fitted parameters for production.</p>`],
     approach: `<p>1) Inspect: dtypes, missing counts, duplicates, label balance. 2) Remove exact duplicates and obvious errors (negative age). 3) Split into train and test with a fixed random seed (stratify on the label if classes are imbalanced, split by time for time-series). 4) On the train set only, learn the median of age and salary, the mean and std for scaling, and the list of known cities. 5) Apply those learned values to train and test: fill missing numbers (optionally add a was_missing flag), z-score numbers, one-hot encode city with an "unknown" bucket. 6) Persist the fitted parameters so serving applies exactly the same transform. 7) Check shapes and row counts after each step. Doing the fit on all data first would leak test information and inflate scores.</p>`,
     code: { lang: 'python', run: true, code: `import math, random
 random.seed(0)
@@ -1182,7 +1179,7 @@ def transform(rows):
 
 print("train:", transform(train))
 print("test :", transform(test))` },
-    complexity: `<p>O(N) per pass.</p>`,
+    complexity: `<p>O(N) per pass over the N rows, with a small constant number of passes.</p>`,
     followUps: ['What changes for time-series data?', 'How would you do this inside a scikit-learn Pipeline?']
   }));
   practice.push(P({
@@ -1192,7 +1189,7 @@ print("test :", transform(test))` },
     example: `<p>Q=K=[[1,0],[0,1],[1,1]] → scores before scaling [[1,0,1],[0,1,1],[1,1,2]]; each row of the weights sums to ${H.c('g', '1')}.</p>`,
     bruteWhy: `<p>Looping token pair by token pair computing each dot product separately repeats Python overhead n² times; and skipping the scaling makes softmax too peaked as d grows.</p>`,
     mcq: { q: 'Why divide by √d?', options: ['dot products grow with d and saturate softmax', 'to make the matrix square', 'to avoid division by zero', 'to sort the scores'], answer: 0, explain: 'Variance of a dot product grows with d, so scaling keeps logits moderate.' },
-    hints: [`<p>Q Kᵀ is (3,2)(2,3) = (3,3).</p>`, `<p>Softmax over the last axis (keys), per row.</p>`, `<p>With random unit-variance entries the dot product has variance d.</p>`],
+    hints: [`<p>Q times Kᵀ is (3,2) by (2,3), so the score matrix is (3,3): one score per query-key pair.</p>`, `<p>Softmax over the last axis (keys), per row.</p>`, `<p>With random unit-variance entries the dot product has variance d.</p>`],
     approach: `<p>Q (3,2) times Kᵀ (2,3) gives a 3×3 score matrix: entry (i,j) is how much query token i matches key token j. Divide by √d (here √2) so the typical size stays near 1 independent of d, because the variance of a dot product of d unit-variance numbers is d. Apply a stable softmax along each row so each query's weights over the keys sum to 1. Those weights then mix the value vectors. The code below does it with lists.</p>`,
     code: { lang: 'python', run: true, code: `import math
 Q = K = [[1, 0], [0, 1], [1, 1]]

@@ -3034,10 +3034,11 @@ class Check {
       case "mutex": {
         int T = Integer.parseInt(p[1]), N = Integer.parseInt(p[2]);
         int[] counter = {0};
+        java.util.concurrent.atomic.AtomicInteger inside = new java.util.concurrent.atomic.AtomicInteger(), most = new java.util.concurrent.atomic.AtomicInteger();
         Thread[] ts = new Thread[T];
-        for (int i = 0; i < T; i++) { ts[i] = new Thread(() -> { for (int k = 0; k < N; k++) { lock.lock(); counter[0]++; lock.unlock(); } }); ts[i].start(); }
+        for (int i = 0; i < T; i++) { ts[i] = new Thread(() -> { for (int k = 0; k < N; k++) { lock.lock(); most.accumulateAndGet(inside.incrementAndGet(), Math::max); counter[0]++; inside.decrementAndGet(); lock.unlock(); } }); ts[i].start(); }
         for (Thread t : ts) t.join();
-        return new String[]{ String.valueOf(counter[0]) };
+        return new String[]{ String.valueOf(counter[0]), "most inside at once=" + most.get() };
       }
       case "notOwner": {
         String a, b;
@@ -3063,8 +3064,8 @@ class Check {
         [['fifo:1'], ['1']],
         [['fifo:2'], ['1,2']],
         [['fifo:64'], ['1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64']],
-        [['mutex:8:20000'], ['160000']],
-        [['mutex:1:1'], ['1']],
+        [['mutex:8:2000'], ['16000', 'most inside at once=1']],
+        [['mutex:1:1'], ['1', 'most inside at once=1']],
         [['notOwner'], ['IMSE', 'IMSE']],
         [['interrupted'], ['acquired interrupted=true']]
       ] },
