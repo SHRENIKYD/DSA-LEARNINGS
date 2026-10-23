@@ -34,6 +34,8 @@ jobs:
         run: |
           node tools/find-videos.js --check
           node tools/find-videos.js --max "$MAX"
+      - name: Check the catalog before saving it
+        run: node tools/video-test.js
       - name: Save and redeploy the website
         env:
           GH_TOKEN: ${{ github.token }}
