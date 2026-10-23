@@ -2,7 +2,7 @@ name: Deploy site to GitHub Pages
 
 on:
   push:
-    branches: [main, claude/dsa-math-study-portal-weghh9]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -15,7 +15,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build static site (strict, no skipped modules)
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_PUBLISHABLE_KEY }}
+          CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+        run: node tools/build.js site --strict
+      - name: Install Playwright
+        run: npm install --no-save playwright@1.56.1 && npx playwright install --with-deps chromium
+      - name: Smoke test the built site
+        run: node tools/smoke-test.js site
   build:
+    needs: test
     runs-on: ubuntu-latest
     environment: github-pages
     steps:

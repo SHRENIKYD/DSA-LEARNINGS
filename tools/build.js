@@ -1,11 +1,13 @@
-// Builds the static site into ./site  —  usage: node tools/build.js [outDir]
+// Builds the static site into ./site  —  usage: node tools/build.js [outDir] [--strict]  (--strict or STRICT=1: exit 1 on any skipped module or warning)
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const crypto = require('crypto');
 
 const root = path.join(__dirname, '..');
-const out = path.resolve(process.argv[2] || path.join(root, 'site'));
+const argv = process.argv.slice(2);
+const STRICT = argv.includes('--strict') || process.env.STRICT === '1';
+const out = path.resolve(argv.find((a) => !a.startsWith('--')) || path.join(root, 'site'));
 const rd = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const VERSION = JSON.parse(rd('package.json')).version;
 
@@ -28,6 +30,9 @@ fs.cpSync(path.join(root, 'vendor'), path.join(out, 'vendor'), { recursive: true
 const hash = crypto.createHash('sha1');
 const SI = { modules: {}, entries: [], problems: 0, viz: 0 };
 let warnings = 0;
+const problems = [];
+const _warn = console.warn;
+console.warn = (...a) => { problems.push(a.join(' ')); _warn(...a); };
 const ALLT = [];
 const MODS = {};
 const PMETA = {}, CHECKS = {};
@@ -88,11 +93,11 @@ for (const t of TRACKS) {
   t._scripts = scripts;
 }
 
-const ASSETS = ['helpers.js', 'tracks.js', 'paths.js', 'learn.js', 'engine.js', 'auth.js', 'login.js', 'journey.js', 'style.css'];
+const ASSETS = ['helpers.js', 'tracks.js', 'paths.js', 'learn.js', 'engine.js', 'errors.js', 'auth.js', 'login.js', 'journey.js', 'style.css'];
 const sbUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, ''), sbKey = (process.env.SUPABASE_PUBLISHABLE_KEY || '').trim();
 const authOn = /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(sbUrl) && /^[A-Za-z0-9._-]+$/.test(sbKey);
 if ((sbUrl || sbKey) && !authOn) { console.warn('WARN: SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY look invalid — accounts disabled in this build'); warnings++; }
-const configJs = 'window.IM_CONFIG=' + JSON.stringify(authOn ? { supabaseUrl: sbUrl, supabaseKey: sbKey } : {}) + ';';
+const configJs = 'window.IM_CONFIG=' + JSON.stringify(authOn ? { supabaseUrl: sbUrl, supabaseKey: sbKey, version: VERSION } : {}) + ';';
 for (const f of ASSETS) hash.update(rd('src/' + f));
 hash.update(configJs);
 try { hash.update(rd('data/videos.json')); } catch (e) { }
@@ -152,3 +157,8 @@ function H(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').re
 
 const live = Object.keys(SI.modules).length, planned = TRACKS.reduce((a, t) => a + t.modules.length, 0);
 console.log('built v' + VERSION + ' ' + out + ' — ' + live + '/' + planned + ' modules live, ' + SI.problems + ' problems, ' + SI.viz + ' visualizers, ' + Object.keys(vidJs).length + ' videos, accounts ' + (authOn ? 'ON' : 'OFF (set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY)') + (warnings ? ', ' + warnings + ' warning(s)' : ''));
+if (STRICT && warnings) {
+  console.error('STRICT build failed: ' + warnings + ' module(s) skipped or warning(s):');
+  problems.forEach((p) => console.error('  - ' + p));
+  process.exit(1);
+}

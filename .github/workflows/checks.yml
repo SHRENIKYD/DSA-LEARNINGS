@@ -5,7 +5,7 @@ on:
     branches: [main, claude/dsa-math-study-portal-weghh9]
     paths: ['content/**', 'src/paths.js', 'src/tracks.js', 'src/video.js', 'src/engine.js', 'src/videos.html', 'data/videos.json', 'data/video-review.json', 'tools/**', 'vendor/sql-wasm*', '.github/workflows/checks.yml']
   pull_request:
-    paths: ['content/**', 'src/paths.js', 'src/tracks.js', 'src/video.js', 'src/engine.js', 'src/videos.html', 'data/videos.json', 'data/video-review.json', 'tools/**', 'vendor/sql-wasm*', '.github/workflows/checks.yml']
+    paths: ['content/**', 'src/paths.js', 'src/tracks.js', 'src/video.js', 'src/engine.js', 'src/videos.html', 'data/videos.json', 'data/video-review.json', 'tools/**', 'vendor/sql-wasm*', '.github/workflows/checks.yml', 'src/**', 'package.json']
   schedule:
     - cron: '17 3 * * 1'
   workflow_dispatch:
@@ -27,6 +27,21 @@ jobs:
           node-version: 22
       - name: Validate reviewed video mappings and playback helpers
         run: node tools/video-test.js
+
+  smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build static site (strict)
+        run: node tools/build.js site --strict
+      - name: Install Playwright
+        run: npm install --no-save playwright@1.56.1 && npx playwright install --with-deps chromium
+      - name: Smoke test the built site
+        run: node tools/smoke-test.js site
 
   paths:
     runs-on: ubuntu-24.04
@@ -67,3 +82,13 @@ jobs:
       - uses: ./.github/actions/toolchain
       - name: Validate and test every ${{ matrix.track }} module
         run: node tools/ci-check.js --track ${{ matrix.track }}
+
+  auth:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Progress-sync unit tests
+        run: node tools/auth-test.js

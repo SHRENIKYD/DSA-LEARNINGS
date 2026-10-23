@@ -75,7 +75,7 @@
 
   $('tabIn').addEventListener('click', function () { setMode('in'); });
   $('tabUp').addEventListener('click', function () { setMode('up'); });
-  $('authSignOut').addEventListener('click', function () { Auth.signOut().then(function () { location.href = 'login.html'; }); });
+  $('authSignOut').addEventListener('click', function () { Auth.signOut().then(function () { location.href = 'login.html'; }, function (e) { alert(e.message); }); });
 
   // In the mobile app Google refuses sign-in inside the app's WebView, so open it in the system browser
   // (Chrome Custom Tabs / Safari) and come back through the app's deep link.

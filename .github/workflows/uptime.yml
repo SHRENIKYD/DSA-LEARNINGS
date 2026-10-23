@@ -1,0 +1,62 @@
+name: Uptime check
+
+on:
+  schedule:
+    - cron: '23 * * * *'   # every hour at minute 23
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SITE: https://shrenikyd.github.io/DSA-LEARNINGS
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_PUBLISHABLE_KEY }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Run the checks
+        run: |
+          : > failures.txt
+          fetch() {  # $1 = url, rest = extra curl args. Prints body to body.tmp, status to stdout.
+            local url="$1"; shift
+            curl -sS -L --max-time 20 --retry 2 --retry-delay 5 --retry-all-errors \
+              -o body.tmp -w '%{http_code}' "$@" "$url" 2>/dev/null || echo 000
+          }
+          check_page() {  # $1 = label, $2 = path, $3 = text that must appear
+            local code; code=$(fetch "$SITE/$2")
+            if [ "$code" != "200" ]; then echo "- $1 ($SITE/$2): HTTP $code" >> failures.txt
+            elif ! grep -q "$3" body.tmp; then echo "- $1 ($SITE/$2): HTTP 200 but missing expected text '$3'" >> failures.txt
+            else echo "ok: $1"; fi
+          }
+          check_page "Home page" "" "<title>Interview Mastery</title>"
+          check_page "Module page" "dsa.html" "Interview Mastery"
+          check_page "Videos script" "assets/videos.js" "IM_VIDEOS"
+          if [ -n "$SUPABASE_URL" ]; then
+            code=$(fetch "${SUPABASE_URL%/}/auth/v1/health" -H "apikey: $SUPABASE_KEY")
+            if [ "$code" = "200" ]; then echo "ok: Supabase auth"; else echo "- Supabase auth health: HTTP $code" >> failures.txt; fi
+          else
+            echo "SUPABASE_URL is not set, skipping the Supabase check"
+          fi
+          cat failures.txt
+      - name: Open, update or close the outage issue
+        if: always()
+        run: |
+          RUN="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          gh label create outage --color B60205 --description "Site or backend is down" 2>/dev/null || true
+          N=$(gh issue list --label outage --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -s failures.txt ]; then
+            { echo "These checks failed at $(date -u +%FT%TZ):"; echo; cat failures.txt; echo; echo "Run: $RUN"; } > msg.md
+            if [ -n "$N" ]; then gh issue comment "$N" --body-file msg.md
+            else gh issue create --label outage --title "Outage: uptime check failed" --body-file msg.md; fi
+          elif [ -n "$N" ] && [ -f failures.txt ]; then
+            gh issue comment "$N" --body "All checks pass again ($RUN). Closing."
+            gh issue close "$N"
+          fi

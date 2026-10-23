@@ -23,6 +23,12 @@ fs.mkdirSync(path.join(out, 'app'), { recursive: true });
 for (const f of FILES) fs.copyFileSync(path.join(root, 'app', f), path.join(out, 'app', f));
 fs.writeFileSync(path.join(out, 'index.html'), rd('app/index.html').replace(/@@V@@/g, V).replace(/@@VERSION@@/g, VERSION));
 fs.rmSync(path.join(out, '.nojekyll'), { force: true });
+// Error reports from the app carry the app version (pages that do not set IM_VERSION get it here).
+for (const f of fs.readdirSync(out).filter((x) => x.endsWith('.html') && x !== 'index.html')) {
+  const file = path.join(out, f), html = fs.readFileSync(file, 'utf8');
+  const tag = '<script src="assets/config.js';
+  fs.writeFileSync(file, html.replace(tag, () => "<script>window.IM_VERSION=window.IM_VERSION||'" + VERSION + "';</script>\n" + tag));
+}
 
 const TRACKS = (() => { const ctx = { window: {} }; require('vm').runInNewContext(rd('src/tracks.js') + ';this.T=TRACKS;', ctx); return ctx.T; })();
 let pages = 0;

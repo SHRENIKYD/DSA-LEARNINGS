@@ -1,0 +1,28 @@
+name: Database check
+
+on:
+  pull_request:
+    paths: ['supabase/**', 'tools/rls-check.js', '.github/workflows/db-check.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rls:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install PostgreSQL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql
+      - name: Apply migrations and check row level security
+        run: node tools/rls-check.js

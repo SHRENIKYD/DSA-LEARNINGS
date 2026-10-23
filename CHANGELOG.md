@@ -4,7 +4,21 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
-## [1.10.2] — 2026-10-21 · Cleanup and test gaps
+## [1.10.3] — 2026-10-23 · Production readiness, phase A
+
+### Added
+- Anonymous crash reports: browser errors are sent to our own database with emails and URL queries removed, at most 5 per page load, no account id or cookies. Reports are deleted after 90 days; the privacy page explains what is sent and how to opt out.
+- Database migrations (`supabase/migrations/`), a size limit on stored progress, and an access check (`tools/rls-check.js`) proving users can reach only their own data.
+- Weekly encrypted database backups kept for 30 days, an hourly uptime check that opens a GitHub issue during an outage, and `docs/OPERATIONS.md` and `docs/DATABASE.md`.
+
+### Changed
+- Only `main` deploys the site, and every deploy waits for a strict build and a browser smoke test (all pages load without errors, one module per track opens, search works, internal links resolve, no page is wider than a 360 px phone).
+
+### Fixed
+- Signing out right after a failed sync deleted the unsaved progress. Sign-out now retries first and, if that fails, keeps the progress and stays signed in.
+- Long inline code and wide tables made module pages wider than a 360 px phone.
+
+ — 2026-10-21 · Cleanup and test gaps
 
 ### Changed
 - Generic filler that some modules appended to short hints and complexity notes ("Take a moment to reason it through…", "Try it on paper first…", "Verify the numbers with a real measurement.") is gone. About 520 hints, complexity notes and explanations in 16 modules (GenAI 3, 11, 12, 13, 15, 16; Backend 12, 14, 16; Behavioral 1–3; CS 2, 7, 10, 12) were rewritten as specific hints for their problems.

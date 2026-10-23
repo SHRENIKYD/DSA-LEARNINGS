@@ -1,14 +1,16 @@
 {
   "name": "interview-mastery",
-  "version": "1.10.2",
-  "appVersion": "1.11.2",
+  "version": "1.10.3",
+  "appVersion": "1.11.3",
   "private": true,
   "description": "Beginner-to-expert interview prep: 13 tracks with visualizers, practice and progress sync.",
   "repository": "github:SHRENIKYD/DSA-LEARNINGS",
   "scripts": {
     "build": "node tools/build.js",
     "build:app": "node tools/build-app.js",
+    "test:smoke": "node tools/smoke-test.js site",
     "test:play": "node tools/play-test.js",
+    "test:auth": "node tools/auth-test.js",
     "cap:sync": "node tools/build-app.js && npx cap sync",
     "version:sync": "node tools/version-sync.js",
     "test:updates": "node tools/update-test.js",

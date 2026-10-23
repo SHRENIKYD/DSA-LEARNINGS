@@ -69,7 +69,7 @@ jobs:
         with:
           name: interview-mastery-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
+          retention-days: 14
       - name: Build signed release bundle (.aab) for Google Play
         if: env.HAS_UPLOAD_KEY == 'true'
         working-directory: android
@@ -105,20 +105,39 @@ jobs:
           }
           release v1.0.0 1.0.0 CHANGELOG.md db7338f7b7e2d598fdbc9cc451f21f852664a97a "v1.0.0 · website launch"
           V=$(node -p "require('./package.json').appVersion")
-          cp android/app/build/outputs/apk/debug/app-debug.apk "interview-mastery-app-v$V-debug.apk"
-          ASSETS="interview-mastery-app-v$V-debug.apk"
-          if [ -f android/app/build/outputs/bundle/release/app-release.aab ]; then cp android/app/build/outputs/bundle/release/app-release.aab "interview-mastery-app-v$V.aab"; ASSETS="$ASSETS interview-mastery-app-v$V.aab"; fi
+          ASSETS=""
+          if [ -f android/app/build/outputs/bundle/release/app-release.aab ]; then cp android/app/build/outputs/bundle/release/app-release.aab "interview-mastery-app-v$V.aab"; ASSETS="interview-mastery-app-v$V.aab"; fi
           if git ls-remote --exit-code --tags origin "refs/tags/app-v$V" >/dev/null; then echo "NEW_RELEASE=false" >> "$GITHUB_ENV"; else echo "NEW_RELEASE=true" >> "$GITHUB_ENV"; fi
           release "app-v$V" "$V" CHANGELOG-APP.md "$GITHUB_SHA" "App v$V" $ASSETS
-      - name: Upload to Google Play (track from the PLAY_TRACK variable, default internal)
-        if: env.HAS_UPLOAD_KEY == 'true' && env.HAS_PLAY_ACCOUNT == 'true' && env.NEW_RELEASE == 'true'
-        uses: r0adkll/upload-google-play@v1
+      # Runs on every main build, not only for a new tag, so a re-run after a
+      # partial failure (tag made, upload failed) can still upload.
+      # PLAY_RELEASE_STATUS=inProgress with PLAY_USER_FRACTION=0.1 is a 10% staged rollout.
+      # userFraction is sent only when the status is inProgress.
+      - name: Upload to Google Play (track from PLAY_TRACK, default internal)
+        id: play
+        if: env.HAS_UPLOAD_KEY == 'true' && env.HAS_PLAY_ACCOUNT == 'true'
+        continue-on-error: true
+        # r0adkll/upload-google-play v1.1.5
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: io.github.shrenikyd.interviewmastery
           releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
           track: ${{ vars.PLAY_TRACK || 'internal' }}
           status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+          userFraction: ${{ (vars.PLAY_RELEASE_STATUS == 'inProgress' && vars.PLAY_USER_FRACTION) || '' }}
+      # The action does not expose its error text, so judge by context: if this
+      # version was not newly tagged in this run, a failed upload is most likely
+      # "version code already used" from a re-run, so warn only. A failed upload
+      # of a brand new version fails the job.
+      - name: Check the Play upload result
+        if: steps.play.outcome == 'failure'
+        run: |
+          if [ "$NEW_RELEASE" = "true" ]; then
+            echo "::error::Google Play upload failed for a new version. Open the upload step log."
+            exit 1
+          fi
+          echo "::warning::Play upload failed, but this version was already released earlier. Probably the version code was already uploaded. Read the upload step log to be sure."
 
   apk-preview:
     needs: test
