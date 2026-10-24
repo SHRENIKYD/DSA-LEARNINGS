@@ -23,7 +23,7 @@
     $('tabIn').setAttribute('aria-selected', m === 'in' ? 'true' : 'false');
     $('tabUp').setAttribute('aria-selected', m === 'up' ? 'true' : 'false');
     $('authForm').setAttribute('aria-labelledby', m === 'in' ? 'tabIn' : 'tabUp');
-    $('authTitle').textContent = m === 'in' ? 'Sign in' : 'Create your account';
+    $('authTitle').textContent = m === 'in' ? 'Welcome back, explorer.' : 'Create your account';
     $('authPass').setAttribute('autocomplete', m === 'in' ? 'current-password' : 'new-password');
     show($('passHint'), m === 'up');
     show($('authForgot'), m === 'in');
