@@ -7,8 +7,11 @@ From 1.7.0 the website and the mobile app have separate versions. This file is t
 ## [Unreleased]
 
 ### Added
-- Language mode: lessons show only your code language (code examples and solutions); the other languages sit behind an "Other languages" control. The in-lesson picker switches everything live, and "Show every language" turns it off.
-- Videos per language: the daily video bot searches once a day for Python, JavaScript, C++ or Java picks (in rotation) for DSA and LLD topics; lessons and the Watchtower show the video for your language when one exists. The Watchtower filters to your language with a "Show all languages" toggle.
+- Language mode: lessons show only your code language (code examples and solutions); the other languages are not rendered at all. The in-lesson picker switches everything live, and "Show every language" brings them all back.
+- Videos per language: the daily video bot searches once a day for Python, JavaScript, C++ or Java picks (in rotation) for DSA and LLD topics; lessons and the Watchtower show the video for your language when one exists. The Watchtower shows only your language's tracks, with a "Change language" link to the route page.
+
+### Fixed
+- Passport: when accounts are on and you are signed out, the page shows a sign-in card instead of the passport, so a profile photo can only be added to an account.
 
 ## [1.10.5] — 2026-10-24 · Personalized navigation and the study planner
 

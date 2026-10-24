@@ -132,7 +132,6 @@ var App = (function () {
     return P && P.chosen && CODE_LANGS.some(function (c) { return c[0] === P.lang; }) ? P.lang : null;
   }
   function isCodeLang(l) { var k = langKey(l); return CODE_LANGS.some(function (c) { return c[0] === k; }); }
-  var OTHERS_OPEN = false; // "Other languages" expanded; remembered for this page load
   function byPref(list) {
     var p = viewLang();
     if (!p || list.length < 2) return list;
@@ -141,14 +140,18 @@ var App = (function () {
   function codeTabs(list) {
     list = byPref(list.filter(Boolean));
     if (!list.length) return '';
-    // Language mode: when the learner's language is among the panes, the other code languages (java/python/js/cpp)
-    // collapse behind one "Other languages" tab; language-neutral snippets (text, sql, bash, ...) stay in the row.
-    var pref = viewLang(), other = [];
-    if (pref && list.length > 1 && list.some(function (s) { return langKey(s.lang) === pref; })) list.forEach(function (s, i) { if (langKey(s.lang) !== pref && isCodeLang(s.lang)) other.push(i); });
-    var h = '<div class="code' + (list.length > 1 ? ' tabs' : '') + '"' + (other.length ? ' data-langmode="' + esc(pref) + '"' : '') + '>';
-    var tab = function (s, i) { var o = other.indexOf(i) >= 0; return '<button type="button" class="ctab' + (i ? '' : ' on') + (o ? ' other' : '') + '" data-tab="' + i + '"' + (o && !OTHERS_OPEN ? ' hidden' : '') + '>' + esc((LANGS[s.lang] || LANGS.text).name) + '</button>'; };
-    if (list.length > 1) h += '<div class="code-tabs">' + list.map(function (s, i) { return other.indexOf(i) >= 0 ? '' : tab(s, i); }).join('') +
-      (other.length ? '<button type="button" class="ctab more" data-more aria-expanded="' + (OTHERS_OPEN ? 'true' : 'false') + '">Other languages <span aria-hidden="true">' + (OTHERS_OPEN ? '▴' : '▾') + '</span></button>' + other.map(function (i) { return tab(list[i], i); }).join('') : '') + '</div>';
+    // Language mode: when the learner's language is among the panes, the other code languages (java/python/js/cpp/csharp)
+    // are not rendered at all; language-neutral snippets (text, sql, bash, ...) stay. The language picker is the only
+    // way to see another language ("Show every language" turns the mode off).
+    var pref = viewLang(), mode = false;
+    if (pref && list.length > 1 && list.some(function (s) { return langKey(s.lang) === pref; })) {
+      var kept = list.filter(function (s) { return langKey(s.lang) === pref || !isCodeLang(s.lang); });
+      if (kept.length < list.length) { list = kept; mode = true; }
+    }
+    var tabbed = list.length > 1 || mode;
+    var h = '<div class="code' + (tabbed ? ' tabs' : '') + '"' + (mode ? ' data-langmode="' + esc(pref) + '"' : '') + '>';
+    var tab = function (s, i) { return '<button type="button" class="ctab' + (i ? '' : ' on') + '" data-tab="' + i + '">' + esc((LANGS[s.lang] || LANGS.text).name) + '</button>'; };
+    if (tabbed) h += '<div class="code-tabs">' + list.map(tab).join('') + '</div>';
     list.forEach(function (s, i) {
       var k = SNIPS.push(s) - 1, code = dedent(s.code);
       s.code = code;
@@ -164,18 +167,7 @@ var App = (function () {
     $$('.ctab', box).forEach(function (b) { b.classList.toggle('on', b === t); });
     $$('.cpane', box).forEach(function (p) { p.hidden = p.getAttribute('data-pane') !== i; });
   }
-  /* "Other languages": one tap reveals the collapsed tabs in every code block on the page; the state is kept for the
-     rest of this page load so blocks rendered later open the same way. */
-  function toggleOthers() {
-    OTHERS_OPEN = !OTHERS_OPEN;
-    $$('.code[data-langmode]').forEach(function (box) {
-      $$('.ctab.other', box).forEach(function (b) { b.hidden = !OTHERS_OPEN; });
-      var m = $('[data-more]', box);
-      if (m) { m.setAttribute('aria-expanded', OTHERS_OPEN ? 'true' : 'false'); var ar = $('span', m); if (ar) ar.textContent = OTHERS_OPEN ? '▴' : '▾'; }
-      var on = $('.ctab.on', box);
-      if (!OTHERS_OPEN && on && on.hidden) { var first = $('.ctab:not(.other)', box); if (first) showTab(first); }
-    });
-  }
+
   function loadScript(src) {
     return new Promise(function (res, rej) {
       var s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = function () { rej(new Error('Could not load ' + src)); };
@@ -982,8 +974,7 @@ var App = (function () {
           ta2.rows = Math.min(30, s.code.split('\n').length + 2);
           pr.hidden = true; pr.parentNode.insertBefore(ta2, pr.nextSibling); t.textContent = 'Reset';
         } else { $('textarea', pane).remove(); pr.hidden = false; t.textContent = 'Edit'; }
-      } else if (t.closest('[data-more]')) toggleOthers();
-      else if (t.classList.contains('ctab')) showTab(t);
+      } else if (t.classList.contains('ctab')) showTab(t);
       else if (t.closest('.vid-play')) {
         var vb = t.closest('.vid-play'), vidId = vb.getAttribute('data-vid');
         if (!/^[A-Za-z0-9_-]{11}$/.test(vidId)) return;

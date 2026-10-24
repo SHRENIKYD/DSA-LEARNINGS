@@ -280,8 +280,8 @@ const server = http.createServer((req, res) => {
         await go('index.html');
         if (await np.$('.whero.plan, .pchips, .quick')) err('Explore all home shows planner elements');
       }
-      // 5k language mode (src/engine.js codeTabs/viewLang): a Python learner sees one code pane with an "Other languages"
-      // reveal in both modes; the picker switches live; with no chosen language every tab shows as before
+      // 5k language mode (src/engine.js codeTabs/viewLang): a Python learner sees only the Python pane in both modes (other
+      // languages are not rendered); the picker switches live; with no chosen language every tab shows as before
       if (width === 1280) {
         const vis = (root, q) => root.$$eval(q, (a) => a.filter((x) => !x.hidden).map((x) => x.textContent.trim()));
         const visPane = (box) => box.$$eval('.cpane', (a) => a.filter((x) => !x.hidden).map((x) => x.getAttribute('data-pane')));
@@ -303,33 +303,17 @@ const server = http.createServer((req, res) => {
           if (boxes.length < 2) { err('a Python learner sees no language-mode code blocks on dsa01 (' + boxes.length + ')'); continue; }
           const box = boxes[0];
           const tabs = await vis(box, '.ctab');
-          if (tabs.filter((t) => t !== 'Python' && !/^Other languages/.test(t)).length || !tabs.includes('Python') || !tabs.some((t) => /^Other languages/.test(t))) err('first code block shows tabs ' + JSON.stringify(tabs) + ', expected Python + "Other languages"');
+          if (tabs.join() !== 'Python' && tabs.filter((t) => t !== 'Python').length) err('first code block shows tabs ' + JSON.stringify(tabs) + ', expected only Python (plus neutral snippets)');
+          if (await box.$('.ctab[hidden], [data-more]')) err('language mode still renders hidden other-language tabs or an "Other languages" control');
+          if (await np.evaluate(() => [...document.querySelectorAll('.code[data-langmode] .cpane')].some((p) => /^(java|js|cpp|javascript|c\+\+)$/i.test(p.querySelector('.code-head span') ? p.querySelector('.code-head span').textContent.trim() : '')))) err('other-language panes are still in the DOM');
           const py = await tabIdx(box, 'Python');
           const panes = await visPane(box);
           if (panes.length !== 1 || panes[0] !== py) err('first code block shows pane(s) ' + panes.join() + ', expected only the Python pane (' + py + ')');
-          const more = await box.$('[data-more]');
-          if (!more) { err('first code block has no "Other languages" control'); continue; }
-          if ((await more.getAttribute('aria-expanded')) !== 'false') err('"Other languages" is not aria-expanded=false before the tap');
-          if (await box.$('.ctab.other:not([hidden])')) err('other-language tabs are visible before the tap');
           if ((await pickerValue()) !== 'python') err('language picker does not show Python for a Python route');
-          await more.focus();
-          await np.keyboard.press('Enter');
-          await np.waitForTimeout(100);
-          if ((await more.getAttribute('aria-expanded')) !== 'true') err('Enter on "Other languages" did not set aria-expanded=true');
-          const after = await vis(box, '.ctab');
-          for (const l of ['Java', 'JavaScript', 'C++']) if (!after.includes(l)) err('expanding did not reveal the ' + l + ' tab: ' + JSON.stringify(after));
-          if (await np.$('.code[data-langmode] .ctab.other[hidden]')) err('expanding one block did not expand the other code blocks on the page');
-          const java = await tabIdx(box, 'Java');
-          await (await box.$('.ctab.other:not([hidden])')).click();
-          const shown = await visPane(box);
-          if (shown.length !== 1 || shown[0] !== java) err('tapping the revealed Java tab did not switch the pane: ' + shown.join() + ' (Java is ' + java + ')');
-          await more.click();
-          if ((await more.getAttribute('aria-expanded')) !== 'false' || await box.$('.ctab.other:not([hidden])')) err('collapsing did not hide the other tabs again');
-          if ((await visPane(box)).join() !== py) err('collapsing did not fall back to the Python pane');
           // live switch via the picker: Java first, then every language
           await pickLang('Java');
           const jb = await np.$('.code[data-langmode="java"]');
-          if (!jb || (await vis(jb, '.ctab')).filter((t) => !/^Other languages/.test(t)).join() !== 'Java') err('picking Java did not switch the code blocks live');
+          if (!jb || (await vis(jb, '.ctab')).join() !== 'Java') err('picking Java did not switch the code blocks live');
           if (!(await np.evaluate(() => document.activeElement && !!document.activeElement.closest('.lang-pick')))) err('focus left the language picker after switching');
           await pickLang('Show every language');
           if (await np.$('.code[data-langmode], [data-more]')) err('"Show every language" still hides languages');

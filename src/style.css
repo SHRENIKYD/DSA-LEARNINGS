@@ -1023,3 +1023,6 @@ h1[tabindex="-1"]:focus,h2[tabindex="-1"]:focus{outline:none}
 /* language mode: the learner's language first, the other code languages behind one tab (src/engine.js codeTabs) */
 .ctab.more{color:var(--accent-fg);font-weight:500}
 .ctab.more[aria-expanded="true"]{color:var(--text)}
+
+.pp-signin{margin-top:10px;align-self:center;background:var(--paper-ink);color:var(--paper);border-color:var(--paper-ink)}
+.pp-signin svg.ic{width:18px;height:18px}

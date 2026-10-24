@@ -27,7 +27,7 @@ Keys are `java`, `python`, `js` and `cpp`; each value has the same fields as the
 
 In the browser `LessonVideo.pick(entry, lang)` (src/video.js) returns `byLang[lang]` when present, else the default (or null). The language is read from `imastery.route` (or `Learn.pref()` when loaded). `window.IM_VIDEOS[topicId]` resolves through it on every read, so lesson pages need no change and follow the learner's language. `window.IM_VIDEOS_RAW` and the Watchtower catalog keep the full `byLang` data.
 
-The Watchtower shows language-neutral tracks plus the learner's own language track by default (hiding the Java, Python, JS/TS and C++ tracks of other languages), with a "Show all languages" toggle. A card using a per-language pick carries a language badge. Learners with no chosen language see everything.
+The Watchtower shows language-neutral tracks plus the learner's own language track; the Java, Python, JS/TS, C++ and C# tracks of other languages are not rendered at all. A "Change language" link opens the route page, where picking "Show every language" brings them back. A card using a per-language pick carries a language badge. Learners with no chosen language see everything.
 
 ## Setup (once)
 

@@ -20,7 +20,7 @@
     <label class="sbox"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="vsearch" type="search" placeholder="Search landmarks, videos or channels" aria-label="Search videos" autocomplete="off"></label>
     <div class="vsel"><button type="button" class="vsel-btn" id="vtrack" aria-haspopup="listbox" aria-expanded="false" aria-label="Track"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h12M3 18h6"/></svg><span class="lbl" id="vtrackLbl"></span><svg class="ic chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><ul class="vsel-list" id="vtrackList" role="listbox" aria-label="Track" tabindex="-1" hidden></ul></div>
   </div>
-  <p class="vlangbar" id="vlangbar" hidden><span id="vlangmsg"></span> <button type="button" class="vid-open" id="vlangtoggle" aria-pressed="false"></button></p>
+  <p class="vlangbar" id="vlangbar" hidden><span id="vlangmsg"></span> <a class="vid-open" href="route.html">Change language</a></p>
   <div id="vlist" aria-live="polite"></div>
   <p class="vid-note">Videos play from YouTube when you tap them, in its privacy-enhanced player. They are picked automatically for each topic and new ones are added every day.</p>
 </main>
@@ -31,7 +31,7 @@
 (function () {
   var L = window.IM_VIDEO_LIB || { total: 0, tracks: [] }, cur = 'all', q = '';
   // Learner language (java|python|js|cpp, '' when none chosen). Language tracks of the other languages stay behind "Show all languages".
-  var LANG = LessonVideo.learnerLang(), showAll = false;
+  var LANG = LessonVideo.learnerLang(), showAll = (function () { try { return JSON.parse(localStorage.getItem('imastery.lang')) === 'all'; } catch (e) { return false; } })();
   var LANG_TRACK = { java: 'java', python: 'py', js: 'js', cpp: 'cpp' }, LANG_TRACKS = ['java', 'py', 'js', 'cpp'];
   function hiddenTrack(t) { return !!LANG && !showAll && LANG_TRACKS.indexOf(t.id) >= 0 && t.id !== LANG_TRACK[LANG]; }
   function shown() { return L.tracks.filter(function (t) { return !hiddenTrack(t); }); }
@@ -50,8 +50,6 @@
     $('#vlangbar').hidden = !hidden;
     if (!hidden) return;
     $('#vlangmsg').textContent = showAll ? 'Showing every language.' : 'Showing ' + LessonVideo.langName(LANG) + ' and language-neutral tracks.';
-    $('#vlangtoggle').textContent = showAll ? 'Show only ' + LessonVideo.langName(LANG) : 'Show all languages';
-    $('#vlangtoggle').setAttribute('aria-pressed', String(showAll));
   }
   function chips() {
     var o = OPTS.filter(function (c) { return c[0] === cur; })[0] || OPTS[0];
@@ -103,9 +101,8 @@
   });
   Journey.bar({ theme: true });
   var want = decodeURIComponent(location.hash.slice(1));
-  if (L.tracks.some(function (t) { return t.id === want; })) { cur = want; if (hiddenTrack(L.tracks.filter(function (t) { return t.id === want; })[0])) showAll = true; }
+  if (L.tracks.some(function (t) { return t.id === want; }) && !hiddenTrack(L.tracks.filter(function (t) { return t.id === want; })[0])) cur = want;
   function refresh() { counts(); langbar(); chips(); render(); }
-  $('#vlangtoggle').addEventListener('click', function () { showAll = !showAll; refresh(); });
   addEventListener('storage', function (e) { if (e.key === 'imastery.route') { LANG = LessonVideo.learnerLang(); refresh(); } });
   refresh();
 })();
