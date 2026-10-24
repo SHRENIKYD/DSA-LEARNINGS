@@ -254,6 +254,18 @@ var Auth = (function () {
 
   function clearAvatar() { return saveAvatar(null); }
 
+
+  // Sync status as an icon: cloud with a tick (synced), arrows (syncing or saving), warning (error), empty cloud (idle).
+  function syncIcon(st, cls) {
+    st = st || status;
+    var ok = '<path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4 4 0 0 1 0 9H7z"/><path d="M9 13.5l2 2 4-4"/>';
+    var busy = '<path d="M20 11a8 8 0 0 0-14.5-4.5M4 13a8 8 0 0 0 14.5 4.5"/><path d="M20 4v7h-7M4 20v-7h7"/>';
+    var bad = '<path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17.5v.5"/>';
+    var idle = '<path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4 4 0 0 1 0 9H7z"/>';
+    var d = st === 'synced' ? ok : st === 'error' ? bad : st === 'idle' ? idle : busy;
+    return '<span class="' + (cls || 'syncic') + ' ' + esc(st) + '" role="img" aria-label="' + esc(LABEL[st] || 'Sync') + '" title="' + esc(LABEL[st] || 'Sync') + '"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg></span>';
+  }
+
   function mountAccount(el) {
     if (!el) return;
     if (!enabled) { el.hidden = true; return; }
@@ -264,7 +276,7 @@ var Auth = (function () {
         return;
       }
       el.innerHTML = '<div class="acct"><span class="acct-av" aria-hidden="true">' + avatarHtml() + '</span>' +
-        '<div class="acct-tx"><div class="acct-em">' + esc(user.email || 'Signed in') + '</div><div class="acct-st ' + esc(status) + '" aria-live="polite">' + esc(LABEL[status] || '') + '</div></div>' +
+        '<div class="acct-tx"><div class="acct-em">' + esc(user.email || 'Signed in') + '</div></div>' + syncIcon(status) +
         '<button class="btn ghost acct-out" type="button">Sign out</button></div>';
       el.querySelector('.acct-out').addEventListener('click', function () { signOut().then(function () { location.reload(); }, function (e) { alert(e.message); }); });
     };
@@ -273,7 +285,7 @@ var Auth = (function () {
   }
 
   return {
-    enabled: enabled, client: client, init: init, pull: pull, push: push, changed: changed, reset: reset, signOut: signOut, deleteAccount: deleteAccount, exportData: exportData, downloadData: downloadData, mountAccount: mountAccount, avatarSrc: avatarSrc, avatarHtml: avatarHtml, setAvatar: setAvatar, clearAvatar: clearAvatar, avatarSheet: avatarSheet,
+    enabled: enabled, client: client, init: init, pull: pull, push: push, changed: changed, reset: reset, signOut: signOut, deleteAccount: deleteAccount, exportData: exportData, downloadData: downloadData, mountAccount: mountAccount, avatarSrc: avatarSrc, avatarHtml: avatarHtml, setAvatar: setAvatar, clearAvatar: clearAvatar, avatarSheet: avatarSheet, syncIcon: syncIcon,
     user: function () { return user; }, status: function () { return status; },
     on: function (fn) { listeners.push(fn); }
   };
