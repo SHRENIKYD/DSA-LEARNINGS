@@ -378,7 +378,7 @@ button svg,.btn svg{pointer-events:none}
 .vid-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 .vid-open{display:inline-block;margin-top:8px;font-size:13px}
 .vpage{min-height:100vh}
-.vmain{max-width:1100px;margin:0 auto;padding:24px 20px 48px;display:flex;flex-direction:column;gap:14px}
+.vmain{max-width:none;margin:0;padding:24px clamp(16px,2.5vw,40px) 48px;display:flex;flex-direction:column;gap:14px}
 .vmain h1{margin:0;font-family:var(--f-head);font-size:30px}
 .vcount{margin:0;color:var(--muted)}
 .vmain .sbox{max-width:520px}
@@ -428,7 +428,7 @@ h1{letter-spacing:-.8px}
 
 /* top bar */
 .jbar{position:sticky;top:0;z-index:30;background:var(--bar);border-bottom:1px solid var(--border2)}
-.jbar-in{max-width:1400px;margin:0 auto;padding:12px clamp(12px,2.5vw,24px);display:flex;align-items:center;gap:12px;min-height:68px}
+.jbar-in{max-width:none;margin:0;padding:12px clamp(12px,2vw,32px);display:flex;align-items:center;gap:12px;min-height:68px}
 .jbrand{display:flex;align-items:center;gap:10px;font-family:var(--f-head);font-weight:800;font-size:19px;color:var(--text);text-decoration:none;white-space:nowrap}
 .jlogo{width:34px;height:34px;fill:none;stroke:var(--gold);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .jnav{display:flex;gap:4px}
@@ -444,7 +444,7 @@ h1{letter-spacing:-.8px}
 .jav{width:44px;height:44px;flex:none;border-radius:50%;background:var(--gold);color:var(--on-gold);display:grid;place-items:center;font-family:var(--f-head);font-weight:800;font-size:17px;text-decoration:none}
 .jav svg.ic{width:22px;height:22px}
 .jav{overflow:hidden}.jav img{width:100%;height:100%;object-fit:cover;display:block}
-.jmain{max-width:1240px;margin:0 auto;padding:30px clamp(16px,3vw,24px) 40px;display:flex;flex-direction:column;gap:30px}
+.jmain{max-width:none;margin:0;padding:30px clamp(16px,2.5vw,40px) 40px;display:flex;flex-direction:column;gap:30px}
 #gresults{border-radius:14px}
 
 /* home */
@@ -625,7 +625,7 @@ svg.stamp.off .st-fill{opacity:0}
 .pp-side .account{margin-bottom:4px}
 
 /* watchtower */
-.vmain{max-width:1240px;padding:30px clamp(16px,3vw,24px) 48px;gap:18px}
+.vmain{max-width:none;padding:30px clamp(16px,2.5vw,40px) 48px;gap:18px}
 .vtop{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end;justify-content:space-between}
 .vtop>div{display:flex;flex-direction:column;gap:6px}
 .vmain h1{font-size:clamp(30px,4vw,44px);font-weight:800;line-height:1.05}
@@ -854,7 +854,7 @@ svg.cp-ic{width:34px;height:34px;color:var(--gold)}
 @media (prefers-reduced-motion:reduce){.skel i{animation:none;background-image:none}}
 
 /* ---------- personalized navigation: My path chip, mode toggle, onboarding, path views ---------- */
-.pathbar{max-width:1240px;margin:14px auto 0;padding:0 clamp(16px,3vw,24px)}
+.pathbar{max-width:none;margin:14px 0 0;padding:0 clamp(16px,2.5vw,40px)}
 .pathbar .pb-in{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
 .pathbar .pb-in.ban{padding:10px 12px;border:1px solid var(--border2);border-radius:14px;background:var(--panel)}
 .pb-ban{margin:0;flex:1 1 240px;font-size:14.5px}
