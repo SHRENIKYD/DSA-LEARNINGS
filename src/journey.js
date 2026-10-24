@@ -162,7 +162,7 @@ var Journey = (function () {
         var u = window.Auth && Auth.enabled ? Auth.user() : null;
         var localPic = null; try { localPic = localStorage.getItem('imastery.avatar'); } catch (e) { }
         var localOk = typeof localPic === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(localPic) && localPic.length < 60000;
-        av.innerHTML = (window.Auth && Auth.avatarHtml ? Auth.avatarHtml(icon('compass')) : (localOk ? '<img src="' + localPic + '" alt="">' : '')) || icon('compass');
+        av.innerHTML = (window.Auth && Auth.avatarHtml ? Auth.avatarHtml(icon('compass')) : (localOk ? '<img src="' + esc(localPic) + '" alt="">' : '')) || icon('compass');
         av.setAttribute('aria-label', u ? 'Your passport (' + (u.email || 'signed in') + ')' : 'Your passport');
       };
       if (window.Auth && Auth.on) Auth.on(function (k) { if (k === 'user') draw(); });

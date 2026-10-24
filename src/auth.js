@@ -192,7 +192,7 @@ var Auth = (function () {
   }
   function avatarHtml(fallback) {
     var src = avatarSrc();
-    if (src) return '<img src="' + esc(src) + '" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createTextNode(this.getAttribute(\'data-i\')))" data-i="' + esc(user ? (user.email || '?').charAt(0).toUpperCase() : '') + '">';
+    if (src) return '<img src="' + esc(src) + '" alt="' + esc(user ? (user.email || '?').charAt(0).toUpperCase() : '') + '" referrerpolicy="no-referrer">';
     if (user) return esc((user.email || '?').charAt(0).toUpperCase());
     return fallback || '';
   }
