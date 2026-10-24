@@ -218,8 +218,15 @@ const server = http.createServer((req, res) => {
         // 5i passport: route progress strip and per-route stamps
         await np.evaluate(() => localStorage.setItem('imastery.route', JSON.stringify({ id: 'pyback', lang: 'python', hours: 10, mode: 'path', onboarded: true })));
         await go('passport.html');
-        if (!(await np.$('#pRoute .rstages li'))) err('passport has no route progress strip');
-        if ((await np.$$('#pRouteStamps .pst')).length !== 7) err('passport does not show one stamp per route');
+        if (await np.evaluate(() => !!(window.Auth && Auth.enabled))) {
+          // accounts on, nobody signed in: only the sign-in card shows (no photo upload, stamps or settings for guests)
+          if (!(await np.$('#pHead .pp-signin'))) err('signed-out passport has no sign-in button');
+          if (await np.$('#pAvBtn')) err('signed-out passport offers the profile photo sheet');
+          if (await np.evaluate(() => [...document.querySelectorAll('#pRoute, #pCollection, .pp-side')].some((e) => !e.hidden))) err('signed-out passport still shows stamps or settings');
+        } else {
+          if (!(await np.$('#pRoute .rstages li'))) err('passport has no route progress strip');
+          if ((await np.$$('#pRouteStamps .pst')).length !== 7) err('passport does not show one stamp per route');
+        }
       }
       // 5j planner screens (src/planner.js): home in My path mode, today.html, plan.html
       if (width === 1280) {
