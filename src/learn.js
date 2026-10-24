@@ -10,7 +10,7 @@ var Learn = (function () {
   var LANG_NAMES = { java: 'Java', python: 'Python', js: 'JavaScript / TypeScript', cpp: 'C++' };
 
   /* ---------- preferences ----------
-     imastery.route = {id, lang, hours, mode:'path'|'all', onboarded, known:[langs], updatedAt}. It syncs with progress (auth.js, prefs column).
+     imastery.route = {id, lang, hours, mode:'path'|'all', onboarded, known:[langs], updatedAt, interviewDate:'YYYY-MM-DD'|'', restDay:0-6, placement}. It syncs with progress (auth.js, prefs column).
      The legacy imastery.dest (journey.js ROLES) is migrated once into id when the mapping is obvious, then removed. */
   var DEST_MAP = { backend: 'javaback', frontend: 'frontend', ml: 'aiapp' };
   function migrateDest() {
@@ -28,7 +28,9 @@ var Learn = (function () {
     var hours = [5, 10, 20, 40].indexOf(+p.hours) >= 0 ? +p.hours : 10;
     var chosen = !!p.id && PATHS.ROUTES.some(function (r) { return r.id === p.id; });
     return { id: R.id, lang: lang, hours: hours, chosen: chosen, mode: chosen && p.mode === 'path' ? 'path' : 'all', onboarded: !!p.onboarded,
-      known: Array.isArray(p.known) ? p.known.filter(function (k) { return LANG_NAMES[k]; }) : [], updatedAt: +p.updatedAt || 0 };
+      known: Array.isArray(p.known) ? p.known.filter(function (k) { return LANG_NAMES[k]; }) : [], updatedAt: +p.updatedAt || 0,
+      interviewDate: /^\d{4}-\d{2}-\d{2}$/.test(p.interviewDate || '') ? p.interviewDate : '', restDay: p.restDay >= 0 && p.restDay <= 6 ? +p.restDay : 0,
+      placement: ['beginner', 'lang', 'langdsa'].indexOf(p.placement) >= 0 ? p.placement : '' };
   }
   function setPref(p) {
     p = p || {};
@@ -36,7 +38,10 @@ var Learn = (function () {
     var next = { id: p.id || (cur.chosen ? cur.id : undefined), lang: p.lang || cur.lang, hours: p.hours || cur.hours,
       mode: p.mode === 'path' || p.mode === 'all' ? p.mode : (raw.mode === 'path' ? 'path' : 'all'),
       onboarded: p.onboarded !== undefined ? !!p.onboarded : !!raw.onboarded,
-      known: Array.isArray(p.known) ? p.known.slice() : cur.known, updatedAt: Date.now() };
+      known: Array.isArray(p.known) ? p.known.slice() : cur.known, updatedAt: Date.now(),
+      interviewDate: p.interviewDate !== undefined ? (/^\d{4}-\d{2}-\d{2}$/.test(p.interviewDate || '') ? p.interviewDate : '') : cur.interviewDate,
+      restDay: p.restDay !== undefined && p.restDay !== null && p.restDay >= 0 && p.restDay <= 6 ? +p.restDay : cur.restDay,
+      placement: p.placement !== undefined ? (['beginner', 'lang', 'langdsa'].indexOf(p.placement) >= 0 ? p.placement : '') : cur.placement };
     var R = PATHS.ROUTES.filter(function (r) { return r.id === (next.id || cur.id); })[0];
     if (R && R.langs.indexOf(next.lang) < 0) next.lang = R.langs[0];
     set('imastery.route', next);
@@ -230,7 +235,8 @@ var Learn = (function () {
     var dlg = document.createElement('dialog');
     dlg.className = 'qdlg';
     dlg.setAttribute('aria-labelledby', 'qdlgT');
-    var h = '<form method="dialog" class="qdlg-in"><div class="qdlg-head"><div><span class="kicker">' + esc(opts.kicker || 'Readiness check') + '</span><h2 id="qdlgT">' + esc(opts.title) + '</h2></div><button class="btn ghost" value="cancel" type="submit" aria-label="Close">✕</button></div>' +
+    var h = '<form method="dialog" class="qdlg-in"><div class="qdlg-head"><div><span class="kicker">' + esc(opts.kicker || 'Readiness check') + '</span><h2 id="qdlgT">' + esc(opts.title) + '</h2></div>' +
+      (opts.timer ? '<span class="qtimer mono" role="timer" aria-live="off" aria-label="Time left"></span>' : '') + '<button class="btn ghost" value="cancel" type="submit" aria-label="Close">✕</button></div>' +
       '<p class="muted">' + esc(opts.intro || ('Answer ' + qs.length + ' questions. ' + Math.round(opts.pass * 100) + '% or more passes.')) + '</p><ol class="qlist">';
     // Show options in a random order; each input keeps its original index, and explanations naming "option B" follow the shown letters.
     var LET = 'ABCDEFGH', pos = [];
@@ -245,12 +251,21 @@ var Learn = (function () {
     h += '</ol><div class="qdlg-foot"><p class="qres" role="status" aria-live="polite"></p><button class="btn primary lg" type="button" data-qsubmit>Check my answers</button><button class="btn lg" type="submit" value="done" data-qclose hidden>Close</button></div></form>';
     dlg.innerHTML = h;
     document.body.appendChild(dlg);
-    dlg.addEventListener('close', function () { dlg.remove(); });
+    var tick = null, ends = opts.timer ? Date.now() + opts.timer * 60000 : 0, tEl = dlg.querySelector('.qtimer');
+    function showTime() {
+      var left = Math.max(0, ends - Date.now()), m = Math.floor(left / 60000), sec = Math.floor(left % 60000 / 1000);
+      if (tEl) { tEl.textContent = m + ':' + (sec < 10 ? '0' : '') + sec; tEl.classList.toggle('low', left < 5 * 60000); }
+      if (left <= 0) { clearInterval(tick); tick = null; var sb = dlg.querySelector('[data-qsubmit]'); if (sb && !sb.hidden) { dlg.querySelector('.qres').textContent = 'Time is up. Checking your answers.'; sb.click(); } }
+    }
+    if (opts.timer) { showTime(); tick = setInterval(showTime, 1000); }
+    dlg.addEventListener('close', function () { if (tick) clearInterval(tick); dlg.remove(); });
     dlg.querySelector('[data-qsubmit]').addEventListener('click', function () {
-      var right = 0;
+      var right = 0, results = [];
+      if (tick) { clearInterval(tick); tick = null; }
       qs.forEach(function (q, i) {
         var pick = dlg.querySelector('input[name="q' + i + '"]:checked'), ok = pick && +pick.value === q.answer;
         if (ok) right++;
+        results.push({ q: q, ok: !!ok });
         var fs = dlg.querySelectorAll('fieldset')[i], ex = fs.querySelector('.qexp');
         fs.classList.toggle('ok', !!ok); fs.classList.toggle('bad', !ok);
         ex.hidden = false;
@@ -260,6 +275,7 @@ var Learn = (function () {
       var pct = right / qs.length, pass = pct >= opts.pass;
       dlg.querySelector('.qres').innerHTML = '<b>' + right + ' / ' + qs.length + '</b> · ' + (pass ? (opts.passText || 'Passed.') : (opts.failText || 'Not yet. The missed topics were added to your review list.'));
       if (pass && opts.onPass) opts.onPass();
+      if (opts.onResult) opts.onResult(Math.round(pct * 100), results);
       this.hidden = true;
       var cl = dlg.querySelector('[data-qclose]'); cl.hidden = false; cl.focus();
     });
@@ -279,7 +295,8 @@ var Learn = (function () {
       quizDialog({ kicker: 'Readiness check', title: 'Ready for ' + (m ? m.title : mid) + '?', questions: qs, pass: 0.8,
         intro: 'Questions from the modules this one builds on. Score 80% or more to mark them as known and go straight in.',
         passText: 'You know the groundwork. The prerequisites are marked as tested out.',
-        onPass: function () { var D = done(); reqs.forEach(function (r) { D['@tested:' + r] = 1; }); set('imastery.done', D); if (window.Auth) Auth.changed(); if (onDone) onDone(); } });
+        onPass: function () { var D = done(); reqs.forEach(function (r) { D['@tested:' + r] = 1; }); set('imastery.done', D); if (window.Auth) Auth.changed(); if (onDone) onDone(); },
+        onResult: function (pct, results) { recordScores(results); } });
     }, function () { alert('Could not load the readiness questions. Check your connection and try again.'); });
   }
   /* Mixed checkpoint at the end of a zone: questions from every live module of that zone, without topic labels. */
@@ -287,7 +304,15 @@ var Learn = (function () {
     quizDialog({ kicker: 'Mixed checkpoint', title: zoneName + ' checkpoint', questions: shuffle(questions, track.length * 17 + zone.charCodeAt(0)).slice(0, 12), pass: 0.8,
       intro: 'Twelve mixed questions from across this zone, without topic labels. Score 80% or more to pass; it counts towards mastering each module here.',
       passText: 'Checkpoint passed. Modules in this zone can now count as mastered.',
-      onPass: function () { var D = done(); D['@cp:' + track + '-' + zone] = 1; set('imastery.done', D); if (window.Auth) Auth.changed(); if (onDone) onDone(); } });
+      onPass: function () { var D = done(); D['@cp:' + track + '-' + zone] = 1; set('imastery.done', D); if (window.Auth) Auth.changed(); if (onDone) onDone(); },
+      onResult: function (pct, results) { recordScores(results); } });
+  }
+  /* Quiz results feed the planner: one '@score:<mod>' per module the questions came from (Planner.recordScore). */
+  function recordScores(results) {
+    if (!window.Planner || !Planner.recordScore) return;
+    var by = {};
+    (results || []).forEach(function (r) { var m = r.q && r.q.mod; if (!m) return; by[m] = by[m] || [0, 0]; by[m][1]++; if (r.ok) by[m][0]++; });
+    Object.keys(by).forEach(function (m) { Planner.recordScore(m, Math.round(by[m][0] / by[m][1] * 100)); });
   }
 
   return { pref: pref, setPref: setPref, mode: mode, setMode: setMode, relevance: relevance, onPath: onPath, pathTracks: pathTracks, prefChanged: prefChanged, status: status, projectState: projectState, setCriterion: setCriterion, missing: missing, unlocks: unlocks, routeView: routeView, href: href, meta: meta,

@@ -181,3 +181,16 @@ A new `tools/paths-check.js` runs in CI:
 6. C++: implementations and systems projects.
 7. Path selector, workload-based schedules, readiness checks, review queue, mastery states.
 8. Cloud & DevOps track (it can run alongside steps 4–6, since it does not depend on the solution work).
+
+## Planner (phase 2): adaptive path, Today and Plan screens
+
+`src/planner.js` (`Planner`, loads after `learn.js`; shipped as `assets/planner.js` to the site and the app) derives a daily plan from the stored state only, without loading modules:
+
+- `Planner.effective()` — the path for the current preferences. With an interview date (`imastery.route.interviewDate`) it keeps the core, then adds recommended and optional modules while they fit the hours left (15% of them, at most one week, are reserved for mock rounds). Recommended modules of a stage are fast-tracked once the stage's last core module is satisfied with a riddle-gate score of 85% or more.
+- `Planner.next()` — the one Continue item: an inserted review or extra practice (a riddle gate scored under 60%) first, then the first unfinished step of the effective path, then a stage project.
+- `Planner.today()` — the day's list: due spaced reviews, inserted reviews/practice, a mock round in the last 7 days before the interview, then lessons in parts of at most 40 minutes with a 3-problem practice block. The budget is `hours × 60 / 6` (the rest day, `imastery.route.restDay`, is off), plus catch-up for days missed this week, capped at 1.5×. Items planned earlier the same day stay listed, struck through, once done (`imastery.today`, device-only).
+- `Planner.weeks()` — the forecast per stage; `Planner.placement(level)` marks the language modules (`lang`) and the first six DSA modules (`langdsa`) as `@tested` after the UI confirms, with `Learn.readiness` as the "prove it" alternative; `Planner.mock()` runs a 12-question, 45-minute timed set from the path's quiz files (`window.IM_QUIZFILES`, emitted by `tools/build.js`).
+
+Scores live in `imastery.done` (synced): `@score:<mod>` (riddle gate: share of riddles right at the first try; readiness and checkpoint quizzes: per module tested), `@rev:<mod>` (inserted review done), `@mock:<date>`. Activity days live in `imastery.days` (device-only) for the streak and catch-up. Every planner write dispatches `im:plan`.
+
+Screens: the home in My path mode (greeting, chips, Next card, path progress, track cards that open the next module of the track, quick actions), `today.html` and `plan.html` (hours, interview date, rest day, placement, Weeks forecast, mock round), the "Today" header link and screen results in the home search. Explore all renders exactly as before. Tests: `node tools/planner-test.js` (unit), section 5j of `tools/smoke-test.js`, and the `today plan` / `plan screen` targets of `tools/a11y-test.js`.

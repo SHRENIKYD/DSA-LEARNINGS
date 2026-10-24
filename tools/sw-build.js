@@ -39,7 +39,7 @@ const version = h.digest('hex').slice(0, 12);
 
 // Precache the shell: the non-lesson pages, assets/, vendor/, icons, and the exact URLs (with ?v=) those pages reference.
 // Lesson (track) pages and the lazy module files under assets/m/ are saved when visited, so offline never shows a half-loaded lesson.
-const SHELL_PAGES = ['index.html', 'route.html', 'videos.html', 'passport.html', 'login.html', 'privacy.html', 'offline.html'];
+const SHELL_PAGES = ['index.html', 'today.html', 'plan.html', 'route.html', 'videos.html', 'passport.html', 'login.html', 'privacy.html', 'offline.html'];
 const pre = new Set(['./', 'manifest.webmanifest']);
 for (const f of files) if ((/^(assets|vendor|icons)\//.test(f) && !/^assets\/m\//.test(f)) || SHELL_PAGES.includes(f)) pre.add(f);
 for (const p of SHELL_PAGES) {

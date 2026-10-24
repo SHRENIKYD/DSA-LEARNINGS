@@ -143,7 +143,7 @@ var Journey = (function () {
   function bar(opts) {
     opts = opts || {};
     var here = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
-    var page = here === 'videos.html' ? 'videos' : here === 'passport.html' ? 'passport' : here === 'route.html' ? 'route' : here === 'index.html' || here === '' ? 'home' : 'land';
+    var page = here === 'videos.html' ? 'videos' : here === 'passport.html' ? 'passport' : here === 'route.html' ? 'route' : here === 'today.html' ? 'today' : here === 'plan.html' ? 'plan' : here === 'index.html' || here === '' ? 'home' : 'land';
     Array.prototype.forEach.call(document.querySelectorAll('.jnav a'), function (a) {
       var on = a.getAttribute('data-page') === page;
       a.classList.toggle('on', on);

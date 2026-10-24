@@ -221,6 +221,65 @@ const server = http.createServer((req, res) => {
         if (!(await np.$('#pRoute .rstages li'))) err('passport has no route progress strip');
         if ((await np.$$('#pRouteStamps .pst')).length !== 7) err('passport does not show one stamp per route');
       }
+      // 5j planner screens (src/planner.js): home in My path mode, today.html, plan.html
+      if (width === 1280) {
+        const rest = (new Date().getDay() + 3) % 7;
+        await np.evaluate((rd) => localStorage.setItem('imastery.route', JSON.stringify({ id: 'pyback', lang: 'python', hours: 10, mode: 'path', onboarded: true, known: [], updatedAt: 1, restDay: rd })), rest);
+        await go('index.html');
+        if (!(await np.$('.whero.plan .nextstop.path[data-next]'))) err('My path home has no planner Next card');
+        if (!(await np.$('.pchips .chip'))) err('My path home has no streak/minutes chips');
+        if (!(await np.$('a.seetoday[href="today.html"]'))) err('My path home has no "See today\'s plan" link');
+        const cards = await np.$$eval('.pathtracks [data-track]', (a) => a.map((x) => x.getAttribute('data-track') + ':' + x.getAttribute('href')));
+        if (!cards.length || !cards.every((c) => /^[a-z]+:[a-z]+\.html#[a-z]+\d+$/.test(c))) err('track cards do not open the next module in the track: ' + cards.join());
+        if (!(await np.$('.quick a[href="plan.html"]')) || !(await np.$('.quick [data-jump]'))) err('My path home has no quick actions');
+        if (!(await np.$('.jnav a[data-page="today"]'))) err('header has no Today link');
+        await np.fill('#gsearch', 'plan');
+        await np.waitForTimeout(400);
+        if (!(await np.$('#gresults .res.screen[href="plan.html"]'))) err('search does not list the Plan screen');
+        await np.fill('#gsearch', '');
+        // today.html lists items that link into their sections
+        await go('today.html');
+        const items = await np.$$eval('.titem', (a) => a.map((x) => x.querySelector('a.t').getAttribute('href')));
+        if (!items.length || !items.every((h) => /^[a-z]+\.html#[a-z]+\d+-(t|p)\d+$/.test(h))) err('today.html items do not link to lesson sections: ' + items.join());
+        if (!/\d+ minutes planned/.test(await np.textContent('#pgH'))) err('today.html heading does not show the minute budget');
+        if (!(await np.$('.nextstop.path[data-next]'))) err('today.html has no Continue card');
+        // plan.html: hours and interview date change the forecast; placement asks to confirm
+        await go('plan.html');
+        const hero0 = await np.textContent('#plHero');
+        await np.click('[data-hours="20"]');
+        await np.waitForTimeout(250);
+        const hero1 = await np.textContent('#plHero');
+        if (hero0 === hero1 || !/~\d+ weeks/.test(hero1)) err('changing hours did not update the forecast: ' + hero0 + ' -> ' + hero1);
+        if ((await np.getAttribute('[data-hours="20"]', 'aria-pressed')) !== 'true') err('hours button is not aria-pressed after the click');
+        if ((await ls('imastery.route')).hours !== 20) err('hours were not stored');
+        const d = new Date(); d.setDate(d.getDate() + 21);
+        const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        await np.fill('#plDate', iso);
+        await np.waitForTimeout(250);
+        const hero2 = await np.textContent('#plHero');
+        if (!/21 days/.test(hero2)) err('interview date did not update the forecast: ' + hero2);
+        if ((await ls('imastery.route')).interviewDate !== iso) err('interview date was not stored');
+        if (!(await np.$('.plan.weeks .ico.mock'))) err('interview mode shows no mock rounds in the forecast');
+        await np.click('[data-place="lang"]');
+        await np.waitForTimeout(200);
+        if (!(await np.evaluate(() => { const g = document.getElementById('placeDlg'); return !!(g && g.open && g.querySelector('[data-pl-ok]') && g.querySelector('[data-pl-prove]')); }))) err('placement did not ask to confirm (with a readiness alternative)');
+        const before = Object.keys((await ls('imastery.done')) || {}).filter((k) => k.startsWith('@tested:')).length;
+        await np.click('[data-pl-cancel]');
+        if (Object.keys((await ls('imastery.done')) || {}).filter((k) => k.startsWith('@tested:')).length !== before) err('cancelling placement changed progress');
+        await np.click('[data-place="lang"]');
+        await np.click('[data-pl-ok]');
+        await np.waitForTimeout(300);
+        const after = Object.keys((await ls('imastery.done')) || {}).filter((k) => k.startsWith('@tested:')).length;
+        if (after <= before) err('confirmed placement marked nothing as tested');
+        if ((await ls('imastery.route')).placement !== 'lang') err('placement level was not stored');
+        if (!(await np.$('#mock [data-mock]'))) err('plan.html has no mock round button');
+        // Explore all: today/plan without a chosen route ask for a path; the home never shows planner elements
+        await np.evaluate(() => localStorage.setItem('imastery.route', JSON.stringify({ onboarded: true, mode: 'all' })));
+        await go('today.html');
+        if (!(await np.$('.needpath [data-onb]'))) err('today.html without a path has no Pick a path button');
+        await go('index.html');
+        if (await np.$('.whero.plan, .pchips, .quick')) err('Explore all home shows planner elements');
+      }
       // existing learners with progress get the banner, never the dialog
       const ectx = await browser.newContext({ viewport: { width, height: 800 }, serviceWorkers: 'block' });
       await ectx.addInitScript(() => { if (!localStorage.getItem('imastery.done')) localStorage.setItem('imastery.done', JSON.stringify({ 'dsa01-t0': 1 })); });

@@ -780,6 +780,13 @@ var App = (function () {
       (m.interview || []).forEach(function (q) { INDEX.push({ t: stripTags(q.q), c: 'Interview Q · ' + stripTags(m.title), h: '#' + m.id + '-iv', s: stripTags(q.q).toLowerCase() }); });
     });
   }
+  /* Screens the home search can jump to (the "/" shortcut already focuses the box). */
+  var SCREENS = [['Home', 'index.html', 'World map'], ['Today', 'today.html', 'Your plan for today'], ['Plan', 'plan.html', 'Hours, interview date, forecast'], ['Passport', 'passport.html', 'Stamps and settings'], ['Your route', 'route.html', 'Stages and schedule'], ['Watchtower', 'videos.html', 'Video library']];
+  function screenHits(q, words) {
+    if (!HOME) return '';
+    return SCREENS.filter(function (sc) { var t = sc[0].toLowerCase(); return words.every(function (w) { return t.indexOf(w) >= 0 || sc[2].toLowerCase().indexOf(w) >= 0; }); })
+      .map(function (sc) { return '<a class="res screen" href="' + sc[1] + '">' + esc(sc[0]) + '<small>Screen · ' + esc(sc[2]) + '</small></a>'; }).join('');
+  }
   function searchInto(q, index, res, nav) {
     lastSearch = [q, index, res, nav];
     q = q.trim().toLowerCase();
@@ -794,9 +801,10 @@ var App = (function () {
       return { it: it, sc: sc };
     }).filter(Boolean).sort(function (a, b) { return b.sc - a.sc; }).slice(0, 80);
     var re = new RegExp('(' + words.map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('|') + ')', 'gi');
-    res.innerHTML = hits.length ? hits.map(function (x) {
+    var scr = screenHits(q, words);
+    res.innerHTML = scr + (hits.length ? hits.map(function (x) {
       return '<a class="res" href="' + x.it.h + '">' + esc(x.it.t).replace(re, '<mark>$1</mark>') + '<small>' + esc(x.it.c) + '</small></a>';
-    }).join('') : '<div class="empty" style="padding:10px">No matches yet.</div>';
+    }).join('') : (scr ? '' : '<div class="empty" style="padding:10px">No matches yet.</div>'));
     res.hidden = false; if (nav) nav.hidden = true;
   }
 
@@ -814,6 +822,7 @@ var App = (function () {
     var nOn = hits.filter(function (x) { return x.on; }).length, shown = (searchOnly ? hits.filter(function (x) { return x.on; }) : hits).slice(0, 80), more = hits.length - nOn;
     var re = new RegExp('(' + words.map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('|') + ')', 'gi');
     var h = '<div class="sfilter"><button type="button" class="schip" data-pathonly aria-pressed="' + searchOnly + '">My path only</button><span class="muted">' + nOn + ' on your path' + (more ? ' · ' + more + ' elsewhere' : '') + '</span></div>';
+    h += screenHits(q, words);
     h += shown.length ? shown.map(function (x) {
       return '<a class="res' + (x.on ? '' : ' off') + '" href="' + x.it.h + '">' + esc(x.it.t).replace(re, '<mark>$1</mark>') + '<small>' + esc(x.it.c) + ' · <span class="' + (x.on ? 'son' : 'soff') + '">' + (x.on ? 'On your path' : 'Other lands') + '</span></small></a>';
     }).join('') : '<div class="empty" style="padding:10px">' + (more && searchOnly ? 'Nothing on your path matches.' : 'No matches yet.') + '</div>';
@@ -966,6 +975,7 @@ var App = (function () {
         }
       } else if (t.closest('.opt')) {
         var b = t.closest('.opt'), mb2 = b.closest('.mcq'), ans = +mb2.getAttribute('data-ans'), pick = +b.getAttribute('data-opt');
+        if (!mb2._tried) { mb2._tried = true; mb2._first = pick === ans; }
         if (pick !== ans && window.Learn && TRACK) { var sec = mb2.closest('section[id]'); if (sec) Learn.remember(sec.id, current ? current.id : sec.id.split('-')[0], (current ? stripTags(current.title) : '') + (/-quiz$/.test(sec.id) ? ' · riddle gate' : '')); }
         $$('.opt', mb2).forEach(function (o) { o.classList.remove('right', 'wrong'); });
         b.classList.add(pick === ans ? 'right' : 'wrong');
@@ -988,6 +998,15 @@ var App = (function () {
     if (on && window.Learn && current) { Learn.passed(id); if (/-quiz$/.test(id)) Learn.schedule(id, current.id, stripTags(current.title) + ' · riddle gate'); }
     store.set('imastery.done', DONE);
     if (window.Auth) Auth.changed();
+    /* The planner reads the riddle gate as a quiz score: the share of riddles answered right at the first try. */
+    if (on && window.Planner) {
+      if (/-quiz$/.test(id)) {
+        var gate = document.getElementById(id), qs = gate ? $$('.mcq', gate) : [];
+        if (qs.length) Planner.recordScore(id.replace(/-quiz$/, ''), qs.filter(function (q) { return q._first; }).length / qs.length * 100);
+      }
+      Planner.touch();
+      DONE = store.get('imastery.done', {}) || {};
+    }
     $$('[data-done="' + id + '"]').forEach(function (cb) { setBox(cb, on); if (on) { cb.parentNode.classList.remove('pop'); void cb.parentNode.offsetWidth; cb.parentNode.classList.add('pop'); } });
     $$('a[href="#' + id + '"]').forEach(function (a) { a.classList.toggle('ok', on); });
     if (TRACK) updateProgress();
@@ -1008,7 +1027,7 @@ var App = (function () {
   }
   function resetSection(el) {
     el._end = false;
-    $$('.mcq', el).forEach(function (q) { q._ok = false; $$('.opt', q).forEach(function (o) { o.classList.remove('right', 'wrong'); }); $('.mcq-fb', q).hidden = true; });
+    $$('.mcq', el).forEach(function (q) { q._ok = false; q._tried = false; q._first = false; $$('.opt', q).forEach(function (o) { o.classList.remove('right', 'wrong'); }); $('.mcq-fb', q).hidden = true; });
     $$('details', el).forEach(function (d) { d._seen = false; });
     $$('details.sol, details.iv', el).forEach(function (d) { d.open = false; });
   }
@@ -1096,9 +1115,12 @@ var App = (function () {
     $('#main').addEventListener('click', function (e) {
       var b = e.target.closest('[data-route]');
       if (b && window.Learn) { Learn.setPref({ id: b.getAttribute('data-route') }); renderHome(); var d = $('#dest [data-route="' + b.getAttribute('data-route') + '"]'); if (d) d.focus(); }
+      var j = e.target.closest('[data-jump]');
+      if (j) { var gs = $('#gsearch'); if (gs) { gs.focus(); gs.select(); } }
     });
     renderHome();
     mountPathbar();
+    window.addEventListener('im:plan', function () { if (PM()) renderHome(); });
     if (window.Learn && window.PATHS) {
       var p0 = Learn.pref(), fresh = !p0.chosen && !p0.onboarded && !Object.keys(DONE).length && Learn.mode() === 'all' && !/[?&]view=all\b/.test(location.search);
       if (fresh || location.hash === '#pick') openOnboarding(fresh, null);
@@ -1121,7 +1143,10 @@ var App = (function () {
     var PMODE = PM(), RV = PMODE ? Learn.routeView() : null, ON = {};
     if (PMODE) Learn.pathTracks().forEach(function (t) { ON[t.track] = 1; });
     var nextMod = PMODE ? RV.next.filter(function (n) { return n.kind !== 'project' && n.meta; })[0] : null;
-    var h = '<section class="whero"><div class="wh-l"><span class="kicker">' + (PMODE ? RV.pctHours + '% of your path <small class="kick-all">· ' + J.pct(S.done, S.items) + '% of the world</small>' : S.done ? J.pct(S.done, S.items) + '% of the world explored' : 'A new traveller arrives') + '</span>' +
+    var h = '';
+    if (PMODE && window.Planner) h = planHeroHtml(J, S, R0, trackBy, last) + planHomeHtml(trackBy);
+    else {
+    h = '<section class="whero"><div class="wh-l"><span class="kicker">' + (PMODE ? RV.pctHours + '% of your path <small class="kick-all">· ' + J.pct(S.done, S.items) + '% of the world</small>' : S.done ? J.pct(S.done, S.items) + '% of the world explored' : 'A new traveller arrives') + '</span>' +
       '<h1>' + (S.done ? 'Welcome back, traveller' : 'Your journey starts on Foundation Isle') + '</h1>' +
       '<p>' + lands + ' lands, ' + S.planned + ' places, ' + S.landmarks.toLocaleString('en-US') + ' landmarks. Every lesson is a stop on the map; finish it and the path lights up.</p>';
     if (nextMod) {
@@ -1135,6 +1160,7 @@ var App = (function () {
     }
     h += '</div>' + J.atlasHtml(S, R0, trackBy, last) + '</section>';
     if (PMODE) h += pathHomeHtml(trackBy);
+    }
 
     var mid = last && last.id && M[last.id] ? last.id : 'dsa01', tid = last && last.id && M[last.id] ? last.track : 'dsa', c = M[mid], steps = [];
     var tix = last && last.id === mid ? last.topic || 0 : 0, num = last && last.id === mid ? last.num : 1;
@@ -1230,7 +1256,7 @@ var App = (function () {
     if (!window.Learn || !window.PATHS || $('#pathbar')) return;
     var pb = document.createElement('div');
     pb.id = 'pathbar';
-    if (HOME) { pb.className = 'pathbar'; $('#main').parentNode.insertBefore(pb, $('#main')); }
+    if (HOME || PAGE) { pb.className = 'pathbar'; $('#main').parentNode.insertBefore(pb, $('#main')); }
     else { var st = $('.side-top'); if (!st) return; pb.className = 'pathbar side'; st.insertBefore(pb, $('.pwrap', st)); }
     drawPathbar();
     pb.addEventListener('click', function (e) {
@@ -1245,6 +1271,7 @@ var App = (function () {
   function prefChanged() {
     drawPathbar();
     if (HOME) { renderHome(); return; }
+    if (PAGE) { PAGE(); return; }
     if (!TRACK) return;
     if (current) { var keep = location.hash, y = window.scrollY; current = null; route(); if (location.hash !== keep) location.hash = keep; window.scrollTo(0, y); }
     else { $('#main').innerHTML = trackDashHtml(); updateProgress(); }
@@ -1375,10 +1402,161 @@ var App = (function () {
   }
   var searchOnly = true, lastSearch = null;
 
+  /* ---------- planner screens: home in My path mode, today.html, plan.html (Planner, src/planner.js) ----------
+     Explore all never reaches this code: renderHome keeps its pre-planner markup in that mode. */
+  var PAGE = null;
+  var KIND_TAG = { review: 'REV', practice: 'PRC', lesson: 'LRN', project: 'DO', mock: 'MOCK' };
+  function greeting() { var hr = new Date().getHours(); return hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening'; }
+  function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
+  function nextCardHtml(n, big) {
+    if (!n) return '<div class="nextstop path done"><span class="kicker">Path complete</span><b>Everything on your path is done</b><span>Pick extensions on your route plan or choose a new goal.</span><span class="sail"><a href="route.html">Open your route ›</a></span></div>';
+    var mins = n.kind === 'project' ? Math.round(n.minutes / 60) + ' h' : n.minutes + ' min';
+    return '<a class="nextstop path" href="' + esc(n.href) + '" data-next="' + esc(n.id) + '"><span class="kicker">' + (n.kind === 'review' ? 'Review first' : n.kind === 'practice' ? 'Practice first' : n.kind === 'project' ? 'Stage project' : 'Next on your path') + '</span><b>' + esc(n.title) + '</b><span>' + esc(n.why) + '</span><span class="sail">' + ICONS.play + 'Continue · ' + mins + '</span></a>';
+  }
+  function chipsHtml(T, dl) {
+    var st = Planner.streak(), rev = T.items.filter(function (x) { return x.kind === 'review' && !x.done; }).length;
+    return '<div class="pchips" role="list"><span class="chip" role="listitem">' + (st ? '🔥 ' + plural(st, 'day') + ' streak' : 'Start a streak today') + '</span>' +
+      '<span class="chip" role="listitem">' + (T.rest ? 'Rest day' : T.minutes + ' min today') + '</span>' +
+      (rev ? '<span class="chip" role="listitem">' + plural(rev, 'review') + ' due</span>' : '') +
+      (dl !== null ? '<span class="chip" role="listitem">' + (dl === 0 ? 'Interview today' : plural(dl, 'day') + ' to interview') + '</span>' : '') + '</div>';
+  }
+  function fitPill(W) {
+    if (W.daysLeft === null) return '';
+    return W.fits ? '<span class="pill good">fits the date</span>' : '<span class="pill bad">tight · ' + Math.ceil(Planner.effective().usedHours - W.budgetHours) + ' h over</span>';
+  }
+  function planHeroHtml(J, S, R0, trackBy, last) {
+    var p = Learn.pref(), R = routeOf(p.id), n = Planner.next(), T = Planner.today(), dl = Planner.daysLeft(), P = Planner.progress();
+    return '<section class="whero plan"><div class="wh-l"><span class="kicker">' + greeting() + ' <small class="kick-all">· ' + esc(R.name) + ' · ' + P.pct + '% of your path</small></span>' +
+      '<h1>' + (P.done || S.done ? 'Keep the streak going' : 'Let’s begin') + '</h1>' + chipsHtml(T, dl) + nextCardHtml(n) +
+      '<a class="btn ghost seetoday" href="today.html">See today’s plan ›</a></div>' + J.atlasHtml(S, R0, trackBy, last) + '</section>';
+  }
+  /* Home in My path mode: progress and forecast, the path's tracks (tap → next module in that track), quick actions. */
+  function planHomeHtml(trackBy) {
+    var PT = Learn.pathTracks(), W = Planner.weeks(), P = Planner.progress(), T = Planner.today(), n = Planner.next(), D = store.get('imastery.done', {}) || {};
+    var todo = T.items.filter(function (x) { return !x.done; }).length;
+    var h = '<section class="jcard pathhome" aria-labelledby="phH"><div class="jrow"><h2 id="phH">Your path</h2><a href="route.html">Full route ›</a></div>' +
+      '<div class="pprog"><span><b>' + P.pct + '%</b> of required modules</span><span class="muted">~' + plural(W.weeks, 'week') + ' left' + (W.daysLeft !== null ? ' · ' : '') + fitPill(W) + '</span></div><div class="jbar-p c-violet"><i style="width:' + P.pct + '%"></i></div>' +
+      (W.fast ? '<p class="muted sm">Fast track: ' + plural(W.fast, 'recommended module') + ' skipped after a strong score.</p>' : '') +
+      (W.trimmed ? '<p class="muted sm">' + plural(W.trimmed, 'module') + ' moved after the interview to fit the date. <a href="plan.html">Change the plan ›</a></p>' : '') +
+      '<div class="jrow"><h3 class="ph-sub">On your path · ' + plural(PT.length, 'track') + '</h3><span class="muted">' + (TRACKS.length - PT.length) + ' other lands</span></div><div class="pathtracks">' + PT.map(function (t) {
+        var tr = trackBy[t.track], pc = t.required ? Math.round(t.done / t.required * 100) : 0, cur = n && n.track === t.track;
+        var nx = t.mods.filter(function (id) { return !Learn.status(id, D).satisfied; })[0];
+        return '<a class="ptrack' + (cur ? ' cur' : '') + '" data-track="' + t.track + '" href="' + (nx ? Learn.href(nx) : t.track + '.html') + '" aria-label="' + esc((tr ? tr.title : t.track) + ': ' + t.done + ' of ' + t.required + ' done' + (nx ? ', continue with ' + (Learn.meta(nx) || {}).title : ', complete')) + '"><b>' + esc(tr ? tr.title : t.track) + '</b><span class="jbar-p c-violet"><i style="width:' + pc + '%"></i></span><span class="mono">' + t.done + '/' + t.required + '</span>' +
+          '<small class="muted">' + (cur ? 'you are here' : nx ? 'next: ' + esc((Learn.meta(nx) || {}).title) : 'complete on your path') + '</small></a>';
+      }).join('') + '</div>' +
+      '<div class="quick"><a href="today.html"><span class="n">' + todo + '</span>Today’s items</a><a href="plan.html"><span class="n">' + W.hoursLeft + 'h</span>Left on path</a><button type="button" data-jump aria-keyshortcuts="/"><span class="n">/</span>Jump to…</button></div>' +
+      routeCardHtml() + '</section>';
+    return h;
+  }
+  function needPathHtml(what) {
+    return '<section class="jcard needpath"><h1 id="pgH" tabindex="-1">' + esc(what) + ' needs a path</h1><p class="muted">Pick a goal and the planner lays out lessons, reviews and practice for you. Nothing is locked.</p>' +
+      '<div class="row"><button type="button" class="btn primary" data-onb aria-haspopup="dialog">Pick a path</button><a class="btn ghost" href="index.html">Back to the map</a></div></section>';
+  }
+  function pagePrep(fn) {
+    chrome();
+    PAGE = fn;
+    $('#main').addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('button');
+      if (!b) return;
+      if (b.hasAttribute('data-onb')) openOnboarding(false, b);
+      else if (b.hasAttribute('data-revdone')) { Planner.completeReview(b.getAttribute('data-revdone')); toast('Review done. Moving on.', null); }
+      else if (b.hasAttribute('data-mock')) startMock(b);
+    });
+    window.addEventListener('im:plan', function () { fn(true); });
+    fn(false);
+    mountPathbar();
+  }
+  function startMock(b) {
+    var was = b.textContent; b.disabled = true; b.textContent = 'Loading questions…';
+    Planner.mock(function (pct) { toast('Mock round recorded: ' + pct + '%.', null); }).then(function () { b.disabled = false; b.textContent = was; }, function () { b.disabled = false; b.textContent = was; toast('Could not load the questions. Check your connection and try again.', null); });
+  }
+  function refocus(refocusHeading) { if (refocusHeading) { var hd = $('#pgH'); if (hd) hd.focus(); } }
+  /* today.html: the day's list in planner order; items link to their section and strike through when done. */
+  function todayPage() { pagePrep(renderToday); }
+  function renderToday(refocusHeading) {
+    var main = $('#main');
+    main.removeAttribute('aria-busy');
+    if (!window.Planner || !Learn.pref().chosen) { main.innerHTML = needPathHtml('Today’s plan'); refocus(refocusHeading); return; }
+    var p = Learn.pref(), R = routeOf(p.id), T = Planner.today(), n = Planner.next(), W = Planner.weeks(), P = Planner.progress(), dl = Planner.daysLeft();
+    var h = '<section class="tp-head"><span class="kicker">Today · ' + esc(R.name) + '</span><h1 id="pgH" tabindex="-1">' + (T.rest ? 'Rest day' : T.minutes + ' minutes planned') + '</h1>' + chipsHtml(T, dl) + '</section>';
+    h += nextCardHtml(n);
+    h += '<section class="jcard tlist" aria-labelledby="tlH"><div class="jrow"><h2 id="tlH">Today’s plan</h2><span class="pill ' + (T.missed ? 'warn' : 'good') + '">' + (T.rest ? 'rest day' : T.missed ? 'catching up ' + plural(T.missed, 'day') : 'on schedule') + '</span></div>';
+    if (!T.items.length) h += '<p class="muted">' + (T.rest ? 'Nothing is planned on your rest day. Due reviews would still appear here.' : 'Nothing to plan: your path is complete.') + '</p>';
+    else h += '<ol class="plan">' + T.items.map(function (x) {
+      var act = x.kind === 'mock' && !x.done ? '<button type="button" class="btn sm" data-mock>Start</button>' : (x.id.indexOf('rev:') === 0 || x.id.indexOf('xp:') === 0) && !x.done ? '<button type="button" class="btn sm ghost" data-revdone="' + esc(x.mod) + '" aria-label="Mark ' + esc(x.title) + ' done">Done</button>' : '';
+      return '<li class="titem k-' + x.kind + (x.done ? ' done' : '') + '"><span class="ico" aria-hidden="true">' + KIND_TAG[x.kind] + '</span><a class="t" href="' + esc(x.href) + '">' + (x.done ? '<s>' : '') + esc(x.title) + (x.done ? '</s> <span class="sr-only">(done)</span>' : '') + '<small>' + esc(x.why) + '</small></a><span class="min">' + x.minutes + ' min</span>' + act + '</li>';
+    }).join('') + '</ol>';
+    h += '</section>';
+    h += '<section class="jcard"><div class="pprog"><span><b>' + P.pct + '%</b> of required modules</span><span class="muted">' + W.hoursLeft + ' h left · ~' + plural(W.weeks, 'week') + ' at ' + p.hours + ' h/wk ' + fitPill(W) + '</span></div><div class="jbar-p c-violet"><i style="width:' + P.pct + '%"></i></div>' +
+      (W.trimmed || W.mockHours ? '<p class="muted sm">' + (W.trimmed ? plural(W.trimmed, 'module') + ' moved after the interview. ' : '') + (W.mockHours ? Math.round(W.mockHours) + ' h of mocks reserved.' : '') + '</p>' : '') +
+      '<a class="btn line-v" href="plan.html">Change hours, date or rest day ›</a></section>';
+    main.innerHTML = h;
+    refocus(refocusHeading);
+  }
+  /* plan.html: hours, interview date, rest day, placement (confirm first, or prove it with a readiness check), forecast, mock round. */
+  var DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  var PLACE = [['beginner', 'Beginner', 'Start from the first module.'], ['lang', 'Knows the language', 'Skip the language basics.'], ['langdsa', 'Knows language + DSA basics', 'Skip the basics and the first 6 DSA modules.']];
+  function planPage() { pagePrep(renderPlan); }
+  function renderPlan(refocusHeading) {
+    var main = $('#main');
+    main.removeAttribute('aria-busy');
+    if (!window.Planner || !Learn.pref().chosen) { main.innerHTML = needPathHtml('Your plan'); refocus(refocusHeading); return; }
+    var p = Learn.pref(), R = routeOf(p.id), W = Planner.weeks(), E = Planner.effective(), dl = W.daysLeft, D = store.get('imastery.done', {}) || {};
+    var active = document.activeElement, keep = active && main.contains(active) ? (active.id ? '#' + active.id : active.getAttribute('data-hours') ? '[data-hours="' + active.getAttribute('data-hours') + '"]' : active.getAttribute('data-place') ? '[data-place="' + active.getAttribute('data-place') + '"]' : null) : null;
+    var h = '<section class="tp-head"><span class="kicker">Plan · ' + esc(R.name) + '</span><h1 id="pgH" tabindex="-1">Your plan</h1><p class="muted">Tune your pace and the path re-plans itself. Quiz scores come from the riddle gates and checkpoints you pass.</p></section>';
+    h += '<section class="jcard" aria-labelledby="plSetH"><h2 id="plSetH">Time</h2><div class="rp-row">' +
+      '<div class="rp-field"><span id="plHoursL">Hours per week</span><div class="rp-hours" role="group" aria-labelledby="plHoursL">' + [5, 10, 20, 40].map(function (w) { return '<button type="button" class="rp-h' + (w === p.hours ? ' on' : '') + '" data-hours="' + w + '" aria-pressed="' + (w === p.hours) + '">' + w + '</button>'; }).join('') + '</div></div>' +
+      '<label class="rp-field" for="plDate">Interview date<input type="date" id="plDate" value="' + esc(p.interviewDate) + '" min="' + Planner.ymd(new Date()) + '"></label>' +
+      '<label class="rp-field" for="plRest">Rest day<select id="plRest">' + DAYS.map(function (d, i) { return '<option value="' + i + '"' + (i === p.restDay ? ' selected' : '') + '>' + d + '</option>'; }).join('') + '</select></label>' +
+      (p.interviewDate ? '<button type="button" class="btn ghost" id="plClear">Clear the date</button>' : '') + '</div>' +
+      '<p class="muted sm" id="plNote" role="status">' + (dl === null ? 'No interview date: the forecast assumes ' + p.hours + ' h a week with ' + DAYS[p.restDay] + 's off.' : (dl === 0 ? 'Your interview is today.' : plural(dl, 'day') + ' to go: ' + Math.round(W.budgetHours) + ' h of study available after ' + Math.round(W.mockHours) + ' h of mocks.')) + '</p></section>';
+    h += '<section class="jcard" aria-labelledby="plPlaceH"><h2 id="plPlaceH">Placement</h2><p class="muted">Already know some of this? Mark it as known, or prove it with a readiness check. Marking never deletes progress.</p><div class="place">' +
+      PLACE.map(function (x) { var n = Planner.placementMods(x[0]).filter(function (id) { return !D['@tested:' + id] && !Learn.status(id, D).satisfied; }).length; return '<button type="button" class="btn' + (p.placement === x[0] ? ' on' : '') + '" data-place="' + x[0] + '" aria-pressed="' + (p.placement === x[0]) + '"><b>' + x[1] + '</b><small>' + x[2] + (x[0] !== 'beginner' ? ' ' + plural(n, 'module') + ' to mark.' : '') + '</small></button>'; }).join('') + '</div></section>';
+    var hero = dl === null ? '~' + plural(W.weeks, 'week') + ' to finish' : (W.fits ? 'Fits: ' : 'Won’t fit: ') + plural(dl, 'day') + ', ' + Math.round(W.budgetHours) + ' h available';
+    h += '<section class="jcard forecast" aria-labelledby="plWkH" id="forecast"><div class="jrow"><h2 id="plWkH">Weeks</h2>' + fitPill(W) + '</div>' +
+      '<div class="fc-hero"><span class="kicker">Forecast</span><b id="plHero">' + esc(hero) + '</b><span class="muted">' + W.hoursLeft + ' h of lessons left at ' + p.hours + ' h/wk.' + (dl !== null && !W.fits && W.hoursNeeded ? ' Raise hours to ' + W.hoursNeeded + '/wk, or accept a shorter path (core only).' : '') + '</span></div>' +
+      '<ol class="plan weeks">' + W.stages.map(function (s) { return '<li><span class="ico" aria-hidden="true">W' + s.byWeek + '</span><span class="t">' + esc(s.name) + '<small>' + plural(s.modules.length, 'module') + ' · ' + s.hours + ' h</small></span><span class="min">by wk ' + s.byWeek + '</span></li>'; }).join('') +
+      (dl !== null && dl > 7 ? '<li><span class="ico mock" aria-hidden="true">MOCK</span><span class="t">Mock rounds<small>Last 7 days before the interview</small></span><span class="min">' + Math.round(W.mockHours) + ' h</span></li>' : '') + '</ol>' +
+      (E.trimmed.length ? '<details class="trimmed"><summary>' + plural(E.trimmed.length, 'module') + ' moved after the interview</summary><ul>' + E.trimmed.map(function (x) { return '<li><a href="' + Learn.href(x.id) + '">' + esc(x.title) + '</a> <small class="muted">' + x.hours + ' h · ' + (x.kind === 'rec' ? 'recommended' : 'optional') + '</small></li>'; }).join('') + '</ul></details>' : '') +
+      (E.fast.length ? '<p class="muted sm">Fast track: ' + E.fast.map(function (x) { return esc(x.title); }).join(', ') + ' skipped after a strong score on this stage. Open any of them from its land to add it back.</p>' : '') + '</section>';
+    var mocks = Object.keys(D).filter(function (k) { return k.indexOf('@mock:') === 0; }).sort();
+    h += '<section class="jcard" aria-labelledby="plMockH" id="mock"><h2 id="plMockH">Mock round</h2><p class="muted">Twelve mixed questions from the modules on your path, 45 minutes on the clock. Planned daily in the last week before your interview; run one any time.</p>' +
+      '<div class="row"><button type="button" class="btn primary" data-mock>Start a mock round</button>' + (mocks.length ? '<span class="muted">Last: ' + D[mocks[mocks.length - 1]] + '% on ' + esc(mocks[mocks.length - 1].slice(6)) + ' · ' + plural(mocks.length, 'round') + ' so far</span>' : '') + '</div></section>';
+    main.innerHTML = h;
+    $('#plDate').addEventListener('change', function () { Learn.setPref({ interviewDate: this.value || '' }); });
+    $('#plRest').addEventListener('change', function () { Learn.setPref({ restDay: +this.value }); });
+    var clr = $('#plClear'); if (clr) clr.addEventListener('click', function () { Learn.setPref({ interviewDate: '' }); });
+    $$('[data-hours]', main).forEach(function (b) { b.addEventListener('click', function () { Learn.setPref({ hours: +b.getAttribute('data-hours') }); }); });
+    $$('[data-place]', main).forEach(function (b) { b.addEventListener('click', function () { placementDialog(b.getAttribute('data-place'), b); }); });
+    if (keep && $(keep, main)) $(keep, main).focus(); else refocus(refocusHeading);
+  }
+  function placementDialog(level, opener) {
+    var D = store.get('imastery.done', {}) || {}, mods = Planner.placementMods(level).filter(function (id) { return !D['@tested:' + id]; }), proof = Planner.placementProof(level);
+    var d = $('#placeDlg');
+    if (!d) { d = document.createElement('dialog'); d.id = 'placeDlg'; d.className = 'onb'; d.setAttribute('aria-labelledby', 'placeH'); document.body.appendChild(d); }
+    var name = PLACE.filter(function (x) { return x[0] === level; })[0][1];
+    d.innerHTML = '<form method="dialog" class="onb-f"><h2 id="placeH">' + (level === 'beginner' ? 'Start as a beginner?' : 'Mark ' + plural(mods.length, 'module') + ' as known?') + '</h2>' +
+      (level === 'beginner' ? '<p class="muted">Nothing is skipped. Modules you already marked as known stay known; untick them from their land if you want them back on the plan.</p>' :
+        '<p class="muted">' + name + ': these count as tested out, exactly as if you had passed a readiness check. Your progress is never deleted.</p><ul class="place-list">' + mods.slice(0, 12).map(function (id) { var m = Learn.meta(id); return '<li>' + esc(m ? m.title : id) + '</li>'; }).join('') + (mods.length > 12 ? '<li class="muted">and ' + (mods.length - 12) + ' more</li>' : '') + '</ul>') +
+      '<div class="onb-acts"><button type="button" class="btn ghost" data-pl-cancel>Cancel</button><span class="row">' + (proof && level !== 'beginner' ? '<button type="button" class="btn" data-pl-prove>Prove it: readiness check</button>' : '') + '<button type="button" class="btn primary" data-pl-ok>' + (level === 'beginner' ? 'Start from the beginning' : 'Mark as known') + '</button></span></div></form>';
+    function close() { if (d.open) { if (d.close) d.close(); else d.removeAttribute('open'); } if (opener && opener.focus) opener.focus(); }
+    d.onclick = function (e) {
+      var t = e.target.closest && e.target.closest('button');
+      if (!t) return;
+      if (t.hasAttribute('data-pl-cancel')) close();
+      else if (t.hasAttribute('data-pl-ok')) { var n = Planner.placement(level); close(); toast(level === 'beginner' ? 'Starting from the beginning. Your plan is updated.' : plural(n, 'module') + ' marked as known. Your plan is re-planned.', null); }
+      else if (t.hasAttribute('data-pl-prove')) { close(); Learn.setPref({ placement: level }); Learn.readiness(proof, Learn.pref().lang, function () { toast('You proved it. The prerequisites are marked as known.', null); }); }
+    };
+    d.oncancel = function (e) { e.preventDefault(); close(); };
+    if (d.showModal) { if (!d.open) d.showModal(); } else d.setAttribute('open', '');
+    var f = $('[data-pl-ok]', d); if (f) f.focus();
+  }
+
   /* ---------- account sync ---------- */
   function reloadDone() {
     DONE = store.get('imastery.done', {}) || {};
     if (HOME) { renderHome(); return; }
+    if (PAGE) { PAGE(); return; }
     if (!TRACK) return;
     $$('[data-done]').forEach(function (cb) { setBox(cb, !!DONE[cb.getAttribute('data-done')]); });
     $$('.toc a').forEach(function (a) { var id = (a.getAttribute('href') || '').slice(1); a.classList.toggle('ok', !!DONE[id]); });
@@ -1392,6 +1570,6 @@ var App = (function () {
     Auth.init();
   }
 
-  return { track: track, loadedModule: loadedModule, home: home, renderPart: renderPart, highlight: highlight, dedent: dedent, PART: PART, items: items };
+  return { track: track, loadedModule: loadedModule, home: home, today: todayPage, plan: planPage, renderPart: renderPart, highlight: highlight, dedent: dedent, PART: PART, items: items };
 })();
 

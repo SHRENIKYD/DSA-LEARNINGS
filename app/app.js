@@ -235,6 +235,7 @@
 
   /* ---------- screens ---------- */
   function home() {
+    if (planOn()) return planHome();
     var last = lsGet('imastery.last', null), l = S.level, h = hud();
     if (play.settings.bit) h += '<div class="row top">' + BIT + '<div class="speech">' + bitSays() + '</div></div>';
     h += '<a class="card lvcard" href="#badges"><div class="row sb"><b>Level ' + l.level + ' · ' + esc(l.name) + '</b><span class="mono xp">' + l.into + ' / ' + l.need + ' XP</span></div>' + bar(l.into / l.need) + '</a>';
@@ -261,6 +262,83 @@
     page('home', h, { nav: true });
   }
 
+  /* ---------- advanced navigation: smart Home, Today and Plan (My path mode only) ---------- */
+  var planSel = null, planNote = '';
+  function planApi() { return !!(window.Planner && typeof Planner.next === 'function' && typeof Planner.today === 'function' && typeof Planner.weeks === 'function' && typeof Planner.effective === 'function'); }
+  function planOn() { return pathOn() && Learn.pref().chosen && planApi(); }
+  function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
+  function dayLeftVal() { var d = typeof Planner.daysLeft === 'function' ? Planner.daysLeft() : null; return d === undefined || d === null || isNaN(d) ? null : d; }
+  function fitPill(w) { return w && w.fits === false ? '<span class="pill bad">tight</span>' : '<span class="pill good">fits date</span>'; }
+  function planHome() {
+    var n = Planner.next(), td = Planner.today(), w = Planner.weeks(), rv = Learn.routeView(), dl = dayLeftVal(), hr = now().getHours();
+    var revs = (td.items || []).filter(function (x) { return x.kind === 'review'; }).length;
+    var h = '<div class="greet"><div><span class="kick">' + (hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening') + '</span><h1 id="homeH" tabindex="-1">' + (S.totals.doneItems ? 'Keep the streak going' : 'Let’s begin') + '</h1></div><span class="muted sm">' + esc(rv.sch.plan.route.name) + '</span></div>';
+    h += '<div class="chips" role="group" aria-label="Today at a glance"><span class="chip">🔥 ' + plural(S.streak.days, 'day') + ' streak</span><span class="chip">' + (td.minutes || 0) + ' min today</span>' + (revs ? '<span class="chip">' + plural(revs, 'review') + ' due</span>' : '') + (dl !== null ? '<span class="chip">' + plural(dl, 'day') + ' to interview</span>' : '') + '</div>';
+    if (n) h += '<div class="card hero"><span class="kick">Next on your path</span><b class="ttl">' + esc(n.title) + '</b><span class="muted sm">' + esc(n.why || '') + '</span><a class="b3" id="homeContinue" href="' + esc(n.href) + '">▶ Continue · ' + (n.minutes || 40) + ' min</a><a class="b3 ghost" href="#today">See today’s plan</a></div>';
+    else h += '<div class="card hero"><span class="kick">Path complete</span><b class="ttl">Everything on your path is done</b><span class="muted sm">Pick extensions or a new goal.</span><a class="b3" href="#me/path">CHOOSE A GOAL</a></div>';
+    h += '<section class="card" aria-label="Path progress"><div class="row sb"><span class="kick">Path progress</span><a href="#route">Full route ›</a></div><div class="row sb"><span><b>' + rv.pctHours + '%</b> of required</span><span class="muted sm">~' + plural(w.weeks, 'wk') + ' left' + (dl !== null ? ' · ' + fitPill(w) : '') + '</span></div>' + bar(rv.pctHours / 100) + '</section>';
+    var pts = Learn.pathTracks(), others = TRACKS.length - pts.length;
+    h += '<div class="row sb"><span class="kick">On your path · ' + plural(pts.length, 'track') + '</span><span class="muted sm">' + others + ' other lands</span></div><div class="tracks">' + pts.map(function (pi) {
+      var t = trackById(pi.track), nx = pi.mods.filter(function (id) { var m = S.totals.modules[id]; return !(m && m.complete); })[0], cur = n && n.mod && pi.mods.indexOf(n.mod) >= 0;
+      return '<a class="card tk' + (cur ? ' cur' : '') + '" href="#module/' + esc(nx || pi.mods[0]) + '"><b>' + esc(t ? t.short : pi.track) + '</b>' + bar(pi.required ? pi.done / pi.required : 0) + '<span class="muted sm">' + pi.done + ' of ' + pi.required + (cur ? ' · you are here' : '') + '</span></a>';
+    }).join('') + '</div>';
+    h += '<div class="quick"><a class="card" href="#today"><b class="n">' + (td.items || []).length + '</b><small>Today’s items</small></a><a class="card" href="#plan"><b class="n">' + Math.round(w.hoursLeft || 0) + 'h</b><small>Hours left</small></a><a class="card" href="#search"><b class="n">/</b><small>Jump to…</small></a></div>';
+    h += '<div class="journey-shortcuts"><a class="card" href="#world"><span>◈</span><b>Explore islands</b><small>Find your next lesson</small></a><a class="card" href="#play"><span>▶</span><b>Play a game</b><small>Warm up your brain</small></a></div>';
+    page('home', h, { nav: true });
+    focusTop();
+  }
+  function todayView() {
+    var td = Planner.today(), items = td.items || [], dl = dayLeftVal(), w = Planner.weeks(), rv = Learn.routeView();
+    var h = head('Today', '#home') + '<div class="row sb"><span class="kick">' + (td.minutes || 0) + ' min planned</span><span class="pill ' + (td.catchUp ? 'warn' : 'good') + '">' + (td.catchUp ? 'catching up' : 'on schedule') + '</span></div>';
+    var ICON = { review: 'REV', practice: 'PRC', lesson: 'LRN', project: 'PRJ', mock: 'MOCK' };
+    if (!items.length) h += '<div class="card"><b class="ttl">Nothing planned today</b><span class="muted sm">Enjoy the rest, or pick something from your path.</span><a class="b3" href="#route">OPEN YOUR ROUTE</a></div>';
+    else h += '<ol class="plan">' + items.map(function (x) { return '<li class="' + (x.done ? 'done' : '') + '"><a href="' + esc(x.href) + '"><span class="ico" aria-hidden="true">' + (ICON[x.kind] || 'DO') + '</span><span class="t">' + (x.done ? '<s>' + esc(x.title) + '</s><span class="sr"> (done)</span>' : esc(x.title)) + '<span class="s">' + esc(x.why || '') + '</span></span><span class="min">' + (x.minutes || 0) + ' min</span></a></li>'; }).join('') + '</ol>';
+    h += '<section class="card" aria-label="Progress"><div class="row sb"><span><b>' + rv.pctHours + '%</b> of required path</span><span class="muted sm">' + Math.round(w.hoursLeft || 0) + ' h left · ~' + plural(w.weeks, 'wk') + '</span></div>' + bar(rv.pctHours / 100) + (dl !== null ? '<div class="row wrap">' + fitPill(w) + '</div>' : '') + '</section><a class="b3 ghost" href="#plan">ADJUST YOUR PLAN</a>';
+    page('home', h); focusTop();
+  }
+  var PLACE = { beginner: ['Complete beginner', 'Nothing is marked. Start from the first module.'], lang: ['I know my language', 'Marks the language modules as already known.'], langdsa: ['Language and basic DSA', 'Marks the language modules and the first 6 DSA modules as already known.'] };
+  function planScreen() {
+    var p = Learn.pref(), w = Planner.weeks(), dl = dayLeftVal(), e = Planner.effective(), days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    var h = head('Plan', '#me') + '<p class="muted sm">Tune your pace. Quiz scores come from real quizzes, never from this screen.</p>';
+    h += '<section class="card pathsw" aria-labelledby="plSet"><span class="kick" id="plSet">Your schedule</span>' +
+      '<label class="rt-field" for="plHours"><span class="kick">Hours per week</span></label><select id="plHours">' + [5, 10, 20, 40].map(function (x) { return '<option value="' + x + '"' + (x === p.hours ? ' selected' : '') + '>' + x + ' h</option>'; }).join('') + '</select>' +
+      '<label class="rt-field" for="plDate"><span class="kick">Interview date (optional)</span></label><input type="date" id="plDate" value="' + esc(p.interviewDate || '') + '">' +
+      '<label class="rt-field" for="plRest"><span class="kick">Rest day</span></label><select id="plRest">' + days.map(function (d, i) { return '<option value="' + i + '"' + (i === (p.restDay || 0) ? ' selected' : '') + '>' + d + '</option>'; }).join('') + '</select></section>';
+    h += '<section class="card" id="plForecast" aria-labelledby="plFc"><span class="kick" id="plFc">Weeks forecast</span><b class="ttl">' + (dl === null ? '~' + plural(w.weeks, 'week') + ' to finish' : (w.fits === false ? 'Won’t fit: ' : 'Fits: ') + plural(dl, 'day') + ' to go') + '</b><span class="muted sm">' + Math.round(w.hoursLeft || 0) + ' h of lessons left at ' + p.hours + ' h per week.</span>' +
+      (dl !== null ? '<div class="row wrap">' + fitPill(w) + (e.trimmed && e.trimmed.length ? '<span class="pill warn">' + plural(e.trimmed.length, 'module') + ' moved after the interview</span>' : '') + (w.mockHours ? '<span class="pill">' + Math.round(w.mockHours) + ' h of mocks reserved</span>' : '') + '</div>' : '') +
+      (e.fast && e.fast.length ? '<span class="muted sm">Fast track: ' + plural(e.fast.length, 'recommended module') + ' skipped after a high score.</span>' : '') +
+      '<ul class="stagelist">' + (w.stages || []).map(function (s) { return '<li><b>' + esc(s.name) + '</b><span class="muted sm"> ' + plural((s.modules && s.modules.length !== undefined ? s.modules.length : s.modules) || 0, 'module') + ' · ' + Math.round(s.hours || 0) + ' h</span></li>'; }).join('') + '</ul></section>';
+    h += '<section class="card" aria-labelledby="plPlace"><span class="kick" id="plPlace">Placement</span><span class="muted sm">Already know some of this? Tell us, and we skip it. You can prove it instead.</span><div class="chips" role="group" aria-label="What do you already know">' +
+      Object.keys(PLACE).map(function (k) { return '<button type="button" class="chip' + (planSel === k ? ' on' : '') + '" data-place="' + k + '" aria-pressed="' + (planSel === k) + '">' + PLACE[k][0] + '</button>'; }).join('') + '</div>';
+    if (planSel) {
+      var pm = typeof Planner.placementMods === 'function' ? Planner.placementMods(planSel) : null, pf = typeof Planner.placementProof === 'function' ? Planner.placementProof(planSel) : (Planner.next() || {}).mod, n = pf ? { mod: pf } : null;
+      h += '<div class="confirm" role="group" aria-label="Confirm placement"><b>' + esc(PLACE[planSel][0]) + '</b><span class="muted sm">' + esc(PLACE[planSel][1]) + (pm ? ' That is ' + plural(pm.length, 'module') + '.' : '') + ' This is saved to your progress.</span><div class="acts"><button type="button" class="b3" id="plConfirm">YES, MARK THEM KNOWN</button><button type="button" class="b3 ghost" id="plCancel">CANCEL</button></div>' +
+        (n && window.Learn && typeof Learn.readiness === 'function' ? '<button type="button" class="b3 ghost" id="plProve">PROVE IT WITH A READINESS CHECK</button>' : '') + '</div>';
+    }
+    h += '<div id="plNote" class="sm" role="status" aria-live="polite">' + esc(planNote) + '</div></section>';
+    h += '<section class="card" aria-labelledby="plMock"><span class="kick" id="plMock">Mock round</span><span class="muted sm">12 mixed questions from your path, 45 minutes.</span><button type="button" class="b3" id="plMockBtn">START A MOCK ROUND</button></section>';
+    page('me', h); focusTop();
+    function changed(partial, id) { setPrefQuiet(partial); planNote = ''; planScreen(); var f = $(id); if (f && f.focus) f.focus(); }
+    $('#plHours').addEventListener('change', function () { changed({ hours: +this.value }, '#plHours'); });
+    $('#plDate').addEventListener('change', function () { changed({ interviewDate: /^\d{4}-\d{2}-\d{2}$/.test(this.value) ? this.value : '' }, '#plDate'); });
+    $('#plRest').addEventListener('change', function () { changed({ restDay: +this.value }, '#plRest'); });
+    $('#scr').addEventListener('click', function (ev) {
+      var b = ev.target && ev.target.closest ? ev.target.closest('[data-place]') : null; if (!b) return;
+      var k = b.getAttribute('data-place'); planSel = planSel === k ? null : k; planNote = ''; planScreen(); var f = $('[data-place="' + k + '"]'); if (f && f.focus) f.focus();
+    });
+    var cf = $('#plConfirm');
+    if (cf) {
+      cf.addEventListener('click', function () {
+        var lv = planSel, c = typeof Planner.placement === 'function' ? Planner.placement(lv) : 0; planSel = null;
+        if (lv !== 'beginner') setPrefQuiet({ placement: lv });
+        refresh(true); planNote = c ? 'Marked ' + plural(c, 'module') + ' as known.' : 'Nothing new to mark.'; planScreen();
+      });
+      $('#plCancel').addEventListener('click', function () { planSel = null; planNote = ''; planScreen(); var f = $('#plPlace'); if (f) f.focus(); });
+      var pv = $('#plProve');
+      if (pv) pv.addEventListener('click', function () { var pf = typeof Planner.placementProof === 'function' ? Planner.placementProof(planSel) : (Planner.next() || {}).mod; if (pf) Learn.readiness(pf, Learn.pref().lang, function () { refresh(true); planNote = 'Readiness check passed. The groundwork is marked as known.'; planScreen(); }); });
+    }
+    $('#plMockBtn').addEventListener('click', function () { if (typeof Planner.mock === 'function') Planner.mock(); else { planNote = 'Mock rounds are not available in this build.'; var s = $('#plNote'); if (s) s.textContent = planNote; } });
+  }
   function map(tid) {
     var t = trackById(tid) || trackById(play.track) || TRACKS[0];
     play.track = t.id; save();
@@ -415,7 +493,7 @@
     if (Reader.available()) h += '<div class="list"><div class="set">Read aloud<span class="muted">Tap 🔊 on any lesson or game</span></div><div class="set">Reading speed<span class="muted">' + (play.settings.tts.rate || 1) + '× · change it in the player</span></div></div>';
     h += '<div class="list"><div class="set">Interview Mastery v' + esc(window.IM_VERSION || '') + '<span class="muted">' + S.totals.doneItems + ' / ' + S.totals.items + ' items done</span></div>' + '<a class="set" href="privacy.html">Privacy policy<span class="muted">›</span></a><button class="set" type="button" id="dlData">Download my data<span class="muted">JSON</span></button><div id="dlOut" class="sm muted" role="status" aria-live="polite"></div>' + (u ? '<button class="set" type="button" id="signOut">Sign out</button><a class="set danger" href="#delete">Delete account<span class="muted">›</span></a>' : '') + '</div>';
     h += '<div class="list"><button class="set" type="button" id="checkUpdates">Check for updates<span class="muted">↗</span></button><p class="sm muted" id="updateStatus" role="status" aria-live="polite"></p></div>';
-    h += '<div class="list"><a class="set" href="#progress">Your progress ›</a><a class="set" href="#passport">Stamp passport ›</a><a class="set" href="#welcome">Meet Bit & replay the introduction ›</a></div>';
+    h += '<div class="list">' + (planOn() ? '<a class="set" href="#plan">Plan ›</a>' : '') + '<a class="set" href="#progress">Your progress ›</a><a class="set" href="#passport">Stamp passport ›</a><a class="set" href="#welcome">Meet Bit & replay the introduction ›</a></div>';
     page('me', h);
     wirePathSwitcher(); wireNav();
     if (sub === 'path') { var sw = $('#pathSwitch'); if (sw) { if (sw.scrollIntoView) sw.scrollIntoView({ block: 'start' }); sw.focus(); } }
@@ -594,6 +672,8 @@
       case 'expedition': return expeditionView();
       case 'progress': return progressView();
       case 'route': return routeScreen();
+      case 'today': return planOn() ? todayView() : home();
+      case 'plan': return planOn() ? planScreen() : home();
       case 'welcome': return welcomeView();
       case 'module': return moduleView(p[1]);
       case 'arena': return arena(p[1], p[2]);
