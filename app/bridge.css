@@ -12,3 +12,19 @@ body{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}
 .im-listen{display:inline-grid;place-items:center;width:44px;height:44px;border-radius:14px;border:1px solid var(--border2);background:var(--raised);color:var(--text);font-size:18px;cursor:pointer;padding:0}
 .im-listen:focus-visible,.im-tts button:focus-visible,.im-tts select:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 .jnav a[data-page="passport"],.jav{display:none!important}
+
+/* Native lesson chrome stays anchored while only the lesson scrolls. */
+html{max-width:100%;overflow-x:hidden}
+body{max-width:100%;overflow-x:hidden;padding-top:calc(64px + env(safe-area-inset-top,0px))}
+body>.jbar{display:none}
+#app{width:100%;max-width:100%;min-width:0}
+#main{width:0;min-width:0;max-width:100%;overflow-wrap:anywhere;padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))}
+#main .card,#main .box,#main section{min-width:0;max-width:100%}
+#main pre,#main .tbl-wrap{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+#main img,#main video{max-width:100%;height:auto}
+.im-lesson-header{position:fixed;inset:0 0 auto;z-index:60;display:flex;align-items:center;gap:12px;min-height:64px;padding:calc(8px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) 8px max(12px,env(safe-area-inset-left,0px));background:var(--bar);border-bottom:1px solid var(--border2)}
+.im-lesson-header a,.im-lesson-header button{flex:none;min-width:44px;min-height:44px;display:grid;place-items:center;border:1px solid var(--border2);border-radius:12px;background:var(--panel);color:var(--gold);text-decoration:none;font:inherit}
+.im-lesson-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 16px var(--f-head)}
+#sidebar{top:calc(64px + env(safe-area-inset-top,0px));height:calc(100vh - 144px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px))}
+.im-bar{max-width:100%;gap:6px}.im-back{padding:0 12px}.im-pill{padding:6px 8px}
+@media(max-width:380px){.im-pill.lv{display:none}.im-back{padding:0 8px}.im-bar{font-size:12px}}

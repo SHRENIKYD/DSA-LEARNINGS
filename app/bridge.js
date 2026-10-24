@@ -15,6 +15,26 @@
   var S = Play.summary(lsGet('imastery.done', {}) || {}, play, SI, TRACKS, new Date());
   lsSet('imastery.play', play);
 
+  var header = document.createElement('header'); header.className = 'im-lesson-header';
+  var back = document.createElement('a'); back.href = 'index.html#map/' + tid; back.textContent = '‹'; back.setAttribute('aria-label', 'Back to learning path');
+  var heading = document.createElement('span'); heading.className = 'im-lesson-title'; heading.textContent = document.title.replace(/ — .*/, '');
+  var menu = document.createElement('button'); menu.type = 'button'; menu.textContent = '☰'; menu.setAttribute('aria-label', 'Lesson menu'); menu.setAttribute('aria-controls', 'sidebar'); menu.setAttribute('aria-expanded', 'false');
+  menu.addEventListener('click', function () { var side = document.getElementById('sidebar'); if (!side) return; var open = side.classList.toggle('open'); menu.setAttribute('aria-expanded', String(open)); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { var side = document.getElementById('sidebar'); if (side) side.classList.remove('open'); menu.setAttribute('aria-expanded', 'false'); } });
+  window.addEventListener('hashchange', function () { var side = document.getElementById('sidebar'); if (side) side.classList.remove('open'); menu.setAttribute('aria-expanded', 'false'); });
+  header.appendChild(back); header.appendChild(heading); header.appendChild(menu); document.body.appendChild(header);
+  function containTables() {
+    var main = document.getElementById('main'); if (!main) return;
+    Array.prototype.forEach.call(main.querySelectorAll('table'), function (table) {
+      if (table.closest('.tbl-wrap')) return;
+      var wrap = document.createElement('div'); wrap.className = 'tbl-wrap'; wrap.tabIndex = 0; wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', 'Scrollable lesson table');
+      table.parentNode.insertBefore(wrap, table); wrap.appendChild(table);
+    });
+  }
+  containTables();
+  var lessonMain = document.getElementById('main');
+  if (lessonMain && typeof MutationObserver !== 'undefined') new MutationObserver(containTables).observe(lessonMain, { childList: true, subtree: true });
+
   var bar = document.createElement('nav');
   bar.className = 'im-bar'; bar.setAttribute('aria-label', 'Play mode');
   bar.innerHTML = '<a class="im-back" href="index.html#map/' + tid + '">‹ Play</a><span class="im-pill fl">🔥 <b id="imSt"></b></span><span class="im-pill xp">⚡ <b id="imXp"></b></span><span class="im-pill lv">Lv <b id="imLv"></b></span>' +
