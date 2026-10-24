@@ -2,14 +2,14 @@
 
 From 1.11.1 each app release, whether it brings fixes or features, raises the last number: 1.11.1, 1.11.2, … up to 1.11.99. The release after 1.11.99 is 1.12.0, and the same pattern repeats. The patch number stops at 99 because the Android `versionCode` is MAJOR×10000 + MINOR×100 + PATCH, and a patch of 100 would give the same code as the next minor version, which Google Play rejects. The app's version is `appVersion` in `package.json`; it sets the Android `versionName` and `versionCode` (`1.7.0` → `10700`) and, through `node tools/version-sync.js`, the iOS project. The Android workflow tags each new one as `app-vX.Y.Z` on `main`, publishes a GitHub Release with the APK and bundle, and uploads it to Google Play. Up to 1.6.1 the app and website shared one version; that history is in [CHANGELOG.md](CHANGELOG.md).
 
-## [Unreleased] · Personalized navigation and the study planner (ships with the next app release)
+## [1.11.5] — 2026-10-24 · Personalized navigation and the study planner
 
 ### Added
 - Pick a path on first launch (skippable); existing learners keep today's view with a "Pick a path" banner.
 - My path mode: Home shows your next step, streak, today's budget, path progress and track cards; islands on your path get a ring and count; track maps and search put your path first.
 - Today and Plan screens: a daily plan sized to your hours, plus hours per week, interview date, rest day, placement, weeks forecast and mock rounds.
 - Adaptive path from real quiz results, and the Me page switcher to change your path with undo.
-- Profile photo on the Me page, shared with the website.
+- Profile photo on the Me page, shared with the website; sync status shown as an icon; styled dropdowns instead of the system picker; alignment fixes across screens.
 
 ## [1.11.4] — 2026-10-23 · Faster lessons and data export
 

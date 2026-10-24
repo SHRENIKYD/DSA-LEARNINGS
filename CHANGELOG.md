@@ -15,6 +15,7 @@ From 1.7.0 the website and the mobile app have separate versions. This file is t
 - Adaptive path: a riddle gate scored under 60% inserts a review and extra practice; 85% or more fast-tracks the recommended modules in that stage. An interview date trims optional, then recommended modules until the required ones fit.
 - Your chosen path, hours and interview date sync with your account (see the privacy policy).
 - Profile photo: add one from the passport page; it shows in the header on every page and syncs with your account. The Watchtower picks a track from a dropdown instead of a row of chips.
+- Full-width layout on every page, styled dropdowns everywhere, and alignment fixes on the home, passport, track and module pages.
 
 ### Changed
 - Sections for frameworks you are not learning (for example Spring for a Python learner) collapse behind a "Show it" line.
