@@ -331,7 +331,7 @@ button svg,.btn svg{pointer-events:none}
 @media (prefers-reduced-motion:no-preference){.syncic.syncing svg,.syncic.saving svg,.syncic.pending svg{animation:syncspin 1.2s linear infinite}@keyframes syncspin{to{transform:rotate(360deg)}}}
 .acct-out{flex:none;min-height:32px;padding:4px 10px;font-size:12.5px}
 .auth-page{min-height:100vh;display:grid;place-items:center;padding:32px 16px}
-.auth-wrap{width:100%;max-width:440px;display:flex;flex-direction:column;gap:22px}
+.auth-wrap{width:100%;max-width:none;display:flex;flex-direction:column;gap:22px}
 .auth-card{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:28px clamp(18px,5vw,32px);display:flex;flex-direction:column;gap:14px}
 .auth-card h1{margin:0;font-size:28px}
 .auth-sub{margin:0;color:var(--muted)}
@@ -360,7 +360,7 @@ button svg,.btn svg{pointer-events:none}
 .auth-foot{margin:0;text-align:center;color:var(--muted);font-size:14px}
 
 /* privacy policy */
-.legal{width:100%;max-width:760px;display:flex;flex-direction:column;gap:22px}
+.legal{width:100%;max-width:none;display:flex;flex-direction:column;gap:22px}
 .legal h1{font-size:30px}
 .legal h2{margin:18px 0 0;font-size:20px}
 .legal h3{margin:6px 0 0;font-size:16px;color:var(--accent-fg)}
