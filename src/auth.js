@@ -196,6 +196,33 @@ var Auth = (function () {
     if (user) return esc((user.email || '?').charAt(0).toUpperCase());
     return fallback || '';
   }
+  // Crop before compression so camera and gallery uploads share the same editor.
+  function cropAvatar(img) {
+    return new Promise(function (resolve, reject) {
+      var d = document.createElement('dialog'), previous = document.activeElement;
+      d.setAttribute('aria-label', 'Crop profile photo');
+      d.style.cssText = 'width:min(360px,calc(100% - 32px));max-height:85vh;overflow:auto;border:1px solid var(--border2);border-radius:20px;padding:20px;background:var(--panel);color:var(--text)';
+      d.innerHTML = '<h2 style="margin:0 0 12px">Crop profile photo</h2><canvas width="320" height="320" style="display:block;width:100%;border-radius:50%;background:#fff" aria-label="Circular profile photo preview"></canvas><p>Adjust your photo, then save.</p>' +
+        '<label style="display:block">Zoom<input type="range" min="1" max="4" step="0.01" value="1" style="width:100%"></label>' +
+        '<label style="display:block">Horizontal position<input type="range" min="0" max="100" value="50" style="width:100%"></label>' +
+        '<label style="display:block">Vertical position<input type="range" min="0" max="100" value="50" style="width:100%"></label>' +
+        '<div style="display:flex;gap:12px;margin-top:16px"><button type="button" class="btn b3 ghost" data-cancel>Cancel</button><button type="button" class="btn b3 primary" data-save>Save photo</button></div>';
+      var canvas = d.querySelector('canvas'), ctx = canvas.getContext('2d'), sliders = d.querySelectorAll('input'), area;
+      function draw() {
+        var side = Math.min(img.naturalWidth, img.naturalHeight) / Number(sliders[0].value);
+        area = { x: (img.naturalWidth - side) * Number(sliders[1].value) / 100, y: (img.naturalHeight - side) * Number(sliders[2].value) / 100, side: side };
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 320, 320);
+        ctx.drawImage(img, area.x, area.y, side, side, 0, 0, 320, 320);
+      }
+      function finish(value) { d.close(); d.remove(); if (previous && previous.isConnected) previous.focus(); resolve(value); }
+      Array.prototype.forEach.call(sliders, function (input) { input.addEventListener('input', draw); });
+      d.querySelector('[data-cancel]').onclick = function () { finish(null); };
+      d.addEventListener('cancel', function (e) { e.preventDefault(); finish(null); });
+      d.querySelector('[data-save]').onclick = function () { finish(area); };
+      document.body.appendChild(d);
+      try { draw(); d.showModal(); } catch (e) { d.remove(); reject(new Error('Could not open the photo editor.')); }
+    });
+  }
   function shrink(file) {
     return new Promise(function (res, rej) {
       if (!file || !/^image\//.test(file.type)) return rej(new Error('Choose an image file (JPG, PNG or WebP).'));
@@ -203,12 +230,18 @@ var Auth = (function () {
       var url = URL.createObjectURL(file), img = new Image();
       img.onload = function () {
         URL.revokeObjectURL(url);
-        var side = Math.min(img.naturalWidth, img.naturalHeight), c = document.createElement('canvas'); c.width = c.height = 160;
-        c.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 160, 160);
-        var q = 0.85, out = c.toDataURL('image/jpeg', q);
-        while (out.length > AV_MAX && q > 0.4) { q -= 0.1; out = c.toDataURL('image/jpeg', q); }
-        if (out.length > AV_MAX) return rej(new Error('Could not shrink that image enough. Try a simpler one.'));
-        res(out);
+        cropAvatar(img).then(function (area) {
+          if (!area) { res(null); return; }
+          try {
+            var c = document.createElement('canvas'); c.width = c.height = 160;
+            var ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 160, 160);
+            ctx.drawImage(img, area.x, area.y, area.side, area.side, 0, 0, 160, 160);
+            var q = 0.85, out = c.toDataURL('image/jpeg', q);
+            while (out.length > AV_MAX && q > 0.4) { q -= 0.1; out = c.toDataURL('image/jpeg', q); }
+            if (out.length > AV_MAX) throw new Error('Could not shrink that image enough. Try a simpler one.');
+            res(out);
+          } catch (e) { rej(e); }
+        }, rej);
       };
       img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('That file could not be read as an image.')); };
       img.src = url;
@@ -224,7 +257,7 @@ var Auth = (function () {
     emit('user');
     return Promise.resolve();
   }
-  function setAvatar(file) { return shrink(file).then(saveAvatar); }
+  function setAvatar(file) { return shrink(file).then(function (data) { if (data) return saveAvatar(data); }); }
   // WhatsApp-style "Profile picture" sheet: Camera, Gallery, and a trash button when a photo is set. Resolves after the change.
   function avatarSheet(onChange) {
     var old = document.getElementById('avSheet'); if (old) old.remove();
