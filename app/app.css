@@ -361,7 +361,8 @@ p{margin:0}
 .floating-island .path-count{position:absolute;top:-6px;right:-4px;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font:800 12px/22px var(--f-head,inherit);font-style:normal;text-align:center}
 .journey-link.off-path{opacity:.8}
 .pathsw select{width:100%;min-height:44px;margin:4px 0 12px}
-.pathsw .seg{margin-bottom:10px}
+.pathsw .seg{display:flex;width:100%;margin-bottom:10px}
+.pathsw .seg button{flex:1;min-width:0}
 .toast-undo{margin-left:10px;min-height:32px;padding:2px 12px;border-radius:999px;border:2px solid currentColor;background:transparent;color:inherit;font:700 14px inherit}
 .routestrip .rs-stages{display:flex;gap:6px;list-style:none;padding:0;margin:10px 0 0}
 .routestrip .rs-stages li{flex:1;height:26px;display:grid;place-items:center;border-radius:8px;background:var(--raised);font-size:12px;font-weight:700;color:var(--muted)}
