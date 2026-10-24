@@ -11,12 +11,36 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:wght@500;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="assets/style.css?v=@@V@@">
+<style>
+/* Explorer login is shared by the website and native app bundle. */
+.auth-page{min-height:100vh;min-height:100dvh;background:var(--bg);padding:clamp(16px,4vw,56px);padding-top:max(20px,env(safe-area-inset-top));padding-bottom:max(20px,env(safe-area-inset-bottom));display:grid;place-items:center}
+.auth-page .auth-wrap{width:100%;max-width:1120px;margin:0;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:clamp(24px,5vw,64px);align-items:center}
+.explorer-story{position:relative;min-width:0}.explorer-story .brand{margin:0 0 32px;display:flex;gap:12px;align-items:center;text-decoration:none;color:var(--text);font-weight:800}.explorer-story .brand small{display:block;color:var(--muted);font-size:12px;font-weight:400}.explorer-logo{font-size:28px;color:var(--gold)}.explorer-story h2{font-size:clamp(30px,4vw,50px);line-height:1.08;margin:0 0 20px;max-width:12ch;letter-spacing:-1px}.explorer-story h2 em{font-style:normal;color:var(--gold)}.explorer-story>p{color:var(--muted);max-width:40ch;font-size:16px;line-height:1.6}.explorer-art{width:100%;max-height:340px;display:block;margin-top:20px}.explorer-tags{display:flex;gap:8px;flex-wrap:wrap}.explorer-tags span{padding:6px 12px;border:1px solid var(--border2);border-radius:30px;color:var(--muted);font-size:12px}
+.auth-page .auth-card{width:100%;max-width:440px;justify-self:center;box-sizing:border-box;padding:clamp(22px,3vw,36px);border-radius:24px;background:var(--panel);border:1px solid var(--border2);box-shadow:0 18px 55px #0002}.auth-page .auth-card h1{font-size:30px;line-height:1.15;margin:0 0 12px}.auth-page .auth-sub{line-height:1.6;margin-bottom:24px}.auth-page .auth-foot{grid-column:2;text-align:center;max-width:440px;justify-self:center;margin:0;font-size:13px;line-height:1.6;color:var(--muted)}.auth-page .auth-google{width:100%;min-height:48px}.auth-page .auth-tabs{display:flex}.auth-page .auth-tabs button{flex:1;min-width:0;min-height:44px}.auth-page .fld{display:flex;flex-direction:column;gap:8px;margin-top:16px}.auth-page .fld input{width:100%;box-sizing:border-box;min-height:48px;font-size:16px}.auth-page .auth-submit{width:100%;min-height:48px;margin-top:22px}.auth-page .auth-dl{margin:12px 0;font-size:12px}.auth-page .auth-link{white-space:normal}.auth-page .auth-msg{overflow-wrap:anywhere}.auth-page :focus-visible{outline:3px solid var(--gold);outline-offset:4px}
+@media(max-width:760px){.auth-page{display:block;padding:24px 18px}.auth-page .auth-wrap{grid-template-columns:minmax(0,1fr);max-width:480px;margin:auto;gap:22px}.explorer-story .brand{margin-bottom:22px}.explorer-story h2{font-size:32px;max-width:18ch;margin-bottom:12px}.explorer-story>p{font-size:14px;margin:0}.explorer-art{height:145px;margin:4px 0}.explorer-tags{display:none}.auth-page .auth-card{max-width:none}.auth-page .auth-foot{grid-column:1}.auth-page .auth-card h1{font-size:26px}}
+@media(max-height:550px) and (min-width:761px){.auth-page{display:block}.auth-page .auth-wrap{margin:auto;align-items:start}.explorer-art{max-height:220px}}
+</style>
 </head>
 <body class="auth-page">
 <main class="auth-wrap">
-  <a class="brand" href="index.html"><span class="logo">IM</span><div>Interview Mastery<small>beginner → expert</small></div></a>
+<aside class="explorer-story" aria-label="Your learning adventure">
+<a class="brand" href="index.html"><span class="explorer-logo" aria-hidden="true">{✦}</span><div>Interview Mastery<small>A little curiosity. A world of possibility.</small></div></a>
+<h2>Your next chapter <em>starts here.</em></h2>
+<p>Save your progress, pick up where you left off, and keep building your future — on any device.</p>
+<svg class="explorer-art" viewBox="0 0 560 350" role="img" aria-label="A golden trail connects floating islands to a lighthouse">
+<defs><linearGradient id="islandTop" x2="1" y2="1"><stop stop-color="#518678"/><stop offset="1" stop-color="#244e59"/></linearGradient><linearGradient id="islandRock" x2="0" y2="1"><stop stop-color="#29465e"/><stop offset="1" stop-color="#12263a"/></linearGradient><radialGradient id="beacon"><stop stop-color="#fac94e" stop-opacity=".3"/><stop offset="1" stop-color="#fac94e" stop-opacity="0"/></radialGradient></defs>
+<ellipse cx="405" cy="105" rx="145" ry="100" fill="url(#beacon)"/>
+<g fill="url(#islandRock)"><path d="M35 247L87 330 143 306 176 247Z"/><path d="M199 180L236 272 292 242 322 180Z"/><path d="M347 115L379 215 433 194 493 115Z"/></g>
+<g fill="url(#islandTop)" stroke="#78a99b" stroke-opacity=".6"><ellipse cx="105" cy="247" rx="71" ry="23"/><ellipse cx="260" cy="180" rx="62" ry="22"/><ellipse cx="420" cy="115" rx="74" ry="25"/></g>
+<path d="M87 246C212 281 151 155 248 180S319 94 414 112" fill="none" stroke="#fac94e" stroke-width="4" stroke-dasharray="3 10" stroke-linecap="round"/>
+<g fill="#d5e6d7" stroke="#244e59" stroke-width="3"><path d="M402 109L409 45H431L438 109Z"/><path d="M405 45V27H435V45Z"/></g><path d="M400 27L420 10 440 27Z" fill="#fac94e"/><rect x="414" y="31" width="13" height="10" fill="#fac94e"/><path d="M418 109V91H427V109" fill="#244e59"/>
+<g fill="#173c43" stroke="#81b48f" stroke-width="2"><path d="M365 105L376 79 387 105ZM454 103L467 72 480 103ZM211 174L224 144 237 174ZM121 240L134 212 147 240Z"/></g>
+<rect x="243" y="146" width="35" height="25" rx="3" fill="#12263a" stroke="#fac94e" stroke-width="2"/><path d="M251 157L256 152M251 157L256 162M270 152L275 157 270 162" stroke="#fac94e" fill="none" stroke-width="2"/>
+<circle cx="83" cy="220" r="8" fill="#fac94e"/><path d="M83 231V247M75 238H92" stroke="#fac94e" stroke-width="5" stroke-linecap="round"/>
+<g fill="#f7dfa2"><circle cx="175" cy="73" r="2"/><circle cx="290" cy="53" r="2"/><circle cx="508" cy="190" r="2"/><circle cx="335" cy="290" r="2"/></g></svg>
+<div class="explorer-tags"><span>Learn at your pace</span><span>Practice with purpose</span><span>Keep your progress</span></div></aside>
   <section class="auth-card" aria-labelledby="authTitle">
-    <h1 id="authTitle">Sign in</h1>
+    <h1 id="authTitle">Welcome back, explorer.</h1>
     <p class="auth-sub" id="authSub">Save your progress and pick up where you left off on any device.</p>
 
     <div id="authOff" class="auth-msg warn" role="status" hidden>Accounts are not set up on this deployment yet. Your progress is still saved in this browser.</div>
