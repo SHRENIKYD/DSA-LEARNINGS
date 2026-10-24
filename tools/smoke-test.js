@@ -39,6 +39,8 @@ const server = http.createServer((req, res) => {
 
   for (const width of [1280, 360]) {
     const ctx = await browser.newContext({ viewport: { width, height: 800 } });
+    // These checks cover Explore all; first-visit onboarding has its own checks in section 5.
+    await ctx.addInitScript(() => { try { if (!localStorage.getItem('imastery.route')) localStorage.setItem('imastery.route', JSON.stringify({ onboarded: true })); } catch (e) { /* storage unavailable */ } });
     const page = await ctx.newPage();
     let cur = '';
     const err = (m) => fail('[' + width + 'px ' + cur + '] ' + m);
@@ -127,6 +129,168 @@ const server = http.createServer((req, res) => {
         if (!(await lp.waitForSelector('#dsa04-t0', { timeout: 8000 }).then(() => true, () => false))) err('Retry did not load dsa04');
       }
       await lctx.close();
+    }
+    // 5. personalized navigation: onboarding, My path views, Explore all unchanged
+    {
+      const nctx = await browser.newContext({ viewport: { width, height: 800 }, serviceWorkers: 'block' });
+      const np = await nctx.newPage();
+      np.on('pageerror', (e) => err('page error: ' + e.message));
+      const go = async (f) => { cur = 'nav ' + f; await np.goto(base + f, { waitUntil: 'load' }); await np.waitForTimeout(300); };
+      const ls = (k) => np.evaluate((key) => JSON.parse(localStorage.getItem(key) || 'null'), k);
+      // stamp SVG ids come from a page-wide counter, so they differ between first render and re-render
+      const html = (sel) => np.evaluate((q) => ((document.querySelector(q) || {}).innerHTML || '').replace(/stp\d+/g, 'stp'), sel);
+      // 5a first visit: onboarding opens; "Just explore" leads to Explore all with a Pick a path banner
+      await go('index.html');
+      if (!(await np.evaluate(() => { const d = document.getElementById('onb'); return !!(d && d.open && d.querySelector('#onbH')); }))) err('first visit did not open the onboarding dialog');
+      const w0 = await np.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+      if (width === 360 && w0[0] > w0[1] + OVERFLOW_TOLERANCE_PX) err('onboarding is wider than the viewport');
+      if (await np.evaluate(() => document.activeElement && !document.getElementById('onb').contains(document.activeElement))) err('focus is not inside the onboarding dialog');
+      await np.click('[data-onb-skip]');
+      const sk = await ls('imastery.route');
+      if (!sk || !sk.onboarded || sk.mode !== 'all' || sk.id) err('skip did not store Explore all: ' + JSON.stringify(sk));
+      if (await np.evaluate(() => document.getElementById('onb').open)) err('onboarding still open after skip');
+      if (!(await np.$('#pathbar .pb-ban'))) err('no "Pick a path" banner after skipping');
+      if (await np.$('.pathhome, .otherlands, .reltag')) err('Explore all shows My path elements');
+      await go('index.html');
+      if (await np.evaluate(() => document.getElementById('onb') && document.getElementById('onb').open)) err('onboarding shown again after skip');
+      if (width === 1280) {
+        // 5b choose Python backend: path tracks on home, toggle pressed, route-first hero
+        await np.click('#pathbar [data-onb]');
+        await np.check('input[name="onbRoute"][value="pyback"]');
+        await np.click('[data-onb-next]');
+        if (await np.$('input[name="onbLang"]')) err('single-language route asked for a language');
+        await np.check('input[name="onbHours"][value="10"]');
+        await np.click('[data-onb-next]');
+        await np.waitForTimeout(200);
+        const pr = await ls('imastery.route');
+        if (!pr || pr.id !== 'pyback' || pr.mode !== 'path' || pr.lang !== 'python' || !pr.updatedAt) err('picking Python backend stored ' + JSON.stringify(pr));
+        const tr = await np.evaluate(() => [...document.querySelectorAll('.pathtracks [data-track]')].map((a) => a.getAttribute('data-track')).join());
+        const want = await np.evaluate(() => Learn.pathTracks().map((t) => t.track).join());
+        if (!tr || tr !== want || tr !== 'py,dsa,sql,cs,be,hld') err('home path tracks are ' + tr + ', expected py,dsa,sql,cs,be,hld');
+        if ((await np.getAttribute('[data-mode="path"]', 'aria-pressed')) !== 'true') err('My path toggle is not aria-pressed');
+        if (!(await np.$('.otherlands'))) err('off-path lands are not collected under Other lands');
+        if (!(await np.$('.nextstop.path'))) err('hero does not show Next on your path');
+        // 5c search: on-path first, "My path only" chip with a reveal
+        await np.fill('#gsearch', 'spring');
+        await np.waitForTimeout(400);
+        if ((await np.getAttribute('[data-pathonly]', 'aria-pressed')) !== 'true') err('"My path only" chip is not on by default');
+        if (!(await np.$('[data-searchall]'))) err('no "Search everything" reveal for off-path hits');
+        else {
+          await np.click('[data-searchall]');
+          if ((await np.getAttribute('[data-pathonly]', 'aria-pressed')) !== 'false') err('Search everything did not turn the filter off');
+          if (!(await np.$('#gresults .res.off'))) err('Search everything shows no Other lands results');
+          if (await np.evaluate(() => document.getElementById('gresults').hidden)) err('results closed after the filter click');
+        }
+        await np.fill('#gsearch', '');
+        // 5d Explore all from the toggle renders the home exactly as before
+        await np.click('[data-mode="all"]');
+        await np.waitForTimeout(200);
+        const allHome = await html('#main');
+        if ((await np.evaluate(() => document.activeElement && document.activeElement.getAttribute('data-mode'))) !== 'all') err('focus left the mode toggle');
+        await np.evaluate(() => localStorage.setItem('imastery.route', JSON.stringify({ id: 'pyback', lang: 'python', hours: 10 })));
+        await go('index.html');
+        const legacy = await html('#main');
+        if (allHome !== legacy) err('Explore all home differs from the pre-path render for the same route');
+        await np.evaluate(() => localStorage.setItem('imastery.route', JSON.stringify({ id: 'pyback', lang: 'python', hours: 10, mode: 'path', onboarded: true, known: [], updatedAt: 1 })));
+        // 5e track page in My path: path group first, More in this track, path progress
+        await go('be.html');
+        if (!(await np.$('#nav .nav-more'))) err('be.html sidebar has no "More in this track"');
+        if (!(await np.$('#main .pathzone'))) err('be.html dashboard has no path section');
+        if (!/^Your path: \d+ of \d+/.test(await np.textContent('#ptext'))) err('track progress does not read "Your path"');
+        // 5f framework-specific module: Java/Spring lessons behind a one-line reveal, links still open them
+        await np.evaluate(() => { location.hash = 'be06'; });
+        await np.waitForSelector('#be06-t0', { state: 'attached', timeout: 8000 }).catch(() => err('be06 did not render'));
+        if (!(await np.$('#lg-be06'))) err('be06 has no language reveal for a Python learner');
+        if (!(await np.evaluate(() => document.getElementById('be06-t0').hidden && document.getElementById('be06-t0').getAttribute('data-lang') === 'java'))) err('be06 topics are not hidden with data-lang');
+        await np.click('[data-langshow="be06"]');
+        if (await np.evaluate(() => document.getElementById('be06-t0').hidden)) err('Show it did not reveal be06');
+        if (!(await np.$('.pathban'))) err('module page has no path banner');
+        // 5g a shared link to an off-path module still opens fully
+        await go('java.html#java05');
+        if (!(await np.waitForSelector('#java05-t0', { timeout: 8000 }).then(() => true, () => false))) err('java.html#java05 did not open with a Python route');
+        await go('be.html#be07-t1');
+        if (!(await np.waitForSelector('#be07-t1', { state: 'visible', timeout: 8000 }).then(() => true, () => false))) err('a link to a hidden framework topic did not reveal it');
+        // 5h Explore all on a track page shows no path additions
+        await np.evaluate(() => localStorage.setItem('imastery.route', JSON.stringify({ id: 'pyback', lang: 'python', hours: 10, mode: 'all', onboarded: true })));
+        await go('be.html');
+        if (await np.$('#nav .nav-more, #main .pathzone, .reltag')) err('Explore all track page shows My path elements');
+        if (!/^Land explored/.test(await np.textContent('#ptext'))) err('Explore all track progress changed');
+        // 5i passport: route progress strip and per-route stamps
+        await np.evaluate(() => localStorage.setItem('imastery.route', JSON.stringify({ id: 'pyback', lang: 'python', hours: 10, mode: 'path', onboarded: true })));
+        await go('passport.html');
+        if (!(await np.$('#pRoute .rstages li'))) err('passport has no route progress strip');
+        if ((await np.$$('#pRouteStamps .pst')).length !== 7) err('passport does not show one stamp per route');
+      }
+      // 5j planner screens (src/planner.js): home in My path mode, today.html, plan.html
+      if (width === 1280) {
+        const rest = (new Date().getDay() + 3) % 7;
+        await np.evaluate((rd) => localStorage.setItem('imastery.route', JSON.stringify({ id: 'pyback', lang: 'python', hours: 10, mode: 'path', onboarded: true, known: [], updatedAt: 1, restDay: rd })), rest);
+        await go('index.html');
+        if (!(await np.$('.whero.plan .nextstop.path[data-next]'))) err('My path home has no planner Next card');
+        if (!(await np.$('.pchips .chip'))) err('My path home has no streak/minutes chips');
+        if (!(await np.$('a.seetoday[href="today.html"]'))) err('My path home has no "See today\'s plan" link');
+        const cards = await np.$$eval('.pathtracks [data-track]', (a) => a.map((x) => x.getAttribute('data-track') + ':' + x.getAttribute('href')));
+        if (!cards.length || !cards.every((c) => /^[a-z]+:[a-z]+\.html#[a-z]+\d+$/.test(c))) err('track cards do not open the next module in the track: ' + cards.join());
+        if (!(await np.$('.quick a[href="plan.html"]')) || !(await np.$('.quick [data-jump]'))) err('My path home has no quick actions');
+        if (!(await np.$('.jnav a[data-page="today"]'))) err('header has no Today link');
+        await np.fill('#gsearch', 'plan');
+        await np.waitForTimeout(400);
+        if (!(await np.$('#gresults .res.screen[href="plan.html"]'))) err('search does not list the Plan screen');
+        await np.fill('#gsearch', '');
+        // today.html lists items that link into their sections
+        await go('today.html');
+        const items = await np.$$eval('.titem', (a) => a.map((x) => x.querySelector('a.t').getAttribute('href')));
+        if (!items.length || !items.every((h) => /^[a-z]+\.html#[a-z]+\d+-(t|p)\d+$/.test(h))) err('today.html items do not link to lesson sections: ' + items.join());
+        if (!/\d+ minutes planned/.test(await np.textContent('#pgH'))) err('today.html heading does not show the minute budget');
+        if (!(await np.$('.nextstop.path[data-next]'))) err('today.html has no Continue card');
+        // plan.html: hours and interview date change the forecast; placement asks to confirm
+        await go('plan.html');
+        const hero0 = await np.textContent('#plHero');
+        await np.click('[data-hours="20"]');
+        await np.waitForTimeout(250);
+        const hero1 = await np.textContent('#plHero');
+        if (hero0 === hero1 || !/~\d+ weeks/.test(hero1)) err('changing hours did not update the forecast: ' + hero0 + ' -> ' + hero1);
+        if ((await np.getAttribute('[data-hours="20"]', 'aria-pressed')) !== 'true') err('hours button is not aria-pressed after the click');
+        if ((await ls('imastery.route')).hours !== 20) err('hours were not stored');
+        const d = new Date(); d.setDate(d.getDate() + 21);
+        const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        await np.fill('#plDate', iso);
+        await np.waitForTimeout(250);
+        const hero2 = await np.textContent('#plHero');
+        if (!/21 days/.test(hero2)) err('interview date did not update the forecast: ' + hero2);
+        if ((await ls('imastery.route')).interviewDate !== iso) err('interview date was not stored');
+        if (!(await np.$('.plan.weeks .ico.mock'))) err('interview mode shows no mock rounds in the forecast');
+        await np.click('[data-place="lang"]');
+        await np.waitForTimeout(200);
+        if (!(await np.evaluate(() => { const g = document.getElementById('placeDlg'); return !!(g && g.open && g.querySelector('[data-pl-ok]') && g.querySelector('[data-pl-prove]')); }))) err('placement did not ask to confirm (with a readiness alternative)');
+        const before = Object.keys((await ls('imastery.done')) || {}).filter((k) => k.startsWith('@tested:')).length;
+        await np.click('[data-pl-cancel]');
+        if (Object.keys((await ls('imastery.done')) || {}).filter((k) => k.startsWith('@tested:')).length !== before) err('cancelling placement changed progress');
+        await np.click('[data-place="lang"]');
+        await np.click('[data-pl-ok]');
+        await np.waitForTimeout(300);
+        const after = Object.keys((await ls('imastery.done')) || {}).filter((k) => k.startsWith('@tested:')).length;
+        if (after <= before) err('confirmed placement marked nothing as tested');
+        if ((await ls('imastery.route')).placement !== 'lang') err('placement level was not stored');
+        if (!(await np.$('#mock [data-mock]'))) err('plan.html has no mock round button');
+        // Explore all: today/plan without a chosen route ask for a path; the home never shows planner elements
+        await np.evaluate(() => localStorage.setItem('imastery.route', JSON.stringify({ onboarded: true, mode: 'all' })));
+        await go('today.html');
+        if (!(await np.$('.needpath [data-onb]'))) err('today.html without a path has no Pick a path button');
+        await go('index.html');
+        if (await np.$('.whero.plan, .pchips, .quick')) err('Explore all home shows planner elements');
+      }
+      // existing learners with progress get the banner, never the dialog
+      const ectx = await browser.newContext({ viewport: { width, height: 800 }, serviceWorkers: 'block' });
+      await ectx.addInitScript(() => { if (!localStorage.getItem('imastery.done')) localStorage.setItem('imastery.done', JSON.stringify({ 'dsa01-t0': 1 })); });
+      const ep = await ectx.newPage();
+      cur = 'nav existing learner';
+      await ep.goto(base + 'index.html', { waitUntil: 'load' });
+      await ep.waitForTimeout(300);
+      if (await ep.evaluate(() => !!(document.getElementById('onb') && document.getElementById('onb').open))) err('onboarding forced on a learner with progress');
+      if (!(await ep.$('#pathbar .pb-ban'))) err('learner with progress sees no Pick a path banner');
+      await ectx.close();
+      await nctx.close();
     }
     await ctx.close();
   }

@@ -14,9 +14,11 @@
 <body class="vpage">
 @@JBAR@@
 <main class="vmain">
-  <div class="vtop"><div><span class="kicker">The watchtower · videos</span><h1>See every landmark explained</h1><p class="vcount" id="vcount"></p></div>
-  <label class="sbox"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="vsearch" type="search" placeholder="Search landmarks, videos or channels" aria-label="Search videos" autocomplete="off"></label></div>
-  <div class="vchips" id="vchips" role="tablist" aria-label="Tracks"></div>
+  <div class="vtop"><div><span class="kicker">The watchtower · videos</span><h1>See every landmark explained</h1><p class="vcount" id="vcount"></p></div></div>
+  <div class="vtools">
+    <label class="sbox"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="vsearch" type="search" placeholder="Search landmarks, videos or channels" aria-label="Search videos" autocomplete="off"></label>
+    <label class="vsel"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h12M3 18h6"/></svg><select id="vtrack" aria-label="Track"></select><svg class="ic chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></label>
+  </div>
   <div id="vlist" aria-live="polite"></div>
   <p class="vid-note">Videos play from YouTube when you tap them, in its privacy-enhanced player. They are picked automatically for each topic and new ones are added every day.</p>
 </main>
@@ -31,8 +33,8 @@
   var all = 0; L.tracks.forEach(function (t) { all += t.items.length; });
   $('#vcount').textContent = all ? all.toLocaleString('en-US') + ' of ' + L.total.toLocaleString('en-US') + ' landmarks have a video. Coverage notes explain what each video teaches.' : 'Videos are being added. Check back soon.';
   function chips() {
-    $('#vchips').innerHTML = [['all', 'All', all]].concat(L.tracks.map(function (t) { return [t.id, t.short, t.items.length]; })).map(function (c) {
-      return '<button type="button" role="tab" class="vchip' + (c[0] === cur ? ' on' : '') + '" aria-selected="' + (c[0] === cur) + '" data-t="' + esc(c[0]) + '">' + esc(c[1]) + ' · ' + c[2] + '</button>';
+    $('#vtrack').innerHTML = [['all', 'All tracks', all]].concat(L.tracks.map(function (t) { return [t.id, t.title, t.items.length]; })).map(function (c) {
+      return '<option value="' + esc(c[0]) + '"' + (c[0] === cur ? ' selected' : '') + '>' + esc(c[1]) + ' · ' + c[2] + '</option>';
     }).join('');
   }
   function item(t, v) {
@@ -53,7 +55,7 @@
     });
     $('#vlist').innerHTML = h || (all ? '<p class="vempty">No videos match “' + esc(q) + '”.</p>' : '');
   }
-  $('#vchips').addEventListener('click', function (e) { var b = e.target.closest('.vchip'); if (!b) return; cur = b.getAttribute('data-t'); chips(); render(); });
+  $('#vtrack').addEventListener('change', function () { cur = this.value; render(); });
   var tmr; $('#vsearch').addEventListener('input', function () { var v = this.value; clearTimeout(tmr); tmr = setTimeout(function () { q = v.trim(); render(); }, 120); });
   $('#vlist').addEventListener('click', function (e) {
     var b = e.target.closest('.vid-play'); if (!b) return;

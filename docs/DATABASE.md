@@ -9,6 +9,7 @@ Everything is defined in `supabase/migrations/`, applied in file-name order. Eve
 | `0001_progress_and_delete_account.sql` | `progress` table, row level security (own row only), `delete_my_account()` |
 | `0002_client_errors.sql` | `client_errors` table, insert-only for anon/authenticated, length checks |
 | `0003_progress_size_limit.sql` | 256 KB cap on each progress JSON column; anon has no access to `progress` |
+| `0004_progress_prefs.sql` | Nullable `prefs jsonb` on `progress` (route preference `{id, lang, hours, mode, onboarded, known, updatedAt}`, synced last-write-wins by `updatedAt`), with its own 256 KB cap |
 
 ## Apply migrations to the real project
 

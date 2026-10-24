@@ -4,6 +4,22 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.10.5] — 2026-10-24 · Personalized navigation and the study planner
+
+### Added
+- Pick a path: a short first-visit setup (goal, language, hours per week) that can be skipped. Existing learners keep today's view and see a small "Pick a path" banner.
+- My path mode: next step first on Home, lands and islands on your path highlighted and the rest dimmed but open, track pages listing your path's modules first, search ranking on-path results first with "Search everything".
+- Home in My path mode: greeting, streak, today's budget, one Continue button with the reason, path progress and one card per track on your path.
+- Today page: a daily plan sized to your hours, with due reviews, lessons split into parts, practice blocks and, in the last week before an interview, mock rounds.
+- Plan page: hours per week, interview date, rest day, placement (mark what you already know, or prove it with a readiness check), weeks forecast and a timed mock round.
+- Adaptive path: a riddle gate scored under 60% inserts a review and extra practice; 85% or more fast-tracks the recommended modules in that stage. An interview date trims optional, then recommended modules until the required ones fit.
+- Your chosen path, hours and interview date sync with your account (see the privacy policy).
+- Profile photo: add one from the passport page; it shows in the header on every page and syncs with your account. The Watchtower picks a track from a dropdown instead of a row of chips.
+
+### Changed
+- Sections for frameworks you are not learning (for example Spring for a Python learner) collapse behind a "Show it" line.
+- Switching paths never touches your progress and can be undone.
+
 ## [1.10.4] — 2026-10-23 · Faster pages, offline use and hardening (phases B and C)
 
 ### Added

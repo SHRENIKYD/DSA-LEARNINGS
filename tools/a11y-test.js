@@ -27,9 +27,12 @@ const server = http.createServer((req, res) => {
   });
 });
 
-// Each target: page file, optional module index (opens that module of the track), optional theme.
+// Each target: page file, optional module index (opens that module of the track), path: true renders it in My path mode (a chosen route).
 const TARGETS = [
   { name: 'home', file: 'index.html' },
+  { name: 'home (My path)', file: 'index.html', path: true },
+  { name: 'today plan', file: 'today.html', path: true },
+  { name: 'plan screen', file: 'plan.html', path: true },
   { name: 'track page (dsa)', file: 'dsa.html' },
   { name: 'module with visualizer (dsa #1)', file: 'dsa.html', module: 0 },
   { name: 'module with practice/quiz (dsa #3)', file: 'dsa.html', module: 2 },
@@ -50,6 +53,7 @@ const THEMES = ['light', 'dark'];
     const page = await ctx.newPage();
     for (const t of TARGETS) {
       if (!fs.existsSync(path.join(site, t.file))) { console.warn('SKIP [' + theme + ' | ' + t.name + '] ' + t.file + ' is not in this build (accounts are off without SUPABASE_URL)'); continue; }
+      await page.evaluate((on) => { try { localStorage.setItem('imastery.route', JSON.stringify(on ? { id: 'pyback', lang: 'python', hours: 10, mode: 'path', onboarded: true, known: [], updatedAt: 1 } : { onboarded: true })); } catch (e) { /* storage unavailable */ } }, !!t.path).catch(() => { });
       await page.goto(base + t.file, { waitUntil: 'load' });
       if (t.module !== undefined) {
         const id = await page.evaluate((i) => (MODULES[i] || MODULES[0]).id, t.module);

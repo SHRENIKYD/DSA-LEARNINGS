@@ -143,7 +143,7 @@ var Journey = (function () {
   function bar(opts) {
     opts = opts || {};
     var here = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
-    var page = here === 'videos.html' ? 'videos' : here === 'passport.html' ? 'passport' : here === 'route.html' ? 'route' : here === 'index.html' || here === '' ? 'home' : 'land';
+    var page = here === 'videos.html' ? 'videos' : here === 'passport.html' ? 'passport' : here === 'route.html' ? 'route' : here === 'today.html' ? 'today' : here === 'plan.html' ? 'plan' : here === 'index.html' || here === '' ? 'home' : 'land';
     Array.prototype.forEach.call(document.querySelectorAll('.jnav a'), function (a) {
       var on = a.getAttribute('data-page') === page;
       a.classList.toggle('on', on);
@@ -160,7 +160,9 @@ var Journey = (function () {
     if (av) {
       var draw = function () {
         var u = window.Auth && Auth.enabled ? Auth.user() : null;
-        av.innerHTML = u ? esc((u.email || '?').charAt(0).toUpperCase()) : icon('compass');
+        var localPic = null; try { localPic = localStorage.getItem('imastery.avatar'); } catch (e) { }
+        var localOk = typeof localPic === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(localPic) && localPic.length < 60000;
+        av.innerHTML = (window.Auth && Auth.avatarHtml ? Auth.avatarHtml(icon('compass')) : (localOk ? '<img src="' + esc(localPic) + '" alt="">' : '')) || icon('compass');
         av.setAttribute('aria-label', u ? 'Your passport (' + (u.email || 'signed in') + ')' : 'Your passport');
       };
       if (window.Auth && Auth.on) Auth.on(function (k) { if (k === 'user') draw(); });
@@ -195,6 +197,31 @@ var Journey = (function () {
     return h + '</div><div class="passport-page-footer"><span>' + icon('map') + ' Interview Mastery · Traveller’s collection</span><span class="mono">01 / 01</span></div>';
   }
 
+  /* ---------- route progress (passport) ---------- */
+  /* Strip for the chosen route: stages complete and projects done. Empty when no route is chosen. */
+  function routeStrip() {
+    var p = Learn.pref();
+    if (!p.chosen) return '<div class="rstrip"><h2 id="pRouteH">Route progress</h2><p class="muted">No path chosen yet. <a href="index.html#pick">Pick a path</a> to see your route progress here.</p></div>';
+    var v = Learn.routeView(p), R = v.sch.plan.route, nDone = v.stages.filter(function (s) { return s.complete; }).length;
+    return '<div class="rstrip"><div class="jrow"><h2 id="pRouteH">Route progress</h2><a href="route.html">Route plan ›</a></div>' +
+      '<p><b>' + esc(R.name) + '</b> · ' + nDone + ' of ' + v.stages.length + ' stages complete · ' + v.projectsDone + ' of ' + v.projects.length + ' projects done · ' + v.pctHours + '% of your path</p>' +
+      '<ol class="rstages">' + v.stages.map(function (s) {
+        return '<li class="' + (s.complete ? 'on' : '') + '"><span class="rsn" aria-hidden="true">' + (s.complete ? '✓' : s.index + 1) + '</span><span>' + esc(s.name) + '</span><small>' + s.mastered + '/' + s.required + (s.project ? ' · project ' + (s.project.done ? 'done' : s.project.ticked + '/' + s.project.total) : '') + '</small><span class="sr-only">' + (s.complete ? ', complete' : ', not complete') + '</span></li>';
+      }).join('') + '</ol></div>';
+  }
+  /* One stamp per route, earned when every stage of that route is complete (modules mastered and project done). */
+  function routeStampsHtml() {
+    var p = Learn.pref();
+    var list = PATHS.ROUTES.map(function (r) {
+      var lang = r.langs.indexOf(p.lang) >= 0 ? p.lang : r.langs[0], v = Learn.routeView({ id: r.id, lang: lang, hours: p.hours, known: [] });
+      var on = v.stages.length > 0 && v.stages.every(function (s) { return s.complete; });
+      return { st: { key: 'route-' + r.id, name: r.name, icon: 'flag', color: 'violet' }, on: on, done: v.stages.filter(function (s) { return s.complete; }).length, total: v.stages.length };
+    });
+    return '<div class="rstamps"><h3>Route stamps</h3><p class="muted">Finish every stage of a route to stamp it.</p><div class="pgrid" id="pRouteStamps">' + list.map(function (x) {
+      return '<div class="pst' + (x.on ? ' on' : '') + '" data-route-stamp="' + esc(x.st.key.slice(6)) + '">' + passportStampSvg(x) + '<b>' + esc(x.st.name) + '</b><span class="passport-stamp-status">' + (x.on ? '✓ Route complete' : x.done + ' of ' + x.total + ' stages') + '</span></div>';
+    }).join('') + '</div></div>';
+  }
+
   /* ---------- passport page ---------- */
   function passport() {
     bar({ theme: true });
@@ -204,14 +231,21 @@ var Journey = (function () {
       var s = stats(), list = stampsOf(s), got = list.filter(function (x) { return x.on; }).length;
       var u = window.Auth && Auth.enabled ? Auth.user() : null;
       var who = u ? (u.email || 'Signed in') : 'Traveller';
-      document.getElementById('pHead').innerHTML = '<span class="pp-av" aria-hidden="true">' + (u ? esc(who.charAt(0).toUpperCase()) : icon('compass')) + '</span>' +
+      var hasPhoto = !!(window.Auth && Auth.avatarSrc && Auth.avatarSrc());
+      var cam = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.2"/></svg>';
+      document.getElementById('pHead').innerHTML = '<div class="pp-avwrap"><span class="pp-av" aria-hidden="true">' + ((window.Auth && Auth.avatarHtml ? Auth.avatarHtml(icon('compass')) : '') || icon('compass')) + '</span>' +
+        (window.Auth && Auth.avatarSheet ? '<button type="button" class="pp-cam" id="pAvBtn" aria-label="' + (hasPhoto ? 'Change your profile picture' : 'Add a profile picture') + '">' + cam + '</button>' : '') + '</div>' +
         '<div class="pp-who"><span class="kicker">Traveller\'s passport</span><b>' + esc(who) + '</b><span>' + (u ? 'Your journey is synced to every device you sign in on.' : 'Progress is saved in this browser. Sign in to keep it on every device.') + '</span></div>' +
         '<div class="pp-nums"><div><b>' + got + '</b><span>stamps</span></div><div><b>' + s.places + '</b><span>places cleared</span></div><div><b>' + s.topics.toLocaleString('en-US') + '</b><span>landmarks</span></div></div>';
+      var cb = document.getElementById('pAvBtn');
+      if (cb) cb.addEventListener('click', function () { Auth.avatarSheet(draw); });
       document.getElementById('pCollection').innerHTML = stampCollectionHtml(list);
       document.getElementById('pLands').innerHTML = REGIONS.map(function (r) {
         var g = s.region[r.key], p = pct(g.done, g.items);
         return '<div class="pland"><span>' + icon(r.icon) + esc(r.name) + '</span><span class="jbar-p c-' + r.color + '"><i style="width:' + Math.max(p ? 3 : 0, p) + '%"></i></span><span class="mono">' + p + '%</span></div>';
       }).join('');
+      var rs = document.getElementById('pRoute');
+      if (rs && window.Learn && window.PATHS) { rs.hidden = false; rs.innerHTML = routeStrip() + routeStampsHtml(); }
       var dl = document.getElementById('pDelete');
       if (dl) dl.hidden = !u;
     }
@@ -225,11 +259,10 @@ var Journey = (function () {
       ds.innerHTML = PATHS.ROUTES.map(function (r) { return '<option value="' + r.id + '">' + esc(r.name) + '</option>'; }).join('');
       ds.value = Learn.pref().id;
       ds.addEventListener('change', function () { Learn.setPref({ id: ds.value }); });
-    } else {
-      ds.innerHTML = ROLES.map(function (r) { return '<option value="' + r.id + '">' + esc(r.name) + '</option>'; }).join('');
-      ds.value = dest().id;
-      ds.addEventListener('change', function () { set('imastery.dest', ds.value); });
+    } else if (ds.parentNode) {
+      ds.parentNode.hidden = true; // routes need PATHS and Learn; the legacy imastery.dest is no longer written
     }
+    if (window.Learn) window.addEventListener('im:pref', function () { ds.value = Learn.pref().id; draw(); });
     draw();
     if (window.Auth) Auth.init();
   }
@@ -299,7 +332,7 @@ var Journey = (function () {
     motion();
   }
 
-  return { stampCollectionHtml: stampCollectionHtml, atlasHtml: atlasHtml, mountAtlas: mountAtlas, ICON: ICON, REGIONS: REGIONS, ZONES: ZONES, ZCOLOR: ZCOLOR, ROLES: ROLES, STAMPS: STAMPS, regionOf: regionOf, icon: icon, mods: mods, stats: stats, stampsOf: stampsOf, stampSvg: stampSvg, bar: bar, themeIcon: themeIcon, passport: passport, dest: dest, setDest: function (id) { set('imastery.dest', id); }, pct: pct, esc: esc };
+  return { stampCollectionHtml: stampCollectionHtml, atlasHtml: atlasHtml, mountAtlas: mountAtlas, ICON: ICON, REGIONS: REGIONS, ZONES: ZONES, ZCOLOR: ZCOLOR, ROLES: ROLES, STAMPS: STAMPS, regionOf: regionOf, icon: icon, mods: mods, stats: stats, stampsOf: stampsOf, stampSvg: stampSvg, bar: bar, themeIcon: themeIcon, passport: passport, dest: dest, setDest: function (id) { var m = { backend: 'javaback', frontend: 'frontend', ml: 'aiapp' }; if (window.Learn && m[id]) Learn.setPref({ id: m[id] }); }, routeStrip: routeStrip, routeStampsHtml: routeStampsHtml, pct: pct, esc: esc };
 })();
 
 

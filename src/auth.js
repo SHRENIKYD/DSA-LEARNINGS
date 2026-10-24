@@ -9,7 +9,7 @@ var Auth = (function () {
       });
     } catch (e) { enabled = false; }
   }
-  var user = null, timer = null, status = 'idle', listeners = [], ready = null;
+  var user = null, timer = null, status = 'idle', listeners = [], ready = null, noPrefs = false;
 
   function lsGet(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
@@ -25,7 +25,8 @@ var Auth = (function () {
   function pull() {
     if (!user) return Promise.resolve();
     setStatus('syncing');
-    return client.from('progress').select('done,last').eq('user_id', user.id).maybeSingle().then(function (res) {
+    return client.from('progress').select(noPrefs ? 'done,last' : 'done,last,prefs').eq('user_id', user.id).maybeSingle().then(function (res) {
+      if (res.error && !noPrefs && prefsMissing(res.error)) { noPrefs = true; return pull(); }
       if (res.error) { setStatus('error'); return; }
       var row = res.data, remote = (row && row.done) || {}, local = lsGet('imastery.done', {}) || {};
       var st = lsGet('imastery.sync', {}) || {}, trusted = st.user === user.id && !st.dirty, foreign = !!st.user && st.user !== user.id;
@@ -35,18 +36,38 @@ var Auth = (function () {
       if (row && row.last && (trusted || foreign || !localLast)) lsSet('imastery.last', row.last);
       else if (foreign) lsSet('imastery.last', null);
       lsSet('imastery.sync', { user: user.id, dirty: false });
+      var prefsNewer = mergePrefs(row && row.prefs, foreign);
       emit('progress');
-      if (!row || !same(merged, remote)) return push();
+      if (!row || !same(merged, remote) || prefsNewer) return push();
       setStatus('synced');
     }, function () { setStatus('error'); });
   }
+
+  /* Route preference (imastery.route): last write wins by updatedAt; offline the local copy is used as is.
+     Returns true when the local copy is newer than the server one, so it should be pushed. */
+  function mergePrefs(remote, foreign) {
+    var local = lsGet('imastery.route', null);
+    var lt = local && typeof local === 'object' ? (+local.updatedAt || 0) : -1;
+    var rt = remote && typeof remote === 'object' ? (+remote.updatedAt || 0) : -1;
+    if (rt >= 0 && (rt > lt || foreign)) {
+      lsSet('imastery.route', remote);
+      if (remote.lang) lsSet('imastery.lang', remote.lang);
+      if (window.Learn && window.Learn.prefChanged) window.Learn.prefChanged();
+      return false;
+    }
+    return !noPrefs && lt > rt;
+  }
+  function prefsMissing(err) { return /prefs/i.test(String((err && (err.message || err.details)) || '')); }
 
   function push() {
     if (!user) return Promise.resolve();
     clearTimeout(timer); timer = null;
     setStatus('saving');
     var body = { user_id: user.id, done: lsGet('imastery.done', {}) || {}, last: lsGet('imastery.last', null) };
+    var pr = lsGet('imastery.route', null);
+    if (!noPrefs && pr && typeof pr === 'object') body.prefs = pr;
     return client.from('progress').upsert(body, { onConflict: 'user_id' }).then(function (res) {
+      if (res.error && body.prefs && prefsMissing(res.error)) { noPrefs = true; return push(); }
       if (res.error) { lsSet('imastery.sync', { user: user.id, dirty: true }); setStatus('error'); return; }
       lsSet('imastery.sync', { user: user.id, dirty: false });
       setStatus('synced');
@@ -89,14 +110,14 @@ var Auth = (function () {
     var out = {
       app: 'Interview Mastery', version: String(window.IM_VERSION || cfg.version || ''), exportedAt: new Date().toISOString(),
       account: user ? { id: user.id, email: user.email || null } : null,
-      local: { done: lsGet('imastery.done', {}) || {}, last: lsGet('imastery.last', null), play: lsGet('imastery.play', null) },
+      local: { done: lsGet('imastery.done', {}) || {}, last: lsGet('imastery.last', null), play: lsGet('imastery.play', null), prefs: lsGet('imastery.route', null) },
       server: null
     };
     if (!user || !client) return Promise.resolve(out);
     var uid = user.id;
-    return client.from('progress').select('done,last').eq('user_id', uid).maybeSingle().then(function (res) {
+    return client.from('progress').select(noPrefs ? 'done,last' : 'done,last,prefs').eq('user_id', uid).maybeSingle().then(function (res) {
       if (res.error) out.server = { error: 'Could not read your saved progress from the server: ' + (res.error.message || 'unknown error') + '. Only the data on this device is included.' };
-      else out.server = { found: !!res.data, user_id: uid, done: (res.data && res.data.done) || {}, last: res.data ? res.data.last : null };
+      else out.server = { found: !!res.data, user_id: uid, done: (res.data && res.data.done) || {}, last: res.data ? res.data.last : null, prefs: (res.data && res.data.prefs) || null };
       return out;
     }, function () {
       out.server = { error: 'Could not reach the server. Only the data on this device is included.' };
@@ -156,6 +177,95 @@ var Auth = (function () {
     var here = location.pathname.split('/').pop() + location.search + location.hash;
     return 'login.html?next=' + encodeURIComponent(here || 'index.html');
   }
+
+  /* ---------- profile photo ---------- */
+  // A small JPEG data URL (at most 40 KB) kept on this device and, when signed in, in the account's user metadata so every device shows it.
+  var AV_KEY = 'imastery.avatar', AV_MAX = 40 * 1024;
+  function okData(u) { return typeof u === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(u) && u.length <= AV_MAX * 1.4; }
+  function avatarSrc() {
+    var meta = user ? (user.user_metadata || {}) : {};
+    if (okData(meta.avatar_data)) return meta.avatar_data;
+    var local = null; try { local = localStorage.getItem(AV_KEY); } catch (e) { }
+    if (okData(local)) return local;
+    var pic = meta.avatar_url || meta.picture || '';
+    return /^https:\/\/[^\s"'<>]+$/.test(pic) ? pic : '';
+  }
+  function avatarHtml(fallback) {
+    var src = avatarSrc();
+    if (src) return '<img src="' + esc(src) + '" alt="' + esc(user ? (user.email || '?').charAt(0).toUpperCase() : '') + '" referrerpolicy="no-referrer">';
+    if (user) return esc((user.email || '?').charAt(0).toUpperCase());
+    return fallback || '';
+  }
+  function shrink(file) {
+    return new Promise(function (res, rej) {
+      if (!file || !/^image\//.test(file.type)) return rej(new Error('Choose an image file (JPG, PNG or WebP).'));
+      if (file.size > 12 * 1024 * 1024) return rej(new Error('That image is over 12 MB. Pick a smaller one.'));
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var side = Math.min(img.naturalWidth, img.naturalHeight), c = document.createElement('canvas'); c.width = c.height = 160;
+        c.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 160, 160);
+        var q = 0.85, out = c.toDataURL('image/jpeg', q);
+        while (out.length > AV_MAX && q > 0.4) { q -= 0.1; out = c.toDataURL('image/jpeg', q); }
+        if (out.length > AV_MAX) return rej(new Error('Could not shrink that image enough. Try a simpler one.'));
+        res(out);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('That file could not be read as an image.')); };
+      img.src = url;
+    });
+  }
+  function saveAvatar(data) {
+    try { if (data) localStorage.setItem(AV_KEY, data); else localStorage.removeItem(AV_KEY); } catch (e) { }
+    if (user) {
+      user.user_metadata = Object.assign({}, user.user_metadata || {}, { avatar_data: data || null });
+      emit('user');
+      if (client) return client.auth.updateUser({ data: { avatar_data: data || null } }).then(function (r) { if (r && r.error) throw r.error; });
+    }
+    emit('user');
+    return Promise.resolve();
+  }
+  function setAvatar(file) { return shrink(file).then(saveAvatar); }
+  // WhatsApp-style "Profile picture" sheet: Camera, Gallery, and a trash button when a photo is set. Resolves after the change.
+  function avatarSheet(onChange) {
+    var old = document.getElementById('avSheet'); if (old) old.remove();
+    var has = !!avatarSrc();
+    var el = document.createElement('div'); el.id = 'avSheet'; el.className = 'avsheet';
+    el.innerHTML = '<div class="avsheet-bg"></div><div class="avsheet-box" role="dialog" aria-modal="true" aria-labelledby="avSheetT">' +
+      '<span class="avsheet-grip" aria-hidden="true"></span><div class="avsheet-head"><button type="button" class="avsheet-x" aria-label="Close">&#x2715;</button><h2 id="avSheetT">Profile picture</h2>' +
+      (has ? '<button type="button" class="avsheet-rm" aria-label="Remove photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>' : '<span class="avsheet-sp"></span>') + '</div>' +
+      '<label class="avsheet-row"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.2"/></svg><span>Camera</span><input type="file" accept="image/*" capture="user" hidden></label>' +
+      '<label class="avsheet-row"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/><circle cx="16" cy="9" r="1.5"/></svg><span>Gallery</span><input type="file" accept="image/*" hidden></label>' +
+      '<p class="avsheet-msg" role="status"></p></div>';
+    document.body.appendChild(el);
+    var msg = el.querySelector('.avsheet-msg'), prev = document.activeElement;
+    function close() { el.remove(); document.removeEventListener('keydown', key); if (prev && prev.focus) prev.focus(); }
+    function key(e) { if (e.key === 'Escape') close(); }
+    document.addEventListener('keydown', key);
+    el.querySelector('.avsheet-bg').addEventListener('click', close);
+    el.querySelector('.avsheet-x').addEventListener('click', close);
+    var rm = el.querySelector('.avsheet-rm');
+    if (rm) rm.addEventListener('click', function () { msg.textContent = 'Removing…'; clearAvatar().then(function () { close(); if (onChange) onChange(); }, function (e) { msg.textContent = e.message || 'Could not remove the photo.'; }); });
+    Array.prototype.forEach.call(el.querySelectorAll('input[type=file]'), function (inp) {
+      inp.addEventListener('change', function () { var f = inp.files && inp.files[0]; if (!f) return; msg.textContent = 'Saving photo…';
+        setAvatar(f).then(function () { close(); if (onChange) onChange(); }, function (e) { msg.textContent = e.message || 'Could not save the photo.'; }); });
+    });
+    el.querySelector('.avsheet-x').focus();
+  }
+
+  function clearAvatar() { return saveAvatar(null); }
+
+
+  // Sync status as an icon: cloud with a tick (synced), arrows (syncing or saving), warning (error), empty cloud (idle).
+  function syncIcon(st, cls) {
+    st = st || status;
+    var ok = '<path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4 4 0 0 1 0 9H7z"/><path d="M9 13.5l2 2 4-4"/>';
+    var busy = '<path d="M20 11a8 8 0 0 0-14.5-4.5M4 13a8 8 0 0 0 14.5 4.5"/><path d="M20 4v7h-7M4 20v-7h7"/>';
+    var bad = '<path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17.5v.5"/>';
+    var idle = '<path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4 4 0 0 1 0 9H7z"/>';
+    var d = st === 'synced' ? ok : st === 'error' ? bad : st === 'idle' ? idle : busy;
+    return '<span class="' + (cls || 'syncic') + ' ' + esc(st) + '" role="img" aria-label="' + esc(LABEL[st] || 'Sync') + '" title="' + esc(LABEL[st] || 'Sync') + '"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg></span>';
+  }
+
   function mountAccount(el) {
     if (!el) return;
     if (!enabled) { el.hidden = true; return; }
@@ -165,14 +275,9 @@ var Auth = (function () {
         el.innerHTML = '<a class="btn acct-in" href="' + esc(loginHref()) + '"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>Sign in to sync progress</a>';
         return;
       }
-      var meta = user.user_metadata || {}, pic = meta.avatar_url || meta.picture || '';
-      var initial = esc((user.email || '?').charAt(0).toUpperCase());
-      var av = /^https:\/\/[^\s"'<>]+$/.test(pic) ? '<img src="' + esc(pic) + '" alt="" referrerpolicy="no-referrer">' : initial;
-      el.innerHTML = '<div class="acct"><span class="acct-av" aria-hidden="true">' + av + '</span>' +
-        '<div class="acct-tx"><div class="acct-em">' + esc(user.email || 'Signed in') + '</div><div class="acct-st ' + esc(status) + '" aria-live="polite">' + esc(LABEL[status] || '') + '</div></div>' +
+      el.innerHTML = '<div class="acct"><span class="acct-av" aria-hidden="true">' + avatarHtml() + '</span>' +
+        '<div class="acct-tx"><div class="acct-em">' + esc(user.email || 'Signed in') + '</div></div>' + syncIcon(status) +
         '<button class="btn ghost acct-out" type="button">Sign out</button></div>';
-      var img = el.querySelector('.acct-av img');
-      if (img) img.addEventListener('error', function () { if (img.parentNode) img.parentNode.textContent = (user.email || '?').charAt(0).toUpperCase(); });
       el.querySelector('.acct-out').addEventListener('click', function () { signOut().then(function () { location.reload(); }, function (e) { alert(e.message); }); });
     };
     listeners.push(function (k) { if (k === 'user' || k === 'status') draw(); });
@@ -180,7 +285,7 @@ var Auth = (function () {
   }
 
   return {
-    enabled: enabled, client: client, init: init, pull: pull, push: push, changed: changed, reset: reset, signOut: signOut, deleteAccount: deleteAccount, exportData: exportData, downloadData: downloadData, mountAccount: mountAccount,
+    enabled: enabled, client: client, init: init, pull: pull, push: push, changed: changed, reset: reset, signOut: signOut, deleteAccount: deleteAccount, exportData: exportData, downloadData: downloadData, mountAccount: mountAccount, avatarSrc: avatarSrc, avatarHtml: avatarHtml, setAvatar: setAvatar, clearAvatar: clearAvatar, avatarSheet: avatarSheet, syncIcon: syncIcon,
     user: function () { return user; }, status: function () { return status; },
     on: function (fn) { listeners.push(fn); }
   };

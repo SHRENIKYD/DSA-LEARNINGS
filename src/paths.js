@@ -180,6 +180,14 @@ var PATHS = (function () {
     'ops-p2': { name: 'Containerised app with CI and IaC', hours: 20, brief: 'Containerise a small app, build and test it in GitHub Actions, and provision a two-tier VPC deployment with Terraform and Ansible.', rubric: ['The Dockerfile builds from a clean checkout, uses a pinned small base image and runs as a non-root user', 'On merge the pipeline builds, tests, scans the image, pushes it and deploys, and a failing test blocks the deploy', 'Terraform builds a two-tier VPC (public and private subnets) from nothing, with remote state and locking', 'At least one reusable Terraform module takes variables, and no secret is written in the code', 'The Ansible playbook configures the hosts, and a second run reports 0 changed', 'The app is reachable through a load balancer while the database is not reachable from the internet, shown with a test'] },
     'ops-p3': { name: 'Kubernetes platform with observability', hours: 30, brief: 'Deploy the app to Kubernetes with Helm, autoscaling, Prometheus and Grafana dashboards, alerts, Vault secrets and a disaster-recovery runbook.', rubric: ['The Helm chart sets resource requests and limits and liveness and readiness probes', 'The autoscaler adds pods during a load test and removes them afterwards, shown with output or a graph', 'Prometheus scrapes the app, and a Grafana dashboard shows latency, traffic, errors and saturation', 'An SLO is defined with numbers, and burn-rate alerts fire in a test and reach a receiver', 'Secrets come from Vault or an external secrets store, and a scan such as gitleaks finds none in Git', 'A restore drill from backup finishes within the stated RTO, with the measured time and a disaster-recovery runbook'] }
   };
+  /* Framework-specific modules: every topic is written for these languages only. In My path mode a learner whose language
+     is not listed sees a one-line reveal instead of the topics (src/engine.js); links always open them. */
+  var LANG_ONLY = {
+    be02: { langs: ['java', 'js'], label: 'Spring Boot and Express' }, be06: { langs: ['java'], label: 'Java/Spring' },
+    be07: { langs: ['js'], label: 'Node.js' }, be17: { langs: ['python'], label: 'Python/FastAPI' },
+    be18: { langs: ['python'], label: 'Python/SQLAlchemy' }, be19: { langs: ['python'], label: 'Python' },
+    be20: { langs: ['python'], label: 'Python/pytest' }, be21: { langs: ['python'], label: 'Python/FastAPI' }
+  };
   var REVISION = 0.15;
   function resolve(id, lang) {
     if (id.indexOf('prep:') !== 0) return [id];
@@ -230,6 +238,6 @@ var PATHS = (function () {
     [5, 10, 20, 40].forEach(function (w) { extWeeks[w] = Math.ceil((opt + ext) * (1 + REVISION) / w); });
     return { core: core, rec: rec, opt: opt, ext: ext, projects: proj, revision: revision, total: total, weeks: weeks, extWeeks: extWeeks, plan: p };
   }
-  return { NEEDS: NEEDS, RECS: RECS, PREP: PREP, ROUTES: ROUTES, PROJECTS: PROJECTS, REVISION: REVISION, resolve: resolve, needs: needs, recs: recs, plan: plan, schedule: schedule };
+  return { NEEDS: NEEDS, RECS: RECS, PREP: PREP, ROUTES: ROUTES, PROJECTS: PROJECTS, LANG_ONLY: LANG_ONLY, REVISION: REVISION, resolve: resolve, needs: needs, recs: recs, plan: plan, schedule: schedule };
 })();
 if (typeof module !== 'undefined') module.exports = PATHS;
