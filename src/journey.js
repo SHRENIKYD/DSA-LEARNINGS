@@ -231,6 +231,15 @@ var Journey = (function () {
       var s = stats(), list = stampsOf(s), got = list.filter(function (x) { return x.on; }).length;
       var u = window.Auth && Auth.enabled ? Auth.user() : null;
       var who = u ? (u.email || 'Signed in') : 'Traveller';
+      var guest = !!(window.Auth && Auth.enabled && !u);
+      document.querySelectorAll('.pp-main > section:not(#pHead):not(#pRoute), .pp-side').forEach(function (el) { el.hidden = guest; });
+      if (guest) {
+        document.getElementById('pRoute').hidden = true;
+        document.getElementById('pHead').innerHTML = '<div class="pp-avwrap"><span class="pp-av" aria-hidden="true">' + icon('compass') + '</span></div>' +
+          '<div class="pp-who"><span class="kicker">Traveller\'s passport</span><b>Sign in to open your passport</b><span>Your stamps, route progress and profile photo are kept with your account and follow you to every device.</span>' +
+          '<a class="btn pp-signin" href="login.html?next=passport.html">' + icon('compass') + ' Sign in</a></div>';
+        return;
+      }
       var hasPhoto = !!(window.Auth && Auth.avatarSrc && Auth.avatarSrc());
       var cam = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.2"/></svg>';
       document.getElementById('pHead').innerHTML = '<div class="pp-avwrap"><span class="pp-av" aria-hidden="true">' + ((window.Auth && Auth.avatarHtml ? Auth.avatarHtml(icon('compass')) : '') || icon('compass')) + '</span>' +
@@ -240,6 +249,9 @@ var Journey = (function () {
       var cb = document.getElementById('pAvBtn');
       if (cb) cb.addEventListener('click', function () { Auth.avatarSheet(draw); });
       document.getElementById('pCollection').innerHTML = stampCollectionHtml(list);
+      drawRest(s, u);
+    }
+    function drawRest(s, u) {
       document.getElementById('pLands').innerHTML = REGIONS.map(function (r) {
         var g = s.region[r.key], p = pct(g.done, g.items);
         return '<div class="pland"><span>' + icon(r.icon) + esc(r.name) + '</span><span class="jbar-p c-' + r.color + '"><i style="width:' + Math.max(p ? 3 : 0, p) + '%"></i></span><span class="mono">' + p + '%</span></div>';

@@ -13,6 +13,22 @@ It scores the rest by views, like ratio, how many words of the topic title appea
 
 Reviewed choices carry `curated: true`, a review date and a coverage note. Discovery preserves these choices. A changed topic title marks a curated choice stale; an unavailable curated choice retains its ID for review. Both are hidden by the build until corrected. Unreviewed unavailable choices can be searched again.
 
+## Videos per language
+
+The DSA and Low-Level Design tracks are taught in the learner's language, so their topics can carry one extra pick per language. An entry in `data/videos.json` may gain:
+
+```json
+"byLang": { "python": { "id": "...", "title": "...", "channel": "...", "secs": 600 }, "js": {}, "cpp": {}, "java": {} }
+```
+
+Keys are `java`, `python`, `js` and `cpp`; each value has the same fields as the default pick (`id` null means searched, nothing suitable). The top-level pick stays as the default for learners with no chosen language and for languages without a pick. Other tracks never get `byLang`.
+
+`node tools/find-videos.js --lang python [--max 40]` searches dsa and lld topics that have no `byLang.python`, with the query "Python" + topic title. It applies the same embeddable, public, non-live, 3 to 45 minute and scoring rules, and also requires the language name in the video title or channel so a Java video is never saved as a Python pick. `--check` also validates every `byLang` id and drops removed or non-embeddable ones; a default pick that disappears keeps the entry if it still has language picks.
+
+In the browser `LessonVideo.pick(entry, lang)` (src/video.js) returns `byLang[lang]` when present, else the default (or null). The language is read from `imastery.route` (or `Learn.pref()` when loaded). `window.IM_VIDEOS[topicId]` resolves through it on every read, so lesson pages need no change and follow the learner's language. `window.IM_VIDEOS_RAW` and the Watchtower catalog keep the full `byLang` data.
+
+The Watchtower shows language-neutral tracks plus the learner's own language track; the Java, Python, JS/TS, C++ and C# tracks of other languages are not rendered at all. A "Change language" link opens the route page, where picking "Show every language" brings them back. A card using a per-language pick carries a language badge. Learners with no chosen language see everything.
+
 ## Setup (once)
 
 1. Google Cloud Console → create or pick a project → **APIs & Services → Library** → enable **YouTube Data API v3**.
@@ -22,7 +38,7 @@ Reviewed choices carry `curated: true`, a review date and a coverage note. Disco
 
 ## Quota and schedule
 
-The free quota is 10,000 units a day and one topic search costs about 101 units, so each daily run searches 95 topics. Coverage depends on available relevant results; automated search does not guarantee a suitable video for every topic. After that the daily run only checks existing videos (a few units).
+The free quota is 10,000 units a day and one topic search costs about 101 units. The daily workflow runs two passes: the default pass searches up to 50 topics, then one language pass searches up to 40 dsa/lld topics for one language, rotating by day of the year (`day % 4`: python, js, cpp, java; a manual run can pick the language). That is at most 90 searches, about 9,100 units, plus a few units for `--check`. Coverage depends on available relevant results; automated search does not guarantee a suitable video for every topic. After that the daily run only checks existing videos (a few units).
 
 Each run that changes `data/videos.json` commits it to `main` and redeploys the website. The app picks up new videos with its next version.
 

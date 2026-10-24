@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:wght@500;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="assets/style.css?v=@@V@@">
+<style>.vlangbar{margin:0 0 12px;font-size:14px;color:var(--muted)}.vlangbar .vid-open{margin:0 0 0 6px;background:none;border:0;padding:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit;font-weight:700}.vlang-badge{display:inline-block;margin-right:6px;padding:1px 8px;border-radius:999px;border:1px solid currentColor;font-size:12px;font-weight:700}</style>
 </head>
 <body class="vpage">
 @@JBAR@@
@@ -19,6 +20,7 @@
     <label class="sbox"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="vsearch" type="search" placeholder="Search landmarks, videos or channels" aria-label="Search videos" autocomplete="off"></label>
     <div class="vsel"><button type="button" class="vsel-btn" id="vtrack" aria-haspopup="listbox" aria-expanded="false" aria-label="Track"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h12M3 18h6"/></svg><span class="lbl" id="vtrackLbl"></span><svg class="ic chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><ul class="vsel-list" id="vtrackList" role="listbox" aria-label="Track" tabindex="-1" hidden></ul></div>
   </div>
+  <p class="vlangbar" id="vlangbar" hidden><span id="vlangmsg"></span> <a class="vid-open" href="route.html">Change language</a></p>
   <div id="vlist" aria-live="polite"></div>
   <p class="vid-note">Videos play from YouTube when you tap them, in its privacy-enhanced player. They are picked automatically for each topic and new ones are added every day.</p>
 </main>
@@ -28,11 +30,27 @@
 <script>
 (function () {
   var L = window.IM_VIDEO_LIB || { total: 0, tracks: [] }, cur = 'all', q = '';
+  // Learner language (java|python|js|cpp, '' when none chosen). Language tracks of the other languages stay behind "Show all languages".
+  var LANG = LessonVideo.learnerLang(), showAll = (function () { try { return JSON.parse(localStorage.getItem('imastery.lang')) === 'all'; } catch (e) { return false; } })();
+  var LANG_TRACK = { java: 'java', python: 'py', js: 'js', cpp: 'cpp' }, LANG_TRACKS = ['java', 'py', 'js', 'cpp'];
+  function hiddenTrack(t) { return !!LANG && !showAll && LANG_TRACKS.indexOf(t.id) >= 0 && t.id !== LANG_TRACK[LANG]; }
+  function shown() { return L.tracks.filter(function (t) { return !hiddenTrack(t); }); }
+  function rowsOf(t) { return t.items.map(function (v) { var p = LessonVideo.pick(v, LANG); return p ? Object.assign({}, v, p) : null; }).filter(Boolean); }
   var $ = function (s) { return document.querySelector(s); };
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-  var all = 0; L.tracks.forEach(function (t) { all += t.items.length; });
-  $('#vcount').textContent = all ? all.toLocaleString('en-US') + ' of ' + L.total.toLocaleString('en-US') + ' landmarks have a video. Coverage notes explain what each video teaches.' : 'Videos are being added. Check back soon.';
-  var OPTS = [['all', 'All tracks', all]].concat(L.tracks.map(function (t) { return [t.id, t.title, t.items.length]; }));
+  var all = 0, OPTS = [];
+  function counts() {
+    all = 0; shown().forEach(function (t) { all += rowsOf(t).length; });
+    $('#vcount').textContent = all ? all.toLocaleString('en-US') + ' of ' + L.total.toLocaleString('en-US') + ' landmarks have a video. Coverage notes explain what each video teaches.' : 'Videos are being added. Check back soon.';
+    OPTS = [['all', 'All tracks', all]].concat(shown().map(function (t) { return [t.id, t.title, rowsOf(t).length]; }));
+    if (!OPTS.some(function (c) { return c[0] === cur; })) cur = 'all';
+  }
+  function langbar() {
+    var hidden = L.tracks.some(function (t) { return LANG && LANG_TRACKS.indexOf(t.id) >= 0 && t.id !== LANG_TRACK[LANG]; });
+    $('#vlangbar').hidden = !hidden;
+    if (!hidden) return;
+    $('#vlangmsg').textContent = showAll ? 'Showing every language.' : 'Showing ' + LessonVideo.langName(LANG) + ' and language-neutral tracks.';
+  }
   function chips() {
     var o = OPTS.filter(function (c) { return c[0] === cur; })[0] || OPTS[0];
     $('#vtrackLbl').textContent = o[1] + ' · ' + o[2];
@@ -41,15 +59,15 @@
   function item(t, v) {
     var mins = LessonVideo.label(v);
     return '<article class="vitem"><button type="button" class="vid-play vthumb" ' + LessonVideo.attrs(v) + ' aria-label="Play video: ' + esc(v.title) + '"><span class="vid-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg></span><b hidden>' + esc(v.title) + '</b></button>' +
-      '<span class="kicker">Place ' + v.mn + ' · ' + esc(v.mt) + '</span><h3>' + esc(v.tt) + '</h3><p class="vmeta">' + esc(v.title) + ' · ' + esc(v.channel) + ' · ' + mins + 'YouTube</p>' +
+      (v.perLang ? '<span class="vlang-badge" data-lang="' + esc(v.lang) + '">' + esc(LessonVideo.langName(v.lang)) + '</span> ' : '') + '<span class="kicker">Place ' + v.mn + ' · ' + esc(v.mt) + '</span><h3>' + esc(v.tt) + '</h3><p class="vmeta">' + esc(v.title) + ' · ' + esc(v.channel) + ' · ' + mins + 'YouTube</p>' +
       (v.note ? '<p class="vmeta">' + esc(v.note) + '</p>' : '') +
       '<a class="vid-open" href="' + esc(LessonVideo.watchUrl(v)) + '" target="_blank" rel="noopener noreferrer">Open on YouTube</a> · <a class="vlesson" href="' + esc(t.id) + '.html#' + esc(v.tid) + '">Visit the landmark ›</a></article>';
   }
   function render() {
     var words = q.toLowerCase().split(/\s+/).filter(Boolean), h = '', n = 0;
-    L.tracks.forEach(function (t) {
+    shown().forEach(function (t) {
       if (cur !== 'all' && t.id !== cur) return;
-      var rows = t.items.filter(function (v) { var hay = (v.tt + ' ' + v.title + ' ' + v.channel + ' ' + v.mt + ' ' + t.short).toLowerCase(); return words.every(function (w) { return hay.indexOf(w) >= 0; }); });
+      var rows = rowsOf(t).filter(function (v) { var hay = (v.tt + ' ' + v.title + ' ' + v.channel + ' ' + v.mt + ' ' + t.short).toLowerCase(); return words.every(function (w) { return hay.indexOf(w) >= 0; }); });
       if (!rows.length) return;
       n += rows.length;
       h += '<section class="vtrack"><h2><span class="kicker c-' + Journey.regionOf(t.id).color + '">' + esc(Journey.regionOf(t.id).name) + '</span>' + esc(t.title) + ' <small>' + rows.length + ' video' + (rows.length === 1 ? '' : 's') + '</small></h2><div class="vgrid">' + rows.map(function (v) { return item(t, v); }).join('') + '</div></section>';
@@ -83,8 +101,10 @@
   });
   Journey.bar({ theme: true });
   var want = decodeURIComponent(location.hash.slice(1));
-  if (L.tracks.some(function (t) { return t.id === want; })) cur = want;
-  chips(); render();
+  if (L.tracks.some(function (t) { return t.id === want; }) && !hiddenTrack(L.tracks.filter(function (t) { return t.id === want; })[0])) cur = want;
+  function refresh() { counts(); langbar(); chips(); render(); }
+  addEventListener('storage', function (e) { if (e.key === 'imastery.route') { LANG = LessonVideo.learnerLang(); refresh(); } });
+  refresh();
 })();
 </script>
 </body>

@@ -214,7 +214,7 @@ const vidJs = {};
 const video = require('../src/video.js');
 ALLT.forEach((topic) => { const v = video.publicEntry(VIDS[topic.tid], topic.tt); if (v) vidJs[topic.tid] = v; });
 const videoJs = minJs(rd('src/video.js'), 'src/video.js');
-fs.writeFileSync(path.join(out, 'assets', 'videos.js'), videoJs + '\nwindow.IM_VIDEOS=' + JSON.stringify(vidJs).replace(/</g, '\\u003c') + ';');
+fs.writeFileSync(path.join(out, 'assets', 'videos.js'), videoJs + '\nwindow.IM_VIDEOS_RAW=' + JSON.stringify(vidJs).replace(/</g, '\\u003c') + ';window.IM_VIDEOS=window.LessonVideo.resolveAll(window.IM_VIDEOS_RAW);');
 const lib = { total: ALLT.length, tracks: [] };
 for (const t of TRACKS) {
   const items = ALLT.filter((x) => x.tr === t.id && vidJs[x.tid]).map((x) => Object.assign({ mn: x.mn, mt: x.mt, tt: x.tt, tid: x.tid }, vidJs[x.tid]));
