@@ -27,6 +27,7 @@ function setup(opts) {
         if (state.throwNet) return Promise.reject(new Error('offline'));
         if (state.fail) return Promise.resolve({ error: { message: 'x' } });
         state.row = { done: body.done, last: body.last, user_id: body.user_id };
+        if ('prefs' in body) state.row.prefs = body.prefs; else if (opts.keepPrefs) state.row.prefs = opts.keepPrefs;
         return Promise.resolve({ error: null });
       }
     }; },
@@ -236,7 +237,7 @@ test('export when signed in has the account id and the server row, fetched fresh
   const d = await t.Auth.exportData();
   const P = o => JSON.parse(JSON.stringify(o)); // vm objects have another realm's prototypes
   assert.deepStrictEqual(P(d.account), { id: 'u1', email: 'u1@x.com' });
-  assert.deepStrictEqual(P(d.server), { found: true, user_id: 'u1', done: t.state.row.done, last: 'newer' });
+  assert.deepStrictEqual(P(d.server), { found: true, user_id: 'u1', done: t.state.row.done, last: 'newer', prefs: null });
   assert.deepStrictEqual(P(d.local.done), { s1: 1 });
 });
 
@@ -250,6 +251,68 @@ test('export when the server cannot be reached still returns local data with an 
     assert.strictEqual(d.account.id, 'u1');
     assert.ok(d.server && /Only the data on this device/.test(d.server.error), mode);
   }
+});
+
+// Route preference sync (imastery.route <-> progress.prefs): last write wins by updatedAt, local-first offline.
+const PR = (id, at) => ({ id, lang: 'python', hours: 10, mode: 'path', onboarded: true, known: [], updatedAt: at });
+test('prefs: local route is pushed with progress on first sign-in', async () => {
+  const t = setup({ session: sess('u1'), row: null, local: { 'imastery.route': J(PR('pyback', 100)) } });
+  await t.Auth.init();
+  assert.deepStrictEqual(t.upserts()[0].body.prefs, PR('pyback', 100));
+});
+test('prefs: newer server route is pulled and replaces the local one (no push needed for prefs)', async () => {
+  const t = setup({ session: sess('u1'), row: { done: {}, last: null, prefs: PR('aiapp', 200) },
+    local: { 'imastery.route': J(PR('pyback', 100)), 'imastery.sync': J({ user: 'u1', dirty: false }) } });
+  await t.Auth.init();
+  assert.deepStrictEqual(t.ls('imastery.route'), PR('aiapp', 200));
+  assert.strictEqual(t.ls('imastery.lang'), 'python');
+  assert.strictEqual(t.upserts().length, 0);
+});
+test('prefs: newer local route wins and is pushed (last write wins)', async () => {
+  const t = setup({ session: sess('u1'), row: { done: {}, last: null, prefs: PR('aiapp', 100) },
+    local: { 'imastery.route': J(PR('devops', 300)), 'imastery.sync': J({ user: 'u1', dirty: false }) } });
+  await t.Auth.init();
+  assert.deepStrictEqual(t.ls('imastery.route'), PR('devops', 300));
+  assert.strictEqual(t.upserts().length, 1);
+  assert.deepStrictEqual(t.upserts()[0].body.prefs, PR('devops', 300));
+  assert.deepStrictEqual(t.state.row.prefs, PR('devops', 300));
+});
+test('prefs: second device with no local route restores the server route', async () => {
+  const t = setup({ session: sess('u1'), row: { done: { a: 1 }, last: 'a', prefs: PR('pyback', 50) } });
+  await t.Auth.init();
+  assert.deepStrictEqual(t.ls('imastery.route'), PR('pyback', 50));
+});
+test('prefs: no local route never sends prefs (server copy left untouched)', async () => {
+  const t = setup({ session: sess('u1'), row: null, local: { 'imastery.done': J({ a: 1 }) } });
+  await t.Auth.init();
+  assert.ok(!('prefs' in t.upserts()[0].body));
+});
+test('prefs: offline change stays local, is marked dirty, and is pushed when back online', async () => {
+  const t = setup({ session: sess('u1'), row: { done: {}, last: null, prefs: PR('pyback', 100) } });
+  await t.Auth.init();
+  t.state.throwNet = true;
+  t.store['imastery.route'] = J(PR('frontend', 500));
+  t.Auth.changed('prefs');
+  await t.Auth.push();
+  assert.deepStrictEqual(t.ls('imastery.route'), PR('frontend', 500)); // local-first
+  assert.strictEqual(t.ls('imastery.sync').dirty, true);
+  t.state.throwNet = false;
+  t.win.online();
+  await tick();
+  assert.deepStrictEqual(t.state.row.prefs, PR('frontend', 500));
+  assert.strictEqual(t.ls('imastery.sync').dirty, false);
+});
+test('prefs: server without the prefs column (migration 0004 not applied) still syncs progress', async () => {
+  const t = setup({ session: sess('u1'), row: null, local: { 'imastery.done': J({ a: 1 }), 'imastery.route': J(PR('pyback', 1)) } });
+  const C = t.Auth.client, from = C.from.bind(C);
+  C.from = tb => { const o = from(tb), sel = o.select, up = o.upsert;
+    o.select = cols => cols.indexOf('prefs') >= 0 ? { eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { message: 'column progress.prefs does not exist' } }) }) } : sel(cols);
+    o.upsert = (b, x) => 'prefs' in b ? Promise.resolve({ error: { message: 'Could not find the prefs column' } }) : up(b, x);
+    return o; };
+  await t.Auth.init();
+  await tick();
+  assert.deepStrictEqual(t.state.row.done, { a: 1 });
+  assert.strictEqual(t.Auth.status(), 'synced');
 });
 
 // Known issue probes: print findings, do not fail the run.

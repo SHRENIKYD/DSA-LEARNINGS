@@ -603,6 +603,7 @@ var App = (function () {
     vizRegistry = []; SNIPS = [];
     var lang = m.lang || TRACK.lang;
     var h = '<div class="crumb"><a href="index.html">World map</a><span>›</span><a href="#">' + esc(TRACK.title) + '</a><span>›</span><span>Place ' + m.num + '</span>' + lvlBadge(m.level) + '</div><h1>' + m.title + '</h1>';
+    if (PM()) h += pathBannerHtml(m);
     h += '<div class="intro">' + (m.intro || '') + '</div>';
     h += '<div class="box path"><span class="tag">Learning path for this module</span><div class="cx"><b>Time</b><span>~' + (m.hours || '?') + ' hours including practice</span><b>Before this</b><span id="prq-' + m.id + '">' + prereqHtml(m) + '</span><b>You will be able to</b><ul>' + asList(m.goals).map(function (g) { return '<li>' + g + '</li>'; }).join('') + '</ul></div>' +
       '<div class="meta">How to travel: read each landmark’s legend → the idea → run the visualizer → work the examples → dig up the hidden treasure with clues → riddle gate → interview tavern → practice arena. Checkmarks tick themselves when you finish a section with the right answers; untick one to redo it.</div></div><div class="toc">';
@@ -611,7 +612,13 @@ var App = (function () {
     if (m.quiz && m.quiz.length) h += '<a href="#' + m.id + '-quiz">Riddle gate</a>';
     if (m.interview && m.interview.length) h += '<a href="#' + m.id + '-iv">Interview tavern</a>';
     h += '<a href="#' + m.id + '-arena">Practice arena</a></div>';
-    m.topics.forEach(function (t, i) { h += topicHtml(m, t, i, lang); });
+    var gate = langGate(m);
+    if (gate && gate.hide) h += '<div class="box langgate" id="lg-' + m.id + '"><p><b>' + esc(gate.label) + ' version.</b> These lessons are written for ' + esc(gate.langs.map(function (l) { return Learn.LANG_NAMES[l]; }).join(' and ')) + ', not ' + esc(Learn.LANG_NAMES[gate.lang]) + '. <button class="btn sm" type="button" data-langshow="' + m.id + '">Show it</button></p></div>';
+    m.topics.forEach(function (t, i) {
+      var th = topicHtml(m, t, i, lang);
+      if (gate) th = th.replace('<section class="card topic"', '<section class="card topic" data-lang="' + gate.langs.join(' ') + '"' + (gate.hide ? ' hidden' : ''));
+      h += th;
+    });
     h += quizHtml(m) + interviewHtml(m);
     var pr = m.practice || [], cnt = { Easy: 0, Medium: 0, Hard: 0 };
     pr.forEach(function (p) { cnt[p.level] = (cnt[p.level] || 0) + 1; });
@@ -629,6 +636,8 @@ var App = (function () {
   var ZN = { B: 'Beginner Shore', I: 'Intermediate Forest', A: 'Advanced Peaks', E: 'Expert Summit' }, ZC = { B: 'green', I: 'gold', A: 'clay', E: 'violet' };
   function region(tid) { return window.Journey ? Journey.regionOf(tid) : { name: 'The world', area: '', color: 'gold' }; }
   function curPlace() {
+    var TP = trackPath();
+    if (TP && TP.length) for (var j = 0; j < TP.length; j++) { var pm = loaded(TP[j]); if (pm) { var pids = items(pm); if (doneOf(pids) < pids.length) return pm; } }
     for (var i = 0; i < MODULES.length; i++) { var ids = items(MODULES[i]); if (doneOf(ids) < ids.length) return MODULES[i]; }
     return MODULES[MODULES.length - 1] || null;
   }
@@ -654,10 +663,23 @@ var App = (function () {
     var R = region(TRACK.id), tot = 0, dn = 0, lm = 0, cur = curPlace(), last = store.get('imastery.last', null);
     MODULES.forEach(function (m) { var ids = items(m); tot += ids.length; dn += doneOf(ids); lm += m.topics.length; });
     var p = tot ? Math.round(dn / tot * 100) : 0, mine = last && last.track === TRACK.id && last.hash;
+    var TP = trackPath(), onp = {}, pdone = 0;
+    if (TP && TP.length) { TP.forEach(function (id) { onp[id] = 1; if (Learn.status(id, DONE).satisfied) pdone++; }); mine = false; } else TP = null;
     var go = mine ? '<a class="btn clay lg" href="#' + esc(last.hash) + '">Continue at place ' + esc(last.num) + '</a>' : cur ? '<a class="btn clay lg" href="#' + cur.id + '">' + (dn ? 'Continue at place ' : 'Start at place ') + cur.num + '</a>' : '';
     var h = '<section class="land-hero"><div class="lh-l"><span class="kicker c-' + R.color + '">' + esc(R.name) + ' · ' + esc(R.area) + '</span><h1>' + TRACK.title + '</h1><p>' + TRACK.desc + '</p>' +
       '<p class="muted">' + TRACK.modules.length + ' places from Beginner Shore to Expert Summit · ' + MODULES.length + ' open now · ' + lm + ' landmarks, with a practice arena at the end of each place.</p></div>' +
-      '<div class="lh-r"><div class="jrow"><span>Explored</span><b class="c-gold">' + p + '%</b></div><div class="jbar-p c-gold"><i style="width:' + p + '%"></i></div>' + go + '</div></section>';
+      (TP ? '<div class="lh-r"><div class="jrow"><span>Your path</span><b class="c-gold">' + pdone + ' of ' + TP.length + '</b></div><div class="jbar-p c-gold"><i style="width:' + Math.round(pdone / TP.length * 100) + '%"></i></div><small class="muted lh-all">All ' + TRACK.modules.length + ' places: ' + p + '% explored</small>' + go + '</div></section>'
+        : '<div class="lh-r"><div class="jrow"><span>Explored</span><b class="c-gold">' + p + '%</b></div><div class="jbar-p c-gold"><i style="width:' + p + '%"></i></div>' + go + '</div></section>');
+    if (TP && TP.length) {
+      h += '<section class="zone pathzone" aria-labelledby="zPath"><h2 class="zone-h" id="zPath"><span class="zdot bg-violet" aria-hidden="true"></span>Your path in this land<small>' + TP.length + ' places</small></h2><div class="trail">';
+      TP.forEach(function (id) {
+        var m = loaded(id);
+        if (!m) return;
+        var ids = items(m), d = doneOf(ids), full = ids.length && d === ids.length, isCur = cur === m && !full, w = ids.length ? Math.round(d / ids.length * 100) : 0, mst = Learn.status(m.id, DONE);
+        h += '<a class="place' + (full ? ' done' : isCur ? ' cur' : '') + (mst.mastered ? ' mastered' : '') + '" href="#' + m.id + '"><div class="jrow"><span class="pdot">' + (mst.mastered ? '★' : full ? '✓' : m.num) + '</span><span class="ptag2">' + (mst.mastered ? 'mastered' : full ? 'cleared' : isCur ? 'you are here' : d ? 'exploring' : 'ahead') + '</span></div><b>' + m.title + '</b>' + relTag(id) + '<div class="jbar-p"><i style="width:' + w + '%"></i></div><span class="pmeta">' + m.topics.length + ' landmarks · ' + w + '%</span></a>';
+      });
+      h += '</div></section>';
+    } else if (TP === null && PM()) h += '<p class="muted pathnone">No place in this land is on your path. Everything stays open.</p>';
     if (cur) {
       var ci = -1;
       cur.topics.forEach(function (_, i) { if (ci < 0 && !DONE[cur.id + '-t' + i]) ci = i; });
@@ -667,9 +689,12 @@ var App = (function () {
         '<a class="btn line lg" href="#' + cur.id + '-arena">' + JI('chest') + 'Practice arena · ' + (cur.practice || []).length + ' treasures</a>' +
         (cur.interview && cur.interview.length ? '<a class="btn line lg" href="#' + cur.id + '-iv">' + JI('lantern') + 'Interview tavern · ' + cur.interview.length + ' questions</a>' : '') + '</div></section>';
     }
+    var nMore = TP ? TRACK.modules.filter(function (x) { return !onp[x.id]; }).length : 0;
+    if (TP && nMore) h += '<details class="more-track"><summary>More in this track (' + nMore + ')</summary>';
     ['B', 'I', 'A', 'E'].forEach(function (lv) {
       var ms = TRACK.modules.filter(function (x) { return x.level === lv; });
       if (!ms.length) return;
+      if (TP && !ms.some(function (x) { return !onp[x.id]; })) return;
       var bl = 0, bd = 0, ed = 0;
       h += '<section class="zone" aria-labelledby="z' + lv + '"><h2 class="zone-h" id="z' + lv + '"><span class="zdot bg-' + ZC[lv] + '" aria-hidden="true"></span>' + ZN[lv] + '<small>' + ms.length + ' places</small></h2><div class="trail">';
       ms.forEach(function (pm) {
@@ -678,6 +703,7 @@ var App = (function () {
         var ids = items(m), d = doneOf(ids), full = ids.length && d === ids.length, isCur = cur === m && !full, w = ids.length ? Math.round(d / ids.length * 100) : 0;
         if (lv === 'B') { bl++; if (full) bd++; }
         if (lv === 'E' && full) ed++;
+        if (TP && onp[m.id]) return;
         var mst = window.Learn ? Learn.status(m.id, DONE) : {};
         h += '<a class="place' + (full ? ' done' : isCur ? ' cur' : '') + (mst.mastered ? ' mastered' : '') + '" href="#' + m.id + '"><div class="jrow"><span class="pdot">' + (mst.mastered ? '★' : full ? '✓' : m.num) + '</span><span class="ptag2">' + (mst.mastered ? 'mastered' : full ? 'cleared' : isCur ? 'you are here' : d ? 'exploring' : 'ahead') + '</span></div><b>' + m.title + '</b><div class="jbar-p"><i style="width:' + w + '%"></i></div><span class="pmeta">' + m.topics.length + ' landmarks · ' + w + '%</span></a>';
       });
@@ -686,21 +712,27 @@ var App = (function () {
       if (lv === 'E') h += stampCard('summit', ed > 0, 'Clear any Expert place to earn it.');
       h += '</div></section>';
     });
+    if (TP && nMore) h += '</details>';
     return h;
   }
   function navHtml() {
-    var cur = curPlace();
-    var h = '<a class="nav-back" href="index.html">' + ICONS.back + 'World map</a><a class="nav-mod' + (!current ? ' active' : '') + '" href="#"><span class="num">' + esc(TRACK.icon) + '</span><span>Land overview</span></a>';
-    ['B', 'I', 'A', 'E'].forEach(function (lv) {
-      var ms = TRACK.modules.filter(function (x) { return x.level === lv; });
-      if (!ms.length) return;
-      h += '<div class="nav-part c-' + ZC[lv] + '">' + ZN[lv] + '</div>';
-      ms.forEach(function (pm) {
+    var cur = curPlace(), TP = trackPath(), onp = {}, h = '';
+    if (TP && TP.length) TP.forEach(function (id) { onp[id] = 1; });
+    else TP = null;
+    function zones(filter) {
+      ['B', 'I', 'A', 'E'].forEach(function (lv) {
+        var ms = TRACK.modules.filter(function (x) { return x.level === lv && (!filter || !onp[x.id]); });
+        if (!ms.length) return;
+        h += '<div class="nav-part c-' + ZC[lv] + '">' + ZN[lv] + '</div>';
+        ms.forEach(function (pm) { navMod(pm, ''); });
+      });
+    }
+    function navMod(pm, tag) {
         var m = loaded(pm.id);
         if (!m) { h += '<div class="nav-mod soon" title="coming soon"><span class="num">' + pm.num + '</span><span>' + esc(pm.title) + '</span><span class="cnt">soon</span></div>'; return; }
         var ids = items(m), d = doneOf(ids), act = current === m, full = ids.length && d === ids.length;
         var ms2 = window.Learn ? Learn.status(m.id, DONE) : {};
-        h += '<a class="nav-mod' + (act ? ' active' : '') + (full ? ' full' : cur === m ? ' nhere' : '') + (ms2.mastered ? ' mastered' : '') + '" href="#' + m.id + '"' + (ms2.mastered ? ' title="Mastered"' : '') + '><span class="num">' + (ms2.mastered ? '★' : full ? '✓' : m.num) + '</span><span>' + m.title + '</span><span class="cnt">' + (ids.length ? Math.round(d / ids.length * 100) : 0) + '%</span></a>';
+        h += '<a class="nav-mod' + (act ? ' active' : '') + (full ? ' full' : cur === m ? ' nhere' : '') + (ms2.mastered ? ' mastered' : '') + '" href="#' + m.id + '"' + (ms2.mastered ? ' title="Mastered"' : '') + '><span class="num">' + (ms2.mastered ? '★' : full ? '✓' : m.num) + '</span><span>' + m.title + tag + '</span><span class="cnt">' + (ids.length ? Math.round(d / ids.length * 100) : 0) + '%</span></a>';
         if (act) {
           h += '<div class="nav-sub">';
           m.topics.forEach(function (t, i) { h += '<a href="#' + m.id + '-t' + i + '" class="' + (DONE[m.id + '-t' + i] ? 'ok' : '') + '">' + m.num + '.' + (i + 1) + ' ' + stripTags(t.title) + '</a>'; });
@@ -708,15 +740,27 @@ var App = (function () {
           if (m.interview && m.interview.length) h += '<a href="#' + m.id + '-iv" class="' + (DONE[m.id + '-iv'] ? 'ok' : '') + '">Interview tavern (' + m.interview.length + ')</a>';
           h += '<a href="#' + m.id + '-arena">Practice arena (' + (m.practice || []).length + ')</a></div>';
         }
-      });
-    });
+    }
+    h += '<a class="nav-back" href="index.html">' + ICONS.back + 'World map</a><a class="nav-mod' + (!current ? ' active' : '') + '" href="#"><span class="num">' + esc(TRACK.icon) + '</span><span>Land overview</span></a>';
+    if (!TP) { zones(false); return h; }
+    h += '<div class="nav-part c-violet">Your path · ' + TP.length + ' places</div>';
+    TP.forEach(function (id) { var pm = TRACK.modules.filter(function (x) { return x.id === id; })[0]; if (pm) navMod(pm, ' ' + relTag(id)); });
+    var more = TRACK.modules.filter(function (x) { return !onp[x.id]; });
+    if (more.length) {
+      var open = current && !onp[current.id];
+      h += '<details class="nav-more"' + (open ? ' open' : '') + '><summary>More in this track (' + more.length + ')</summary>';
+      zones(true);
+      h += '</details>';
+    }
     return h;
   }
   function updateProgress() {
     var tot = 0, dn = 0;
     MODULES.forEach(function (m) { var ids = items(m); tot += ids.length; dn += doneOf(ids); });
     $('#pfill').style.width = (tot ? dn / tot * 100 : 0) + '%';
-    $('#ptext').textContent = 'Land explored: ' + (tot ? Math.round(dn / tot * 100) : 0) + '% · ' + dn + ' / ' + tot;
+    var TP = trackPath();
+    if (TP && TP.length) $('#ptext').textContent = 'Your path: ' + TP.filter(function (id) { return Learn.status(id, DONE).satisfied; }).length + ' of ' + TP.length + ' · land ' + (tot ? Math.round(dn / tot * 100) : 0) + '%';
+    else $('#ptext').textContent = 'Land explored: ' + (tot ? Math.round(dn / tot * 100) : 0) + '% · ' + dn + ' / ' + tot;
     var nav = $('#nav'), st = nav.scrollTop;
     nav.innerHTML = navHtml();
     nav.scrollTop = st;
@@ -737,8 +781,10 @@ var App = (function () {
     });
   }
   function searchInto(q, index, res, nav) {
+    lastSearch = [q, index, res, nav];
     q = q.trim().toLowerCase();
     if (!q) { res.hidden = true; if (nav) nav.hidden = false; return; }
+    if (PM()) { searchPath(q, index, res, nav); return; }
     var words = q.split(/\s+/);
     var hits = index.map(function (it) {
       var tl = it.t.toLowerCase(), sc = 0;
@@ -752,6 +798,36 @@ var App = (function () {
       return '<a class="res" href="' + x.it.h + '">' + esc(x.it.t).replace(re, '<mark>$1</mark>') + '<small>' + esc(x.it.c) + '</small></a>';
     }).join('') : '<div class="empty" style="padding:10px">No matches yet.</div>';
     res.hidden = false; if (nav) nav.hidden = true;
+  }
+
+  /* My path search: on-path hits rank first and are labelled; "My path only" filters, with a reveal for the rest. */
+  function searchPath(q, index, res, nav) {
+    var words = q.split(/\s+/), on = {};
+    var hits = index.map(function (it) {
+      var tl = it.t.toLowerCase(), sc = 0;
+      for (var i = 0; i < words.length; i++) {
+        if (tl.indexOf(words[i]) >= 0) sc += 3; else if ((it.s || '').indexOf(words[i]) >= 0) sc += 1; else return null;
+      }
+      var mid = midOf(it.h), o = mid ? Learn.onPath(mid) : false;
+      return { it: it, sc: sc + (o ? 2 : 0), on: o };
+    }).filter(Boolean).sort(function (a, b) { return b.sc - a.sc; });
+    var nOn = hits.filter(function (x) { return x.on; }).length, shown = (searchOnly ? hits.filter(function (x) { return x.on; }) : hits).slice(0, 80), more = hits.length - nOn;
+    var re = new RegExp('(' + words.map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('|') + ')', 'gi');
+    var h = '<div class="sfilter"><button type="button" class="schip" data-pathonly aria-pressed="' + searchOnly + '">My path only</button><span class="muted">' + nOn + ' on your path' + (more ? ' · ' + more + ' elsewhere' : '') + '</span></div>';
+    h += shown.length ? shown.map(function (x) {
+      return '<a class="res' + (x.on ? '' : ' off') + '" href="' + x.it.h + '">' + esc(x.it.t).replace(re, '<mark>$1</mark>') + '<small>' + esc(x.it.c) + ' · <span class="' + (x.on ? 'son' : 'soff') + '">' + (x.on ? 'On your path' : 'Other lands') + '</span></small></a>';
+    }).join('') : '<div class="empty" style="padding:10px">' + (more && searchOnly ? 'Nothing on your path matches.' : 'No matches yet.') + '</div>';
+    if (searchOnly && more) h += '<button type="button" class="btn sm sall" data-searchall>Search everything (' + more + ' more result' + (more === 1 ? '' : 's') + ')</button>';
+    res.innerHTML = h;
+    res.hidden = false; if (nav) nav.hidden = true;
+    res.onclick = function (e) {
+      var b = e.target.closest && e.target.closest('[data-pathonly],[data-searchall]');
+      if (!b) return;
+      e.preventDefault(); e.stopPropagation();
+      searchOnly = b.hasAttribute('data-searchall') ? false : !searchOnly;
+      searchInto.apply(null, lastSearch);
+      var f = $('[data-pathonly]', res); if (f) f.focus();
+    };
   }
 
   /* ---------- routing ---------- */
@@ -776,6 +852,8 @@ var App = (function () {
       if (hs === mid) window.scrollTo(0, 0);
     }
     if (hs !== mid) {
+      var hid = document.getElementById(hs), sec = hid && hid.closest && hid.closest('section.topic[hidden]');
+      if (sec) revealLang(mid, false);
       var el = document.getElementById(hs);
       if (el) { el.scrollIntoView({ block: 'start' }); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
     }
@@ -869,6 +947,8 @@ var App = (function () {
         var fr = document.createElement('div'); fr.className = 'vid-frame';
         fr.innerHTML = '<iframe src="' + LessonVideo.embedUrl(LessonVideo.fromButton(vb)) + '" title="' + esc(vb.querySelector('b').textContent) + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
         vb.replaceWith(fr);
+      } else if (t.closest('[data-langshow]')) {
+        revealLang(t.closest('[data-langshow]').getAttribute('data-langshow'), true);
       } else if (t.closest('[data-testout]')) {
         var tm = t.closest('[data-testout]').getAttribute('data-testout');
         Learn.readiness(tm, routeLang(), function () { var el2 = document.getElementById('prq-' + tm), mm2 = loaded(tm); if (el2 && mm2) el2.innerHTML = prereqHtml(mm2); });
@@ -993,6 +1073,7 @@ var App = (function () {
     document.title = TRACK.title + ' — Interview Mastery';
     var ln = $('#landName'); if (ln) { var R = region(TRACK.id); ln.textContent = R.name + ' · ' + TRACK.modules.length + ' places'; }
     chrome();
+    mountPathbar();
     buildIndex();
     var tmr;
     $('#search').addEventListener('input', function () { var v = this.value; clearTimeout(tmr); tmr = setTimeout(function () { searchInto(v, INDEX, $('#results'), $('#nav')); }, 120); });
@@ -1017,6 +1098,11 @@ var App = (function () {
       if (b && window.Learn) { Learn.setPref({ id: b.getAttribute('data-route') }); renderHome(); var d = $('#dest [data-route="' + b.getAttribute('data-route') + '"]'); if (d) d.focus(); }
     });
     renderHome();
+    mountPathbar();
+    if (window.Learn && window.PATHS) {
+      var p0 = Learn.pref(), fresh = !p0.chosen && !p0.onboarded && !Object.keys(DONE).length && Learn.mode() === 'all' && !/[?&]view=all\b/.test(location.search);
+      if (fresh || location.hash === '#pick') openOnboarding(fresh, null);
+    }
   }
   function routeCardHtml() {
     if (!window.Learn || !window.PATHS) return '';
@@ -1032,16 +1118,23 @@ var App = (function () {
     var J = window.Journey, S = J.stats(DONE), last = store.get('imastery.last', null), M = window.IM_MODS || {};
     var lands = TRACKS.length, R0 = last && last.track ? J.regionOf(last.track) : J.REGIONS[0];
     var trackBy = {}; TRACKS.forEach(function (t) { trackBy[t.id] = t; });
-    var h = '<section class="whero"><div class="wh-l"><span class="kicker">' + (S.done ? J.pct(S.done, S.items) + '% of the world explored' : 'A new traveller arrives') + '</span>' +
+    var PMODE = PM(), RV = PMODE ? Learn.routeView() : null, ON = {};
+    if (PMODE) Learn.pathTracks().forEach(function (t) { ON[t.track] = 1; });
+    var nextMod = PMODE ? RV.next.filter(function (n) { return n.kind !== 'project' && n.meta; })[0] : null;
+    var h = '<section class="whero"><div class="wh-l"><span class="kicker">' + (PMODE ? RV.pctHours + '% of your path <small class="kick-all">· ' + J.pct(S.done, S.items) + '% of the world</small>' : S.done ? J.pct(S.done, S.items) + '% of the world explored' : 'A new traveller arrives') + '</span>' +
       '<h1>' + (S.done ? 'Welcome back, traveller' : 'Your journey starts on Foundation Isle') + '</h1>' +
       '<p>' + lands + ' lands, ' + S.planned + ' places, ' + S.landmarks.toLocaleString('en-US') + ' landmarks. Every lesson is a stop on the map; finish it and the path lights up.</p>';
-    if (last && last.track && last.hash) {
+    if (nextMod) {
+      h += '<a class="nextstop path" href="' + Learn.href(nextMod.id) + '"><span class="kicker">Next on your path · ' + esc(RV.sch.plan.route.stages[Learn.relevance(nextMod.id).stage] ? RV.sch.plan.route.stages[Learn.relevance(nextMod.id).stage].name : RV.sch.plan.route.name) + '</span><b>' + esc(nextMod.meta.title) + '</b>' +
+        '<span>' + esc(nextMod.why) + '</span><span class="sail">' + ICONS.play + 'Continue</span></a>';
+    } else if (last && last.track && last.hash) {
       h += '<a class="nextstop" href="' + esc(last.track) + '.html#' + esc(last.hash) + '"><span class="kicker">Next stop · place ' + esc(last.num) + ' · ' + esc(last.title) + '</span><b>' + esc(last.topicTitle || last.title) + '</b>' +
         '<span>' + esc(J.regionOf(last.track).name) + ' · ' + esc(last.trackTitle) + (last.topics ? ' · landmark ' + (last.topic + 1) + ' of ' + last.topics : '') + '</span><span class="sail">' + ICONS.play + 'Set sail</span></a>';
     } else {
       h += '<a class="nextstop" href="dsa.html#dsa01"><span class="kicker">First stop · place 1 · Foundation Isle</span><b>Programming Foundations</b><span>DSA + Math for CS · starts with a real-world legend</span><span class="sail">' + ICONS.play + 'Set sail</span></a>';
     }
     h += '</div>' + J.atlasHtml(S, R0, trackBy, last) + '</section>';
+    if (PMODE) h += pathHomeHtml(trackBy);
 
     var mid = last && last.id && M[last.id] ? last.id : 'dsa01', tid = last && last.id && M[last.id] ? last.track : 'dsa', c = M[mid], steps = [];
     var tix = last && last.id === mid ? last.topic || 0 : 0, num = last && last.id === mid ? last.num : 1;
@@ -1060,17 +1153,19 @@ var App = (function () {
     }).join('') + '</div></div>';
     h += '<div class="jcard"><h2>Journey log</h2><div class="jlog"><div><b>' + S.places + '</b><span>places cleared</span></div><div><b>' + S.topics.toLocaleString('en-US') + '</b><span>landmarks</span></div><div><b>' + S.problems.toLocaleString('en-US') + '</b><span>treasures found</span></div></div>' +
       '<a class="jstamps" href="passport.html"><span class="mini">' + (got.length ? got.slice(-4) : list.slice(0, 3)).map(function (x) { return J.stampSvg(x.st, x.on); }).join('') + '</span><span>' + (got.length ? got.length + ' of ' + list.length + ' stamps · open passport ›' : 'Your first stamp lands after one landmark · passport ›') + '</span></a></div>';
-    h += routeCardHtml() + '</section>';
+    h += (PMODE ? '' : routeCardHtml()) + '</section>';
 
-    h += '<section class="world" aria-labelledby="worldH"><div class="jrow"><h2 id="worldH">The world</h2><span class="muted">' + J.REGIONS.length + ' regions · ' + lands + ' lands</span></div><div class="wgrid">' +
-      J.REGIONS.map(function (r) {
+    var regOn = function (r) { return !PMODE || r.tracks.some(function (t) { return ON[t]; }); }, offRegions = J.REGIONS.filter(function (r) { return !regOn(r); });
+    var regionHtml = function (r) {
         return '<div class="jcard region" id="r-' + r.key + '"><span class="kicker c-' + r.color + '">' + J.icon(r.icon) + esc(r.area) + '</span><b class="rname">' + esc(r.name) + '</b>' + r.tracks.filter(function (t) { return trackBy[t]; }).map(function (t) {
           var g = S.track[t] || { items: 0, done: 0 }, p = J.pct(g.done, g.items);
-          return '<a class="rland" href="' + t + '.html"><span>' + esc(trackBy[t].title) + '</span><span class="jbar-p c-' + r.color + '"><i style="width:' + (p ? Math.max(3, p) : 0) + '%"></i></span><span class="mono">' + p + '%</span></a>';
+          return '<a class="rland' + (PMODE && !ON[t] ? ' off' : '') + '" href="' + t + '.html"><span>' + esc(trackBy[t].title) + (PMODE && ON[t] ? ' <small class="reltag rel-core">On your path</small>' : '') + '</span><span class="jbar-p c-' + r.color + '"><i style="width:' + (p ? Math.max(3, p) : 0) + '%"></i></span><span class="mono">' + p + '%</span></a>';
         }).join('') + '</div>';
-      }).join('') +
+    };
+    h += '<section class="world" aria-labelledby="worldH"><div class="jrow"><h2 id="worldH">The world</h2><span class="muted">' + J.REGIONS.length + ' regions · ' + lands + ' lands</span></div><div class="wgrid">' +
+      J.REGIONS.filter(regOn).map(regionHtml).join('') +
       (function () { var extra = TRACKS.filter(function (t) { return J.regionOf(t.id).key === 'new'; }); return extra.length ? '<div class="jcard region" id="r-new"><span class="kicker c-sky">' + J.icon('compass') + 'New lands</span><b class="rname">Uncharted</b>' + extra.map(function (t) { var g = S.track[t.id] || { items: 0, done: 0 }, p = J.pct(g.done, g.items); return '<a class="rland" href="' + t.id + '.html"><span>' + esc(t.title) + '</span><span class="jbar-p c-sky"><i style="width:' + p + '%"></i></span><span class="mono">' + p + '%</span></a>'; }).join('') + '</div>' : '<div class="uncharted">Uncharted · new lands appear here as topics are added</div>'; })() +
-      '</div></section>';
+      '</div>' + (offRegions.length ? '<details class="otherlands"><summary>Other lands (' + offRegions.length + ') · Show all lands</summary><div class="wgrid">' + offRegions.map(regionHtml).join('') + '</div></details>' : '') + '</section>';
 
     var RP = window.Learn ? Learn.pref() : { id: 'sde', hours: 10 };
     h += '<section id="paths" class="jcard"><div class="jrow"><h2>Learning routes</h2><a href="route.html">Plan yours in detail ›</a></div><div class="ptabs" role="tablist" aria-label="Choose a learning route">' +
@@ -1079,6 +1174,9 @@ var App = (function () {
     h += '<footer class="jfoot">' + (window.IM_VERSION ? '<span>Interview Mastery v' + esc(window.IM_VERSION) + '</span>' : '') + '<a href="privacy.html">Privacy policy</a><a href="https://github.com/SHRENIKYD/DSA-LEARNINGS">Source on GitHub</a><button class="btn ghost" type="button" id="resetProgress">Reset all progress</button></footer>';
     $('#main').innerHTML = h;
     J.mountAtlas(S, trackBy, last);
+    var offCss = $('#imOffLands');
+    if (!offCss) { offCss = document.createElement('style'); offCss.id = 'imOffLands'; document.head.appendChild(offCss); }
+    offCss.textContent = offRegions.map(function (r) { return '.atlas-island[data-island="' + r.key + '"]'; }).join(',') + (offRegions.length ? '{opacity:.42;filter:saturate(.4)}' : '');
 
     var pickPath = function (i) {
       if (!window.PATHS || !window.Learn) return;
@@ -1094,6 +1192,188 @@ var App = (function () {
     $('.ptabs').addEventListener('click', function (e) { var b = e.target.closest('.ptab'); if (b) pickPath(+b.getAttribute('data-path')); });
     pickPath(Math.max(0, (window.PATHS ? PATHS.ROUTES : []).map(function (r) { return r.id; }).indexOf(RP.id)));
   }
+
+  /* ---------- personalized navigation: My path / Explore all (Learn.pref, Learn.relevance) ----------
+     Explore all renders every view exactly as before; My path only adds ordering, labels, dimming and reveals.
+     Nothing is ever locked: every link opens the full module. */
+  function PM() { return !!(window.Learn && window.PATHS && Learn.mode && Learn.mode() === 'path'); }
+  function routeOf(id) { return (window.PATHS ? PATHS.ROUTES : []).filter(function (r) { return r.id === id; })[0] || null; }
+  function midOf(h) { var x = /#([a-z]+\d+)/.exec(h || ''); return x ? x[1] : null; }
+  var REL_LABEL = { core: 'Required', rec: 'Recommended', opt: 'Optional', ext: 'Go deeper', off: 'Not on your path' };
+  function relTag(mid) { var r = Learn.relevance(mid); return r.state === 'rec' || r.state === 'opt' || r.state === 'ext' ? '<span class="reltag rel-' + r.state + '">' + REL_LABEL[r.state] + '</span>' : ''; }
+  function trackPath() {
+    if (!TRACK || !PM()) return null;
+    var pt = Learn.pathTracks().filter(function (x) { return x.track === TRACK.id; })[0];
+    return pt ? pt.mods.slice() : [];
+  }
+  function pathbarHtml() {
+    var p = Learn.pref(), R = routeOf(p.id), flag = window.Journey ? Journey.icon('flag', 'pb-ic') : '';
+    if (!p.chosen) {
+      var hide = store.get('imastery.pathBanner', null) === 'hidden';
+      return '<div class="pb-in' + (hide ? '' : ' ban') + '">' + (hide ? '' : '<p class="pb-ban"><b>Pick a path</b> and we put the lands and lessons for your goal first. Nothing is locked.</p>') +
+        '<button type="button" class="btn pb-chip" data-onb aria-haspopup="dialog">' + flag + 'Pick a path</button>' +
+        (hide ? '' : '<button type="button" class="btn ghost pb-x" data-pbx aria-label="Dismiss the pick a path banner">×</button>') + '</div>';
+    }
+    var m = Learn.mode();
+    return '<div class="pb-in"><button type="button" class="btn pb-chip" data-onb aria-haspopup="dialog" aria-label="My path: ' + esc(R.name + ', ' + Learn.LANG_NAMES[p.lang] + ', ' + p.hours + ' hours a week') + '. Change path">' + flag +
+      '<span class="pb-k">My path:</span> <b>' + esc(R.name) + '</b><span class="pb-d"> · ' + esc(Learn.LANG_NAMES[p.lang]) + ' · ' + p.hours + ' h/wk</span></button>' +
+      '<div class="pb-mode" role="group" aria-label="What to show"><button type="button" data-mode="path" aria-pressed="' + (m === 'path') + '">My path</button><button type="button" data-mode="all" aria-pressed="' + (m === 'all') + '">Explore all</button></div></div>';
+  }
+  function drawPathbar() {
+    var pb = $('#pathbar');
+    if (!pb || !window.Learn || !window.PATHS) return;
+    var a = document.activeElement, keep = a && pb.contains(a) ? (a.hasAttribute('data-mode') ? '[data-mode="' + a.getAttribute('data-mode') + '"]' : a.hasAttribute('data-onb') ? '[data-onb]' : null) : null;
+    pb.innerHTML = pathbarHtml();
+    if (keep && $(keep, pb)) $(keep, pb).focus();
+  }
+  function mountPathbar() {
+    if (!window.Learn || !window.PATHS || $('#pathbar')) return;
+    var pb = document.createElement('div');
+    pb.id = 'pathbar';
+    if (HOME) { pb.className = 'pathbar'; $('#main').parentNode.insertBefore(pb, $('#main')); }
+    else { var st = $('.side-top'); if (!st) return; pb.className = 'pathbar side'; st.insertBefore(pb, $('.pwrap', st)); }
+    drawPathbar();
+    pb.addEventListener('click', function (e) {
+      var t = e.target.closest('button');
+      if (!t) return;
+      if (t.hasAttribute('data-onb')) openOnboarding(false, t);
+      else if (t.hasAttribute('data-pbx')) { store.set('imastery.pathBanner', 'hidden'); drawPathbar(); var c = $('[data-onb]', pb); if (c) c.focus(); }
+      else if (t.hasAttribute('data-mode') && t.getAttribute('aria-pressed') !== 'true') Learn.setMode(t.getAttribute('data-mode'));
+    });
+    window.addEventListener('im:pref', prefChanged);
+  }
+  function prefChanged() {
+    drawPathbar();
+    if (HOME) { renderHome(); return; }
+    if (!TRACK) return;
+    if (current) { var keep = location.hash, y = window.scrollY; current = null; route(); if (location.hash !== keep) location.hash = keep; window.scrollTo(0, y); }
+    else { $('#main').innerHTML = trackDashHtml(); updateProgress(); }
+    if (lastSearch) searchInto.apply(null, lastSearch);
+  }
+
+  /* Onboarding: goal, language (skipped for one-language routes), weekly hours. Also the "change path" sheet. */
+  function openOnboarding(first, opener) {
+    if (!window.Learn || !window.PATHS) return;
+    var p = Learn.pref(), prev = store.get('imastery.route', null);
+    var st = { step: 0, id: p.chosen ? p.id : null, lang: p.lang, hours: p.hours, known: p.known.indexOf(p.lang) >= 0 };
+    var d = $('#onb');
+    if (!d) { d = document.createElement('dialog'); d.id = 'onb'; d.className = 'onb'; d.setAttribute('aria-labelledby', 'onbH'); document.body.appendChild(d); }
+    var hours = {}; Object.keys(window.IM_PATHMETA || {}).forEach(function (k) { hours[k] = window.IM_PATHMETA[k][3]; });
+    function steps() { var R = routeOf(st.id); return R && R.langs.length > 1 ? ['goal', 'lang', 'time'] : ['goal', 'time']; }
+    function compare() {
+      if (!st.id || (p.chosen && st.id === p.id)) return '';
+      var D = store.get('imastery.done', {}) || {}, mods = Object.keys(window.IM_PATHMETA || {}).filter(function (k) { return Learn.status(k, D).satisfied; });
+      if (!mods.length) return '';
+      var pl = PATHS.plan(st.id, st.lang), on = {};
+      pl.items.forEach(function (it) { on[it.id] = 1; });
+      return '<p class="onb-cmp">Switching keeps all your progress. ' + mods.filter(function (k) { return on[k]; }).length + ' of your ' + mods.length + ' completed modules count on ' + esc(routeOf(st.id).name) + ' too.</p>';
+    }
+    function draw(focusSel) {
+      var S = steps(), k = S[st.step], R = routeOf(st.id), n = '<p class="onb-n">Step ' + (st.step + 1) + ' of ' + S.length + '</p>', body = '';
+      if (k === 'goal') {
+        body = '<h2 id="onbH">What are you preparing for?</h2>' + n + '<fieldset class="onb-opts"><legend class="sr-only">Your goal</legend>' + PATHS.ROUTES.map(function (r) {
+          return '<label class="onb-opt"><input type="radio" name="onbRoute" value="' + r.id + '"' + (st.id === r.id ? ' checked' : '') + '><span><b>' + esc(r.name) + '</b><small>' + esc(r.blurb) + '</small></span></label>';
+        }).join('') + '<label class="onb-opt"><input type="radio" name="onbRoute" value=""' + (st.id === '' ? ' checked' : '') + '><span><b>Not sure, show me everything</b><small>Explore all lands freely. You can pick a path later from the My path chip.</small></span></label></fieldset>' + compare();
+      } else if (k === 'lang') {
+        body = '<h2 id="onbH">Which language will you use?</h2>' + n + '<fieldset class="onb-opts"><legend class="sr-only">Language for ' + esc(R.name) + '</legend>' + R.langs.map(function (l) {
+          return '<label class="onb-opt"><input type="radio" name="onbLang" value="' + l + '"' + (st.lang === l ? ' checked' : '') + '><span><b>' + esc(Learn.LANG_NAMES[l]) + '</b></span></label>';
+        }).join('') + '</fieldset><label class="onb-known"><input type="checkbox" name="onbKnown"' + (st.known ? ' checked' : '') + '> I already know it (its basics become optional)</label>';
+      } else {
+        var sc = PATHS.schedule(st.id, st.lang, hours);
+        body = '<h2 id="onbH">How much time a week?</h2>' + n + '<fieldset class="onb-opts hrs"><legend class="sr-only">Hours per week</legend>' + [5, 10, 20, 40].map(function (w) {
+          return '<label class="onb-opt"><input type="radio" name="onbHours" value="' + w + '"' + (st.hours === w ? ' checked' : '') + '><span><b>' + w + ' h/week</b><small>about ' + sc.weeks[w] + ' weeks</small></span></label>';
+        }).join('') + '</fieldset>';
+      }
+      var last = st.step === S.length - 1 || (k === 'goal' && st.id === '');
+      d.innerHTML = '<form method="dialog" class="onb-f">' + body + '<div class="onb-acts">' +
+        (st.step ? '<button type="button" class="btn ghost" data-onb-back>Back</button>' : '<button type="button" class="btn ghost" data-onb-skip>' + (first ? 'Just explore' : 'Cancel') + '</button>') +
+        '<button type="button" class="btn primary" data-onb-next' + (k === 'goal' && st.id === null ? ' disabled' : '') + '>' + (last ? (st.id === '' ? 'Explore all' : 'Start my path') : 'Next') + '</button></div></form>';
+      var f = focusSel && $(focusSel, d) || $('input:checked', d) || $('input', d);
+      if (f) f.focus();
+    }
+    function close() { if (d.open) { if (d.close) d.close(); else d.removeAttribute('open'); } }
+    function finish() {
+      close();
+      if (st.id === '') { Learn.setPref({ mode: 'all', onboarded: true }); toast(first ? 'Exploring all lands. Pick a path any time from the chip at the top.' : 'Showing everything. Your path is kept.', null); }
+      else {
+        var changed = !p.chosen || p.id !== st.id || p.lang !== st.lang;
+        Learn.setPref({ id: st.id, lang: st.lang, hours: st.hours, known: st.known ? [st.lang] : [], mode: 'path', onboarded: true });
+        toast('Your path: ' + routeOf(st.id).name + '. Switching never deletes progress.', changed && p.chosen ? prev : null);
+      }
+      var c = $('#pathbar [data-onb]'); if (c) c.focus();
+    }
+    function skip() { close(); if (first) Learn.setPref({ mode: 'all', onboarded: true }); else if (opener && opener.focus) opener.focus(); }
+    d.onchange = function (e) {
+      var t = e.target;
+      if (t.name === 'onbRoute') { st.id = t.value; var R = routeOf(st.id); if (R && R.langs.indexOf(st.lang) < 0) st.lang = R.langs[0]; draw('input[name="onbRoute"][value="' + t.value + '"]'); }
+      else if (t.name === 'onbLang') st.lang = t.value;
+      else if (t.name === 'onbKnown') st.known = t.checked;
+      else if (t.name === 'onbHours') st.hours = +t.value;
+    };
+    d.onclick = function (e) {
+      var t = e.target.closest && e.target.closest('button');
+      if (!t) return;
+      if (t.hasAttribute('data-onb-skip')) skip();
+      else if (t.hasAttribute('data-onb-back')) { st.step--; draw(); }
+      else if (t.hasAttribute('data-onb-next')) { if (st.step === steps().length - 1 || st.id === '') finish(); else { st.step++; draw(); } }
+    };
+    d.oncancel = function (e) { e.preventDefault(); skip(); };
+    if (d.showModal) { if (!d.open) d.showModal(); } else d.setAttribute('open', '');
+    draw();
+  }
+  function toast(msg, undo) {
+    var t = $('#imToast');
+    if (!t) { t = document.createElement('div'); t.id = 'imToast'; t.className = 'imtoast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
+    t.innerHTML = '<span>' + esc(msg) + '</span>' + (undo !== null && undo !== undefined ? '<button type="button" class="btn sm" data-undo>Undo</button>' : '') + '<button type="button" class="btn ghost sm" data-toastx aria-label="Dismiss">×</button>';
+    t.hidden = false;
+    clearTimeout(t._tm); t._tm = setTimeout(function () { t.hidden = true; }, 9000);
+    t.onclick = function (e) {
+      var b = e.target.closest && e.target.closest('button');
+      if (!b) return;
+      t.hidden = true;
+      if (b.hasAttribute('data-undo')) {
+        store.set('imastery.route', Object.assign({}, undo, { updatedAt: Date.now() }));
+        if (window.Auth) Auth.changed('prefs');
+        Learn.prefChanged();
+        var c = $('#pathbar [data-onb]'); if (c) c.focus();
+      }
+    };
+  }
+  /* Home in My path mode: route-first block with the path tracks; off-path lands are dimmed under "Other lands". */
+  function pathHomeHtml(trackBy) {
+    var PT = Learn.pathTracks(), v = Learn.routeView(), R = v.sch.plan.route, done = v.stages.every(function (s) { return s.complete; });
+    return '<section class="jcard pathhome" aria-labelledby="phH"><div class="jrow"><h2 id="phH">On your path (' + PT.length + ' tracks)</h2><span class="muted">' + esc(R.name) + ' · ' + v.pctHours + '% of your path</span></div>' +
+      (done ? '<p class="ph-done"><b>Route complete.</b> Pick extensions on <a href="route.html">your route plan</a> or choose a new route.</p>' : '') +
+      '<div class="pathtracks">' + PT.map(function (t) {
+        var tr = trackBy[t.track], p = t.required ? Math.round(t.done / t.required * 100) : 0;
+        return '<a class="ptrack" data-track="' + t.track + '" href="' + t.track + '.html"><b>' + esc(tr ? tr.title : t.track) + '</b><span class="jbar-p c-violet"><i style="width:' + p + '%"></i></span><span class="mono">' + t.done + '/' + t.required + '</span>' +
+          (t.required < t.total ? '<small class="muted">' + t.required + ' of ' + t.total + ' on your path</small>' : '') + '</a>';
+      }).join('') + '</div>' + routeCardHtml() + '</section>';
+  }
+  /* Module page in My path mode: where this module sits on the route. */
+  function pathBannerHtml(m) {
+    var r = Learn.relevance(m.id), p = Learn.pref(), R = routeOf(p.id);
+    if (r.state === 'off') return '<div class="box pathban off" data-rel="off"><b>Not on your path</b> (' + esc(R.name) + '). Everything here stays open to you.</div>';
+    var stg = r.stage >= 0 ? ' · Stage ' + (r.stage + 1) + ' of ' + R.stages.length + ': ' + esc(R.stages[r.stage].name) : ' · after the route';
+    return '<div class="box pathban" data-rel="' + r.state + '"><b>Your path · ' + REL_LABEL[r.state] + '</b>' + stg + '</div>';
+  }
+  var langShown = {};
+  function langGate(m) {
+    if (!PM() || !PATHS.LANG_ONLY) return null;
+    var x = PATHS.LANG_ONLY[m.id], lang = Learn.pref().lang;
+    if (!x) return null;
+    return { langs: x.langs, label: x.label, hide: x.langs.indexOf(lang) < 0 && !langShown[m.id], lang: lang };
+  }
+  function revealLang(mid, focus) {
+    langShown[mid] = true;
+    var first = null;
+    $$('section.topic[data-lang][hidden]').forEach(function (s) { s.hidden = false; if (!first) first = s; });
+    var g = $('#lg-' + mid);
+    if (g) g.innerHTML = '<p>Showing the ' + esc(PATHS.LANG_ONLY[mid].label) + ' version.</p>';
+    if (focus && first) { var hd = $('h2', first); if (hd) { hd.setAttribute('tabindex', '-1'); hd.focus(); } }
+    watchEnds($('#main'));
+  }
+  var searchOnly = true, lastSearch = null;
 
   /* ---------- account sync ---------- */
   function reloadDone() {

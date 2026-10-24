@@ -9,21 +9,87 @@ var Learn = (function () {
   var DAY = 864e5, STEPS = [1, 3, 7, 21];
   var LANG_NAMES = { java: 'Java', python: 'Python', js: 'JavaScript / TypeScript', cpp: 'C++' };
 
-  /* ---------- preferences ---------- */
+  /* ---------- preferences ----------
+     imastery.route = {id, lang, hours, mode:'path'|'all', onboarded, known:[langs], updatedAt}. It syncs with progress (auth.js, prefs column).
+     The legacy imastery.dest (journey.js ROLES) is migrated once into id when the mapping is obvious, then removed. */
+  var DEST_MAP = { backend: 'javaback', frontend: 'frontend', ml: 'aiapp' };
+  function migrateDest() {
+    var d = get('imastery.dest', null);
+    if (d === null) return;
+    var p = get('imastery.route', null) || {};
+    if (!p.id && DEST_MAP[d]) { p.id = DEST_MAP[d]; set('imastery.route', p); }
+    try { localStorage.removeItem('imastery.dest'); } catch (e) { }
+  }
   function pref() {
+    migrateDest();
     var p = get('imastery.route', null) || {};
     var R = PATHS.ROUTES.filter(function (r) { return r.id === p.id; })[0] || PATHS.ROUTES[0];
     var lang = R.langs.indexOf(p.lang) >= 0 ? p.lang : (R.langs.indexOf(get('imastery.lang', null)) >= 0 ? get('imastery.lang', null) : R.langs[0]);
     var hours = [5, 10, 20, 40].indexOf(+p.hours) >= 0 ? +p.hours : 10;
-    return { id: R.id, lang: lang, hours: hours, chosen: !!p.id };
+    var chosen = !!p.id && PATHS.ROUTES.some(function (r) { return r.id === p.id; });
+    return { id: R.id, lang: lang, hours: hours, chosen: chosen, mode: chosen && p.mode === 'path' ? 'path' : 'all', onboarded: !!p.onboarded,
+      known: Array.isArray(p.known) ? p.known.filter(function (k) { return LANG_NAMES[k]; }) : [], updatedAt: +p.updatedAt || 0 };
   }
   function setPref(p) {
-    var cur = pref(), next = { id: p.id || cur.id, lang: p.lang || cur.lang, hours: p.hours || cur.hours };
-    var R = PATHS.ROUTES.filter(function (r) { return r.id === next.id; })[0];
+    p = p || {};
+    var raw = get('imastery.route', null) || {}, cur = pref();
+    var next = { id: p.id || (cur.chosen ? cur.id : undefined), lang: p.lang || cur.lang, hours: p.hours || cur.hours,
+      mode: p.mode === 'path' || p.mode === 'all' ? p.mode : (raw.mode === 'path' ? 'path' : 'all'),
+      onboarded: p.onboarded !== undefined ? !!p.onboarded : !!raw.onboarded,
+      known: Array.isArray(p.known) ? p.known.slice() : cur.known, updatedAt: Date.now() };
+    var R = PATHS.ROUTES.filter(function (r) { return r.id === (next.id || cur.id); })[0];
     if (R && R.langs.indexOf(next.lang) < 0) next.lang = R.langs[0];
     set('imastery.route', next);
     if (next.lang) set('imastery.lang', next.lang);
+    relCache = null;
+    if (window.Auth && Auth.changed) Auth.changed('prefs');
+    firePref();
     return next;
+  }
+  /* Called by auth.js after a newer server copy replaced imastery.route. */
+  function prefChanged() { relCache = null; firePref(); }
+  function firePref() { try { window.dispatchEvent(new CustomEvent('im:pref')); } catch (e) { } }
+  function viewAll() { try { return /[?&]view=all\b/.test(location.search || ''); } catch (e) { return false; } }
+  function mode() { return viewAll() ? 'all' : pref().mode; }
+  function setMode(m) { return setPref({ mode: m === 'path' ? 'path' : 'all' }); }
+
+  /* ---------- relevance of a module to the chosen route (cached per pref) ----------
+     state: core | rec | opt (from PATHS.plan items), ext (plan.extensions), off. A language the learner already knows ('known')
+     turns that language's own track modules into optional. */
+  var relCache = null, LANG_TRACK = { java: 'java', python: 'py', js: 'js', cpp: 'cpp' };
+  function relMap(p) {
+    p = p || pref();
+    var key = p.id + '|' + p.lang + '|' + p.known.join(',');
+    if (relCache && relCache.key === key) return relCache;
+    var pl = PATHS.plan(p.id, p.lang), map = {}, order = [], knownTrack = p.known.indexOf(p.lang) >= 0 ? LANG_TRACK[p.lang] : null;
+    pl.items.forEach(function (it) {
+      var st = it.kind, m = meta(it.id);
+      if (knownTrack && m && m.track === knownTrack && st === 'core') st = 'opt';
+      map[it.id] = { state: st, stage: it.stage, route: p.id };
+      order.push(it.id);
+    });
+    pl.extensions.forEach(function (id) { if (!map[id]) { map[id] = { state: 'ext', stage: -1, route: p.id }; order.push(id); } });
+    relCache = { key: key, map: map, order: order, plan: pl };
+    return relCache;
+  }
+  function relevance(mid, p) { var r = relMap(p).map[mid]; return r ? { state: r.state, stage: r.stage, route: r.route } : { state: 'off', stage: -1, route: (p || pref()).id }; }
+  function onPath(mid, p) { return relevance(mid, p).state !== 'off'; }
+  /* Tracks holding at least one core/rec/opt module, in route order. required: on-path modules (core+rec+opt) in that track,
+     core: core only, done: required ones satisfied, total: every module of the track, mods: on-path ids in route order. */
+  function pathTracks(p) {
+    var R = relMap(p), D = done(), out = [], by = {};
+    R.order.forEach(function (id) {
+      var r = R.map[id], m = meta(id);
+      if (!m || r.state === 'ext') return;
+      var t = by[m.track];
+      if (!t) { t = by[m.track] = { track: m.track, required: 0, core: 0, done: 0, total: 0, mods: [] }; out.push(t); }
+      t.required++; if (r.state === 'core') t.core++;
+      if (status(id, D).satisfied) t.done++;
+      t.mods.push(id);
+    });
+    var PM = window.IM_PATHMETA || {};
+    Object.keys(PM).forEach(function (k) { if (by[PM[k][1]]) by[PM[k][1]].total++; });
+    return out;
   }
 
   /* ---------- module status ---------- */
@@ -224,7 +290,7 @@ var Learn = (function () {
       onPass: function () { var D = done(); D['@cp:' + track + '-' + zone] = 1; set('imastery.done', D); if (window.Auth) Auth.changed(); if (onDone) onDone(); } });
   }
 
-  return { pref: pref, setPref: setPref, status: status, projectState: projectState, setCriterion: setCriterion, missing: missing, unlocks: unlocks, routeView: routeView, href: href, meta: meta,
+  return { pref: pref, setPref: setPref, mode: mode, setMode: setMode, relevance: relevance, onPath: onPath, pathTracks: pathTracks, prefChanged: prefChanged, status: status, projectState: projectState, setCriterion: setCriterion, missing: missing, unlocks: unlocks, routeView: routeView, href: href, meta: meta,
     reviews: reviews, remember: remember, schedule: schedule, passed: passed, due: due, quizDialog: quizDialog, readiness: readiness, checkpoint: checkpoint,
     LANG_NAMES: LANG_NAMES, esc: esc, itemsOf: itemsOf };
 })();

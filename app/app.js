@@ -91,7 +91,8 @@
   function tabbar(on) { return '<nav class="tabbar" aria-label="Main">' + TABS.map(function (t) { return '<a href="#' + t[0] + '" class="' + (t[0] === on ? 'on' : '') + '"' + (t[0] === on ? ' aria-current="page"' : '') + '><b aria-hidden="true">' + t[1] + '</b>' + t[2] + '</a>'; }).join('') + '</nav>'; }
   function page(tab, body, opts) {
     opts = opts || {};
-    $('#app').innerHTML = '<main class="scr' + (opts.cls ? ' ' + opts.cls : '') + '" id="scr">' + body + '</main>' + (opts.noTabs ? '' : tabbar(tab));
+    $('#app').innerHTML = '<main class="scr' + (opts.cls ? ' ' + opts.cls : '') + '" id="scr">' + (opts.nav ? navBar() : '') + body + '</main>' + (opts.noTabs ? '' : tabbar(tab));
+    if (opts.nav) wireNav();
     $('#scr').scrollTop = 0;
     if (play.settings.motion && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) $('#scr').classList.add('screen-enter');
   }
@@ -109,6 +110,129 @@
     return (s ? s + ' days in a row! ' : '') + q + ' quest' + (q === 1 ? '' : 's') + ' left' + (nm ? '. Next up: <b>' + esc(nm.title) + '</b>.' : '.');
   }
 
+
+  /* ---------- personalized navigation ----------
+     All path logic lives in Learn (relevance, pathTracks, mode). In Explore all mode nothing below changes a screen;
+     the only additions are the [data-nav] blocks (top bar, banner, Me switcher), which hold no learning content. */
+  var selfPref = false, searchAll = false, ob = null;
+  function navApi() { return !!(window.Learn && window.PATHS && typeof Learn.mode === 'function' && typeof Learn.relevance === 'function' && typeof Learn.pathTracks === 'function'); }
+  function pathOn() { return navApi() && Learn.mode() === 'path'; }
+  function routeOf(id) { return PATHS.ROUTES.filter(function (r) { return r.id === id; })[0]; }
+  function hasProgress() { return Object.keys(done()).length > 0; }
+  function bannerOff() { return lsGet('imastery.navBanner', false) === true; }
+  function setPrefQuiet(p) { selfPref = true; try { Learn.setPref(p); } finally { selfPref = false; } }
+  function focusTop() { var h = $('#scr h1') || $('#scr h2'); if (h) { h.setAttribute('tabindex', '-1'); h.focus(); } }
+  function goHash(h) { if ((location.hash || '#home') === h) route(); else location.hash = h; }
+  function navBar() {
+    if (!navApi()) return '';
+    var p = Learn.pref(), m = Learn.mode(), R = routeOf(p.id);
+    if (!p.chosen || !R) {
+      if (bannerOff()) return '';
+      return '<section class="card navbanner" data-nav aria-label="Pick a path"><b class="ttl">Pick a path</b><span class="muted sm">Tell us your goal and we will highlight what to learn first. Nothing is hidden or removed.</span><div class="acts"><a class="b3" href="#onboard">PICK A PATH</a><button class="b3 ghost" type="button" id="navDismiss">NOT NOW</button></div></section>';
+    }
+    return '<div class="navbar" data-nav><a class="navchip" id="navChip" href="#me/path" aria-label="Change your path. Now: ' + esc(R.name) + '"><span>My path: <b>' + esc(R.name) + '</b> · ' + esc(Learn.LANG_NAMES[p.lang] || p.lang) + ' · ' + p.hours + ' h</span></a>' + modeSeg(m) + '</div>';
+  }
+  function modeSeg(m) {
+    return '<div class="seg" role="group" aria-label="Show"><button type="button" data-mode="path" aria-pressed="' + (m === 'path') + '">My path</button><button type="button" data-mode="all" aria-pressed="' + (m === 'all') + '">Explore all</button></div>';
+  }
+  function wireNav() {
+    var d = $('#navDismiss');
+    if (d) d.addEventListener('click', function () { lsSet('imastery.navBanner', true); route(); focusTop(); });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-nav] [data-mode]'), function (b) {
+      b.addEventListener('click', function () {
+        var m = b.getAttribute('data-mode'); if (m === Learn.mode()) return;
+        Sound.play('tap'); setPrefQuiet({ mode: m }); if ((location.hash || '').indexOf('#me') === 0) me(); else route();
+        var nb = $('[data-nav] [data-mode="' + m + '"]'); if (nb) nb.focus();
+      });
+    });
+  }
+  function undoToast(msg, fn) {
+    var t = $('#toast'); Sound.play('xp');
+    t.innerHTML = esc(msg) + ' <button type="button" class="toast-undo" id="toastUndo">Undo</button>';
+    t.hidden = false; t.classList.remove('go'); void t.offsetWidth; t.classList.add('go');
+    clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, 7000);
+    var u = $('#toastUndo'); if (u) u.addEventListener('click', function () { t.hidden = true; clearTimeout(toastT); fn(); });
+  }
+  function pathNav() {
+    if (!pathOn()) return null;
+    var J = window.Journey, regions = {}, tracks = {};
+    TRACKS.forEach(function (t) { var n = 0; t.modules.forEach(function (pm) { if (Learn.onPath(pm.id)) n++; }); tracks[t.id] = n; var k = J.regionOf(t.id).key; regions[k] = (regions[k] || 0) + n; });
+    return { on: true, regions: regions, tracks: tracks };
+  }
+  function relRank(st) { return { core: 0, rec: 1, opt: 2, ext: 3 }[st] === undefined ? 4 : { core: 0, rec: 1, opt: 2, ext: 3 }[st]; }
+  var REL_TAG = { core: 'Required', rec: 'Recommended', opt: 'Optional', ext: 'Go deeper' };
+
+  function onboardView() {
+    if (!navApi()) return home();
+    var cur = Learn.pref();
+    if (!ob) ob = { step: 1, id: cur.chosen ? cur.id : '', lang: cur.lang, hours: cur.hours, known: false };
+    var R = routeOf(ob.id), multi = R && R.langs.length > 1, steps = multi ? 3 : 2;
+    function num(step) { return step === 3 && !multi ? 2 : step; }
+    var h = '<div class="onb"><p class="kick" id="obStep">Step ' + num(ob.step) + ' of ' + steps + '</p>';
+    if (ob.step === 1) {
+      h += '<h1 id="obH" tabindex="-1">What are you aiming for?</h1><p class="muted sm">We will highlight the modules that matter most. Everything else stays one tap away.</p><fieldset class="rt-pick"><legend class="kick">Your goal</legend>' +
+        PATHS.ROUTES.map(function (r) { return '<label class="rt-opt' + (r.id === ob.id ? ' on' : '') + '"><input type="radio" name="obGoal" value="' + esc(r.id) + '"' + (r.id === ob.id ? ' checked' : '') + '><b>' + esc(r.name) + '</b><span class="muted sm">' + esc(r.blurb) + '</span></label>'; }).join('') +
+        '<label class="rt-opt' + (ob.id === 'all' ? ' on' : '') + '"><input type="radio" name="obGoal" value="all"' + (ob.id === 'all' ? ' checked' : '') + '><b>Not sure, show me everything</b><span class="muted sm">Explore all tracks, no filtering.</span></label></fieldset>';
+    } else if (ob.step === 2) {
+      h += '<h1 id="obH" tabindex="-1">Which language do you code in?</h1><fieldset class="rt-pick"><legend class="kick">Code language</legend>' + R.langs.map(function (l) { return '<label class="rt-opt' + (l === ob.lang ? ' on' : '') + '"><input type="radio" name="obLang" value="' + l + '"' + (l === ob.lang ? ' checked' : '') + '><b>' + esc(Learn.LANG_NAMES[l]) + '</b></label>'; }).join('') +
+        '</fieldset><label class="rt-chk-known"><input type="checkbox" id="obKnown"' + (ob.known ? ' checked' : '') + '><span>I already know this language. Leave the language basics as optional.</span></label>';
+    } else {
+      var v = Learn.routeView({ id: ob.id, lang: ob.lang, hours: ob.hours });
+      h += '<h1 id="obH" tabindex="-1">How much time each week?</h1><fieldset class="rt-hours"><legend class="kick">Hours per week</legend>' + [5, 10, 20, 40].map(function (x) { return '<label class="rt-h' + (x === ob.hours ? ' on' : '') + '"><input type="radio" name="obHours" value="' + x + '"' + (x === ob.hours ? ' checked' : '') + '><span>' + x + ' h</span><small>about ' + v.sch.weeks[x] + ' weeks</small></label>'; }).join('') + '</fieldset>';
+    }
+    h += '<div class="acts">' + (ob.step > 1 ? '<button class="b3 ghost" type="button" id="obBack">BACK</button>' : '') + '<button class="b3" type="button" id="obNext"' + (ob.step === 1 && !ob.id ? ' disabled' : '') + '>' + (ob.step === steps || (ob.step === 1 && ob.id === 'all') ? 'FINISH' : 'NEXT') + '</button></div>' +
+      '<button class="b3 ghost" type="button" id="obSkip">' + (cur.onboarded ? 'CANCEL' : 'JUST EXPLORE') + '</button></div>';
+    page('home', h, { noTabs: true });
+    var hd = $('#obH'); if (hd) hd.focus();
+    function finish(pref) { ob = null; setPrefQuiet(pref); goHash('#home'); }
+    function rerender() { onboardView(); }
+    $('#obSkip').addEventListener('click', function () { var was = cur.onboarded; ob = null; if (!was) setPrefQuiet({ onboarded: true }); goHash(was ? '#me' : '#home'); });
+    var back = $('#obBack'); if (back) back.addEventListener('click', function () { ob.step = ob.step === 3 && !multi ? 1 : ob.step - 1; rerender(); });
+    $('#obNext').addEventListener('click', function () {
+      if (ob.step === 1) {
+        if (!ob.id) return;
+        if (ob.id === 'all') return finish({ onboarded: true, mode: 'all' });
+        var r = routeOf(ob.id); if (r.langs.indexOf(ob.lang) < 0) ob.lang = r.langs[0];
+        ob.step = r.langs.length > 1 ? 2 : 3; return rerender();
+      }
+      if (ob.step === 2) { ob.step = 3; return rerender(); }
+      finish({ id: ob.id, lang: ob.lang, hours: ob.hours, mode: 'path', onboarded: true, known: ob.known ? [ob.lang] : [] });
+    });
+    var sc = $('#scr');
+    sc.addEventListener('change', function (e) {
+      var t = e.target || {};
+      if (t.name === 'obGoal') { ob.id = t.value; var n = $('#obNext'); n.disabled = false; n.textContent = t.value === 'all' ? 'FINISH' : 'NEXT'; }
+      else if (t.name === 'obLang') ob.lang = t.value;
+      else if (t.name === 'obHours') ob.hours = +t.value;
+      else if (t.id === 'obKnown') ob.known = !!t.checked;
+    });
+  }
+
+  function pathSwitcher() {
+    if (!navApi()) return '';
+    var p = Learn.pref(); if (!p.chosen) return '';
+    var R = routeOf(p.id) || PATHS.ROUTES[0], m = Learn.mode();
+    var shared = 0;
+    TRACKS.forEach(function (t) { t.modules.forEach(function (pm) { var x = S.totals.modules[pm.id]; if (x && x.complete && Learn.onPath(pm.id)) shared++; }); });
+    return '<section class="card pathsw" data-nav id="pathSwitch" tabindex="-1" aria-labelledby="pwH"><b class="ttl" id="pwH">My path</b>' +
+      '<label class="rt-field" for="pwRoute"><span class="kick">Goal</span></label><select id="pwRoute">' + PATHS.ROUTES.map(function (r) { return '<option value="' + esc(r.id) + '"' + (r.id === p.id ? ' selected' : '') + '>' + esc(r.name) + '</option>'; }).join('') + '</select>' +
+      '<label class="rt-field" for="pwLang"><span class="kick">Code language</span></label><select id="pwLang"' + (R.langs.length < 2 ? ' disabled' : '') + '>' + R.langs.map(function (l) { return '<option value="' + l + '"' + (l === p.lang ? ' selected' : '') + '>' + esc(Learn.LANG_NAMES[l]) + '</option>'; }).join('') + '</select>' +
+      '<label class="rt-field" for="pwHours"><span class="kick">Hours per week</span></label><select id="pwHours">' + [5, 10, 20, 40].map(function (x) { return '<option value="' + x + '"' + (x === p.hours ? ' selected' : '') + '>' + x + ' h</option>'; }).join('') + '</select>' +
+      modeSeg(m) + '<p class="muted sm" id="pwNote" role="status">Switching keeps all your progress. ' + shared + ' of your ' + S.totals.completeModules + ' completed modules count on ' + esc(R.name) + '.</p></section>';
+  }
+  function wirePathSwitcher() {
+    var r = $('#pwRoute'); if (!r) return;
+    function change(partial, focusId) {
+      var p = Learn.pref(), prev = { id: p.id, lang: p.lang, hours: p.hours, mode: Learn.mode(), known: p.known };
+      setPrefQuiet(partial); me(); var f = $(focusId); if (f) f.focus();
+      var R = routeOf(Learn.pref().id);
+      undoToast('Switched to ' + (R ? R.name : 'your new path') + '. Progress kept.', function () { setPrefQuiet(prev); me(); var u = $(focusId); if (u) u.focus(); });
+    }
+    r.addEventListener('change', function () { change({ id: r.value }, '#pwRoute'); });
+    $('#pwLang').addEventListener('change', function () { change({ lang: this.value }, '#pwLang'); });
+    $('#pwHours').addEventListener('change', function () { change({ hours: +this.value }, '#pwHours'); });
+  }
+
   /* ---------- screens ---------- */
   function home() {
     var last = lsGet('imastery.last', null), l = S.level, h = hud();
@@ -116,6 +240,7 @@
     h += '<a class="card lvcard" href="#badges"><div class="row sb"><b>Level ' + l.level + ' · ' + esc(l.name) + '</b><span class="mono xp">' + l.into + ' / ' + l.need + ' XP</span></div>' + bar(l.into / l.need) + '</a>';
     if (last && last.track && last.hash) {
       h += '<div class="card hero"><span class="kick">Resume · ' + esc(last.track) + ' / module ' + esc(last.num) + '</span><b class="ttl">' + esc(last.topicTitle || last.title) + '</b><span class="muted sm">' + esc(last.title) + '</span><a class="b3" href="' + esc(last.track) + '.html#' + esc(last.hash) + '">▶ RESUME</a></div>';
+    } else if (navApi() && Learn.mode() === 'path' && Learn.pref().chosen && (function () { var n = (Learn.routeView().next || []).filter(function (x) { return x.kind !== 'project' && x.meta; })[0]; if (!n) return false; h += '<div class="card hero"><span class="kick">Start here · your path</span><b class="ttl">' + esc(n.meta.title) + '</b><span class="muted sm">' + esc(n.why || '') + '</span><a class="b3" href="' + esc(Learn.href(n.id)) + '">▶ START</a></div>'; return true; })()) {
     } else {
       h += '<div class="card hero"><span class="kick">Start here</span><b class="ttl">DSA 1 · Programming Foundations</b><span class="muted sm">Or warm up with a concept game first.</span><a class="b3" href="dsa.html#dsa01">▶ START</a></div>';
     }
@@ -133,7 +258,7 @@
     var nv = Object.keys(window.IM_VIDEOS || {}).length;
     if (nv) h += '<a class="card vidcard" href="videos.html"><span class="kick">Videos</span><b class="ttl">Watch topics explained</b><span class="muted sm">' + nv.toLocaleString('en-US') + ' topics have a video so far. New ones are added every day.</span><span class="b3 ghost">🎬 OPEN VIDEOS</span></a>';
     h += '<div class="journey-shortcuts"><a class="card" href="#world"><span>◈</span><b>Explore islands</b><small>Find your next lesson</small></a><a class="card" href="#passport"><span>▧</span><b>Your passport</b><small>Collect your journey</small></a><a class="card" href="#expedition"><span>☀</span><b>Daily quests</b><small>One small victory</small></a><a class="card" href="#search"><span>⌕</span><b>Search lessons</b><small>Every track, one place</small></a></div>';
-    page('home', h);
+    page('home', h, { nav: true });
   }
 
   function map(tid) {
@@ -141,21 +266,47 @@
     play.track = t.id; save();
     var h = '<div class="hud"><h1 class="hd">' + esc(t.short) + '</h1><span class="pill fl sp">🔥 ' + S.streak.days + '</span></div>';
     h += '<a class="muted sm" href="#world">‹ Back to the islands</a>';
-    h += '<div class="chips" role="tablist" aria-label="Tracks">' + TRACKS.map(function (x) { var tr = S.totals.tracks[x.id]; return '<a role="tab" href="#map/' + x.id + '" class="chip' + (x.id === t.id ? ' on' : '') + '" aria-selected="' + (x.id === t.id) + '">' + esc(x.short) + (tr && tr.complete ? ' · ' + tr.complete : '') + '</a>'; }).join('') + '</div>';
+    var pn = pathOn();
+    function chipOf(x) { var tr = S.totals.tracks[x.id]; return '<a role="tab" href="#map/' + x.id + '" class="chip' + (x.id === t.id ? ' on' : '') + '" aria-selected="' + (x.id === t.id) + '">' + esc(x.short) + (tr && tr.complete ? ' · ' + tr.complete : '') + '</a>'; }
+    var pt = [], restT = [];
+    if (pn) {
+      var ids = Learn.pathTracks().map(function (x) { return x.track; });
+      ids.forEach(function (id) { var x = trackById(id); if (x && pt.indexOf(x) < 0) pt.push(x); });
+      restT = TRACKS.filter(function (x) { return pt.indexOf(x) < 0; });
+      var open = restT.indexOf(t) >= 0;
+      h += '<div class="chips" role="group" aria-label="Tracks">' + pt.map(function (x) { return chipOf(x).replace('role="tab" ', '').replace(/ aria-selected="(true|false)"/, x.id === t.id ? ' aria-current="page"' : ''); }).join('') +
+        (restT.length ? '<button type="button" class="chip more" id="moreBtn" aria-expanded="' + open + '" aria-controls="moreTracks">More ›</button><span class="moretracks" id="moreTracks"' + (open ? '' : ' hidden') + '>' + restT.map(function (x) { return chipOf(x).replace('role="tab" ', '').replace(/ aria-selected="(true|false)"/, x.id === t.id ? ' aria-current="page"' : ''); }).join('') + '</span>' : '') + '</div>';
+    } else {
+      h += '<div class="chips" role="tablist" aria-label="Tracks">' + TRACKS.map(chipOf).join('') + '</div>';
+    }
     var cur = nextModule(t.id), groups = [];
     t.modules.forEach(function (pm) { var g = groups[groups.length - 1]; if (!g || g.lv !== pm.level) groups.push(g = { lv: pm.level, mods: [] }); g.mods.push(pm); });
+    var X = [50, 26, 50, 74];
+    function nodeOf(pm, i, dot) {
+      var m = S.totals.modules[pm.id], st = !m ? 'lock' : m.complete ? 'done' : (cur && cur.id === pm.id ? 'cur' : (m.done ? 'part' : 'todo'));
+      var pct = m && m.total ? m.done / m.total : 0;
+      if (dot) return '<a class="node dot ' + st + '" href="#module/' + pm.id + '" style="--x:' + X[i % 4] + '%;--p:' + Math.round(pct * 100) + '"><span class="n" aria-hidden="true">' + (st === 'done' ? '✓' : '') + '</span><span class="lbl">' + esc(pm.title) + '<span class="navsr"> (module ' + pm.num + ', not on your path)</span></span></a>';
+      var rs = pn ? Learn.relevance(pm.id).state : '';
+      return '<a class="node ' + st + (rs ? ' on-path' : '') + '" href="#module/' + pm.id + '" style="--x:' + X[i % 4] + '%;--p:' + Math.round(pct * 100) + '"><span class="n">' + (st === 'done' ? '✓' : pm.num) + '</span><span class="lbl">' + esc(pm.title) + '</span>' + (REL_TAG[rs] && rs !== 'core' ? '<span class="reltag">' + REL_TAG[rs] + '</span>' : '') + (st === 'cur' ? '<span class="here">START</span>' : '') + '</a>';
+    }
+    var onP = pn ? t.modules.filter(function (pm) { return Learn.onPath(pm.id); }) : [];
+    if (pn) {
+      var pi = Learn.pathTracks().filter(function (x) { return x.track === t.id; })[0];
+      if (onP.length) {
+        onP = onP.map(function (pm, i) { return { pm: pm, i: i, r: Learn.relevance(pm.id) }; }).sort(function (a, b) { return ((a.r.stage < 0 ? 999 : a.r.stage) - (b.r.stage < 0 ? 999 : b.r.stage)) || (relRank(a.r.state) - relRank(b.r.state)) || (a.i - b.i); }).map(function (x) { return x.pm; });
+        var pc = onP.filter(function (pm) { var m = S.totals.modules[pm.id]; return m && m.complete; }).length;
+        h += '<div class="lvhead onpath-head" style="--lc:var(--accent)"><span class="kick">Your path</span><b>' + onP.length + ' module' + (onP.length === 1 ? '' : 's') + ' in this track' + (pi ? ' · ' + pi.done + ' of ' + pi.required + ' required done' : '') + '</b><span class="muted sm">' + pc + ' of ' + onP.length + ' complete. Required modules first.</span></div><div class="path">' + onP.map(function (pm, i) { return nodeOf(pm, i, false); }).join('') + '</div>';
+      } else h += '<p class="muted sm navnote">Nothing in this track is on your path. Every module is still open.</p>';
+    }
     groups.forEach(function (g) {
       var lv = LV[g.lv], comp = g.mods.filter(function (pm) { var m = S.totals.modules[pm.id]; return m && m.complete; }).length;
+      var rest = pn ? g.mods.filter(function (pm) { return !Learn.onPath(pm.id); }) : g.mods;
       h += '<div class="lvhead" style="--lc:' + lv.c + '"><span class="kick">' + esc(lv.name) + '</span><b>Modules ' + g.mods[0].num + '–' + g.mods[g.mods.length - 1].num + '</b><span class="muted sm">' + comp + ' of ' + g.mods.length + ' complete · boss at the end</span></div><div class="path">';
-      var X = [50, 26, 50, 74];
-      g.mods.forEach(function (pm, i) {
-        var m = S.totals.modules[pm.id], st = !m ? 'lock' : m.complete ? 'done' : (cur && cur.id === pm.id ? 'cur' : (m.done ? 'part' : 'todo'));
-        var pct = m && m.total ? m.done / m.total : 0;
-        h += '<a class="node ' + st + '" href="#module/' + pm.id + '" style="--x:' + X[i % 4] + '%;--p:' + Math.round(pct * 100) + '"><span class="n">' + (st === 'done' ? '✓' : pm.num) + '</span><span class="lbl">' + esc(pm.title) + '</span>' + (st === 'cur' ? '<span class="here">START</span>' : '') + '</a>';
-      });
+      rest.forEach(function (pm, i) { h += nodeOf(pm, i, pn); });
       h += '<a class="node boss" href="#arena/' + t.id + '/' + g.lv + '" style="--x:50%"><span class="n">⚔</span><span class="lbl">' + esc(lv.name) + ' boss</span></a></div>';
     });
-    page('map', h);
+    page('map', h, { nav: true });
+    var mb = $('#moreBtn'), moreOpen = pn && restT.indexOf(t) >= 0; if (mb) mb.addEventListener('click', function () { var mt = $('#moreTracks'); moreOpen = !moreOpen; mb.setAttribute('aria-expanded', String(moreOpen)); if (mt) { if (moreOpen) mt.removeAttribute('hidden'); else mt.setAttribute('hidden', ''); } });
     var c = $('.node.cur'); if (c && c.scrollIntoView) c.scrollIntoView({ block: 'center' });
   }
 
@@ -250,7 +401,7 @@
     page('badges', h);
   }
 
-  function me() {
+  function me(sub) {
     var u = Auth.enabled ? Auth.user() : null, h = '<div class="ah"><h1>Me</h1></div>';
     var LABEL = { idle: '', syncing: 'Syncing…', pending: 'Saving…', saving: 'Saving…', synced: 'Progress synced', error: 'Not synced, will retry' };
     if (u) h += '<div class="card row"><span class="av lg">' + avatar() + '</span><div class="grow"><b class="em">' + esc(u.email || 'Signed in') + '</b><span class="mono sm sync ' + esc(Auth.status()) + '">' + esc(LABEL[Auth.status()] || '') + '</span></div></div>';
@@ -259,12 +410,15 @@
     var stats = [['⚡', S.xp.toLocaleString('en-US'), 'total XP'], ['🔥', S.streak.days, 'day streak'], ['✓', S.totals.completeModules, 'modules done']];
     h += '<div class="tiles">' + stats.map(function (s) { return '<div><b>' + s[0] + ' ' + s[1] + '</b><span>' + s[2] + '</span></div>'; }).join('') + '</div>';
     var set = [['sound', 'Sound effects'], ['haptics', 'Haptics'], ['bit', 'Show Bit, the mascot'], ['motion', 'Confetti and motion']];
+    h += pathSwitcher();
     h += '<div class="list"><label class="set" for="set-theme">Light theme<input type="checkbox" class="tog" id="set-theme"' + (theme() === 'light' ? ' checked' : '') + '></label>' + set.map(function (s) { return '<label class="set" for="set-' + s[0] + '">' + s[1] + '<input type="checkbox" class="tog" id="set-' + s[0] + '" data-set="' + s[0] + '"' + (play.settings[s[0]] ? ' checked' : '') + '></label>'; }).join('') + '</div>';
     if (Reader.available()) h += '<div class="list"><div class="set">Read aloud<span class="muted">Tap 🔊 on any lesson or game</span></div><div class="set">Reading speed<span class="muted">' + (play.settings.tts.rate || 1) + '× · change it in the player</span></div></div>';
     h += '<div class="list"><div class="set">Interview Mastery v' + esc(window.IM_VERSION || '') + '<span class="muted">' + S.totals.doneItems + ' / ' + S.totals.items + ' items done</span></div>' + '<a class="set" href="privacy.html">Privacy policy<span class="muted">›</span></a><button class="set" type="button" id="dlData">Download my data<span class="muted">JSON</span></button><div id="dlOut" class="sm muted" role="status" aria-live="polite"></div>' + (u ? '<button class="set" type="button" id="signOut">Sign out</button><a class="set danger" href="#delete">Delete account<span class="muted">›</span></a>' : '') + '</div>';
     h += '<div class="list"><button class="set" type="button" id="checkUpdates">Check for updates<span class="muted">↗</span></button><p class="sm muted" id="updateStatus" role="status" aria-live="polite"></p></div>';
     h += '<div class="list"><a class="set" href="#progress">Your progress ›</a><a class="set" href="#passport">Stamp passport ›</a><a class="set" href="#welcome">Meet Bit & replay the introduction ›</a></div>';
     page('me', h);
+    wirePathSwitcher(); wireNav();
+    if (sub === 'path') { var sw = $('#pathSwitch'); if (sw) { if (sw.scrollIntoView) sw.scrollIntoView({ block: 'start' }); sw.focus(); } }
     Array.prototype.forEach.call(document.querySelectorAll('[data-set]'), function (c) { c.addEventListener('change', function () { play.settings[c.dataset.set] = c.checked; save(); if (c.dataset.set === 'motion') document.documentElement.classList.toggle('calm', !c.checked); if (c.dataset.set === 'sound') { Sound.enable(c.checked); Sound.play('correct'); } if (c.checked && c.dataset.set === 'haptics') buzz(15); }); });
     $('#set-theme').addEventListener('change', function () { setTheme(this.checked ? 'light' : 'dark'); Sound.play('tap'); });
     $('#dlData').addEventListener('click', function () {
@@ -306,17 +460,31 @@
     var J = window.Journey, last = lsGet('imastery.last', null);
     var selected = key || play.region || (last && last.track ? J.regionOf(last.track).key : 'isle');
     if (J.REGIONS.some(function (r) { return r.key === selected; })) { play.region = selected; save(); }
-    var h = head('Your learning world', null, true) + '<p class="muted sm">Pick an island. Every lesson is a small step forward.</p>' + AppExperience.world(J, J.stats(done()), TRACKS, selected) +
+    var h = head('Your learning world', null, true) + '<p class="muted sm">Pick an island. Every lesson is a small step forward.</p>' + AppExperience.world(J, J.stats(done()), TRACKS, selected, pathNav()) +
       '<div class="acts"><a class="b3 ghost" href="#search">⌕ SEARCH LESSONS</a><a class="b3 ghost" href="#passport">▧ YOUR PASSPORT</a></div>';
-    page('map', h); wireRead('Your learning world');
+    page('map', h, { nav: true }); wireRead('Your learning world');
+  }
+  function routeStrip() {
+    if (!pathOn() || typeof Learn.routeView !== 'function') return '';
+    var p = Learn.pref(), v = Learn.routeView(p), R = routeOf(p.id); if (!R) return '';
+    var sd = v.stages.filter(function (x) { return x.complete; }).length;
+    return '<section class="card routestrip" data-nav aria-labelledby="rsH"><span class="kick">Route progress</span><b class="ttl" id="rsH">' + esc(R.name) + '</b>' + bar(v.stages.length ? sd / v.stages.length : 0) +
+      '<span class="muted sm">' + sd + ' of ' + v.stages.length + ' stages complete · ' + v.projectsDone + ' of ' + v.projects.length + ' projects done · ' + v.pctHours + '% of the route</span><ol class="rs-stages" aria-label="Stages">' + v.stages.map(function (x, i) { return '<li class="' + (x.complete ? 'ok' : '') + '"><span aria-hidden="true">' + (x.complete ? '★' : i + 1) + '</span><span class="navsr">Stage ' + (i + 1) + (x.complete ? ' complete' : ' not complete') + '</span></li>'; }).join('') + '</ol></section>';
   }
   function passportView() {
     var J = window.Journey, stats = J.stats(done());
-    page('badges', head('Your passport', '#badges', true) + '<section class="passport-book app-passport">' + J.stampCollectionHtml(J.stampsOf(stats)) + '</section>'); wireRead('Your stamp passport');
+    page('badges', head('Your passport', '#badges', true) + routeStrip() + '<section class="passport-book app-passport">' + J.stampCollectionHtml(J.stampsOf(stats)) + '</section>'); wireRead('Your stamp passport');
   }
+  function searchNav() { return pathOn() ? { on: true, onPath: function (mid) { return Learn.onPath(mid); }, reveal: searchAll } : null; }
   function searchView() {
-    page('map', head('Search every track', '#map') + '<label class="muted sm" for="appSearch">Topic, module or interview concept</label><input class="app-search" id="appSearch" type="search" placeholder="Try binary search, Python, SQL…" maxlength="160" autocomplete="off"><div id="appSearchResults">' + AppExperience.search(SI.entries, '', TRACKS) + '</div>');
-    $('#appSearch').addEventListener('input', function () { $('#appSearchResults').innerHTML = AppExperience.search(SI.entries, this.value, TRACKS); });
+    searchAll = false;
+    page('map', head('Search every track', '#map') + '<label class="muted sm" for="appSearch">Topic, module or interview concept</label><input class="app-search" id="appSearch" type="search" placeholder="Try binary search, Python, SQL…" maxlength="160" autocomplete="off"><div id="appSearchResults">' + AppExperience.search(SI.entries, '', TRACKS, searchNav()) + '</div>', { nav: true });
+    function draw() { $('#appSearchResults').innerHTML = AppExperience.search(SI.entries, $('#appSearch').value, TRACKS, searchNav()); }
+    $('#appSearch').addEventListener('input', draw);
+    $('#appSearchResults').addEventListener('click', function (e) {
+      var b = e.target && e.target.closest && e.target.closest('[data-reveal]'); if (!b) return;
+      searchAll = !searchAll; draw(); var nb = $('#appSearchResults [data-reveal]'); if (nb) nb.focus();
+    });
   }
   function expeditionView() {
     var week = AppExperience.week(Play, play.days || {}, now());
@@ -415,7 +583,10 @@
     var p = (location.hash || '#home').slice(1).split('/');
     if ((p[0] === 'home' || !p[0]) && !lsGet('imastery.welcomed', false) && !(S && S.totals && S.totals.doneItems) && !Object.keys(play.games || {}).length) return welcomeView();
     if (!S) refresh(true);
+    if ((p[0] === 'home' || !p[0]) && navApi() && !Learn.pref().onboarded && !hasProgress()) return onboardView();
+    if (p[0] !== 'onboard') ob = null;
     switch (p[0]) {
+      case 'onboard': return onboardView();
       case 'map': return p[1] ? map(p[1]) : world();
       case 'world': return world(p[1]);
       case 'passport': return passportView();
@@ -430,7 +601,7 @@
       case 'game': return game(p[1]);
       case 'surprise': { var rg = Games.random(play.lastGame, p[1]); location.replace('#game/' + rg.id); return; }
       case 'badges': return badgesView();
-      case 'me': return me();
+      case 'me': return me(p[1]);
       case 'delete': return deleteView();
       default: return home();
     }
@@ -440,6 +611,7 @@
   document.documentElement.classList.toggle('calm', !play.settings.motion);
   refresh(true);
   window.addEventListener('hashchange', route);
+  window.addEventListener('im:pref', function () { var h = (location.hash || '#home'); if (!selfPref && !/^#(game|onboard|surprise)/.test(h)) route(); });
   route();
   setTheme(theme());
   if (window.AppUpdates) AppUpdates.init();

@@ -2,21 +2,31 @@
 var AppExperience = (function () {
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   var POS = { isle: [22, 57], valley: [49, 31], peaks: [79, 18], port: [79, 58], obs: [50, 80], harbor: [19, 16], cloud: [50, 56] };
-  function world(J, stats, tracks, selected) {
+  function world(J, stats, tracks, selected, nav) {
     var chosen = J.REGIONS.filter(function (r) { return r.key === selected; })[0] || J.REGIONS[0];
     var html = '<section class="island-map" aria-label="Learning regions"><span class="map-kick">THE LEARNING ARCHIPELAGO</span><svg class="island-route" viewBox="0 0 340 350" preserveAspectRatio="none" aria-hidden="true"><path d="M75 200 C100 230 130 285 170 280 S230 215 269 203 S300 95 269 63 S195 70 167 109 S95 20 65 56"/></svg>';
-    html += J.REGIONS.map(function (r, i) { var p = POS[r.key], g = stats.region[r.key] || { done: 0, items: 0 }; return '<a class="floating-island c-' + r.color + (r === chosen ? ' selected' : '') + '" href="#world/' + r.key + '"' + (r === chosen ? ' aria-current="location"' : '') + ' style="left:' + p[0] + '%;top:' + p[1] + '%;--delay:' + (-i * .7) + 's"><span class="island-land">' + J.icon(r.icon) + '</span><b>' + esc(r.name) + '</b><small>' + J.pct(g.done, g.items) + '% explored</small></a>'; }).join('') + '</section>';
+    html += J.REGIONS.map(function (r, i) { var p = POS[r.key], g = stats.region[r.key] || { done: 0, items: 0 }, np = nav && nav.on ? (nav.regions[r.key] || 0) : -1; return '<a class="floating-island c-' + r.color + (r === chosen ? ' selected' : '') + (np > 0 ? ' on-path' : np === 0 ? ' dim' : '') + '" href="#world/' + r.key + '"' + (r === chosen ? ' aria-current="location"' : '') + ' style="left:' + p[0] + '%;top:' + p[1] + '%;--delay:' + (-i * .7) + 's"><span class="island-land">' + J.icon(r.icon) + '</span><b>' + esc(r.name) + '</b><small>' + J.pct(g.done, g.items) + '% explored</small>' + (np > 0 ? '<em class="path-count"><span aria-hidden="true">' + np + '</span><span class="navsr">' + np + ' modules on your path</span></em>' : np === 0 ? '<span class="navsr">Not on your path, still open</span>' : '') + '</a>'; }).join('') + '</section>';
     var ids = chosen.tracks.filter(function (id) { return tracks.some(function (t) { return t.id === id; }); });
     var g = stats.region[chosen.key], pct = J.pct(g.done, g.items);
     html += '<section class="card island-detail"><span class="kick">' + esc(chosen.area) + '</span><h2>' + esc(chosen.name) + '</h2><div class="xpbar"><i style="width:' + pct + '%"></i></div><span class="muted sm">' + g.done + ' of ' + g.items + ' activities explored</span>';
-    html += ids.map(function (id) { var t = tracks.filter(function (t) { return t.id === id; })[0], st = stats.track[id] || { done: 0, items: 0 }; return '<a class="journey-link" href="#map/' + id + '"><span>' + esc(t.title) + '</span><span class="mono sm">' + J.pct(st.done, st.items) + '% ›</span></a>'; }).join('');
+    if (nav && nav.on) ids = ids.filter(function (id) { return nav.tracks[id] > 0; }).concat(ids.filter(function (id) { return !(nav.tracks[id] > 0); }));
+    html += ids.map(function (id) { var t = tracks.filter(function (t) { return t.id === id; })[0], st = stats.track[id] || { done: 0, items: 0 }; return '<a class="journey-link" href="#map/' + id + '"><span>' + esc(t.title) + '</span><span class="mono sm">' + (nav && nav.on ? (nav.tracks[id] > 0 ? nav.tracks[id] + ' on your path · ' : 'off your path · ') : '') + J.pct(st.done, st.items) + '% ›</span></a>'; }).join('');
     return html + '</section>';
   }
-  function search(entries, query, tracks) {
+  function search(entries, query, tracks, nav) {
     query = String(query || '').trim().toLowerCase().slice(0, 160);
     if (!query) return '<p class="muted sm">Search a topic, module or interview concept across every track.</p>';
     var allowed = {}; tracks.forEach(function (t) { allowed[t.id] = true; });
     var matches = (entries || []).filter(function (e) { var tid = String(e.h || '').split('.html#')[0]; return allowed[tid] && /^[a-z]+\.html#[a-z0-9-]+$/.test(e.h) && (String(e.t || '') + ' ' + String(e.c || '') + ' ' + String(e.s || '')).toLowerCase().indexOf(query) >= 0; });
+    if (nav && nav.on) {
+      var modOf = function (e) { return String(e.h).split('.html#')[1].split('-')[0]; };
+      var on = matches.filter(function (e) { return nav.onPath(modOf(e)); }), off = matches.filter(function (e) { return !nav.onPath(modOf(e)); });
+      var shown = nav.reveal ? on.concat(off) : on;
+      var row = function (e) { var o = nav.onPath(modOf(e)); return '<a class="journey-link search-result' + (o ? ' on-path' : ' off-path') + '" href="' + esc(e.h) + '"><span><b>' + esc(e.t) + '</b><small>' + esc(e.c) + ' · ' + (o ? 'On your path' : 'Other lands') + '</small></span><span aria-hidden="true">↗</span></a>'; };
+      return '<p class="muted sm" role="status">' + on.length + ' on your path' + (nav.reveal && off.length ? ' · ' + off.length + ' elsewhere' : '') + (shown.length > 50 ? ' · first 50 shown' : '') + '</p>' + shown.slice(0, 50).map(row).join('') +
+        (!on.length ? '<div class="card"><b>' + (off.length ? 'Nothing on your path matches' : 'No matches yet') + '</b><p class="muted sm">' + (off.length ? 'There ' + (off.length === 1 ? 'is 1 result' : 'are ' + off.length + ' results') + ' in other lands.' : 'Try fewer words or a related concept.') + '</p></div>' : '') +
+        (off.length ? '<button type="button" class="b3 ghost" data-reveal="1" aria-pressed="' + !!nav.reveal + '">' + (nav.reveal ? 'Show my path only' : 'Search everything (' + off.length + ' more result' + (off.length === 1 ? '' : 's') + ')') + '</button>' : '');
+    }
     return '<p class="muted sm" role="status">' + matches.length + ' results' + (matches.length > 50 ? ' · first 50 shown' : '') + '</p>' + matches.slice(0, 50).map(function (e) { return '<a class="journey-link search-result" href="' + esc(e.h) + '"><span><b>' + esc(e.t) + '</b><small>' + esc(e.c) + '</small></span><span aria-hidden="true">↗</span></a>'; }).join('') + (!matches.length ? '<div class="card"><b>No matches yet</b><p class="muted sm">Try fewer words or a related concept.</p></div>' : '');
   }
   function week(Play, days, date) {

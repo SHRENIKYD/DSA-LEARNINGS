@@ -16,7 +16,8 @@ const get = ctx.Games.get; ctx.Games.get = id => id === 'rewardtest' ? { id: 're
 for (const f of ['progress-map.js', 'paths-data.js']) vm.runInContext(fs.readFileSync(path.join(built, f), 'utf8'), ctx, { filename: f });
 vm.runInContext(fs.readFileSync(path.join(root, 'app/app.js'), 'utf8'), ctx, { filename: 'app/app.js' });
 assert.match(nodes['#app'].innerHTML, /LET’S EXPLORE/, 'new travellers see onboarding');
-nodes['#beginJourney'].events.click(); events.hashchange(); assert.match(nodes['#app'].innerHTML, /Explore islands/); assert.equal(JSON.parse(storage['imastery.welcomed']), true);
+nodes['#beginJourney'].events.click(); events.hashchange(); assert.match(nodes['#app'].innerHTML, /What are you aiming for/, 'after the welcome, a first-time traveller sees the 3-step onboarding'); assert.equal(JSON.parse(storage['imastery.welcomed']), true);
+nodes['#obSkip'].events.click(); assert.match(nodes['#app'].innerHTML, /Explore islands/, 'skipping onboarding lands in Explore all'); assert.equal(JSON.parse(storage['imastery.route']).onboarded, true); assert.equal(ctx.Learn.mode(), 'all');
 function go(hash) { ctx.location.hash = hash; events.hashchange(); return nodes['#app'].innerHTML; }
 assert.equal((go('#world').match(/class="floating-island/g) || []).length, 7);
 assert.match(go('#world/peaks'), /Design Peaks/); assert.match(nodes['#app'].innerHTML, /#map\/lld/);
@@ -77,4 +78,89 @@ assert.match(go('#expedition'), /reward collected/);
 storage['imastery.done'] = JSON.stringify({ 'dsa01-t0': true }); // A lesson tick is persisted by the existing lesson engine.
 // Rebuild the passport directly against changed progress, as the route does.
 assert.match(go('#passport'), /1 of 17 collected/);
+/* ---------- personalized navigation ---------- */
+const L = ctx.Learn, TR = ctx.TRACKS, J = ctx.Journey;
+const reset = (route, done) => { for (const k of Object.keys(storage)) if (k !== 'imastery.welcomed' && k !== 'imastery.play') delete storage[k]; if (route) storage['imastery.route'] = JSON.stringify(route); storage['imastery.done'] = JSON.stringify(done || {}); };
+const norm = h => h.replace(/stp\d+/g, 'stp').replace(/seed="\d+"/g, 'seed=""');
+const stripNav = h => norm(h).replace(/<div class="navbar" data-nav>.*?<\/div><\/div>/g, '').replace(/<section class="card pathsw" data-nav.*?<\/section>/g, '');
+const modeBtns = []; ctx.document.querySelectorAll = sel => { if (sel !== '[data-nav] [data-mode]') return []; modeBtns.length = 0; ['path', 'all'].forEach(m => { const b = { m, events: {}, getAttribute: k => k === 'data-mode' ? m : null, addEventListener(k, f) { this.events[k] = f; }, focus() {} }; modeBtns.push(b); }); return modeBtns; };
+// Banner: users without a chosen path stay in Explore all, see a dismissible banner, and the screens equal today's.
+reset(null, { 'dsa01-t0': 1 });
+let hm = go('#home'); assert.doesNotMatch(hm, /What are you aiming for/, 'existing users with progress are not forced through onboarding');
+assert.match(hm, /Pick a path/); assert.match(hm, /href="#onboard"/); assert.equal(L.mode(), 'all');
+nodes['#navDismiss'].events.click(); assert.equal(JSON.parse(storage['imastery.navBanner']), true); assert.doesNotMatch(nodes['#app'].innerHTML, /Pick a path/);
+// Explore all with a chosen route renders exactly today's DOM apart from the data-nav top bar and switcher.
+const screens = ['#home', '#world', '#world/peaks', '#map/dsa', '#module/dsa01', '#search', '#passport', '#me'];
+const today = {}; screens.forEach(h => { today[h] = norm(go(h)); assert.doesNotMatch(today[h], /data-nav/, h + ' has no nav additions without a chosen path'); });
+reset({ id: 'sde', hours: 10, mode: 'all', onboarded: true }, { 'dsa01-t0': 1 }); storage['imastery.navBanner'] = 'true';
+assert.equal(L.pref().chosen, true); assert.equal(L.mode(), 'all');
+screens.forEach(h => { const now = go(h); assert.equal(stripNav(now), today[h], h + ' in Explore all mode matches today\'s DOM'); });
+assert.match(go('#home'), /class="navbar" data-nav/); assert.match(nodes['#app'].innerHTML, /data-mode="all" aria-pressed="true"/); assert.match(nodes['#app'].innerHTML, /data-mode="path" aria-pressed="false"/);
+// Onboarding: 3 steps for a multi-language route, language step skipped for a single-language route, skippable, once.
+reset(null, {}); delete storage['imastery.navBanner'];
+assert.match(go('#home'), /Step 1 of 3|Step 1 of 2/); assert.match(nodes['#app'].innerHTML, /id="obNext" disabled/, 'next waits for a goal');
+const pick = (name, value, checked) => nodes['#scr'].events.change({ target: { name, value, checked } });
+pick('obGoal', 'sde'); nodes['#obNext'].events.click(); assert.match(nodes['#app'].innerHTML, /Which language/); assert.match(nodes['#app'].innerHTML, /id="obKnown"/); assert.match(nodes['#app'].innerHTML, /Step 2 of 3/);
+pick('obLang', 'java'); nodes['#scr'].events.change({ target: { id: 'obKnown', checked: true } }); nodes['#obNext'].events.click();
+assert.match(nodes['#app'].innerHTML, /How much time/); assert.match(nodes['#app'].innerHTML, /about \d+ weeks/);
+pick('obHours', '20'); nodes['#obBack'].events.click(); assert.match(nodes['#app'].innerHTML, /Which language/); nodes['#obNext'].events.click(); nodes['#obNext'].events.click();
+let pf = L.pref(); assert.deepEqual([pf.id, pf.lang, pf.hours, pf.mode, pf.onboarded, pf.known.join()], ['sde', 'java', 20, 'path', true, 'java']);
+assert.match(nodes['#app'].innerHTML, /class="navbar" data-nav/); assert.doesNotMatch(go('#home'), /What are you aiming for/, 'onboarding shows once');
+reset(null, {}); go('#home'); pick('obGoal', 'pyback'); nodes['#obNext'].events.click();
+assert.match(nodes['#app'].innerHTML, /How much time/); assert.match(nodes['#app'].innerHTML, /Step 2 of 2/, 'single-language route skips the language step');
+nodes['#obNext'].events.click(); assert.equal(L.pref().id, 'pyback'); assert.equal(L.mode(), 'path');
+reset(null, {}); go('#home'); pick('obGoal', 'all'); assert.match(nodes['#obNext'].textContent, /FINISH/); nodes['#obNext'].events.click();
+assert.equal(L.mode(), 'all'); assert.equal(L.pref().onboarded, true); assert.equal(L.pref().chosen, false);
+
+// A python backend learner (pyback, python).
+reset({ id: 'pyback', lang: 'python', hours: 10, mode: 'path', onboarded: true }, { 'dsa01-t0': 1 });
+assert.equal(L.mode(), 'path');
+const pathTracks = L.pathTracks().map(x => x.track), onP = id => L.onPath(id);
+assert.ok(pathTracks.length >= 3 && pathTracks.length < TR.length, 'pyback covers some but not all tracks');
+const pb = TR.map(t => t.modules.filter(pm => onP(pm.id)).length), regionCount = {};
+TR.forEach((t, i) => { const k = J.regionOf(t.id).key; regionCount[k] = (regionCount[k] || 0) + pb[i]; });
+// #world: islands with path modules are bright with a ring and a count, the rest are dimmed, and every island stays a link.
+let w = go('#world'); assert.equal((w.match(/class="floating-island/g) || []).length, 7);
+J.REGIONS.forEach(r => {
+  const m = w.match(new RegExp('<a class="floating-island[^"]*" href="#world/' + r.key + '"')); assert.ok(m, r.key + ' island remains a link');
+  if (regionCount[r.key] > 0) { assert.match(m[0], /on-path/, r.key + ' is bright'); assert.match(w, new RegExp('on-path[^>]*href="#world/' + r.key + '"[^]*?path-count[^>]*><span aria-hidden="true">' + regionCount[r.key] + '</span>')); }
+  else assert.match(m[0], / dim/, r.key + ' is dimmed');
+});
+assert.ok(/ dim/.test(w) && /on-path/.test(w), 'some islands are dimmed and some are bright');
+assert.match(w, /data-mode="path" aria-pressed="true"/); assert.match(w, /My path: <b>Python backend<\/b>/);
+const offTrack = TR.find((t, i) => pb[i] === 0), pathT = TR.find(t => t.id === pathTracks[0]);
+// #map/<track>: path modules first, every module reachable, path tracks first then More.
+const mapHtml = go('#map/' + pathT.id), onMods = pathT.modules.filter(pm => onP(pm.id)), offMods = pathT.modules.filter(pm => !onP(pm.id));
+pathT.modules.forEach(pm => assert.ok(mapHtml.includes('href="#module/' + pm.id + '"'), pm.id + ' reachable'));
+assert.equal((mapHtml.match(/class="node dot /g) || []).length, offMods.length, 'off-path modules are grey dots');
+if (offMods.length) assert.ok(mapHtml.indexOf('href="#module/' + onMods[0].id + '"') < mapHtml.indexOf('href="#module/' + offMods[0].id + '"'), 'path modules listed first');
+assert.match(mapHtml, /Your path/); assert.match(mapHtml, /id="moreBtn" aria-expanded="false"/);
+assert.ok(mapHtml.indexOf('href="#map/' + pathTracks[0] + '"') < mapHtml.indexOf('id="moreBtn"') && mapHtml.indexOf('id="moreBtn"') < mapHtml.indexOf('href="#map/' + offTrack.id + '"'), 'path track chips, then More, then the others');
+TR.forEach(t => assert.ok(mapHtml.includes('href="#map/' + t.id + '"'), t.id + ' chip reachable'));
+const ord = onMods.map(pm => ({ id: pm.id, r: L.relevance(pm.id) })).map(x => x.r.stage < 0 ? 999 : x.r.stage); assert.deepEqual(ord, ord.slice().sort((a, b) => a - b), 'path modules follow the route stage order');
+nodes['#moreBtn'].events.click(); 
+const offHtml = go('#map/' + offTrack.id); offTrack.modules.forEach(pm => assert.ok(offHtml.includes('href="#module/' + pm.id + '"'), 'off-path ' + pm.id + ' still reachable'));
+assert.equal((offHtml.match(/class="node dot /g) || []).length, offTrack.modules.length); assert.match(offHtml, /aria-expanded="true"/); assert.match(offHtml, /Every module is still open/);
+// #search: on-path hits first, labelled, with a search-everything reveal.
+const onId = L.pathTracks()[0].mods[0], offId = offTrack.modules[0].id, mt = id => L.meta(id).track;
+ctx.SEARCH_INDEX.entries.push({ t: 'Zebra elsewhere', c: 'Other', s: 'zebra', h: offTrack.id + '.html#' + offId }, { t: 'Zebra here', c: 'Mine', s: 'zebra', h: mt(onId) + '.html#' + onId });
+go('#search'); nodes['#appSearch'].value = 'zebra'; nodes['#appSearch'].events.input.call(nodes['#appSearch']);
+let sr = nodes['#appSearchResults'].innerHTML; assert.match(sr, /Zebra here/); assert.match(sr, /On your path/); assert.doesNotMatch(sr, /Zebra elsewhere/); assert.match(sr, /Search everything \(1 more result\)/); assert.match(sr, /aria-pressed="false"/);
+nodes['#appSearchResults'].events.click({ target: { closest: () => ({}) } }); sr = nodes['#appSearchResults'].innerHTML;
+assert.ok(sr.indexOf('Zebra here') < sr.indexOf('Zebra elsewhere'), 'on-path result ranks first'); assert.match(sr, /Other lands/); assert.match(sr, /aria-pressed="true"/);
+nodes['#appSearch'].value = 'binary'; nodes['#appSearch'].events.input.call(nodes['#appSearch']); assert.match(nodes['#appSearchResults'].innerHTML, /dsa.html#dsa10/, 'search still finds every module once revealed');
+// Passport shows a route progress strip in My path mode only.
+assert.match(go('#passport'), /Route progress/); assert.match(nodes['#app'].innerHTML, /stages complete/);
+// Me: switching route keeps progress byte-identical, announces an undo, and the toggle uses aria-pressed.
+const doneBefore = storage['imastery.done'] = JSON.stringify({ 'dsa01-t0': 1, 'py01-t0': 1 });
+let me1 = go('#me'); assert.match(me1, /id="pathSwitch"/); assert.match(me1, /Switching keeps all your progress/);
+nodes['#pwRoute'].value = 'frontend'; nodes['#pwRoute'].events.change();
+assert.equal(L.pref().id, 'frontend'); assert.equal(storage['imastery.done'], doneBefore, 'switching route leaves imastery.done byte-identical');
+assert.match(nodes['#toast'].innerHTML, /id="toastUndo"/); assert.match(nodes['#toast'].innerHTML, /Progress kept/);
+nodes['#toastUndo'].events.click(); assert.equal(L.pref().id, 'pyback'); assert.equal(storage['imastery.done'], doneBefore);
+// The My path / Explore all toggle flips mode; Explore all hides the filtered views again.
+go('#world'); modeBtns.find(b => b.m === 'all').events.click(); assert.equal(L.mode(), 'all'); assert.doesNotMatch(nodes['#app'].innerHTML, /floating-island[^"]* dim/);
+assert.match(nodes['#app'].innerHTML, /data-mode="all" aria-pressed="true"/); assert.doesNotMatch(go('#passport'), /Route progress/);
+modeBtns.find(b => b.m === 'path').events.click(); assert.equal(L.mode(), 'path');
+console.log('PASS: personalized navigation (banner, onboarding, path/all toggle, dimmed islands, path-first tracks, ranked search, route strip, undo switch, Explore all unchanged)');
 console.log('PASS: actual app startup, onboarding, home/world/track/module/search/passport/quest/progress/play/badge/settings routes, live stamps, game win deduplication, quest integration and the route screen with project checklists');

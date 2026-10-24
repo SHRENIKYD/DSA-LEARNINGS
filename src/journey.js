@@ -195,6 +195,31 @@ var Journey = (function () {
     return h + '</div><div class="passport-page-footer"><span>' + icon('map') + ' Interview Mastery · Traveller’s collection</span><span class="mono">01 / 01</span></div>';
   }
 
+  /* ---------- route progress (passport) ---------- */
+  /* Strip for the chosen route: stages complete and projects done. Empty when no route is chosen. */
+  function routeStrip() {
+    var p = Learn.pref();
+    if (!p.chosen) return '<div class="rstrip"><h2 id="pRouteH">Route progress</h2><p class="muted">No path chosen yet. <a href="index.html#pick">Pick a path</a> to see your route progress here.</p></div>';
+    var v = Learn.routeView(p), R = v.sch.plan.route, nDone = v.stages.filter(function (s) { return s.complete; }).length;
+    return '<div class="rstrip"><div class="jrow"><h2 id="pRouteH">Route progress</h2><a href="route.html">Route plan ›</a></div>' +
+      '<p><b>' + esc(R.name) + '</b> · ' + nDone + ' of ' + v.stages.length + ' stages complete · ' + v.projectsDone + ' of ' + v.projects.length + ' projects done · ' + v.pctHours + '% of your path</p>' +
+      '<ol class="rstages">' + v.stages.map(function (s) {
+        return '<li class="' + (s.complete ? 'on' : '') + '"><span class="rsn" aria-hidden="true">' + (s.complete ? '✓' : s.index + 1) + '</span><span>' + esc(s.name) + '</span><small>' + s.mastered + '/' + s.required + (s.project ? ' · project ' + (s.project.done ? 'done' : s.project.ticked + '/' + s.project.total) : '') + '</small><span class="sr-only">' + (s.complete ? ', complete' : ', not complete') + '</span></li>';
+      }).join('') + '</ol></div>';
+  }
+  /* One stamp per route, earned when every stage of that route is complete (modules mastered and project done). */
+  function routeStampsHtml() {
+    var p = Learn.pref();
+    var list = PATHS.ROUTES.map(function (r) {
+      var lang = r.langs.indexOf(p.lang) >= 0 ? p.lang : r.langs[0], v = Learn.routeView({ id: r.id, lang: lang, hours: p.hours, known: [] });
+      var on = v.stages.length > 0 && v.stages.every(function (s) { return s.complete; });
+      return { st: { key: 'route-' + r.id, name: r.name, icon: 'flag', color: 'violet' }, on: on, done: v.stages.filter(function (s) { return s.complete; }).length, total: v.stages.length };
+    });
+    return '<div class="rstamps"><h3>Route stamps</h3><p class="muted">Finish every stage of a route to stamp it.</p><div class="pgrid" id="pRouteStamps">' + list.map(function (x) {
+      return '<div class="pst' + (x.on ? ' on' : '') + '" data-route-stamp="' + esc(x.st.key.slice(6)) + '">' + passportStampSvg(x) + '<b>' + esc(x.st.name) + '</b><span class="passport-stamp-status">' + (x.on ? '✓ Route complete' : x.done + ' of ' + x.total + ' stages') + '</span></div>';
+    }).join('') + '</div></div>';
+  }
+
   /* ---------- passport page ---------- */
   function passport() {
     bar({ theme: true });
@@ -212,6 +237,8 @@ var Journey = (function () {
         var g = s.region[r.key], p = pct(g.done, g.items);
         return '<div class="pland"><span>' + icon(r.icon) + esc(r.name) + '</span><span class="jbar-p c-' + r.color + '"><i style="width:' + Math.max(p ? 3 : 0, p) + '%"></i></span><span class="mono">' + p + '%</span></div>';
       }).join('');
+      var rs = document.getElementById('pRoute');
+      if (rs && window.Learn && window.PATHS) { rs.hidden = false; rs.innerHTML = routeStrip() + routeStampsHtml(); }
       var dl = document.getElementById('pDelete');
       if (dl) dl.hidden = !u;
     }
@@ -225,11 +252,10 @@ var Journey = (function () {
       ds.innerHTML = PATHS.ROUTES.map(function (r) { return '<option value="' + r.id + '">' + esc(r.name) + '</option>'; }).join('');
       ds.value = Learn.pref().id;
       ds.addEventListener('change', function () { Learn.setPref({ id: ds.value }); });
-    } else {
-      ds.innerHTML = ROLES.map(function (r) { return '<option value="' + r.id + '">' + esc(r.name) + '</option>'; }).join('');
-      ds.value = dest().id;
-      ds.addEventListener('change', function () { set('imastery.dest', ds.value); });
+    } else if (ds.parentNode) {
+      ds.parentNode.hidden = true; // routes need PATHS and Learn; the legacy imastery.dest is no longer written
     }
+    if (window.Learn) window.addEventListener('im:pref', function () { ds.value = Learn.pref().id; draw(); });
     draw();
     if (window.Auth) Auth.init();
   }
@@ -299,7 +325,7 @@ var Journey = (function () {
     motion();
   }
 
-  return { stampCollectionHtml: stampCollectionHtml, atlasHtml: atlasHtml, mountAtlas: mountAtlas, ICON: ICON, REGIONS: REGIONS, ZONES: ZONES, ZCOLOR: ZCOLOR, ROLES: ROLES, STAMPS: STAMPS, regionOf: regionOf, icon: icon, mods: mods, stats: stats, stampsOf: stampsOf, stampSvg: stampSvg, bar: bar, themeIcon: themeIcon, passport: passport, dest: dest, setDest: function (id) { set('imastery.dest', id); }, pct: pct, esc: esc };
+  return { stampCollectionHtml: stampCollectionHtml, atlasHtml: atlasHtml, mountAtlas: mountAtlas, ICON: ICON, REGIONS: REGIONS, ZONES: ZONES, ZCOLOR: ZCOLOR, ROLES: ROLES, STAMPS: STAMPS, regionOf: regionOf, icon: icon, mods: mods, stats: stats, stampsOf: stampsOf, stampSvg: stampSvg, bar: bar, themeIcon: themeIcon, passport: passport, dest: dest, setDest: function (id) { var m = { backend: 'javaback', frontend: 'frontend', ml: 'aiapp' }; if (window.Learn && m[id]) Learn.setPref({ id: m[id] }); }, routeStrip: routeStrip, routeStampsHtml: routeStampsHtml, pct: pct, esc: esc };
 })();
 
 

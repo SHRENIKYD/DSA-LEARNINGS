@@ -9,7 +9,7 @@ var Auth = (function () {
       });
     } catch (e) { enabled = false; }
   }
-  var user = null, timer = null, status = 'idle', listeners = [], ready = null;
+  var user = null, timer = null, status = 'idle', listeners = [], ready = null, noPrefs = false;
 
   function lsGet(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
@@ -25,7 +25,8 @@ var Auth = (function () {
   function pull() {
     if (!user) return Promise.resolve();
     setStatus('syncing');
-    return client.from('progress').select('done,last').eq('user_id', user.id).maybeSingle().then(function (res) {
+    return client.from('progress').select(noPrefs ? 'done,last' : 'done,last,prefs').eq('user_id', user.id).maybeSingle().then(function (res) {
+      if (res.error && !noPrefs && prefsMissing(res.error)) { noPrefs = true; return pull(); }
       if (res.error) { setStatus('error'); return; }
       var row = res.data, remote = (row && row.done) || {}, local = lsGet('imastery.done', {}) || {};
       var st = lsGet('imastery.sync', {}) || {}, trusted = st.user === user.id && !st.dirty, foreign = !!st.user && st.user !== user.id;
@@ -35,18 +36,38 @@ var Auth = (function () {
       if (row && row.last && (trusted || foreign || !localLast)) lsSet('imastery.last', row.last);
       else if (foreign) lsSet('imastery.last', null);
       lsSet('imastery.sync', { user: user.id, dirty: false });
+      var prefsNewer = mergePrefs(row && row.prefs, foreign);
       emit('progress');
-      if (!row || !same(merged, remote)) return push();
+      if (!row || !same(merged, remote) || prefsNewer) return push();
       setStatus('synced');
     }, function () { setStatus('error'); });
   }
+
+  /* Route preference (imastery.route): last write wins by updatedAt; offline the local copy is used as is.
+     Returns true when the local copy is newer than the server one, so it should be pushed. */
+  function mergePrefs(remote, foreign) {
+    var local = lsGet('imastery.route', null);
+    var lt = local && typeof local === 'object' ? (+local.updatedAt || 0) : -1;
+    var rt = remote && typeof remote === 'object' ? (+remote.updatedAt || 0) : -1;
+    if (rt >= 0 && (rt > lt || foreign)) {
+      lsSet('imastery.route', remote);
+      if (remote.lang) lsSet('imastery.lang', remote.lang);
+      if (window.Learn && window.Learn.prefChanged) window.Learn.prefChanged();
+      return false;
+    }
+    return !noPrefs && lt > rt;
+  }
+  function prefsMissing(err) { return /prefs/i.test(String((err && (err.message || err.details)) || '')); }
 
   function push() {
     if (!user) return Promise.resolve();
     clearTimeout(timer); timer = null;
     setStatus('saving');
     var body = { user_id: user.id, done: lsGet('imastery.done', {}) || {}, last: lsGet('imastery.last', null) };
+    var pr = lsGet('imastery.route', null);
+    if (!noPrefs && pr && typeof pr === 'object') body.prefs = pr;
     return client.from('progress').upsert(body, { onConflict: 'user_id' }).then(function (res) {
+      if (res.error && body.prefs && prefsMissing(res.error)) { noPrefs = true; return push(); }
       if (res.error) { lsSet('imastery.sync', { user: user.id, dirty: true }); setStatus('error'); return; }
       lsSet('imastery.sync', { user: user.id, dirty: false });
       setStatus('synced');
@@ -89,14 +110,14 @@ var Auth = (function () {
     var out = {
       app: 'Interview Mastery', version: String(window.IM_VERSION || cfg.version || ''), exportedAt: new Date().toISOString(),
       account: user ? { id: user.id, email: user.email || null } : null,
-      local: { done: lsGet('imastery.done', {}) || {}, last: lsGet('imastery.last', null), play: lsGet('imastery.play', null) },
+      local: { done: lsGet('imastery.done', {}) || {}, last: lsGet('imastery.last', null), play: lsGet('imastery.play', null), prefs: lsGet('imastery.route', null) },
       server: null
     };
     if (!user || !client) return Promise.resolve(out);
     var uid = user.id;
-    return client.from('progress').select('done,last').eq('user_id', uid).maybeSingle().then(function (res) {
+    return client.from('progress').select(noPrefs ? 'done,last' : 'done,last,prefs').eq('user_id', uid).maybeSingle().then(function (res) {
       if (res.error) out.server = { error: 'Could not read your saved progress from the server: ' + (res.error.message || 'unknown error') + '. Only the data on this device is included.' };
-      else out.server = { found: !!res.data, user_id: uid, done: (res.data && res.data.done) || {}, last: res.data ? res.data.last : null };
+      else out.server = { found: !!res.data, user_id: uid, done: (res.data && res.data.done) || {}, last: res.data ? res.data.last : null, prefs: (res.data && res.data.prefs) || null };
       return out;
     }, function () {
       out.server = { error: 'Could not reach the server. Only the data on this device is included.' };
