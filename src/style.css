@@ -380,7 +380,14 @@ button svg,.btn svg{pointer-events:none}
 .vmain h1{margin:0;font-family:var(--f-head);font-size:30px}
 .vcount{margin:0;color:var(--muted)}
 .vmain .sbox{max-width:520px}
-.vsel{display:flex;align-items:center;gap:10px;font-weight:600}.vsel select{flex:1;min-width:0;max-width:420px;font:inherit;font-size:15px;padding:10px 12px;border:1px solid var(--border2);border-radius:12px;background:var(--raised);color:var(--text)}
+.vtools{display:grid;grid-template-columns:minmax(0,1fr) minmax(200px,260px);gap:10px;align-items:stretch}
+.vtools .sbox{max-width:none;flex:none}
+.vsel{position:relative;display:flex;align-items:center;min-width:0}
+.vsel svg.ic{position:absolute;left:11px;color:var(--muted);pointer-events:none}
+.vsel svg.chev{left:auto;right:10px}
+.vsel select{width:100%;min-width:0;height:100%;font:inherit;font-size:15px;font-weight:600;padding:10px 34px 10px 38px;border:1px solid var(--border2);border-radius:12px;background:var(--raised);color:var(--text);appearance:none;-webkit-appearance:none;cursor:pointer;text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
+.vsel select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:600px){.vtools{grid-template-columns:minmax(0,1fr)}}
 .vchip{border:1px solid var(--border2);background:var(--raised);color:var(--text);border-radius:999px;padding:6px 12px;min-height:36px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
 .vchip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .vtrack{display:flex;flex-direction:column;gap:10px;margin-top:8px}
@@ -604,6 +611,7 @@ svg.stamp.off .st-fill{opacity:0}
 .vtop>div{display:flex;flex-direction:column;gap:6px}
 .vmain h1{font-size:clamp(30px,4vw,44px);font-weight:800;line-height:1.05}
 .vmain .sbox{flex:0 1 420px}
+.vmain .vtools .sbox{flex:none;max-width:none}
 .vchip{border-radius:999px;min-height:40px;padding:0 16px;font-weight:700}
 .vchip.on{background:var(--gold);border-color:var(--gold);color:var(--on-gold)}
 .vtrack h2{display:flex;flex-direction:column;gap:2px;font-size:26px;font-weight:800}
