@@ -95,7 +95,7 @@
     $('#scr').scrollTop = 0;
     if (play.settings.motion && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) $('#scr').classList.add('screen-enter');
   }
-  function lessonHref(mid, anchor) { var x = pmById(mid); return x ? x.t.id + '.html#' + mid + (anchor || '') : '#map'; }
+  function lessonHref(mid, anchor) { var x = pmById(mid); return x ? esc(x.t.id) + '.html#' + esc(x.pm.id) + (anchor || '') : '#map'; }
   function nextModule(tid) {
     var t = trackById(tid || 'dsa'), r = null;
     t.modules.forEach(function (pm) { var m = S.totals.modules[pm.id]; if (!r && m && !m.complete) r = pm; });
@@ -420,12 +420,13 @@
   }
 
   function playTab(cat) {
-    cat = cat && Games.cats.some(function (c) { return c[0] === cat; }) ? cat : (play.gameCat || 'all');
+    var known = Games.cats.filter(function (c) { return c[0] === cat; })[0];
+    cat = known ? known[0] : (Games.cats.filter(function (c) { return c[0] === play.gameCat; })[0] || ['all'])[0];
     play.gameCat = cat; save();
     var list = Games.inCat(cat);
     var h = '<div class="ah"><h1>Play</h1></div><p class="muted sm">' + Games.list.length + ' games that teach an idea before the lesson does. Every play is a new random puzzle. First win: +' + Play.XP.game + ' XP, later wins: +' + Play.XP.replay + ' XP.</p>';
     h += '<div class="chips" role="tablist" aria-label="Game topics">' + Games.cats.map(function (c) { var n = Games.inCat(c[0]).length; return '<a role="tab" href="#play/' + c[0] + '" class="chip' + (c[0] === cat ? ' on' : '') + '" aria-selected="' + (c[0] === cat) + '">' + esc(c[1]) + ' · ' + n + '</a>'; }).join('') + '</div>';
-    h += '<a class="card surprise" href="#surprise/' + cat + '"><span class="kick xp">🎲 Surprise me</span><b class="ttl">Play a random ' + (cat === 'all' ? '' : esc(Games.cats.filter(function (c) { return c[0] === cat; })[0][1]) + ' ') + 'game</b><span class="muted sm">Never the same as your last one.</span></a>';
+    h += '<a class="card surprise" href="#surprise/' + esc(cat) + '"><span class="kick xp">🎲 Surprise me</span><b class="ttl">Play a random ' + (cat === 'all' ? '' : esc(Games.cats.filter(function (c) { return c[0] === cat; })[0][1]) + ' ') + 'game</b><span class="muted sm">Never the same as your last one.</span></a>';
     h += list.map(function (g) { var won = play.games && play.games[g.id]; return '<a class="card gamecard" href="#game/' + g.id + '"><span class="kick xp">' + esc(g.kicker) + (won ? ' · won ×' + won.wins : '') + '</span><b class="ttl">' + esc(g.title) + '</b><span class="muted sm">' + esc(g.goal) + '</span></a>'; }).join('');
     h += '<a class="card boss" href="#arena/' + esc(play.track || 'dsa') + '"><span class="kick" style="color:var(--p)">Boss fights</span><b class="ttl">Practice arenas</b><span class="muted sm">Every solved problem is a hit on the module boss.</span></a>';
     page('play', h);
