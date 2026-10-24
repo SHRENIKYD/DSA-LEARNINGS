@@ -438,7 +438,7 @@ h1{letter-spacing:-.8px}
 .jbar-in{max-width:none;margin:0;padding:12px clamp(12px,2vw,32px);display:flex;align-items:center;gap:12px;min-height:68px}
 .jbrand{display:flex;align-items:center;gap:10px;font-family:var(--f-head);font-weight:800;font-size:19px;color:var(--text);text-decoration:none;white-space:nowrap}
 .jlogo{width:34px;height:34px;fill:none;stroke:var(--gold);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
-.jnav{display:flex;gap:4px}
+.jnav{display:flex;gap:4px;min-width:0}
 .jnav a{display:flex;align-items:center;gap:7px;min-height:44px;padding:0 14px;border-radius:12px;color:var(--muted);text-decoration:none;font-weight:700;font-size:15px;white-space:nowrap}
 .jnav a:hover{color:var(--text);background:var(--panel)}
 .jnav a.on{background:var(--panel);color:var(--gold)}
@@ -490,7 +490,7 @@ h1{letter-spacing:-.8px}
 .jstamps:hover{color:var(--text)}
 .jstamps .mini{display:flex}
 .jstamps .mini svg{width:52px;height:52px;margin-right:-8px}
-.dest{background:var(--dusk);border:2px solid var(--violet)}
+.dest{grid-column:1/-1;background:var(--dusk);border:2px solid var(--violet)}
 .dest .jbar-p{color:var(--violet)}
 .droles{display:flex;gap:6px;flex-wrap:wrap}
 .drole{min-height:36px;padding:0 12px;border-radius:999px;border:1px solid var(--violet);background:transparent;color:var(--text);font:inherit;font-size:13.5px;font-weight:700;cursor:pointer}
@@ -653,7 +653,9 @@ svg.stamp.off .st-fill{opacity:0}
 .vlesson{color:var(--clay);font-weight:700;text-decoration:none}
 .vitem .vid-frame{margin:0;border-radius:16px}
 
-@media (max-width:860px){
+/* Samsung Internet can expose a roughly 980px desktop viewport on tablets.
+   Compact the header before that emulated viewport can crowd its controls. */
+@media (max-width:1180px){
   .jbar .jmenu{display:inline-grid!important}
   .jnav a span{display:none}
   .jnav a{padding:0 12px}
@@ -714,7 +716,7 @@ svg.stamp.off .st-fill{opacity:0}
 .atlas.is-paused *{animation-play-state:paused!important}
 @keyframes atlas-float{0%,100%{translate:0 0}50%{translate:0 -8px}}@keyframes atlas-route{to{stroke-dashoffset:-220}}
 [data-theme="light"] .atlas-ocean{background:radial-gradient(ellipse at 40% 50%,#405c62,#293848 85%)}
-@media(max-width:900px){.atlas{grid-template-columns:minmax(0,1fr)}.atlas-detail{min-height:380px}.atlas-tracks{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));column-gap:20px}.whero:has(.atlas) .wh-l{display:flex}.atlas-island>b{font-size:14px}}
+@media(max-width:1050px){.atlas{grid-template-columns:minmax(0,1fr)}.atlas-detail{min-height:380px}.atlas-tracks{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));column-gap:20px}.whero:has(.atlas) .wh-l{display:flex}.atlas-island>b{font-size:14px}}
 @media(max-width:480px){.atlas-ocean{min-height:560px}.atlas-caption{font-size:8px;left:14px;letter-spacing:.6px}.atlas-terrain{height:70px}.atlas-monument .ic{width:37px;height:37px}.atlas-island>b{font-size:11px}.atlas-sub{font-size:8px}.atlas-pct{font-size:8px}.atlas-pin{font-size:8px;padding:4px 6px}.atlas-legend{left:12px;bottom:16px;font-size:8px;max-width:48%}.atlas-motion{font-size:9px;right:10px}.atlas-detail{padding:22px}}
 @media(prefers-reduced-motion:reduce){.atlas *{animation:none!important;transition:none!important}}
 
