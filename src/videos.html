@@ -17,7 +17,7 @@
   <div class="vtop"><div><span class="kicker">The watchtower · videos</span><h1>See every landmark explained</h1><p class="vcount" id="vcount"></p></div></div>
   <div class="vtools">
     <label class="sbox"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="vsearch" type="search" placeholder="Search landmarks, videos or channels" aria-label="Search videos" autocomplete="off"></label>
-    <label class="vsel"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h12M3 18h6"/></svg><select id="vtrack" aria-label="Track"></select><svg class="ic chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></label>
+    <div class="vsel"><button type="button" class="vsel-btn" id="vtrack" aria-haspopup="listbox" aria-expanded="false" aria-label="Track"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h12M3 18h6"/></svg><span class="lbl" id="vtrackLbl"></span><svg class="ic chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><ul class="vsel-list" id="vtrackList" role="listbox" aria-label="Track" tabindex="-1" hidden></ul></div>
   </div>
   <div id="vlist" aria-live="polite"></div>
   <p class="vid-note">Videos play from YouTube when you tap them, in its privacy-enhanced player. They are picked automatically for each topic and new ones are added every day.</p>
@@ -32,10 +32,11 @@
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   var all = 0; L.tracks.forEach(function (t) { all += t.items.length; });
   $('#vcount').textContent = all ? all.toLocaleString('en-US') + ' of ' + L.total.toLocaleString('en-US') + ' landmarks have a video. Coverage notes explain what each video teaches.' : 'Videos are being added. Check back soon.';
+  var OPTS = [['all', 'All tracks', all]].concat(L.tracks.map(function (t) { return [t.id, t.title, t.items.length]; }));
   function chips() {
-    $('#vtrack').innerHTML = [['all', 'All tracks', all]].concat(L.tracks.map(function (t) { return [t.id, t.title, t.items.length]; })).map(function (c) {
-      return '<option value="' + esc(c[0]) + '"' + (c[0] === cur ? ' selected' : '') + '>' + esc(c[1]) + ' · ' + c[2] + '</option>';
-    }).join('');
+    var o = OPTS.filter(function (c) { return c[0] === cur; })[0] || OPTS[0];
+    $('#vtrackLbl').textContent = o[1] + ' · ' + o[2];
+    $('#vtrackList').innerHTML = OPTS.map(function (c) { return '<li role="option" id="vt-' + esc(c[0]) + '" data-t="' + esc(c[0]) + '" aria-selected="' + (c[0] === cur) + '"><span>' + esc(c[1]) + '</span><span class="n">' + c[2] + '</span></li>'; }).join('');
   }
   function item(t, v) {
     var mins = LessonVideo.label(v);
@@ -55,7 +56,23 @@
     });
     $('#vlist').innerHTML = h || (all ? '<p class="vempty">No videos match “' + esc(q) + '”.</p>' : '');
   }
-  $('#vtrack').addEventListener('change', function () { cur = this.value; render(); });
+  (function () {
+    var btn = $('#vtrack'), list = $('#vtrackList'), fi = -1;
+    function open() { list.hidden = false; btn.setAttribute('aria-expanded', 'true'); fi = OPTS.findIndex(function (c) { return c[0] === cur; }); mark(); list.focus(); }
+    function close(focusBtn) { list.hidden = true; btn.setAttribute('aria-expanded', 'false'); if (focusBtn) btn.focus(); }
+    function mark() { Array.prototype.forEach.call(list.children, function (li, i) { li.classList.toggle('focus', i === fi); }); list.setAttribute('aria-activedescendant', fi >= 0 ? list.children[fi].id : ''); if (fi >= 0 && list.children[fi].scrollIntoView) list.children[fi].scrollIntoView({ block: 'nearest' }); }
+    function pick(t) { cur = t; chips(); render(); close(true); }
+    btn.addEventListener('click', function () { if (list.hidden) open(); else close(true); });
+    list.addEventListener('click', function (e) { var li = e.target.closest('li[data-t]'); if (li) pick(li.getAttribute('data-t')); });
+    list.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.preventDefault(); close(true); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); fi = Math.min(OPTS.length - 1, fi + 1); mark(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); fi = Math.max(0, fi - 1); mark(); }
+      else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (fi >= 0) pick(OPTS[fi][0]); }
+      else if (e.key === 'Tab') close(false);
+    });
+    document.addEventListener('click', function (e) { if (!list.hidden && !e.target.closest('.vsel')) close(false); });
+  })();
   var tmr; $('#vsearch').addEventListener('input', function () { var v = this.value; clearTimeout(tmr); tmr = setTimeout(function () { q = v.trim(); render(); }, 120); });
   $('#vlist').addEventListener('click', function (e) {
     var b = e.target.closest('.vid-play'); if (!b) return;

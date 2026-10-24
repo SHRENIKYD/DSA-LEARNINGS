@@ -357,3 +357,60 @@ var Journey = (function () {
   }
   if (typeof window.addEventListener === 'function') window.addEventListener('resize', queue);
 })();
+
+/* Styled dropdowns: every <select> (except [data-native]) gets a themed button + list so the phone's own picker is never shown.
+   The native select stays in the DOM (hidden) and keeps its value, so existing change handlers work unchanged. */
+(function () {
+  if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return;
+  var CHEV = '<svg class="jdd-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function labelFor(sel) {
+    var l = sel.getAttribute('aria-label'); if (l) return l;
+    if (sel.id) { var lab = document.querySelector('label[for="' + sel.id + '"]'); if (lab) return lab.textContent.trim(); }
+    var pl = sel.closest('label'); if (pl) { var t = pl.cloneNode(true); Array.prototype.forEach.call(t.querySelectorAll('select, .jdd'), function (x) { x.remove(); }); return t.textContent.trim(); }
+    return 'Choose';
+  }
+  function enhance(sel) {
+    if (sel.__jdd || sel.hasAttribute('data-native') || sel.multiple) return;
+    var wrap = document.createElement('div'); wrap.className = 'jdd';
+    var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'jdd-btn'; btn.setAttribute('aria-haspopup', 'listbox'); btn.setAttribute('aria-expanded', 'false');
+    var list = document.createElement('ul'); list.className = 'jdd-list'; list.setAttribute('role', 'listbox'); list.tabIndex = -1; list.hidden = true;
+    wrap.appendChild(btn); wrap.appendChild(list);
+    sel.classList.add('jdd-native'); sel.parentNode.insertBefore(wrap, sel.nextSibling);
+    var fi = -1, open = false;
+    function opts() { return Array.prototype.slice.call(sel.options); }
+    function refresh() {
+      var o = sel.options[sel.selectedIndex];
+      btn.innerHTML = '<span class="jdd-lbl">' + esc(o ? o.textContent : '') + '</span>' + CHEV;
+      btn.disabled = sel.disabled; btn.setAttribute('aria-label', labelFor(sel) + ': ' + (o ? o.textContent : ''));
+      list.innerHTML = opts().map(function (op, i) { return '<li role="option" data-i="' + i + '" aria-selected="' + (i === sel.selectedIndex) + '"' + (op.disabled ? ' aria-disabled="true"' : '') + '>' + esc(op.textContent) + '</li>'; }).join('');
+    }
+    function mark() { Array.prototype.forEach.call(list.children, function (li, i) { li.classList.toggle('focus', i === fi); }); if (fi >= 0 && list.children[fi] && list.children[fi].scrollIntoView) list.children[fi].scrollIntoView({ block: 'nearest' }); }
+    function show() { open = true; list.hidden = false; btn.setAttribute('aria-expanded', 'true'); fi = sel.selectedIndex; mark(); var r = btn.getBoundingClientRect(); list.classList.toggle('up', window.innerHeight - r.bottom < 260 && r.top > 260); list.focus(); }
+    function hide(focusBtn) { open = false; list.hidden = true; btn.setAttribute('aria-expanded', 'false'); if (focusBtn) btn.focus(); }
+    function pick(i) { var op = sel.options[i]; if (!op || op.disabled) return; if (sel.selectedIndex !== i) { sel.selectedIndex = i; sel.dispatchEvent(new Event('input', { bubbles: true })); sel.dispatchEvent(new Event('change', { bubbles: true })); } refresh(); hide(true); }
+    btn.addEventListener('click', function () { if (open) hide(true); else show(); });
+    list.addEventListener('click', function (e) { var li = e.target.closest('li[data-i]'); if (li) pick(+li.getAttribute('data-i')); });
+    list.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.preventDefault(); hide(true); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); fi = Math.min(sel.options.length - 1, fi + 1); mark(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); fi = Math.max(0, fi - 1); mark(); }
+      else if (e.key === 'Home') { e.preventDefault(); fi = 0; mark(); }
+      else if (e.key === 'End') { e.preventDefault(); fi = sel.options.length - 1; mark(); }
+      else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (fi >= 0) pick(fi); }
+      else if (e.key === 'Tab') hide(false);
+    });
+    document.addEventListener('click', function (e) { if (open && !wrap.contains(e.target)) hide(false); });
+    sel.addEventListener('change', refresh);
+    new MutationObserver(refresh).observe(sel, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'selected', 'value'] });
+    sel.__jdd = { refresh: refresh };
+    refresh();
+  }
+  function scan(root) { Array.prototype.forEach.call((root.querySelectorAll ? root.querySelectorAll('select') : []), enhance); if (root.tagName === 'SELECT') enhance(root); }
+  function start() {
+    scan(document);
+    new MutationObserver(function (muts) { muts.forEach(function (m) { Array.prototype.forEach.call(m.addedNodes, function (n) { if (n.nodeType === 1) scan(n); }); }); }).observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+  window.JDD = { enhance: enhance, scan: scan };
+})();

@@ -1149,15 +1149,6 @@ var App = (function () {
     h = '<section class="whero"><div class="wh-l"><span class="kicker">' + (PMODE ? RV.pctHours + '% of your path <small class="kick-all">· ' + J.pct(S.done, S.items) + '% of the world</small>' : S.done ? J.pct(S.done, S.items) + '% of the world explored' : 'A new traveller arrives') + '</span>' +
       '<h1>' + (S.done ? 'Welcome back, traveller' : 'Your journey starts on Foundation Isle') + '</h1>' +
       '<p>' + lands + ' lands, ' + S.planned + ' places, ' + S.landmarks.toLocaleString('en-US') + ' landmarks. Every lesson is a stop on the map; finish it and the path lights up.</p>';
-    if (nextMod) {
-      h += '<a class="nextstop path" href="' + Learn.href(nextMod.id) + '"><span class="kicker">Next on your path · ' + esc(RV.sch.plan.route.stages[Learn.relevance(nextMod.id).stage] ? RV.sch.plan.route.stages[Learn.relevance(nextMod.id).stage].name : RV.sch.plan.route.name) + '</span><b>' + esc(nextMod.meta.title) + '</b>' +
-        '<span>' + esc(nextMod.why) + '</span><span class="sail">' + ICONS.play + 'Continue</span></a>';
-    } else if (last && last.track && last.hash) {
-      h += '<a class="nextstop" href="' + esc(last.track) + '.html#' + esc(last.hash) + '"><span class="kicker">Next stop · place ' + esc(last.num) + ' · ' + esc(last.title) + '</span><b>' + esc(last.topicTitle || last.title) + '</b>' +
-        '<span>' + esc(J.regionOf(last.track).name) + ' · ' + esc(last.trackTitle) + (last.topics ? ' · landmark ' + (last.topic + 1) + ' of ' + last.topics : '') + '</span><span class="sail">' + ICONS.play + 'Set sail</span></a>';
-    } else {
-      h += '<a class="nextstop" href="dsa.html#dsa01"><span class="kicker">First stop · place 1 · Foundation Isle</span><b>Programming Foundations</b><span>DSA + Math for CS · starts with a real-world legend</span><span class="sail">' + ICONS.play + 'Set sail</span></a>';
-    }
     h += '</div>' + J.atlasHtml(S, R0, trackBy, last) + '</section>';
     if (PMODE) h += pathHomeHtml(trackBy);
     }
@@ -1510,11 +1501,11 @@ var App = (function () {
       '<label class="rp-field" for="plRest">Rest day<select id="plRest">' + DAYS.map(function (d, i) { return '<option value="' + i + '"' + (i === p.restDay ? ' selected' : '') + '>' + d + '</option>'; }).join('') + '</select></label>' +
       (p.interviewDate ? '<button type="button" class="btn ghost" id="plClear">Clear the date</button>' : '') + '</div>' +
       '<p class="muted sm" id="plNote" role="status">' + (dl === null ? 'No interview date: the forecast assumes ' + p.hours + ' h a week with ' + DAYS[p.restDay] + 's off.' : (dl === 0 ? 'Your interview is today.' : plural(dl, 'day') + ' to go: ' + Math.round(W.budgetHours) + ' h of study available after ' + Math.round(W.mockHours) + ' h of mocks.')) + '</p></section>';
-    h += '<section class="jcard" aria-labelledby="plPlaceH"><h2 id="plPlaceH">Placement</h2><p class="muted">Already know some of this? Mark it as known, or prove it with a readiness check. Marking never deletes progress.</p><div class="place">' +
+    h += '<section class="jcard" aria-labelledby="plPlaceH"><h2 id="plPlaceH">Placement</h2><p class="muted">Already know some of this? Mark it as known, or prove it with a readiness check. Marking never deletes progress.</p><div class="placement-opts">' +
       PLACE.map(function (x) { var n = Planner.placementMods(x[0]).filter(function (id) { return !D['@tested:' + id] && !Learn.status(id, D).satisfied; }).length; return '<button type="button" class="btn' + (p.placement === x[0] ? ' on' : '') + '" data-place="' + x[0] + '" aria-pressed="' + (p.placement === x[0]) + '"><b>' + x[1] + '</b><small>' + x[2] + (x[0] !== 'beginner' ? ' ' + plural(n, 'module') + ' to mark.' : '') + '</small></button>'; }).join('') + '</div></section>';
     var hero = dl === null ? '~' + plural(W.weeks, 'week') + ' to finish' : (W.fits ? 'Fits: ' : 'Won’t fit: ') + plural(dl, 'day') + ', ' + Math.round(W.budgetHours) + ' h available';
     h += '<section class="jcard forecast" aria-labelledby="plWkH" id="forecast"><div class="jrow"><h2 id="plWkH">Weeks</h2>' + fitPill(W) + '</div>' +
-      '<div class="fc-hero"><span class="kicker">Forecast</span><b id="plHero">' + esc(hero) + '</b><span class="muted">' + W.hoursLeft + ' h of lessons left at ' + p.hours + ' h/wk.' + (dl !== null && !W.fits && W.hoursNeeded ? ' Raise hours to ' + W.hoursNeeded + '/wk, or accept a shorter path (core only).' : '') + '</span></div>' +
+      '<div class="fc-hero"><span class="kicker">Forecast</span><b id="plHero">' + esc(hero) + '</b><span class="muted">' + W.hoursLeft + ' h of lessons left at ' + p.hours + ' h/wk.' + (dl !== null && !W.fits && W.hoursNeeded ? (W.hoursNeeded <= 40 ? ' Raise hours to ' + W.hoursNeeded + '/wk, or accept a shorter path (core only).' : ' Even 40 h/wk would not fit: move the date, or keep the required modules only.') : '') + '</span></div>' +
       '<ol class="plan weeks">' + W.stages.map(function (s) { return '<li><span class="ico" aria-hidden="true">W' + s.byWeek + '</span><span class="t">' + esc(s.name) + '<small>' + plural(s.modules.length, 'module') + ' · ' + s.hours + ' h</small></span><span class="min">by wk ' + s.byWeek + '</span></li>'; }).join('') +
       (dl !== null && dl > 7 ? '<li><span class="ico mock" aria-hidden="true">MOCK</span><span class="t">Mock rounds<small>Last 7 days before the interview</small></span><span class="min">' + Math.round(W.mockHours) + ' h</span></li>' : '') + '</ol>' +
       (E.trimmed.length ? '<details class="trimmed"><summary>' + plural(E.trimmed.length, 'module') + ' moved after the interview</summary><ul>' + E.trimmed.map(function (x) { return '<li><a href="' + Learn.href(x.id) + '">' + esc(x.title) + '</a> <small class="muted">' + x.hours + ' h · ' + (x.kind === 'rec' ? 'recommended' : 'optional') + '</small></li>'; }).join('') + '</ul></details>' : '') +
