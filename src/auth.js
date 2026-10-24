@@ -225,6 +225,33 @@ var Auth = (function () {
     return Promise.resolve();
   }
   function setAvatar(file) { return shrink(file).then(saveAvatar); }
+  // WhatsApp-style "Profile picture" sheet: Camera, Gallery, and a trash button when a photo is set. Resolves after the change.
+  function avatarSheet(onChange) {
+    var old = document.getElementById('avSheet'); if (old) old.remove();
+    var has = !!avatarSrc();
+    var el = document.createElement('div'); el.id = 'avSheet'; el.className = 'avsheet';
+    el.innerHTML = '<div class="avsheet-bg"></div><div class="avsheet-box" role="dialog" aria-modal="true" aria-labelledby="avSheetT">' +
+      '<span class="avsheet-grip" aria-hidden="true"></span><div class="avsheet-head"><button type="button" class="avsheet-x" aria-label="Close">&#x2715;</button><h2 id="avSheetT">Profile picture</h2>' +
+      (has ? '<button type="button" class="avsheet-rm" aria-label="Remove photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>' : '<span class="avsheet-sp"></span>') + '</div>' +
+      '<label class="avsheet-row"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.2"/></svg><span>Camera</span><input type="file" accept="image/*" capture="user" hidden></label>' +
+      '<label class="avsheet-row"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/><circle cx="16" cy="9" r="1.5"/></svg><span>Gallery</span><input type="file" accept="image/*" hidden></label>' +
+      '<p class="avsheet-msg" role="status"></p></div>';
+    document.body.appendChild(el);
+    var msg = el.querySelector('.avsheet-msg'), prev = document.activeElement;
+    function close() { el.remove(); document.removeEventListener('keydown', key); if (prev && prev.focus) prev.focus(); }
+    function key(e) { if (e.key === 'Escape') close(); }
+    document.addEventListener('keydown', key);
+    el.querySelector('.avsheet-bg').addEventListener('click', close);
+    el.querySelector('.avsheet-x').addEventListener('click', close);
+    var rm = el.querySelector('.avsheet-rm');
+    if (rm) rm.addEventListener('click', function () { msg.textContent = 'Removing…'; clearAvatar().then(function () { close(); if (onChange) onChange(); }, function (e) { msg.textContent = e.message || 'Could not remove the photo.'; }); });
+    Array.prototype.forEach.call(el.querySelectorAll('input[type=file]'), function (inp) {
+      inp.addEventListener('change', function () { var f = inp.files && inp.files[0]; if (!f) return; msg.textContent = 'Saving photo…';
+        setAvatar(f).then(function () { close(); if (onChange) onChange(); }, function (e) { msg.textContent = e.message || 'Could not save the photo.'; }); });
+    });
+    el.querySelector('.avsheet-x').focus();
+  }
+
   function clearAvatar() { return saveAvatar(null); }
 
   function mountAccount(el) {
@@ -246,7 +273,7 @@ var Auth = (function () {
   }
 
   return {
-    enabled: enabled, client: client, init: init, pull: pull, push: push, changed: changed, reset: reset, signOut: signOut, deleteAccount: deleteAccount, exportData: exportData, downloadData: downloadData, mountAccount: mountAccount, avatarSrc: avatarSrc, avatarHtml: avatarHtml, setAvatar: setAvatar, clearAvatar: clearAvatar,
+    enabled: enabled, client: client, init: init, pull: pull, push: push, changed: changed, reset: reset, signOut: signOut, deleteAccount: deleteAccount, exportData: exportData, downloadData: downloadData, mountAccount: mountAccount, avatarSrc: avatarSrc, avatarHtml: avatarHtml, setAvatar: setAvatar, clearAvatar: clearAvatar, avatarSheet: avatarSheet,
     user: function () { return user; }, status: function () { return status; },
     on: function (fn) { listeners.push(fn); }
   };

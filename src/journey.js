@@ -234,16 +234,11 @@ var Journey = (function () {
       var hasPhoto = !!(window.Auth && Auth.avatarSrc && Auth.avatarSrc());
       var cam = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.2"/></svg>';
       document.getElementById('pHead').innerHTML = '<div class="pp-avwrap"><span class="pp-av" aria-hidden="true">' + ((window.Auth && Auth.avatarHtml ? Auth.avatarHtml(icon('compass')) : '') || icon('compass')) + '</span>' +
-        (window.Auth && Auth.setAvatar ? '<button type="button" class="pp-cam" id="pAvBtn" aria-label="' + (hasPhoto ? 'Change or remove your photo' : 'Add a photo') + '" aria-expanded="false">' + cam + '</button><input type="file" id="pAvFile" accept="image/*" hidden>' +
-          '<div class="pp-avmenu" id="pAvMenu" hidden><button type="button" id="pAvChange">Change photo</button>' + (hasPhoto ? '<button type="button" id="pAvClear">Remove photo</button>' : '') + '</div><span class="pp-avmsg" id="pAvMsg" role="status"></span>' : '') + '</div>' +
+        (window.Auth && Auth.avatarSheet ? '<button type="button" class="pp-cam" id="pAvBtn" aria-label="' + (hasPhoto ? 'Change your profile picture' : 'Add a profile picture') + '">' + cam + '</button>' : '') + '</div>' +
         '<div class="pp-who"><span class="kicker">Traveller\'s passport</span><b>' + esc(who) + '</b><span>' + (u ? 'Your journey is synced to every device you sign in on.' : 'Progress is saved in this browser. Sign in to keep it on every device.') + '</span></div>' +
         '<div class="pp-nums"><div><b>' + got + '</b><span>stamps</span></div><div><b>' + s.places + '</b><span>places cleared</span></div><div><b>' + s.topics.toLocaleString('en-US') + '</b><span>landmarks</span></div></div>';
-      var f = document.getElementById('pAvFile'), rm = document.getElementById('pAvClear'), msg = document.getElementById('pAvMsg'), cb = document.getElementById('pAvBtn'), menu = document.getElementById('pAvMenu'), ch = document.getElementById('pAvChange');
-      var say = function (t) { if (msg) msg.textContent = t; };
-      if (cb) cb.addEventListener('click', function () { if (!hasPhoto) { f.click(); return; } var open = menu.hidden; menu.hidden = !open; cb.setAttribute('aria-expanded', String(open)); });
-      if (ch) ch.addEventListener('click', function () { menu.hidden = true; f.click(); });
-      if (f) f.addEventListener('change', function () { var file = f.files && f.files[0]; if (!file) return; say('Saving photo…'); Auth.setAvatar(file).then(function () { say(u ? 'Photo saved to your account.' : 'Photo saved on this device. Sign in to keep it everywhere.'); draw(); }, function (e) { say(e.message || 'Could not save the photo.'); }); });
-      if (rm) rm.addEventListener('click', function () { Auth.clearAvatar().then(function () { draw(); }, function (e) { say(e.message || 'Could not remove the photo.'); }); });
+      var cb = document.getElementById('pAvBtn');
+      if (cb) cb.addEventListener('click', function () { Auth.avatarSheet(draw); });
       document.getElementById('pCollection').innerHTML = stampCollectionHtml(list);
       document.getElementById('pLands').innerHTML = REGIONS.map(function (r) {
         var g = s.region[r.key], p = pct(g.done, g.items);
