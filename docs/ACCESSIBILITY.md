@@ -49,6 +49,10 @@ Repeat in both themes and at 200% zoom.
 5. Colour is never the only carrier of meaning: compared, swapped and sorted items are also distinguishable in
    text or shape.
 6. With "reduce motion" enabled in the OS, animation does not play automatically.
+7. Code blocks with several languages: once you have chosen a code language (the "Your code language" picker or your
+   path), only that language's tab shows, followed by an "Other languages" button. It is announced as a button with
+   its expanded/collapsed state (`aria-expanded`); Enter or Space reveals the remaining language tabs after it in
+   Tab order, and the same button collapses them again. Snippets with no language (text, SQL, shell) always show.
 
 ### Game or quiz (open a module's practice questions)
 

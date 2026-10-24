@@ -1020,3 +1020,6 @@ svg.cp-ic{width:34px;height:34px;color:var(--gold)}
 pre{max-width:100%;min-width:0;overflow-x:auto}
 h1[tabindex="-1"]:focus,h2[tabindex="-1"]:focus{outline:none}
 @media (max-width:600px){.jnav{min-width:0;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}.jnav::-webkit-scrollbar{display:none}.jnav a{flex:none}}
+/* language mode: the learner's language first, the other code languages behind one tab (src/engine.js codeTabs) */
+.ctab.more{color:var(--accent-fg);font-weight:500}
+.ctab.more[aria-expanded="true"]{color:var(--text)}

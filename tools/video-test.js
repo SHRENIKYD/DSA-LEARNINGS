@@ -9,11 +9,21 @@ const root = path.join(__dirname, '..');
 const db = JSON.parse(fs.readFileSync(path.join(root, 'data/videos.json'), 'utf8'));
 const review = JSON.parse(fs.readFileSync(path.join(root, 'data/video-review.json'), 'utf8'));
 const topics = new Map(discovery.topics().map((t) => [t.id, t.title]));
+const topicTrack = new Map(discovery.topics().map((t) => [t.id, t.trackId]));
+let langPicks = 0;
 let have = 0, curated = 0;
 const unavailable = [];
 for (const [id, e] of Object.entries(db.videos)) {
   assert(topics.has(id), 'Unknown topic: ' + id);
   assert.equal(e.t, topics.get(id), 'Stale topic mapping: ' + id);
+  for (const [l, b] of Object.entries(e.byLang || {})) {
+    assert(discovery.LANGS[l], 'Unknown byLang language: ' + id + '.' + l);
+    assert(discovery.LANG_TRACKS.includes(topicTrack.get(id)), 'byLang only belongs on dsa/lld topics: ' + id);
+    if (!b.id) continue;
+    assert.match(b.id, /^[A-Za-z0-9_-]{11}$/, 'Bad byLang id: ' + id + '.' + l);
+    assert(b.title && b.channel && Number.isSafeInteger(b.secs) && b.secs >= 0, 'Missing byLang metadata: ' + id + '.' + l);
+    langPicks++;
+  }
   if (!e.id) continue;
   assert.match(e.id, /^[A-Za-z0-9_-]{11}$/);
   assert(e.title && e.channel, 'Missing video metadata: ' + id);
@@ -53,6 +63,60 @@ assert.equal(blocked.available, false);
 assert.equal(discovery.availability({ id: sample.id }, null, '2026-10-21'), null);
 assert.equal(discovery.availability(blocked, { embeddable: true, privacy: 'public' }, '2026-10-22').available, true);
 assert.equal(discovery.pick([{ id: 'bad', title: 'Amazon behavioral interview leadership principles', channel: 'NeetCode', views: 1e9, secs: 600, embeddable: true, privacy: 'public' }], 'Pattern Picker: Which Pointer Trick Fits?'), null);
+// Per-language picks: byLang wins, otherwise the default; a byLang-only entry yields null for other languages.
+const ID_A = 'AAAAAAAAAAA', ID_B = 'BBBBBBBBBBB', ID_C = 'CCCCCCCCCCC';
+const raw = { t: 'Arrays', id: ID_A, title: 'Arrays', channel: 'X', secs: 300, byLang: { python: { id: ID_B, title: 'Python arrays', channel: 'Y', secs: 400 }, js: { id: 'bad id', title: 'x' }, cpp: { id: ID_C, available: false }, ruby: { id: ID_C } } };
+const pub = V.publicEntry(raw, 'Arrays');
+assert.deepEqual(Object.keys(pub.byLang), ['python'], 'byLang keeps only valid, available, known languages');
+assert.equal(V.pick(pub, 'python').id, ID_B);
+assert.equal(V.pick(pub, 'python').perLang, true);
+assert.equal(V.pick(pub, 'python').lang, 'python');
+for (const l of ['java', 'js', 'cpp', '', 'nope']) { const p = V.pick(pub, l); assert.equal(p.id, ID_A, 'fallback for ' + l); assert.equal(p.perLang, false); assert(!('byLang' in p)); }
+const only = V.publicEntry({ t: 'Arrays', byLang: { python: { id: ID_B, title: 'P', channel: 'Y', secs: 1 } } }, 'Arrays');
+assert.equal(V.pick(only, 'python').id, ID_B);
+assert.equal(V.pick(only, 'java'), null);
+assert.equal(V.publicEntry({ t: 'Arrays', byLang: { python: { id: 'bad' } } }, 'Arrays'), null);
+assert.equal(V.publicEntry(raw, 'Other'), null);
+assert.equal(V.pick(null, 'python'), null);
+// window.IM_VIDEOS resolves per read, from the stored route (the lesson page reads IM_VIDEOS[id] unchanged).
+const store = { 'imastery.route': JSON.stringify({ id: 'sde', lang: 'python' }) };
+const env = { window: {}, localStorage: { getItem: (k) => (k in store ? store[k] : null) } };
+vm.runInNewContext(fs.readFileSync(path.join(root, 'src/video.js'), 'utf8') + '\nwindow.R=window.LessonVideo.resolveAll({a:' + JSON.stringify(pub) + '});', env);
+assert.equal(env.window.R.a.id, ID_B);
+store['imastery.route'] = JSON.stringify({ id: 'sde', lang: 'java' });
+assert.equal(env.window.R.a.id, ID_A);
+delete store['imastery.route'];
+assert.equal(env.window.R.a.id, ID_A, 'no chosen language: default pick');
+
+// find-videos --lang with a mocked YouTube client (no network, no key).
+(async () => {
+  const all = discovery.topics(), calls = [];
+  const dsaTopic = all.find((t) => t.trackId === 'dsa'), beTopic = all.find((t) => t.trackId === 'be');
+  discovery.setClient(async (endpoint, params) => {
+    calls.push([endpoint, params]);
+    if (endpoint === 'search') return { items: [{ id: { videoId: 'GOODVIDEO01' } }, { id: { videoId: 'OFFLANG0001' } }] };
+    return { items: [
+      { id: 'GOODVIDEO01', snippet: { title: 'Python ' + dsaTopic.title + ' explained', channelTitle: 'NeetCode', liveBroadcastContent: 'none' }, contentDetails: { duration: 'PT10M' }, statistics: { viewCount: '100000', likeCount: '4000' }, status: { embeddable: true, privacyStatus: 'public' } },
+      { id: 'OFFLANG0001', snippet: { title: 'Java ' + dsaTopic.title + ' explained', channelTitle: 'Other', liveBroadcastContent: 'none' }, contentDetails: { duration: 'PT10M' }, statistics: { viewCount: '9000000', likeCount: '90000' }, status: { embeddable: true, privacyStatus: 'public' } }
+    ] };
+  });
+  const mem = { v: 1, videos: { [dsaTopic.id]: { t: dsaTopic.title, id: ID_A, title: 'd', channel: 'c', secs: 60 } } };
+  assert(discovery.langTodo(all, mem, 'python').every((t) => ['dsa', 'lld'].includes(t.trackId)), 'only dsa/lld topics are searched per language');
+  assert(!discovery.langTodo(all, mem, 'python').some((t) => t.id === beTopic.id));
+  const r = await discovery.searchLang(mem, all, 'python', 2);
+  assert.equal(r.searched, 2);
+  assert.equal(mem.videos[dsaTopic.id].id, ID_A, 'default pick is untouched');
+  assert.equal(mem.videos[dsaTopic.id].byLang.python.id, 'GOODVIDEO01', 'a Python search must not keep a Java-titled video');
+  const q = calls.find((c) => c[0] === 'search')[1].q;
+  assert(q.startsWith('Python '), 'query is prefixed with the language: ' + q);
+  assert.equal(calls.find((c) => c[0] === 'search')[1].videoEmbeddable, 'true');
+  assert(!discovery.langTodo(all, mem, 'python').some((t) => t.id === dsaTopic.id), 'already-picked topics are not searched again');
+  assert(discovery.langTodo(all, mem, 'cpp').some((t) => t.id === dsaTopic.id), 'other languages are still todo');
+  discovery.setClient(null);
+  finish();
+})().catch((e) => { console.error(e); process.exit(1); });
+
+function finish() {
 // Execute the browser export as well as the CommonJS export.
 const browser = { window: {} };
 vm.runInNewContext(fs.readFileSync(path.join(root, 'src/video.js'), 'utf8'), browser);
@@ -61,17 +125,22 @@ if (process.argv[2]) {
   const out = path.resolve(process.argv[2]), ctx = { window: {} };
   vm.runInNewContext(fs.readFileSync(path.join(out, 'assets/videos.js'), 'utf8'), ctx);
   const built = ctx.window.IM_VIDEOS;
-  assert.equal(Object.keys(built).length, have, 'Build lost a populated topic');
+  const raws = ctx.window.IM_VIDEOS_RAW;
+  assert(raws, 'Build must keep the raw catalog with byLang');
+  const withDefault = Object.keys(raws).filter((k) => raws[k].id);
+  assert.equal(withDefault.length, have, 'Build lost a populated topic');
   for (const [id, e] of Object.entries(db.videos)) if (e.id && e.available !== false) {
     assert.equal(built[id].id, e.id);
+    assert.deepEqual(Object.keys(raws[id].byLang || {}).sort(), Object.keys(e.byLang || {}).filter((l) => e.byLang[l].id && e.byLang[l].available !== false).sort(), 'Build lost byLang for ' + id);
     assert.equal(built[id].note, e.note || '');
     assert.equal(built[id].start, e.start || 0);
     assert.equal(built[id].end, e.end || 0);
   }
   const libCtx = { window: {} };
   vm.runInNewContext(fs.readFileSync(path.join(out, 'assets/video-library.js'), 'utf8'), libCtx);
-  assert.equal(libCtx.window.IM_VIDEO_LIB.tracks.reduce((n, t) => n + t.items.length, 0), have);
+  assert.equal(libCtx.window.IM_VIDEO_LIB.tracks.reduce((n, t) => n + t.items.length, 0), have + Object.keys(raws).length - withDefault.length);
   assert(libCtx.window.LessonVideo, 'Watchtower must have the same playback helper');
 }
 if (unavailable.length) console.log('Review needed: ' + unavailable.length + ' video(s) no longer available on YouTube and hidden until replaced: ' + unavailable.join(', '));
-console.log('PASS: ' + have + ' video mappings (' + curated + ' curated), topic titles, review records, chapter URLs, safe fallbacks and curated-link retention' + (process.argv[2] ? '; built web/app catalogs match' : ''));
+console.log('PASS: ' + have + ' video mappings (' + curated + ' curated), ' + langPicks + ' per-language picks, per-language fallback, mocked --lang search, topic titles, review records, chapter URLs, safe fallbacks and curated-link retention' + (process.argv[2] ? '; built web/app catalogs match' : ''));
+}
