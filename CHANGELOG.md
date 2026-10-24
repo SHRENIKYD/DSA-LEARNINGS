@@ -4,7 +4,7 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
-## [Unreleased]
+## [1.10.6] — 2026-10-25 · Language mode, per-language videos and passport sign-in
 
 ### Added
 - Language mode: lessons show only your code language (code examples and solutions); the other languages are not rendered at all. The in-lesson picker switches everything live, and "Show every language" brings them all back.
@@ -12,6 +12,7 @@ From 1.7.0 the website and the mobile app have separate versions. This file is t
 
 ### Fixed
 - Passport: when accounts are on and you are signed out, the page shows a sign-in card instead of the passport, so a profile photo can only be added to an account.
+- Samsung tablet layout, the shared Explorer login for app and website, a profile photo crop preview with zoom and position, a persistent app lesson header, and lesson horizontal overflow (PR #45).
 
 ## [1.10.5] — 2026-10-24 · Personalized navigation and the study planner
 
