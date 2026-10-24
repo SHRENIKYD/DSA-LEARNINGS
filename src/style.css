@@ -999,3 +999,24 @@ svg.cp-ic{width:34px;height:34px;color:var(--gold)}
 :root[data-theme="light"] .titem.k-lesson .ico,:root[data-theme="light"] .titem.k-review .ico{color:#6E4A00}
 :root:not([data-theme="light"]) .pill.good{color:#A4E3C0}
 :root:not([data-theme="light"]) .reltag.rel-core{color:#D4BEFF}
+
+/* shared styled dropdown (replaces the native picker everywhere) */
+.jdd-native{display:none!important}
+.jdd{position:relative;display:inline-flex;min-width:0;max-width:100%;vertical-align:middle}
+.pset .jdd,.rp-field .jdd,.lang-pick .jdd{min-width:200px}
+.viz-ctrl .jdd{min-width:120px}
+.jdd-btn{width:100%;min-height:44px;display:flex;align-items:center;gap:10px;font:inherit;font-size:15px;font-weight:600;padding:8px 12px 8px 14px;border:1px solid var(--border2);border-radius:12px;background:var(--raised);color:var(--text);cursor:pointer;text-align:left}
+.jdd-btn:disabled{opacity:.6;cursor:default}
+.jdd-lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jdd-chev{width:18px;height:18px;flex:none;color:var(--muted);fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}
+.jdd-btn[aria-expanded="true"] .jdd-chev{transform:rotate(180deg)}
+.jdd-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.jdd-list{position:absolute;top:calc(100% + 6px);right:0;left:auto;min-width:100%;width:max-content;max-width:min(92vw,420px);z-index:40;margin:0;padding:6px;list-style:none;max-height:min(50vh,360px);overflow:auto;background:var(--panel);border:1px solid var(--border2);border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.25)}
+.jdd-list.up{top:auto;bottom:calc(100% + 6px)}
+.jdd-list li{padding:10px 12px;border-radius:9px;cursor:pointer;font-size:15px;white-space:nowrap}
+.jdd-list li:hover,.jdd-list li.focus{background:var(--raised)}
+.jdd-list li[aria-selected="true"]{color:var(--accent-fg);font-weight:700}
+.jdd-list li[aria-disabled="true"]{opacity:.5;cursor:default}
+pre{max-width:100%;min-width:0;overflow-x:auto}
+h1[tabindex="-1"]:focus,h2[tabindex="-1"]:focus{outline:none}
+@media (max-width:600px){.jnav{min-width:0;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}.jnav::-webkit-scrollbar{display:none}.jnav a{flex:none}}
