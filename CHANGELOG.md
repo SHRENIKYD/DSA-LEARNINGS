@@ -4,6 +4,12 @@ From 1.10.1 each website release, whether it brings fixes or features, raises th
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [Unreleased]
+
+### Added
+- Language mode: lessons show only your code language (code examples and solutions); the other languages sit behind an "Other languages" control. The in-lesson picker switches everything live, and "Show every language" turns it off.
+- Videos per language: the daily video bot searches once a day for Python, JavaScript, C++ or Java picks (in rotation) for DSA and LLD topics; lessons and the Watchtower show the video for your language when one exists. The Watchtower filters to your language with a "Show all languages" toggle.
+
 ## [1.10.5] — 2026-10-24 · Personalized navigation and the study planner
 
 ### Added

@@ -9,11 +9,55 @@
     // Bare shift/comparison operators (<<, >>) are text, not HTML tags.
     return String(s || '').replace(/<\/?[a-z][a-z0-9]*(?:\s+[^<>]*)?\/?>/gi, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
   }
-  function publicEntry(v, topicTitle) {
-    if (!v || !/^[A-Za-z0-9_-]{11}$/.test(v.id || '') || v.available === false || v.stale || cleanTitle(v.t) !== cleanTitle(topicTitle)) return null;
+  var LANGS = ['java', 'python', 'js', 'cpp'], LANG_NAMES = { java: 'Java', python: 'Python', js: 'JavaScript', cpp: 'C++' };
+  var ID = /^[A-Za-z0-9_-]{11}$/;
+  function clean(v) {
     var start = time(v.start), end = time(v.end);
     return { id: v.id, title: String(v.title || '').slice(0, 180), channel: String(v.channel || '').slice(0, 80), secs: time(v.secs),
       curated: v.curated === true, note: String(v.note || '').slice(0, 600), start: start, end: end > start ? end : 0 };
+  }
+  // The public form of one catalog entry: the default pick plus any usable per-language picks (byLang).
+  // An entry with only per-language picks has id '' (pick() then returns null for learners without one).
+  function publicEntry(v, topicTitle) {
+    if (!v || v.stale || cleanTitle(v.t) !== cleanTitle(topicTitle)) return null;
+    var out = ID.test(v.id || '') && v.available !== false ? clean(v) : null, by = {}, any = false;
+    LANGS.forEach(function (l) {
+      var b = v.byLang && v.byLang[l];
+      if (b && ID.test(b.id || '') && b.available !== false) { by[l] = clean(b); any = true; }
+    });
+    if (!out && !any) return null;
+    if (!out) out = { id: '', title: '', channel: '', secs: 0, curated: false, note: '', start: 0, end: 0 };
+    if (any) out.byLang = by;
+    return out;
+  }
+  function normLang(l) { return LANGS.indexOf(l) >= 0 ? l : ''; }
+  // The learner's chosen language, or '' when none has been chosen. Learn is absent on some pages (videos.html).
+  function learnerLang() {
+    var r = null;
+    try { r = JSON.parse(localStorage.getItem('imastery.route')); } catch (e) { }
+    if (r && r.id) return normLang(r.lang);
+    try { if (window.Learn && Learn.pref().chosen) return normLang(Learn.pref().lang); } catch (e) { }
+    return '';
+  }
+  // The video to show for an entry: byLang[lang] when present, else the default pick (null when there is none).
+  function pick(entry, lang) {
+    if (!entry) return null;
+    var l = normLang(lang === undefined ? learnerLang() : lang), b = l && entry.byLang && entry.byLang[l];
+    if (b && ID.test(b.id || '')) {
+      var o = {}; for (var k in b) o[k] = b[k];
+      o.lang = l; o.perLang = true; return o;
+    }
+    if (!ID.test(entry.id || '')) return null;
+    var d = {}; for (var j in entry) if (j !== 'byLang') d[j] = entry[j];
+    d.lang = ''; d.perLang = false; return d;
+  }
+  // window.IM_VIDEOS keeps its shape: IM_VIDEOS[topicId] is the pick for the current learner language, resolved on every read.
+  function resolveAll(raw) {
+    var out = {};
+    Object.keys(raw).forEach(function (id) {
+      Object.defineProperty(out, id, { enumerable: true, get: function () { return pick(raw[id]); } });
+    });
+    return out;
   }
   function attrs(v) {
     if (!v || !/^[A-Za-z0-9_-]{11}$/.test(v.id || '')) return '';
@@ -33,5 +77,5 @@
     var s = time(v.start), e = time(v.end);
     return s || e ? 'Chapter ' + stamp(s) + (e > s ? '–' + stamp(e) : '') + ' · ' : (time(v.secs) ? Math.max(1, Math.round(v.secs / 60)) + ' min · ' : '');
   }
-  return { publicEntry: publicEntry, cleanTitle: cleanTitle, attrs: attrs, fromButton: fromButton, embedUrl: embedUrl, watchUrl: watchUrl, label: label };
+  return { publicEntry: publicEntry, cleanTitle: cleanTitle, attrs: attrs, fromButton: fromButton, embedUrl: embedUrl, watchUrl: watchUrl, label: label, pick: pick, resolveAll: resolveAll, learnerLang: learnerLang, langName: function (l) { return LANG_NAMES[l] || ''; }, LANGS: LANGS };
 });

@@ -280,6 +280,75 @@ const server = http.createServer((req, res) => {
         await go('index.html');
         if (await np.$('.whero.plan, .pchips, .quick')) err('Explore all home shows planner elements');
       }
+      // 5k language mode (src/engine.js codeTabs/viewLang): a Python learner sees one code pane with an "Other languages"
+      // reveal in both modes; the picker switches live; with no chosen language every tab shows as before
+      if (width === 1280) {
+        const vis = (root, q) => root.$$eval(q, (a) => a.filter((x) => !x.hidden).map((x) => x.textContent.trim()));
+        const visPane = (box) => box.$$eval('.cpane', (a) => a.filter((x) => !x.hidden).map((x) => x.getAttribute('data-pane')));
+        const tabIdx = (box, name) => box.$$eval('.ctab', (a, n) => (a.filter((x) => x.textContent.trim() === n)[0] || { getAttribute: () => null }).getAttribute('data-tab'), name);
+        // the picker is a styled dropdown (src/journey.js): open its button and pick the option by label
+        const pickLang = async (label) => {
+          await np.click('.lang-pick .jdd-btn');
+          await np.click('.lang-pick .jdd-list li:text-is("' + label + '")');
+          await np.waitForTimeout(400);
+        };
+        const pickerValue = () => np.$eval('[data-langpick]', (s) => s.value);
+        for (const mode of ['path', 'all']) {
+          await np.evaluate((m) => { localStorage.setItem('imastery.route', JSON.stringify({ id: 'pyback', lang: 'python', hours: 10, mode: m, onboarded: true, known: [], updatedAt: 1 })); localStorage.removeItem('imastery.lang'); }, mode);
+          await go('dsa.html'); // a fresh load each time: the same URL with a hash would only be a fragment navigation
+          await np.evaluate(() => { location.hash = 'dsa01'; });
+          cur = 'nav dsa.html#dsa01 (' + mode + ' mode, python)';
+          if (!(await np.waitForSelector('#dsa01-t0', { timeout: 8000 }).then(() => true, () => false))) { err('dsa01 did not render'); continue; }
+          const boxes = await np.$$('.code[data-langmode="python"]');
+          if (boxes.length < 2) { err('a Python learner sees no language-mode code blocks on dsa01 (' + boxes.length + ')'); continue; }
+          const box = boxes[0];
+          const tabs = await vis(box, '.ctab');
+          if (tabs.filter((t) => t !== 'Python' && !/^Other languages/.test(t)).length || !tabs.includes('Python') || !tabs.some((t) => /^Other languages/.test(t))) err('first code block shows tabs ' + JSON.stringify(tabs) + ', expected Python + "Other languages"');
+          const py = await tabIdx(box, 'Python');
+          const panes = await visPane(box);
+          if (panes.length !== 1 || panes[0] !== py) err('first code block shows pane(s) ' + panes.join() + ', expected only the Python pane (' + py + ')');
+          const more = await box.$('[data-more]');
+          if (!more) { err('first code block has no "Other languages" control'); continue; }
+          if ((await more.getAttribute('aria-expanded')) !== 'false') err('"Other languages" is not aria-expanded=false before the tap');
+          if (await box.$('.ctab.other:not([hidden])')) err('other-language tabs are visible before the tap');
+          if ((await pickerValue()) !== 'python') err('language picker does not show Python for a Python route');
+          await more.focus();
+          await np.keyboard.press('Enter');
+          await np.waitForTimeout(100);
+          if ((await more.getAttribute('aria-expanded')) !== 'true') err('Enter on "Other languages" did not set aria-expanded=true');
+          const after = await vis(box, '.ctab');
+          for (const l of ['Java', 'JavaScript', 'C++']) if (!after.includes(l)) err('expanding did not reveal the ' + l + ' tab: ' + JSON.stringify(after));
+          if (await np.$('.code[data-langmode] .ctab.other[hidden]')) err('expanding one block did not expand the other code blocks on the page');
+          const java = await tabIdx(box, 'Java');
+          await (await box.$('.ctab.other:not([hidden])')).click();
+          const shown = await visPane(box);
+          if (shown.length !== 1 || shown[0] !== java) err('tapping the revealed Java tab did not switch the pane: ' + shown.join() + ' (Java is ' + java + ')');
+          await more.click();
+          if ((await more.getAttribute('aria-expanded')) !== 'false' || await box.$('.ctab.other:not([hidden])')) err('collapsing did not hide the other tabs again');
+          if ((await visPane(box)).join() !== py) err('collapsing did not fall back to the Python pane');
+          // live switch via the picker: Java first, then every language
+          await pickLang('Java');
+          const jb = await np.$('.code[data-langmode="java"]');
+          if (!jb || (await vis(jb, '.ctab')).filter((t) => !/^Other languages/.test(t)).join() !== 'Java') err('picking Java did not switch the code blocks live');
+          if (!(await np.evaluate(() => document.activeElement && !!document.activeElement.closest('.lang-pick')))) err('focus left the language picker after switching');
+          await pickLang('Show every language');
+          if (await np.$('.code[data-langmode], [data-more]')) err('"Show every language" still hides languages');
+          if (await np.$('.ctab[hidden]')) err('"Show every language" leaves hidden tabs');
+          if (!(await np.$('.code.tabs .ctab'))) err('"Show every language" shows no code tabs');
+          const lk = await ls('imastery.lang');
+          if (lk !== 'all') err('"Show every language" with a chosen route stored ' + JSON.stringify(lk) + ', expected "all"');
+        }
+        // no chosen language: identical to the pre-language-mode render, every tab visible
+        await np.evaluate(() => { localStorage.setItem('imastery.route', JSON.stringify({ onboarded: true })); localStorage.removeItem('imastery.lang'); });
+        await go('dsa.html');
+        await np.evaluate(() => { location.hash = 'dsa01'; });
+        cur = 'nav dsa.html#dsa01 (no language)';
+        await np.waitForSelector('#dsa01-t0', { timeout: 8000 }).catch(() => err('dsa01 did not render'));
+        if (await np.$('.code[data-langmode], [data-more], .ctab.other, .ctab[hidden]')) err('a learner with no language sees language-mode markup');
+        const all = await vis(np, '.code.tabs .ctab');
+        for (const l of ['Java', 'Python', 'JavaScript', 'C++']) if (!all.includes(l)) err('no-language render is missing the ' + l + ' tab');
+        if ((await pickerValue()) !== '') err('language picker is not on "Show every language" without a choice');
+      }
       // existing learners with progress get the banner, never the dialog
       const ectx = await browser.newContext({ viewport: { width, height: 800 }, serviceWorkers: 'block' });
       await ectx.addInitScript(() => { if (!localStorage.getItem('imastery.done')) localStorage.setItem('imastery.done', JSON.stringify({ 'dsa01-t0': 1 })); });

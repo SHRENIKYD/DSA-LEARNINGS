@@ -6,8 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       max:
-        description: Topics to search in this run (each costs 100 of the 10,000 daily quota units)
-        default: '95'
+        description: Topics to search in the default pass (each costs 100 of the 10,000 daily quota units; the language pass adds up to 40 more, so keep max at 50 or less on a day both run)
+        default: '50'
+      lang:
+        description: Language for the extra pass (java, python, js, cpp). Leave empty to rotate by day of the year.
+        default: ''
 
 permissions:
   contents: write
@@ -31,10 +34,21 @@ jobs:
       - name: Drop removed videos, then search topics without one
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-          MAX: ${{ inputs.max || '95' }}
+          MAX: ${{ inputs.max || '50' }}
         run: |
           node tools/find-videos.js --check
           node tools/find-videos.js --max "$MAX"
+      # One language per day (day of the year % 4), at most 40 searches: 50 + 40 searches stay under the 10,000-unit quota.
+      - name: Search per-language videos for today's language
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          LANG_INPUT: ${{ inputs.lang }}
+        run: |
+          langs=(python js cpp java)
+          lang="$LANG_INPUT"
+          if [ -z "$lang" ]; then lang="${langs[$(( 10#$(date -u +%j) % 4 ))]}"; fi
+          echo "Language pass: $lang"
+          node tools/find-videos.js --lang "$lang" --max 40
       - name: Check the catalog before saving it
         run: node tools/video-test.js
       # main requires a pull request, so the update goes through one: push a branch, open a PR, merge it, redeploy.
