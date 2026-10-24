@@ -82,8 +82,7 @@
   function avatar() {
     var u = Auth.enabled ? Auth.user() : null;
     if (!u) return '<img src="app/icon.png" alt="Interview Mastery">';
-    var m = u.user_metadata || {}, pic = m.avatar_url || m.picture || '';
-    return /^https:\/\/[^\s"'<>]+$/.test(pic) ? '<img src="' + esc(pic) + '" alt="" referrerpolicy="no-referrer">' : esc((u.email || '?').charAt(0).toUpperCase());
+    return (Auth.avatarHtml ? Auth.avatarHtml() : '') || esc((u.email || '?').charAt(0).toUpperCase());
   }
   function bar(p, cls) { return '<div class="xpbar ' + (cls || '') + '"><i style="width:' + Math.round(Math.max(0, Math.min(1, p)) * 100) + '%"></i></div>'; }
   function head(title, back, read) { return '<div class="ah">' + (back ? '<a class="back" href="' + back + '" aria-label="Back">‹</a>' : '') + '<h1>' + esc(title) + '</h1>' + (read && Reader.available() ? '<button type="button" class="readbtn sp" id="readBtn" aria-label="Read this screen aloud">🔊</button>' : '') + '</div>'; }
@@ -482,7 +481,7 @@
   function me(sub) {
     var u = Auth.enabled ? Auth.user() : null, h = '<div class="ah"><h1>Me</h1></div>';
     var LABEL = { idle: '', syncing: 'Syncing…', pending: 'Saving…', saving: 'Saving…', synced: 'Progress synced', error: 'Not synced, will retry' };
-    if (u) h += '<div class="card row"><span class="av lg">' + avatar() + '</span><div class="grow"><b class="em">' + esc(u.email || 'Signed in') + '</b><span class="mono sm sync ' + esc(Auth.status()) + '">' + esc(LABEL[Auth.status()] || '') + '</span></div></div>';
+    if (u) h += '<div class="card row"><span class="av lg">' + avatar() + '</span><div class="grow"><b class="em">' + esc(u.email || 'Signed in') + '</b><span class="mono sm sync ' + esc(Auth.status()) + '">' + esc(LABEL[Auth.status()] || '') + '</span>' + (Auth.setAvatar ? '<span class="row wrap avacts"><label class="b3 ghost sm"><input type="file" id="meAvFile" accept="image/*" hidden>' + (Auth.avatarSrc() ? 'CHANGE PHOTO' : 'ADD PHOTO') + '</label>' + (Auth.avatarSrc() ? '<button type="button" class="b3 ghost sm" id="meAvClear">REMOVE</button>' : '') + '</span><span class="muted sm" id="meAvMsg" role="status"></span>' : '') + '</div></div>';
     else if (Auth.enabled) h += '<div class="card"><b class="ttl">Save your streak and XP</b><span class="muted sm">Sign in to sync progress with the website and your other devices.</span><a class="b3" href="login.html?next=index.html">SIGN IN</a></div>';
     else h += '<div class="card"><b class="ttl">Playing offline</b><span class="muted sm">Accounts are not set up in this build. Progress stays on this phone.</span></div>';
     var stats = [['⚡', S.xp.toLocaleString('en-US'), 'total XP'], ['🔥', S.streak.days, 'day streak'], ['✓', S.totals.completeModules, 'modules done']];
@@ -495,6 +494,9 @@
     h += '<div class="list"><button class="set" type="button" id="checkUpdates">Check for updates<span class="muted">↗</span></button><p class="sm muted" id="updateStatus" role="status" aria-live="polite"></p></div>';
     h += '<div class="list">' + (planOn() ? '<a class="set" href="#plan">Plan ›</a>' : '') + '<a class="set" href="#progress">Your progress ›</a><a class="set" href="#passport">Stamp passport ›</a><a class="set" href="#welcome">Meet Bit & replay the introduction ›</a></div>';
     page('me', h);
+    var mf = $('#meAvFile'), mr = $('#meAvClear'), mm = $('#meAvMsg');
+    if (mf) mf.addEventListener('change', function () { var file = mf.files && mf.files[0]; if (!file) return; if (mm) mm.textContent = 'Saving photo…'; Auth.setAvatar(file).then(function () { me(sub); }, function (e) { if (mm) mm.textContent = e.message || 'Could not save the photo.'; }); });
+    if (mr) mr.addEventListener('click', function () { Auth.clearAvatar().then(function () { me(sub); }); });
     wirePathSwitcher(); wireNav();
     if (sub === 'path') { var sw = $('#pathSwitch'); if (sw) { if (sw.scrollIntoView) sw.scrollIntoView({ block: 'start' }); sw.focus(); } }
     Array.prototype.forEach.call(document.querySelectorAll('[data-set]'), function (c) { c.addEventListener('change', function () { play.settings[c.dataset.set] = c.checked; save(); if (c.dataset.set === 'motion') document.documentElement.classList.toggle('calm', !c.checked); if (c.dataset.set === 'sound') { Sound.enable(c.checked); Sound.play('correct'); } if (c.checked && c.dataset.set === 'haptics') buzz(15); }); });

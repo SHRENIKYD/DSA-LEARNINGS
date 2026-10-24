@@ -9,6 +9,7 @@ From 1.11.1 each app release, whether it brings fixes or features, raises the la
 - My path mode: Home shows your next step, streak, today's budget, path progress and track cards; islands on your path get a ring and count; track maps and search put your path first.
 - Today and Plan screens: a daily plan sized to your hours, plus hours per week, interview date, rest day, placement, weeks forecast and mock rounds.
 - Adaptive path from real quiz results, and the Me page switcher to change your path with undo.
+- Profile photo on the Me page, shared with the website.
 
 ## [1.11.4] — 2026-10-23 · Faster lessons and data export
 

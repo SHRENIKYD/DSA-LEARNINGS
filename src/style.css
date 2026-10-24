@@ -380,7 +380,7 @@ button svg,.btn svg{pointer-events:none}
 .vmain h1{margin:0;font-family:var(--f-head);font-size:30px}
 .vcount{margin:0;color:var(--muted)}
 .vmain .sbox{max-width:520px}
-.vchips{display:flex;gap:8px;flex-wrap:wrap}
+.vsel{display:flex;align-items:center;gap:10px;font-weight:600}.vsel select{flex:1;min-width:0;max-width:420px;font:inherit;font-size:15px;padding:10px 12px;border:1px solid var(--border2);border-radius:12px;background:var(--raised);color:var(--text)}
 .vchip{border:1px solid var(--border2);background:var(--raised);color:var(--text);border-radius:999px;padding:6px 12px;min-height:36px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
 .vchip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .vtrack{display:flex;flex-direction:column;gap:10px;margin-top:8px}
@@ -434,6 +434,7 @@ h1{letter-spacing:-.8px}
 .jmenu{display:none!important;color:var(--text)}
 .jav{width:44px;height:44px;flex:none;border-radius:50%;background:var(--gold);color:var(--on-gold);display:grid;place-items:center;font-family:var(--f-head);font-weight:800;font-size:17px;text-decoration:none}
 .jav svg.ic{width:22px;height:22px}
+.jav{overflow:hidden}.jav img{width:100%;height:100%;object-fit:cover;display:block}
 .jmain{max-width:1240px;margin:0 auto;padding:30px clamp(16px,3vw,24px) 40px;display:flex;flex-direction:column;gap:30px}
 #gresults{border-radius:14px}
 
@@ -567,6 +568,12 @@ svg.stamp.off .st-fill{opacity:0}
 .pp-head{padding:24px;border-radius:28px;background:var(--paper);color:var(--paper-ink);display:flex;gap:18px;align-items:center;flex-wrap:wrap}
 .pp-av{width:84px;height:84px;flex:none;border-radius:50%;background:var(--paper-ink);color:var(--paper);display:grid;place-items:center;font-family:var(--f-head);font-size:34px;font-weight:800}
 .pp-av svg.ic{width:44px;height:44px;color:var(--gold)}
+.pp-av{overflow:hidden}.pp-av img{width:100%;height:100%;object-fit:cover;display:block}
+.pp-avwrap{display:flex;flex-direction:column;align-items:center;gap:8px;flex:none}
+.pp-avbtn,.pp-avrm{font-size:13px;padding:5px 10px;min-height:32px;cursor:pointer;color:var(--paper-ink);border-color:var(--paper-ink);background:transparent}
+.pp-avbtn:hover,.pp-avrm:hover{background:rgba(0,0,0,.06)}
+.pp-avmsg{font-size:12px;color:var(--muted);text-align:center;max-width:120px}
+.pp-avmsg:empty{display:none}
 .pp-who{flex:1 1 240px;display:flex;flex-direction:column;gap:4px;min-width:0}
 .pp-who .kicker{color:var(--paper-kick)}
 .pp-who b{font-family:var(--f-head);font-size:28px;font-weight:800;overflow-wrap:anywhere}

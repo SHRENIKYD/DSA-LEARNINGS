@@ -177,6 +177,56 @@ var Auth = (function () {
     var here = location.pathname.split('/').pop() + location.search + location.hash;
     return 'login.html?next=' + encodeURIComponent(here || 'index.html');
   }
+
+  /* ---------- profile photo ---------- */
+  // A small JPEG data URL (at most 40 KB) kept on this device and, when signed in, in the account's user metadata so every device shows it.
+  var AV_KEY = 'imastery.avatar', AV_MAX = 40 * 1024;
+  function okData(u) { return typeof u === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(u) && u.length <= AV_MAX * 1.4; }
+  function avatarSrc() {
+    var meta = user ? (user.user_metadata || {}) : {};
+    if (okData(meta.avatar_data)) return meta.avatar_data;
+    var local = null; try { local = localStorage.getItem(AV_KEY); } catch (e) { }
+    if (okData(local)) return local;
+    var pic = meta.avatar_url || meta.picture || '';
+    return /^https:\/\/[^\s"'<>]+$/.test(pic) ? pic : '';
+  }
+  function avatarHtml(fallback) {
+    var src = avatarSrc();
+    if (src) return '<img src="' + esc(src) + '" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createTextNode(this.getAttribute(\'data-i\')))" data-i="' + esc(user ? (user.email || '?').charAt(0).toUpperCase() : '') + '">';
+    if (user) return esc((user.email || '?').charAt(0).toUpperCase());
+    return fallback || '';
+  }
+  function shrink(file) {
+    return new Promise(function (res, rej) {
+      if (!file || !/^image\//.test(file.type)) return rej(new Error('Choose an image file (JPG, PNG or WebP).'));
+      if (file.size > 12 * 1024 * 1024) return rej(new Error('That image is over 12 MB. Pick a smaller one.'));
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var side = Math.min(img.naturalWidth, img.naturalHeight), c = document.createElement('canvas'); c.width = c.height = 160;
+        c.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 160, 160);
+        var q = 0.85, out = c.toDataURL('image/jpeg', q);
+        while (out.length > AV_MAX && q > 0.4) { q -= 0.1; out = c.toDataURL('image/jpeg', q); }
+        if (out.length > AV_MAX) return rej(new Error('Could not shrink that image enough. Try a simpler one.'));
+        res(out);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('That file could not be read as an image.')); };
+      img.src = url;
+    });
+  }
+  function saveAvatar(data) {
+    try { if (data) localStorage.setItem(AV_KEY, data); else localStorage.removeItem(AV_KEY); } catch (e) { }
+    if (user) {
+      user.user_metadata = Object.assign({}, user.user_metadata || {}, { avatar_data: data || null });
+      emit('user');
+      if (client) return client.auth.updateUser({ data: { avatar_data: data || null } }).then(function (r) { if (r && r.error) throw r.error; });
+    }
+    emit('user');
+    return Promise.resolve();
+  }
+  function setAvatar(file) { return shrink(file).then(saveAvatar); }
+  function clearAvatar() { return saveAvatar(null); }
+
   function mountAccount(el) {
     if (!el) return;
     if (!enabled) { el.hidden = true; return; }
@@ -186,14 +236,9 @@ var Auth = (function () {
         el.innerHTML = '<a class="btn acct-in" href="' + esc(loginHref()) + '"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>Sign in to sync progress</a>';
         return;
       }
-      var meta = user.user_metadata || {}, pic = meta.avatar_url || meta.picture || '';
-      var initial = esc((user.email || '?').charAt(0).toUpperCase());
-      var av = /^https:\/\/[^\s"'<>]+$/.test(pic) ? '<img src="' + esc(pic) + '" alt="" referrerpolicy="no-referrer">' : initial;
-      el.innerHTML = '<div class="acct"><span class="acct-av" aria-hidden="true">' + av + '</span>' +
+      el.innerHTML = '<div class="acct"><span class="acct-av" aria-hidden="true">' + avatarHtml() + '</span>' +
         '<div class="acct-tx"><div class="acct-em">' + esc(user.email || 'Signed in') + '</div><div class="acct-st ' + esc(status) + '" aria-live="polite">' + esc(LABEL[status] || '') + '</div></div>' +
         '<button class="btn ghost acct-out" type="button">Sign out</button></div>';
-      var img = el.querySelector('.acct-av img');
-      if (img) img.addEventListener('error', function () { if (img.parentNode) img.parentNode.textContent = (user.email || '?').charAt(0).toUpperCase(); });
       el.querySelector('.acct-out').addEventListener('click', function () { signOut().then(function () { location.reload(); }, function (e) { alert(e.message); }); });
     };
     listeners.push(function (k) { if (k === 'user' || k === 'status') draw(); });
@@ -201,7 +246,7 @@ var Auth = (function () {
   }
 
   return {
-    enabled: enabled, client: client, init: init, pull: pull, push: push, changed: changed, reset: reset, signOut: signOut, deleteAccount: deleteAccount, exportData: exportData, downloadData: downloadData, mountAccount: mountAccount,
+    enabled: enabled, client: client, init: init, pull: pull, push: push, changed: changed, reset: reset, signOut: signOut, deleteAccount: deleteAccount, exportData: exportData, downloadData: downloadData, mountAccount: mountAccount, avatarSrc: avatarSrc, avatarHtml: avatarHtml, setAvatar: setAvatar, clearAvatar: clearAvatar,
     user: function () { return user; }, status: function () { return status; },
     on: function (fn) { listeners.push(fn); }
   };
