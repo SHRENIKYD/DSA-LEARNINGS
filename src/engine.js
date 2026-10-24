@@ -1149,15 +1149,6 @@ var App = (function () {
     h = '<section class="whero"><div class="wh-l"><span class="kicker">' + (PMODE ? RV.pctHours + '% of your path <small class="kick-all">· ' + J.pct(S.done, S.items) + '% of the world</small>' : S.done ? J.pct(S.done, S.items) + '% of the world explored' : 'A new traveller arrives') + '</span>' +
       '<h1>' + (S.done ? 'Welcome back, traveller' : 'Your journey starts on Foundation Isle') + '</h1>' +
       '<p>' + lands + ' lands, ' + S.planned + ' places, ' + S.landmarks.toLocaleString('en-US') + ' landmarks. Every lesson is a stop on the map; finish it and the path lights up.</p>';
-    if (nextMod) {
-      h += '<a class="nextstop path" href="' + Learn.href(nextMod.id) + '"><span class="kicker">Next on your path · ' + esc(RV.sch.plan.route.stages[Learn.relevance(nextMod.id).stage] ? RV.sch.plan.route.stages[Learn.relevance(nextMod.id).stage].name : RV.sch.plan.route.name) + '</span><b>' + esc(nextMod.meta.title) + '</b>' +
-        '<span>' + esc(nextMod.why) + '</span><span class="sail">' + ICONS.play + 'Continue</span></a>';
-    } else if (last && last.track && last.hash) {
-      h += '<a class="nextstop" href="' + esc(last.track) + '.html#' + esc(last.hash) + '"><span class="kicker">Next stop · place ' + esc(last.num) + ' · ' + esc(last.title) + '</span><b>' + esc(last.topicTitle || last.title) + '</b>' +
-        '<span>' + esc(J.regionOf(last.track).name) + ' · ' + esc(last.trackTitle) + (last.topics ? ' · landmark ' + (last.topic + 1) + ' of ' + last.topics : '') + '</span><span class="sail">' + ICONS.play + 'Set sail</span></a>';
-    } else {
-      h += '<a class="nextstop" href="dsa.html#dsa01"><span class="kicker">First stop · place 1 · Foundation Isle</span><b>Programming Foundations</b><span>DSA + Math for CS · starts with a real-world legend</span><span class="sail">' + ICONS.play + 'Set sail</span></a>';
-    }
     h += '</div>' + J.atlasHtml(S, R0, trackBy, last) + '</section>';
     if (PMODE) h += pathHomeHtml(trackBy);
     }

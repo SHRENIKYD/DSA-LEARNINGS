@@ -384,11 +384,18 @@ button svg,.btn svg{pointer-events:none}
 .vmain .sbox{max-width:520px}
 .vtools{display:grid;grid-template-columns:minmax(0,1fr) minmax(200px,260px);gap:10px;align-items:stretch}
 .vtools .sbox{max-width:none;flex:none}
-.vsel{position:relative;display:flex;align-items:center;min-width:0}
-.vsel svg.ic{position:absolute;left:11px;color:var(--muted);pointer-events:none}
-.vsel svg.chev{left:auto;right:10px}
-.vsel select{width:100%;min-width:0;height:100%;font:inherit;font-size:15px;font-weight:600;padding:10px 34px 10px 38px;border:1px solid var(--border2);border-radius:12px;background:var(--raised);color:var(--text);appearance:none;-webkit-appearance:none;cursor:pointer;text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
-.vsel select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.vsel{position:relative;min-width:0}
+.vsel-btn{width:100%;height:100%;min-height:46px;display:flex;align-items:center;gap:10px;font:inherit;font-size:15px;font-weight:600;padding:10px 12px 10px 14px;border:1px solid var(--border2);border-radius:12px;background:var(--raised);color:var(--text);cursor:pointer;text-align:left}
+.vsel-btn svg.ic{width:18px;height:18px;flex:none;color:var(--muted)}
+.vsel-btn .lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vsel-btn svg.chev{transition:transform .15s}
+.vsel-btn[aria-expanded="true"] svg.chev{transform:rotate(180deg)}
+.vsel-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.vsel-list{position:absolute;top:calc(100% + 6px);right:0;left:0;z-index:30;margin:0;padding:6px;list-style:none;max-height:min(60vh,420px);overflow:auto;background:var(--panel);border:1px solid var(--border2);border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.25)}
+.vsel-list li{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 12px;border-radius:9px;cursor:pointer;font-size:15px}
+.vsel-list li .n{font-family:var(--f-mono);font-size:12.5px;color:var(--muted)}
+.vsel-list li:hover,.vsel-list li.focus{background:var(--raised)}
+.vsel-list li[aria-selected="true"]{color:var(--accent-fg);font-weight:700}
 @media (max-width:600px){.vtools{grid-template-columns:minmax(0,1fr)}}
 .vchip{border:1px solid var(--border2);background:var(--raised);color:var(--text);border-radius:999px;padding:6px 12px;min-height:36px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
 .vchip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
@@ -600,7 +607,7 @@ svg.stamp.off .st-fill{opacity:0}
 .avsheet-row svg{color:var(--muted)}
 .avsheet-msg{margin:4px 16px 0;font-size:13px;color:var(--muted);min-height:1em}
 @media (prefers-reduced-motion:no-preference){.avsheet-box{animation:avup .22s ease-out}@keyframes avup{from{transform:translateY(30px);opacity:.6}}}
-.pp-who{flex:1 1 240px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.pp-who{flex:0 0 auto;display:flex;flex-direction:column;gap:4px;min-width:0}
 .pp-who .kicker{color:var(--paper-kick)}
 .pp-who b{font-family:var(--f-head);font-size:28px;font-weight:800;overflow-wrap:anywhere}
 .pp-who span:not(.kicker){font-size:15px;color:var(--paper-muted)}
@@ -667,7 +674,7 @@ svg.stamp.off .st-fill{opacity:0}
 
 /* Learning atlas: floating terrain with real track links and progress. */
 .whero:has(.atlas){display:grid;grid-template-columns:1fr;gap:24px}
-.whero:has(.atlas) .wh-l{display:grid;grid-template-columns:1fr minmax(260px,370px);column-gap:36px;align-items:center}
+.whero:has(.atlas) .wh-l{display:flex;flex-direction:column;gap:14px;justify-content:flex-start}
 .whero:has(.atlas) .wh-l>.kicker,.whero:has(.atlas) .wh-l>h1,.whero:has(.atlas) .wh-l>p{grid-column:1}
 .whero:has(.atlas) .nextstop{grid-column:2;grid-row:1/4}
 .atlas{--atlas-orange:#f19a6c;display:grid;grid-template-columns:minmax(0,1fr) 290px;border:1px solid var(--border);border-radius:24px;overflow:hidden;min-width:0}
